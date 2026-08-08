@@ -1,0 +1,1185 @@
+//! Extensions, from the application.
+//!
+//! The pieces existed separately: a manifest parser, a registry that flipped a
+//! boolean, eleven unused SQL tables, and a store screen whose install button
+//! set a React state variable. Nothing connected them, so no extension had
+//! ever actually run.
+//!
+//! This module is the connection. Installing fetches and adapts a bundle
+//! (`lochor_extensions::install`), records it in SQLite, and — once the user
+//! has granted the permissions it asked for — registers its components with
+//! the runtimes that were already there: MCP servers into `core.mcp`, rules
+//! and skills into the system prompt, commands into the slash palette.
+//!
+//! What is deliberately *not* wired: hook execution. Hooks are parsed, stored
+//! and shown, but nothing fires them yet — the tool loop has no dispatch
+//! point. Saying so in the UI is better than a plugin whose hooks quietly
+//! never run.
+
+use lochor_extensions::loader::LoadedPlugin;
+use lochor_extensions::manifest::PluginManifest;
+use lochor_extensions::{latest_github_version, version_gt, SourceError};
+use lochor_mcp::{build_client, McpClient, McpConfig, McpServerEntry, Transport};
+use lochor_shared_types::{
+    CatalogEntry, CatalogSnapshot, CatalogSource, ExtensionComponents, ExtensionEcosystem,
+    ExtensionKind, ExtensionPermissionState, ExtensionScope, InstalledExtension, Permission,
+};
+use lochor_storage::NewExtension;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tauri::State;
+use uuid::Uuid;
+
+use crate::Core;
+
+// ============================================================================
+// Runtime state
+// ============================================================================
+
+/// Every enabled plugin, loaded and ready.
+#[derive(Default)]
+pub struct ExtensionRuntime {
+    /// Loaded plugins, keyed by extension id.
+    pub loaded: HashMap<Uuid, LoadedPlugin>,
+    /// Rules and skill index of every enabled plugin, appended to the system
+    /// prompt. Empty when nothing is enabled.
+    pub system_prompt: String,
+    /// MCP server names this runtime registered. A reload retracts exactly
+    /// these, so a disabled plugin's servers do not linger.
+    pub mcp_names: Vec<String>,
+}
+
+impl ExtensionRuntime {
+    /// A command contributed by any enabled plugin, by its namespaced name.
+    pub fn command(&self, name: &str) -> Option<(&str, &lochor_command_runtime::CommandDef)> {
+        for p in self.loaded.values() {
+            for c in &p.commands {
+                if c.name == name || format!("{}:{}", p.manifest.name, c.name) == name {
+                    return Some((p.manifest.name.as_str(), c));
+                }
+            }
+        }
+        None
+    }
+}
+
+/// A slash command as the palette sees it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ExtensionCommand {
+    /// `<plugin>:<command>` — namespaced so two plugins can both ship `/review`.
+    pub name: String,
+    pub plugin: String,
+    pub description: Option<String>,
+    pub arguments: Vec<String>,
+}
+
+// ============================================================================
+// Reload
+// ============================================================================
+
+/// Rebuild the runtime from the database. Idempotent: called at startup and
+/// after every install, enable, disable or removal.
+pub async fn reload(core: &Core) -> Result<(), String> {
+    let rows = core
+        .storage
+        .extensions
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut next = ExtensionRuntime::default();
+    let mut prompt = String::new();
+
+    for row in rows.iter().filter(|r| r.enabled) {
+        let Some(root) = plugin_root(&row.manifest_path) else {
+            continue;
+        };
+        match lochor_extensions::loader::load(&root) {
+            Ok(p) => {
+                prompt.push_str(&p.system_prompt_fragment());
+                next.loaded.insert(row.id, p);
+            }
+            Err(e) => {
+                // A plugin whose files vanished stays in the list, disabled in
+                // effect, with the reason visible rather than silently absent.
+                tracing::warn!(name = %row.name, error = %e, "extension activée illisible");
+            }
+        }
+    }
+    next.system_prompt = prompt;
+
+    // --- MCP servers --------------------------------------------------------
+    // Retract what the previous generation registered, then publish the new
+    // set. Names are `<plugin>__<serveur>` so two plugins may ship a server
+    // with the same name, and so the model's tool names stay unambiguous.
+    let previous: Vec<String> = {
+        let rt = core.extensions.read().await;
+        rt.mcp_names.clone()
+    };
+
+    let mut desired: HashMap<String, McpServerEntry> = HashMap::new();
+    for row in rows.iter().filter(|r| r.enabled) {
+        let Some(p) = next.loaded.get(&row.id) else {
+            continue;
+        };
+        // A plugin only gets to register servers if the user allowed it.
+        if !row.granted.contains(&Permission::Mcp) {
+            continue;
+        }
+        for (name, entry) in &p.mcp {
+            let scoped = format!("{}__{}", sanitize_server(&row.name), sanitize_server(name));
+            let mut entry = entry.clone();
+            entry.owner = Some(row.name.clone());
+            desired.insert(scoped, entry);
+        }
+    }
+
+    let to_stop: Vec<String> = previous
+        .iter()
+        .filter(|n| !desired.contains_key(*n))
+        .cloned()
+        .collect();
+    {
+        let mut cfg = core.mcp.config.lock().unwrap();
+        for name in &to_stop {
+            cfg.mcp_servers.remove(name);
+        }
+        for (name, entry) in &desired {
+            cfg.mcp_servers.insert(name.clone(), entry.clone());
+        }
+    }
+    for name in &to_stop {
+        if let Some(client) = core.mcp.running.write().await.remove(name) {
+            let _ = client.shutdown().await;
+        }
+    }
+    next.mcp_names = desired.keys().cloned().collect();
+    next.mcp_names.sort();
+
+    // Start the ones marked automatic that are not already running.
+    for (name, entry) in desired.iter().filter(|(_, e)| e.auto_start) {
+        if core.mcp.running.read().await.contains_key(name) {
+            continue;
+        }
+        let client: Arc<dyn McpClient> = Arc::from(build_client(entry));
+        match client.discover().await {
+            Ok(caps) => {
+                tracing::info!(server = %name, tools = caps.tools.len(), "serveur MCP d'extension démarré");
+                core.mcp.running.write().await.insert(name.clone(), client);
+            }
+            Err(e) => {
+                tracing::warn!(server = %name, error = %e, "serveur MCP d'extension injoignable")
+            }
+        }
+    }
+
+    *core.extensions.write().await = next;
+    Ok(())
+}
+
+/// MCP server names become part of the tool names the model sees
+/// (`mcp__<serveur>__<outil>`), so anything outside `[A-Za-z0-9_-]` would
+/// produce tools nobody can call.
+fn sanitize_server(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn plugin_root(manifest_path: &str) -> Option<PathBuf> {
+    let p = Path::new(manifest_path);
+    if p.is_dir() {
+        return Some(p.to_path_buf());
+    }
+    p.parent().map(|x| x.to_path_buf())
+}
+
+// ============================================================================
+// Reading the installed set
+// ============================================================================
+
+async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String> {
+    let rows = core
+        .storage
+        .extensions
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
+    let rt = core.extensions.read().await;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let root = plugin_root(&row.manifest_path);
+        // The manifest on disk is the source of truth for metadata; the row
+        // only holds identity and the user's decisions.
+        let manifest = root
+            .as_deref()
+            .and_then(|r| lochor_extensions::manifest::load(r).ok());
+
+        // An enabled plugin is already loaded; for a disabled one, parse it now
+        // so the card can still say what it would contribute.
+        let (components, load_errors) = match rt.loaded.get(&row.id) {
+            Some(p) => (p.counts(), p.errors.clone()),
+            None => match (&root, &manifest) {
+                (Some(r), Some(m)) => {
+                    let p = lochor_extensions::loader::load_with_manifest(r, m.clone());
+                    (p.counts(), p.errors)
+                }
+                _ => (
+                    ExtensionComponents::default(),
+                    vec![format!(
+                        "fichiers introuvables : {}",
+                        row.manifest_path
+                    )],
+                ),
+            },
+        };
+
+        let requested = manifest
+            .as_ref()
+            .map(lochor_extensions::manifest::requested_permissions)
+            .unwrap_or_default();
+        let permissions: Vec<ExtensionPermissionState> = requested
+            .iter()
+            .map(|(perm, req)| ExtensionPermissionState {
+                permission: perm.clone(),
+                reason: req.reason.clone(),
+                granted: row.granted.contains(perm),
+            })
+            .collect();
+
+        out.push(InstalledExtension {
+            id: row.id,
+            display_name: manifest
+                .as_ref()
+                .and_then(|m| m.description.as_ref())
+                .map(|_| row.name.clone())
+                .unwrap_or_else(|| row.name.clone()),
+            name: row.name.clone(),
+            version: row.version,
+            api_version: row.api_version,
+            description: manifest.as_ref().and_then(|m| m.description.clone()),
+            author: manifest.as_ref().and_then(|m| m.author.clone()),
+            homepage: manifest.as_ref().and_then(|m| m.homepage.clone()),
+            kind: row.kind,
+            scope: row.scope,
+            ecosystem: row.ecosystem,
+            source: row.source,
+            install_dir: root
+                .map(|r| r.display().to_string())
+                .unwrap_or_else(|| row.manifest_path.clone()),
+            enabled: row.enabled,
+            components,
+            permissions,
+            load_errors,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        });
+    }
+    Ok(out)
+}
+
+// ============================================================================
+// Commands — installed extensions
+// ============================================================================
+
+#[tauri::command]
+pub async fn list_extensions(core: State<'_, Core>) -> Result<Vec<InstalledExtension>, String> {
+    build_installed(&core).await
+}
+
+#[tauri::command]
+pub async fn list_extension_commands(
+    core: State<'_, Core>,
+) -> Result<Vec<ExtensionCommand>, String> {
+    let rt = core.extensions.read().await;
+    let mut out = Vec::new();
+    for p in rt.loaded.values() {
+        for c in &p.commands {
+            out.push(ExtensionCommand {
+                name: format!("{}:{}", p.manifest.name, c.name),
+                plugin: p.manifest.name.clone(),
+                description: c.description.clone(),
+                arguments: c.arguments.clone(),
+            });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// Expand `/<plugin>:<command> args…` into the prompt it stands for.
+#[tauri::command]
+pub async fn resolve_extension_command(
+    core: State<'_, Core>,
+    name: String,
+    args: String,
+) -> Result<String, String> {
+    let rt = core.extensions.read().await;
+    let (_, def) = rt
+        .command(&name)
+        .ok_or_else(|| format!("« {name} » n'est pas une commande d'extension."))?;
+    let parts: Vec<String> = args.split_whitespace().map(str::to_string).collect();
+    Ok(lochor_command_runtime::resolve(&def.body, &parts))
+}
+
+#[tauri::command]
+pub async fn install_extension(
+    core: State<'_, Core>,
+    source: String,
+    scope: Option<String>,
+    workspace: Option<String>,
+) -> Result<InstalledExtension, String> {
+    let scope = parse_scope(scope.as_deref());
+    let workspace_root = workspace.as_deref().map(Path::new);
+
+    let outcome = lochor_extensions::install(&core.http, source.trim(), scope, workspace_root)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let requested: Vec<Permission> =
+        lochor_extensions::manifest::requested_permissions(&outcome.manifest)
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+
+    let record = core
+        .storage
+        .extensions
+        .upsert(NewExtension {
+            name: outcome.manifest.name.clone(),
+            version: outcome.manifest.version.clone(),
+            api_version: outcome.manifest.api_version.clone(),
+            kind: ExtensionKind::Plugin,
+            scope,
+            ecosystem: outcome.ecosystem,
+            source: Some(outcome.source.clone()),
+            manifest_path: outcome.root.join("plugin.json").display().to_string(),
+            requested,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        name = %outcome.manifest.name,
+        ecosystem = %outcome.ecosystem.as_str(),
+        components = outcome.loaded.counts().total(),
+        partial = outcome.partial,
+        "extension installée"
+    );
+    for note in &outcome.notes {
+        tracing::info!(name = %outcome.manifest.name, "{note}");
+    }
+
+    // Installed but not enabled: the permission modal decides that next.
+    let all = build_installed(&core).await?;
+    all.into_iter()
+        .find(|e| e.id == record.id)
+        .ok_or_else(|| "extension introuvable après installation".to_string())
+}
+
+/// Re-run the install pipeline from the extension's stored source, replacing
+/// its files with the latest version.
+///
+/// The row is keyed by name+scope, so the upsert keeps the same id and never
+/// touches `enabled` or `granted`: the user's decisions survive the update.
+/// The runtime is then reloaded so the new components are live immediately.
+#[tauri::command]
+pub async fn update_extension(
+    core: State<'_, Core>,
+    id: String,
+) -> Result<InstalledExtension, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let record = core
+        .storage
+        .extensions
+        .get(uid)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "extension introuvable".to_string())?;
+    let source = record.source.clone().ok_or_else(|| {
+        "impossible de mettre à jour : aucune source enregistrée pour cette extension".to_string()
+    })?;
+    reinstall_from_source(&core, uid, &record.name, record.scope, &source).await
+}
+
+/// Comme `update_extension`, mais avec une source explicite : la source
+/// d'installation d'une entrée du catalogue « Découvrir », pour une extension
+/// déjà installée dont la source enregistrée manque ou diffère.
+#[tauri::command]
+pub async fn update_extension_source(
+    core: State<'_, Core>,
+    id: String,
+    source: String,
+) -> Result<InstalledExtension, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let record = core
+        .storage
+        .extensions
+        .get(uid)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "extension introuvable".to_string())?;
+    reinstall_from_source(&core, uid, &record.name, record.scope, source.trim()).await
+}
+
+/// Pipeline commun d'une réinstallation depuis une source (enregistrée ou du
+/// catalogue) : télécharge le paquet, upsert (même id, `enabled` et `granted`
+/// intacts), puis redémarre les serveurs MCP du plugin et recharge le runtime.
+async fn reinstall_from_source(
+    core: &Core,
+    id: Uuid,
+    name: &str,
+    scope: ExtensionScope,
+    source: &str,
+) -> Result<InstalledExtension, String> {
+    let outcome = lochor_extensions::install(&core.http, source.trim(), scope, None)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let requested: Vec<Permission> =
+        lochor_extensions::manifest::requested_permissions(&outcome.manifest)
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+
+    let updated = core
+        .storage
+        .extensions
+        .upsert(NewExtension {
+            name: outcome.manifest.name.clone(),
+            version: outcome.manifest.version.clone(),
+            api_version: outcome.manifest.api_version.clone(),
+            kind: ExtensionKind::Plugin,
+            scope,
+            ecosystem: outcome.ecosystem,
+            source: Some(outcome.source.clone()),
+            manifest_path: outcome.root.join("plugin.json").display().to_string(),
+            requested,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        name = %outcome.manifest.name,
+        version = %outcome.manifest.version,
+        "extension mise à jour"
+    );
+
+    // `name` est l'ancien nom : il pointe les serveurs MCP actuellement
+    // enregistrés. Un éventuel renommage dans la nouvelle version est rattrapé
+    // par le reload que `restart_plugin_mcp` déclenche.
+    restart_plugin_mcp(core, name).await?;
+
+    build_installed(core)
+        .await?
+        .into_iter()
+        .find(|e| e.id == updated.id)
+        .ok_or_else(|| "extension introuvable après mise à jour".to_string())
+}
+
+/// Un seul reload du runtime des extensions, après la mise à jour en lot.
+///
+/// Chaque `update_extension` parallèle relance déjà un `reload(core)` global,
+/// et deux reloads qui se chevauchent peuvent laisser l'état final sans la
+/// dernière version d'une extension (chacun lit la base à un instant donné), ou
+/// double-démarrer un serveur MCP auto (client orphelin sans shutdown). Un
+/// dernier reload unique, après que toutes les upserts ont committé, garantit
+/// un état cohérent — c'est ce passage final qui rattrape les chevauchements,
+/// il ne faut pas le retirer. Idempotent, donc inoffensif quand une seule
+/// extension a été mise à jour.
+#[tauri::command]
+pub async fn reload_extensions(core: State<'_, Core>) -> Result<Vec<InstalledExtension>, String> {
+    reload(&core).await?;
+    build_installed(&core).await
+}
+
+// ============================================================================
+// Version checks (the "mise à jour dispo" badge)
+// ============================================================================
+
+/// One version check for an installed extension.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtensionUpdateCheck {
+    pub id: String,
+    /// Latest version on the default branch, when the source is checkable.
+    pub latest_version: Option<String>,
+    /// True when a newer version exists.
+    pub update_available: bool,
+    /// Why the check could not run (network, source form…).
+    pub error: Option<String>,
+}
+
+/// Aperçu d'une source d'installation sans télécharger le paquet : ce que le
+/// manifeste déclare (nom, version, écosystème, permissions demandées).
+/// Alimente la carte de confirmation de la fenêtre d'ajout.
+#[tauri::command]
+pub async fn preview_extension_source(
+    core: State<'_, Core>,
+    source: String,
+) -> Result<lochor_extensions::SourcePreview, String> {
+    lochor_extensions::preview_source(&core.http, source.trim())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Compare every installed extension against its GitHub source's default
+/// branch. Sources that cannot be checked (local path, pinned ref, no manifest
+/// with a version) report `None` rather than an error.
+///
+/// The fetches run in parallel (`join_all`) so the badge of a panel with many
+/// installed extensions is not held up by N sequential round-trips.
+#[tauri::command]
+pub async fn check_extension_updates(
+    core: State<'_, Core>,
+) -> Result<Vec<ExtensionUpdateCheck>, String> {
+    let rows = core
+        .storage
+        .extensions
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Owned inputs first, so the futures below borrow no rows.
+    let checks: Vec<(String, String, Option<String>)> = rows
+        .into_iter()
+        .map(|r| (r.id.to_string(), r.version, r.source))
+        .collect();
+    let http = &core.http;
+    let results: Vec<(
+        String,
+        String,
+        Result<Option<String>, SourceError>,
+    )> = futures::future::join_all(checks.iter().map(|(id, version, source)| async move {
+        let latest = match source {
+            Some(s) => latest_github_version(http, s).await,
+            None => Ok(None),
+        };
+        (id.clone(), version.clone(), latest)
+    }))
+    .await;
+
+    let mut out = Vec::with_capacity(results.len());
+    for (id, installed, latest) in results {
+        match latest {
+            Ok(Some(v)) => out.push(ExtensionUpdateCheck {
+                id,
+                latest_version: Some(v.clone()),
+                update_available: version_gt(&v, &installed),
+                error: None,
+            }),
+            Ok(None) => out.push(ExtensionUpdateCheck {
+                id,
+                latest_version: None,
+                update_available: false,
+                error: None,
+            }),
+            Err(e) => out.push(ExtensionUpdateCheck {
+                id,
+                latest_version: None,
+                update_available: false,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
+}
+
+/// Grant exactly this set of permissions, revoking anything not listed.
+#[tauri::command]
+pub async fn set_extension_permissions(
+    core: State<'_, Core>,
+    id: String,
+    granted: Vec<Permission>,
+) -> Result<Vec<InstalledExtension>, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    core.storage
+        .extensions
+        .set_granted(uid, &granted)
+        .await
+        .map_err(|e| e.to_string())?;
+    reload(&core).await?;
+    build_installed(&core).await
+}
+
+#[tauri::command]
+pub async fn set_extension_enabled(
+    core: State<'_, Core>,
+    id: String,
+    enabled: bool,
+) -> Result<Vec<InstalledExtension>, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    core.storage
+        .extensions
+        .set_enabled(uid, enabled)
+        .await
+        .map_err(|e| e.to_string())?;
+    reload(&core).await?;
+    build_installed(&core).await
+}
+
+#[tauri::command]
+pub async fn remove_extension(
+    core: State<'_, Core>,
+    id: String,
+    workspace: Option<String>,
+) -> Result<Vec<InstalledExtension>, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let record = core
+        .storage
+        .extensions
+        .get(uid)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "extension introuvable".to_string())?;
+
+    core.storage
+        .extensions
+        .delete(uid)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(root) = plugin_root(&record.manifest_path) {
+        let workspace_root = workspace.as_deref().map(Path::new);
+        if !lochor_extensions::remove_files(&root, record.scope, workspace_root) {
+            tracing::warn!(path = %root.display(), "fichiers de l'extension non supprimés");
+        }
+    }
+
+    reload(&core).await?;
+    build_installed(&core).await
+}
+
+fn parse_scope(s: Option<&str>) -> ExtensionScope {
+    match s {
+        Some("global") => ExtensionScope::Global,
+        Some("workspace") => ExtensionScope::Workspace,
+        Some("session") => ExtensionScope::Session,
+        _ => ExtensionScope::User,
+    }
+}
+
+// ============================================================================
+// Extension-contributed configuration
+// ============================================================================
+
+/// An extension's settings form, as declared by the extension itself.
+///
+/// Lochor renders `schema` and stores `values`; it knows nothing about what
+/// any particular extension needs. That is the whole point: an extension says
+/// what it wants on screen, the app draws it, and an app that has never seen
+/// that extension carries no trace of it.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtensionConfig {
+    /// Field map from the manifest's `config.schema`. Empty when the extension
+    /// declares no settings — the UI then shows nothing rather than an empty form.
+    pub schema: serde_json::Value,
+    /// Current values, defaults filled in from the schema.
+    pub values: serde_json::Value,
+}
+
+/// Where an extension's settings live: inside its own directory, so removing
+/// the extension removes them with it. Nothing is written to the app's own
+/// database or config.
+fn config_file(root: &Path) -> PathBuf {
+    root.join(".data").join("config.json")
+}
+
+fn read_values(root: &Path, schema: &serde_json::Value) -> serde_json::Value {
+    let mut values = serde_json::Map::new();
+
+    // Defaults come from the schema, so a field added in a plugin update shows
+    // its declared default rather than a blank.
+    if let Some(fields) = schema.as_object() {
+        for (key, field) in fields {
+            let default = field.get("default").cloned().unwrap_or(serde_json::Value::Null);
+            values.insert(key.clone(), default);
+        }
+    }
+
+    if let Ok(raw) = std::fs::read_to_string(config_file(root)) {
+        if let Ok(serde_json::Value::Object(stored)) = serde_json::from_str(&raw) {
+            for (key, value) in stored {
+                values.insert(key, value);
+            }
+        }
+    }
+
+    serde_json::Value::Object(values)
+}
+
+fn manifest_schema(root: &Path) -> serde_json::Value {
+    lochor_extensions::manifest::load(root)
+        .ok()
+        .and_then(|m| m.config)
+        .map(|c| c.schema)
+        .unwrap_or(serde_json::Value::Null)
+}
+
+async fn config_for(core: &Core, id: Uuid) -> Result<(PathBuf, ExtensionConfig), String> {
+    let record = core
+        .storage
+        .extensions
+        .get(id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "extension introuvable".to_string())?;
+    let root = plugin_root(&record.manifest_path)
+        .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
+    let schema = manifest_schema(&root);
+    let values = read_values(&root, &schema);
+    Ok((root, ExtensionConfig { schema, values }))
+}
+
+#[tauri::command]
+pub async fn get_extension_config(
+    core: State<'_, Core>,
+    id: String,
+) -> Result<ExtensionConfig, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    Ok(config_for(&core, uid).await?.1)
+}
+
+/// Merge a patch into the extension's settings and persist it.
+///
+/// Keys absent from the schema are dropped: the form is the contract, and a
+/// stray key would sit in the file forever with nothing to display or clear it.
+#[tauri::command]
+pub async fn set_extension_config(
+    core: State<'_, Core>,
+    id: String,
+    values: serde_json::Value,
+) -> Result<ExtensionConfig, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let (root, current) = config_for(&core, uid).await?;
+
+    let Some(patch) = values.as_object() else {
+        return Err("les valeurs doivent être un objet".into());
+    };
+    let known = current.schema.as_object();
+    let mut merged = current
+        .values
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    for (key, value) in patch {
+        if known.is_some_and(|k| !k.contains_key(key)) {
+            tracing::warn!(key = %key, "réglage inconnu ignoré");
+            continue;
+        }
+        merged.insert(key.clone(), value.clone());
+    }
+
+    let path = config_file(&root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&merged).unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())?;
+
+    // An extension that already runs read the old values at startup. Restart
+    // its MCP servers so a saved change takes effect now rather than at the
+    // next launch.
+    let record = core
+        .storage
+        .extensions
+        .get(uid)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(record) = record.filter(|r| r.enabled) {
+        restart_plugin_mcp(&core, &record.name).await?;
+    }
+
+    Ok(config_for(&core, uid).await?.1)
+}
+
+/// Stop and restart every MCP server this plugin registered, so a change to
+/// its files takes effect now rather than at the next launch.
+async fn restart_plugin_mcp(core: &Core, plugin_name: &str) -> Result<(), String> {
+    let prefix = format!("{}__", sanitize_server(plugin_name));
+    let names: Vec<String> = {
+        let rt = core.extensions.read().await;
+        rt.mcp_names
+            .iter()
+            .filter(|n| n.starts_with(&prefix))
+            .cloned()
+            .collect()
+    };
+    for name in names {
+        if let Some(client) = core.mcp.running.write().await.remove(&name) {
+            let _ = client.shutdown().await;
+        }
+    }
+    reload(core).await?;
+    Ok(())
+}
+
+// ============================================================================
+// Extension-declared MCP servers (env + auto-start, edited in the settings
+// panel alongside the schema form)
+// ============================================================================
+
+/// One MCP server declared by an extension, as the settings panel edits it.
+/// Only `env` and `auto_start` are user-editable; the command/URL and the
+/// transport come from the plugin's own file and stay untouched.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionMcpServer {
+    /// Server name as declared in the plugin's mcp file.
+    pub name: String,
+    /// `stdio` | `http`.
+    pub transport: String,
+    /// Command line (stdio) or URL (http), shown read-only.
+    pub target: String,
+    pub env: HashMap<String, String>,
+    pub auto_start: bool,
+}
+
+fn entry_to_dto(name: String, entry: McpServerEntry) -> ExtensionMcpServer {
+    let (transport, target) = match entry.transport {
+        Transport::Stdio => {
+            let mut line = entry.command.unwrap_or_default();
+            for a in &entry.args {
+                line.push(' ');
+                line.push_str(a);
+            }
+            ("stdio".to_string(), line)
+        }
+        Transport::Http => ("http".to_string(), entry.url.unwrap_or_default()),
+    };
+    ExtensionMcpServer {
+        name,
+        transport,
+        target,
+        env: entry.env,
+        auto_start: entry.auto_start,
+    }
+}
+
+/// The plugin's own MCP config file, mirroring the loader's lookup order.
+/// Returns `None` when the plugin declares no MCP servers.
+fn extension_mcp_file(root: &Path, manifest: &PluginManifest) -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = manifest
+        .components
+        .mcp
+        .as_ref()
+        .map(|m| vec![root.join(m)])
+        .unwrap_or_default();
+    candidates.extend(
+        ["mcp/mcp.json", ".mcp.json", "mcp.json"]
+            .iter()
+            .map(|n| root.join(n)),
+    );
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+#[tauri::command]
+pub async fn get_extension_mcp_servers(
+    core: State<'_, Core>,
+    id: String,
+) -> Result<Vec<ExtensionMcpServer>, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let record = core
+        .storage
+        .extensions
+        .get(uid)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "extension introuvable".to_string())?;
+    let root = plugin_root(&record.manifest_path)
+        .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
+    let manifest = lochor_extensions::manifest::load(&root).map_err(|e| e.to_string())?;
+    let Some(path) = extension_mcp_file(&root, &manifest) else {
+        return Ok(Vec::new());
+    };
+    let cfg = McpConfig::load(&path).map_err(|e| e.to_string())?;
+    let mut out: Vec<ExtensionMcpServer> = cfg
+        .mcp_servers
+        .into_iter()
+        .map(|(name, entry)| entry_to_dto(name, entry))
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// Merge `env` + `auto_start` back into the plugin's own mcp file, by server
+/// name. Anything not sent (command, args, URL, headers) is preserved, and
+/// servers not listed are left alone. The plugin's running servers are then
+/// restarted so the change is live immediately.
+#[tauri::command]
+pub async fn set_extension_mcp_servers(
+    core: State<'_, Core>,
+    id: String,
+    servers: Vec<ExtensionMcpServer>,
+) -> Result<Vec<ExtensionMcpServer>, String> {
+    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let record = core
+        .storage
+        .extensions
+        .get(uid)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "extension introuvable".to_string())?;
+    let root = plugin_root(&record.manifest_path)
+        .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
+    let manifest = lochor_extensions::manifest::load(&root).map_err(|e| e.to_string())?;
+    let path = extension_mcp_file(&root, &manifest)
+        .ok_or_else(|| "cette extension ne déclare aucun serveur MCP modifiable".to_string())?;
+
+    // Guard: `McpConfig::load` silently defaults on a parse error, and saving
+    // would then overwrite a malformed file with an empty one. Refuse instead.
+    let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str::<serde_json::Value>(&raw)
+        .map_err(|e| format!("fichier mcp illisible : {e}"))?;
+    let mut cfg = McpConfig::load(&path).map_err(|e| e.to_string())?;
+    for s in &servers {
+        if let Some(entry) = cfg.mcp_servers.get_mut(&s.name) {
+            entry.env = s.env.clone();
+            entry.auto_start = s.auto_start;
+        } else {
+            tracing::warn!(server = %s.name, "serveur MCP inconnu ignoré");
+        }
+    }
+    cfg.save(&path).map_err(|e| e.to_string())?;
+
+    if record.enabled {
+        restart_plugin_mcp(&core, &record.name).await?;
+    }
+
+    get_extension_mcp_servers(core, id).await
+}
+
+// ============================================================================
+// Commands — the catalog
+// ============================================================================
+
+/// User choices about catalog sources. Built-in sources are not copied here;
+/// only the ids the user switched off, plus any source they added.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct SourcePrefs {
+    #[serde(default)]
+    disabled: Vec<String>,
+    #[serde(default)]
+    custom: Vec<CatalogSource>,
+}
+
+fn prefs_path() -> PathBuf {
+    lochor_config::global_dir().join("extension-sources.json")
+}
+
+fn load_prefs() -> SourcePrefs {
+    std::fs::read_to_string(prefs_path())
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_prefs(p: &SourcePrefs) {
+    let path = prefs_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(raw) = serde_json::to_string_pretty(p) {
+        let _ = std::fs::write(path, raw);
+    }
+}
+
+fn effective_sources() -> Vec<CatalogSource> {
+    let prefs = load_prefs();
+    let mut all = lochor_extensions::builtin_sources();
+    for s in &mut all {
+        s.enabled = !prefs.disabled.contains(&s.id);
+    }
+    all.extend(prefs.custom.iter().cloned().map(|mut s| {
+        s.enabled = !prefs.disabled.contains(&s.id);
+        s
+    }));
+    all
+}
+
+#[tauri::command]
+pub async fn list_catalog_sources(_core: State<'_, Core>) -> Result<Vec<CatalogSource>, String> {
+    Ok(effective_sources())
+}
+
+/// Add a Claude Code marketplace by `owner/repo` or by its GitHub URL.
+#[tauri::command]
+pub async fn add_catalog_source(
+    _core: State<'_, Core>,
+    spec: String,
+) -> Result<Vec<CatalogSource>, String> {
+    let parsed = lochor_extensions::source::parse(spec.trim()).map_err(|e| e.to_string())?;
+    let lochor_extensions::InstallSource::GitHub { owner, repo, .. } = parsed else {
+        return Err(
+            "Indiquez un dépôt GitHub (owner/repo) contenant .claude-plugin/marketplace.json."
+                .into(),
+        );
+    };
+    let source = lochor_extensions::catalog::marketplace_source(&owner, &repo);
+    let mut prefs = load_prefs();
+    if prefs.custom.iter().any(|s| s.id == source.id)
+        || lochor_extensions::builtin_sources()
+            .iter()
+            .any(|s| s.id == source.id)
+    {
+        return Err(format!("{owner}/{repo} est déjà dans la liste."));
+    }
+    prefs.custom.push(source);
+    save_prefs(&prefs);
+    Ok(effective_sources())
+}
+
+#[tauri::command]
+pub async fn set_catalog_source_enabled(
+    _core: State<'_, Core>,
+    id: String,
+    enabled: bool,
+) -> Result<Vec<CatalogSource>, String> {
+    let mut prefs = load_prefs();
+    prefs.disabled.retain(|d| d != &id);
+    if !enabled {
+        prefs.disabled.push(id);
+    }
+    save_prefs(&prefs);
+    Ok(effective_sources())
+}
+
+#[tauri::command]
+pub async fn remove_catalog_source(
+    _core: State<'_, Core>,
+    id: String,
+) -> Result<Vec<CatalogSource>, String> {
+    let mut prefs = load_prefs();
+    let before = prefs.custom.len();
+    prefs.custom.retain(|s| s.id != id);
+    if prefs.custom.len() == before {
+        return Err("Les sources fournies avec l'application ne peuvent qu'être désactivées.".into());
+    }
+    prefs.disabled.retain(|d| d != &id);
+    save_prefs(&prefs);
+    Ok(effective_sources())
+}
+
+/// Fetch every enabled source. Slow (a megabyte of Gemini index), so the UI
+/// calls it on demand rather than on every visit to the store.
+#[tauri::command]
+pub async fn refresh_extension_catalog(core: State<'_, Core>) -> Result<CatalogSnapshot, String> {
+    let client = lochor_extensions::CatalogClient::new(core.http.clone());
+    let snapshot = client.refresh(&effective_sources()).await;
+    Ok(mark_installed(&core, snapshot).await)
+}
+
+/// Browse the last refresh. Filtering happens here so the 1300-entry Gemini
+/// index never crosses the IPC boundary.
+#[tauri::command]
+pub async fn browse_extension_catalog(
+    core: State<'_, Core>,
+    query: Option<String>,
+    ecosystem: Option<String>,
+    limit: Option<u32>,
+) -> Result<CatalogSnapshot, String> {
+    let client = lochor_extensions::CatalogClient::new(core.http.clone());
+    let Some(snapshot) = client.cached() else {
+        return Ok(CatalogSnapshot {
+            entries: Vec::new(),
+            sources: Vec::new(),
+            fetched_at: None,
+            stale: true,
+        });
+    };
+    let eco = ecosystem.as_deref().and_then(parse_ecosystem);
+    let filtered = lochor_extensions::catalog::filter(
+        &snapshot.entries,
+        query.as_deref().unwrap_or(""),
+        eco,
+        limit.unwrap_or(60) as usize,
+    );
+    Ok(mark_installed(
+        &core,
+        CatalogSnapshot {
+            entries: filtered,
+            ..snapshot
+        },
+    )
+    .await)
+}
+
+/// Flag entries already installed so the store shows "Installé" instead of
+/// offering the same plugin twice.
+async fn mark_installed(core: &Core, mut snapshot: CatalogSnapshot) -> CatalogSnapshot {
+    let installed: Vec<(String, Option<String>)> = match core.storage.extensions.list().await {
+        Ok(rows) => rows.into_iter().map(|r| (r.name, r.source)).collect(),
+        Err(_) => Vec::new(),
+    };
+    for e in &mut snapshot.entries {
+        e.installed = installed.iter().any(|(name, source)| {
+            name == &e.name
+                || source
+                    .as_deref()
+                    .map(|s| s == e.install_source)
+                    .unwrap_or(false)
+        });
+    }
+    snapshot
+}
+
+fn parse_ecosystem(s: &str) -> Option<ExtensionEcosystem> {
+    match s {
+        "lochor" => Some(ExtensionEcosystem::Lochor),
+        "claude_code" => Some(ExtensionEcosystem::ClaudeCode),
+        "gemini_cli" => Some(ExtensionEcosystem::GeminiCli),
+        "opencode" => Some(ExtensionEcosystem::OpenCode),
+        "mcp" => Some(ExtensionEcosystem::Mcp),
+        _ => None,
+    }
+}
+
+/// One catalog entry, resolved for the details pane.
+#[tauri::command]
+pub async fn catalog_entry_details(
+    core: State<'_, Core>,
+    id: String,
+) -> Result<Option<CatalogEntry>, String> {
+    let client = lochor_extensions::CatalogClient::new(core.http.clone());
+    Ok(client
+        .cached()
+        .and_then(|s| s.entries.into_iter().find(|e| e.id == id)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_names_stay_callable() {
+        // `mcp__<server>__<tool>` is the tool name the model sees.
+        assert_eq!(sanitize_server("my plugin"), "my-plugin");
+        assert_eq!(sanitize_server("a_b.c"), "a-b-c");
+        assert_eq!(sanitize_server("ok-9"), "ok-9");
+    }
+
+    #[test]
+    fn plugin_root_is_the_manifest_directory() {
+        let r = plugin_root("/a/b/plugin.json").unwrap();
+        assert!(r.ends_with("b"));
+    }
+
+    #[test]
+    fn scope_defaults_to_user() {
+        assert_eq!(parse_scope(None), ExtensionScope::User);
+        assert_eq!(parse_scope(Some("workspace")), ExtensionScope::Workspace);
+        assert_eq!(parse_scope(Some("nonsense")), ExtensionScope::User);
+    }
+}

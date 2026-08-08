@@ -1,0 +1,29 @@
+[package]
+name = "lochor-mobile"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# Android loads the application as a shared library, so the entry point lives
+# in lib.rs rather than in a binary.
+name = "lochor_mobile_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+lochor-config = { workspace = true }
+lochor-travel = { workspace = true }
+tauri = { version = "2", features = [] }
+tauri-plugin-deep-link = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+# The camera only exists on a phone; on desktop the crate has no entry point,
+# and the layout is developed on desktop.
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-barcode-scanner = "2"

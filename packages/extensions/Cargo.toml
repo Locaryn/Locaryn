@@ -1,0 +1,31 @@
+[package]
+name = "lochor-extensions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Extension registry, loader, manifest validation, permissions, hot-reload, ecosystem import."
+
+[dependencies]
+lochor-shared-types = { workspace = true }
+lochor-config = { workspace = true }
+lochor-mcp = { workspace = true }
+lochor-skill-runtime = { workspace = true }
+lochor-command-runtime = { workspace = true }
+lochor-hook-runtime = { workspace = true }
+lochor-lsp-adapters = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+notify = "7"
+# Fetching plugins and catalogs over HTTP. `zip` reads GitHub codeload
+# archives; `toml` parses Gemini CLI command files.
+reqwest = { workspace = true }
+tokio = { workspace = true }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+toml = "0.8"

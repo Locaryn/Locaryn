@@ -1,0 +1,277 @@
+import { useEffect, useRef, useState } from "react";
+import { core, type RagHit, type RagStatus } from "../lib/core";
+
+/** Text-ish files we can index directly (a PDF/DOCX would need extraction). */
+const TEXT_EXT = [
+  "txt", "md", "markdown", "rst", "csv", "tsv", "json", "yaml", "yml", "toml", "ini", "cfg",
+  "log", "html", "htm", "xml", "js", "jsx", "ts", "tsx", "py", "rs", "go", "java", "c", "h",
+  "cpp", "hpp", "cs", "rb", "php", "sh", "sql", "css", "scss", "vue", "svelte",
+];
+
+function isTextFile(name: string): boolean {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  return TEXT_EXT.includes(ext);
+}
+
+type Props = {
+  projectId: string;
+  onClose: () => void;
+};
+
+/**
+ * Per-project knowledge base (RAG). Index text blocks, then every chat message
+ * in this project automatically retrieves the most relevant chunks and feeds
+ * them to the model. Embeddings run on a local `--embeddings` server.
+ */
+export function RagPanel({ projectId, onClose }: Props) {
+  const [status, setStatus] = useState<RagStatus | null>(null);
+  const [source, setSource] = useState("");
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<RagHit[] | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [importing, setImporting] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  /** Index dropped/selected files directly — no copy-paste needed. */
+  async function importFiles(files: FileList | File[]) {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    setBusy(true);
+    setError(null);
+    const skipped: string[] = [];
+    try {
+      for (const f of list) {
+        if (!isTextFile(f.name)) {
+          skipped.push(f.name);
+          continue;
+        }
+        setImporting(f.name);
+        const text = await f.text();
+        if (text.trim()) {
+          const s = await core.ragIndexText(projectId, f.name, text);
+          setStatus(s);
+        }
+      }
+      if (skipped.length > 0) {
+        setError(
+          `Ignoré (format non lisible en texte) : ${skipped.join(", ")}. ` +
+            "Copiez-collez leur contenu, ou convertissez-les en .txt/.md.",
+        );
+      }
+    } catch (e) {
+      setError(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setImporting(null);
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    core.ragStatus(projectId).then((s) => { if (!cancelled) setStatus(s); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  async function index() {
+    const src = source.trim() || "note";
+    if (!text.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const s = await core.ragIndexText(projectId, src, text);
+      setStatus(s);
+      setText("");
+    } catch (e) {
+      setError(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function search() {
+    if (!query.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setHits(await core.ragSearch(projectId, query, 5));
+    } catch (e) {
+      setError(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearAll() {
+    setBusy(true);
+    try {
+      await core.ragClear(projectId);
+      setStatus(await core.ragStatus(projectId));
+      setHits(null);
+    } catch (e) {
+      setError(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="lochor-settings-backdrop" onClick={onClose} />
+      <div className="lochor-settings-modal" role="dialog" aria-modal="true" aria-label="Documents (RAG)">
+        <div className="lochor-settings-header">
+          <span className="lochor-settings-title">📚 Base de connaissances (RAG)</span>
+          <button type="button" className="lochor-settings-close" onClick={onClose} aria-label="Fermer">✕</button>
+        </div>
+
+        <div className="lochor-settings-pane" style={{ padding: 20, overflowY: "auto" }}>
+          <p className="lochor-rag-what">
+            <b>À quoi ça sert ?</b> Donnez vos documents au modèle une bonne fois pour toutes.
+            Ensuite, à <i>chaque</i> message de ce projet, Lochor retrouve automatiquement les
+            passages utiles et les glisse dans la question — le modèle répond avec
+            <b> vos</b> infos, sans que vous ayez à les recoller à chaque fois.
+          </p>
+          <p className="lochor-field-hint">
+            Tout reste en local (aucun envoi vers Internet). La première indexation démarre un
+            petit serveur d'embeddings : comptez quelques secondes.
+          </p>
+          <p className="lochor-field-hint" style={{ marginTop: 6 }}>
+            ⓘ Par défaut, c'est votre <strong>modèle de chat actif</strong> qui produit les embeddings
+            (zéro configuration). Pour une récupération nettement plus fine, installez un vrai modèle
+            d'<em>embedding</em> (nomic-embed, bge, e5) — un modèle de chat sépare mal les sens.
+          </p>
+
+          <div className="lochor-conn" style={{ marginTop: 10 }}>
+            <span className={`lochor-health-dot ${status && status.chunk_count > 0 ? "lochor-health-ok" : "lochor-health-off"}`} />
+            <span>
+              {status
+                ? status.chunk_count > 0
+                  ? `${status.chunk_count} extraits · ${status.sources.length} source(s) · dim ${status.dim}`
+                  : "Aucun document indexé"
+                : "…"}
+            </span>
+          </div>
+
+          {status && status.sources.length > 0 && (
+            <ul className="lochor-lora-list" style={{ marginTop: 10 }}>
+              {status.sources.map((s) => (
+                <li key={s.source} className="lochor-lora-row">
+                  <span className="lochor-lora-path" title={s.source}>{s.source}</span>
+                  <span className="lochor-lora-scale">{s.chunks}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Drop zone — import files directly instead of pasting text. */}
+          <div className="lochor-field" style={{ marginTop: 20 }}>
+            <label className="lochor-field-label">Importer des fichiers</label>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              hidden
+              accept={TEXT_EXT.map((e) => `.${e}`).join(",")}
+              onChange={(e) => {
+                if (e.target.files) importFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <div
+              className={`lochor-dropzone${dragOver ? " over" : ""}`}
+              onClick={() => !busy && fileRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (e.dataTransfer.files?.length) importFiles(e.dataTransfer.files);
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              {importing ? (
+                <>⏳ Indexation de <b>{importing}</b>…</>
+              ) : (
+                <>
+                  <div className="lochor-dropzone-main">📄 Glissez vos documents ici, ou cliquez pour choisir</div>
+                  <div className="lochor-dropzone-sub">
+                    .txt .md .csv .json .html, code source… — plusieurs fichiers acceptés
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="lochor-field" style={{ marginTop: 16 }}>
+            <label className="lochor-field-label">Ou coller du texte</label>
+            <input
+              className="lochor-input"
+              placeholder="Nom de la source (ex: notes-archi.md)"
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              style={{ marginBottom: 8 }}
+            />
+            <textarea
+              className="lochor-input"
+              placeholder="Collez ici le texte à indexer…"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={6}
+              style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)" }}
+            />
+            <div className="lochor-field-actions" style={{ marginTop: 10 }}>
+              <button type="button" className="lochor-btn-primary" onClick={index} disabled={busy || !text.trim()}>
+                {busy ? "Indexation…" : "Indexer"}
+              </button>
+              {status && status.chunk_count > 0 && (
+                <button type="button" className="lochor-btn-ghost" onClick={clearAll} disabled={busy}>
+                  Tout effacer
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="lochor-field" style={{ marginTop: 20 }}>
+            <label className="lochor-field-label">Tester la recherche</label>
+            <div className="lochor-field-row">
+              <input
+                className="lochor-input"
+                placeholder="Une question pour voir ce qui remonte…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") search(); }}
+              />
+              <button type="button" className="lochor-btn-ghost" onClick={search} disabled={busy || !query.trim()}>
+                Chercher
+              </button>
+            </div>
+            {hits && (
+              hits.length === 0 ? (
+                <p className="lochor-field-hint" style={{ marginTop: 8 }}>Aucun résultat.</p>
+              ) : (
+                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {hits.map((h, i) => (
+                    <div key={i} className="lochor-lora-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", color: "var(--text-dim)" }}>
+                        <span className="lochor-kv-mono">{h.source}</span>
+                        <span>{h.score.toFixed(3)}</span>
+                      </div>
+                      <div style={{ fontSize: "var(--text-xs)", lineHeight: 1.5 }}>
+                        {h.text.length > 240 ? h.text.slice(0, 240) + "…" : h.text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+
+          {error && <p className="lochor-field-hint" style={{ color: "var(--danger)", marginTop: 8 }}>{error}</p>}
+        </div>
+      </div>
+    </>
+  );
+}

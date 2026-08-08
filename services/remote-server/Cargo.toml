@@ -1,0 +1,40 @@
+[package]
+name = "lochor-remote-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Lochor remote server — secured TLS gateway, auth, audit, provider proxying, enterprise module."
+
+[[bin]]
+name = "lochor-remote-server"
+path = "src/main.rs"
+
+[dependencies]
+lochor-shared-types = { workspace = true }
+lochor-sdk = { workspace = true }
+lochor-config = { workspace = true }
+lochor-storage = { workspace = true }
+lochor-events = { workspace = true }
+lochor-auth = { workspace = true }
+lochor-extensions = { workspace = true }
+lochor-mcp = { workspace = true }
+lochor-agent-runtime = { workspace = true }
+lochor-enterprise = { path = "enterprise", version = "0.1.0", optional = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[features]
+default = ["enterprise"]
+enterprise = ["dep:lochor-enterprise"]

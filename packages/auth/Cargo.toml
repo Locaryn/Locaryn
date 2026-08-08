@@ -1,0 +1,28 @@
+[package]
+name = "lochor-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Auth: token management, OS keychain, Argon2id hashing (server-side), audit."
+
+[dependencies]
+lochor-shared-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+argon2 = { workspace = true }
+rand = { workspace = true }
+subtle = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+keyring = { workspace = true, optional = true }
+
+[features]
+# Real OS keychain backend (Windows Credential Manager / macOS Keychain /
+# Linux Secret Service). Off by default so the daemon/remote-server stay lean;
+# the desktop enables it.
+system-keychain = ["dep:keyring"]

@@ -1,0 +1,6 @@
+{
+  "adapters": [
+    { "language": "rust", "command": "rust-analyzer", "args": [] },
+    { "language": "typescript", "command": "typescript-language-server", "args": ["--stdio"] }
+  ]
+}

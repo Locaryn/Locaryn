@@ -1,0 +1,82 @@
+/* ═══════════════════════════════════════════════════════════
+   Lochor — design tokens, shared by every client.
+
+   Minimal, near-monochrome, calm. One warm-neutral scale carries
+   the whole interface; a single muted green accent is used
+   sparingly (active state, focus, primary action, health). No
+   glass blur, no gradients, no glows — flat surfaces separated by
+   hairline borders. Hierarchy comes from text weight and
+   lightness, not colour.
+
+   Lives here rather than in one application so the phone and the
+   desktop cannot drift apart.
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* Warm-neutral scale — the entire UI is built from these. */
+  --bg: #17191a;          /* app background */
+  --surface: #1e2022;     /* raised elements: cards, composer, inputs */
+  --surface-hover: #24262a;
+  --border: #2c2f31;      /* hairline separators */
+  --border-strong: #3a3e41;
+
+  /* Text — one family, three weights of presence. */
+  --text: #e7e6e2;        /* primary (warm off-white) */
+  --text-dim: #a2a49e;    /* secondary */
+  --text-faint: #6a6d68;  /* tertiary / hints */
+
+  /* The single accent — muted, natural green. Overridden at
+     runtime by useTheme (--accent-rgb kept in sync). */
+  --accent: #6f9c7f;
+  --accent-rgb: 111, 156, 127;
+  --accent-hex: #6f9c7f;  /* legacy alias for JS-injected value */
+
+  /* Feedback (used rarely, kept muted) */
+  --danger: #cc7d72;
+  --danger-rgb: 204, 125, 114;
+
+  /* Fonts */
+  --font-sans: "Sen", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+    monospace;
+
+  /* Type scale */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13.5px;
+  --text-md: 14.5px;
+  --text-lg: 17px;
+  --text-xl: 21px;
+
+  /* Spacing rhythm (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radii — soft, restrained */
+  --radius-lg: 12px;
+  --radius: 9px;
+  --radius-sm: 7px;
+  --radius-xs: 5px;
+  --radius-pill: 999px;
+
+  /* Resizable layout — set by useLayout, with sane fallbacks */
+  --layout-left: 248px;
+  --layout-right: 340px;
+  --layout-bottom: 200px;
+
+  /* Motion — short, calm, no bounce */
+  --ease: cubic-bezier(0.33, 0, 0.2, 1);
+  --dur-fast: 0.12s;
+  --dur-med: 0.2s;
+
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}

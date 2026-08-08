@@ -1,0 +1,55 @@
+[package]
+name = "lochor-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Lochor desktop app (Tauri v2 shell)."
+
+[lib]
+name = "lochor_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "lochor-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.1", features = ["protocol-asset", "tray-icon"] }
+tauri-plugin-shell = "2.0"
+tauri-plugin-deep-link = "2"
+lochor-shared-types = { workspace = true }
+lochor-agent-runtime = { workspace = true }
+lochor-preview = { workspace = true }
+lochor-events = { workspace = true }
+lochor-storage = { workspace = true, features = ["ssh-connector"] }
+lochor-config = { workspace = true }
+lochor-extensions = { workspace = true }
+lochor-command-runtime = { workspace = true }
+lochor-provider-supervisor = { workspace = true }
+lochor-auth = { workspace = true, features = ["system-keychain"] }
+lochor-ssh = { workspace = true }
+lochor-mcp = { workspace = true }
+lochor-travel = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true, features = ["std"] }
+tokio-util = { workspace = true }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+futures = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+tauri-plugin-dialog = "2"
+url = "2"
+base64 = "0.22"
+# Disk capacity reporting for the storage settings (free space per volume).
+sysinfo = { version = "0.32", default-features = false, features = ["disk"] }

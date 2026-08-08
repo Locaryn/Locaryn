@@ -1,0 +1,44 @@
+Business Source License 1.1
+
+Parameters
+
+Licensor:             Lochor Contributors
+Licensed Work:        Lochor Enterprise Module
+                     (the software in services/remote-server/enterprise/)
+Change Date:          2030-07-18
+Change License:       Apache License, Version 2.0
+
+Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative
+works, redistribute, and non-productively distribute, the Licensed Work
+and derivative works thereof, subject to the following conditions:
+
+* You may not use the Licensed Work for a Productive Use, nor permit any
+  third party to do so, until the Change Date has occurred.
+
+* Redistributions of the Licensed Work, with or without modifications,
+  must retain the parameters above and the text of this Business Source
+  License, in a visible form, and any derivative works must be distributed
+  under these same parameters.
+
+"Productive Use" means putting the Licensed Work to use for the benefit of
+you or a third party in a manner that generates revenue or other
+commercial value.
+
+The Change Date is the date on which the Change License takes effect and
+this Business Source License terminates. On or after the Change Date, the
+Licensed Work is licensed under the Change License.
+
+For the avoidance of doubt, this Business Source License does not revoke
+your right to use the Licensed Work under the Change License after the
+Change Date has occurred.
+
+See https://mariadb.com/bsl11/ for more details on the Business Source
+License.
+
+---
+
+On the Change Date (2030-07-18), this software becomes available under the
+Apache License, Version 2.0. A copy of the Apache License, Version 2.0 is
+provided in the repository root at /LICENSE.

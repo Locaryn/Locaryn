@@ -1,0 +1,17 @@
+[package]
+name = "lochor-lsp-adapters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "LSP adapters for Lochor (register language servers per project, expose as agent tool)."
+
+[dependencies]
+lochor-shared-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

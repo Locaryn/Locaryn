@@ -1,0 +1,165 @@
+import type { ConnectionMode, ProviderSummary } from "../lib/core";
+
+type Props = {
+  activeView: string;
+  onSelectView: (view: string) => void;
+  mode: ConnectionMode;
+  demo: boolean;
+  project: string;
+  provider: ProviderSummary | null;
+  showPreview: boolean;
+  showBottom: boolean;
+  showModelConfig: boolean;
+  onToggleNavDrawer: () => void;
+  onTogglePreview: () => void;
+  onToggleBottom: () => void;
+  onToggleModelConfig: () => void;
+  onSettingsClick?: () => void;
+  /** Chat-scoped settings popup (model, performance). */
+  onChatSettingsClick?: () => void;
+};
+
+const MODE_LABEL: Record<ConnectionMode, string> = {
+  auto: "Auto",
+  remote: "Remote",
+  local: "Local",
+};
+
+const VIEW_TITLES: Record<string, string> = {
+  models: "Marketplace Modèles",
+  installed: "Mes Modèles Installés",
+  batch: "Batch API Studio (-50%)",
+  training: "Entraînement & Oblitération",
+  connectors: "Connecteurs & MCP",
+  settings: "Paramètres Système",
+  account: "Compte Utilisateur",
+};
+
+export function TopBar({
+  activeView,
+  mode,
+  demo,
+  project,
+  provider,
+  showPreview,
+  showBottom,
+  showModelConfig,
+  onToggleNavDrawer,
+  onTogglePreview,
+  onToggleBottom,
+  onToggleModelConfig,
+  onSettingsClick,
+  onChatSettingsClick,
+}: Props) {
+  const isChatView = activeView === "chat";
+
+  return (
+    <header className="lochor-topbar">
+      <div className="lochor-topbar-left">
+        <button
+          type="button"
+          className="lochor-icon-btn lochor-menu-btn"
+          title="Ouvrir le menu de navigation (Marketplace, Batch API, Entraînement...)"
+          onClick={onToggleNavDrawer}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+
+        <span className="lochor-logo">
+          <span className="lochor-logo-dot" aria-hidden="true" />
+          Lochor
+        </span>
+        <span className="lochor-sep" aria-hidden="true">
+          /
+        </span>
+        <span className="lochor-project">
+          {isChatView ? project : VIEW_TITLES[activeView] || "Navigation"}
+        </span>
+        {demo && <span className="lochor-demo-badge">demo</span>}
+      </div>
+
+      {/* Render chat-specific right controls ONLY when in Chat view */}
+      {isChatView && (
+        <div className="lochor-topbar-right">
+          <span className="lochor-provider-badge" title={provider?.endpoint ?? "no model"}>
+            <span
+              className={`lochor-health-dot ${provider ? "lochor-health-ok" : "lochor-health-off"}`}
+              aria-hidden="true"
+            />
+            {provider
+              ? `${MODE_LABEL[mode]}${provider.model ? ` · ${provider.model}` : ""}`
+              : "no model"}
+          </span>
+
+          <div className="lochor-topbar-toggles">
+            {/* Terminal / Logs icon */}
+            <button
+              type="button"
+              className={`lochor-icon-btn${showBottom ? " lochor-icon-btn-active" : ""}`}
+              title="Terminal / Journaux"
+              aria-pressed={showBottom}
+              onClick={onToggleBottom}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+            </button>
+
+            {/* Preview / Artifacts icon */}
+            <button
+              type="button"
+              className={`lochor-icon-btn${showPreview ? " lochor-icon-btn-active" : ""}`}
+              title="Aperçu des Artefacts"
+              aria-pressed={showPreview}
+              onClick={onTogglePreview}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="15" y1="3" x2="15" y2="21" />
+              </svg>
+            </button>
+
+            {/* Model Parameters icon */}
+            <button
+              type="button"
+              className={`lochor-icon-btn${showModelConfig ? " lochor-icon-btn-active" : ""}`}
+              title="Paramètres du modèle et de la conversation"
+              aria-pressed={showModelConfig}
+              onClick={onChatSettingsClick ?? onToggleModelConfig}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <line x1="1" y1="14" x2="7" y2="14" />
+                <line x1="9" y1="8" x2="15" y2="8" />
+                <line x1="17" y1="16" x2="23" y2="16" />
+              </svg>
+            </button>
+
+            {/* Chat Permissions Settings icon */}
+            <button
+              type="button"
+              className="lochor-icon-btn"
+              title="Gouvernance et Autorisations du Chat"
+              onClick={onSettingsClick}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+    </header>
+  );
+}

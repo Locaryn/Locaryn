@@ -1,0 +1,26 @@
+{
+  "$schema": "https://lochor.dev/schema/mcp.json/v0.1",
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${LOCHOR_PROJECT_ROOT}"],
+      "transport": "stdio",
+      "auto_start": false,
+      "scope": "workspace"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "${env:GITHUB_TOKEN}" },
+      "transport": "stdio",
+      "auto_start": true,
+      "scope": "user"
+    },
+    "remote-search": {
+      "url": "https://mcp.example.com/search",
+      "transport": "http",
+      "headers": { "Authorization": "Bearer ${env:MCP_SEARCH_TOKEN}" },
+      "scope": "user"
+    }
+  }
+}

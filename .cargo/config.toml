@@ -1,0 +1,16 @@
+[build]
+# Default targets stay host-native; CI overrides per matrix job.
+# Available targets used by the release matrix:
+#   x86_64-pc-windows-msvc        (Windows x64)
+#   aarch64-pc-windows-msvc       (Windows ARM64)
+#   x86_64-apple-darwin           (macOS Intel)
+#   aarch64-apple-darwin          (macOS Apple Silicon)
+#   x86_64-unknown-linux-gnu      (Linux x64)
+#   aarch64-unknown-linux-gnu     (Linux ARM64)
+
+[net]
+git-fetch-with-cli = true
+
+[env]
+# Loopback-only default for any embedded provider process
+LOCHOR_LOOPBACK_ONLY = "1"

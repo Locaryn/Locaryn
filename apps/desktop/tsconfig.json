@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": false,
+    "baseUrl": ".",
+    "paths": {
+      "@lochor/ui-core": ["../../packages-ui/core/src/index.tsx"],
+      "@lochor/ui-chat": ["../../packages-ui/chat/src/index.tsx"],
+      "@lochor/ui-preview": ["../../packages-ui/preview/src/index.tsx"],
+      "@lochor/ui-terminal": ["../../packages-ui/terminal/src/index.tsx"]
+    }
+  },
+  "include": ["src"]
+}

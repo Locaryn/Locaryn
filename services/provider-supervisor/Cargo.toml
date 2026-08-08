@@ -1,0 +1,35 @@
+[package]
+name = "lochor-provider-supervisor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Lochor provider supervisor — auto-start and healthcheck local LLM runtimes on loopback."
+
+[lib]
+name = "lochor_provider_supervisor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lochor-supervisor"
+path = "src/main.rs"
+
+[dependencies]
+lochor-shared-types = { workspace = true }
+lochor-config = { workspace = true }
+lochor-storage = { workspace = true }
+reqwest.workspace = true
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+zip = "8.6.0"
+futures.workspace = true
+tokio-util.workspace = true

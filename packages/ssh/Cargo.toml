@@ -1,0 +1,17 @@
+[package]
+name = "lochor-ssh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Lochor SSH connector: connect, run, and capability-probe remote hosts (russh)."
+
+[dependencies]
+# russh with the `ring` crypto backend (default is aws-lc-rs, which needs
+# NASM+CMake on Windows MSVC). ring builds out of the box everywhere.
+russh = { version = "0.54", default-features = false, features = ["ring", "flate2", "rsa"] }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+zeroize = "1"

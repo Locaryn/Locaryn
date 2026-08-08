@@ -1,0 +1,18 @@
+[package]
+name = "lochor-events"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Event types + SSE (de)serialization for Lochor streaming."
+
+[dependencies]
+lochor-shared-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }

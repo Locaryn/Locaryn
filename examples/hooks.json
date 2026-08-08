@@ -1,0 +1,29 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "WriteFile",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ${LOCHOR_PLUGIN_ROOT}/hooks/validate.sh",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "*",
+      "hooks": [
+        { "type": "command", "command": "echo [lochor] tool completed >> ${LOCHOR_PROJECT_ROOT}/.lochor/tool.log" }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        { "type": "command", "command": "echo done" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Rust
+# ─────────────────────────────────────────────────────────────────────────
+/target
+**/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# ─────────────────────────────────────────────────────────────────────────
+# Node / pnpm
+# ─────────────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+.turbo/
+*.tsbuildinfo
+pnpm-debug.log*
+
+# ─────────────────────────────────────────────────────────────────────────
+# Tauri — bureau
+# ─────────────────────────────────────────────────────────────────────────
+apps/desktop/src-tauri/target/
+apps/desktop/dist/
+apps/desktop/.tauri/
+
+# ─────────────────────────────────────────────────────────────────────────
+# Tauri — mobile / Android
+#
+# `gen/android` est régénéré par `tauri android init`. Le projet Gradle est
+# suivi, mais jamais ce qu'il produit : un seul .so de débogage pèse 153 Mo.
+# ─────────────────────────────────────────────────────────────────────────
+**/gen/android/app/build/
+**/gen/android/build/
+**/gen/android/.gradle/
+**/gen/android/local.properties
+**/gen/apple/build/
+**/gen/apple/*.xcodeproj/xcuserdata/
+*.apk
+*.aab
+*.dex
+*.jks
+*.keystore
+
+# ─────────────────────────────────────────────────────────────────────────
+# Poids des modèles, environnements et caches
+#
+# Des dizaines de gigaoctets qui n'ont rien à faire dans une forge : les
+# poids se téléchargent, l'environnement se reconstruit.
+# ─────────────────────────────────────────────────────────────────────────
+models/
+hf_cache/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.gguf
+*.safetensors
+*.onnx
+*.bin
+!**/gradle/wrapper/gradle-wrapper.jar
+
+# ─────────────────────────────────────────────────────────────────────────
+# Données locales et dossiers de travail
+# ─────────────────────────────────────────────────────────────────────────
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+.locaryn/
+.locaryn-*/
+.lochor/
+.lochor-*/
+tmp/
+locaryn_tmp/
+lochor_tmp/
+release/
+clothes_test/
+voice_clone_test/
+.freebuff/
+
+# ─────────────────────────────────────────────────────────────────────────
+# IDE
+# ─────────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+.DS_Store
+Thumbs.db
+
+# ─────────────────────────────────────────────────────────────────────────
+# Environnement et secrets
+# ─────────────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/*.pub.key
+
+# ─────────────────────────────────────────────────────────────────────────
+# Divers
+# ─────────────────────────────────────────────────────────────────────────
+*.log
+coverage/
+
+# Extension personnelle, hors du dépôt de l'application
+.snap-astreinte/

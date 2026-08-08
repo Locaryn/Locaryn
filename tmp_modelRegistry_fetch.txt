@@ -1,0 +1,36 @@
+export async function fetchFullRegistry(
+  searchOllamaLibrary?: (query: string, category?: string) => Promise<OllamaLibraryModel[]>,
+): Promise<RegistryResult> {
+  // 1. Check cache
+  const cached = loadCache();
+  if (cached) {
+    const all = mergeFamilies(SEED_CATALOG, IMAGE_GEN_MODELS, cached.families);
+    const imageGen = all.filter((f) => f.imageGen);
+    const brands = Array.from(new Set(all.map((f) => f.brand))).sort();
+    return { families: all, imageGenModels: imageGen, brands, loading: false, lastFetched: cached.timestamp };
+  }
+
+  // 2. Fetch in parallel
+  const [ollamaModels, hfModels] = await Promise.all([
+    searchOllamaLibrary ? searchOllamaLibrary("", undefined).catch(() => [] as OllamaLibraryModel[]) : Promise.resolve([] as OllamaLibraryModel[]),
+    fetchHuggingFaceModels("gguf").catch(() => [] as ModelFamily[]),
+  ]);
+
+  // 3. Convert ollama library results
+  const ollamaFamilies = ollamaLibraryToFamilies(ollamaModels);
+
+  // 4. Merge all sources: seed + image gen + ollama + HF
+  const allFamilies = mergeFamilies(SEED_CATALOG, IMAGE_GEN_MODELS, ollamaFamilies, hfModels);
+
+  // 5. Cache
+  saveCache(allFamilies);
+
+  const imageGen = allFamilies.filter((f) => f.imageGen);
+  const brands = Array.from(new Set(allFamilies.map((f) => f.brand))).sort();
+
+  return { families: allFamilies, imageGenModels: imageGen, brands, loading: false, lastFetched: Date.now() };
+}
+
+/**
+ * Force refresh the registry (bypasses cache).
+ */
