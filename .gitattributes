@@ -1,0 +1,45 @@
+# Le développement se fait sous Windows, la CI tourne sous Linux et macOS.
+# Sans règle explicite, Git décide fin de ligne par fin de ligne selon la
+# machine, et chaque commit se noie dans des avertissements de conversion —
+# au point qu'un vrai avertissement passerait inaperçu.
+#
+# Tout le texte est normalisé en LF dans le dépôt. Ce que chacun a sur son
+# disque le regarde ; ce qui est versionné doit être identique partout.
+* text=auto eol=lf
+
+# Scripts Windows : le sens de `.bat` et `.ps1` dépend des CRLF. `cmd.exe`
+# découpe mal un fichier en LF seul, et un script cassé à l'exécution est
+# plus coûteux qu'une exception ici.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binaires : jamais de conversion, elle les corromprait.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.jar binary
+*.keystore binary
+*.jks binary
+*.apk binary
+*.aab binary
+*.so binary
+*.dll binary
+*.dylib binary
+*.exe binary
+*.gguf binary
+*.safetensors binary
+*.onnx binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.mp3 binary
+*.wav binary
