@@ -922,6 +922,64 @@ export interface HardwareSpec {
   cpu_cores?: number;
 }
 
+// ── Résidence du modèle de chat ────────────────────────────────────────
+// `llama-server` garde les poids en mémoire tant qu'il tourne : parler au
+// modèle ne le recharge pas. Mais sans épinglage, le superviseur décharge
+// après un temps d'inactivité, et l'utilisateur repaie le chargement sans
+// l'avoir demandé. Ces types donnent la main sur ce cycle.
+
+/** Jusqu'où l'application accepte de remplir la mémoire avant de charger. */
+export type CautionLevel = "prudent" | "equilibre" | "risque";
+
+export const CAUTION_LABELS: Record<CautionLevel, { label: string; hint: string }> = {
+  prudent: {
+    label: "Sécurité",
+    hint: "Ne charge que si la machine a largement de quoi. Refuse tout ce qui pourrait la ralentir.",
+  },
+  equilibre: {
+    label: "Intermédiaire",
+    hint: "Charge avec précautions : accepte que ce soit juste, refuse ce qui déborderait.",
+  },
+  risque: {
+    label: "Risqué",
+    hint: "Ne refuse jamais. Prévient, puis charge — au prix d'un ralentissement sévère, voire d'un plantage.",
+  },
+};
+
+/** Confortable = tient sur le GPU ; juste = tient mais plus lent ; risqué =
+ *  déborde sur le disque ; refusé = bloqué par le niveau de prudence. */
+export type FitVerdict = "confortable" | "juste" | "risque" | "refuse";
+
+export interface ModelFit {
+  model: string;
+  verdict: FitVerdict;
+  /** Taille des poids sur disque. */
+  size_gb: number;
+  /** Ce qu'il faut réellement, marge de prudence comprise. */
+  required_gb: number;
+  free_ram_gb: number;
+  free_vram_gb: number;
+  /** "gpu" | "ram" | "disque" | "inconnu" — où les poids finiront. */
+  placement: string;
+  level: CautionLevel;
+  /** Peut-on forcer malgré le refus ? */
+  overridable: boolean;
+  /** Phrase montrée telle quelle : ce qui va se passer, pas un code. */
+  message: string;
+}
+
+export interface ResidencyStatus {
+  /** Le moteur tourne et répond. */
+  loaded: boolean;
+  model: string | null;
+  /** Épinglé : aucun minuteur ne le déchargera. */
+  pinned: boolean;
+  idle_seconds: number;
+  /** Au-delà, un modèle non épinglé est déchargé. */
+  idle_timeout_seconds: number;
+  endpoint: string | null;
+}
+
 export type KvCacheType = "f16" | "q8_0" | "q4_0";
 export type InferenceProfile = "eco" | "balanced" | "performance" | "turbo" | "longctx" | "custom";
 
@@ -1315,6 +1373,18 @@ export interface CoreApi {
     onProgress?: (pct: number, detail?: string) => void,
   ): Promise<GeneratedImage>;
   checkHardware(): Promise<HardwareSpec>;
+
+  /** Ce qui est actuellement en mémoire, et si le minuteur peut y toucher. */
+  modelResidency(): Promise<ResidencyStatus>;
+  /** Ce que donnerait le chargement de ce modèle, sans rien charger. */
+  checkModelFit(model: string): Promise<ModelFit>;
+  /** Charge un modèle et l'épingle. Rejette avec le message du garde-fou
+   *  quand la mémoire manque, sauf si `force` est demandé explicitement. */
+  loadChatModel(model: string, force?: boolean): Promise<ResidencyStatus>;
+  /** Décharge le modèle et rend la mémoire. */
+  ejectChatModel(): Promise<ResidencyStatus>;
+  cautionLevel(): Promise<CautionLevel>;
+  setCautionLevel(level: CautionLevel): Promise<void>;
   getInferenceConfig(): Promise<InferenceConfig>;
   setInferenceConfig(config: InferenceConfig, consent?: boolean): Promise<void>;
   getProfilePreset(profile: InferenceProfile): Promise<InferenceConfig>;
@@ -1707,6 +1777,15 @@ const tauriCore: CoreApi = {
     });
   },
   checkHardware: () => invoke("check_hardware"),
+
+  modelResidency: () => invoke<ResidencyStatus>("model_residency"),
+  checkModelFit: (model) => invoke<ModelFit>("check_model_fit", { model }),
+  loadChatModel: (model, force) =>
+    invoke<ResidencyStatus>("load_chat_model", { model, force: force ?? null }),
+  ejectChatModel: () => invoke<ResidencyStatus>("eject_chat_model"),
+  cautionLevel: () => invoke<CautionLevel>("caution_level"),
+  setCautionLevel: (level) => invoke<void>("set_caution_level", { level }),
+
   getInferenceConfig: () => invoke<InferenceConfig>("get_inference_config"),
   setInferenceConfig: (config, consent) =>
     invoke("set_inference_config", { config, consent: consent ?? null }),
@@ -1840,7 +1919,17 @@ let demoProviders: Provider[] = [
   },
 ];
 
-const demoModels = ["qwen2.5:3b", "qwen2.5-coder:7b", "llama3.2:3b", "mistral:7b", "phi3:mini"];
+// `llama3.1:70b` est là exprès : sans un modèle que la machine simulée ne peut
+// pas tenir, le refus du garde-fou mémoire serait inatteignable depuis
+// l'interface, et donc invérifiable ailleurs qu'en production.
+const demoModels = [
+  "qwen2.5:3b",
+  "qwen2.5-coder:7b",
+  "llama3.2:3b",
+  "mistral:7b",
+  "phi3:mini",
+  "llama3.1:70b",
+];
 
 const demoConnectorTypes: ConnectorType[] = [
   {
@@ -2346,6 +2435,77 @@ const demoSourceStatuses: CatalogSourceStatus[] = demoSources.map((source) => ({
   entry_count: demoCatalog.filter((e) => e.catalog_id === source.id).length,
   error: null,
 }));
+
+// Résidence simulée. Volontairement *mutable* : un mode démo qui répondrait
+// toujours « chargé » ne permettrait pas de voir l'écran vide, l'animation de
+// chargement ni le refus du garde-fou — c'est-à-dire tout ce qu'il y a à
+// vérifier. La machine simulée a 32 Go dont 9 libres, ce qui suffit à faire
+// refuser un gros modèle pour de vrai.
+const demoMemory = { freeRamGb: 9.2, freeVramGb: 3.4 };
+let demoResident: { model: string | null; pinned: boolean; since: number } = {
+  model: null,
+  pinned: false,
+  since: Date.now(),
+};
+let demoCaution: CautionLevel = "equilibre";
+
+/** Taille déduite du nom du fichier, faute de disque à mesurer. */
+function demoModelSizeGb(model: string): number {
+  const m = /(\d+(?:[.,]\d+)?)\s*b\b/i.exec(model);
+  const billions = m ? parseFloat(m[1].replace(",", ".")) : 7;
+  // ~0,6 Go par milliard de paramètres en quantification 4 bits.
+  return Math.max(0.3, billions * 0.6);
+}
+
+function demoFit(model: string, level: CautionLevel): ModelFit {
+  const size = demoModelSizeGb(model);
+  const [factor, reserve] =
+    level === "prudent" ? [1.35, 3.0] : level === "equilibre" ? [1.12, 1.5] : [1.0, 0.0];
+  const required = size * factor + reserve;
+  const fitsVram = demoMemory.freeVramGb > 0 && required <= demoMemory.freeVramGb;
+  const fitsRam = required <= demoMemory.freeRamGb;
+
+  if (fitsVram)
+    return {
+      model, verdict: "confortable", size_gb: size, required_gb: required,
+      free_ram_gb: demoMemory.freeRamGb, free_vram_gb: demoMemory.freeVramGb,
+      placement: "gpu", level, overridable: false,
+      message: `${size.toFixed(1)} Go sur le GPU, ${demoMemory.freeVramGb.toFixed(1)} Go libres. Vitesse maximale.`,
+    };
+  if (fitsRam)
+    return {
+      model, verdict: "juste", size_gb: size, required_gb: required,
+      free_ram_gb: demoMemory.freeRamGb, free_vram_gb: demoMemory.freeVramGb,
+      placement: "ram", level, overridable: false,
+      message: `${size.toFixed(1)} Go à répartir : trop pour les ${demoMemory.freeVramGb.toFixed(1)} Go de VRAM libres, le reste ira en RAM. Plus lent qu'en tout-GPU.`,
+    };
+  if (level === "risque")
+    return {
+      model, verdict: "risque", size_gb: size, required_gb: required,
+      free_ram_gb: demoMemory.freeRamGb, free_vram_gb: demoMemory.freeVramGb,
+      placement: "disque", level, overridable: false,
+      message: `${size.toFixed(1)} Go demandés pour ${demoMemory.freeRamGb.toFixed(1)} Go libres. Le système va compenser sur le disque : ralentissement sévère, et l'application peut être tuée par manque de mémoire.`,
+    };
+  return {
+    model, verdict: "refuse", size_gb: size, required_gb: required,
+    free_ram_gb: demoMemory.freeRamGb, free_vram_gb: demoMemory.freeVramGb,
+    placement: "disque", level, overridable: true,
+    message: `${size.toFixed(1)} Go demandés, ${required.toFixed(1)} Go nécessaires avec la marge choisie, et seulement ${demoMemory.freeRamGb.toFixed(1)} Go libres. Fermez des applications, choisissez un modèle plus petit, ou passez le niveau de prudence sur « risqué » pour forcer.`,
+  };
+}
+
+function demoResidencyStatus(): ResidencyStatus {
+  return {
+    loaded: demoResident.model !== null,
+    model: demoResident.model,
+    pinned: demoResident.pinned,
+    idle_seconds: demoResident.model
+      ? Math.min(1800, Math.floor((Date.now() - demoResident.since) / 1000))
+      : 0,
+    idle_timeout_seconds: 1800,
+    endpoint: demoResident.model ? "http://127.0.0.1:8080" : null,
+  };
+}
 
 const demoCore: CoreApi = {
   health: async () => cloneHealth(),
@@ -3279,6 +3439,33 @@ const demoCore: CoreApi = {
       path: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
       simulated: true,
     };
+  },
+  async modelResidency() {
+    return demoResidencyStatus();
+  },
+  async checkModelFit(model) {
+    return demoFit(model, demoCaution);
+  },
+  async loadChatModel(model, force) {
+    const fit = demoFit(model, demoCaution);
+    // Le refus est réel, pas décoratif : sans lui, l'écran de garde-fou
+    // serait impossible à voir autrement qu'en production.
+    if (fit.verdict === "refuse" && !force) throw new Error(fit.message);
+    // Un chargement instantané cacherait l'animation qu'on cherche à vérifier.
+    await new Promise((r) => setTimeout(r, 1400));
+    demoResident = { model, pinned: true, since: Date.now() };
+    return demoResidencyStatus();
+  },
+  async ejectChatModel() {
+    await new Promise((r) => setTimeout(r, 300));
+    demoResident = { model: null, pinned: false, since: Date.now() };
+    return demoResidencyStatus();
+  },
+  async cautionLevel() {
+    return demoCaution;
+  },
+  async setCautionLevel(level) {
+    demoCaution = level;
   },
   async checkHardware() {
     return {

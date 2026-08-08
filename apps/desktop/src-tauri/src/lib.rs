@@ -15,6 +15,7 @@ mod travel_mode;
 mod secure_client;
 mod region_edit;
 mod sd_engine;
+mod model_residency;
 mod server_mode;
 mod voice_presets;
 mod storage_root;
@@ -7069,6 +7070,12 @@ pub fn run() {
             set_inference_config,
             get_profile_preset,
             check_hardware,
+            model_residency::model_residency,
+            model_residency::check_model_fit,
+            model_residency::load_chat_model,
+            model_residency::eject_chat_model,
+            model_residency::caution_level,
+            model_residency::set_caution_level,
             open_models_folder,
             plan_model_runtime,
             runtime_capabilities,

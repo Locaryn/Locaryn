@@ -11,6 +11,7 @@ import { PerformancePanel } from "../components/PerformancePanel";
 import { ProjectSettings } from "./ProjectSettings";
 import { ImageSettings } from "../components/ImageSettings";
 import { StorageSettings } from "../components/StorageSettings";
+import { CautionSettings } from "../components/CautionSettings";
 import { ServerSettings } from "../components/ServerSettings";
 import { ConnectionSettings } from "../components/ConnectionSettings";
 import { TravelSettings } from "../components/TravelSettings";
@@ -107,7 +108,12 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
           </h3>
 
           {section === "engine" && <EngineSettings />}
-          {section === "performance" && <PerformancePanel />}
+          {section === "performance" && (
+            <>
+              <PerformancePanel />
+              <CautionSettings />
+            </>
+          )}
           {section === "image" && <ImageSettings />}
           {section === "projects" && (
             <ProjectSettings projects={projects} onArchived={onProjectArchived} />

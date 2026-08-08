@@ -210,9 +210,20 @@ mod tests {
         assert!(!s.running, "aucun serveur ne doit tourner au repos");
         // Either it is ready, or it says precisely what is missing — never
         // silently unavailable.
+        //
+        // Deux empêchements coexistent, et lequel se présente dépend de la
+        // machine : pas de compte administrateur, ou pas de binaire de service
+        // à côté de l'application. Exiger le premier faisait échouer le test
+        // partout où le second arrive d'abord — un poste de développement dont
+        // le démon n'est pas encore construit, par exemple. Ce qui compte est
+        // l'engagement réel : jamais indisponible sans le dire.
         if s.accounts == 0 {
             let b = s.blocker.expect("un blocage doit être signalé");
-            assert!(b.contains("compte"), "message peu clair: {b}");
+            assert!(
+                b.contains("compte") || b.contains("service"),
+                "le blocage doit nommer ce qui manque, or: {b}"
+            );
+            assert!(b.len() > 20, "message trop court pour être actionnable: {b}");
         }
     }
 }

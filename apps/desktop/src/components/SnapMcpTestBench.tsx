@@ -22,6 +22,80 @@ const BACKENDS: { value: Backend; label: string; note: string }[] = [
   { value: "adb", label: "Snapchat Android", note: "Téléphone connecté avec ADB." },
 ];
 
+type SetupStep = {
+  id: string;
+  phase: string;
+  title: string;
+  detail: string;
+  checks?: string[];
+};
+
+const SETUP_STORAGE_KEY = "locaryn:snapmcp-setup-checklist";
+const SETUP_STEPS: SetupStep[] = [
+  {
+    id: "pc-runtime",
+    phase: "PC",
+    title: "Installer Node.js",
+    detail: "Node.js 20 ou plus récent doit être disponible dans le PATH.",
+    checks: ["node"],
+  },
+  {
+    id: "pc-audio",
+    phase: "PC",
+    title: "Installer ffmpeg",
+    detail: "Nécessaire pour convertir les vocaux du micro PC en OGG/Opus Telegram.",
+    checks: ["ffmpeg"],
+  },
+  {
+    id: "pc-browser",
+    phase: "PC",
+    title: "Installer Chromium Playwright",
+    detail: "Nécessaire pour Snapchat Web et son parcours QR.",
+    checks: ["chromium"],
+  },
+  {
+    id: "telegram-account",
+    phase: "Telegram",
+    title: "Créer api_id et api_hash",
+    detail: "Sur my.telegram.org → API development tools. Aucun bot Telegram requis.",
+    checks: ["telegram_credentials"],
+  },
+  {
+    id: "telegram-session",
+    phase: "Telegram",
+    title: "Créer la session du compte personnel",
+    detail: "Lancer npm run telegram:login, puis saisir numéro, code et mot de passe 2FA.",
+    checks: ["telegram_session"],
+  },
+  {
+    id: "adb-tools",
+    phase: "Android",
+    title: "Installer Android Platform Tools",
+    detail: "La commande adb doit être accessible depuis le PATH.",
+    checks: ["adb"],
+  },
+  {
+    id: "android-device",
+    phase: "Android",
+    title: "Autoriser le téléphone Android",
+    detail: "Activer le débogage USB, déverrouiller le téléphone et accepter la clé RSA.",
+    checks: ["android_device"],
+  },
+  {
+    id: "snapchat-web",
+    phase: "Snapchat",
+    title: "Connecter Snapchat Web",
+    detail: "Ouvrir le navigateur, scanner le QR code, puis vérifier la connexion.",
+  },
+  {
+    id: "mcp-server",
+    phase: "Finalisation",
+    title: "Vérifier le serveur MCP",
+    detail: "Le serveur SnapMCP doit être enregistré et ses outils doivent être découverts.",
+    checks: ["mcp_servers"],
+  },
+];
+
 function extensionConfig(backend: Backend): Record<string, unknown> {
   if (backend === "telegram") return { "transport.driver": "telegram" };
   return {
@@ -48,6 +122,7 @@ export function SnapMcpTestBench() {
   const [serverName, setServerName] = useState("");
   const [configuredBackend, setConfiguredBackend] = useState<Backend | null>(null);
   const [diagnostics, setDiagnostics] = useState<SnapMcpDiagnostics | null>(null);
+  const [setupChecked, setSetupChecked] = useState<Record<string, boolean>>({});
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,6 +155,23 @@ export function SnapMcpTestBench() {
       for (const track of streamRef.current?.getTracks() ?? []) track.stop();
     };
   }, [refresh]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SETUP_STORAGE_KEY);
+      if (saved) setSetupChecked(JSON.parse(saved) as Record<string, boolean>);
+    } catch {
+      // La checklist reste utilisable si le stockage du navigateur est indisponible.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify(setupChecked));
+    } catch {
+      // Le suivi manuel est seulement un confort ; le diagnostic reste la source de vérité.
+    }
+  }, [setupChecked]);
 
   const backendInfo = BACKENDS.find((item) => item.value === backend)!;
   const installed = extensions.some((item) => /snap-astreinte/i.test(item.name));
@@ -204,7 +296,8 @@ export function SnapMcpTestBench() {
 
   async function verifySnapchatWebLogin() {
     setBackend("web");
-    await invoke("Connexion Snapchat Web vérifiée", "web_session_status", {}, "web");
+    const verified = await invoke("Connexion Snapchat Web vérifiée", "web_session_status", {}, "web");
+    if (verified !== null) setSetupChecked((current) => ({ ...current, "snapchat-web": true }));
   }
 
   async function runDiagnostics() {
@@ -241,12 +334,18 @@ export function SnapMcpTestBench() {
       setError("Enregistre un vocal, choisis un fichier audio ou écris un texte.");
       return;
     }
-    await invoke("Vocal envoyé", "send_voice_note", {
+    const recordedPath = voicePath;
+    const sent = await invoke("Vocal envoyé", "send_voice_note", {
       conversationId,
-      audioPath: voicePath || undefined,
+      audioPath: recordedPath || undefined,
       text: text.trim() || undefined,
       language: "fr-FR",
     });
+    if (sent !== null && recordedPath.includes("snapmcp-test-")) {
+      await core.removeTestAudio(recordedPath).catch(() => undefined);
+      setVoicePath("");
+      setVoiceMime("audio/ogg");
+    }
   }
 
   async function startCall() {
@@ -269,6 +368,23 @@ export function SnapMcpTestBench() {
     if (voicePath.includes("snapmcp-test-")) await core.removeTestAudio(voicePath).catch(() => undefined);
     setVoicePath("");
   }
+
+  async function copySetupCommand(command: string) {
+    try {
+      await navigator.clipboard.writeText(command);
+      setResult({ title: "Commande copiée", value: command });
+    } catch {
+      setError("Impossible de copier la commande. Sélectionne-la depuis le résultat du diagnostic.");
+    }
+  }
+
+  const diagnosticOk = (ids: string[] | undefined): boolean =>
+    ids !== undefined
+    && ids.length > 0
+    && ids.every((id) => diagnostics?.checks.some((check) => check.id === id && check.status === "ok") === true);
+  const setupDone = (step: SetupStep): boolean => Boolean(setupChecked[step.id]) || diagnosticOk(step.checks);
+  const completedSetup = SETUP_STEPS.filter(setupDone).length;
+  const nextSetupStep = SETUP_STEPS.find((step) => !setupDone(step));
 
   return (
     <div className="locaryn-conn-settings">
@@ -301,7 +417,8 @@ export function SnapMcpTestBench() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>          <button
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button
             type="button"
             className="locaryn-btn-primary"
             onClick={() => void invoke("Connexion vérifiée", "get_conversations")}
@@ -344,6 +461,74 @@ export function SnapMcpTestBench() {
             Diagnostic automatique
           </button>
         </div>
+      </div>
+
+      <div className="locaryn-box-card" style={{ maxWidth: 760, marginTop: 12 }}>
+        <div className="locaryn-box-head">
+          <div>
+            <h3 className="locaryn-box-name">Mise en route guidée</h3>
+            <span className="locaryn-box-brand">PC, Telegram, Android et Snapchat</span>
+          </div>
+          <span className={`locaryn-tag${completedSetup === SETUP_STEPS.length ? " locaryn-tag-installed" : ""}`}>
+            {completedSetup}/{SETUP_STEPS.length}
+          </span>
+        </div>
+        <p className="locaryn-box-desc">
+          Suis les étapes dans l'ordre. Le diagnostic coche automatiquement les prérequis détectés ; tes validations manuelles sont conservées sur ce PC.
+        </p>
+        <div style={{ height: 6, borderRadius: 999, background: "var(--surface-muted, rgba(127, 127, 127, 0.14))", overflow: "hidden", margin: "10px 0 14px" }}>
+          <div style={{ height: "100%", width: `${Math.round((completedSetup / SETUP_STEPS.length) * 100)}%`, background: "var(--accent, #4f9d69)", transition: "width 250ms ease" }} />
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {SETUP_STEPS.map((step, index) => {
+            const autoDone = diagnosticOk(step.checks);
+            const done = setupDone(step);
+            const isNext = nextSetupStep?.id === step.id;
+            return (
+              <div key={step.id} style={{ border: `1px solid ${isNext ? "var(--accent, #4f9d69)" : "var(--border, rgba(127, 127, 127, 0.18))"}`, borderRadius: 8, padding: "9px 10px", background: isNext ? "var(--surface-muted, rgba(127, 127, 127, 0.06))" : undefined }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <input
+                    type="checkbox"
+                    checked={done}
+                    disabled={autoDone}
+                    onChange={() => setSetupChecked((current) => ({ ...current, [step.id]: !done }))}
+                    aria-label={`Étape ${index + 1} : ${step.title}`}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <strong>{index + 1}. {step.title}</strong>
+                      <span className="locaryn-field-hint">{step.phase}</span>
+                    </div>
+                    <div className="locaryn-field-hint">{step.detail}</div>
+                    {autoDone && <div className="locaryn-field-hint" style={{ color: "var(--success, #4f9d69)", marginTop: 3 }}>Détecté automatiquement.</div>}
+                    {step.id === "telegram-session" && !autoDone && (
+                      <button type="button" className="locaryn-btn-ghost" onClick={() => void copySetupCommand("npm run telegram:login")} style={{ marginTop: 7 }}>
+                        Copier la commande de connexion
+                      </button>
+                    )}
+                    {step.id === "adb-tools" && !autoDone && (
+                      <button type="button" className="locaryn-btn-ghost" onClick={() => void copySetupCommand("adb devices")} style={{ marginTop: 7 }}>
+                        Copier la commande de vérification
+                      </button>
+                    )}
+                    {step.id === "snapchat-web" && (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 7 }}>
+                        <button type="button" className="locaryn-btn-ghost" onClick={() => void openSnapchatWebLogin()} disabled={busy}>
+                          Ouvrir le QR code
+                        </button>
+                        <button type="button" className="locaryn-btn-ghost" onClick={() => void verifySnapchatWebLogin()} disabled={busy}>
+                          Vérifier Snapchat Web
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {completedSetup === SETUP_STEPS.length && <p className="locaryn-field-hint" style={{ color: "var(--success, #4f9d69)", marginTop: 12 }}>Configuration prête. Tu peux passer aux essais réels avec une conversation de test.</p>}
       </div>
 
       {diagnostics && (

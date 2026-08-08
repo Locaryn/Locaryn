@@ -96,6 +96,11 @@ struct EngineState {
     /// to kill it). If the runtime was already running externally, we do NOT
     /// own it and must not kill it.
     owned: bool,
+    /// The user asked for this model to stay in memory. The idle timer keeps
+    /// running and is still reported, but it no longer kills anything: a
+    /// deliberate choice outranks a timeout. Crash recovery still applies —
+    /// pinning means "do not evict", not "never restart".
+    pinned: bool,
 }
 
 impl EngineState {
@@ -208,6 +213,9 @@ impl Supervisor {
 
         {
             let mut states = self.inner.states.lock().await;
+            // A restart must not silently unpin: if the user pinned this
+            // engine and the process died, it comes back pinned.
+            let pinned = states.get(&engine).is_some_and(|s| s.pinned);
             states.insert(
                 engine,
                 EngineState {
@@ -215,6 +223,7 @@ impl Supervisor {
                     last_activity: Instant::now(),
                     endpoint: endpoint.clone(),
                     owned: true,
+                    pinned,
                 },
             );
         }
@@ -262,6 +271,48 @@ impl Supervisor {
     pub async fn is_healthy(&self, engine: ProviderEngine) -> bool {
         let endpoint = default_endpoint(engine).to_string();
         healthcheck_engine(&self.inner.http, engine, &endpoint).await
+    }
+
+    /// Keep this engine in memory regardless of the idle timer, or release it
+    /// back to the timer's care.
+    ///
+    /// Unpinning does not unload anything. It restores the ordinary rule —
+    /// the engine goes when it has been idle long enough — because a user who
+    /// stops pinning a model has not asked for it to disappear this instant.
+    pub async fn set_pinned(&self, engine: ProviderEngine, pinned: bool) {
+        let mut states = self.inner.states.lock().await;
+        if let Some(s) = states.get_mut(&engine) {
+            s.pinned = pinned;
+            // Unpinning restarts the clock rather than back-dating the
+            // eviction: otherwise a long conversation would be evicted the
+            // moment it is unpinned.
+            if !pinned {
+                s.last_activity = Instant::now();
+            }
+        }
+    }
+
+    /// How long an unpinned engine may sit idle before it is unloaded. The
+    /// status bar states this rather than leaving the user to discover it.
+    pub fn idle_timeout_secs(&self) -> u64 {
+        self.inner.cfg.idle_timeout.as_secs()
+    }
+
+    /// Whether this engine is pinned in memory.
+    pub async fn is_pinned(&self, engine: ProviderEngine) -> bool {
+        let states = self.inner.states.lock().await;
+        states.get(&engine).is_some_and(|s| s.pinned)
+    }
+
+    /// Seconds since the last recorded activity, and whether the engine is
+    /// pinned — what the status bar needs to explain itself.
+    pub async fn residency(&self, engine: ProviderEngine) -> Option<(u64, bool, bool)> {
+        let mut states = self.inner.states.lock().await;
+        let timeout = self.inner.cfg.idle_timeout.as_secs();
+        states.get_mut(&engine).map(|s| {
+            let idle = Instant::now().duration_since(s.last_activity).as_secs();
+            (idle.min(timeout), s.pinned, s.is_running())
+        })
     }
 
     /// Manually stop a runtime we own. No-op if we don't own it.
@@ -370,7 +421,11 @@ impl Supervisor {
                         .set_status_by_engine(engine, new_status)
                         .await;
 
-                    // Idle check.
+                    // Idle check. A pinned engine is never evicted: the user
+                    // loaded it on purpose and will unload it on purpose.
+                    if state.pinned {
+                        continue;
+                    }
                     let idle = Instant::now().duration_since(state.last_activity);
                     if idle >= idle_timeout {
                         tracing::info!(

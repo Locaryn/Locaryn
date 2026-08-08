@@ -21,6 +21,7 @@ import { InstalledModelsView } from "./views/InstalledModelsView";
 import { NavDrawer } from "./components/NavDrawer";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { TaskCenter } from "./components/TaskCenter";
+import { ModelResidency } from "./components/ModelResidency";
 import { taskCenter } from "./lib/taskCenter";
 import { useTheme } from "./hooks/useTheme";
 import { core, coreMode, type Health, type Project, type Provisioning, type Session } from "./lib/core";
@@ -724,17 +725,20 @@ export function App() {
 
       {/* Global Live Footer Status & Download Progress Bar */}
       <footer className="locaryn-footer-bar">
+        {/* Moitié gauche : le modèle en mémoire et la main dessus. Les
+            téléchargements sont passés à droite, avec leur barre et leur
+            bouton d'annulation — c'est une notification, pas un état. */}
         <div className="locaryn-footer-left">
-          <span className="locaryn-footer-icon">{downloadProgress ? "⏬" : "🟢"}</span>
-          <span className="locaryn-footer-text">
-            {downloadProgress
-              ? `${downloadProgress.status ? `${downloadProgress.status} ` : `Téléchargement de ${downloadProgress.tag}... `}(${downloadProgress.progress}%)`
-              : `Locaryn v0.1.0 — Modèle actif : ${health?.active_provider?.model ?? "default"} (${health?.active_provider?.endpoint ?? "127.0.0.1:8080"})`}
-          </span>
+          <ModelResidency />
         </div>
         <div style={{ display: "flex", gap: "10px", fontSize: "11px", color: "var(--text-faint)", alignItems: "center" }}>
           {downloadProgress && (
             <>
+              <span className="locaryn-footer-text">
+                {downloadProgress.status
+                  ? `${downloadProgress.status} (${downloadProgress.progress} %)`
+                  : `Téléchargement de ${downloadProgress.tag} — ${downloadProgress.progress} %`}
+              </span>
               <div className="locaryn-footer-progress-track" style={{ width: "120px" }}>
                 <div className="locaryn-footer-progress-fill" style={{ width: `${downloadProgress.progress}%` }} />
               </div>
