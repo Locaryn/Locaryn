@@ -98,7 +98,7 @@ pub fn terminal(data: &str) -> Result<String, QrError> {
 mod tests {
     use super::*;
 
-    const LINK: &str = "lochor://travel?v=1&m=travel&u=aHR0cHM6Ly9leGVtcGxlLnRyeWNsb3VkZmxhcmUuY29t&e=1800000600&k=AbCdEfGh&s=MEUCIQDx";
+    const LINK: &str = "locaryn://travel?v=1&m=travel&u=aHR0cHM6Ly9leGVtcGxlLnRyeWNsb3VkZmxhcmUuY29t&e=1800000600&k=AbCdEfGh&s=MEUCIQDx";
 
     #[test]
     fn the_svg_is_self_contained_and_square() {

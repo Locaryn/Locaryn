@@ -146,18 +146,18 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
 
   return (
     <>
-      <div className="lochor-settings-backdrop" onClick={() => setSettingsOpen(false)} />
+      <div className="locaryn-settings-backdrop" onClick={() => setSettingsOpen(false)} />
       <div
-        className="lochor-settings-modal"
+        className="locaryn-settings-modal"
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
       >
-        <div className="lochor-settings-header">
-          <span className="lochor-settings-title">Paramètres du chat</span>
+        <div className="locaryn-settings-header">
+          <span className="locaryn-settings-title">Paramètres du chat</span>
           <button
             type="button"
-            className="lochor-settings-close"
+            className="locaryn-settings-close"
             onClick={() => setSettingsOpen(false)}
             aria-label="Close settings"
           >
@@ -165,18 +165,18 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
           </button>
         </div>
 
-        <div className="lochor-settings-main">
-          <nav className="lochor-settings-nav">
+        <div className="locaryn-settings-main">
+          <nav className="locaryn-settings-nav">
             <button
               type="button"
-              className={`lochor-nav-item${tab === "provider" ? " lochor-active" : ""}`}
+              className={`locaryn-nav-item${tab === "provider" ? " locaryn-active" : ""}`}
               onClick={() => setTab("provider")}
             >
               Modèle
             </button>
             <button
               type="button"
-              className={`lochor-nav-item${tab === "performance" ? " lochor-active" : ""}`}
+              className={`locaryn-nav-item${tab === "performance" ? " locaryn-active" : ""}`}
               onClick={() => setTab("performance")}
             >
               ⚡ Performance
@@ -184,7 +184,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
             {onOpenFullSettings && (
               <button
                 type="button"
-                className="lochor-settings-all"
+                className="locaryn-settings-all"
                 onClick={() => { setSettingsOpen(false); onOpenFullSettings(); }}
                 title="Moteur, projets, extensions, apparence, stockage…"
               >
@@ -193,24 +193,24 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
             )}
           </nav>
 
-          <div className="lochor-settings-pane">
+          <div className="locaryn-settings-pane">
 
             {tab === "performance" && <PerformancePanel />}
 
 
             {tab === "provider" && (
               <>
-                <div className="lochor-store-tabs">
+                <div className="locaryn-store-tabs">
                   <button
                     type="button"
-                    className={`lochor-tab-btn${modelView === "server" ? " lochor-active" : ""}`}
+                    className={`locaryn-tab-btn${modelView === "server" ? " locaryn-active" : ""}`}
                     onClick={() => setModelView("server")}
                   >
                     Serveur
                   </button>
                   <button
                     type="button"
-                    className={`lochor-tab-btn${modelView === "browse" ? " lochor-active" : ""}`}
+                    className={`locaryn-tab-btn${modelView === "browse" ? " locaryn-active" : ""}`}
                     onClick={() => setModelView("browse")}
                   >
                     Parcourir les modèles
@@ -224,14 +224,14 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
                   />
                 ) : (
                   <>
-                <div className="lochor-field">
-                  <label className="lochor-field-label" htmlFor="lochor-endpoint">
+                <div className="locaryn-field">
+                  <label className="locaryn-field-label" htmlFor="locaryn-endpoint">
                     Serveur de modèles local
                   </label>
-                  <div className="lochor-field-row">
+                  <div className="locaryn-field-row">
                     <input
-                      id="lochor-endpoint"
-                      className="lochor-input"
+                      id="locaryn-endpoint"
+                      className="locaryn-input"
                       value={endpoint}
                       spellCheck={false}
                       autoCapitalize="off"
@@ -244,7 +244,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
                     />
                     <button
                       type="button"
-                      className="lochor-btn-ghost"
+                      className="locaryn-btn-ghost"
                       onClick={refreshModels}
                       disabled={conn === "testing" || !endpoint.trim()}
                     >
@@ -252,8 +252,8 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
                     </button>
                   </div>
                   {conn !== "idle" && (
-                    <div className={`lochor-conn lochor-conn-${conn}`}>
-                      <span className="lochor-conn-dot" />
+                    <div className={`locaryn-conn locaryn-conn-${conn}`}>
+                      <span className="locaryn-conn-dot" />
                       {connMsg ||
                         (conn === "ok"
                           ? "connecté"
@@ -262,19 +262,19 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
                             : "unreachable")}
                     </div>
                   )}
-                  <p className="lochor-field-hint">
+                  <p className="locaryn-field-hint">
                     Adresse du serveur de modèles local. Cliquez sur Tester pour lister
                     les modèles qu'il expose.
                   </p>
                 </div>
 
-                <div className="lochor-field">
-                  <label className="lochor-field-label" htmlFor="lochor-model">
+                <div className="locaryn-field">
+                  <label className="locaryn-field-label" htmlFor="locaryn-model">
                     Model
                   </label>
                   <select
-                    id="lochor-model"
-                    className="lochor-select"
+                    id="locaryn-model"
+                    className="locaryn-select"
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                   >
@@ -288,15 +288,15 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
                       ))
                     )}
                   </select>
-                  <p className="lochor-field-hint">
+                  <p className="locaryn-field-hint">
                     L'agent utilise ce modèle pour chaque message en mode local.
                   </p>
                 </div>
 
-                <div className="lochor-field-actions">
+                <div className="locaryn-field-actions">
                   <button
                     type="button"
-                    className="lochor-btn-primary"
+                    className="locaryn-btn-primary"
                     onClick={save}
                     disabled={saving || !endpoint.trim()}
                   >

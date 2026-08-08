@@ -63,15 +63,15 @@ export function TravelSettings() {
   const code = status?.active ? status : homeCode;
 
   return (
-    <div className="lochor-field" style={{ marginTop: 28 }}>
-      <label className="lochor-field-label">Mode voyage</label>
-      <p className="lochor-field-hint">
+    <div className="locaryn-field" style={{ marginTop: 28 }}>
+      <label className="locaryn-field-label">Mode voyage</label>
+      <p className="locaryn-field-hint">
         Utiliser cette machine depuis n'importe où, sans rien ouvrir sur la box.
         L'ordinateur appelle un relais ; c'est le relais que le téléphone contacte.
       </p>
 
-      <div className="lochor-srv-row">
-        <label className="lochor-srv-toggle">
+      <div className="locaryn-srv-row">
+        <label className="locaryn-srv-toggle">
           <input
             type="checkbox"
             checked={Boolean(status?.active)}
@@ -82,7 +82,7 @@ export function TravelSettings() {
         </label>
         {!status?.active && (
           <select
-            className="lochor-select lochor-select-sm"
+            className="locaryn-select locaryn-select-sm"
             value={choice}
             disabled={busy}
             onChange={(e) => setChoice(e.target.value)}
@@ -99,23 +99,23 @@ export function TravelSettings() {
       </div>
 
       {!status?.active && selected && !selected.installed && (
-        <p className="lochor-vp-warn">{selected.install_hint}</p>
+        <p className="locaryn-vp-warn">{selected.install_hint}</p>
       )}
 
       {code?.qr_svg && (
-        <div className="lochor-travel-code">
+        <div className="locaryn-travel-code">
           <div
-            className="lochor-travel-qr"
+            className="locaryn-travel-qr"
             /* The image comes from our own daemon and contains no script. */
             dangerouslySetInnerHTML={{ __html: code.qr_svg }}
           />
-          <div className="lochor-travel-say">
-            <p className="lochor-travel-title">
+          <div className="locaryn-travel-say">
+            <p className="locaryn-travel-title">
               {status?.active
                 ? "Scannez avec l'appareil photo du téléphone"
                 : "Scannez pour revenir au réseau local"}
             </p>
-            <p className="lochor-travel-sub">
+            <p className="locaryn-travel-sub">
               {status?.active
                 ? "Le téléphone se reconfigure tout seul. Ce code expire au bout de dix minutes ; celui affiché ici reste à jour."
                 : "À faire une fois rentré. Rien d'autre à changer."}
@@ -123,7 +123,7 @@ export function TravelSettings() {
             {code.link && (
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 onClick={() => void navigator.clipboard.writeText(code.link!).catch(() => {})}
               >
                 Copier le lien
@@ -134,9 +134,9 @@ export function TravelSettings() {
       )}
 
       {status?.blocker && !status.active && !error && (
-        <p className="lochor-vp-warn">{status.blocker}</p>
+        <p className="locaryn-vp-warn">{status.blocker}</p>
       )}
-      {error && <div className="lochor-vp-error">{error}</div>}
+      {error && <div className="locaryn-vp-error">{error}</div>}
     </div>
   );
 }

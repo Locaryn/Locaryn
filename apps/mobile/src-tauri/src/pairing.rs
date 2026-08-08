@@ -6,7 +6,7 @@
 //!
 //! The proof is not optional. Scanning a code changes which server the
 //! application talks to, so a code from anywhere else would be a way to
-//! collect somebody's password. `lochor_travel::verify` refuses a link signed
+//! collect somebody's password. `locaryn_travel::verify` refuses a link signed
 //! by any other authority, a link whose address was edited, and a link for a
 //! server this phone has never registered.
 
@@ -43,7 +43,7 @@ pub fn apply(uri: &str, store: &mut servers::Store, now: u64) -> Result<PairingR
             .map(|s| s.authority_pem.clone())
     };
 
-    let link = lochor_travel::verify(uri, &known, now).map_err(|e| e.to_string())?;
+    let link = locaryn_travel::verify(uri, &known, now).map_err(|e| e.to_string())?;
 
     let server = store
         .get_mut(&link.key_id)
@@ -52,11 +52,11 @@ pub fn apply(uri: &str, store: &mut servers::Store, now: u64) -> Result<PairingR
         .ok_or("Ce code ne correspond à aucun serveur enregistré sur cet appareil.")?;
 
     match link.mode {
-        lochor_travel::Mode::Travel => {
+        locaryn_travel::Mode::Travel => {
             server.current_url = link.url;
             server.travelling = true;
         }
-        lochor_travel::Mode::Home => {
+        locaryn_travel::Mode::Home => {
             // Trust the address in the link over the stored one: the home
             // address may have changed while the phone was away.
             server.home_url = link.url.clone();
@@ -80,7 +80,7 @@ pub fn apply(uri: &str, store: &mut servers::Store, now: u64) -> Result<PairingR
     Ok(result)
 }
 
-/// Scanned from the camera, or handed over by Android as a `lochor://` link.
+/// Scanned from the camera, or handed over by Android as a `locaryn://` link.
 #[tauri::command]
 pub fn apply_pairing_link(uri: String) -> Result<PairingResult, String> {
     let mut store = servers::load();
@@ -103,15 +103,15 @@ mod tests {
 
     fn fixture() -> Fixture {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_pair_{}",
+            "locaryn_pair_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let ca = lochor_config::mtls::authority(&dir).unwrap();
-        let key_id = lochor_travel::link::key_id(&ca.cert_pem).unwrap();
+        let ca = locaryn_config::mtls::authority(&dir).unwrap();
+        let key_id = locaryn_travel::link::key_id(&ca.cert_pem).unwrap();
         Fixture { dir, cert: ca.cert_pem, key: ca.key_pem, key_id }
     }
 
@@ -134,8 +134,8 @@ mod tests {
     fn scanning_the_travel_code_switches_the_address_silently() {
         let f = fixture();
         let mut store = store_with(&f);
-        let uri = lochor_travel::sign(
-            &f.cert, &f.key, lochor_travel::Mode::Travel,
+        let uri = locaryn_travel::sign(
+            &f.cert, &f.key, locaryn_travel::Mode::Travel,
             "https://abc-123.trycloudflare.com", NOW, 600,
         ).unwrap();
 
@@ -157,14 +157,14 @@ mod tests {
     fn scanning_the_home_code_puts_it_back() {
         let f = fixture();
         let mut store = store_with(&f);
-        let travel = lochor_travel::sign(
-            &f.cert, &f.key, lochor_travel::Mode::Travel,
+        let travel = locaryn_travel::sign(
+            &f.cert, &f.key, locaryn_travel::Mode::Travel,
             "https://abc-123.trycloudflare.com", NOW, 600,
         ).unwrap();
         apply(&travel, &mut store, NOW).unwrap();
 
-        let home = lochor_travel::sign(
-            &f.cert, &f.key, lochor_travel::Mode::Home,
+        let home = locaryn_travel::sign(
+            &f.cert, &f.key, locaryn_travel::Mode::Home,
             "https://192.168.1.10:7474", NOW, 600,
         ).unwrap();
         let r = apply(&home, &mut store, NOW).unwrap();
@@ -187,8 +187,8 @@ mod tests {
         // Signed by them, but claiming to be for my server is impossible —
         // the key id is derived from the authority. So they use their own,
         // which my phone has never registered.
-        let uri = lochor_travel::sign(
-            &theirs.cert, &theirs.key, lochor_travel::Mode::Travel,
+        let uri = locaryn_travel::sign(
+            &theirs.cert, &theirs.key, locaryn_travel::Mode::Travel,
             "https://serveur-du-pirate.example", NOW, 600,
         ).unwrap();
 
@@ -205,8 +205,8 @@ mod tests {
         // attack available, and the one a key id alone would not catch.
         let f = fixture();
         let mut store = store_with(&f);
-        let uri = lochor_travel::sign(
-            &f.cert, &f.key, lochor_travel::Mode::Travel,
+        let uri = locaryn_travel::sign(
+            &f.cert, &f.key, locaryn_travel::Mode::Travel,
             "https://vrai.trycloudflare.com", NOW, 600,
         ).unwrap();
 
@@ -228,8 +228,8 @@ mod tests {
     fn an_expired_code_says_to_ask_for_a_new_one() {
         let f = fixture();
         let mut store = store_with(&f);
-        let uri = lochor_travel::sign(
-            &f.cert, &f.key, lochor_travel::Mode::Travel,
+        let uri = locaryn_travel::sign(
+            &f.cert, &f.key, locaryn_travel::Mode::Travel,
             "https://abc.trycloudflare.com", NOW, 600,
         ).unwrap();
         let err = apply(&uri, &mut store, NOW + 601).unwrap_err();
@@ -245,7 +245,7 @@ mod tests {
         let mut store = store_with(&f);
         for junk in ["https://exemple.com", "WIFI:S:maison;T:WPA;P:secret;;", ""] {
             let err = apply(junk, &mut store, NOW).unwrap_err();
-            assert!(err.contains("Lochor"), "message peu clair pour {junk:?} : {err}");
+            assert!(err.contains("Locaryn"), "message peu clair pour {junk:?} : {err}");
         }
         std::fs::remove_dir_all(&f.dir).ok();
     }

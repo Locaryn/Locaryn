@@ -6,14 +6,14 @@
 //! The final line has `done: true` with `prompt_eval_count` / `eval_count`
 //! (token counts) and timing fields (in nanoseconds).
 //!
-//! We convert this to Lochor's `StreamEvent` sequence:
+//! We convert this to Locaryn's `StreamEvent` sequence:
 //!   `MessageStart` → `Token`* → `MessageEnd`
 //!
 //! No tool-use loop here (that's S4). This is a pure streaming chat pass.
 
 use crate::{tool_loop, Agent, AgentError, AgentInput, EventStream};
 use futures::{Stream, StreamExt as _};
-use lochor_events::StreamEvent;
+use locaryn_events::StreamEvent;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -293,7 +293,7 @@ impl Stream for OllamaEventStream {
                     self.done_sent = true;
                     // Emit a Log event then let the chain's fallback MessageEnd fire.
                     return Poll::Ready(Some(StreamEvent::Log {
-                        level: lochor_events::LogLevel::Warn,
+                        level: locaryn_events::LogLevel::Warn,
                         msg: format!("ollama stream error: {e}"),
                         source: "ollama".into(),
                     }));

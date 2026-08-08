@@ -45,7 +45,7 @@ const SCOPE_LABEL: Record<RiskScope, string> = {
 
 const SCOPE_TOOLTIP: Record<RiskScope, string> = {
   once: "Apply to this call only — you will be asked again next time.",
-  session: "Apply for any further call of this tool until you close Lochor.",
+  session: "Apply for any further call of this tool until you close Locaryn.",
   project: "Persist: every call in this project will auto-run.",
   always: "Whitelist globally. This is a strong commitment — use sparingly.",
 };
@@ -141,17 +141,17 @@ export function ToolApprovalModal({
 
   return (
     <div
-      className="lochor-approval-backdrop"
+      className="locaryn-approval-backdrop"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !isCritical && onCancel) onCancel();
       }}
     >
       <div
         ref={dialogRef}
-        className={`lochor-approval lochor-approval-${approval.risk}${isRemote ? " lochor-approval-remote" : ""}`}
+        className={`locaryn-approval locaryn-approval-${approval.risk}${isRemote ? " locaryn-approval-remote" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="lochor-approval-title"
+        aria-labelledby="locaryn-approval-title"
         onKeyDown={(e) => {
           // Tab-loop inside the dialog (focus trap).
           if (e.key === "Tab" && dialogRef.current) {
@@ -172,24 +172,24 @@ export function ToolApprovalModal({
         }}
       >
         {/* ── Severity banner ─────────────────────────────────────── */}
-        <header className={`lochor-approval-banner lochor-approval-banner-${approval.risk}`}>
-          <div className="lochor-approval-pulse" aria-hidden="true" />
-          <div className="lochor-approval-banner-text">
-            <span id="lochor-approval-title" className="lochor-approval-banner-title">
+        <header className={`locaryn-approval-banner locaryn-approval-banner-${approval.risk}`}>
+          <div className="locaryn-approval-pulse" aria-hidden="true" />
+          <div className="locaryn-approval-banner-text">
+            <span id="locaryn-approval-title" className="locaryn-approval-banner-title">
               {isCritical
                 ? "⚠ Remote execution — confirm explicitly"
                 : isRemote
                   ? "↗ Remote target — escalated to Critical"
                   : `${RISK_ICON[approval.risk]} ${RISK_LABEL[approval.risk]}`}
             </span>
-            <span className="lochor-approval-banner-sub">
+            <span className="locaryn-approval-banner-sub">
               Risk: <strong>{approval.risk.toUpperCase()}</strong>
               {isRemote ? <> · Remote target</> : null}
             </span>
           </div>
           <button
             type="button"
-            className="lochor-approval-close"
+            className="locaryn-approval-close"
             aria-label="Cancel (denied)"
             disabled={isCritical}
             title={isCritical ? "Click Deny to close this dialog" : "Cancel"}
@@ -200,29 +200,29 @@ export function ToolApprovalModal({
         </header>
 
         {/* ── Body ─────────────────────────────────────────────────── */}
-        <section className="lochor-approval-body">
-          <div className="lochor-approval-row">
-            <span className="lochor-approval-label">Tool</span>
-            <code className="lochor-approval-tool">{approval.tool}</code>
+        <section className="locaryn-approval-body">
+          <div className="locaryn-approval-row">
+            <span className="locaryn-approval-label">Tool</span>
+            <code className="locaryn-approval-tool">{approval.tool}</code>
           </div>
 
           {approval.reason ? (
-            <div className="lochor-approval-row">
-              <span className="lochor-approval-label">Why</span>
-              <p className="lochor-approval-reason">{approval.reason}</p>
+            <div className="locaryn-approval-row">
+              <span className="locaryn-approval-label">Why</span>
+              <p className="locaryn-approval-reason">{approval.reason}</p>
             </div>
           ) : null}
 
           {approval.diff ? (
-            <div className="lochor-approval-row">
-              <span className="lochor-approval-label">Preview</span>
-              <pre className="lochor-approval-diff">{approval.diff}</pre>
+            <div className="locaryn-approval-row">
+              <span className="locaryn-approval-label">Preview</span>
+              <pre className="locaryn-approval-diff">{approval.diff}</pre>
             </div>
           ) : (
             isCritical ? null : (
-              <div className="lochor-approval-row">
-                <span className="lochor-approval-label">Preview</span>
-                <p className="lochor-approval-reason" style={{ fontStyle: "italic" }}>
+              <div className="locaryn-approval-row">
+                <span className="locaryn-approval-label">Preview</span>
+                <p className="locaryn-approval-reason" style={{ fontStyle: "italic" }}>
                   This tool produces no previewable diff.
                 </p>
               </div>
@@ -231,8 +231,8 @@ export function ToolApprovalModal({
 
           {/* Critical-only type-to-confirm + understand checkbox ──── */}
           {isCritical ? (
-            <div className="lochor-approval-confirm">
-              <label className="lochor-approval-checkbox">
+            <div className="locaryn-approval-confirm">
+              <label className="locaryn-approval-checkbox">
                 <input
                   type="checkbox"
                   checked={understand}
@@ -244,14 +244,14 @@ export function ToolApprovalModal({
                 </span>
               </label>
           {targetNeedsTyping ? (
-            <div className="lochor-approval-confirm-input">
-              <label className="lochor-approval-confirm-input-label" htmlFor="lochor-approval-confirm-phrase">
+            <div className="locaryn-approval-confirm-input">
+              <label className="locaryn-approval-confirm-input-label" htmlFor="locaryn-approval-confirm-phrase">
                 Type <code>{confirmTargetLabel}</code> to enable Allow:
               </label>
               <input
                 ref={confirmInputRef}
-                id="lochor-approval-confirm-phrase"
-                className="lochor-input"
+                id="locaryn-approval-confirm-phrase"
+                className="locaryn-input"
                 type="text"
                 value={confirmText}
                 spellCheck={false}
@@ -266,9 +266,9 @@ export function ToolApprovalModal({
           ) : null}
 
           {/* Scope chips ───────────────────────────────────────────── */}
-          <div className="lochor-approval-row">
-            <span className="lochor-approval-label">Apply to</span>
-            <div className="lochor-approval-scopes" role="radiogroup" aria-label="Approval scope">
+          <div className="locaryn-approval-row">
+            <span className="locaryn-approval-label">Apply to</span>
+            <div className="locaryn-approval-scopes" role="radiogroup" aria-label="Approval scope">
               {scopeOptions.map((s) => {
                 const isDefault = s === minimumAllowedScope(approval.risk);
                 return (
@@ -277,12 +277,12 @@ export function ToolApprovalModal({
                     key={s}
                     role="radio"
                     aria-checked={scope === s}
-                    className={`lochor-approval-chip${scope === s ? " is-selected" : ""}${isDefault ? " is-default" : ""}`}
+                    className={`locaryn-approval-chip${scope === s ? " is-selected" : ""}${isDefault ? " is-default" : ""}`}
                     onClick={() => setScope(s)}
                     title={SCOPE_TOOLTIP[s]}
                   >
                     {SCOPE_LABEL[s]}
-                    {isDefault ? <span className="lochor-approval-chip-hint">min</span> : null}
+                    {isDefault ? <span className="locaryn-approval-chip-hint">min</span> : null}
                   </button>
                 );
               })}
@@ -290,13 +290,13 @@ export function ToolApprovalModal({
           </div>
 
           {/* Optional user note for the audit log ─────────────────── */}
-          <div className="lochor-approval-row">
-            <label className="lochor-approval-label" htmlFor="lochor-approval-note">
+          <div className="locaryn-approval-row">
+            <label className="locaryn-approval-label" htmlFor="locaryn-approval-note">
               Note <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>(optional)</span>
             </label>
             <input
-              id="lochor-approval-note"
-              className="lochor-input"
+              id="locaryn-approval-note"
+              className="locaryn-input"
               type="text"
               value={auditNote}
               maxLength={160}
@@ -307,14 +307,14 @@ export function ToolApprovalModal({
         </section>
 
         {/* ── Footer ──────────────────────────────────────────────── */}
-        <footer className="lochor-approval-footer">
-          <span className="lochor-approval-call-id" title={approval.call_id}>
+        <footer className="locaryn-approval-footer">
+          <span className="locaryn-approval-call-id" title={approval.call_id}>
             call {approval.call_id.slice(0, 8)}
           </span>
-          <div className="lochor-approval-actions">
+          <div className="locaryn-approval-actions">
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               onClick={handleDeny}
             >
               Deny
@@ -322,7 +322,7 @@ export function ToolApprovalModal({
             <button
               ref={allowBtnRef}
               type="button"
-              className="lochor-btn-primary lochor-approval-allow"
+              className="locaryn-btn-primary locaryn-approval-allow"
               onClick={handleAllow}
               disabled={allowDisabled}
               aria-disabled={allowDisabled}

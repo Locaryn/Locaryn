@@ -78,9 +78,9 @@ export function HardwareBenchmarkModal({
   });
 
   return (
-    <div className="lochor-settings-backdrop" onClick={onClose}>
+    <div className="locaryn-settings-backdrop" onClick={onClose}>
       <div
-        className="lochor-card"
+        className="locaryn-card"
         style={{
           width: "680px",
           maxHeight: "85vh",
@@ -91,7 +91,7 @@ export function HardwareBenchmarkModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="lochor-field-head" style={{ marginBottom: "16px" }}>
+        <div className="locaryn-field-head" style={{ marginBottom: "16px" }}>
           <div>
             <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
               📊 Analyseur de Performances & Compatibilité Matérielle
@@ -100,7 +100,7 @@ export function HardwareBenchmarkModal({
               Ajustez vos composants matériels pour identifier les modèles utilisables sur votre ordinateur.
             </span>
           </div>
-          <button type="button" className="lochor-icon-btn" onClick={onClose}>
+          <button type="button" className="locaryn-icon-btn" onClick={onClose}>
             ✕
           </button>
         </div>
@@ -113,28 +113,28 @@ export function HardwareBenchmarkModal({
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <button
               type="button"
-              className={`lochor-chip${preset === "laptop" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${preset === "laptop" ? " locaryn-chip-on" : ""}`}
               onClick={() => applyPreset("laptop")}
             >
               💻 PC Portable (8 Go RAM, CPU 4c)
             </button>
             <button
               type="button"
-              className={`lochor-chip${preset === "gaming" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${preset === "gaming" ? " locaryn-chip-on" : ""}`}
               onClick={() => applyPreset("gaming")}
             >
               🎮 PC Gaming (16 Go RAM, 8 Go VRAM)
             </button>
             <button
               type="button"
-              className={`lochor-chip${preset === "mac" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${preset === "mac" ? " locaryn-chip-on" : ""}`}
               onClick={() => applyPreset("mac")}
             >
               🍎 Mac M-Series (32 Go RAM Unifiée)
             </button>
             <button
               type="button"
-              className={`lochor-chip${preset === "server" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${preset === "server" ? " locaryn-chip-on" : ""}`}
               onClick={() => applyPreset("server")}
             >
               🚀 Station / Serveur (64 Go RAM, 24 Go VRAM)
@@ -158,7 +158,7 @@ export function HardwareBenchmarkModal({
             </span>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{ fontSize: "12px" }}
               onClick={runScanSimulation}
               disabled={isScanning}
@@ -169,11 +169,11 @@ export function HardwareBenchmarkModal({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
             {/* RAM Input */}
-            <div className="lochor-box-card" style={{ padding: "12px" }}>
-              <label className="lochor-stat-label" htmlFor="ram-input">Mémoire RAM Système</label>
+            <div className="locaryn-box-card" style={{ padding: "12px" }}>
+              <label className="locaryn-stat-label" htmlFor="ram-input">Mémoire RAM Système</label>
               <select
                 id="ram-input"
-                className="lochor-select"
+                className="locaryn-select"
                 style={{ width: "100%", marginTop: "6px", fontSize: "14px", fontWeight: 700 }}
                 value={ramGb}
                 onChange={(e) => {
@@ -188,11 +188,11 @@ export function HardwareBenchmarkModal({
             </div>
 
             {/* VRAM Input */}
-            <div className="lochor-box-card" style={{ padding: "12px" }}>
-              <label className="lochor-stat-label" htmlFor="vram-input">VRAM Carte Graphique</label>
+            <div className="locaryn-box-card" style={{ padding: "12px" }}>
+              <label className="locaryn-stat-label" htmlFor="vram-input">VRAM Carte Graphique</label>
               <select
                 id="vram-input"
-                className="lochor-select"
+                className="locaryn-select"
                 style={{ width: "100%", marginTop: "6px", fontSize: "14px", fontWeight: 700, color: "var(--accent)" }}
                 value={vramGb}
                 onChange={(e) => {
@@ -208,11 +208,11 @@ export function HardwareBenchmarkModal({
             </div>
 
             {/* CPU Cores Input */}
-            <div className="lochor-box-card" style={{ padding: "12px" }}>
-              <label className="lochor-stat-label" htmlFor="cpu-input">Cœurs CPU</label>
+            <div className="locaryn-box-card" style={{ padding: "12px" }}>
+              <label className="locaryn-stat-label" htmlFor="cpu-input">Cœurs CPU</label>
               <select
                 id="cpu-input"
-                className="lochor-select"
+                className="locaryn-select"
                 style={{ width: "100%", marginTop: "6px", fontSize: "14px", fontWeight: 700 }}
                 value={cpuCores}
                 onChange={(e) => {
@@ -235,48 +235,48 @@ export function HardwareBenchmarkModal({
           </h4>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <div className="lochor-box-variant-row" style={{ background: "rgba(100, 200, 120, 0.1)", border: "1px solid rgba(100, 200, 120, 0.3)" }}>
+            <div className="locaryn-box-variant-row" style={{ background: "rgba(100, 200, 120, 0.1)", border: "1px solid rgba(100, 200, 120, 0.3)" }}>
               <div>
                 <span style={{ fontWeight: 700, color: "#64c878" }}>🟢 {optimalCount} Modèles Optimaux (Recommandés)</span>
                 <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}>
                   Taille jusqu'à {vramGb > 0 ? vramGb : Math.round(ramGb * 0.45)} Go. Exécution GPU ultra-rapide.
                 </span>
               </div>
-              <span className="lochor-tag" style={{ background: "#64c878", color: "#000", fontWeight: 700 }}>
+              <span className="locaryn-tag" style={{ background: "#64c878", color: "#000", fontWeight: 700 }}>
                 Fluidité Maximale
               </span>
             </div>
 
-            <div className="lochor-box-variant-row" style={{ background: "rgba(220, 180, 80, 0.1)", border: "1px solid rgba(220, 180, 80, 0.3)" }}>
+            <div className="locaryn-box-variant-row" style={{ background: "rgba(220, 180, 80, 0.1)", border: "1px solid rgba(220, 180, 80, 0.3)" }}>
               <div>
                 <span style={{ fontWeight: 700, color: "#dcb450" }}>🟡 {mediumCount} Modèles Exécutables avec Shared Memory</span>
                 <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}>
                   Inférence possible via partage RAM/CPU jusqu'à {Math.round(ramGb * 0.85)} Go.
                 </span>
               </div>
-              <span className="lochor-tag" style={{ background: "#dcb450", color: "#000", fontWeight: 700 }}>
+              <span className="locaryn-tag" style={{ background: "#dcb450", color: "#000", fontWeight: 700 }}>
                 Vitesse Modérée
               </span>
             </div>
 
-            <div className="lochor-box-variant-row" style={{ background: "rgba(204, 125, 114, 0.1)", border: "1px solid rgba(204, 125, 114, 0.3)" }}>
+            <div className="locaryn-box-variant-row" style={{ background: "rgba(204, 125, 114, 0.1)", border: "1px solid rgba(204, 125, 114, 0.3)" }}>
               <div>
                 <span style={{ fontWeight: 700, color: "var(--danger)" }}>🔴 {heavyCount} Modèles Trop Lourds pour cette Config</span>
                 <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}>
                   Taille supérieure à {Math.round(ramGb * 0.85)} Go. Nécessite une extension de mémoire.
                 </span>
               </div>
-              <span className="lochor-tag" style={{ background: "var(--danger)", color: "#fff", fontWeight: 700 }}>
+              <span className="locaryn-tag" style={{ background: "var(--danger)", color: "#fff", fontWeight: 700 }}>
                 Non Recommandé
               </span>
             </div>
           </div>
         </div>
 
-        <div className="lochor-field-actions" style={{ marginTop: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="locaryn-field-actions" style={{ marginTop: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             onClick={() => {
               onApplyFilter(false);
               onClose();
@@ -287,7 +287,7 @@ export function HardwareBenchmarkModal({
 
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             style={{ background: "var(--accent)", color: "#000" }}
             onClick={() => {
               onApplyFilter(true, { total_ram_gb: ramGb, total_vram_gb: vramGb });

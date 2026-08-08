@@ -49,7 +49,7 @@ export function Chat({ status, onScan }: Props) {
     <div className="lo-screen">
       <div className="lo-bar">
         <span className="lo-dot" />
-        <span>{status.server_name ?? "Lochor"}</span>
+        <span>{status.server_name ?? "Locaryn"}</span>
         {status.travelling && <span className="lo-bar-away">à distance</span>}
         <button
           type="button"

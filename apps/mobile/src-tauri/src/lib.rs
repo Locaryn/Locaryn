@@ -1,11 +1,11 @@
-//! Lochor on a phone.
+//! Locaryn on a phone.
 //!
 //! A thin client: the models, the accounts and the encryption all live on the
 //! machine at the other end. What is here is a conversation view, a sign-in,
 //! and the pairing flow that lets the address change without the user ever
 //! seeing one.
 //!
-//! It shares the Rust that matters — `lochor-travel` verifies scanned codes
+//! It shares the Rust that matters — `locaryn-travel` verifies scanned codes
 //! here exactly as it signs them on the server, so the two cannot drift apart.
 
 mod pairing;
@@ -26,7 +26,7 @@ pub struct MobileStatus {
 }
 
 fn session_path() -> std::path::PathBuf {
-    lochor_config::default_data_dir().join("mobile-session.json")
+    locaryn_config::default_data_dir().join("mobile-session.json")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,9 +55,9 @@ fn status() -> MobileStatus {
 /// is what makes every later scanned code verifiable.
 #[tauri::command]
 fn register_server(provisioning_json: String) -> Result<MobileStatus, String> {
-    let p: lochor_config::provision::Provisioning = serde_json::from_str(&provisioning_json)
+    let p: locaryn_config::provision::Provisioning = serde_json::from_str(&provisioning_json)
         .map_err(|_| {
-            "Ce fichier n'est pas une configuration Lochor. Demandez-la à votre \
+            "Ce fichier n'est pas une configuration Locaryn. Demandez-la à votre \
              administrateur."
                 .to_string()
         })?;
@@ -67,11 +67,11 @@ fn register_server(provisioning_json: String) -> Result<MobileStatus, String> {
         return Err(
             "Cette configuration ne contient pas l'autorité du serveur, sans laquelle \
              les codes scannés ne peuvent pas être vérifiés. Regénérez-la avec une \
-             version récente de Lochor."
+             version récente de Locaryn."
                 .into(),
         );
     };
-    let key_id = lochor_travel::link::key_id(&authority).map_err(|e| e.to_string())?;
+    let key_id = locaryn_travel::link::key_id(&authority).map_err(|e| e.to_string())?;
 
     let mut store = servers::load();
     store.upsert(servers::KnownServer {
@@ -135,7 +135,7 @@ async fn sign_in(username: String, password: String) -> Result<MobileStatus, Str
         .to_string();
 
     let session = Session { key_id: server.key_id, username, token };
-    std::fs::create_dir_all(lochor_config::default_data_dir()).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(locaryn_config::default_data_dir()).map_err(|e| e.to_string())?;
     std::fs::write(
         session_path(),
         serde_json::to_string_pretty(&session).map_err(|e| e.to_string())?,
@@ -238,12 +238,12 @@ pub fn run() {
             pairing::apply_pairing_link,
         ])
         .setup(|_app| {
-            // A `lochor://` link opened from outside — the camera app, a
+            // A `locaryn://` link opened from outside — the camera app, a
             // message — arrives as a launch argument or a new-intent event.
             // The frontend asks for it rather than having it pushed, so a link
             // that arrives before the interface exists is not lost.
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("erreur au démarrage de Lochor");
+        .expect("erreur au démarrage de Locaryn");
 }

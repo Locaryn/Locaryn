@@ -1,4 +1,4 @@
-//! The HTTP client used to reach a Lochor server.
+//! The HTTP client used to reach a Locaryn server.
 //!
 //! Two things separate it from a default `reqwest` client, and both exist
 //! because the servers people deploy are their own:
@@ -62,7 +62,7 @@ impl ServerCertVerifier for DeploymentVerifier {
         now: UnixTime,
     ) -> Result<ServerCertVerified, TlsError> {
         if let Some(pin) = self.pinned {
-            if lochor_config::provision::sha256(end_entity.as_ref()) == pin {
+            if locaryn_config::provision::sha256(end_entity.as_ref()) == pin {
                 return Ok(ServerCertVerified::assertion());
             }
             // The certificate is not the published one. That is expected after
@@ -122,11 +122,11 @@ impl ServerCertVerifier for DeploymentVerifier {
 
 /// Read a certificate + key bundle into what rustls wants.
 fn identity(pem: &str) -> Option<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
-    let certs: Vec<CertificateDer<'static>> = lochor_config::mtls::pem_blocks(pem, "CERTIFICATE")
+    let certs: Vec<CertificateDer<'static>> = locaryn_config::mtls::pem_blocks(pem, "CERTIFICATE")
         .into_iter()
         .map(CertificateDer::from)
         .collect();
-    let key_der = lochor_config::mtls::pem_blocks(pem, "PRIVATE KEY")
+    let key_der = locaryn_config::mtls::pem_blocks(pem, "PRIVATE KEY")
         .into_iter()
         .next()?;
     let key = PrivateKeyDer::try_from(key_der).ok()?;
@@ -151,7 +151,7 @@ pub fn build(
     let authority = match authority_pem {
         Some(pem) => {
             let mut roots = rustls::RootCertStore::empty();
-            for der in lochor_config::mtls::pem_blocks(pem, "CERTIFICATE") {
+            for der in locaryn_config::mtls::pem_blocks(pem, "CERTIFICATE") {
                 roots
                     .add(CertificateDer::from(der))
                     .map_err(|e| format!("Le certificat d'autorité installé est illisible : {e}"))?;
@@ -214,14 +214,14 @@ mod tests {
     #[test]
     fn a_displayed_fingerprint_round_trips() {
         let der = b"n'importe quel certificat";
-        let shown = lochor_config::provision::certificate_fingerprint(&format!(
+        let shown = locaryn_config::provision::certificate_fingerprint(&format!(
             "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----",
             base64_of(der)
         ))
         .unwrap();
         // Exactly the form the connection screen and the CLI print.
         assert!(shown.contains(':'), "empreinte sans séparateurs : {shown}");
-        assert_eq!(parse_fingerprint(&shown), Some(lochor_config::provision::sha256(der)));
+        assert_eq!(parse_fingerprint(&shown), Some(locaryn_config::provision::sha256(der)));
         // Users retype these; be forgiving about case and colons.
         assert_eq!(
             parse_fingerprint(&shown.replace(':', "").to_lowercase()),
@@ -241,14 +241,14 @@ mod tests {
     #[test]
     fn the_installed_certificate_is_offered_to_the_server() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_sc_{}",
+            "locaryn_sc_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let cred = lochor_config::mtls::issue_client(&dir, "marie", 30).unwrap();
+        let cred = locaryn_config::mtls::issue_client(&dir, "marie", 30).unwrap();
 
         // The bundle the administrator hands over must be usable as an
         // identity; if it is not, mTLS fails for every user at once.
@@ -265,14 +265,14 @@ mod tests {
     #[test]
     fn a_certificate_without_its_key_is_not_an_identity() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_sc2_{}",
+            "locaryn_sc2_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let cred = lochor_config::mtls::issue_client(&dir, "paul", 30).unwrap();
+        let cred = locaryn_config::mtls::issue_client(&dir, "paul", 30).unwrap();
         let cert_only: String = cred
             .bundle_pem
             .lines()
@@ -287,18 +287,18 @@ mod tests {
     /// certificate. Ignored because it needs one running:
     ///
     /// ```text
-    /// LOCHOR_TEST_SERVER=https://127.0.0.1:7499 \
-    /// LOCHOR_TEST_CLIENT_PEM=…/clients/tester.pem \
-    /// LOCHOR_TEST_CA_PEM=…/tls/ca-cert.pem \
-    /// cargo test -p lochor-desktop --lib secure_client -- --ignored --nocapture
+    /// LOCARYN_TEST_SERVER=https://127.0.0.1:7499 \
+    /// LOCARYN_TEST_CLIENT_PEM=…/clients/tester.pem \
+    /// LOCARYN_TEST_CA_PEM=…/tls/ca-cert.pem \
+    /// cargo test -p locaryn-desktop --lib secure_client -- --ignored --nocapture
     /// ```
     #[tokio::test]
     #[ignore = "needs a daemon started with require_client_cert"]
     async fn a_live_server_answers_only_to_the_certificate_it_issued() {
-        let url = std::env::var("LOCHOR_TEST_SERVER").expect("LOCHOR_TEST_SERVER");
+        let url = std::env::var("LOCARYN_TEST_SERVER").expect("LOCARYN_TEST_SERVER");
         let client_pem =
-            std::fs::read_to_string(std::env::var("LOCHOR_TEST_CLIENT_PEM").unwrap()).unwrap();
-        let ca_pem = std::fs::read_to_string(std::env::var("LOCHOR_TEST_CA_PEM").unwrap()).unwrap();
+            std::fs::read_to_string(std::env::var("LOCARYN_TEST_CLIENT_PEM").unwrap()).unwrap();
+        let ca_pem = std::fs::read_to_string(std::env::var("LOCARYN_TEST_CA_PEM").unwrap()).unwrap();
         let health = format!("{url}/health");
         let short = std::time::Duration::from_secs(10);
 
@@ -329,9 +329,9 @@ mod tests {
 
         // 4. And the credentials still decide who gets in: the certificate
         //    proves the machine, never the person.
-        if let Ok(pass) = std::env::var("LOCHOR_TEST_PASSWORD") {
+        if let Ok(pass) = std::env::var("LOCARYN_TEST_PASSWORD") {
             let login = format!("{url}/v1/auth/login");
-            let user = std::env::var("LOCHOR_TEST_USER").unwrap_or_else(|_| "tester".into());
+            let user = std::env::var("LOCARYN_TEST_USER").unwrap_or_else(|_| "tester".into());
 
             let r = ok
                 .post(&login)

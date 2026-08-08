@@ -16,7 +16,7 @@ use anyhow::Context;
 use std::path::Path;
 
 #[allow(unused_imports)] // Re-exported for callers, not used inside this file.
-pub use lochor_config::mtls::{
+pub use locaryn_config::mtls::{
     authority, client_cert_path, issue_client, pem_blocks, Authority, ClientCredential,
 };
 
@@ -73,7 +73,7 @@ mod pem_tests {
     #[test]
     fn only_blocks_of_the_requested_kind_are_returned() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_pem_{}",
+            "locaryn_pem_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -99,7 +99,7 @@ mod pem_tests {
     #[test]
     fn a_client_certificate_verifies_against_its_own_authority() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_verify_{}",
+            "locaryn_verify_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

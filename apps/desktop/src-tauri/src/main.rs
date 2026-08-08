@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    lochor_desktop_lib::run()
+    locaryn_desktop_lib::run()
 }

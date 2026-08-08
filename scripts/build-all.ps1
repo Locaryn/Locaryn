@@ -1,4 +1,4 @@
-# Lochor full release build (Windows).
+# Locaryn full release build (Windows).
 # Builds all server binaries and the desktop app, then packages artifacts into release/.
 #
 # Usage:
@@ -27,33 +27,33 @@ function Test-Command {
 }
 
 if (-not (Test-Command -Name "cargo")) {
-    Write-Host "[Lochor] cargo not found in PATH. Please install Rust: https://rustup.rs/" -ForegroundColor Red
+    Write-Host "[Locaryn] cargo not found in PATH. Please install Rust: https://rustup.rs/" -ForegroundColor Red
     exit 1
 }
 if (-not (Test-Command -Name "pnpm")) {
-    Write-Host "[Lochor] pnpm not found in PATH. Please install pnpm (https://pnpm.io/installation)." -ForegroundColor Red
+    Write-Host "[Locaryn] pnpm not found in PATH. Please install pnpm (https://pnpm.io/installation)." -ForegroundColor Red
     exit 1
 }
 
 $Target = & rustc -vV | Select-String "^host:" | ForEach-Object { ($_ -split "\s+")[1] }
 $Variant = if ($Personal) { "personal" } else { "enterprise" }
-Write-Host "[Lochor] Building $Variant release for $Target" -ForegroundColor Cyan
+Write-Host "[Locaryn] Building $Variant release for $Target" -ForegroundColor Cyan
 
 if (-not $SkipServers) {
-    Write-Host "[Lochor] Building server binaries..." -ForegroundColor Cyan
+    Write-Host "[Locaryn] Building server binaries..." -ForegroundColor Cyan
 
-    cargo build --release -p lochor-cli -p lochor-daemon -p lochor-provider-supervisor
+    cargo build --release -p locaryn-cli -p locaryn-daemon -p locaryn-provider-supervisor
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     if ($Personal) {
-        cargo build --release -p lochor-remote-server --no-default-features
+        cargo build --release -p locaryn-remote-server --no-default-features
     } else {
-        cargo build --release -p lochor-remote-server
+        cargo build --release -p locaryn-remote-server
     }
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    Write-Host "[Lochor] Copying server binaries..." -ForegroundColor Cyan
-    $Binaries = @("lochor.exe", "lochor-daemon.exe", "lochor-remote-server.exe", "lochor-supervisor.exe")
+    Write-Host "[Locaryn] Copying server binaries..." -ForegroundColor Cyan
+    $Binaries = @("locaryn.exe", "locaryn-daemon.exe", "locaryn-remote-server.exe", "locaryn-supervisor.exe")
     foreach ($bin in $Binaries) {
         $src = Join-Path $Root "target\release\$bin"
         if (Test-Path $src) {
@@ -63,13 +63,13 @@ if (-not $SkipServers) {
         }
     }
 
-    $Archive = Join-Path $ReleaseDir "lochor-servers-$Variant-$Target.zip"
+    $Archive = Join-Path $ReleaseDir "locaryn-servers-$Variant-$Target.zip"
     Compress-Archive -Path (Join-Path $ServersDir "*") -DestinationPath $Archive -Force
-    Write-Host "[Lochor] Packaged server binaries: $Archive" -ForegroundColor Green
+    Write-Host "[Locaryn] Packaged server binaries: $Archive" -ForegroundColor Green
 }
 
 if (-not $SkipDesktop) {
-    Write-Host "[Lochor] Building desktop app..." -ForegroundColor Cyan
+    Write-Host "[Locaryn] Building desktop app..." -ForegroundColor Cyan
     Push-Location (Join-Path $Root "apps\desktop")
     pnpm install
     if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
@@ -80,10 +80,10 @@ if (-not $SkipDesktop) {
     $BundleDir = Join-Path $Root "target\release\bundle"
     if (Test-Path $BundleDir) {
         Copy-Item "$BundleDir\*" $DesktopDir -Recurse -Force
-        Write-Host "[Lochor] Desktop bundles copied to $DesktopDir" -ForegroundColor Green
+        Write-Host "[Locaryn] Desktop bundles copied to $DesktopDir" -ForegroundColor Green
     } else {
         Write-Warning "Desktop bundle directory not found: $BundleDir"
     }
 }
 
-Write-Host "[Lochor] Release build complete. Artifacts in $ReleaseDir" -ForegroundColor Green
+Write-Host "[Locaryn] Release build complete. Artifacts in $ReleaseDir" -ForegroundColor Green

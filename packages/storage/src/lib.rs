@@ -1,4 +1,4 @@
-//! Lochor persistence layer (SQLite via sqlx).
+//! Locaryn persistence layer (SQLite via sqlx).
 //!
 //! Schema lives in `migrations/*.sql` at the repo root and is applied at
 //! startup via `sqlx::migrate!`. This crate exposes typed repositories so

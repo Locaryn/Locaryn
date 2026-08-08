@@ -1,14 +1,14 @@
 [package]
-name = "lochor-skill-runtime"
+name = "locaryn-skill-runtime"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Skill runtime for Lochor (SKILL.md loader, auto-trigger, system prompt injection)."
+description = "Skill runtime for Locaryn (SKILL.md loader, auto-trigger, system prompt injection)."
 
 [dependencies]
-lochor-shared-types = { workspace = true }
+locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

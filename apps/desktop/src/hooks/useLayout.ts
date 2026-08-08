@@ -18,7 +18,7 @@ const LIMITS = {
   rightW: [240, 560] as const,
   bottomH: [120, 440] as const,
 };
-const STORAGE_KEY = "lochor:layout";
+const STORAGE_KEY = "locaryn:layout";
 
 function clamp(v: number, [min, max]: readonly [number, number]) {
   return Math.min(max, Math.max(min, v));
@@ -75,7 +75,7 @@ export function useLayout() {
     function onUp() {
       if (dragRef.current) {
         dragRef.current = null;
-        document.body.classList.remove("lochor-resizing");
+        document.body.classList.remove("locaryn-resizing");
       }
     }
     window.addEventListener("pointermove", onMove);
@@ -98,7 +98,7 @@ export function useLayout() {
         // Right panel and bottom panel grow when dragging toward the center.
         invert: key === "rightW" || key === "bottomH",
       };
-      document.body.classList.add("lochor-resizing");
+      document.body.classList.add("locaryn-resizing");
     },
     [layout],
   );

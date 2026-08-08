@@ -1,4 +1,4 @@
--- Lochor initial schema (V0.1)
+-- Locaryn initial schema (V0.1)
 -- Applied at daemon / remote-server startup via sqlx::migrate!.
 
 -- ===== Projects =====

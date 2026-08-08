@@ -113,12 +113,12 @@ export function VoicePresetBar({
   }
 
   return (
-    <div className="lochor-vp">
-      <div className="lochor-vp-head">
-        <span className="lochor-vp-title">Voix enregistrées</span>
+    <div className="locaryn-vp">
+      <div className="locaryn-vp-head">
+        <span className="locaryn-vp-title">Voix enregistrées</span>
         <button
           type="button"
-          className="lochor-btn-ghost lochor-vp-add"
+          className="locaryn-btn-ghost locaryn-vp-add"
           disabled={jobRunning}
           onClick={() => {
             setSaving((s) => !s);
@@ -131,55 +131,55 @@ export function VoicePresetBar({
       </div>
 
       {support && !support.cloning && (
-        <p className="lochor-vp-warn">
+        <p className="locaryn-vp-warn">
           {support.engine} ne sait pas cloner depuis un enregistrement : les préréglages
           ne s'appliqueront que partiellement. Choisissez un modèle de clonage
           (Qwen3-TTS Base, XTTS ou F5-TTS) pour utiliser une voix enregistrée.
         </p>
       )}
       {support && support.cloning && ignored.length > 0 && (
-        <p className="lochor-vp-hint">
+        <p className="locaryn-vp-hint">
           {support.engine} ignore {ignored.join(", ")}. Le reste du préréglage s'applique.
         </p>
       )}
 
       {saving && (
-        <div className="lochor-vp-form">
+        <div className="locaryn-vp-form">
           <input
-            className="lochor-input"
+            className="locaryn-input"
             placeholder="Nom — ex. « Ma petite sœur »"
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoFocus
           />
           <input
-            className="lochor-input"
+            className="locaryn-input"
             placeholder="Note (facultatif) — timbre, usage…"
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
-          <p className="lochor-vp-hint">
+          <p className="locaryn-vp-hint">
             L'enregistrement de référence est copié dans le préréglage : il restera
             utilisable même si vous déplacez ou supprimez le fichier d'origine.
           </p>
-          <button type="button" className="lochor-btn-primary" onClick={handleSave}>
+          <button type="button" className="locaryn-btn-primary" onClick={handleSave}>
             Enregistrer
           </button>
         </div>
       )}
 
       {presets.length === 0 ? (
-        <p className="lochor-vp-empty">
+        <p className="locaryn-vp-empty">
           Aucune voix enregistrée. Chargez un extrait, réglez la voix, puis enregistrez-la
           pour la réutiliser d'un clic.
         </p>
       ) : (
-        <div className="lochor-vp-list">
+        <div className="locaryn-vp-list">
           {presets.map((p) => (
-            <div className="lochor-vp-item" key={p.id}>
+            <div className="locaryn-vp-item" key={p.id}>
               <button
                 type="button"
-                className="lochor-vp-pick"
+                className="locaryn-vp-pick"
                 disabled={jobRunning}
                 onClick={() => {
                   onApply(p);
@@ -187,17 +187,17 @@ export function VoicePresetBar({
                 }}
                 title={p.note || p.referenceText || p.name}
               >
-                <span className="lochor-vp-name">{p.name}</span>
-                <span className="lochor-vp-meta">
+                <span className="locaryn-vp-name">{p.name}</span>
+                <span className="locaryn-vp-meta">
                   {p.durationS > 0 ? `${p.durationS.toFixed(0)} s` : "—"}
                   {p.language ? ` · ${p.language}` : ""}
                   {p.settings.expressive ? " · intonation" : " · timbre seul"}
                 </span>
-                {p.note && <span className="lochor-vp-note">{p.note}</span>}
+                {p.note && <span className="locaryn-vp-note">{p.note}</span>}
               </button>
               <button
                 type="button"
-                className="lochor-icon-btn"
+                className="locaryn-icon-btn"
                 disabled={jobRunning}
                 onClick={() => handleDelete(p)}
                 aria-label={`Supprimer ${p.name}`}
@@ -210,8 +210,8 @@ export function VoicePresetBar({
         </div>
       )}
 
-      {error && <div className="lochor-vp-error">{error}</div>}
-      {notice && !error && <div className="lochor-vp-notice">{notice}</div>}
+      {error && <div className="locaryn-vp-error">{error}</div>}
+      {notice && !error && <div className="locaryn-vp-notice">{notice}</div>}
     </div>
   );
 }

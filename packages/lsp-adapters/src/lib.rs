@@ -1,4 +1,4 @@
-//! Lochor LSP adapters. Register language servers per project and expose
+//! Locaryn LSP adapters. Register language servers per project and expose
 //! their capabilities (symbols, definitions, diagnostics) as agent tools.
 //!
 //! V1 skeleton: V1.1 wires `tower-lsp` or a manual LSP client over stdio.

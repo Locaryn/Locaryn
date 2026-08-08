@@ -1,8 +1,8 @@
-//! Lochor configuration, merged across scopes:
+//! Locaryn configuration, merged across scopes:
 //!   1. defaults (in code)
-//!   2. global:   `~/.lochor/config.toml`
-//!   3. workspace: `<project>/.lochor/config.toml`
-//!   4. env vars:  `LOCHOR_*` (highest priority)
+//!   2. global:   `~/.locaryn/config.toml`
+//!   3. workspace: `<project>/.locaryn/config.toml`
+//!   4. env vars:  `LOCARYN_*` (highest priority)
 //!
 //! V1 skeleton uses JSON-ish parsing via serde_json to avoid a toml dep in
 //! the MVP. V1.1 switches to `toml`.
@@ -10,7 +10,7 @@
 pub mod mtls;
 pub mod provision;
 
-use lochor_shared_types::ConnectionMode;
+use locaryn_shared_types::ConnectionMode;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -161,26 +161,43 @@ fn default_log_level() -> String {
 // Paths
 // ============================================================================
 
-/// `~/.lochor`
+/// `~/.locaryn`, or the `~/.lochor` of an install predating the rename.
+///
+/// The project was called Lochor before it was called Locaryn. Returning the
+/// new path unconditionally would leave those installs staring at an empty
+/// application: same disk, same data, invisible. So the legacy directory wins
+/// when it is the only one present — the pointer file, the config and the
+/// database it designates all keep resolving.
+///
+/// Nothing is moved. A rename of the product is not a reason to rewrite a
+/// user's home directory behind their back, and a half-finished move is worse
+/// than none. Once `~/.locaryn` exists, it takes precedence for good.
 pub fn global_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".lochor")
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    let current = home.join(".locaryn");
+    if current.exists() {
+        return current;
+    }
+    let legacy = home.join(".lochor");
+    if legacy.is_dir() {
+        return legacy;
+    }
+    current
 }
 
-/// `~/.lochor/config.toml`
+/// `~/.locaryn/config.toml`
 pub fn global_config_path() -> PathBuf {
     global_dir().join("config.toml")
 }
 
-/// `~/.lochor/data` — the built-in location, used only when no storage root
+/// `~/.locaryn/data` — the built-in location, used only when no storage root
 /// has been configured. Never call this directly: go through [`storage_root`]
 /// so the user's choice is honoured.
 fn builtin_data_dir() -> PathBuf {
     global_dir().join("data")
 }
 
-/// `~/.lochor/storage.json` — a tiny pointer file naming the real storage root.
+/// `~/.locaryn/storage.json` — a tiny pointer file naming the real storage root.
 ///
 /// It deliberately stays next to the config on the home drive: it is a few
 /// bytes, and it must be readable before anything else (the database itself
@@ -200,9 +217,9 @@ struct StoragePointer {
 /// is the normal case — weights alone run to tens of gigabytes.
 ///
 /// Resolution order:
-/// 1. `LOCHOR_STORAGE_ROOT` env var,
+/// 1. `LOCARYN_STORAGE_ROOT` env var,
 /// 2. the `storage.json` pointer written by [`set_storage_root`],
-/// 3. `~/.lochor/data`.
+/// 3. `~/.locaryn/data`.
 pub fn storage_root() -> PathBuf {
     configured_storage_root().unwrap_or_else(builtin_data_dir)
 }
@@ -213,7 +230,7 @@ pub fn storage_root() -> PathBuf {
 /// agrees: resolving the env var separately once left `models_dir` on the
 /// legacy location while the engines had already followed the new root.
 pub fn configured_storage_root() -> Option<PathBuf> {
-    if let Some(dir) = std::env::var_os("LOCHOR_STORAGE_ROOT") {
+    if let Some(dir) = std::env::var_os("LOCARYN_STORAGE_ROOT") {
         let p = PathBuf::from(dir);
         if !p.as_os_str().is_empty() {
             return Some(p);
@@ -282,7 +299,7 @@ fn heavy_data_root() -> PathBuf {
 /// conversion buffers). Deliberately *not* the OS temp dir: those files reach
 /// hundreds of megabytes and would land on the system drive.
 pub fn temp_dir() -> PathBuf {
-    heavy_data_root().join("lochor_tmp")
+    heavy_data_root().join("locaryn_tmp")
 }
 
 /// Where HuggingFace downloads land. A single inpainting pipeline is ~2 GB and
@@ -308,20 +325,20 @@ pub fn ensure_temp_dir() -> PathBuf {
     }
 }
 
-/// `<project>/.lochor/config.toml`
+/// `<project>/.locaryn/config.toml`
 pub fn workspace_config_path(project: &Path) -> PathBuf {
-    project.join(".lochor").join("config.toml")
+    project.join(".locaryn").join("config.toml")
 }
 
 /// Where model weights live. Resolution order:
-/// 1. `LOCHOR_MODELS_DIR` env var (explicit override),
+/// 1. `LOCARYN_MODELS_DIR` env var (explicit override),
 /// 2. `<storage root>/models` when the user configured a root — an explicit
 ///    choice always wins over the legacy guess below,
 /// 3. an existing legacy models folder that already holds downloaded weights
 ///    (kept so early users don't lose multi-GB downloads),
 /// 4. `<storage root>/models`.
 pub fn models_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("LOCHOR_MODELS_DIR") {
+    if let Some(dir) = std::env::var_os("LOCARYN_MODELS_DIR") {
         let p = PathBuf::from(dir);
         if !p.as_os_str().is_empty() {
             return p;
@@ -388,7 +405,7 @@ pub fn load(project: Option<&Path>) -> Result<Config, ConfigError> {
         }
     }
 
-    // env overrides (LOCHOR_*)
+    // env overrides (LOCARYN_*)
     apply_env(&mut cfg);
 
     Ok(cfg)
@@ -466,7 +483,7 @@ fn merge(into: &mut Config, other: Config) {
 }
 
 fn apply_env(cfg: &mut Config) {
-    if let Ok(v) = std::env::var("LOCHOR_MODE") {
+    if let Ok(v) = std::env::var("LOCARYN_MODE") {
         cfg.connection.mode = match v.as_str() {
             "auto" => ConnectionMode::Auto,
             "remote" => ConnectionMode::Remote,
@@ -474,16 +491,16 @@ fn apply_env(cfg: &mut Config) {
             _ => cfg.connection.mode,
         };
     }
-    if let Ok(v) = std::env::var("LOCHOR_LOCAL_URL") {
+    if let Ok(v) = std::env::var("LOCARYN_LOCAL_URL") {
         cfg.connection.local_url = v;
     }
-    if let Ok(v) = std::env::var("LOCHOR_SERVER_URL") {
+    if let Ok(v) = std::env::var("LOCARYN_SERVER_URL") {
         cfg.connection.remote_url = Some(v);
     }
-    if let Ok(v) = std::env::var("LOCHOR_TOKEN") {
+    if let Ok(v) = std::env::var("LOCARYN_TOKEN") {
         cfg.remote.get_or_insert_with(RemoteConfig::default).token = Some(v);
     }
-    if let Ok(v) = std::env::var("LOCHOR_DAEMON_PORT") {
+    if let Ok(v) = std::env::var("LOCARYN_DAEMON_PORT") {
         if let Ok(p) = v.parse() {
             cfg.daemon.port = p;
         }
@@ -491,7 +508,7 @@ fn apply_env(cfg: &mut Config) {
     // The listening address decides whether authentication is required, and a
     // container or service unit configures it through the environment — every
     // other daemon setting had an override except this one.
-    if let Ok(v) = std::env::var("LOCHOR_DAEMON_BIND") {
+    if let Ok(v) = std::env::var("LOCARYN_DAEMON_BIND") {
         let v = v.trim();
         if !v.is_empty() {
             // "bind" is a host, but the name reads like an address and people
@@ -507,36 +524,36 @@ fn apply_env(cfg: &mut Config) {
             }
         }
     }
-    if let Ok(v) = std::env::var("LOCHOR_TRAVEL") {
+    if let Ok(v) = std::env::var("LOCARYN_TRAVEL") {
         let v = v.trim();
         // An empty value turns it off, so a service unit can unset it without
         // having to rewrite the configuration file.
         cfg.daemon.travel = (!v.is_empty() && v != "0" && v != "off").then(|| v.to_string());
     }
-    if let Ok(v) = std::env::var("LOCHOR_TLS_CERT") {
+    if let Ok(v) = std::env::var("LOCARYN_TLS_CERT") {
         if !v.trim().is_empty() {
             cfg.daemon.tls_cert = Some(v.trim().to_string());
         }
     }
-    if let Ok(v) = std::env::var("LOCHOR_TLS_KEY") {
+    if let Ok(v) = std::env::var("LOCARYN_TLS_KEY") {
         if !v.trim().is_empty() {
             cfg.daemon.tls_key = Some(v.trim().to_string());
         }
     }
-    if let Ok(v) = std::env::var("LOCHOR_REQUIRE_CLIENT_CERT") {
+    if let Ok(v) = std::env::var("LOCARYN_REQUIRE_CLIENT_CERT") {
         let v = v.trim().to_ascii_lowercase();
         cfg.daemon.require_client_cert = matches!(v.as_str(), "1" | "true" | "yes" | "on");
     }
-    if let Ok(v) = std::env::var("LOCHOR_OPEN_ROUTER_PORT") {
+    if let Ok(v) = std::env::var("LOCARYN_OPEN_ROUTER_PORT") {
         let v = v.trim().to_ascii_lowercase();
         cfg.daemon.open_router_port = matches!(v.as_str(), "1" | "true" | "yes" | "on");
     }
-    if let Ok(v) = std::env::var("LOCHOR_DATA_DIR") {
+    if let Ok(v) = std::env::var("LOCARYN_DATA_DIR") {
         if !v.trim().is_empty() {
             cfg.daemon.data_dir = Some(PathBuf::from(v.trim()));
         }
     }
-    if let Ok(v) = std::env::var("LOCHOR_LOG") {
+    if let Ok(v) = std::env::var("LOCARYN_LOG") {
         cfg.logging.level = v;
     }
 }
@@ -553,16 +570,16 @@ mod path_tests {
     /// would let cargo's parallel runner interleave the mutations.
     #[test]
     fn storage_root_drives_every_bulky_path() {
-        let fake = if cfg!(windows) { r"X:\lochor-test" } else { "/tmp/lochor-test" };
+        let fake = if cfg!(windows) { r"X:\locaryn-test" } else { "/tmp/locaryn-test" };
 
         // SAFETY: single-threaded within this test; no other test reads these.
-        std::env::set_var("LOCHOR_STORAGE_ROOT", fake);
-        std::env::remove_var("LOCHOR_MODELS_DIR");
+        std::env::set_var("LOCARYN_STORAGE_ROOT", fake);
+        std::env::remove_var("LOCARYN_MODELS_DIR");
 
         assert_eq!(storage_root(), PathBuf::from(fake));
         assert_eq!(models_dir(), PathBuf::from(fake).join("models"));
         assert_eq!(bin_dir(), PathBuf::from(fake).join("bin"));
-        assert_eq!(temp_dir(), PathBuf::from(fake).join("lochor_tmp"));
+        assert_eq!(temp_dir(), PathBuf::from(fake).join("locaryn_tmp"));
         assert_eq!(hf_cache_dir(), PathBuf::from(fake).join("hf_cache"));
         assert_eq!(free_chats_dir(), PathBuf::from(fake).join("free_chats"));
 
@@ -572,19 +589,19 @@ mod path_tests {
 
         // An explicit models override still wins over the root.
         let models_override = if cfg!(windows) { r"Y:\weights" } else { "/mnt/weights" };
-        std::env::set_var("LOCHOR_MODELS_DIR", models_override);
+        std::env::set_var("LOCARYN_MODELS_DIR", models_override);
         assert_eq!(models_dir(), PathBuf::from(models_override));
 
-        std::env::remove_var("LOCHOR_MODELS_DIR");
+        std::env::remove_var("LOCARYN_MODELS_DIR");
 
         // An empty override must fall through rather than yield "".
-        std::env::set_var("LOCHOR_STORAGE_ROOT", "");
+        std::env::set_var("LOCARYN_STORAGE_ROOT", "");
         assert!(
             !storage_root().as_os_str().is_empty(),
             "empty override must fall through to the next source"
         );
 
-        std::env::remove_var("LOCHOR_STORAGE_ROOT");
+        std::env::remove_var("LOCARYN_STORAGE_ROOT");
 
         // Back to the built-in default once the override is gone.
         assert_eq!(default_data_dir(), global_dir().join("data"));

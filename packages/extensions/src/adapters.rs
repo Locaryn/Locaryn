@@ -1,11 +1,11 @@
-//! Turn a foreign bundle into a Lochor plugin.
+//! Turn a foreign bundle into a Locaryn plugin.
 //!
 //! Adaptation happens **in place**: we read whatever layout the bundle
-//! actually has, then write a Lochor `plugin.json` beside it pointing at the
+//! actually has, then write a Locaryn `plugin.json` beside it pointing at the
 //! files that are already there. Nothing is duplicated and nothing is thrown
 //! away, so `plugin.json` can be regenerated at any time by re-running this.
 //!
-//! Three of the four ecosystems already agree with Lochor on the important
+//! Three of the four ecosystems already agree with Locaryn on the important
 //! parts — markdown with YAML frontmatter for skills/agents/commands, and the
 //! `mcpServers` object for MCP. What differs is *where* those files live and
 //! which variables they interpolate, and that is what this module normalises.
@@ -15,13 +15,13 @@
 //! support it: the file is left alone and a note explains what was skipped.
 
 use crate::manifest::{Components, PermissionRequest, PermissionValue, PluginManifest};
-use lochor_shared_types::ExtensionEcosystem;
+use locaryn_shared_types::ExtensionEcosystem;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Lochor's own manifest name. Claude Code puts its manifest one level down in
+/// Locaryn's own manifest name. Claude Code puts its manifest one level down in
 /// `.claude-plugin/`, which is how the two are told apart.
-pub const LOCHOR_MANIFEST: &str = "plugin.json";
+pub const LOCARYN_MANIFEST: &str = "plugin.json";
 pub const CLAUDE_MANIFEST: &str = ".claude-plugin/plugin.json";
 pub const CLAUDE_MARKETPLACE: &str = ".claude-plugin/marketplace.json";
 pub const GEMINI_MANIFEST: &str = "gemini-extension.json";
@@ -51,14 +51,14 @@ pub struct AdaptReport {
     /// skipped. Surfaced in the UI so "it installed" never hides "…but the
     /// half you wanted needs a Node runtime we don't have".
     pub notes: Vec<String>,
-    /// True when part of the bundle could not be represented in Lochor.
+    /// True when part of the bundle could not be represented in Locaryn.
     pub partial: bool,
 }
 
 /// Identify a bundle without modifying it.
 pub fn detect(dir: &Path) -> Option<ExtensionEcosystem> {
-    if dir.join(LOCHOR_MANIFEST).is_file() {
-        return Some(ExtensionEcosystem::Lochor);
+    if dir.join(LOCARYN_MANIFEST).is_file() {
+        return Some(ExtensionEcosystem::Locaryn);
     }
     if dir.join(CLAUDE_MANIFEST).is_file() {
         return Some(ExtensionEcosystem::ClaudeCode);
@@ -96,11 +96,11 @@ pub fn adapt(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptError>
     let eco =
         detect(dir).ok_or_else(|| AdaptError::Unrecognised(dir.display().to_string()))?;
     match eco {
-        ExtensionEcosystem::Lochor => {
-            let raw = std::fs::read_to_string(dir.join(LOCHOR_MANIFEST))?;
+        ExtensionEcosystem::Locaryn => {
+            let raw = std::fs::read_to_string(dir.join(LOCARYN_MANIFEST))?;
             let manifest: PluginManifest =
                 serde_json::from_str(&raw).map_err(|e| AdaptError::Parse {
-                    file: LOCHOR_MANIFEST.into(),
+                    file: LOCARYN_MANIFEST.into(),
                     source: e,
                 })?;
             Ok(AdaptReport {
@@ -131,7 +131,7 @@ pub fn adapt(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptError>
 fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptError> {
     let mut notes = Vec::new();
     let mut m = PluginManifest {
-        schema: "https://lochor.dev/schema/plugin.json/v0.1".into(),
+        schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
         api_version: "0.1".into(),
         name: sanitize_name(fallback_name),
         version: "0.0.0".into(),
@@ -204,8 +204,8 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         ..Default::default()
     };
 
-    // Rules: CLAUDE.md at the plugin root is the same idea as LOCHOR.md.
-    for candidate in ["CLAUDE.md", "AGENTS.md", "LOCHOR.md"] {
+    // Rules: CLAUDE.md at the plugin root is the same idea as LOCARYN.md.
+    for candidate in ["CLAUDE.md", "AGENTS.md", "LOCARYN.md"] {
         if dir.join(candidate).is_file() {
             c.rules.push(candidate.to_string());
             break;
@@ -218,7 +218,7 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         .or_else(|| first_existing(dir, &["hooks/hooks.json", "hooks.json"]));
     if let Some(rel) = hooks_path {
         if dir.join(&rel).is_file() {
-            rewrite_vars(&dir.join(&rel), &[("CLAUDE_PLUGIN_ROOT", "LOCHOR_PLUGIN_ROOT")])?;
+            rewrite_vars(&dir.join(&rel), &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")])?;
             c.hooks = Some(rel);
         }
     }
@@ -229,7 +229,7 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         .or_else(|| first_existing(dir, &[".mcp.json", "mcp.json", "mcp/mcp.json"]));
     if let Some(rel) = mcp_path {
         if dir.join(&rel).is_file() {
-            rewrite_vars(&dir.join(&rel), &[("CLAUDE_PLUGIN_ROOT", "LOCHOR_PLUGIN_ROOT")])?;
+            rewrite_vars(&dir.join(&rel), &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")])?;
             c.mcp = Some(rel);
         }
     }
@@ -242,7 +242,7 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         c.lsp = Some(".lsp.json".into());
     }
 
-    // Components Lochor has no equivalent for. Left on disk, reported here.
+    // Components Locaryn has no equivalent for. Left on disk, reported here.
     let mut partial = false;
     for (path, what) in [
         ("output-styles", "output styles"),
@@ -250,7 +250,7 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         ("themes", "themes"),
     ] {
         if dir.join(path).exists() {
-            notes.push(format!("`{path}` ignoré ({what} n'existe pas dans Lochor)"));
+            notes.push(format!("`{path}` ignoré ({what} n'existe pas dans Locaryn)"));
             partial = true;
         }
     }
@@ -280,7 +280,7 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
     })?;
 
     let mut m = PluginManifest {
-        schema: "https://lochor.dev/schema/plugin.json/v0.1".into(),
+        schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
         api_version: "0.1".into(),
         name: sanitize_name(
             v.get("name")
@@ -301,13 +301,13 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
 
     let mut c = Components::default();
 
-    // `mcpServers` is inline in the manifest here; Lochor keeps it in its own
+    // `mcpServers` is inline in the manifest here; Locaryn keeps it in its own
     // file, so extract it. `${extensionPath}` and `${/}` are Gemini's variables.
     if let Some(servers) = v.get("mcpServers").filter(|s| s.is_object()) {
         let json = serde_json::to_string_pretty(&serde_json::json!({ "mcpServers": servers }))
             .unwrap_or_default();
         let json = json
-            .replace("${extensionPath}", "${LOCHOR_PLUGIN_ROOT}")
+            .replace("${extensionPath}", "${LOCARYN_PLUGIN_ROOT}")
             .replace("${/}", "/");
         std::fs::create_dir_all(dir.join("mcp"))?;
         std::fs::write(dir.join("mcp/mcp.json"), json)?;
@@ -335,7 +335,7 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
     c.skills = find_skills(dir);
     c.agents = find_markdown(&dir.join("agents"));
 
-    // Slash commands are TOML here, markdown in Lochor. Convert them into a
+    // Slash commands are TOML here, markdown in Locaryn. Convert them into a
     // sibling directory so the originals stay readable next to them.
     let converted = convert_gemini_commands(dir, &mut notes)?;
     c.commands = converted;
@@ -351,8 +351,8 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
         let inner = hv.get("hooks").cloned().unwrap_or(hv);
         let text = serde_json::to_string_pretty(&inner)
             .unwrap_or_default()
-            .replace("${extensionPath}", "${LOCHOR_PLUGIN_ROOT}")
-            .replace("${workspacePath}", "${LOCHOR_PROJECT_ROOT}")
+            .replace("${extensionPath}", "${LOCARYN_PLUGIN_ROOT}")
+            .replace("${workspacePath}", "${LOCARYN_PROJECT_ROOT}")
             .replace("${/}", "/");
         std::fs::write(&path, text)?;
         c.hooks = Some("hooks/hooks.json".into());
@@ -361,7 +361,7 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
     if dir.join("policies").is_dir() {
         notes.push(
             "`policies/` ignoré : les règles du Policy Engine de Gemini n'ont pas \
-             d'équivalent Lochor."
+             d'équivalent Locaryn."
                 .into(),
         );
         partial = true;
@@ -373,7 +373,7 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
     if let Some(excluded) = v.get("excludeTools").and_then(|x| x.as_array()) {
         if !excluded.is_empty() {
             notes.push(format!(
-                "`excludeTools` ({} entrées) non appliqué : Lochor filtre les outils \
+                "`excludeTools` ({} entrées) non appliqué : Locaryn filtre les outils \
                  par permission, pas par nom.",
                 excluded.len()
             ));
@@ -392,7 +392,7 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
     })
 }
 
-/// `commands/**/*.toml` → `commands-lochor/<name>.md`.
+/// `commands/**/*.toml` → `commands-locaryn/<name>.md`.
 ///
 /// Gemini names a command after its path relative to `commands/`, with `/`
 /// becoming `:`. Its `{{args}}` placeholder is our `$0`. `!{cmd}` (shell
@@ -403,7 +403,7 @@ fn convert_gemini_commands(dir: &Path, notes: &mut Vec<String>) -> Result<Vec<St
     if !src.is_dir() {
         return Ok(Vec::new());
     }
-    let out_dir = dir.join("commands-lochor");
+    let out_dir = dir.join("commands-locaryn");
     let mut out = Vec::new();
     let mut needs_shell = 0usize;
     let mut files = Vec::new();
@@ -444,7 +444,7 @@ fn convert_gemini_commands(dir: &Path, notes: &mut Vec<String>) -> Result<Vec<St
         std::fs::create_dir_all(&out_dir)?;
         let file_name = format!("{}.md", name.replace(':', "__"));
         std::fs::write(out_dir.join(&file_name), md)?;
-        out.push(format!("commands-lochor/{file_name}"));
+        out.push(format!("commands-locaryn/{file_name}"));
     }
 
     if needs_shell > 0 {
@@ -467,7 +467,7 @@ fn adapt_opencode(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptE
     let mut notes = Vec::new();
     let mut partial = false;
     let mut m = PluginManifest {
-        schema: "https://lochor.dev/schema/plugin.json/v0.1".into(),
+        schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
         api_version: "0.1".into(),
         name: sanitize_name(fallback_name),
         version: "0.0.0".into(),
@@ -563,7 +563,7 @@ fn adapt_opencode(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptE
 }
 
 /// OpenCode describes a server as `{type:"local", command:[bin, ...args]}` or
-/// `{type:"remote", url}`. Lochor uses the `mcpServers` shape shared by Claude
+/// `{type:"remote", url}`. Locaryn uses the `mcpServers` shape shared by Claude
 /// Code and Cursor.
 fn opencode_mcp_entry(entry: &serde_json::Value) -> Option<serde_json::Value> {
     let obj = entry.as_object()?;
@@ -604,14 +604,14 @@ fn adapt_bare_mcp(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptE
         .ok_or_else(|| AdaptError::Unrecognised(dir.display().to_string()))?;
     rewrite_vars(
         &dir.join(&rel),
-        &[("CLAUDE_PLUGIN_ROOT", "LOCHOR_PLUGIN_ROOT")],
+        &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")],
     )?;
     let c = Components {
         mcp: Some(rel),
         ..Default::default()
     };
     let mut m = PluginManifest {
-        schema: "https://lochor.dev/schema/plugin.json/v0.1".into(),
+        schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
         api_version: "0.1".into(),
         name: sanitize_name(fallback_name),
         version: "0.0.0".into(),
@@ -676,7 +676,7 @@ fn infer_permissions(dir: &Path, c: &Components) -> crate::manifest::Permissions
 
 fn write_manifest(dir: &Path, m: &PluginManifest) -> Result<(), AdaptError> {
     let json = serde_json::to_string_pretty(m).unwrap_or_default();
-    std::fs::write(dir.join(LOCHOR_MANIFEST), json)?;
+    std::fs::write(dir.join(LOCARYN_MANIFEST), json)?;
     Ok(())
 }
 
@@ -779,7 +779,7 @@ fn author_name(v: &serde_json::Value) -> Option<String> {
     }
 }
 
-/// Lochor requires lowercase ascii names; foreign ecosystems are laxer.
+/// Locaryn requires lowercase ascii names; foreign ecosystems are laxer.
 pub fn sanitize_name(raw: &str) -> String {
     let mut out: String = raw
         .trim()
@@ -871,7 +871,7 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("lochor-adapt-{name}"));
+        let d = std::env::temp_dir().join(format!("locaryn-adapt-{name}"));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -913,11 +913,11 @@ mod tests {
             vec!["skills/audit/SKILL.md"]
         );
         assert_eq!(r.manifest.components.mcp.as_deref(), Some(".mcp.json"));
-        // The plugin-root variable was rewritten to Lochor's spelling.
+        // The plugin-root variable was rewritten to Locaryn's spelling.
         let mcp = std::fs::read_to_string(d.join(".mcp.json")).unwrap();
-        assert!(mcp.contains("${LOCHOR_PLUGIN_ROOT}"));
-        // A Lochor manifest now exists, so a second detect() sees it as native.
-        assert_eq!(detect(&d), Some(ExtensionEcosystem::Lochor));
+        assert!(mcp.contains("${LOCARYN_PLUGIN_ROOT}"));
+        // A Locaryn manifest now exists, so a second detect() sees it as native.
+        assert_eq!(detect(&d), Some(ExtensionEcosystem::Locaryn));
     }
 
     #[test]
@@ -938,11 +938,11 @@ mod tests {
         let r = adapt(&d, "fallback").unwrap();
         assert_eq!(r.ecosystem, ExtensionEcosystem::GeminiCli);
         assert_eq!(r.manifest.components.commands.len(), 1);
-        let md = std::fs::read_to_string(d.join("commands-lochor/scan__deep.md")).unwrap();
+        let md = std::fs::read_to_string(d.join("commands-locaryn/scan__deep.md")).unwrap();
         assert!(md.contains("name: scan:deep"));
         assert!(md.contains("Scan $0 now"));
         let mcp = std::fs::read_to_string(d.join("mcp/mcp.json")).unwrap();
-        assert!(mcp.contains("${LOCHOR_PLUGIN_ROOT}/s.js"));
+        assert!(mcp.contains("${LOCARYN_PLUGIN_ROOT}/s.js"));
     }
 
     #[test]

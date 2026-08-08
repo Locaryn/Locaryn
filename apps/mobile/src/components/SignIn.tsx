@@ -41,7 +41,7 @@ export function SignIn({ status, onSignedIn, onScan }: Props) {
   return (
     <div className="lo-screen">
       <div className="lo-center">
-        <h1 className="lo-title">{status.server_name ?? "Lochor"}</h1>
+        <h1 className="lo-title">{status.server_name ?? "Locaryn"}</h1>
         <p className="lo-sub">
           {status.travelling
             ? "Connexion depuis l'extérieur."

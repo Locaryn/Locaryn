@@ -16,7 +16,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use lochor_mcp::{build_client, McpClient, McpServerEntry, McpState, Transport};
+use locaryn_mcp::{build_client, McpClient, McpServerEntry, McpState, Transport};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -77,7 +77,7 @@ fn server_to_json(name: &str, entry: &McpServerEntry) -> serde_json::Value {
     })
 }
 
-fn capabilities_to_json(caps: &lochor_mcp::ServerCapabilities) -> serde_json::Value {
+fn capabilities_to_json(caps: &locaryn_mcp::ServerCapabilities) -> serde_json::Value {
     serde_json::json!({
         "tools": caps.tools,
         "resources": caps.resources,

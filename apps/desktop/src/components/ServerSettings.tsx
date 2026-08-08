@@ -4,7 +4,7 @@ import { core, type ServerStatus } from "../lib/core";
 /**
  * Share this machine's models with other people.
  *
- * The application does not serve HTTP itself — it starts the Lochor service,
+ * The application does not serve HTTP itself — it starts the Locaryn service,
  * which already carries the accounts, the tokens and the encryption. What the
  * switch really does is expose that service on the network, and everything the
  * service guarantees comes with it: authentication becomes mandatory, traffic
@@ -47,15 +47,15 @@ export function ServerSettings() {
   const blocked = Boolean(status?.blocker);
 
   return (
-    <div className="lochor-field">
-      <label className="lochor-field-label">Partager cette machine</label>
-      <p className="lochor-field-hint">
+    <div className="locaryn-field">
+      <label className="locaryn-field-label">Partager cette machine</label>
+      <p className="locaryn-field-hint">
         Rend les modèles de cet ordinateur utilisables depuis d'autres postes et
         depuis un téléphone. Utile quand une seule machine possède la carte graphique.
       </p>
 
-      <div className="lochor-srv-row">
-        <label className="lochor-srv-toggle">
+      <div className="locaryn-srv-row">
+        <label className="locaryn-srv-toggle">
           <input
             type="checkbox"
             checked={Boolean(status?.running)}
@@ -70,16 +70,16 @@ export function ServerSettings() {
                 : "Serveur arrêté"}
           </span>
         </label>
-        {status?.running && <span className="lochor-srv-live">en écoute</span>}
+        {status?.running && <span className="locaryn-srv-live">en écoute</span>}
       </div>
 
       {status?.blocker && !status.running && (
-        <p className="lochor-vp-warn">
+        <p className="locaryn-vp-warn">
           {status.blocker}
           {status.accounts === 0 && (
             <>
               {" "}
-              Depuis un terminal : <code>lochor users add nom --admin</code>
+              Depuis un terminal : <code>locaryn users add nom --admin</code>
             </>
           )}
         </p>
@@ -87,21 +87,21 @@ export function ServerSettings() {
 
       {status?.running && (
         <>
-          <div className="lochor-kv-list" style={{ marginTop: 12 }}>
-            <div className="lochor-kv">
-              <span className="lochor-kv-key">Adresse à communiquer</span>
-              <span className="lochor-kv-val lochor-kv-mono">{status.url}</span>
+          <div className="locaryn-kv-list" style={{ marginTop: 12 }}>
+            <div className="locaryn-kv">
+              <span className="locaryn-kv-key">Adresse à communiquer</span>
+              <span className="locaryn-kv-val locaryn-kv-mono">{status.url}</span>
             </div>
-            <div className="lochor-kv">
-              <span className="lochor-kv-key">Comptes</span>
-              <span className="lochor-kv-val lochor-kv-mono">{status.accounts}</span>
+            <div className="locaryn-kv">
+              <span className="locaryn-kv-key">Comptes</span>
+              <span className="locaryn-kv-val locaryn-kv-mono">{status.accounts}</span>
             </div>
           </div>
 
-          <div className="lochor-field-actions" style={{ marginTop: 10 }}>
+          <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(status.url);
@@ -118,29 +118,29 @@ export function ServerSettings() {
 
           {status.fingerprint && (
             <>
-              <label className="lochor-field-label" style={{ marginTop: 20 }}>
+              <label className="locaryn-field-label" style={{ marginTop: 20 }}>
                 Empreinte du certificat
               </label>
-              <p className="lochor-field-hint">
+              <p className="locaryn-field-hint">
                 Le certificat est généré par cette machine, donc les postes clients
                 afficheront un avertissement au premier contact. C'est attendu : cette
                 empreinte est ce qui permet de vérifier qu'ils parlent bien à
                 <em> cet</em> ordinateur et pas à un autre.
               </p>
-              <div className="lochor-srv-fingerprint">{status.fingerprint}</div>
+              <div className="locaryn-srv-fingerprint">{status.fingerprint}</div>
             </>
           )}
 
-          <p className="lochor-field-hint" style={{ marginTop: 16 }}>
+          <p className="locaryn-field-hint" style={{ marginTop: 16 }}>
             Pour éviter à vos collègues toute configuration, générez un fichier de
             connexion depuis un terminal :{" "}
-            <code>lochor provision {status.url.replace(/^https?:\/\//, "").split(":")[0]}</code>
+            <code>locaryn provision {status.url.replace(/^https?:\/\//, "").split(":")[0]}</code>
             . Il suffira ensuite de le déposer à côté de l'installeur.
           </p>
         </>
       )}
 
-      {error && <div className="lochor-vp-error">{error}</div>}
+      {error && <div className="locaryn-vp-error">{error}</div>}
     </div>
   );
 }

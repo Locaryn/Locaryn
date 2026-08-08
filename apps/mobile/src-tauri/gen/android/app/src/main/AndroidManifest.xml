@@ -8,7 +8,7 @@
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:theme="@style/Theme.lochor_mobile"
+        android:theme="@style/Theme.locaryn_mobile"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
@@ -32,7 +32,7 @@
               sans rien posséder, et c'est ce que l'appareil photo propose
               d'ouvrir.
 
-              L'activité est en singleTask : un code scanné pendant que Lochor
+              L'activité est en singleTask : un code scanné pendant que Locaryn
               est déjà ouvert doit revenir à l'écran existant, pas en empiler
               un second.
             -->
@@ -40,7 +40,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="lochor" android:host="travel" />
+                <data android:scheme="locaryn" android:host="travel" />
             </intent-filter>
             <!-- DEEP LINK PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->
             

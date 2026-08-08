@@ -1,8 +1,8 @@
 # 09 — Extension Model
 
-Système d'extensions **first-class**. Un plugin Lochor est un bundle auto-contained pouvant contenir: skills, commands/slash commands, hooks, agents, MCP servers, rules, LSP adapters. Manifest `plugin.json`, permissions déclarées, scoping, hot-reload.
+Système d'extensions **first-class**. Un plugin Locaryn est un bundle auto-contained pouvant contenir: skills, commands/slash commands, hooks, agents, MCP servers, rules, LSP adapters. Manifest `plugin.json`, permissions déclarées, scoping, hot-reload.
 
-## Structure d'un plugin Lochor
+## Structure d'un plugin Locaryn
 
 ```
 my-plugin/
@@ -32,7 +32,7 @@ my-plugin/
 
 ```json
 {
-  "schema": "https://lochor.dev/schema/plugin.json/v0.1",
+  "schema": "https://locaryn.dev/schema/plugin.json/v0.1",
   "apiVersion": "0.1",
   "name": "my-plugin",
   "version": "1.0.0",
@@ -42,7 +42,7 @@ my-plugin/
   "homepage": "https://github.com/jane/my-plugin",
   "repository": "https://github.com/jane/my-plugin",
   "keywords": ["review", "migration", "sql"],
-  "minLochorVersion": "0.1.0",
+  "minLocarynVersion": "0.1.0",
   "permissions": {
     "shell": { "reason": "Run migrations and linters", "scope": "project" },
     "files.read": { "reason": "Read source files for review", "scope": "project" },
@@ -75,9 +75,9 @@ my-plugin/
 | Champ | Rôle |
 | --- | --- |
 | `schema` | URL du schema JSON de validation (versionné) |
-| `apiVersion` | Version de l'extension API Lochor supportée |
+| `apiVersion` | Version de l'extension API Locaryn supportée |
 | `name`, `version`, `description`, `author`, `license` | Métadonnées |
-| `minLochorVersion` | Version Lochor minimum requise |
+| `minLocarynVersion` | Version Locaryn minimum requise |
 | `permissions` | Permissions demandées (voir §Permissions) |
 | `components` | Chemins (relatifs à la racine du plugin) vers les sous-éléments |
 | `config.schema` | JSON Schema des options de configuration du plugin (exposées au user) |
@@ -86,9 +86,9 @@ my-plugin/
 
 | Scope | Dossier | Visibilité |
 | --- | --- | --- |
-| `global` | `~/.lochor/plugins/` | Tous les projets de l'utilisateur |
-| `user` | `~/.lochor/plugins/` (alias de global en V1) | Identique |
-| `workspace` | `<project>/.lochor/plugins/` | Le projet uniquement |
+| `global` | `~/.locaryn/plugins/` | Tous les projets de l'utilisateur |
+| `user` | `~/.locaryn/plugins/` (alias de global en V1) | Identique |
+| `workspace` | `<project>/.locaryn/plugins/` | Le projet uniquement |
 | `session` | transitoire (non persisté) | La session courante seulement |
 
 Résolution: `workspace` > `user` > `global` (le plus spécifique gagne pour un même `name`).
@@ -99,7 +99,7 @@ Résolution: `workspace` > `user` > `global` (le plus spécifique gagne pour un 
 1. install(source, scope)
    ├── resolve source (path | url | registry)
    ├── download/extract vers <scope dir>/<name>/
-   ├── validate plugin.json (schema + apiVersion + minLochorVersion)
+   ├── validate plugin.json (schema + apiVersion + minLocarynVersion)
    ├── check dependencies (déclarées dans plugin.json deps[])
    ├── persist extension row (status=installing)
    └── prompt permissions → user decision
@@ -128,7 +128,7 @@ Résolution: `workspace` > `user` > `global` (le plus spécifique gagne pour un 
 `plugin.json` peut déclarer:
 ```json
 "deps": [
-  { "name": "lochor-mcp-stdlib", "version": "^1.0.0" },
+  { "name": "locaryn-mcp-stdlib", "version": "^1.0.0" },
   { "name": "another-plugin", "version": ">=2.0.0" }
 ]
 ```
@@ -136,11 +136,11 @@ Résolution: registry local; si manquant, refus d'install avec message clair. Pa
 
 ## Chargement runtime
 
-- **Skills/commands/agents/rules:** markdown parsed (YAML frontmatter + body), injectés dans les registries correspondants (`lochor-skill-runtime`, etc.).
-- **Hooks:** `hooks.json` parsé, enregistrés dans `lochor-hook-runtime`.
-- **MCP servers:** `mcp/mcp.json` parsé, enregistrés dans `lochor-mcp` registry; démarrés selon `auto_start`.
-- **LSP:** `lsp/lsp.json` parsé, enregistrés dans `lochor-lsp-adapters`.
-- **Code natif (optionnel V1.1):** `src/` compilé en WASM (sandbox `wasmtime`) ou bindings TS via `lochor-plugin-sdk`. V1: markdown + MCP only; code natif repoussé en V1.1.
+- **Skills/commands/agents/rules:** markdown parsed (YAML frontmatter + body), injectés dans les registries correspondants (`locaryn-skill-runtime`, etc.).
+- **Hooks:** `hooks.json` parsé, enregistrés dans `locaryn-hook-runtime`.
+- **MCP servers:** `mcp/mcp.json` parsé, enregistrés dans `locaryn-mcp` registry; démarrés selon `auto_start`.
+- **LSP:** `lsp/lsp.json` parsé, enregistrés dans `locaryn-lsp-adapters`.
+- **Code natif (optionnel V1.1):** `src/` compilé en WASM (sandbox `wasmtime`) ou bindings TS via `locaryn-plugin-sdk`. V1: markdown + MCP only; code natif repoussé en V1.1.
 
 ## Permissions
 
@@ -167,7 +167,7 @@ ou `false` pour explicitement ne pas demander.
 ## Sandbox
 
 - **Markdown components** (skills/commands/agents/rules): pas d'exécution de code; injection system prompt uniquement. Safe par construction.
-- **Hooks:** exécutés via shell avec timeout + permission `shell` + working dir = project root; stdout/stderr capturés; variables `${LOCHOR_PLUGIN_ROOT}`, `${LOCHOR_PROJECT_ROOT}`, `${LOCHOR_SESSION_ID}` injectées.
+- **Hooks:** exécutés via shell avec timeout + permission `shell` + working dir = project root; stdout/stderr capturés; variables `${LOCARYN_PLUGIN_ROOT}`, `${LOCARYN_PROJECT_ROOT}`, `${LOCARYN_SESSION_ID}` injectées.
 - **MCP servers:** exécutés en subprocess (stdio) ou contactés via HTTP; permissions `mcp` + `network` (si HTTP); outils MCP soumis à approval comme les outils natifs.
 - **Code natif (V1.1):** WASM `wasmtime` sandbox, pas d'accès FS/réseau direct; IPC via host functions permission-gated.
 - **Preview:** iframe sandboxed + CSP; pas d'accès au app origin.
@@ -183,14 +183,14 @@ Format compatible Claude Code:
     {
       "matcher": "WriteFile",
       "hooks": [
-        { "type": "command", "command": "bash ${LOCHOR_PLUGIN_ROOT}/hooks/validate.sh", "timeout": 30 }
+        { "type": "command", "command": "bash ${LOCARYN_PLUGIN_ROOT}/hooks/validate.sh", "timeout": 30 }
       ]
     }
   ],
   "PostToolUse": [
     { "matcher": "*", "hooks": [{ "type": "command", "command": "echo done" }] }
   ],
-  "Stop": [{ "hooks": [{ "type": "command", "command": "notify-send 'Lochor done'" }] }]
+  "Stop": [{ "hooks": [{ "type": "command", "command": "notify-send 'Locaryn done'" }] }]
 }
 ```
 Events: `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`, `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreCompact`, `Notification` (même vocabulaire que Claude Code pour compat).
@@ -250,7 +250,7 @@ Format compatible Claude Code/Cursor (`mcpServers`):
   "mcpServers": {
     "schema-introspect": {
       "command": "node",
-      "args": ["${LOCHOR_PLUGIN_ROOT}/mcp/schema-server.js"],
+      "args": ["${LOCARYN_PLUGIN_ROOT}/mcp/schema-server.js"],
       "env": { "DB_URL": "${env:DB_URL}" },
       "transport": "stdio",
       "auto_start": true
@@ -278,7 +278,7 @@ priority: 10
 - All new endpoints must require auth.
 - Use parameterized queries only.
 ```
-Agrégé avec `LOCHOR.md` et `.lochor/rules/*.md` par `lochor-rules-runtime`.
+Agrégé avec `LOCARYN.md` et `.locaryn/rules/*.md` par `locaryn-rules-runtime`.
 
 ### LSP (`lsp/lsp.json`)
 
@@ -293,21 +293,21 @@ Agrégé avec `LOCHOR.md` et `.lochor/rules/*.md` par `lochor-rules-runtime`.
 
 ## Compatibilité écosystème — table de mapping
 
-| Source | Concept | Format source | Mapping Lochor | Compat |
+| Source | Concept | Format source | Mapping Locaryn | Compat |
 | --- | --- | --- | --- | --- |
 | Claude Code | `.claude/agents/*.md` | YAML frontmatter | `agents/*.md` (idem) | ✅ direct |
 | Claude Code | `.claude/commands/*.md` | YAML + $0,$1 | `commands/*.md` | ✅ direct |
 | Claude Code | `.claude/skills/*/SKILL.md` | YAML frontmatter | `skills/*/SKILL.md` | ✅ direct |
 | Claude Code | `hooks.json` | events Claude | `hooks/hooks.json` | ✅ direct (mêmes events) |
 | Claude Code | `output-styles/*.md` | markdown | `agents/*.md` output_style | ✅ adaptateur |
-| Claude Code | `CLAUDE.md`, `rules/*.md` | markdown | `rules/*.md` + `LOCHOR.md` | ✅ direct |
+| Claude Code | `CLAUDE.md`, `rules/*.md` | markdown | `rules/*.md` + `LOCARYN.md` | ✅ direct |
 | Claude Code | `plugin.json` (si présent) | manifest | `plugin.json` (conversion) | adaptateur (permissions à déclarer) |
 | Cursor | `.cursor/mcp.json` | `mcpServers` | `mcp/mcp.json` | ✅ direct |
 | Cursor | `.cursor/rules/*.md` | markdown | `rules/*.md` | ✅ direct |
 | Continue | `config.yaml` models | YAML | `providers` config | adaptateur (YAML→TOML) |
 | Continue | `config.yaml` mcpServers | YAML | `mcp/mcp.json` | adaptateur |
 | Continue | `config.yaml` prompts | YAML | `commands/*.md` | adaptateur |
-| Cline/Roo | `AGENTS.md` | markdown | `LOCHOR.md` | ✅ direct |
+| Cline/Roo | `AGENTS.md` | markdown | `LOCARYN.md` | ✅ direct |
 | Cline/Roo | `.roo/rules-*/*.md` | markdown dir | `rules/*.md` | ✅ direct |
 | Cline/Roo | modes (UI) | — | `agent_profiles` | adaptateur |
 | Antigravity | `antigravity.yaml` | YAML | `agent_profiles` + permissions | adaptateur |
@@ -316,16 +316,16 @@ Agrégé avec `LOCHOR.md` et `.lochor/rules/*.md` par `lochor-rules-runtime`.
 
 - MCP `.mcp.json` / `mcpServers` (format standard de facto).
 - Markdown rules / slash commands / agents (frontmatter YAML).
-- `LOCHOR.md` ≡ `CLAUDE.md` ≡ `AGENTS.md` (fichier d'instructions racine).
+- `LOCARYN.md` ≡ `CLAUDE.md` ≡ `AGENTS.md` (fichier d'instructions racine).
 
 ### Nécessite un adaptateur
 
-- Continue `config.yaml` (YAML → Lochor JSON/TOML).
-- Claude Code `plugin.json` (ajout des permissions Lochor).
+- Continue `config.yaml` (YAML → Locaryn JSON/TOML).
+- Claude Code `plugin.json` (ajout des permissions Locaryn).
 - Antigravity `antigravity.yaml` (persona → agent_profile).
 - Cline "modes" (UI state → agent_profile).
 
-### Reste spécifique Lochor
+### Reste spécifique Locaryn
 
 - Manifest `plugin.json` avec `apiVersion`, `permissions` (modèle de sécurité), `config.schema`, packaging + scope.
 - Permissions model (shell/files/network/... avec approval scope).
@@ -335,24 +335,24 @@ Agrégé avec `LOCHOR.md` et `.lochor/rules/*.md` par `lochor-rules-runtime`.
 ## Commande d'import
 
 ```bash
-lochor import claude-code ./path/to/.claude
+locaryn import claude-code ./path/to/.claude
 # → scan agents/, commands/, skills/, hooks.json, output-styles/, CLAUDE.md, rules/
-# → convertit en structure Lochor sous .lochor/ (ou ~/.lochor/plugins/imported-cc/)
+# → convertit en structure Locaryn sous .locaryn/ (ou ~/.locaryn/plugins/imported-cc/)
 # → résumé: "Imported 3 agents, 5 commands, 2 skills, 1 hooks file, 1 rules file"
 
-lochor import cursor ./path/to/.cursor
-# → .cursor/mcp.json → .lochor/mcp.json; .cursor/rules/*.md → .lochor/rules/
+locaryn import cursor ./path/to/.cursor
+# → .cursor/mcp.json → .locaryn/mcp.json; .cursor/rules/*.md → .locaryn/rules/
 
-lochor import continue ./config.yaml
+locaryn import continue ./config.yaml
 # → models → providers config; mcpServers → mcp.json; prompts → commands/
 
-lochor import cline ./path/to/project
-# → AGENTS.md → LOCHOR.md; .roo/rules-*/*.md → rules/
+locaryn import cline ./path/to/project
+# → AGENTS.md → LOCARYN.md; .roo/rules-*/*.md → rules/
 ```
 
 ## Exemples concrets (cf. `examples/`)
 
-- `examples/plugins/my-plugin/` — plugin Lochor complet (manifest + skill + command + agent + hooks + mcp + rules + lsp).
+- `examples/plugins/my-plugin/` — plugin Locaryn complet (manifest + skill + command + agent + hooks + mcp + rules + lsp).
 - `examples/mcp.json` — configuration MCP standalone.
 - `examples/SKILL.md`, `examples/command.md`, `examples/agent.md`, `examples/hooks.json`, `examples/workspace-rules.md` — exemples unitaires.
 
@@ -369,9 +369,9 @@ Le fichier est **partagé** : un serveur ajouté depuis l'application est visibl
 depuis le terminal, et inversement.
 
 ```bash
-lochor mcp add graphify "uvx graphify-mcp --graph mon-projet"
-lochor mcp test graphify     # le lance une fois et liste ses outils
-lochor mcp list
+locaryn mcp add graphify "uvx graphify-mcp --graph mon-projet"
+locaryn mcp test graphify     # le lance une fois et liste ses outils
+locaryn mcp list
 ```
 
 `test` ne demande pas de daemon : c'est ce qu'on lance *avant* de démarrer quoi

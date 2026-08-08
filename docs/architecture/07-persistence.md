@@ -1,12 +1,12 @@
 # 07 — Persistence
 
-SQLite (sqlx, `runtime-tokio-rustls`) pour le daemon et le client. Le remote-server utilise le même schéma (SQLite par défaut; abstraction `lochor-storage` pour PostgreSQL en V2 enterprise).
+SQLite (sqlx, `runtime-tokio-rustls`) pour le daemon et le client. Le remote-server utilise le même schéma (SQLite par défaut; abstraction `locaryn-storage` pour PostgreSQL en V2 enterprise).
 
 ## Localisation
 
-- Client (daemon + desktop in-process): `~/.lochor/data/lochor.db`
-- Remote-server: `<data_dir>/lochor.db` (ex: `/var/lib/lochor/lochor.db` ou `C:\ProgramData\Lochor\lochor.db`)
-- Workspaces: `<project_path>/.lochor/` (règles, mcp.json, plugins, artifacts) — non stocké en DB.
+- Client (daemon + desktop in-process): `~/.locaryn/data/locaryn.db`
+- Remote-server: `<data_dir>/locaryn.db` (ex: `/var/lib/locaryn/locaryn.db` ou `C:\ProgramData\Locaryn\locaryn.db`)
+- Workspaces: `<project_path>/.locaryn/` (règles, mcp.json, plugins, artifacts) — non stocké en DB.
 - Migrations: `migrations/*.sql`, appliquées au démarrage via `sqlx::migrate!`.
 
 ## Schéma
@@ -149,7 +149,7 @@ CREATE TABLE extensions (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
     version       TEXT NOT NULL,
-    api_version   TEXT NOT NULL,              -- Lochor extension API version
+    api_version   TEXT NOT NULL,              -- Locaryn extension API version
     kind          TEXT NOT NULL,              -- plugin|mcp|command|skill|hook|agent|rules|lsp
     scope         TEXT NOT NULL,              -- global|user|workspace
     source        TEXT,                       -- path or url installed from
@@ -273,7 +273,7 @@ CREATE TABLE workspace_rules (
     id          TEXT PRIMARY KEY,
     project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     scope       TEXT NOT NULL,                -- global|workspace
-    source_path TEXT NOT NULL,                -- LOCHOR.md or rules/*.md
+    source_path TEXT NOT NULL,                -- LOCARYN.md or rules/*.md
     content     TEXT NOT NULL,                -- aggregated markdown
     priority    INTEGER NOT NULL DEFAULT 0,   -- global < workspace
     enabled     INTEGER NOT NULL DEFAULT 1
@@ -295,7 +295,7 @@ CREATE TABLE lsp_adapters (
 
 ## Migrations appliquées au démarrage
 
-`lochor-storage` expose `migrate(db).await` qui exécute `sqlx::migrate!("../../migrations")`. Idempotent, versionné dans `migrations/`.
+`locaryn-storage` expose `migrate(db).await` qui exécute `sqlx::migrate!("../../migrations")`. Idempotent, versionné dans `migrations/`.
 
 ## Stratégie de données
 
@@ -313,14 +313,14 @@ CREATE TABLE lsp_adapters (
 
 ### Règles de non-exposition
 
-1. **API keys provider:** stockées via `lochor-auth` dans l'OS keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service). La DB ne stocke qu'une référence (`keychain:lochor/provider/<id>`). `GET /v1/providers` masque les secrets.
+1. **API keys provider:** stockées via `locaryn-auth` dans l'OS keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service). La DB ne stocke qu'une référence (`keychain:locaryn/provider/<id>`). `GET /v1/providers` masque les secrets.
 2. **MCP env vars:** peuvent contenir des tokens; `GET /v1/mcp/servers` retourne les clés mais masque les valeurs (`"***"`) sauf pour `admin`.
 3. **Auth tokens:** jamais loggés en clair dans audit; hash du token only.
 4. **Fichiers workspace:** le daemon ne lit que les chemins sous `<project_path>` du project trusté; `files.read` permission + trust level `trusted` requis pour accès complet.
-5. **Preview artifacts:** servis depuis origine `lochor-preview://` isolée, CSP strict, pas d'accès au app origin ni au filesystem.
+5. **Preview artifacts:** servis depuis origine `locaryn-preview://` isolée, CSP strict, pas d'accès au app origin ni au filesystem.
 
 ## Backup & reprise
 
-- Daemon: `~/.lochor/data/lochor.db` est un fichier SQLite standard; WAL mode activé. Backup = copie du fichier (avec `VACUUM INTO`).
+- Daemon: `~/.locaryn/data/locaryn.db` est un fichier SQLite standard; WAL mode activé. Backup = copie du fichier (avec `VACUUM INTO`).
 - Remote-server: backup quotidien du DB + artifacts dir; rotation 30j.
 - Reprise de session: une session fermée peut être rouverte (`GET /v1/sessions/{id}` recharge l'historique); les tasks interrompues sont marquées `failed` au redémarrage avec une erreur `interrupted`.

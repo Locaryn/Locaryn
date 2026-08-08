@@ -1,6 +1,6 @@
 # 01 — Product Spec
 
-> Lochor — open-core agentic coding platform.
+> Locaryn — open-core agentic coding platform.
 
 ## Personas
 
@@ -16,13 +16,13 @@
 ## User stories (representative)
 
 ### Local-first (indie)
-- US-01: As an indie dev, I open Lochor desktop, pick a project, and chat with the agent that reads/edits my files and runs commands — all locally via Ollama, no account.
-- US-02: As an indie dev, I run `lochor chat` from my terminal in a repo and continue the exact same session I had open in the desktop app.
-- US-03: As a tinkerer, I add an MCP server via `.lochor/mcp.json` and it appears in both desktop and CLI without restart (hot-reload).
-- US-04: As a tinkerer, I write a slash command in `.lochor/commands/refactor.md` and invoke `/refactor extract-module` from both surfaces.
+- US-01: As an indie dev, I open Locaryn desktop, pick a project, and chat with the agent that reads/edits my files and runs commands — all locally via Ollama, no account.
+- US-02: As an indie dev, I run `locaryn chat` from my terminal in a repo and continue the exact same session I had open in the desktop app.
+- US-03: As a tinkerer, I add an MCP server via `.locaryn/mcp.json` and it appears in both desktop and CLI without restart (hot-reload).
+- US-04: As a tinkerer, I write a slash command in `.locaryn/commands/refactor.md` and invoke `/refactor extract-module` from both surfaces.
 
 ### Remote + fallback
-- US-05: As a team member, I connect in `auto` mode; Lochor tries the team remote-server first, and if it's down, transparently falls back to my local daemon, telling me which provider is active.
+- US-05: As a team member, I connect in `auto` mode; Locaryn tries the team remote-server first, and if it's down, transparently falls back to my local daemon, telling me which provider is active.
 - US-06: As a team member, the remote-server hosts a stronger model; when it's reachable I get better quality, and my local daemon keeps working when I'm offline.
 - US-07: As a platform/SRE, I deploy the remote-server as a systemd service with TLS and an API key; the desktop clients connect with URL + token.
 
@@ -31,16 +31,16 @@
 - US-09: As an enterprise lead, I enforce workspace rules and a curated MCP/plugin bundle at the org scope; team members cannot override security-critical rules.
 
 ### Extension author
-- US-10: As an extension author, I publish a plugin bundle containing a skill, a slash command, and an MCP server, scoped to `user`, with a manifest declaring permissions; Lochor prompts the user to approve on install.
-- US-11: As an extension author, I import a Claude-Code-style bundle (`.claude/agents/*.md`, `commands/*.md`, `skills/*/SKILL.md`) into Lochor's format via a one-shot converter.
+- US-10: As an extension author, I publish a plugin bundle containing a skill, a slash command, and an MCP server, scoped to `user`, with a manifest declaring permissions; Locaryn prompts the user to approve on install.
+- US-11: As an extension author, I import a Claude-Code-style bundle (`.claude/agents/*.md`, `commands/*.md`, `skills/*/SKILL.md`) into Locaryn's format via a one-shot converter.
 
 ## Parcours principaux
 
-1. **First run (local):** Install → `lochor init` (or open desktop) → detect Ollama on loopback → if absent, propose `lochor provider start ollama` → pick project → chat.
-2. **First run (remote):** Install → configure `~/.lochor/config.toml` with server URL + token → `lochor login` → fetch authorized projects → chat against remote providers, fallback local.
-3. **Continue session across surfaces:** Open desktop → resume session S → close. Open CLI in same project → `lochor chat --resume S` → identical context.
+1. **First run (local):** Install → `locaryn init` (or open desktop) → detect Ollama on loopback → if absent, propose `locaryn provider start ollama` → pick project → chat.
+2. **First run (remote):** Install → configure `~/.locaryn/config.toml` with server URL + token → `locaryn login` → fetch authorized projects → chat against remote providers, fallback local.
+3. **Continue session across surfaces:** Open desktop → resume session S → close. Open CLI in same project → `locaryn chat --resume S` → identical context.
 4. **Generate + preview artifact:** Ask for a small web tool → agent emits HTML/CSS/JS artifact → right panel renders it sandboxed → iterate live.
-5. **Install plugin:** `lochor plugin install ./my-plugin` → manifest validation → permission prompt → activate in `user` scope → available in desktop + CLI.
+5. **Install plugin:** `locaryn plugin install ./my-plugin` → manifest validation → permission prompt → activate in `user` scope → available in desktop + CLI.
 6. **Fallback drill:** Unplug network → `auto` mode detects remote-server health failure → switches to local daemon → banner: "Local mode (Ollama)".
 
 ## Cas limites

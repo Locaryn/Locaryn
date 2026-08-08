@@ -1,12 +1,12 @@
-# Lochor — Contexte Produit
+# Locaryn — Contexte Produit
 
-> Document de référence rassemblant la vision fonctionnelle, l'expérience utilisateur, le design system et les choix techniques du projet Lochor.
+> Document de référence rassemblant la vision fonctionnelle, l'expérience utilisateur, le design system et les choix techniques du projet Locaryn.
 
 ---
 
 ## 1. Vue d'ensemble
 
-**Lochor** est une application de développement assisté par LLM, open-source, modulaire et orientée code. Elle fonctionne à la fois en :
+**Locaryn** est une application de développement assisté par LLM, open-source, modulaire et orientée code. Elle fonctionne à la fois en :
 
 - **Application desktop native** (Windows / macOS / Linux)
 - **CLI**
@@ -264,7 +264,7 @@ Les trois interfaces partagent le même cœur métier, le même historique, les 
 ### 7.2 Monorepo
 
 ```
-lochor/
+locaryn/
 ├── apps/
 │   ├── desktop/          # Tauri + React + TS
 │   └── cli/              # Rust CLI

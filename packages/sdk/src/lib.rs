@@ -1,20 +1,20 @@
-//! Lochor client SDK — talks to the local daemon or the remote-server
+//! Locaryn client SDK — talks to the local daemon or the remote-server
 //! over HTTP/1.1 + SSE. Used by the CLI and (optionally) the desktop app
 //! when it prefers the daemon over the in-process core.
 
 use futures::TryStreamExt as _;
-use lochor_events::{SseError, StreamEvent};
-use lochor_shared_types::{
+use locaryn_events::{SseError, StreamEvent};
+use locaryn_shared_types::{
     ApiError, ConnectionMode, Health, Message, Project, Provider, Session, Task, TaskStatus,
 };
 use std::time::Duration;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// A Lochor client. The same client works against the loopback daemon
+/// A Locaryn client. The same client works against the loopback daemon
 /// (`http://127.0.0.1:7474`) or a remote server (`https://host:7473`).
 #[derive(Debug, Clone)]
-pub struct LochorClient {
+pub struct LocarynClient {
     base_url: String,
     token: Option<String>,
     http: reqwest::Client,
@@ -38,7 +38,7 @@ pub enum SdkError {
     Sse(#[from] SseError),
 }
 
-impl LochorClient {
+impl LocarynClient {
     pub fn new(base_url: impl Into<String>, token: Option<String>) -> Result<Self, SdkError> {
         let base_url = base_url.into();
         // Sanity check.
@@ -179,7 +179,7 @@ impl LochorClient {
         &self,
         path: &str,
         name: &str,
-        trust: lochor_shared_types::TrustLevel,
+        trust: locaryn_shared_types::TrustLevel,
     ) -> Result<Project, SdkError> {
         let body = serde_json::json!({ "path": path, "name": name, "trust_level": trust });
         let resp = self
@@ -280,7 +280,7 @@ impl LochorClient {
         // Convert the stream's SseError into SdkError via the `From<SseError>`
         // impl on SdkError (the `Sse` variant). `TryStreamExt::map_err` does
         // this without consuming the stream.
-        Ok(lochor_events::sse_stream(resp.bytes_stream()).map_err(SdkError::from))
+        Ok(locaryn_events::sse_stream(resp.bytes_stream()).map_err(SdkError::from))
     }
 
     pub async fn cancel_task(&self, task_id: &str) -> Result<Task, SdkError> {
@@ -354,7 +354,7 @@ impl LochorClient {
 
     pub async fn start_local(
         &self,
-        engine: lochor_shared_types::ProviderEngine,
+        engine: locaryn_shared_types::ProviderEngine,
         model: Option<&str>,
     ) -> Result<Provider, SdkError> {
         let mut body = serde_json::json!({ "engine": engine });

@@ -1,5 +1,5 @@
 [package]
-name = "lochor-preview"
+name = "locaryn-preview"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 description = "Artifact model + sandboxed HTML preview generation (CSP, iframe origin)."
 
 [dependencies]
-lochor-shared-types = { workspace = true }
+locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

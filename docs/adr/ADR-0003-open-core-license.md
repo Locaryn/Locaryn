@@ -1,7 +1,7 @@
 # ADR-0003 — Open-core license (Apache-2.0 + BSL 1.1)
 
 ## Context
-Lochor must be open-source and oriented toward open models, while allowing a future commercial path: sell an enterprise remote-server module to organizations running NVIDIA DGX Spark clusters, offering cross-team context/file sharing optimized for large collaborative projects. The user explicitly asked for a license that keeps most functionality free while reserving a server-side collaboration feature as commercial.
+Locaryn must be open-source and oriented toward open models, while allowing a future commercial path: sell an enterprise remote-server module to organizations running NVIDIA DGX Spark clusters, offering cross-team context/file sharing optimized for large collaborative projects. The user explicitly asked for a license that keeps most functionality free while reserving a server-side collaboration feature as commercial.
 
 ## Decision
 - **Core (everything except enterprise module): Apache-2.0.** Includes apps/cli, apps/desktop, services/daemon, services/provider-supervisor, services/remote-server core (auth, gateway, TLS, audit, provider proxying, sessions), all `packages/*` crates, `packages-ui/*`, examples, migrations, docs (CC-BY-4.0 for prose).

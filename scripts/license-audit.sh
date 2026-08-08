@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lochor license-compliance audit (Unix / macOS / CI).
+# Locaryn license-compliance audit (Unix / macOS / CI).
 #
 # Verifies that every third-party dependency is permissively licensed (no
 # GPL/AGPL/SSPL) so the closed-source, paid build is compliant. Reproduces the
@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 fail=0
 
-echo "== Lochor license audit =="
+echo "== Locaryn license audit =="
 
 # ── 1. Rust workspace ──────────────────────────────────────────────────────
 echo

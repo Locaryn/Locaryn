@@ -216,7 +216,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
             <span>
               <strong style={{ fontSize: 13 }}>{fieldLabel(key, field)}</strong>
               {field.description && (
-                <span className="lochor-field-hint" style={{ display: "block" }}>
+                <span className="locaryn-field-hint" style={{ display: "block" }}>
                   {field.description}
                 </span>
               )}
@@ -226,14 +226,14 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
 
       case "select":
         return (
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor={id}>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
               {fieldLabel(key, field)}
             </label>
-            {field.description && <p className="lochor-field-hint">{field.description}</p>}
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
             <select
               id={id}
-              className="lochor-select"
+              className="locaryn-select"
               value={String(value ?? "")}
               onChange={(e) => set(key, e.target.value)}
             >
@@ -248,15 +248,15 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
 
       case "number":
         return (
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor={id}>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
               {fieldLabel(key, field)}
             </label>
-            {field.description && <p className="lochor-field-hint">{field.description}</p>}
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
             <input
               id={id}
               type="number"
-              className="lochor-input"
+              className="locaryn-input"
               value={Number(value ?? 0)}
               min={field.min}
               max={field.max}
@@ -268,14 +268,14 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
 
       case "text":
         return (
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor={id}>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
               {fieldLabel(key, field)}
             </label>
-            {field.description && <p className="lochor-field-hint">{field.description}</p>}
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
             <textarea
               id={id}
-              className="lochor-input"
+              className="locaryn-input"
               rows={4}
               style={{ resize: "vertical", fontFamily: "inherit" }}
               value={String(value ?? "")}
@@ -287,16 +287,16 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
       case "list": {
         const asText = Array.isArray(value) ? (value as string[]).join("\n") : String(value ?? "");
         return (
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor={id}>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
               {fieldLabel(key, field)}
             </label>
-            <p className="lochor-field-hint">
+            <p className="locaryn-field-hint">
               {field.description ? `${field.description} — une par ligne.` : "Une par ligne."}
             </p>
             <textarea
               id={id}
-              className="lochor-input"
+              className="locaryn-input"
               rows={3}
               style={{ resize: "vertical", fontFamily: "inherit" }}
               value={asText}
@@ -316,15 +316,15 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
 
       case "secret":
         return (
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor={id}>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
               {fieldLabel(key, field)}
             </label>
-            {field.description && <p className="lochor-field-hint">{field.description}</p>}
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
             <input
               id={id}
               type="password"
-              className="lochor-input"
+              className="locaryn-input"
               autoComplete="off"
               placeholder="••••••"
               value={String(value ?? "")}
@@ -335,22 +335,22 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
 
       case "path":
         return (
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor={id}>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
               {fieldLabel(key, field)}
             </label>
-            {field.description && <p className="lochor-field-hint">{field.description}</p>}
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 id={id}
-                className="lochor-input"
+                className="locaryn-input"
                 style={{ flex: 1 }}
                 value={String(value ?? "")}
                 onChange={(e) => set(key, e.target.value)}
               />
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 onClick={() =>
                   core
                     .pickVoiceReference?.()
@@ -366,14 +366,14 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
 
       default:
         return (
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor={id}>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
               {fieldLabel(key, field)}
             </label>
-            {field.description && <p className="lochor-field-hint">{field.description}</p>}
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
             <input
               id={id}
-              className="lochor-input"
+              className="locaryn-input"
               value={String(value ?? "")}
               onChange={(e) => set(key, e.target.value)}
             />
@@ -385,16 +385,16 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
   const hasSchema = !!config?.schema && Object.keys(config.schema).length > 0;
 
   return (
-    <div className="lochor-settings-backdrop">
+    <div className="locaryn-settings-backdrop">
       <button
         type="button"
-        className="lochor-backdrop-dismiss"
+        className="locaryn-backdrop-dismiss"
         aria-label="Fermer"
         onClick={onClose}
       />
       <dialog
         open
-        className="lochor-card lochor-modal-card"
+        className="locaryn-card locaryn-modal-card"
         aria-modal="true"
         aria-label={`Réglages de ${extension.name}`}
         style={{
@@ -406,22 +406,22 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
         }}
       >
         <h3 style={{ marginBottom: 2 }}>{extension.name}</h3>
-        <p className="lochor-field-hint" style={{ marginBottom: 16 }}>
+        <p className="locaryn-field-hint" style={{ marginBottom: 16 }}>
           v{extension.version}
           {extension.author ? ` · ${extension.author}` : ""} — réglages fournis par l'extension
           elle-même.
         </p>
 
         {error && (
-          <p className="lochor-field-hint" style={{ color: "var(--danger)", marginBottom: 12 }}>
+          <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginBottom: 12 }}>
             {error}
           </p>
         )}
 
         {!config ? (
-          <p className="lochor-field-hint">Chargement…</p>
+          <p className="locaryn-field-hint">Chargement…</p>
         ) : !hasSchema ? (
-          <p className="lochor-field-hint">
+          <p className="locaryn-field-hint">
             Cette extension ne déclare aucun réglage. Rien à configurer ici.
           </p>
         ) : (
@@ -458,18 +458,18 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
             >
               Serveurs MCP
             </h4>
-            <p className="lochor-field-hint" style={{ marginBottom: 12 }}>
+            <p className="locaryn-field-hint" style={{ marginBottom: 12 }}>
               Variables d'environnement et démarrage automatique de chaque serveur déclaré par
               l'extension. La commande, l'URL et le transport viennent du fichier du plugin et ne
               sont pas modifiables ici.
             </p>
             {mcpError && (
-              <p className="lochor-field-hint" style={{ color: "var(--danger)", marginBottom: 12 }}>
+              <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginBottom: 12 }}>
                 {mcpError}
               </p>
             )}
             {mcpServers.length === 0 ? (
-              <p className="lochor-field-hint">
+              <p className="locaryn-field-hint">
                 Cette extension ne déclare aucun serveur MCP modifiable.
               </p>
             ) : (
@@ -478,7 +478,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                 return (
                   <div
                     key={s.name}
-                    className="lochor-card"
+                    className="locaryn-card"
                     style={{ padding: 12, marginBottom: 10 }}
                   >
                     <div
@@ -491,9 +491,9 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                       }}
                     >
                       <strong style={{ fontSize: 13 }}>{s.name}</strong>
-                      <span className="lochor-tag">{s.transport}</span>
+                      <span className="locaryn-tag">{s.transport}</span>
                       <code
-                        className="lochor-connector-cmd"
+                        className="locaryn-connector-cmd"
                         style={{ flex: "1 1 200px", fontSize: 11 }}
                       >
                         {s.target}
@@ -523,14 +523,14 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                       {draft.env.map((row, i) => (
                         <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           <input
-                            className="lochor-input"
+                            className="locaryn-input"
                             style={{ flex: "0 0 200px", fontFamily: "monospace" }}
                             placeholder="NOM_VARIABLE"
                             value={row[0]}
                             onChange={(e) => setEnvRow(s.name, i, e.target.value, row[1])}
                           />
                           <input
-                            className="lochor-input"
+                            className="locaryn-input"
                             style={{ flex: 1, fontFamily: "monospace" }}
                             placeholder="valeur"
                             value={row[1]}
@@ -538,7 +538,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                           />
                           <button
                             type="button"
-                            className="lochor-btn-ghost"
+                            className="locaryn-btn-ghost"
                             style={{ fontSize: 12, color: "var(--danger)" }}
                             onClick={() => removeEnvRow(s.name, i)}
                           >
@@ -549,7 +549,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                       <div>
                         <button
                           type="button"
-                          className="lochor-btn-ghost"
+                          className="locaryn-btn-ghost"
                           style={{ fontSize: 12 }}
                           onClick={() => addEnvRow(s.name)}
                         >
@@ -571,12 +571,12 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                   marginTop: 10,
                 }}
               >
-                <span className="lochor-field-hint">
+                <span className="locaryn-field-hint">
                   {mcpSaved ? "Enregistré." : ""}
                 </span>
                 <button
                   type="button"
-                  className="lochor-btn-primary"
+                  className="locaryn-btn-primary"
                   disabled={mcpBusy}
                   onClick={saveMcp}
                 >
@@ -598,17 +598,17 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
             borderTop: "1px solid var(--border)",
           }}
         >
-          <span className="lochor-field-hint">
+          <span className="locaryn-field-hint">
             {saved ? "Enregistré." : dirty ? "Modifications non enregistrées." : ""}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="lochor-btn-ghost" onClick={onClose}>
+            <button type="button" className="locaryn-btn-ghost" onClick={onClose}>
               Fermer
             </button>
             {hasSchema && (
               <button
                 type="button"
-                className="lochor-btn-primary"
+                className="locaryn-btn-primary"
                 disabled={busy || !dirty}
                 onClick={save}
               >

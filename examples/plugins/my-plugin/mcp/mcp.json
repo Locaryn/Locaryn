@@ -2,7 +2,7 @@
   "mcpServers": {
     "schema-introspect": {
       "command": "node",
-      "args": ["${LOCHOR_PLUGIN_ROOT}/mcp/schema-server.js"],
+      "args": ["${LOCARYN_PLUGIN_ROOT}/mcp/schema-server.js"],
       "env": { "DB_URL": "${env:DB_URL}" },
       "transport": "stdio",
       "auto_start": true

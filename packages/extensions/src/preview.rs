@@ -9,7 +9,7 @@
 use std::io::Read;
 use std::path::Path;
 
-use lochor_shared_types::{ExtensionEcosystem, Permission};
+use locaryn_shared_types::{ExtensionEcosystem, Permission};
 use serde::Serialize;
 
 use crate::adapters;
@@ -31,7 +31,7 @@ const MANIFEST_CANDIDATES: &[&str] = &[
 pub struct SourcePreview {
     /// Fichier manifeste trouvé (plugin.json, .claude-plugin/plugin.json, …).
     pub manifest_file: String,
-    /// Écosystème détecté (lochor, claude_code, gemini_cli, opencode, mcp).
+    /// Écosystème détecté (locaryn, claude_code, gemini_cli, opencode, mcp).
     pub ecosystem: String,
     pub name: String,
     pub version: Option<String>,
@@ -41,7 +41,7 @@ pub struct SourcePreview {
     pub requested_permissions: Vec<String>,
     /// Serveurs MCP déclarés par la source : lus depuis le manifeste lui-même
     /// (`.mcp.json`) ou depuis le fichier mcp qu'il référence (`components.mcp`
-    /// pour Lochor, `mcpServers` pour Claude Code) — sans jamais télécharger
+    /// pour Locaryn, `mcpServers` pour Claude Code) — sans jamais télécharger
     /// le paquet complet.
     pub mcp_servers: Vec<McpServerPreview>,
 }
@@ -252,7 +252,7 @@ fn preview_zip(path: &Path) -> Result<SourcePreview, SourceError> {
     Ok(preview)
 }
 
-/// Aperçu depuis un manifeste Lochor adapté (résultat de `adapt`).
+/// Aperçu depuis un manifeste Locaryn adapté (résultat de `adapt`).
 fn from_manifest(eco: &ExtensionEcosystem, m: &manifest::PluginManifest, file: &str) -> SourcePreview {
     let requested = manifest::requested_permissions(m)
         .into_iter()
@@ -278,7 +278,7 @@ fn preview_from_json(manifest_file: &str, v: &serde_json::Value, fallback_name: 
         "gemini-extension.json" => "gemini_cli",
         "opencode.json" => "opencode",
         ".mcp.json" => "mcp",
-        _ => "lochor",
+        _ => "locaryn",
     };
     let name = v
         .get("name")
@@ -314,7 +314,7 @@ fn preview_from_json(manifest_file: &str, v: &serde_json::Value, fallback_name: 
 }
 
 /// Permissions demandées, telles que déclarées par le manifeste brut. Accepte
-/// les trois formes rencontrées : map Lochor (`"shell": true`), objet avec
+/// les trois formes rencontrées : map Locaryn (`"shell": true`), objet avec
 /// listes (Claude Code : `{ permissions: [...], org: [...] }`), ou simple
 /// liste de chaînes (Gemini CLI, OpenCode).
 fn extract_permissions(v: &serde_json::Value) -> Vec<String> {
@@ -363,7 +363,7 @@ fn extract_permissions(v: &serde_json::Value) -> Vec<String> {
 }
 
 /// Chemins de fichiers mcp déclarés par un manifeste brut, dans l'ordre :
-/// chemin explicite (Lochor `components.mcp`, Claude Code `mcpServers`), puis
+/// chemin explicite (Locaryn `components.mcp`, Claude Code `mcpServers`), puis
 /// les conventions usuelles du dossier.
 fn declared_mcp_candidates(manifest_file: &str, v: &serde_json::Value) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -483,7 +483,7 @@ mod tests {
         let p = preview_from_json("plugin.json", &v, "fallback");
         assert_eq!(p.name, "snap-mcp");
         assert_eq!(p.version.as_deref(), Some("0.3.0"));
-        assert_eq!(p.ecosystem, "lochor");
+        assert_eq!(p.ecosystem, "locaryn");
         // Trié : l'ordre des clés d'une map JSON n'est pas garanti.
         assert_eq!(p.requested_permissions, vec!["files.read", "shell"]);
     }
@@ -523,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn lochor_manifest_declared_mcp_is_picked_up() {
+    fn locaryn_manifest_declared_mcp_is_picked_up() {
         // plugin.json qui référence un fichier mcp séparé (components.mcp).
         let v: serde_json::Value = serde_json::from_str(
             r#"{"name":"snap-mcp","version":"0.3.0","components":{"mcp":"mcp/mcp.json"}}"#,
@@ -554,12 +554,12 @@ mod tests {
 
     #[tokio::test]
     async fn local_dir_previews_through_adapt() {
-        let base = std::env::temp_dir().join("lochor-preview-dir");
+        let base = std::env::temp_dir().join("locaryn-preview-dir");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         std::fs::write(
             base.join("plugin.json"),
-            r#"{"schema":"https://lochor.dev/schema/plugin.json/v0.1","apiVersion":"0.1","name":"preview-me","version":"1.2.3","permissions":{"shell":true}}"#,
+            r#"{"schema":"https://locaryn.dev/schema/plugin.json/v0.1","apiVersion":"0.1","name":"preview-me","version":"1.2.3","permissions":{"shell":true}}"#,
         )
         .unwrap();
         std::fs::write(base.join("README.md"), "readme").unwrap();
@@ -568,7 +568,7 @@ mod tests {
         let p = preview_source(&http, base.to_str().unwrap()).await.unwrap();
         assert_eq!(p.name, "preview-me");
         assert_eq!(p.version.as_deref(), Some("1.2.3"));
-        assert_eq!(p.ecosystem, "lochor");
+        assert_eq!(p.ecosystem, "locaryn");
         assert_eq!(p.requested_permissions, vec!["shell"]);
         assert_eq!(p.manifest_file, "plugin.json");
         let _ = std::fs::remove_dir_all(&base);
@@ -578,7 +578,7 @@ mod tests {
     async fn local_zip_previews_without_extracting() {
         use std::io::Write;
 
-        let base = std::env::temp_dir().join("lochor-preview-zip");
+        let base = std::env::temp_dir().join("locaryn-preview-zip");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         let zip_path = base.join("plugin.zip");
@@ -605,7 +605,7 @@ mod tests {
     async fn zip_previews_declared_mcp_servers() {
         use std::io::Write;
 
-        let base = std::env::temp_dir().join("lochor-preview-zip-mcp");
+        let base = std::env::temp_dir().join("locaryn-preview-zip-mcp");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         let zip_path = base.join("plugin.zip");
@@ -643,12 +643,12 @@ mod tests {
 
     #[tokio::test]
     async fn dir_previews_declared_mcp_servers() {
-        let base = std::env::temp_dir().join("lochor-preview-dir-mcp");
+        let base = std::env::temp_dir().join("locaryn-preview-dir-mcp");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(base.join("mcp")).unwrap();
         std::fs::write(
             base.join("plugin.json"),
-            r#"{"schema":"https://lochor.dev/schema/plugin.json/v0.1","apiVersion":"0.1","name":"snap-mcp","version":"0.3.0","components":{"mcp":"mcp/mcp.json"}}"#,
+            r#"{"schema":"https://locaryn.dev/schema/plugin.json/v0.1","apiVersion":"0.1","name":"snap-mcp","version":"0.3.0","components":{"mcp":"mcp/mcp.json"}}"#,
         )
         .unwrap();
         std::fs::write(

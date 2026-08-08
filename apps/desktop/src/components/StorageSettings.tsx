@@ -18,7 +18,7 @@ type Props = {
 const LOW_SPACE_BYTES = 10 * 1024 ** 3;
 
 /**
- * Where Lochor keeps its bulky data, and how to move it elsewhere.
+ * Where Locaryn keeps its bulky data, and how to move it elsewhere.
  *
  * Model weights and engine binaries reach tens of gigabytes; on a machine
  * whose system drive is nearly full, being able to relocate them is the
@@ -123,24 +123,24 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
       : 0;
 
   return (
-    <div className="lochor-field">
-      <label className="lochor-field-label">Dossier de stockage</label>
-      <p className="lochor-field-hint">
+    <div className="locaryn-field">
+      <label className="locaryn-field-label">Dossier de stockage</label>
+      <p className="locaryn-field-hint">
         Les poids de modèles, les moteurs et les fichiers temporaires vivent ici. Placez-le sur
         un disque avec de l'espace : une seule famille de modèles dépasse souvent 20 Go.
       </p>
 
-      <div className="lochor-store-root">
-        <code className="lochor-store-path">{info?.root ?? "…"}</code>
-        <span className="lochor-store-tag">
+      <div className="locaryn-store-root">
+        <code className="locaryn-store-path">{info?.root ?? "…"}</code>
+        <span className="locaryn-store-tag">
           {info?.configured ? "personnalisé" : "emplacement par défaut"}
         </span>
       </div>
 
-      <div className="lochor-field-actions" style={{ marginTop: 12 }}>
+      <div className="locaryn-field-actions" style={{ marginTop: 12 }}>
         <button
           type="button"
-          className="lochor-btn-primary"
+          className="locaryn-btn-primary"
           disabled={busy}
           onClick={handleChooseFolder}
         >
@@ -148,14 +148,14 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
         </button>
         <button
           type="button"
-          className="lochor-btn-ghost"
+          className="locaryn-btn-ghost"
           disabled={busy}
           onClick={() => core.openModelsFolder().catch(() => {})}
         >
           Ouvrir le dossier des modèles
         </button>
         {onOpenMarketplace && (
-          <button type="button" className="lochor-btn-ghost" onClick={onOpenMarketplace}>
+          <button type="button" className="locaryn-btn-ghost" onClick={onOpenMarketplace}>
             Gérer les modèles
           </button>
         )}
@@ -163,17 +163,17 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
 
       {/* ── Confirmation: moving 40 GB is not a click to make silently ── */}
       {pendingRoot && (
-        <div className="lochor-store-confirm">
-          <div className="lochor-store-confirm-head">Déplacer vers</div>
-          <code className="lochor-store-path">{pendingRoot}</code>
-          <p className="lochor-field-hint" style={{ marginTop: 8 }}>
+        <div className="locaryn-store-confirm">
+          <div className="locaryn-store-confirm-head">Déplacer vers</div>
+          <code className="locaryn-store-path">{pendingRoot}</code>
+          <p className="locaryn-field-hint" style={{ marginTop: 8 }}>
             {info ? formatBytes(info.total_bytes) : "—"} à transférer. Sur le même disque
             c'est instantané ; vers un autre disque, comptez plusieurs minutes.
           </p>
-          <div className="lochor-field-actions" style={{ marginTop: 10 }}>
+          <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
             <button
               type="button"
-              className="lochor-btn-primary"
+              className="locaryn-btn-primary"
               disabled={busy}
               onClick={() => applyRoot(true)}
             >
@@ -181,7 +181,7 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
             </button>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               disabled={busy}
               onClick={() => applyRoot(false)}
             >
@@ -189,7 +189,7 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
             </button>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               disabled={busy}
               onClick={() => setPendingRoot(null)}
             >
@@ -200,65 +200,65 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
       )}
 
       {progress && (
-        <div className="lochor-store-progress">
-          <div className="lochor-store-progress-head">
+        <div className="locaryn-store-progress">
+          <div className="locaryn-store-progress-head">
             <span>{progress.phase}</span>
-            <span className="lochor-kv-mono">
+            <span className="locaryn-kv-mono">
               {formatBytes(progress.moved_bytes)} / {formatBytes(progress.total_bytes)}
             </span>
           </div>
-          <div className="lochor-footer-progress-track">
-            <div className="lochor-footer-progress-fill" style={{ width: `${pct}%` }} />
+          <div className="locaryn-footer-progress-track">
+            <div className="locaryn-footer-progress-fill" style={{ width: `${pct}%` }} />
           </div>
-          <div className="lochor-store-progress-file">{progress.current_file}</div>
+          <div className="locaryn-store-progress-file">{progress.current_file}</div>
         </div>
       )}
 
-      {error && <div className="lochor-store-error">{error}</div>}
-      {notice && !error && <div className="lochor-store-notice">{notice}</div>}
+      {error && <div className="locaryn-store-error">{error}</div>}
+      {notice && !error && <div className="locaryn-store-notice">{notice}</div>}
 
       {/* ── What occupies the space ─────────────────────────────────── */}
-      <label className="lochor-field-label" style={{ marginTop: 24 }}>
+      <label className="locaryn-field-label" style={{ marginTop: 24 }}>
         Occupation
       </label>
-      <div className="lochor-kv-list" style={{ marginTop: 8 }}>
+      <div className="locaryn-kv-list" style={{ marginTop: 8 }}>
         {(info?.entries ?? []).map((e) => (
-          <div className="lochor-kv" key={e.key}>
-            <span className="lochor-kv-key">
+          <div className="locaryn-kv" key={e.key}>
+            <span className="locaryn-kv-key">
               {e.label}
               {e.outside_root && (
-                <span className="lochor-store-flag" title={`Hors du dossier de stockage : ${e.path}`}>
+                <span className="locaryn-store-flag" title={`Hors du dossier de stockage : ${e.path}`}>
                   hors dossier
                 </span>
               )}
             </span>
-            <span className="lochor-kv-val lochor-kv-mono">
+            <span className="locaryn-kv-val locaryn-kv-mono">
               {e.exists ? formatBytes(e.size_bytes) : "—"}
             </span>
           </div>
         ))}
-        <div className="lochor-kv">
-          <span className="lochor-kv-key">
+        <div className="locaryn-kv">
+          <span className="locaryn-kv-key">
             Base SQLite
-            <span className="lochor-store-tag" style={{ marginLeft: 8 }}>
+            <span className="locaryn-store-tag" style={{ marginLeft: 8 }}>
               reste en place
             </span>
           </span>
-          <span className="lochor-kv-val lochor-kv-mono">
+          <span className="locaryn-kv-val locaryn-kv-mono">
             {info ? formatBytes(info.db_bytes) : "—"}
           </span>
         </div>
       </div>
-      <p className="lochor-field-hint" style={{ marginTop: 8 }}>
+      <p className="locaryn-field-hint" style={{ marginTop: 8 }}>
         La base ({info?.db_path ?? "—"}) ne suit pas le dossier de stockage : elle pèse
         quelques mégaoctets et reste ouverte pendant que l'application tourne, la déplacer
         à chaud risquerait de la corrompre.
       </p>
 
-      <div className="lochor-field-actions" style={{ marginTop: 12 }}>
+      <div className="locaryn-field-actions" style={{ marginTop: 12 }}>
         <button
           type="button"
-          className="lochor-btn-ghost"
+          className="locaryn-btn-ghost"
           disabled={busy}
           onClick={handleCleanTemp}
         >
@@ -267,28 +267,28 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
       </div>
 
       {/* ── Where there is room ─────────────────────────────────────── */}
-      <label className="lochor-field-label" style={{ marginTop: 24 }}>
+      <label className="locaryn-field-label" style={{ marginTop: 24 }}>
         Disques
       </label>
-      <div className="lochor-store-drives">
+      <div className="locaryn-store-drives">
         {(info?.drives ?? []).map((d) => {
           const used = d.total_bytes - d.free_bytes;
           const usedPct = d.total_bytes > 0 ? (used / d.total_bytes) * 100 : 0;
           const low = d.free_bytes < LOW_SPACE_BYTES;
           return (
-            <div className="lochor-store-drive" key={d.mount}>
-              <div className="lochor-store-drive-head">
-                <span className="lochor-kv-mono">{d.mount}</span>
-                {d.is_current && <span className="lochor-store-tag">utilisé</span>}
+            <div className="locaryn-store-drive" key={d.mount}>
+              <div className="locaryn-store-drive-head">
+                <span className="locaryn-kv-mono">{d.mount}</span>
+                {d.is_current && <span className="locaryn-store-tag">utilisé</span>}
                 <span
-                  className={`lochor-store-drive-free${low ? " lochor-store-low" : ""}`}
+                  className={`locaryn-store-drive-free${low ? " locaryn-store-low" : ""}`}
                 >
                   {formatBytes(d.free_bytes)} libres
                 </span>
               </div>
-              <div className="lochor-footer-progress-track">
+              <div className="locaryn-footer-progress-track">
                 <div
-                  className={`lochor-footer-progress-fill${low ? " lochor-store-low-fill" : ""}`}
+                  className={`locaryn-footer-progress-fill${low ? " locaryn-store-low-fill" : ""}`}
                   style={{ width: `${usedPct}%` }}
                 />
               </div>

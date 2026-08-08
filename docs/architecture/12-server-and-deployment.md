@@ -1,6 +1,6 @@
 # 12 — Mode serveur, sécurité et déploiement
 
-Ce document décrit comment Lochor passe d'un usage personnel à un service
+Ce document décrit comment Locaryn passe d'un usage personnel à un service
 partagé, et pourquoi les choix de sécurité sont ce qu'ils sont.
 
 ---
@@ -9,10 +9,10 @@ partagé, et pourquoi les choix de sécurité sont ce qu'ils sont.
 
 | Produit | Contenu | Public |
 | --- | --- | --- |
-| **lochor-server** | `lochor-daemon` + `lochor` (CLI). **Aucune dépendance graphique** | Machine à GPU, sans session de bureau |
-| **lochor** | Application desktop, qui fait **aussi** serveur | Poste de travail |
+| **locaryn-server** | `locaryn-daemon` + `locaryn` (CLI). **Aucune dépendance graphique** | Machine à GPU, sans session de bureau |
+| **locaryn** | Application desktop, qui fait **aussi** serveur | Poste de travail |
 
-La séparation est vérifiable : `cargo tree -p lochor-daemon` ne contient ni
+La séparation est vérifiable : `cargo tree -p locaryn-daemon` ne contient ni
 Tauri ni WebKit, et les binaires de release pèsent 6,8 Mo et 3,8 Mo. Avec un
 moteur de rendu embarqué on dépasserait 100 Mo.
 
@@ -52,10 +52,10 @@ Un serveur accessible sans compte serait ouvert à tous, donc il ne démarre pas
 
 | Variable | Fichier | Rôle |
 | --- | --- | --- |
-| `LOCHOR_DAEMON_BIND` | `daemon.bind` | Adresse d'écoute — décide de la posture |
-| `LOCHOR_DAEMON_PORT` | `daemon.port` | Port (7474 par défaut) |
-| `LOCHOR_DATA_DIR` | `daemon.data_dir` | Base et certificats |
-| `LOCHOR_TLS_CERT` / `LOCHOR_TLS_KEY` | `daemon.tls_cert` / `tls_key` | Certificat fourni |
+| `LOCARYN_DAEMON_BIND` | `daemon.bind` | Adresse d'écoute — décide de la posture |
+| `LOCARYN_DAEMON_PORT` | `daemon.port` | Port (7474 par défaut) |
+| `LOCARYN_DATA_DIR` | `daemon.data_dir` | Base et certificats |
+| `LOCARYN_TLS_CERT` / `LOCARYN_TLS_KEY` | `daemon.tls_cert` / `tls_key` | Certificat fourni |
 
 ---
 
@@ -64,13 +64,13 @@ Un serveur accessible sans compte serait ouvert à tous, donc il ne démarre pas
 Table `users` (Argon2id) et `auth_tokens` (empreinte Argon2id du jeton).
 
 ```bash
-lochor users add patron --admin     # mot de passe lu sur l'entrée standard
-lochor users list
-lochor users disable marie          # ses jetons cessent de fonctionner aussitôt
-lochor users enable marie
+locaryn users add patron --admin     # mot de passe lu sur l'entrée standard
+locaryn users list
+locaryn users disable marie          # ses jetons cessent de fonctionner aussitôt
+locaryn users enable marie
 ```
 
-`lochor users` travaille **directement sur la base**, pas via le daemon : il
+`locaryn users` travaille **directement sur la base**, pas via le daemon : il
 faut pouvoir créer le premier administrateur avant que le service démarre.
 
 Le mot de passe est lu sur stdin et jamais accepté en argument — un mot de passe
@@ -99,7 +99,7 @@ répond 401.
 curl -k -X POST https://serveur:7474/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"patron","password":"…"}'
-# → { "token": "lochor_…", "expires_at": "…", "user": { … } }
+# → { "token": "locaryn_…", "expires_at": "…", "user": { … } }
 ```
 
 ---
@@ -147,11 +147,11 @@ que les déploiements échouent.
 ### Côté administrateur, une fois
 
 ```bash
-lochor provision 192.168.1.188 --org "Atelier Durand" \
+locaryn provision 192.168.1.188 --org "Atelier Durand" \
   --note "Identifiants fournis par le service informatique"
 ```
 
-Produit `lochor-connect.json` :
+Produit `locaryn-connect.json` :
 
 ```json
 {
@@ -168,9 +168,9 @@ exposé sert toujours en TLS.
 
 ### Distribution
 
-Poser le fichier **à côté du `.msi`**, ou dans `C:\ProgramData\Lochor\`.
+Poser le fichier **à côté du `.msi`**, ou dans `C:\ProgramData\Locaryn\`.
 Le client le cherche dans cet ordre : répertoire de l'exécutable,
-`%PROGRAMDATA%\Lochor`, puis `~/.lochor`.
+`%PROGRAMDATA%\Locaryn`, puis `~/.locaryn`.
 
 ### Côté employé
 
@@ -193,13 +193,13 @@ courriel sans précaution particulière.
 ## 6. Le CLI
 
 ```bash
-lochor                    # l'agent, dans le dossier courant — il lit et modifie vos fichiers
-lochor chat               # conversation simple, aucun accès aux fichiers
+locaryn                    # l'agent, dans le dossier courant — il lit et modifie vos fichiers
+locaryn chat               # conversation simple, aucun accès aux fichiers
 ```
 
 La distinction ne vient pas d'un drapeau : le moteur active sa boucle d'outils
-**uniquement** quand il reçoit un espace de travail réel. `lochor` rattache la
-session au projet du dossier courant ; `lochor chat` la rattache au conteneur
+**uniquement** quand il reçoit un espace de travail réel. `locaryn` rattache la
+session au projet du dossier courant ; `locaryn chat` la rattache au conteneur
 « conversations libres », qui n'a pas de dossier.
 
 Le daemon vérifie que le chemin du projet est un **répertoire existant** avant
@@ -233,8 +233,8 @@ souvent pas exécuter d'installeur.
 
 **Paramètres → Partage réseau**, une case à cocher.
 
-L'application ne sert **pas** le HTTP elle-même : elle démarre `lochor-daemon`
-avec `LOCHOR_DAEMON_BIND=0.0.0.0`. Tout ce que le service garantit s'applique
+L'application ne sert **pas** le HTTP elle-même : elle démarre `locaryn-daemon`
+avec `LOCARYN_DAEMON_BIND=0.0.0.0`. Tout ce que le service garantit s'applique
 donc sans duplication — authentification obligatoire, TLS, refus de démarrer
 sans compte. Une seconde implémentation HTTP à l'intérieur de Tauri aurait
 signifié deux endroits à garder corrects, et le plus critique des deux aurait
@@ -243,9 +243,9 @@ signifié deux endroits à garder corrects, et le plus critique des deux aurait
 Ce que l'écran affiche :
 
 - **Tant qu'aucun compte n'existe**, la case est désactivée et le motif est
-  donné avec la commande exacte : `lochor users add nom --admin`.
+  donné avec la commande exacte : `locaryn users add nom --admin`.
 - **Une fois actif** : l'adresse à communiquer, le nombre de comptes,
-  l'empreinte du certificat, et la commande `lochor provision` déjà remplie avec
+  l'empreinte du certificat, et la commande `locaryn provision` déjà remplie avec
   l'adresse réelle de la machine.
 
 L'état est revérifié toutes les cinq secondes : si le service s'arrête de
@@ -256,7 +256,7 @@ lui-même, l'interrupteur ne prétend pas le contraire.
 ## 9. mTLS — prouver que le client est légitime
 
 **Optionnel, jamais activé automatiquement** : `require_client_cert`
-(ou `LOCHOR_REQUIRE_CLIENT_CERT=1`). L'activer coupe tous les clients existants
+(ou `LOCARYN_REQUIRE_CLIENT_CERT=1`). L'activer coupe tous les clients existants
 jusqu'à ce que chacun ait reçu un certificat — cela doit être une décision, pas
 la surprise d'une mise à jour.
 
@@ -268,7 +268,7 @@ rencontre une connexion qui se ferme, pas un formulaire à attaquer.
 ### Émettre un certificat
 
 ```bash
-lochor users cert marie --days 365
+locaryn users cert marie --days 365
 ```
 
 ```
@@ -309,7 +309,7 @@ des box (Freebox, Livebox…) acceptent l'UPnP, donc personne n'a à ouvrir une
 interface d'administration pour recopier des numéros de port.
 
 ```
-open_router_port = true      (ou LOCHOR_OPEN_ROUTER_PORT=1)
+open_router_port = true      (ou LOCARYN_OPEN_ROUTER_PORT=1)
 ```
 
 ### Refusé sans mTLS
@@ -357,7 +357,7 @@ jamais.
 
 Le certificat client est proposé sur ce même écran, et reste gérable ensuite
 dans *Paramètres → Partage réseau*. « Installer » signifie **l'enregistrer
-auprès de Lochor**, pas dans le magasin de certificats de Windows : le magasin
+auprès de Locaryn**, pas dans le magasin de certificats de Windows : le magasin
 système le rendrait utilisable par n'importe quel programme de la machine, et
 l'y importer demande des droits qu'un salarié n'a généralement pas — soit
 exactement la friction que ce dispositif existe pour supprimer.
@@ -415,7 +415,7 @@ donne `401` — le certificat prouve la machine, jamais la personne.*
 
 ## 12. Accès distant : deux cas à ne pas confondre
 
-**Entreprise** — réseau local, ou VPN déjà en place chez le client. Lochor doit
+**Entreprise** — réseau local, ou VPN déjà en place chez le client. Locaryn doit
 seulement servir correctement sur le LAN. *Le VPN n'est pas à implémenter :
 c'est l'infrastructure du client.*
 
@@ -432,7 +432,7 @@ Optionnel, à installer ou non. Il apporte le tunnel sortant et l'appairage du
 téléphone, et rien d'autre ne change quand il est absent.
 
 ```
-travel = "cloudflare"      (ou LOCHOR_TRAVEL=cloudflare)
+travel = "cloudflare"      (ou LOCARYN_TRAVEL=cloudflare)
 ```
 
 Trois relais, parce qu'aucun ne convient à tout le monde :
@@ -443,7 +443,7 @@ Trois relais, parce qu'aucun ne convient à tout le monde :
 | `ngrok` | oui | déjà installé chez beaucoup de développeurs |
 | `devtunnel` | oui (Microsoft) | le plus souvent autorisé en entreprise |
 
-Aucun n'est embarqué dans Lochor. Livrer le binaire d'un tiers, c'est livrer ses
+Aucun n'est embarqué dans Locaryn. Livrer le binaire d'un tiers, c'est livrer ses
 mises à jour et ses failles ; l'outil est donc **détecté**, et s'il manque
 l'interface dit quoi installer, avant que l'utilisateur ne choisisse — découvrir
 qu'il faut un compte au moment de partir est le pire moment.
@@ -476,7 +476,7 @@ Le lien est donc **signé par l'autorité locale du déploiement** — la même 
 qu'il connaît déjà :
 
 ```
-lochor://travel?v=1&m=travel&u=<adresse>&e=<expiration>&k=<serveur>&s=<signature>
+locaryn://travel?v=1&m=travel&u=<adresse>&e=<expiration>&k=<serveur>&s=<signature>
 ```
 
 La signature couvre l'adresse elle-même : réécrire la destination dans un lien
@@ -503,10 +503,10 @@ second code, signé pareil, que l'on scanne une fois rentré.
 Sur un serveur sans interface, le code s'affiche dans le terminal :
 
 ```bash
-lochor travel on --via cloudflare
-lochor travel qr      # le code expire ; celui-ci en affiche un nouveau
-lochor travel home    # le code de retour
-lochor travel off
+locaryn travel on --via cloudflare
+locaryn travel qr      # le code expire ; celui-ci en affiche un nouveau
+locaryn travel home    # le code de retour
+locaryn travel off
 ```
 
 *Vérifié : tunnel ngrok réellement ouvert, adresse extraite, lien signé puis
@@ -518,7 +518,7 @@ l'appareil photo.*
 `apps/mobile` — Tauri v2, Android uniquement. Un client mince : les modèles,
 les comptes et le chiffrement restent sur la machine d'en face.
 
-Il **partage le Rust qui compte** : `lochor-travel` vérifie un code scanné ici
+Il **partage le Rust qui compte** : `locaryn-travel` vérifie un code scanné ici
 exactement comme il le signe sur le serveur, donc les deux ne peuvent pas
 diverger. Et il partage les jetons graphiques (`packages-ui/tokens/tokens.css`),
 donc l'écran du téléphone parle la même langue que celui du bureau : même
@@ -529,7 +529,7 @@ donc l'écran du téléphone parle la même langue que celui du bureau : même
 1. Le téléphone enregistre un serveur une fois, depuis le fichier de
    déploiement. Ce fichier contient désormais **l'autorité** du déploiement —
    publique par nature — sans laquelle rien ne serait vérifiable.
-2. L'appareil photo lit un code et propose d'ouvrir Lochor.
+2. L'appareil photo lit un code et propose d'ouvrir Locaryn.
 3. Le lien est vérifié en Rust, puis l'adresse change.
 4. L'écran dit « Vous êtes connecté », avec une coche qui se dessine et une
    brève dispersion dans les teintes de l'accent.
@@ -538,11 +538,11 @@ donc l'écran du téléphone parle la même langue que celui du bureau : même
 
 #### Deux chemins, parce qu'un seul ne suffit pas
 
-Android transmet un lien `lochor://` quand l'appareil photo ou le navigateur
+Android transmet un lien `locaryn://` quand l'appareil photo ou le navigateur
 propose de l'ouvrir, et beaucoup le font. Mais beaucoup d'applications photo ne
 présentent que les liens `http(s)` et restent muettes sur un schéma propre à
 une application. Un vrai App Link `https` exigerait un domaine dont on contrôle
-le fichier `assetlinks.json` — ce que Lochor, installé chez le client, n'a pas.
+le fichier `assetlinks.json` — ce que Locaryn, installé chez le client, n'a pas.
 
 Dire « scannez avec l'appareil photo » et qu'il ne se passe rien serait pire
 qu'une pression de plus. Le **scanner intégré** est donc le chemin garanti, et
@@ -557,7 +557,7 @@ Les mêmes choses que partout ailleurs, avec les mêmes messages :
 | Code d'un autre serveur | « Ce code ne correspond à aucun serveur enregistré sur cet appareil. » |
 | Adresse réécrite dans un lien authentique | « Ce code n'a pas été émis par votre serveur. Ne l'utilisez pas. » |
 | Code périmé | « Ce code a expiré. Affichez-en un nouveau sur l'ordinateur. » |
-| Étiquette de colis, code wifi | « Ce code ne vient pas de Lochor. » |
+| Étiquette de colis, code wifi | « Ce code ne vient pas de Locaryn. » |
 
 Réinstaller le fichier de déploiement depuis un hôtel ne ramène pas le
 téléphone sur une adresse locale qu'il ne peut pas joindre : l'état « en
@@ -585,12 +585,12 @@ mauvaise réponse à une question qui appartient au client.
 Pour signer :
 
 ```bash
-keytool -genkey -v -keystore lochor.jks -keyalg RSA -keysize 4096 -validity 10000 -alias lochor
-apksigner sign --ks lochor.jks app-universal-release-unsigned.apk
+keytool -genkey -v -keystore locaryn.jks -keyalg RSA -keysize 4096 -validity 10000 -alias locaryn
+apksigner sign --ks locaryn.jks app-universal-release-unsigned.apk
 ```
 
-*Vérifié : l'APK construit déclare bien `dev.lochor.mobile`, minSdk 24, la
-permission caméra, et l'intention `lochor://travel` — le lien d'appairage est
+*Vérifié : l'APK construit déclare bien `dev.locaryn.mobile`, minSdk 24, la
+permission caméra, et l'intention `locaryn://travel` — le lien d'appairage est
 donc réellement enregistré dans l'artefact, pas seulement dans la source.*
 
 ---

@@ -135,14 +135,14 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
   ) {
     if (items.length === 0) return null;
     return (
-      <div className="lochor-card" style={{ marginTop: 24, padding: 16 }}>
+      <div className="locaryn-card" style={{ marginTop: 24, padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, flex: 1 }}>
             {icon} {title} ({items.length})
           </h4>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             style={{ fontSize: 11, padding: "3px 10px", color: "var(--danger)", borderColor: "var(--danger)" }}
             onClick={() => taskCenter.clearGallery()}
             title="Supprimer toutes les entrées de la galerie"
@@ -255,13 +255,13 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
 
   function renderPlaceholder(title: string, description: string) {
     return (
-      <div className="lochor-card" style={{ padding: 40, textAlign: "center" }}>
+      <div className="locaryn-card" style={{ padding: 40, textAlign: "center" }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}></div>
         <h3 style={{ marginBottom: 12 }}>{title}</h3>
-        <p className="lochor-field-hint" style={{ maxWidth: 520, margin: "0 auto" }}>
+        <p className="locaryn-field-hint" style={{ maxWidth: 520, margin: "0 auto" }}>
           {description}
         </p>
-        <p className="lochor-field-hint" style={{ marginTop: 20 }}>
+        <p className="locaryn-field-hint" style={{ marginTop: 20 }}>
           Les modèles correspondants sont listés dans le Marketplace avec le filtre approprié.
         </p>
       </div>
@@ -287,14 +287,14 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
 
             {/* ── Galerie des images générées ── */}
             {galleryItems.length > 0 && (
-              <div className="lochor-card" style={{ marginTop: 24, padding: 16 }}>
+              <div className="locaryn-card" style={{ marginTop: 24, padding: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, flex: 1 }}>
                     🖼️ Galerie ({galleryItems.length})
                   </h4>
                   <button
                     type="button"
-                    className="lochor-btn-ghost"
+                    className="locaryn-btn-ghost"
                     style={{ fontSize: 11, padding: "3px 10px", color: "var(--danger)", borderColor: "var(--danger)" }}
                     onClick={() => taskCenter.clearGallery()}
                     title="Supprimer toutes les entrées de la galerie"
@@ -322,7 +322,7 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
                         draggable
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", item.url);
-                          if (item.path) e.dataTransfer.setData("text/x-lochor-image-path", item.path);
+                          if (item.path) e.dataTransfer.setData("text/x-locaryn-image-path", item.path);
                           e.dataTransfer.effectAllowed = "copy";
                         }}
                         onMouseEnter={(e) => {
@@ -458,16 +458,16 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
   }
 
   return (
-    <div className="lochor-view-container">
-      <div className="lochor-view-header" style={{ flexShrink: 0 }}>
+    <div className="locaryn-view-container">
+      <div className="locaryn-view-header" style={{ flexShrink: 0 }}>
         <h2>Studio de génération</h2>
-        <p className="lochor-view-desc">
+        <p className="locaryn-view-desc">
           Tous les outils de génération multimodaux locaux réunis dans un espace unique.
         </p>
       </div>
 
       <div
-        className="lochor-studio-tabs"
+        className="locaryn-studio-tabs"
         style={{
           display: "flex",
           gap: "6px",
@@ -483,7 +483,7 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
             <button
               key={tab.id}
               type="button"
-              className={`lochor-chip${isActive ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${isActive ? " locaryn-chip-on" : ""}`}
               onClick={() => setActive(tab.id)}
               style={{
                 whiteSpace: "nowrap",

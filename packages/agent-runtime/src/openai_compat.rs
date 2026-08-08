@@ -7,7 +7,7 @@
 //! Each event line: `data: {"choices":[{"delta":{"content":"token"}}]}`
 //! Final line: `data: [DONE]`
 //!
-//! We convert this to Lochor's `StreamEvent` sequence:
+//! We convert this to Locaryn's `StreamEvent` sequence:
 //!   `MessageStart` → `Token`* → `MessageEnd`
 
 use crate::{Agent, AgentError, AgentInput, EventStream};

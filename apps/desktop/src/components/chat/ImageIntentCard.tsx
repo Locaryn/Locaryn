@@ -21,29 +21,29 @@ export function ImageIntentCard({ intent, model, onAccept, onRefuse, decided }: 
   const shortModel = model.split(/[\\/]/).pop() || model;
 
   return (
-    <div className={`lochor-intent${decided ? " lochor-intent-decided" : ""}`}>
-      <div className="lochor-intent-head">
-        <span className="lochor-intent-icon">{intent.is_edit ? "🖼️" : "🎨"}</span>
+    <div className={`locaryn-intent${decided ? " locaryn-intent-decided" : ""}`}>
+      <div className="locaryn-intent-head">
+        <span className="locaryn-intent-icon">{intent.is_edit ? "🖼️" : "🎨"}</span>
         <strong>
           {intent.is_edit ? "Modifier une image ?" : "Générer une image ?"}
         </strong>
         {decided && (
-          <span className="lochor-intent-badge">
+          <span className="locaryn-intent-badge">
             {decided === "accepted" ? "accepté" : "refusé"}
           </span>
         )}
       </div>
 
-      {intent.reason && <p className="lochor-intent-reason">{intent.reason}</p>}
+      {intent.reason && <p className="locaryn-intent-reason">{intent.reason}</p>}
 
-      <dl className="lochor-intent-rows">
+      <dl className="locaryn-intent-rows">
         <div>
           <dt>Prompt (anglais)</dt>
-          <dd className="lochor-intent-prompt">{intent.english_prompt}</dd>
+          <dd className="locaryn-intent-prompt">{intent.english_prompt}</dd>
         </div>
         <div>
           <dt>Modèle</dt>
-          <dd className="lochor-kv-mono">{shortModel}</dd>
+          <dd className="locaryn-kv-mono">{shortModel}</dd>
         </div>
         <div>
           <dt>Qualité</dt>
@@ -54,16 +54,16 @@ export function ImageIntentCard({ intent, model, onAccept, onRefuse, decided }: 
       </dl>
 
       {!decided && (
-        <div className="lochor-intent-actions">
-          <button type="button" className="lochor-btn-ghost" onClick={onRefuse}>
+        <div className="locaryn-intent-actions">
+          <button type="button" className="locaryn-btn-ghost" onClick={onRefuse}>
             Non, répondre normalement
           </button>
-          <div className="lochor-intent-qualities">
+          <div className="locaryn-intent-qualities">
             {IMAGE_QUALITIES.map((q) => (
               <button
                 key={q.id}
                 type="button"
-                className={`lochor-intent-q${q.id === quality.id ? " lochor-active" : ""}`}
+                className={`locaryn-intent-q${q.id === quality.id ? " locaryn-active" : ""}`}
                 onClick={() => onAccept(q.id)}
                 title={`${q.hint} (${q.px}px)`}
               >
@@ -71,7 +71,7 @@ export function ImageIntentCard({ intent, model, onAccept, onRefuse, decided }: 
               </button>
             ))}
           </div>
-          <button type="button" className="lochor-btn-primary" onClick={() => onAccept(quality.id)}>
+          <button type="button" className="locaryn-btn-primary" onClick={() => onAccept(quality.id)}>
             Générer
           </button>
         </div>

@@ -1,4 +1,4 @@
-//! Read a Lochor plugin directory into live components.
+//! Read a Locaryn plugin directory into live components.
 //!
 //! `enable()` used to flip a boolean. This is the part that was missing: the
 //! manifest's `components` paths (or, when the manifest declares none, the
@@ -11,11 +11,11 @@
 //! `errors` and surfaced in the UI rather than aborting the load.
 
 use crate::manifest::PluginManifest;
-use lochor_command_runtime::CommandDef;
-use lochor_lsp_adapters::LspAdapterEntry;
-use lochor_mcp::{McpConfig, McpServerEntry};
-use lochor_shared_types::ExtensionComponents;
-use lochor_skill_runtime::SkillDef;
+use locaryn_command_runtime::CommandDef;
+use locaryn_lsp_adapters::LspAdapterEntry;
+use locaryn_mcp::{McpConfig, McpServerEntry};
+use locaryn_shared_types::ExtensionComponents;
+use locaryn_skill_runtime::SkillDef;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
@@ -50,9 +50,9 @@ pub struct RuleDoc {
 /// One hook action, flattened out of `hooks.json` with its event and matcher.
 #[derive(Debug, Clone)]
 pub struct LoadedHook {
-    pub event: lochor_hook_runtime::HookEvent,
+    pub event: locaryn_hook_runtime::HookEvent,
     pub matcher: Option<String>,
-    pub action: lochor_hook_runtime::HookAction,
+    pub action: locaryn_hook_runtime::HookAction,
 }
 
 /// Everything a plugin contributes, ready to register.
@@ -112,7 +112,7 @@ impl LoadedPlugin {
     }
 }
 
-/// Load a plugin from `root`, which must contain a Lochor `plugin.json`.
+/// Load a plugin from `root`, which must contain a Locaryn `plugin.json`.
 pub fn load(root: &Path) -> Result<LoadedPlugin, LoadError> {
     let manifest = crate::manifest::load(root)?;
     Ok(load_with_manifest(root, manifest))
@@ -143,7 +143,7 @@ pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin
         c.skills.iter().map(|s| root.join(s)).collect()
     };
     for path in skill_paths {
-        match lochor_skill_runtime::parse_file(&path) {
+        match locaryn_skill_runtime::parse_file(&path) {
             Ok(def) => p.skills.push(def),
             Err(e) => p.errors.push(format!("skill {}: {e}", rel(root, &path))),
         }
@@ -156,7 +156,7 @@ pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin
         c.commands.iter().map(|s| root.join(s)).collect()
     };
     for path in command_paths {
-        match lochor_command_runtime::parse_file(&path) {
+        match locaryn_command_runtime::parse_file(&path) {
             Ok(def) => p.commands.push(def),
             Err(e) => p.errors.push(format!("command {}: {e}", rel(root, &path))),
         }
@@ -178,7 +178,7 @@ pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin
     // --- Rules --------------------------------------------------------------
     let rule_paths: Vec<PathBuf> = if declared_nothing {
         let mut v = discover_markdown(&root.join("rules"));
-        for candidate in ["LOCHOR.md", "CLAUDE.md", "AGENTS.md", "GEMINI.md"] {
+        for candidate in ["LOCARYN.md", "CLAUDE.md", "AGENTS.md", "GEMINI.md"] {
             if root.join(candidate).is_file() {
                 v.push(root.join(candidate));
                 break;
@@ -206,7 +206,7 @@ pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin
         })
         .filter(|p| p.is_file());
     if let Some(path) = hooks_path {
-        match lochor_hook_runtime::load_hooks(&path) {
+        match locaryn_hook_runtime::load_hooks(&path) {
             Ok(file) => p.hooks = flatten_hooks(&file),
             Err(e) => p.errors.push(format!("hooks {}: {e}", rel(root, &path))),
         }
@@ -250,7 +250,7 @@ pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin
         })
         .filter(|p| p.is_file());
     if let Some(path) = lsp_path {
-        match lochor_lsp_adapters::load_config(&path) {
+        match locaryn_lsp_adapters::load_config(&path) {
             Ok(cfg) => {
                 p.lsp = cfg
                     .adapters
@@ -274,14 +274,14 @@ pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin
 // ============================================================================
 
 /// Substitute the variables a plugin may use in commands, args and env:
-/// `${LOCHOR_PLUGIN_ROOT}` (this plugin's directory) and `${env:NAME}`.
+/// `${LOCARYN_PLUGIN_ROOT}` (this plugin's directory) and `${env:NAME}`.
 ///
 /// An `${env:NAME}` that is not set expands to the empty string, matching what
 /// every other client does — a missing token yields an auth failure from the
 /// server, which is a clearer error than a literal `${env:TOKEN}` being sent.
 pub fn expand_str(s: &str, root: &Path) -> String {
     let mut out = s.replace(
-        "${LOCHOR_PLUGIN_ROOT}",
+        "${LOCARYN_PLUGIN_ROOT}",
         &root.to_string_lossy().replace('\\', "/"),
     );
     while let Some(start) = out.find("${env:") {
@@ -413,9 +413,9 @@ fn parse_list(v: &str) -> Vec<String> {
         .collect()
 }
 
-fn flatten_hooks(file: &lochor_hook_runtime::HooksFile) -> Vec<LoadedHook> {
-    use lochor_hook_runtime::HookEvent as E;
-    let groups: [(E, &Vec<lochor_hook_runtime::MatcherEntry>); 9] = [
+fn flatten_hooks(file: &locaryn_hook_runtime::HooksFile) -> Vec<LoadedHook> {
+    use locaryn_hook_runtime::HookEvent as E;
+    let groups: [(E, &Vec<locaryn_hook_runtime::MatcherEntry>); 9] = [
         (E::PreToolUse, &file.pre_tool_use),
         (E::PostToolUse, &file.post_tool_use),
         (E::Stop, &file.stop),
@@ -499,7 +499,7 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("lochor-loader-{name}"));
+        let d = std::env::temp_dir().join(format!("locaryn-loader-{name}"));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -524,7 +524,7 @@ mod tests {
         assert!(p.errors.is_empty(), "unexpected errors: {:?}", p.errors);
         let counts = p.counts();
         assert!(counts.total() >= 7);
-        // `${LOCHOR_PLUGIN_ROOT}` in the MCP args resolved to a real path.
+        // `${LOCARYN_PLUGIN_ROOT}` in the MCP args resolved to a real path.
         assert!(
             p.mcp[0].1.args.iter().all(|a| !a.contains("${")),
             "unexpanded variable: {:?}",
@@ -572,8 +572,8 @@ mod tests {
     #[test]
     fn expands_plugin_root_and_env() {
         let d = tmp("expand");
-        std::env::set_var("LOCHOR_TEST_TOKEN", "s3cret");
-        let s = expand_str("${LOCHOR_PLUGIN_ROOT}/x --t ${env:LOCHOR_TEST_TOKEN}", &d);
+        std::env::set_var("LOCARYN_TEST_TOKEN", "s3cret");
+        let s = expand_str("${LOCARYN_PLUGIN_ROOT}/x --t ${env:LOCARYN_TEST_TOKEN}", &d);
         assert!(s.ends_with("/x --t s3cret"), "{s}");
         assert!(!s.contains("${"));
     }
@@ -581,8 +581,8 @@ mod tests {
     #[test]
     fn unset_env_expands_to_empty_not_literal() {
         let d = tmp("expand2");
-        std::env::remove_var("LOCHOR_DEFINITELY_UNSET");
-        let s = expand_str("a${env:LOCHOR_DEFINITELY_UNSET}b", &d);
+        std::env::remove_var("LOCARYN_DEFINITELY_UNSET");
+        let s = expand_str("a${env:LOCARYN_DEFINITELY_UNSET}b", &d);
         assert_eq!(s, "ab");
     }
 }

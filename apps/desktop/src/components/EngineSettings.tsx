@@ -73,16 +73,16 @@ export function EngineSettings() {
   }
 
   return (
-      <div className="lochor-engine-tab">
-        <div className="lochor-field">
-          <label className="lochor-field-label">Runtime IA (llama.cpp)</label>
-          <p className="lochor-field-hint">
-            Le moteur unique qui exécute vos modèles GGUF en local. Lochor le télécharge
+      <div className="locaryn-engine-tab">
+        <div className="locaryn-field">
+          <label className="locaryn-field-label">Runtime IA (llama.cpp)</label>
+          <p className="locaryn-field-hint">
+            Le moteur unique qui exécute vos modèles GGUF en local. Locaryn le télécharge
             et le maintient à jour ({runtime?.pinned ?? "…"}, build Vulkan — GPU
             NVIDIA/AMD/Intel). Pas de service externe à assembler.
           </p>
-          <div className={`lochor-conn lochor-conn-${runtime?.up_to_date ? "ok" : runtime?.installed ? "error" : "idle"}`} style={{ marginTop: 8 }}>
-            <span className="lochor-conn-dot" />
+          <div className={`locaryn-conn locaryn-conn-${runtime?.up_to_date ? "ok" : runtime?.installed ? "error" : "idle"}`} style={{ marginTop: 8 }}>
+            <span className="locaryn-conn-dot" />
             {runtime == null
               ? "état inconnu"
               : runtime.up_to_date
@@ -93,7 +93,7 @@ export function EngineSettings() {
           </div>
           {installing ? (
             <div style={{ marginTop: 10 }}>
-              <div className="lochor-field-hint">
+              <div className="locaryn-field-hint">
                 {installStatus} {installPct > 0 && installPct < 100 ? `· ${installPct}%` : ""}
               </div>
               <div style={{ height: 6, background: "var(--surface)", borderRadius: 99, marginTop: 6, overflow: "hidden" }}>
@@ -102,35 +102,35 @@ export function EngineSettings() {
             </div>
           ) : (
             !runtime?.up_to_date && (
-              <div className="lochor-field-actions" style={{ marginTop: 12 }}>
-                <button type="button" className="lochor-btn-primary" onClick={installRuntime}>
+              <div className="locaryn-field-actions" style={{ marginTop: 12 }}>
+                <button type="button" className="locaryn-btn-primary" onClick={installRuntime}>
                   {runtime?.installed ? "Mettre à jour le runtime" : "Installer le runtime"}
                 </button>
               </div>
             )
           )}
           {installError && (
-            <p className="lochor-field-hint" style={{ color: "var(--danger)", marginTop: 8 }}>
+            <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginTop: 8 }}>
               {installError}
             </p>
           )}
         </div>
 
-        <div className="lochor-field" style={{ marginTop: 24 }}>
-          <label className="lochor-field-label">Capacités du moteur</label>
-          <p className="lochor-field-hint">
+        <div className="locaryn-field" style={{ marginTop: 24 }}>
+          <label className="locaryn-field-label">Capacités du moteur</label>
+          <p className="locaryn-field-hint">
             Un seul moteur couvre toutes ces fonctions. Chaque capacité active dépend
             du runtime et des modèles installés.
           </p>
-          <div className="lochor-caps-grid" style={{ marginTop: 12 }}>
+          <div className="locaryn-caps-grid" style={{ marginTop: 12 }}>
             {CAPS.map((c) => {
               const on = Boolean(caps?.[c.key]);
               return (
-                <div key={c.key} className="lochor-cap-chip" style={{ opacity: on ? 1 : 0.5 }} title={c.hint}>
-                  <span className={`lochor-health-dot ${on ? "lochor-health-ok" : "lochor-health-off"}`} style={{ flex: "0 0 auto" }} />
+                <div key={c.key} className="locaryn-cap-chip" style={{ opacity: on ? 1 : 0.5 }} title={c.hint}>
+                  <span className={`locaryn-health-dot ${on ? "locaryn-health-ok" : "locaryn-health-off"}`} style={{ flex: "0 0 auto" }} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>{c.label}</div>
-                    <div className="lochor-field-hint" style={{ margin: 0 }}>{c.hint}</div>
+                    <div className="locaryn-field-hint" style={{ margin: 0 }}>{c.hint}</div>
                   </div>
                 </div>
               );
@@ -138,10 +138,10 @@ export function EngineSettings() {
           </div>
           {caps && caps.unavailable.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div className="lochor-field-hint" style={{ marginBottom: 6 }}>
+              <div className="locaryn-field-hint" style={{ marginBottom: 6 }}>
                 Non couvert par ce moteur (nécessiterait une pile séparée) :
               </div>
-              <ul className="lochor-caps-unavailable">
+              <ul className="locaryn-caps-unavailable">
                 {caps.unavailable.map((u) => <li key={u}>{u}</li>)}
               </ul>
             </div>
@@ -149,22 +149,22 @@ export function EngineSettings() {
         </div>
 
         {/* LoRA adapters — preload + live hot-swap */}
-        <div className="lochor-field" style={{ marginTop: 24 }}>
-          <label className="lochor-field-label">Adaptateurs LoRA</label>
-          <p className="lochor-field-hint">
+        <div className="locaryn-field" style={{ marginTop: 24 }}>
+          <label className="locaryn-field-label">Adaptateurs LoRA</label>
+          <p className="locaryn-field-hint">
             Applique des adaptateurs LoRA (fichiers <code>.gguf</code>) sur le modèle.
             L'entraînement se fait en Python (Unsloth/PEFT) puis <code>convert_lora_to_gguf.py</code> ;
             ici on les <strong>charge et on ajuste leur intensité à chaud</strong>.
           </p>
 
           {(engineCfg?.lora_adapters?.length ?? 0) > 0 ? (
-            <ul className="lochor-lora-list">
+            <ul className="locaryn-lora-list">
               {engineCfg!.lora_adapters.map((p, i) => (
-                <li key={p + i} className="lochor-lora-row">
-                  <span className="lochor-kv-mono lochor-lora-path" title={p}>{p}</span>
+                <li key={p + i} className="locaryn-lora-row">
+                  <span className="locaryn-kv-mono locaryn-lora-path" title={p}>{p}</span>
                   <button
                     type="button"
-                    className="lochor-btn-ghost"
+                    className="locaryn-btn-ghost"
                     onClick={() => saveLoraList(engineCfg!.lora_adapters.filter((_, j) => j !== i))}
                   >
                     Retirer
@@ -173,12 +173,12 @@ export function EngineSettings() {
               ))}
             </ul>
           ) : (
-            <p className="lochor-field-hint" style={{ fontStyle: "italic" }}>Aucun adaptateur préchargé.</p>
+            <p className="locaryn-field-hint" style={{ fontStyle: "italic" }}>Aucun adaptateur préchargé.</p>
           )}
 
-          <div className="lochor-field-row" style={{ marginTop: 8 }}>
+          <div className="locaryn-field-row" style={{ marginTop: 8 }}>
             <input
-              className="lochor-input"
+              className="locaryn-input"
               placeholder="Chemin vers un adaptateur .gguf"
               value={loraPath}
               spellCheck={false}
@@ -188,7 +188,7 @@ export function EngineSettings() {
             />
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               disabled={!loraPath.trim() || !engineCfg}
               onClick={() => {
                 const p = loraPath.trim();
@@ -203,7 +203,7 @@ export function EngineSettings() {
             </button>
           </div>
           {isNsfwLora(loraPath) && (
-            <label className="lochor-checkbox-row" style={{ marginTop: 8, color: "var(--danger)" }}>
+            <label className="locaryn-checkbox-row" style={{ marginTop: 8, color: "var(--danger)" }}>
               <input
                 type="checkbox"
                 checked={loraNsfwAck}
@@ -212,19 +212,19 @@ export function EngineSettings() {
               <span>Ce LoRA/embedding est classé NSFW / sans garde-fous. Je prends la responsabilité de son usage.</span>
             </label>
           )}
-          <p className="lochor-field-hint">
+          <p className="locaryn-field-hint">
             Ajouter/retirer prend effet au prochain démarrage du serveur (changement de modèle
             ou premier message).
           </p>
 
           {loraLive && loraLive.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div className="lochor-field-hint" style={{ marginBottom: 6 }}>
+              <div className="locaryn-field-hint" style={{ marginBottom: 6 }}>
                 Intensité en direct (serveur en cours — sans redémarrage) :
               </div>
               {loraLive.map((a) => (
-                <div key={a.id} className="lochor-lora-live-row">
-                  <span className="lochor-kv-mono lochor-lora-path" title={a.path}>{a.path || `adapter #${a.id}`}</span>
+                <div key={a.id} className="locaryn-lora-live-row">
+                  <span className="locaryn-kv-mono locaryn-lora-path" title={a.path}>{a.path || `adapter #${a.id}`}</span>
                   <input
                     type="range"
                     min={0}
@@ -233,7 +233,7 @@ export function EngineSettings() {
                     value={a.scale}
                     onChange={(e) => setLiveScale(a.id, parseFloat(e.target.value))}
                   />
-                  <span className="lochor-lora-scale">{a.scale.toFixed(2)}</span>
+                  <span className="locaryn-lora-scale">{a.scale.toFixed(2)}</span>
                 </div>
               ))}
             </div>

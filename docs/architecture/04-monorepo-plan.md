@@ -1,11 +1,11 @@
 # 04 — Monorepo Plan
 
-Monorepo unique `lochor/lochor` sur GitHub. **Un seul dépôt** (pas de multi-repo) — la contrainte "même cœur" l'impose.
+Monorepo unique `locaryn/locaryn` sur GitHub. **Un seul dépôt** (pas de multi-repo) — la contrainte "même cœur" l'impose.
 
 ## Arborescence complète
 
 ```
-lochor/
+locaryn/
 ├── .cargo/
 │   └── config.toml
 ├── .github/
@@ -15,10 +15,10 @@ lochor/
 │   │   └── release.yml           # tag-triggered release
 │   └── ISSUE_TEMPLATE/
 ├── apps/
-│   ├── cli/                      # @lochor/cli (Rust binary, clap)
+│   ├── cli/                      # @locaryn/cli (Rust binary, clap)
 │   │   ├── Cargo.toml
 │   │   └── src/main.rs
-│   └── desktop/                  # @lochor/desktop (Tauri v2 + React/TS)
+│   └── desktop/                  # @locaryn/desktop (Tauri v2 + React/TS)
 │       ├── package.json
 │       ├── vite.config.ts
 │       ├── tsconfig.json
@@ -37,41 +37,41 @@ lochor/
 │           ├── binaries/         # sidecars (provider-supervisor per target)
 │           └── src/main.rs
 ├── services/
-│   ├── daemon/                   # lochor-daemon (Rust binary, axum, loopback)
+│   ├── daemon/                   # locaryn-daemon (Rust binary, axum, loopback)
 │   │   ├── Cargo.toml
 │   │   └── src/main.rs
-│   ├── remote-server/            # lochor-remote-server (Rust binary, TLS, auth)
+│   ├── remote-server/            # locaryn-remote-server (Rust binary, TLS, auth)
 │   │   ├── Cargo.toml
 │   │   ├── src/
 │   │   │   └── main.rs
 │   │   └── enterprise/           # BSL 1.1 module (collaboration, DGX, gate)
 │   │       ├── Cargo.toml
 │   │       └── src/lib.rs
-│   └── provider-supervisor/      # lochor-provider-supervisor (Rust binary/sidecar)
+│   └── provider-supervisor/      # locaryn-provider-supervisor (Rust binary/sidecar)
 │       ├── Cargo.toml
 │       └── src/main.rs
 ├── packages/                     # Les 16 crates Rust = LE CŒUR
-│   ├── shared-types/             # lochor-shared-types
-│   ├── sdk/                      # lochor-sdk (client HTTP/SSE)
-│   ├── auth/                     # lochor-auth
-│   ├── config/                   # lochor-config
-│   ├── storage/                  # lochor-storage (SQLite)
-│   ├── events/                   # lochor-events (event types + bus)
-│   ├── preview/                  # lochor-preview (artifact model, CSP)
-│   ├── extensions/               # lochor-extensions (registry, loader, import)
-│   ├── mcp/                      # lochor-mcp (rmcp wrapper)
-│   ├── plugin-sdk/               # lochor-plugin-sdk (for authors)
-│   ├── command-runtime/          # lochor-command-runtime
-│   ├── hook-runtime/             # lochor-hook-runtime
-│   ├── skill-runtime/            # lochor-skill-runtime
-│   ├── agent-runtime/            # lochor-agent-runtime
-│   ├── rules-runtime/            # lochor-rules-runtime
-│   └── lsp-adapters/             # lochor-lsp-adapters
+│   ├── shared-types/             # locaryn-shared-types
+│   ├── sdk/                      # locaryn-sdk (client HTTP/SSE)
+│   ├── auth/                     # locaryn-auth
+│   ├── config/                   # locaryn-config
+│   ├── storage/                  # locaryn-storage (SQLite)
+│   ├── events/                   # locaryn-events (event types + bus)
+│   ├── preview/                  # locaryn-preview (artifact model, CSP)
+│   ├── extensions/               # locaryn-extensions (registry, loader, import)
+│   ├── mcp/                      # locaryn-mcp (rmcp wrapper)
+│   ├── plugin-sdk/               # locaryn-plugin-sdk (for authors)
+│   ├── command-runtime/          # locaryn-command-runtime
+│   ├── hook-runtime/             # locaryn-hook-runtime
+│   ├── skill-runtime/            # locaryn-skill-runtime
+│   ├── agent-runtime/            # locaryn-agent-runtime
+│   ├── rules-runtime/            # locaryn-rules-runtime
+│   └── lsp-adapters/             # locaryn-lsp-adapters
 ├── packages-ui/                  # Shared React/TS UI components
-│   ├── core/                     # @lochor/ui-core (buttons, panels, tokens)
-│   ├── chat/                     # @lochor/ui-chat
-│   ├── preview/                  # @lochor/ui-preview
-│   └── terminal/                 # @lochor/ui-terminal (xterm wrapper)
+│   ├── core/                     # @locaryn/ui-core (buttons, panels, tokens)
+│   ├── chat/                     # @locaryn/ui-chat
+│   ├── preview/                  # @locaryn/ui-preview
+│   └── terminal/                 # @locaryn/ui-terminal (xterm wrapper)
 ├── docs/
 │   ├── architecture/
 │   │   ├── 01-product-spec.md
@@ -126,7 +126,7 @@ lochor/
 
 ## Repositories
 
-**Un seul repository GitHub: `lochor/lochor`.** Pas de multi-repo.
+**Un seul repository GitHub: `locaryn/locaryn`.** Pas de multi-repo.
 
 - `main` = branche stable de dev.
 - `release/*` branches de release.
@@ -137,18 +137,18 @@ lochor/
 
 | Type | Convention | Exemple |
 | --- | --- | --- |
-| Crate Rust (lib) | `lochor-<kebab>` | `lochor-storage`, `lochor-mcp` |
-| Crate Rust (bin) | `lochor-<kebab>` (bin name idem) | `lochor-daemon`, `lochor-cli` |
-| Package npm | `@lochor/<kebab>` | `@lochor/desktop`, `@lochor/ui-core` |
-| Binaire distribué | `lochor` (CLI), `lochor-daemon`, `lochor-remote-server`, `lochor-supervisor` | — |
-| Service systemd | `lochor-remote-server.service` | — |
+| Crate Rust (lib) | `locaryn-<kebab>` | `locaryn-storage`, `locaryn-mcp` |
+| Crate Rust (bin) | `locaryn-<kebab>` (bin name idem) | `locaryn-daemon`, `locaryn-cli` |
+| Package npm | `@locaryn/<kebab>` | `@locaryn/desktop`, `@locaryn/ui-core` |
+| Binaire distribué | `locaryn` (CLI), `locaryn-daemon`, `locaryn-remote-server`, `locaryn-supervisor` | — |
+| Service systemd | `locaryn-remote-server.service` | — |
 | Port daemon | `7474` | `127.0.0.1:7474` |
 | Port remote-server | `7473` | `0.0.0.0:7473` (TLS) |
-| Config dir | `~/.lochor/` (global/user), `.lochor/` (workspace) | — |
+| Config dir | `~/.locaryn/` (global/user), `.locaryn/` (workspace) | — |
 | Plugin manifest | `plugin.json` | — |
-| MCP config | `.lochor/mcp.json` (workspace), `~/.lochor/mcp.json` (global) | — |
-| Rules | `.lochor/rules/*.md` + `LOCHOR.md` (workspace) | — |
-| Env vars | `LOCHOR_*` | `LOCHOR_SERVER_URL`, `LOCHOR_TOKEN` |
+| MCP config | `.locaryn/mcp.json` (workspace), `~/.locaryn/mcp.json` (global) | — |
+| Rules | `.locaryn/rules/*.md` + `LOCARYN.md` (workspace) | — |
+| Env vars | `LOCARYN_*` | `LOCARYN_SERVER_URL`, `LOCARYN_TOKEN` |
 
 ## Responsabilités de chaque package
 
@@ -159,7 +159,7 @@ lochor/
 | `shared-types` | Types partagés (Session, Project, Message, Task, Artifact, Provider, Permission, ExtensionKind...) sérialisables serde. Zero dépendance métier. |
 | `sdk` | Client HTTP/SSE du daemon et du remote-server. utilisé par CLI et (option) desktop. Réessaie, fallback, healthcheck. |
 | `auth` | Token management, keychain, login/refresh/logout, Argon2id hash côté serveur, audit. |
-| `config` | Chargement/merge config par scope (global/user/workspace), `~/.lochor/config.toml`, `.lochor/config.toml`, env vars. |
+| `config` | Chargement/merge config par scope (global/user/workspace), `~/.locaryn/config.toml`, `.locaryn/config.toml`, env vars. |
 | `storage` | SQLite via sqlx, migrations, repositories (projects, sessions, messages, tasks, artifacts, extensions...). Abstraction pour future compat PostgreSQL. |
 | `events` | Types d'événements (TokenStream, TaskUpdate, LogLine, PreviewUpdate, ProviderChanged, ExtensionEvent...) + bus local + sérialisation SSE. |
 | `preview` | Modèle d'artefact, génération HTML sandboxed, CSP, export Python→HTML/PNG hooks. |
@@ -170,7 +170,7 @@ lochor/
 | `hook-runtime` | PreToolUse/PostToolUse/Stop/SessionStart/... events, exécution hooks shell avec timeout + permissions. |
 | `skill-runtime` | Chargement SKILL.md, auto-trigger ou `/skill`, injection system prompt. |
 | `agent-runtime` | Subagents spécialisés, isolation contexte, tool subset, model override, agent profiles. |
-| `rules-runtime` | Agrégation `LOCHOR.md` + `.lochor/rules/*.md` par scope, injection system prompt, priorité global<workspace. |
+| `rules-runtime` | Agrégation `LOCARYN.md` + `.locaryn/rules/*.md` par scope, injection system prompt, priorité global<workspace. |
 | `lsp-adapters` | Adaptateurs LSP (towers-lsp ou wrapper), registration par projet, exposé comme tool agent. |
 
 ### `packages-ui/` (React/TS — partagé desktop)
@@ -186,7 +186,7 @@ lochor/
 
 | App | Responsabilité |
 | --- | --- |
-| `cli` | Thin client: parse args (clap), parle au daemon via `lochor-sdk`, affiche tokens/logs, `--no-daemon` embarque le core. |
+| `cli` | Thin client: parse args (clap), parle au daemon via `locaryn-sdk`, affiche tokens/logs, `--no-daemon` embarque le core. |
 | `desktop` | Tauri v2 shell: embarque core in-process, UI React/TS (4 panneaux), Monaco, xterm, preview, gestion extensions/MCP/rules dans l'UI. |
 
 ### `services/`
@@ -201,9 +201,9 @@ lochor/
 
 - **SemVer 2.0** pour tous les packages.
 - Workspace version unifié `0.1.0` en MVP; chaque crate peut diverger à partir de `1.0.0`.
-- `lochor-*` crates internes: version workspace jusqu'à 1.0, puis versionnage indépendant.
+- `locaryn-*` crates internes: version workspace jusqu'à 1.0, puis versionnage indépendant.
 - Changelog par release (`CHANGELOG.md` racine).
-- **Manifest plugin versioning**: `plugin.json` a `apiVersion` (Lochor extension API) + `version` (version du plugin). Lochor refuse les plugins dont `apiVersion` n'est pas supportée.
+- **Manifest plugin versioning**: `plugin.json` a `apiVersion` (Locaryn extension API) + `version` (version du plugin). Locaryn refuse les plugins dont `apiVersion` n'est pas supportée.
 
 ## CI/CD
 
@@ -231,11 +231,11 @@ Matrix:
 | ubuntu-22.04-arm | arm64 | `aarch64-unknown-linux-gnu` |
 
 Produits:
-- `lochor-cli-<target>` (bin)
-- `lochor-daemon-<target>` (bin)
-- `lochor-remote-server-<target>` (bin)
-- `lochor-supervisor-<target>` (bin)
-- `Lochor-<version>-<os>-<arch>.<pkg>` (Tauri bundle: MSI/NSIS sur Win, DMG sur macOS, AppImage/deb sur Linux)
+- `locaryn-cli-<target>` (bin)
+- `locaryn-daemon-<target>` (bin)
+- `locaryn-remote-server-<target>` (bin)
+- `locaryn-supervisor-<target>` (bin)
+- `Locaryn-<version>-<os>-<arch>.<pkg>` (Tauri bundle: MSI/NSIS sur Win, DMG sur macOS, AppImage/deb sur Linux)
 
 ### `release.yml` (sur tag `v*`)
 

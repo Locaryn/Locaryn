@@ -1,11 +1,11 @@
-//! Lochor preview — artifact model + sandboxed HTML generation.
+//! Locaryn preview — artifact model + sandboxed HTML generation.
 //!
 //! Preview artifacts are served from an isolated origin
-//! (`lochor-preview://` or `tauri://localhost/preview`) and rendered in an
+//! (`locaryn-preview://` or `tauri://localhost/preview`) and rendered in an
 //! iframe with `sandbox="allow-scripts"` (never `allow-same-origin`) and a
 //! strict CSP that blocks network unless the user explicitly grants it.
 
-use lochor_shared_types::{Artifact, ArtifactKind};
+use locaryn_shared_types::{Artifact, ArtifactKind};
 use serde::{Deserialize, Serialize};
 
 /// Strict CSP for preview iframes. No network, no external resources.
@@ -63,7 +63,7 @@ pub fn wrap_html(artifact_id: &str, raw_html: &str, allow_network: bool) -> Stri
         "<!doctype html>\n<html>\n<head>\n\
          <meta charset=\"utf-8\">\n\
          <meta http-equiv=\"Content-Security-Policy\" content=\"{csp}\">\n\
-         <meta name=\"lochor-artifact-id\" content=\"{artifact_id}\">\n\
+         <meta name=\"locaryn-artifact-id\" content=\"{artifact_id}\">\n\
          </head>\n<body>\n{raw_html}\n</body>\n</html>"
     )
 }
@@ -81,7 +81,7 @@ pub fn render_markdown(md: &str) -> String {
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;");
-    format!("<pre class=\"lochor-md\">{escaped}</pre>")
+    format!("<pre class=\"locaryn-md\">{escaped}</pre>")
 }
 
 /// A request to render an artifact in the preview panel.

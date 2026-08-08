@@ -60,7 +60,7 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
     return () => { cancelled = true; };
   }, []);
 
-  // Un lien lochor://install?src=… doit atterrir sur la section Extensions.
+  // Un lien locaryn://install?src=… doit atterrir sur la section Extensions.
   // Le panneau consomme ensuite l'intention pour pré-remplir la fenêtre
   // d'installation — on ne fait que naviguer ici.
   useEffect(() => {
@@ -74,35 +74,35 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
   const current = SECTIONS.find((s) => s.id === section)!;
 
   return (
-    <section className="lochor-view-container">
-      <div className="lochor-view-header">
+    <section className="locaryn-view-container">
+      <div className="locaryn-view-header">
         <h2>Paramètres de l'application</h2>
-        <p className="lochor-view-desc">
-          Tous les réglages de Lochor. Les options propres à une conversation restent
+        <p className="locaryn-view-desc">
+          Tous les réglages de Locaryn. Les options propres à une conversation restent
           accessibles depuis le panneau du chat.
         </p>
       </div>
 
-      <div className="lochor-settings-full">
-        <nav className="lochor-settings-full-nav">
+      <div className="locaryn-settings-full">
+        <nav className="locaryn-settings-full-nav">
           {SECTIONS.map((s) => (
             <button
               key={s.id}
               type="button"
-              className={`lochor-settings-full-item${section === s.id ? " lochor-active" : ""}`}
+              className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
               onClick={() => setSection(s.id)}
             >
-              <span className="lochor-settings-full-icon">{s.icon}</span>
-              <span className="lochor-settings-full-text">
-                <span className="lochor-settings-full-label">{s.label}</span>
-                <span className="lochor-settings-full-desc">{s.desc}</span>
+              <span className="locaryn-settings-full-icon">{s.icon}</span>
+              <span className="locaryn-settings-full-text">
+                <span className="locaryn-settings-full-label">{s.label}</span>
+                <span className="locaryn-settings-full-desc">{s.desc}</span>
               </span>
             </button>
           ))}
         </nav>
 
-        <div className="lochor-settings-full-pane">
-          <h3 className="lochor-settings-full-title">
+        <div className="locaryn-settings-full-pane">
+          <h3 className="locaryn-settings-full-title">
             {current.icon} {current.label}
           </h3>
 
@@ -117,37 +117,37 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
           {section === "snapmcp" && <SnapMcpTestBench />}
 
           {section === "appearance" && (
-            <div className="lochor-field">
-              <label className="lochor-field-label">Couleur d'accentuation</label>
-              <p className="lochor-field-hint">
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">Couleur d'accentuation</label>
+              <p className="locaryn-field-hint">
                 La teinte unique de l'interface. Sobre et naturelle par défaut.
               </p>
-              <div className="lochor-swatch-grid" style={{ marginTop: 12 }}>
+              <div className="locaryn-swatch-grid" style={{ marginTop: 12 }}>
                 {ACCENT_PRESETS.map((p) => (
                   <button
                     key={p.hex}
                     type="button"
-                    className={`lochor-swatch${settings.accentHex === p.hex ? " lochor-swatch-active" : ""}`}
+                    className={`locaryn-swatch${settings.accentHex === p.hex ? " locaryn-swatch-active" : ""}`}
                     style={{ background: p.hex }}
                     title={p.name}
                     aria-label={`Accent ${p.name}`}
                     onClick={() => updateAccent(p.hex)}
                   >
-                    {settings.accentHex === p.hex && <span className="lochor-swatch-check">✓</span>}
+                    {settings.accentHex === p.hex && <span className="locaryn-swatch-check">✓</span>}
                   </button>
                 ))}
               </div>
-              <div className="lochor-custom-color" style={{ marginTop: 16 }}>
+              <div className="locaryn-custom-color" style={{ marginTop: 16 }}>
                 <input
                   type="color"
                   value={settings.accentHex}
                   onChange={(e) => updateAccent(e.target.value)}
-                  className="lochor-color-input"
+                  className="locaryn-color-input"
                   aria-label="Couleur personnalisée"
                 />
-                <span className="lochor-color-value">{settings.accentHex}</span>
+                <span className="locaryn-color-value">{settings.accentHex}</span>
               </div>
-              <button type="button" className="lochor-settings-reset" style={{ marginTop: 16 }} onClick={resetTheme}>
+              <button type="button" className="locaryn-settings-reset" style={{ marginTop: 16 }} onClick={resetTheme}>
                 Réinitialiser l'apparence
               </button>
             </div>
@@ -164,34 +164,34 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
           {section === "storage" && <StorageSettings onOpenMarketplace={onOpenMarketplace} />}
 
           {section === "language" && (
-            <div className="lochor-field">
-              <label className="lochor-field-label">Langue de l'interface</label>
-              <p className="lochor-field-hint">
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">Langue de l'interface</label>
+              <p className="locaryn-field-hint">
                 Change la langue des textes de l'application. Les noms de modèles, de marques
                 et les termes techniques restent inchangés.
               </p>
-              <div className="lochor-lang-grid" style={{ marginTop: 12 }}>
+              <div className="locaryn-lang-grid" style={{ marginTop: 12 }}>
                 {LANGUAGES.map((l) => (
                   <button
                     key={l.id}
                     type="button"
-                    className={`lochor-lang-item${lang === l.id ? " lochor-active" : ""}`}
+                    className={`locaryn-lang-item${lang === l.id ? " locaryn-active" : ""}`}
                     onClick={() => setLang(l.id)}
                   >
-                    <span className="lochor-lang-flag">{l.flag}</span>
+                    <span className="locaryn-lang-flag">{l.flag}</span>
                     <span>{l.label}</span>
-                    {lang === l.id && <span className="lochor-lang-check">✓</span>}
+                    {lang === l.id && <span className="locaryn-lang-check">✓</span>}
                   </button>
                 ))}
               </div>
-              <p className="lochor-field-hint" style={{ marginTop: 16 }}>
+              <p className="locaryn-field-hint" style={{ marginTop: 16 }}>
                 <strong>Jamais traduits</strong> — noms de produits et termes techniques :
               </p>
-              <div className="lochor-lang-terms">
+              <div className="locaryn-lang-terms">
                 {DO_NOT_TRANSLATE.slice(0, 14).map((w) => (
                   <code key={w}>{w}</code>
                 ))}
-                <span className="lochor-field-hint">+{DO_NOT_TRANSLATE.length - 14} autres</span>
+                <span className="locaryn-field-hint">+{DO_NOT_TRANSLATE.length - 14} autres</span>
               </div>
             </div>
           )}

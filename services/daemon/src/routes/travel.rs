@@ -31,7 +31,7 @@ pub async fn set(State(s): State<Arc<DaemonState>>, Json(body): Json<SetBody>) -
         return Json(TravelStatus::default()).into_response();
     };
 
-    let Some(provider) = lochor_travel::Provider::parse(&name) else {
+    let Some(provider) = locaryn_travel::Provider::parse(&name) else {
         return bad_request(format!(
             "Relais inconnu : « {name} ». Valeurs possibles : cloudflare, ngrok, devtunnel."
         ));

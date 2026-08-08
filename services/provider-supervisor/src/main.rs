@@ -1,17 +1,17 @@
-//! Lochor provider supervisor CLI — `lochor-supervisor`.
+//! Locaryn provider supervisor CLI — `locaryn-supervisor`.
 //!
-//! Standalone CLI that wraps the `lochor_provider_supervisor` library to
+//! Standalone CLI that wraps the `locaryn_provider_supervisor` library to
 //! detect, start, healthcheck, and stop local LLM runtimes on loopback.
 //! The daemon also uses the library in-process; this CLI is for manual
 //! inspection and debugging.
 
 use clap::{Parser, Subcommand};
-use lochor_provider_supervisor::{Supervisor, SupervisorConfig};
-use lochor_shared_types::ProviderEngine;
+use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
+use locaryn_shared_types::ProviderEngine;
 
 #[derive(Parser)]
 #[command(
-    name = "lochor-supervisor",
+    name = "locaryn-supervisor",
     version,
     about = "Supervise local LLM runtimes on loopback"
 )]
@@ -49,11 +49,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Open storage (same DB as the daemon) so the supervisor can update
     // provider statuses.
-    let data_dir = lochor_config::default_data_dir();
+    let data_dir = locaryn_config::default_data_dir();
     std::fs::create_dir_all(&data_dir)?;
-    let db_path = data_dir.join("lochor.db");
-    let pool = lochor_storage::open(&db_path).await?;
-    let storage = lochor_storage::Storage::new(pool);
+    let db_path = data_dir.join("locaryn.db");
+    let pool = locaryn_storage::open(&db_path).await?;
+    let storage = locaryn_storage::Storage::new(pool);
     let sup = Supervisor::new(SupervisorConfig::default(), storage);
 
     match cli.cmd {
@@ -101,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Cmd::Watch => {
-            println!("lochor-supervisor watching (Ctrl+C to stop)...");
+            println!("locaryn-supervisor watching (Ctrl+C to stop)...");
             let _handle = sup.spawn_healthcheck_loop();
             // Run forever until interrupted.
             tokio::signal::ctrl_c().await?;

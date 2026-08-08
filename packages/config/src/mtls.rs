@@ -61,8 +61,8 @@ pub fn authority(data_dir: &Path) -> anyhow::Result<Authority> {
     params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Constrained(0));
     params.distinguished_name = {
         let mut dn = rcgen::DistinguishedName::new();
-        dn.push(rcgen::DnType::CommonName, "Lochor local CA");
-        dn.push(rcgen::DnType::OrganizationName, "Lochor");
+        dn.push(rcgen::DnType::CommonName, "Locaryn local CA");
+        dn.push(rcgen::DnType::OrganizationName, "Locaryn");
         dn
     };
     params.key_usages = vec![
@@ -109,7 +109,7 @@ pub fn issue_client(data_dir: &Path, name: &str, days: u32) -> anyhow::Result<Cl
         // The name travels inside the certificate, so the server knows who
         // connected before a single request is read.
         dn.push(rcgen::DnType::CommonName, name.trim());
-        dn.push(rcgen::DnType::OrganizationName, "Lochor");
+        dn.push(rcgen::DnType::OrganizationName, "Locaryn");
         dn
     };
     params.use_authority_key_identifier_extension = true;
@@ -158,7 +158,7 @@ mod tests {
 
     fn scratch(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "lochor_mtls_{tag}_{}",
+            "locaryn_mtls_{tag}_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -246,8 +246,8 @@ pub fn issue_server(data_dir: &Path, names: Vec<String>) -> anyhow::Result<(Stri
         rcgen::CertificateParams::new(names).context("paramètres du certificat serveur")?;
     params.distinguished_name = {
         let mut dn = rcgen::DistinguishedName::new();
-        dn.push(rcgen::DnType::CommonName, "Lochor server");
-        dn.push(rcgen::DnType::OrganizationName, "Lochor");
+        dn.push(rcgen::DnType::CommonName, "Locaryn server");
+        dn.push(rcgen::DnType::OrganizationName, "Locaryn");
         dn
     };
     params.use_authority_key_identifier_extension = true;
@@ -315,7 +315,7 @@ mod server_cert_tests {
     #[test]
     fn the_server_certificate_shares_the_client_authority() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_srvcert_{}",
+            "locaryn_srvcert_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

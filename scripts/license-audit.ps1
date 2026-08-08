@@ -1,4 +1,4 @@
-# Lochor license-compliance audit (Windows / PowerShell).
+# Locaryn license-compliance audit (Windows / PowerShell).
 #
 # Verifies that every third-party dependency is permissively licensed (no
 # GPL/AGPL/SSPL) so the closed-source, paid build is compliant. Reproduces the
@@ -13,7 +13,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $fail = 0
 
-Write-Host "== Lochor license audit ==" -ForegroundColor Cyan
+Write-Host "== Locaryn license audit ==" -ForegroundColor Cyan
 
 # ── 1. Rust workspace ──────────────────────────────────────────────────────
 Write-Host "`n[1/3] Rust crates (cargo-deny)..." -ForegroundColor Yellow

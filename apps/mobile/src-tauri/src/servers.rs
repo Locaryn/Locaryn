@@ -41,7 +41,7 @@ pub struct Store {
 }
 
 pub fn store_path() -> PathBuf {
-    lochor_config::default_data_dir().join("mobile-servers.json")
+    locaryn_config::default_data_dir().join("mobile-servers.json")
 }
 
 pub fn load() -> Store {

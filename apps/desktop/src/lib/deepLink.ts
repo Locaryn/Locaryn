@@ -1,5 +1,5 @@
 /**
- * Deep-link intents (`lochor://install?src=…`).
+ * Deep-link intents (`locaryn://install?src=…`).
  *
  * A link can open the app from a cold start (the URL arrives as a CLI
  * argument, read through the deep-link plugin's `get_current`) or while it is
@@ -43,11 +43,11 @@ export function consumePendingInstall(): InstallIntent | null {
   return i;
 }
 
-/** Transforme une URL `lochor://install?src=…` en intention, sinon null. */
+/** Transforme une URL `locaryn://install?src=…` en intention, sinon null. */
 export function parseInstallLink(url: string): InstallIntent | null {
   try {
     const u = new URL(url);
-    if (u.protocol !== "lochor:") return null;
+    if (u.protocol !== "locaryn:") return null;
     const action = u.hostname || u.pathname.replace(/^\//, "");
     if (action !== "install") return null;
     const src = u.searchParams.get("src");

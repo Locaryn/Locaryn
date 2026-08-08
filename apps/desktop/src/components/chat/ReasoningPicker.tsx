@@ -43,10 +43,10 @@ export function ReasoningPicker({ value, onChange, disabled }: Props) {
   }, [open]);
 
   return (
-    <div className="lochor-reason-wrap" ref={wrapRef}>
+    <div className="locaryn-reason-wrap" ref={wrapRef}>
       <button
         type="button"
-        className={`lochor-chip-btn${value !== "auto" ? " lochor-chip-on" : ""}`}
+        className={`locaryn-chip-btn${value !== "auto" ? " locaryn-chip-on" : ""}`}
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
@@ -54,27 +54,27 @@ export function ReasoningPicker({ value, onChange, disabled }: Props) {
         title="Combien le modèle doit réfléchir avant de répondre"
       >
         <span aria-hidden="true">🧠</span> Réflexion
-        <span className="lochor-chip-state">{current.label}</span>
+        <span className="locaryn-chip-state">{current.label}</span>
       </button>
 
       {open && (
-        <div className="lochor-reason-menu" role="listbox">
+        <div className="locaryn-reason-menu" role="listbox">
           {LEVELS.map((l) => (
             <button
               key={l.id}
               type="button"
               role="option"
               aria-selected={l.id === value}
-              className={`lochor-reason-opt${l.id === value ? " selected" : ""}`}
+              className={`locaryn-reason-opt${l.id === value ? " selected" : ""}`}
               onClick={() => {
                 onChange(l.id);
                 setOpen(false);
               }}
             >
-              <span className="lochor-reason-opt-mark">{l.id === value ? "✓" : ""}</span>
-              <span className="lochor-reason-opt-body">
-                <span className="lochor-reason-opt-label">{l.label}</span>
-                <span className="lochor-reason-opt-hint">{l.hint}</span>
+              <span className="locaryn-reason-opt-mark">{l.id === value ? "✓" : ""}</span>
+              <span className="locaryn-reason-opt-body">
+                <span className="locaryn-reason-opt-label">{l.label}</span>
+                <span className="locaryn-reason-opt-hint">{l.hint}</span>
               </span>
             </button>
           ))}

@@ -1,6 +1,6 @@
-# Lochor Scripts
+# Locaryn Scripts
 
-This folder contains cross-platform build, dev, and packaging scripts for the Lochor monorepo.
+This folder contains cross-platform build, dev, and packaging scripts for the Locaryn monorepo.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ This folder contains cross-platform build, dev, and packaging scripts for the Lo
 
 ## Dev scripts
 
-Launch the app in dev. The **desktop app embeds the Lochor core in-process**, so
+Launch the app in dev. The **desktop app embeds the Locaryn core in-process**, so
 it does **not** need the daemon — by default the dev scripts just start the Tauri
 desktop dev server (`tauri dev`). The daemon is only needed for the CLI, so it is
 opt-in and never blocks the app launch.
@@ -37,7 +37,7 @@ All release artifacts are placed in `release/` at the project root.
 
 ### Server binaries
 
-Builds `lochor` (CLI), `lochor-daemon`, `lochor-remote-server`, and `lochor-supervisor` in release mode.
+Builds `locaryn` (CLI), `locaryn-daemon`, `locaryn-remote-server`, and `locaryn-supervisor` in release mode.
 
 | Platform | Enterprise (default) | Personal (limited) |
 |----------|----------------------|--------------------|
@@ -148,16 +148,16 @@ To produce artifacts for all three platforms, run the appropriate scripts on eac
 ```
 release/
 ├── servers/
-│   ├── lochor
-│   ├── lochor-daemon
-│   ├── lochor-remote-server
-│   └── lochor-supervisor
+│   ├── locaryn
+│   ├── locaryn-daemon
+│   ├── locaryn-remote-server
+│   └── locaryn-supervisor
 ├── desktop/
 │   ├── deb/              # Linux .deb
 │   ├── dmg/              # macOS .dmg
 │   ├── msi/              # Windows .msi
 │   └── ...
-└── lochor-servers-<variant>-<target>.tar.gz  # or .zip on Windows
+└── locaryn-servers-<variant>-<target>.tar.gz  # or .zip on Windows
 ```
 
 ## Known limitations

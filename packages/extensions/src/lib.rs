@@ -1,4 +1,4 @@
-//! Lochor extension system — first-class plugins, MCP servers, commands,
+//! Locaryn extension system — first-class plugins, MCP servers, commands,
 //! slash commands, hooks, skills, agents, workspace rules, and LSP adapters.
 //!
 //! This crate owns:
@@ -25,7 +25,7 @@ pub use registry::{ExtensionRegistry, RegistryError};
 pub use preview::{preview_source, SourcePreview};
 pub use source::{latest_github_version, version_gt, InstallSource, SourceError};
 
-use lochor_shared_types::{ExtensionKind, ExtensionScope, Permission};
+use locaryn_shared_types::{ExtensionKind, ExtensionScope, Permission};
 
 /// Where a plugin physically lives for a given scope.
 pub fn scope_dir(
@@ -34,14 +34,14 @@ pub fn scope_dir(
 ) -> std::path::PathBuf {
     match scope {
         ExtensionScope::Global | ExtensionScope::User => {
-            lochor_config::global_dir().join("plugins")
+            locaryn_config::global_dir().join("plugins")
         }
         ExtensionScope::Workspace => workspace_root
             .unwrap_or_else(|| std::path::Path::new("."))
-            .join(".lochor")
+            .join(".locaryn")
             .join("plugins"),
         // Session-scoped plugins live in a transient temp dir owned by the daemon.
-        ExtensionScope::Session => std::env::temp_dir().join("lochor-session-plugins"),
+        ExtensionScope::Session => std::env::temp_dir().join("locaryn-session-plugins"),
     }
 }
 

@@ -132,7 +132,7 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
           {onClose && (
             <button
               type="button"
-              className="lochor-icon-btn"
+              className="locaryn-icon-btn"
               onClick={onClose}
               title="Fermer ce panneau"
               style={{ fontSize: "14px", padding: "2px 6px" }}

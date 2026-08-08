@@ -1,4 +1,4 @@
-//! Lochor command runtime — slash commands and plain commands.
+//! Locaryn command runtime — slash commands and plain commands.
 //!
 //! Commands are markdown files with YAML frontmatter. Example:
 //!

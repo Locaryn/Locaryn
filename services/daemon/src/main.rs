@@ -1,4 +1,4 @@
-//! Lochor local daemon — loopback HTTP/SSE API on 127.0.0.1:7474.
+//! Locaryn local daemon — loopback HTTP/SSE API on 127.0.0.1:7474.
 //!
 //! Both the CLI and the desktop app (when not using the in-process core)
 //! talk to this daemon. The same crate set powers the remote-server.
@@ -14,16 +14,16 @@ use axum::{
     Json, Router,
 };
 use futures::StreamExt as _;
-use lochor_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent, StubAgent};
-use lochor_events::{sse_event_tag, StreamEvent};
-use lochor_extensions::ExtensionRegistry;
-use lochor_provider_supervisor::{Supervisor, SupervisorConfig};
-use lochor_mcp::McpState;
-use lochor_shared_types::{
+use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent, StubAgent};
+use locaryn_events::{sse_event_tag, StreamEvent};
+use locaryn_extensions::ExtensionRegistry;
+use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
+use locaryn_mcp::McpState;
+use locaryn_shared_types::{
     ArtifactKind, ConnectionMode, Health, MessageRole, ProviderEngine, ProviderSummary, TaskStatus,
     ToolCall,
 };
-use lochor_storage::Storage;
+use locaryn_storage::Storage;
 mod routes;
 
 use std::collections::HashMap;
@@ -78,7 +78,7 @@ fn local_ip_string() -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cfg = lochor_config::load(None)?;
+    let cfg = locaryn_config::load(None)?;
     init_tracing(&cfg);
 
     let bind = cfg.daemon.bind.clone();
@@ -103,14 +103,14 @@ async fn main() -> anyhow::Result<()> {
         .daemon
         .data_dir
         .clone()
-        .unwrap_or_else(lochor_config::default_data_dir);
+        .unwrap_or_else(locaryn_config::default_data_dir);
     let data_dir_for_tls = data_dir.clone();
-    let db_path = data_dir.join("lochor.db");
+    let db_path = data_dir.join("locaryn.db");
     tracing::info!(?db_path, "opening storage");
-    let pool = lochor_storage::open(&db_path).await?;
+    let pool = locaryn_storage::open(&db_path).await?;
     // Kept before the pool is handed to Storage: accounts live in the same
     // database but are managed through their own repository.
-    let users = lochor_storage::users::UserRepo::new(pool.clone());
+    let users = locaryn_storage::users::UserRepo::new(pool.clone());
     let storage = Storage::new(pool);
 
     // Seed a default local Ollama provider if none exists yet so the daemon
@@ -151,7 +151,7 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!(
             "Le daemon est configuré pour écouter sur {} mais aucun compte n'existe.\n\
              Un serveur accessible sans compte serait ouvert à tous, donc il ne démarre pas.\n\
-             Créez un administrateur avec `lochor users add <nom> --admin`, \
+             Créez un administrateur avec `locaryn users add <nom> --admin`, \
              ou revenez à `bind = \"127.0.0.1\"` pour un usage local.",
             addr.ip()
         );
@@ -288,7 +288,7 @@ async fn main() -> anyhow::Result<()> {
                 local_ip_string(),
             ];
             let (srv_cert, srv_key) =
-                lochor_config::mtls::ensure_server_cert(&data_dir_for_tls, names)?;
+                locaryn_config::mtls::ensure_server_cert(&data_dir_for_tls, names)?;
             let cfg_rustls = mtls::server_config_requiring_clients(
                 &srv_cert,
                 &srv_key,
@@ -302,14 +302,14 @@ async fn main() -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("chargement du certificat TLS : {e}"))?
         };
         tracing::info!(
-            "lochor-daemon à l écoute sur https://{addr} ({})",
+            "locaryn-daemon à l écoute sur https://{addr} ({})",
             if files.self_signed { "certificat auto-signé" } else { "certificat fourni" }
         );
         // Travel mode, if it was asked for. Started before serving so the
         // code is printed with the rest of the startup rather than minutes
         // later; the relay tolerates an origin that is not answering yet.
         if let Some(name) = cfg.daemon.travel.clone() {
-            match lochor_travel::Provider::parse(&name) {
+            match locaryn_travel::Provider::parse(&name) {
                 Some(p) => {
                     match travel_state
                         .start(p, port, &data_dir_for_tls, true)
@@ -373,13 +373,13 @@ async fn main() -> anyhow::Result<()> {
                  machine) pour que les certificats clients soient réellement exigés."
             );
         }
-        tracing::info!("lochor-daemon à l écoute sur http://{addr} (local uniquement)");
+        tracing::info!("locaryn-daemon à l écoute sur http://{addr} (local uniquement)");
         axum::serve(listener, app).await?;
     }
     Ok(())
 }
 
-fn init_tracing(cfg: &lochor_config::Config) {
+fn init_tracing(cfg: &locaryn_config::Config) {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&cfg.logging.level));
     let sub = tracing_subscriber::fmt()
@@ -429,7 +429,7 @@ async fn health(State(s): State<Arc<DaemonState>>) -> Json<Health> {
 
 async fn info(State(_s): State<Arc<DaemonState>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
-        "name": "lochor-daemon",
+        "name": "locaryn-daemon",
         "version": env!("CARGO_PKG_VERSION"),
         "capabilities": ["sessions", "projects", "tasks", "artifacts", "extensions", "mcp"],
     }))
@@ -461,7 +461,7 @@ async fn create_project(
         Ok(p) => (StatusCode::CREATED, Json(p)).into_response(),
         Err(e) => {
             let (code, status) = match &e {
-                lochor_storage::StorageError::Conflict(_) => {
+                locaryn_storage::StorageError::Conflict(_) => {
                     ("conflict", StatusCode::CONFLICT)
                 }
                 _ => ("storage_error", StatusCode::INTERNAL_SERVER_ERROR),
@@ -482,7 +482,7 @@ struct CreateProjectBody {
     path: String,
     name: String,
     #[serde(default)]
-    trust_level: lochor_shared_types::TrustLevel,
+    trust_level: locaryn_shared_types::TrustLevel,
 }
 
 async fn list_sessions(
@@ -566,7 +566,7 @@ async fn get_session(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) 
         Ok(session) => (StatusCode::OK, Json(session)).into_response(),
         Err(e) => {
             let status = match &e {
-                lochor_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+                locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (
@@ -659,7 +659,7 @@ async fn list_messages(State(s): State<Arc<DaemonState>>, Path(id): Path<String>
         Ok(messages) => (StatusCode::OK, Json(messages)).into_response(),
         Err(e) => {
             let status = match &e {
-                lochor_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+                locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (
@@ -750,10 +750,10 @@ async fn send_message(
             .list_for_session(session_uuid)
             .await
             .unwrap_or_default();
-        let mut turns: Vec<lochor_agent_runtime::ChatTurn> = prior
+        let mut turns: Vec<locaryn_agent_runtime::ChatTurn> = prior
             .into_iter()
             .filter(|m| matches!(m.role, MessageRole::User | MessageRole::Assistant))
-            .map(|m| lochor_agent_runtime::ChatTurn {
+            .map(|m| locaryn_agent_runtime::ChatTurn {
                 role: match m.role {
                     MessageRole::Assistant => "assistant".to_string(),
                     _ => "user".to_string(),
@@ -991,7 +991,7 @@ async fn get_task(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> 
         Ok(task) => (StatusCode::OK, Json(task)).into_response(),
         Err(e) => {
             let status = match &e {
-                lochor_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+                locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (
@@ -1023,7 +1023,7 @@ async fn cancel_task(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) 
         Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "status": "cancelled" }))).into_response(),
         Err(e) => {
             let status = match &e {
-                lochor_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+                locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (
@@ -1063,7 +1063,7 @@ async fn approve_task(
     // Verify the task exists.
     if let Err(e) = s.storage.tasks.get(task_id).await {
         let status = match &e {
-            lochor_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+            locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         return (
@@ -1141,7 +1141,7 @@ async fn list_artifacts(State(s): State<Arc<DaemonState>>, Path(id): Path<String
         Ok(artifacts) => (StatusCode::OK, Json(artifacts)).into_response(),
         Err(e) => {
             let status = match &e {
-                lochor_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+                locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (
@@ -1229,7 +1229,7 @@ async fn get_artifact(State(s): State<Arc<DaemonState>>, Path(id): Path<String>)
         Ok(a) => a,
         Err(e) => {
             let status = match &e {
-                lochor_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+                locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             return (
@@ -1290,7 +1290,7 @@ async fn get_artifact_raw(
         Ok(a) => a,
         Err(e) => {
             let status = match &e {
-                lochor_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+                locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             return (
@@ -1362,7 +1362,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 // ============================================================================
 
 /// GET /v1/supervisor/status — snapshot of all local runtimes.
-async fn supervisor_status(State(s): State<Arc<DaemonState>>) -> Json<Vec<lochor_provider_supervisor::EngineSnapshot>> {
+async fn supervisor_status(State(s): State<Arc<DaemonState>>) -> Json<Vec<locaryn_provider_supervisor::EngineSnapshot>> {
     let snapshot = s.supervisor.status_snapshot().await;
     Json(snapshot)
 }

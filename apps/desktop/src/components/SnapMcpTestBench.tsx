@@ -37,7 +37,7 @@ function pretty(value: unknown): string {
 export function SnapMcpTestBench() {
   const [backend, setBackend] = useState<Backend>("mock");
   const [conversationId, setConversationId] = useState("conv_1");
-  const [text, setText] = useState("Bonjour depuis Lochor.");
+  const [text, setText] = useState("Bonjour depuis Locaryn.");
   const [mediaUrl, setMediaUrl] = useState("https://picsum.photos/seed/snapmcp-test/640/960");
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
   const [visibility, setVisibility] = useState<MediaVisibility>("saved");
@@ -271,39 +271,39 @@ export function SnapMcpTestBench() {
   }
 
   return (
-    <div className="lochor-conn-settings">
-      <div className="lochor-box-card" style={{ maxWidth: 760 }}>
-        <div className="lochor-box-head">
+    <div className="locaryn-conn-settings">
+      <div className="locaryn-box-card" style={{ maxWidth: 760 }}>
+        <div className="locaryn-box-head">
           <div>
-            <h3 className="lochor-box-name">Tester SnapMCP</h3>
-            <span className="lochor-box-brand">Une petite fenêtre, des actions directes</span>
+            <h3 className="locaryn-box-name">Tester SnapMCP</h3>
+            <span className="locaryn-box-brand">Une petite fenêtre, des actions directes</span>
           </div>
-          <span className={`lochor-tag${serverReady ? " lochor-tag-installed" : ""}`}>
+          <span className={`locaryn-tag${serverReady ? " locaryn-tag-installed" : ""}`}>
             {serverReady ? "prêt" : installed ? "à connecter" : "extension absente"}
           </span>
-        </div>          <p className="lochor-box-desc">
+        </div>          <p className="locaryn-box-desc">
             Choisis un backend et utilise les boutons. La connexion MCP et le serveur sont gérés automatiquement.
             Pour Snapchat Web, « Ouvrir… / QR » ouvre Chromium avec le QR code. Scanne-le, puis clique sur « Vérifier la connexion Web » : la session est alors sauvegardée.
           </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor="snapmcp-backend">Plateforme</label>
-            <select id="snapmcp-backend" className="lochor-select" value={backend} onChange={(e) => setBackend(e.target.value as Backend)}>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor="snapmcp-backend">Plateforme</label>
+            <select id="snapmcp-backend" className="locaryn-select" value={backend} onChange={(e) => setBackend(e.target.value as Backend)}>
               {BACKENDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
-            <p className="lochor-field-hint">{backendInfo.note}</p>
+            <p className="locaryn-field-hint">{backendInfo.note}</p>
           </div>
-          <div className="lochor-field">
-            <label className="lochor-field-label" htmlFor="snapmcp-conversation">Contact ou conversation</label>
-            <input id="snapmcp-conversation" className="lochor-input" value={conversationId} onChange={(e) => setConversationId(e.target.value)} placeholder="@pseudo, ID ou nom Snapchat" />
-            <p className="lochor-field-hint">Le même identifiant est transmis à la plateforme choisie.</p>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor="snapmcp-conversation">Contact ou conversation</label>
+            <input id="snapmcp-conversation" className="locaryn-input" value={conversationId} onChange={(e) => setConversationId(e.target.value)} placeholder="@pseudo, ID ou nom Snapchat" />
+            <p className="locaryn-field-hint">Le même identifiant est transmis à la plateforme choisie.</p>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>          <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             onClick={() => void invoke("Connexion vérifiée", "get_conversations")}
             disabled={busy}
           >
@@ -311,7 +311,7 @@ export function SnapMcpTestBench() {
           </button>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             onClick={() => void openSnapchatWebLogin()}
             disabled={busy}
           >
@@ -319,17 +319,17 @@ export function SnapMcpTestBench() {
           </button>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             onClick={() => void verifySnapchatWebLogin()}
             disabled={busy}
           >
             Vérifier la connexion Web
           </button>
-          <button type="button" className="lochor-btn-ghost" onClick={() => void invoke("Conversations", "get_conversations")} disabled={busy}>
+          <button type="button" className="locaryn-btn-ghost" onClick={() => void invoke("Conversations", "get_conversations")} disabled={busy}>
             Lister les conversations
           </button>          <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             onClick={() => void refresh()}
             disabled={busy}
           >
@@ -337,7 +337,7 @@ export function SnapMcpTestBench() {
           </button>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             onClick={() => void runDiagnostics()}
             disabled={busy}
           >
@@ -347,13 +347,13 @@ export function SnapMcpTestBench() {
       </div>
 
       {diagnostics && (
-        <div className="lochor-box-card" style={{ maxWidth: 760, marginTop: 12 }}>
-          <div className="lochor-box-head">
+        <div className="locaryn-box-card" style={{ maxWidth: 760, marginTop: 12 }}>
+          <div className="locaryn-box-head">
             <div>
-              <h3 className="lochor-box-name">Diagnostic</h3>
-              <span className="lochor-box-brand">Vérification sans modifier de fichier</span>
+              <h3 className="locaryn-box-name">Diagnostic</h3>
+              <span className="locaryn-box-brand">Vérification sans modifier de fichier</span>
             </div>
-            <span className="lochor-tag">
+            <span className="locaryn-tag">
               {diagnostics.checks.filter((item) => item.status === "ok").length}/{diagnostics.checks.length} OK
             </span>
           </div>
@@ -367,9 +367,9 @@ export function SnapMcpTestBench() {
               return (
                 <div key={item.id} style={{ borderLeft: `3px solid ${color}`, padding: "7px 10px", background: "var(--surface-muted, rgba(127, 127, 127, 0.08))" }}>
                   <strong style={{ color }}>{item.label}</strong>
-                  <div className="lochor-field-hint">{item.detail}</div>
+                  <div className="locaryn-field-hint">{item.detail}</div>
                   {item.value && <code style={{ display: "block", wordBreak: "break-all", marginTop: 4 }}>{item.value}</code>}
-                  {item.fix && <div className="lochor-field-hint" style={{ marginTop: 4 }}>Action : {item.fix}</div>}
+                  {item.fix && <div className="locaryn-field-hint" style={{ marginTop: 4 }}>Action : {item.fix}</div>}
                 </div>
               );
             })}
@@ -378,23 +378,23 @@ export function SnapMcpTestBench() {
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginTop: 12 }}>
-        <div className="lochor-box-card">
-          <h4 className="lochor-box-name">Message texte</h4>
-          <textarea className="lochor-input" rows={3} value={text} onChange={(e) => setText(e.target.value)} style={{ resize: "vertical", fontFamily: "inherit" }} />
-          <button type="button" className="lochor-btn-primary" onClick={() => void invoke("Message envoyé", "send_message", { conversationId, text })} disabled={busy || !text.trim()}>
+        <div className="locaryn-box-card">
+          <h4 className="locaryn-box-name">Message texte</h4>
+          <textarea className="locaryn-input" rows={3} value={text} onChange={(e) => setText(e.target.value)} style={{ resize: "vertical", fontFamily: "inherit" }} />
+          <button type="button" className="locaryn-btn-primary" onClick={() => void invoke("Message envoyé", "send_message", { conversationId, text })} disabled={busy || !text.trim()}>
             Envoyer le texte
           </button>
         </div>
 
-        <div className="lochor-box-card">
-          <h4 className="lochor-box-name">Image ou vidéo</h4>
-          <input className="lochor-input" value={mediaUrl} onChange={(e) => setMediaUrl(e.target.value)} placeholder="URL ou chemin local" />
+        <div className="locaryn-box-card">
+          <h4 className="locaryn-box-name">Image ou vidéo</h4>
+          <input className="locaryn-input" value={mediaUrl} onChange={(e) => setMediaUrl(e.target.value)} placeholder="URL ou chemin local" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
-            <select className="lochor-select" value={mediaType} onChange={(e) => setMediaType(e.target.value as "image" | "video")} aria-label="Type de média">
+            <select className="locaryn-select" value={mediaType} onChange={(e) => setMediaType(e.target.value as "image" | "video")} aria-label="Type de média">
               <option value="image">Image</option>
               <option value="video">Vidéo</option>
             </select>
-            <select className="lochor-select" value={visibility} onChange={(e) => setVisibility(e.target.value as MediaVisibility)} aria-label="Visibilité du média">
+            <select className="locaryn-select" value={visibility} onChange={(e) => setVisibility(e.target.value as MediaVisibility)} aria-label="Visibilité du média">
               <option value="saved">Conservée</option>
               <option value="timed_10s" disabled={backend !== "telegram"}>10 secondes</option>
               <option value="view_once" disabled={backend !== "telegram"}>Vue unique</option>
@@ -402,41 +402,41 @@ export function SnapMcpTestBench() {
             </select>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-            <button type="button" className="lochor-btn-ghost" onClick={() => void chooseMedia()} disabled={busy}>Choisir un fichier</button>
-            <button type="button" className="lochor-btn-primary" onClick={() => void sendMedia()} disabled={busy || !mediaUrl.trim()}>Envoyer le média</button>
+            <button type="button" className="locaryn-btn-ghost" onClick={() => void chooseMedia()} disabled={busy}>Choisir un fichier</button>
+            <button type="button" className="locaryn-btn-primary" onClick={() => void sendMedia()} disabled={busy || !mediaUrl.trim()}>Envoyer le média</button>
           </div>
-          <p className="lochor-field-hint">Telegram éphémère : photo privée uniquement.</p>
+          <p className="locaryn-field-hint">Telegram éphémère : photo privée uniquement.</p>
         </div>
 
-        <div className="lochor-box-card">
-          <h4 className="lochor-box-name">Vocal</h4>
-          <p className="lochor-field-hint">Le navigateur enregistre le micro du PC. ADB utilise le micro du téléphone.</p>
+        <div className="locaryn-box-card">
+          <h4 className="locaryn-box-name">Vocal</h4>
+          <p className="locaryn-field-hint">Le navigateur enregistre le micro du PC. ADB utilise le micro du téléphone.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="lochor-btn-ghost" onClick={recording ? stopRecording : startRecording} disabled={busy}>
+            <button type="button" className="locaryn-btn-ghost" onClick={recording ? stopRecording : startRecording} disabled={busy}>
               {recording ? "Arrêter" : "Enregistrer au micro"}
             </button>
-            <button type="button" className="lochor-btn-ghost" onClick={() => void chooseAudio()} disabled={busy || recording}>Choisir un audio</button>
-            {voicePath && <button type="button" className="lochor-btn-ghost" onClick={() => void clearVoice()} disabled={busy}>Effacer</button>}
+            <button type="button" className="locaryn-btn-ghost" onClick={() => void chooseAudio()} disabled={busy || recording}>Choisir un audio</button>
+            {voicePath && <button type="button" className="locaryn-btn-ghost" onClick={() => void clearVoice()} disabled={busy}>Effacer</button>}
           </div>
-          {voicePath && <code className="lochor-connector-cmd" style={{ display: "block", marginTop: 8, wordBreak: "break-all" }}>{voicePath} · {voiceMime}</code>}
-          <button type="button" className="lochor-btn-primary" onClick={() => void sendVoice()} disabled={busy || (!voicePath && !text.trim())} style={{ marginTop: 10 }}>
+          {voicePath && <code className="locaryn-connector-cmd" style={{ display: "block", marginTop: 8, wordBreak: "break-all" }}>{voicePath} · {voiceMime}</code>}
+          <button type="button" className="locaryn-btn-primary" onClick={() => void sendVoice()} disabled={busy || (!voicePath && !text.trim())} style={{ marginTop: 10 }}>
             Envoyer le vocal
           </button>
         </div>
 
-        <div className="lochor-box-card">
-          <h4 className="lochor-box-name">Appel vocal</h4>
-          <p className="lochor-field-hint">Disponible selon le backend et sa session connectée.</p>
+        <div className="locaryn-box-card">
+          <h4 className="locaryn-box-name">Appel vocal</h4>
+          <p className="locaryn-field-hint">Disponible selon le backend et sa session connectée.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="lochor-btn-primary" onClick={() => void startCall()} disabled={busy}>Démarrer l'appel</button>
-            <button type="button" className="lochor-btn-ghost" onClick={() => void endCall()} disabled={busy || !activeCallId}>Raccrocher</button>
+            <button type="button" className="locaryn-btn-primary" onClick={() => void startCall()} disabled={busy}>Démarrer l'appel</button>
+            <button type="button" className="locaryn-btn-ghost" onClick={() => void endCall()} disabled={busy || !activeCallId}>Raccrocher</button>
           </div>
-          {activeCallId && <p className="lochor-field-hint">Appel actif : {activeCallId}</p>}
+          {activeCallId && <p className="locaryn-field-hint">Appel actif : {activeCallId}</p>}
         </div>
       </div>
 
-      {error && <div className="lochor-box-card" style={{ marginTop: 12, borderColor: "var(--danger)" }}><strong>Erreur</strong><p className="lochor-field-hint" style={{ color: "var(--danger)" }}>{error}</p></div>}
-      {result && <div className="lochor-box-card" style={{ marginTop: 12 }}><strong>{result.title}</strong><pre style={{ whiteSpace: "pre-wrap", overflowX: "auto", margin: "10px 0 0", fontSize: 12 }}>{pretty(result.value)}</pre></div>}
+      {error && <div className="locaryn-box-card" style={{ marginTop: 12, borderColor: "var(--danger)" }}><strong>Erreur</strong><p className="locaryn-field-hint" style={{ color: "var(--danger)" }}>{error}</p></div>}
+      {result && <div className="locaryn-box-card" style={{ marginTop: 12 }}><strong>{result.title}</strong><pre style={{ whiteSpace: "pre-wrap", overflowX: "auto", margin: "10px 0 0", fontSize: 12 }}>{pretty(result.value)}</pre></div>}
     </div>
   );
 }

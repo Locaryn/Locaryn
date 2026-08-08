@@ -62,7 +62,7 @@ function now(): number {
 }
 
 /** localStorage key used to persist completed/failed tasks across restarts. */
-const STORAGE_KEY = "lochor_gallery_tasks";
+const STORAGE_KEY = "locaryn_gallery_tasks";
 
 /** Serialize only terminal-state tasks (done / error) to localStorage. */
 function persistTasks() {

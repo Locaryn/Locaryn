@@ -25,7 +25,7 @@ Architecture finale: **A** (cf. `02-architecture.md`). Décisions explicites ci-
 
 **Décision: Rust.**
 
-- **Partage natif avec Tauri** (le desktop embarque `lochor-*` crates en in-process).
+- **Partage natif avec Tauri** (le desktop embarque `locaryn-*` crates en in-process).
 - Single binary, distribution simple, cross-arch (x64+ARM64) via `cargo`.
 - MCP Rust SDK (`rmcp`) first-class en 2026.
 - `tokio` pour streaming tokens, `tokio::process` pour supervisor.
@@ -37,7 +37,7 @@ L'argument décisif: **daemon, remote-server, desktop et CLI partagent les même
 
 **Décision: Rust**, même crates que le daemon en mode "server".
 
-- Partage de `lochor-auth`, `lochor-storage`, `lochor-extensions`, `lochor-mcp`, etc.
+- Partage de `locaryn-auth`, `locaryn-storage`, `locaryn-extensions`, `locaryn-mcp`, etc.
 - `axum` + `rustls` pour TLS, `tower` pour rate limiting/middleware.
 - Module enterprise (`services/remote-server/enterprise/`) en BSL 1.1: collaboration, DGX Spark orchestration, gate clients concurrents.
 - Binaire unique déployable en service système / conteneur.
@@ -59,7 +59,7 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 
 **Justification:** SSE couvre 95% des besoins (tokens, logs, état tâche, état preview — tous server→client). Pour les rares flux bidirectionnels (preview live reload, interactive shell), on utilise **POST + SSE response** ou un canal Tauri côté desktop. gRPC ajoute une dépendance protoc + grpc-web pour un gain marginal. L'API reste REST-ish + SSE, debuggable au curl.
 
-**Exception:** le transport **MCP** suit la spec MCP 2026-07-28 (stateless HTTP + stdio), géré par `lochor-mcp` indépendamment de notre API.
+**Exception:** le transport **MCP** suit la spec MCP 2026-07-28 (stateless HTTP + stdio), géré par `locaryn-mcp` indépendamment de notre API.
 
 ## D5 — Stockage: SQLite (+ filesystem workspace)
 
@@ -68,12 +68,12 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 - Local-first, zero-config, embarqué dans le daemon et le client.
 - Migrations versionnées (`migrations/`).
 - Schéma détaillé en `07-persistence.md`.
-- **Données serveur-side** (remote-server enterprise): SQLite par défaut, schema compatible PostgreSQL pour montée en charge V2 (abstraction via `lochor-storage`).
+- **Données serveur-side** (remote-server enterprise): SQLite par défaut, schema compatible PostgreSQL pour montée en charge V2 (abstraction via `locaryn-storage`).
 
 ## D6 — Preview: iframe sandboxed + CSP strict
 
 **Décision:**
-- HTML/CSS/JS: iframe `sandbox="allow-scripts"` (pas `allow-same-origin`) + CSP strict (pas de réseau sauf permission `network` accordée). Servi depuis une origine dédiée (`lochor-preview://` ou `tauri://localhost/preview`) pour isoler du app origin.
+- HTML/CSS/JS: iframe `sandbox="allow-scripts"` (pas `allow-same-origin`) + CSP strict (pas de réseau sauf permission `network` accordée). Servi depuis une origine dédiée (`locaryn-preview://` ou `tauri://localhost/preview`) pour isoler du app origin.
 - Markdown rendu: rendu côté UI (marked + sanitize).
 - Sortie Python textuelle: préformatée dans le panneau.
 - Graphiques Python: le runtime exporte en **HTML (plotly) ou PNG (matplotlib)** stocké dans `workspace/artifacts/`, affiché dans le panneau. Pas d'exécution Python dans la preview V1.
@@ -94,8 +94,8 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 **Décision: token API (bearer) V1; SSO/mTLS en V1.1/V2.**
 
 - V1: `Authorization: Bearer <token>` sur remote-server. Token lié à un user, rotatable, expirable.
-- Login: `lochor login --server URL --user U` → POST /auth/login → token stocké dans OS keychain (ou `~/.lochor/credentials.toml` chiffré OS-AGNOSTIC fallback).
-- Rotation: `lochor token rotate`.
+- Login: `locaryn login --server URL --user U` → POST /auth/login → token stocké dans OS keychain (ou `~/.locaryn/credentials.toml` chiffré OS-AGNOSTIC fallback).
+- Rotation: `locaryn token rotate`.
 - Remote-server: hash Argon2id des tokens, stockage en SQLite, audit log de chaque usage.
 - V1.1: mTLS optionnel (certificat client) pour homelab/enterprise.
 - V2: OIDC/SAML SSO pour enterprise.
@@ -119,31 +119,31 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 
 **Décision: système first-class, manifest `plugin.json`, 4 scopes, permissions, hot-reload.** Détail en `09-extension-model.md`.
 
-- Format Lochor natif `plugin.json` (schema versionné).
-- Scopes: `global` (`~/.lochor/plugins/`), `user` (même, alias), `workspace` (`.lochor/plugins/`), `session` (transitoire).
+- Format Locaryn natif `plugin.json` (schema versionné).
+- Scopes: `global` (`~/.locaryn/plugins/`), `user` (même, alias), `workspace` (`.locaryn/plugins/`), `session` (transitoire).
 - Permissions: `shell`, `files`, `network`, `extensions`, `mcp`, `preview`, `lsp` — déclarées dans le manifest, approuvées à l'install.
 - Hot-reload via `notify` (fs watcher) + registry versionné.
 - Registre local V1; catalogue/marketplace V2.
 
 ## D12 — MCP
 
-**Décision: MCP standard (spec 2026-07-28) via `lochor-mcp` (rmcp).**
+**Décision: MCP standard (spec 2026-07-28) via `locaryn-mcp` (rmcp).**
 
 - **Compatible directement avec le standard MCP:** tools, resources, prompts, tasks, `server/discover`, JSON Schema 2020-12, transport stateless HTTP + stdio.
 - **Nécessite un adaptateur:** les features dépréciées (Roots, Sampling, Logging) sont mappées vers nos APIs (rules runtime, direct API, OpenTelemetry) quand pertinent.
-- **Spécifique Lochor:** le manifest plugin Lochor encapsule un MCP server (déclaré dans `plugin.json` + `.mcp.json`), avec permissions et scope — au-delà du standard MCP qui ne définit pas de packaging ni de permissions.
-- Registre MCP par scope (global/user/workspace) via `.lochor/mcp.json` (format compatible Claude Code/Cursor: `mcpServers: {name: {command, args, env}}`).
+- **Spécifique Locaryn:** le manifest plugin Locaryn encapsule un MCP server (déclaré dans `plugin.json` + `.mcp.json`), avec permissions et scope — au-delà du standard MCP qui ne définit pas de packaging ni de permissions.
+- Registre MCP par scope (global/user/workspace) via `.locaryn/mcp.json` (format compatible Claude Code/Cursor: `mcpServers: {name: {command, args, env}}`).
 
 ## D13 — Compatibilité Claude Code / Antigravity / Cursor / Continue / Cline
 
-**Décision: couche d'import dans `lochor-extensions`.**
+**Décision: couche d'import dans `locaryn-extensions`.**
 
-| Source | Concept importé | Mapping Lochor |
+| Source | Concept importé | Mapping Locaryn |
 | --- | --- | --- |
 | Claude Code `.claude/agents/*.md` | subagent (frontmatter name/description/tools/model) | `agent_profiles` (même frontmatter + permissions) |
 | Claude Code `.claude/commands/*.md` | slash command | `slash_commands` (même markdown + variables $0,$1) |
 | Claude Code `.claude/skills/*/SKILL.md` | skill (YAML frontmatter) | `skills` (idem) |
-| Claude Code `hooks.json` (PreToolUse/PostToolUse/Stop/...) | hooks | `hooks` (mêmes events + `${LOCHOR_PLUGIN_ROOT}`) |
+| Claude Code `hooks.json` (PreToolUse/PostToolUse/Stop/...) | hooks | `hooks` (mêmes events + `${LOCARYN_PLUGIN_ROOT}`) |
 | Claude Code `output-styles/*.md` | output style | `agent_profiles.output_style` |
 | Claude Code `CLAUDE.md` / `rules/*.md` | instructions/rules | `workspace_rules` (markdown agrégé) |
 | Cursor `.cursor/mcp.json` | MCP registry | `mcp_servers` (format identique) |
@@ -153,8 +153,8 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 | Antigravity `antigravity.yaml` | persona + toolsets | `agent_profiles` + permissions |
 
 **Compatible directement:** MCP `.mcp.json`, markdown rules, slash commands markdown, agent frontmatter.
-**Adaptateur nécessaire:** Continue `config.yaml` (YAML→Lochor TOML/JSON), hooks Claude Code (events aliasés).
-**Spécifique Lochor:** manifest `plugin.json` avec permissions + packaging + scope — non couvert par les formats ci-dessus, qui restent des concepts importables mais pas des bundles signés.
+**Adaptateur nécessaire:** Continue `config.yaml` (YAML→Locaryn TOML/JSON), hooks Claude Code (events aliasés).
+**Spécifique Locaryn:** manifest `plugin.json` avec permissions + packaging + scope — non couvert par les formats ci-dessus, qui restent des concepts importables mais pas des bundles signés.
 
 ## Tableau récapitulatif des décisions
 
@@ -171,5 +171,5 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 | D9 | TLS | rustls obligatoire remote; plain loopback daemon |
 | D10 | Réseau | daemon loopback only; remote 0.0.0.0+TLS+auth+RL |
 | D11 | Plugins | plugin.json, 4 scopes, permissions, hot-reload |
-| D12 | MCP | standard 2026-07-28 via rmcp + encapsulation Lochor |
-| D13 | Compat écosystème | import layer dans lochor-extensions |
+| D12 | MCP | standard 2026-07-28 via rmcp + encapsulation Locaryn |
+| D13 | Compat écosystème | import layer dans locaryn-extensions |

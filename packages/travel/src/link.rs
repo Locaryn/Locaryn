@@ -1,4 +1,4 @@
-//! The `lochor://` address a phone reads off the screen.
+//! The `locaryn://` address a phone reads off the screen.
 //!
 //! Scanning a QR code changes which server the application talks to. That is
 //! precisely what an attacker would like to do: print a code, get it scanned,
@@ -59,8 +59,8 @@ pub struct PairingLink {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LinkError {
-    #[error("Ce code ne vient pas de Lochor.")]
-    NotALochorLink,
+    #[error("Ce code ne vient pas de Locaryn.")]
+    NotALocarynLink,
     #[error("Ce code est incomplet ou abîmé. Réessayez de le scanner.")]
     Malformed,
     #[error("Ce code ne correspond à aucun serveur enregistré sur cet appareil.")]
@@ -91,12 +91,12 @@ fn b64(data: &[u8]) -> String {
 }
 
 fn unb64(s: &str) -> Option<Vec<u8>> {
-    lochor_config::provision::base64_decode(s)
+    locaryn_config::provision::base64_decode(s)
 }
 
 /// The DER of the first certificate in a PEM bundle.
 fn cert_der(pem: &str) -> Result<Vec<u8>, LinkError> {
-    lochor_config::mtls::pem_blocks(pem, "CERTIFICATE")
+    locaryn_config::mtls::pem_blocks(pem, "CERTIFICATE")
         .into_iter()
         .next()
         .ok_or_else(|| LinkError::BadAuthority("aucun certificat".into()))
@@ -107,7 +107,7 @@ fn cert_der(pem: &str) -> Result<Vec<u8>, LinkError> {
 /// pick the right one out of several.
 pub fn key_id(ca_cert_pem: &str) -> Result<String, LinkError> {
     let der = cert_der(ca_cert_pem)?;
-    Ok(b64(&lochor_config::provision::sha256(&der)[..8]))
+    Ok(b64(&locaryn_config::provision::sha256(&der)[..8]))
 }
 
 /// Exactly the bytes that are signed and verified.
@@ -115,7 +115,7 @@ pub fn key_id(ca_cert_pem: &str) -> Result<String, LinkError> {
 /// Built from the parsed fields in a fixed order on both sides, so shuffling
 /// the parameters in the URL cannot change what was actually attested.
 fn canonical(mode: Mode, url: &str, expires_at: u64, key_id: &str) -> String {
-    format!("lochor-pair-v1|{}|{}|{}|{}", mode.id(), url, expires_at, key_id)
+    format!("locaryn-pair-v1|{}|{}|{}|{}", mode.id(), url, expires_at, key_id)
 }
 
 /// Produce the signed link.
@@ -134,7 +134,7 @@ pub fn sign(
     let expires_at = now + ttl_seconds;
     let msg = canonical(mode, url, expires_at, &kid);
 
-    let pkcs8 = lochor_config::mtls::pem_blocks(ca_key_pem, "PRIVATE KEY")
+    let pkcs8 = locaryn_config::mtls::pem_blocks(ca_key_pem, "PRIVATE KEY")
         .into_iter()
         .next()
         .ok_or_else(|| LinkError::Signing("aucune clé privée".into()))?;
@@ -146,7 +146,7 @@ pub fn sign(
         .map_err(|e| LinkError::Signing(e.to_string()))?;
 
     Ok(format!(
-        "lochor://travel?v=1&m={}&u={}&e={}&k={}&s={}",
+        "locaryn://travel?v=1&m={}&u={}&e={}&k={}&s={}",
         mode.id(),
         b64(url.as_bytes()),
         expires_at,
@@ -167,8 +167,8 @@ pub fn verify(
 ) -> Result<PairingLink, LinkError> {
     let rest = uri
         .trim()
-        .strip_prefix("lochor://travel?")
-        .ok_or(LinkError::NotALochorLink)?;
+        .strip_prefix("locaryn://travel?")
+        .ok_or(LinkError::NotALocarynLink)?;
 
     let mut v = None;
     let mut mode = None;
@@ -231,7 +231,7 @@ pub fn verify(
 
 /// The authority's public key, for callers that want to pin it themselves.
 pub fn authority_public_key(ca_key_pem: &str) -> Result<Vec<u8>, LinkError> {
-    let pkcs8 = lochor_config::mtls::pem_blocks(ca_key_pem, "PRIVATE KEY")
+    let pkcs8 = locaryn_config::mtls::pem_blocks(ca_key_pem, "PRIVATE KEY")
         .into_iter()
         .next()
         .ok_or_else(|| LinkError::Signing("aucune clé privée".into()))?;
@@ -247,14 +247,14 @@ mod tests {
 
     fn authority() -> (String, String, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_link_{}",
+            "locaryn_link_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let a = lochor_config::mtls::authority(&dir).unwrap();
+        let a = locaryn_config::mtls::authority(&dir).unwrap();
         (a.cert_pem, a.key_pem, dir)
     }
 
@@ -283,14 +283,14 @@ mod tests {
 
         // They forge a link claiming to be from my server.
         let forged = format!(
-            "lochor://travel?v=1&m=travel&u={}&e={}&k={}&s={}",
+            "locaryn://travel?v=1&m=travel&u={}&e={}&k={}&s={}",
             b64(b"https://serveur-du-pirate.example"),
             NOW + 600,
             kid,
             // Signature made with *their* key over the right message.
             {
                 let msg = canonical(Mode::Travel, "https://serveur-du-pirate.example", NOW + 600, &kid);
-                let pkcs8 = lochor_config::mtls::pem_blocks(&their_key, "PRIVATE KEY")
+                let pkcs8 = locaryn_config::mtls::pem_blocks(&their_key, "PRIVATE KEY")
                     .into_iter()
                     .next()
                     .unwrap();
@@ -363,15 +363,15 @@ mod tests {
         let f = |_: &str| None;
         assert!(matches!(
             verify("https://example.com", &f, NOW).unwrap_err(),
-            LinkError::NotALochorLink
+            LinkError::NotALocarynLink
         ));
         assert!(matches!(
-            verify("lochor://travel?v=1&m=travel", &f, NOW).unwrap_err(),
+            verify("locaryn://travel?v=1&m=travel", &f, NOW).unwrap_err(),
             LinkError::Malformed
         ));
         // A future version number must not be silently treated as v1.
         assert!(matches!(
-            verify("lochor://travel?v=2&m=travel&u=aa&e=1&k=x&s=aa", &f, NOW).unwrap_err(),
+            verify("locaryn://travel?v=2&m=travel&u=aa&e=1&k=x&s=aa", &f, NOW).unwrap_err(),
             LinkError::Malformed
         ));
     }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lochor server binaries release build (Linux/macOS).
+# Locaryn server binaries release build (Linux/macOS).
 # Builds CLI, daemon, remote-server, and provider-supervisor in release mode.
 #
 # Usage:
@@ -15,7 +15,7 @@ SERVERS_DIR="$RELEASE_DIR/servers"
 mkdir -p "$SERVERS_DIR"
 
 if ! command -v cargo &> /dev/null; then
-    echo "[Lochor] cargo not found in PATH. Please install Rust: https://rustup.rs/"
+    echo "[Locaryn] cargo not found in PATH. Please install Rust: https://rustup.rs/"
     exit 1
 fi
 
@@ -33,30 +33,30 @@ VARIANT="enterprise"
 if [ "$PERSONAL" -eq 1 ]; then
     VARIANT="personal"
 fi
-echo "[Lochor] Building $VARIANT server binaries for $TARGET"
+echo "[Locaryn] Building $VARIANT server binaries for $TARGET"
 
 # Build common binaries.
-cargo build --release -p lochor-cli -p lochor-daemon -p lochor-provider-supervisor
+cargo build --release -p locaryn-cli -p locaryn-daemon -p locaryn-provider-supervisor
 
 # Build remote-server with the chosen feature set.
 if [ "$PERSONAL" -eq 1 ]; then
-    cargo build --release -p lochor-remote-server --no-default-features
+    cargo build --release -p locaryn-remote-server --no-default-features
 else
-    cargo build --release -p lochor-remote-server
+    cargo build --release -p locaryn-remote-server
 fi
 
-echo "[Lochor] Copying server binaries..."
-for bin in lochor lochor-daemon lochor-remote-server lochor-supervisor; do
+echo "[Locaryn] Copying server binaries..."
+for bin in locaryn locaryn-daemon locaryn-remote-server locaryn-supervisor; do
     if [ -f "$ROOT/target/release/$bin" ]; then
         cp "$ROOT/target/release/$bin" "$SERVERS_DIR/"
     else
-        echo "[Lochor] Warning: binary not found: $bin"
+        echo "[Locaryn] Warning: binary not found: $bin"
     fi
 done
 
-ARCHIVE_NAME="lochor-servers-$VARIANT-$TARGET.tar.gz"
+ARCHIVE_NAME="locaryn-servers-$VARIANT-$TARGET.tar.gz"
 tar -czf "$RELEASE_DIR/$ARCHIVE_NAME" -C "$SERVERS_DIR" .
 
-echo "[Lochor] Server binaries built and packaged:"
+echo "[Locaryn] Server binaries built and packaged:"
 echo "  Directory: $SERVERS_DIR"
 echo "  Archive:   $RELEASE_DIR/$ARCHIVE_NAME"

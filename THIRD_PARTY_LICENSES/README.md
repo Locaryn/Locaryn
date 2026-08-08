@@ -1,6 +1,6 @@
 # Third-party licenses
 
-Lochor bundles and depends on third-party software. This directory collects the
+Locaryn bundles and depends on third-party software. This directory collects the
 license notices we are **required to redistribute**, and records the compliance
 policy for shipping a commercial (paid) build.
 
@@ -71,7 +71,7 @@ GPL; the audit will flag them before they ship.
 
 ## Models
 
-Lochor **does not bundle model weights**. Users download them (HuggingFace,
+Locaryn **does not bundle model weights**. Users download them (HuggingFace,
 etc.) at their own initiative, and each model carries its **own** license and
 acceptable-use policy — some are restrictive:
 

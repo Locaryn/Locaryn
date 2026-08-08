@@ -1,7 +1,7 @@
-// @lochor/ui-core — shared design tokens and primitives.
+// @locaryn/ui-core — shared design tokens and primitives.
 
 export const tokens = {
-  /** Sen (Google Fonts) — UI font for all Lochor interfaces. Bundled
+  /** Sen (Google Fonts) — UI font for all Locaryn interfaces. Bundled
    *  locally in the desktop app; falls back to system sans-serif. */
   fontFamily:
     '"Sen", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',

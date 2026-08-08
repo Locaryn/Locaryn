@@ -10,11 +10,11 @@ import { useSyncExternalStore } from "react";
 
 export type Lang = "fr" | "en";
 
-const STORAGE_KEY = "lochor.lang";
+const STORAGE_KEY = "locaryn.lang";
 
 /** Terms that must survive translation untouched, whatever the language. */
 export const DO_NOT_TRANSLATE = [
-  "Lochor", "llama.cpp", "llama-server", "stable-diffusion.cpp", "GGUF", "LoRA",
+  "Locaryn", "llama.cpp", "llama-server", "stable-diffusion.cpp", "GGUF", "LoRA",
   "MCP", "RAG", "JSON", "VRAM", "RAM", "GPU", "CPU", "KV", "MoE", "RPC", "SSH",
   "Qwen", "Llama", "Gemma", "Mistral", "DeepSeek", "Phi", "GLM", "Z-Image",
   "HuggingFace", "Ollama", "Tauri", "Vulkan", "CUDA",
@@ -73,7 +73,7 @@ const EN: Record<string, string> = {
   "Tous les paramètres →": "All settings →",
 
   // Chat
-  "Posez votre question à Lochor…": "Ask Lochor…",
+  "Posez votre question à Locaryn…": "Ask Locaryn…",
   "Image": "Image",
   "Créer": "Create",
   "Documents": "Documents",

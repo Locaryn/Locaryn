@@ -68,18 +68,18 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
   }
 
   return (
-    <div className="lochor-connect">
-      <div className="lochor-connect-card">
-        <h2 className="lochor-connect-title">
+    <div className="locaryn-connect">
+      <div className="locaryn-connect-card">
+        <h2 className="locaryn-connect-title">
           {provisioning.organisation || "Connexion"}
         </h2>
-        <p className="lochor-connect-server">{provisioning.serverUrl}</p>
+        <p className="locaryn-connect-server">{provisioning.serverUrl}</p>
 
-        <label className="lochor-field-label" style={{ marginTop: 20 }}>
+        <label className="locaryn-field-label" style={{ marginTop: 20 }}>
           Identifiant
         </label>
         <input
-          className="lochor-input"
+          className="locaryn-input"
           style={{ marginTop: 6 }}
           value={username}
           disabled={busy}
@@ -88,11 +88,11 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
           onKeyDown={(e) => e.key === "Enter" && void connect()}
         />
 
-        <label className="lochor-field-label" style={{ marginTop: 14 }}>
+        <label className="locaryn-field-label" style={{ marginTop: 14 }}>
           Mot de passe
         </label>
         <input
-          className="lochor-input"
+          className="locaryn-input"
           style={{ marginTop: 6 }}
           type="password"
           value={password}
@@ -103,7 +103,7 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
 
         <button
           type="button"
-          className="lochor-btn-primary"
+          className="locaryn-btn-primary"
           style={{ marginTop: 18, width: "100%" }}
           disabled={busy}
           onClick={connect}
@@ -113,17 +113,17 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
 
         {/* Certificate. Shown always: the server may start requiring one, and
             a user who cannot connect needs to see this without hunting. */}
-        <div className="lochor-connect-cert">
+        <div className="locaryn-connect-cert">
           {cert?.installed ? (
             <>
-              <span className="lochor-connect-cert-ok">✓</span>
+              <span className="locaryn-connect-cert-ok">✓</span>
               <span>
                 Certificat installé
                 {cert.issued_to ? ` — ${cert.issued_to}` : ""}
               </span>
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 disabled={busy}
                 onClick={async () => {
                   setCert(await core.removeClientCertificate());
@@ -138,7 +138,7 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
               <span>Certificat de connexion</span>
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 disabled={busy}
                 onClick={installCertificate}
               >
@@ -147,18 +147,18 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
             </>
           )}
         </div>
-        <p className="lochor-connect-hint">
+        <p className="locaryn-connect-hint">
           {cert?.installed
             ? "Ce certificat prouve à quelle machine appartient cette installation."
             : "Requis seulement si votre administrateur vous en a fourni un. Choisissez le fichier « .pem » qu'il vous a transmis."}
         </p>
 
         {provisioning.note && (
-          <p className="lochor-connect-note">{provisioning.note}</p>
+          <p className="locaryn-connect-note">{provisioning.note}</p>
         )}
 
-        {error && <div className="lochor-vp-error">{error}</div>}
-        {notice && !error && <div className="lochor-vp-notice">{notice}</div>}
+        {error && <div className="locaryn-vp-error">{error}</div>}
+        {notice && !error && <div className="locaryn-vp-notice">{notice}</div>}
       </div>
     </div>
   );

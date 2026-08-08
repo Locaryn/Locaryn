@@ -45,7 +45,7 @@ pub struct RelayChoice {
 /// the worst possible time to find out.
 #[tauri::command]
 pub fn travel_relays() -> Vec<RelayChoice> {
-    lochor_travel::Provider::ALL
+    locaryn_travel::Provider::ALL
         .into_iter()
         .map(|p| RelayChoice {
             id: p.id().to_string(),
@@ -59,7 +59,7 @@ pub fn travel_relays() -> Vec<RelayChoice> {
 
 /// Ask the running daemon.
 async fn daemon(path: &str) -> Result<reqwest::RequestBuilder, String> {
-    let cfg = lochor_config::load(None).map_err(|e| e.to_string())?;
+    let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
     let port = cfg.daemon.port;
     let client = crate::secure_client::build(None, None, None, std::time::Duration::from_secs(90))?;
     Ok(client.get(format!("https://127.0.0.1:{port}{path}")))
@@ -94,7 +94,7 @@ pub struct SetTravel {
 
 #[tauri::command]
 pub async fn set_travel_mode(args: SetTravel) -> Result<TravelStatus, String> {
-    let cfg = lochor_config::load(None).map_err(|e| e.to_string())?;
+    let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
     let port = cfg.daemon.port;
     let client = crate::secure_client::build(None, None, None, std::time::Duration::from_secs(90))?;
     let resp = client

@@ -127,7 +127,7 @@ impl UserRepo {
             ));
         }
         let now = Utc::now().to_rfc3339();
-        let hash = lochor_auth::hash_token(password).hash;
+        let hash = locaryn_auth::hash_token(password).hash;
         let id = Uuid::new_v4();
         sqlx::query(
             "INSERT INTO users (id, username, password_hash, role, created_at, updated_at) \
@@ -178,18 +178,18 @@ impl UserRepo {
         let Some(row) = row else {
             // Same cost as a real check, so timing does not reveal that the
             // account is unknown.
-            let _ = lochor_auth::verify_token(
+            let _ = locaryn_auth::verify_token(
                 password,
-                &lochor_auth::TokenHash {
+                &locaryn_auth::TokenHash {
                     hash: DUMMY_HASH.to_string(),
                 },
             );
             return Ok(None);
         };
 
-        let ok = lochor_auth::verify_token(
+        let ok = locaryn_auth::verify_token(
             password,
-            &lochor_auth::TokenHash {
+            &locaryn_auth::TokenHash {
                 hash: row.password_hash.clone(),
             },
         );
@@ -206,8 +206,8 @@ impl UserRepo {
         label: Option<&str>,
         valid_days: i64,
     ) -> Result<IssuedToken, StorageError> {
-        let plaintext = lochor_auth::generate_token();
-        let hash = lochor_auth::hash_token(&plaintext).hash;
+        let plaintext = locaryn_auth::generate_token();
+        let hash = locaryn_auth::hash_token(&plaintext).hash;
         let id = Uuid::new_v4();
         let now = Utc::now();
         let expires = if valid_days > 0 {
@@ -254,9 +254,9 @@ impl UserRepo {
         .await?;
 
         for t in rows {
-            if !lochor_auth::verify_token(
+            if !locaryn_auth::verify_token(
                 plaintext,
-                &lochor_auth::TokenHash {
+                &locaryn_auth::TokenHash {
                     hash: t.token_hash.clone(),
                 },
             ) {
@@ -393,7 +393,7 @@ mod tests {
             .unwrap();
 
         let issued = repo.issue_token(u.id, Some("portable"), 30).await.unwrap();
-        assert!(issued.plaintext.starts_with("lochor_"));
+        assert!(issued.plaintext.starts_with("locaryn_"));
 
         let who = repo.user_for_token(&issued.plaintext).await.unwrap();
         assert_eq!(who.expect("le jeton doit identifier son porteur").id, u.id);
@@ -405,7 +405,7 @@ mod tests {
             .unwrap();
         assert!(!stored.contains(&issued.plaintext), "jeton stocké en clair !");
 
-        assert!(repo.user_for_token("lochor_inventé").await.unwrap().is_none());
+        assert!(repo.user_for_token("locaryn_inventé").await.unwrap().is_none());
         assert!(repo.user_for_token("").await.unwrap().is_none());
 
         repo.revoke_token(issued.id).await.unwrap();

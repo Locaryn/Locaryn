@@ -69,8 +69,8 @@ export function ProjectSettings({ projects, onArchived }: Props) {
 
   if (projects.length === 0) {
     return (
-      <div className="lochor-field">
-        <p className="lochor-field-hint">
+      <div className="locaryn-field">
+        <p className="locaryn-field-hint">
           Aucun projet. Ajoutez-en un depuis la barre latérale pour configurer ses autorisations.
         </p>
       </div>
@@ -78,13 +78,13 @@ export function ProjectSettings({ projects, onArchived }: Props) {
   }
 
   return (
-    <div className="lochor-projset">
-      <div className="lochor-projset-list">
+    <div className="locaryn-projset">
+      <div className="locaryn-projset-list">
         {projects.map((p) => (
           <button
             key={p.id}
             type="button"
-            className={`lochor-projset-item${p.id === selectedId ? " lochor-active" : ""}`}
+            className={`locaryn-projset-item${p.id === selectedId ? " locaryn-active" : ""}`}
             onClick={() => setSelectedId(p.id)}
             title={p.path}
           >
@@ -94,20 +94,20 @@ export function ProjectSettings({ projects, onArchived }: Props) {
       </div>
 
       {selected && (
-        <div className="lochor-projset-detail">
-          <div className="lochor-field">
-            <label className="lochor-field-label">{selected.name}</label>
-            <p className="lochor-field-hint lochor-kv-mono">{selected.path}</p>
+        <div className="locaryn-projset-detail">
+          <div className="locaryn-field">
+            <label className="locaryn-field-label">{selected.name}</label>
+            <p className="locaryn-field-hint locaryn-kv-mono">{selected.path}</p>
           </div>
 
-          <div className="lochor-field" style={{ marginTop: 18 }}>
-            <label className="lochor-field-label">Autorisations des outils</label>
-            <p className="lochor-field-hint">
+          <div className="locaryn-field" style={{ marginTop: 18 }}>
+            <label className="locaryn-field-label">Autorisations des outils</label>
+            <p className="locaryn-field-hint">
               Détermine ce que l'agent peut faire seul dans ce projet (lire, écrire, exécuter).
             </p>
-            <div className="lochor-conn" style={{ marginTop: 8 }}>
+            <div className="locaryn-conn" style={{ marginTop: 8 }}>
               <span
-                className="lochor-health-dot"
+                className="locaryn-health-dot"
                 style={{ background: TRUST_LABELS[selected.trust_level].color }}
               />
               <span>
@@ -115,19 +115,19 @@ export function ProjectSettings({ projects, onArchived }: Props) {
                 {TRUST_LABELS[selected.trust_level].hint}
               </span>
             </div>
-            <p className="lochor-field-hint" style={{ marginTop: 8, fontStyle: "italic" }}>
+            <p className="locaryn-field-hint" style={{ marginTop: 8, fontStyle: "italic" }}>
               Le changement de niveau depuis l'interface arrive avec le journal d'approbations ;
               les demandes d'outils restent confirmées au cas par cas d'ici là.
             </p>
           </div>
 
-          <div className="lochor-field" style={{ marginTop: 18 }}>
-            <label className="lochor-field-label">Base de connaissances (RAG)</label>
-            <p className="lochor-field-hint">
+          <div className="locaryn-field" style={{ marginTop: 18 }}>
+            <label className="locaryn-field-label">Base de connaissances (RAG)</label>
+            <p className="locaryn-field-hint">
               Documents indexés utilisés automatiquement dans les conversations de ce projet.
             </p>
-            <div className="lochor-conn" style={{ marginTop: 8 }}>
-              <span className={`lochor-health-dot ${rag && rag.chunk_count > 0 ? "lochor-health-ok" : "lochor-health-off"}`} />
+            <div className="locaryn-conn" style={{ marginTop: 8 }}>
+              <span className={`locaryn-health-dot ${rag && rag.chunk_count > 0 ? "locaryn-health-ok" : "locaryn-health-off"}`} />
               <span>
                 {rag == null
                   ? "…"
@@ -137,10 +137,10 @@ export function ProjectSettings({ projects, onArchived }: Props) {
               </span>
             </div>
             {rag && rag.chunk_count > 0 && (
-              <div className="lochor-field-actions" style={{ marginTop: 10 }}>
+              <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
                 <button
                   type="button"
-                  className="lochor-btn-ghost"
+                  className="locaryn-btn-ghost"
                   disabled={busy}
                   onClick={async () => {
                     if (!window.confirm("Effacer l'index de ce projet ?")) return;
@@ -159,19 +159,19 @@ export function ProjectSettings({ projects, onArchived }: Props) {
             )}
           </div>
 
-          <div className="lochor-field" style={{ marginTop: 18 }}>
-            <label className="lochor-field-label">Actions</label>
-            <div className="lochor-field-actions" style={{ marginTop: 8 }}>
+          <div className="locaryn-field" style={{ marginTop: 18 }}>
+            <label className="locaryn-field-label">Actions</label>
+            <div className="locaryn-field-actions" style={{ marginTop: 8 }}>
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 onClick={() => core.openModelsFolder(selected.path).catch(() => {})}
               >
                 📂 Ouvrir le dossier
               </button>
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
                 disabled={busy}
                 onClick={archive}

@@ -1,7 +1,7 @@
 stable-diffusion.cpp
 https://github.com/leejet/stable-diffusion.cpp
 
-Bundled in Lochor as: data_dir/bin/sd/ (sd.exe, sd-cli.exe, sd-server.exe,
+Bundled in Locaryn as: data_dir/bin/sd/ (sd.exe, sd-cli.exe, sd-server.exe,
 ggml-*.dll, and related runtime files).
 
 --------------------------------------------------------------------------------

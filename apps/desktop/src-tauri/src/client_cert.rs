@@ -1,6 +1,6 @@
 //! Installing the client certificate an administrator issued.
 //!
-//! "Installing" here means registering it with Lochor, not adding it to the
+//! "Installing" here means registering it with Locaryn, not adding it to the
 //! Windows certificate store. Two reasons: the system store would let any
 //! program on the machine use the credential, and importing into it needs
 //! privileges an employee usually does not have — which is exactly the
@@ -25,7 +25,7 @@ pub struct CertificateStatus {
 }
 
 fn cert_dir() -> PathBuf {
-    lochor_config::default_data_dir().join("client-tls")
+    locaryn_config::default_data_dir().join("client-tls")
 }
 
 fn cert_path() -> PathBuf {
@@ -41,7 +41,7 @@ fn ca_path() -> PathBuf {
 /// Shown so the user can confirm they installed *their* certificate and not a
 /// colleague's — the files look identical otherwise.
 fn common_name(pem: &str) -> Option<String> {
-    let der = lochor_config::provision::base64_decode(
+    let der = locaryn_config::provision::base64_decode(
         &pem.lines()
             .skip_while(|l| !l.starts_with("-----BEGIN CERTIFICATE"))
             .skip(1)
@@ -54,7 +54,7 @@ fn common_name(pem: &str) -> Option<String> {
     //
     // Take the *last* occurrence: in a DER certificate the issuer name comes
     // before the subject, so the first match is the authority. Reading it
-    // showed "Lochor local CA" for everyone's certificate, which defeats the
+    // showed "Locaryn local CA" for everyone's certificate, which defeats the
     // point of displaying a name at all.
     let needle = [0x55u8, 0x04, 0x03];
     let pos = der.windows(3).rposition(|w| w == needle)?;
@@ -160,7 +160,7 @@ mod tests {
 
     fn scratch(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "lochor_cc_{tag}_{}",
+            "locaryn_cc_{tag}_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -174,7 +174,7 @@ mod tests {
     fn the_name_inside_a_real_certificate_is_read_back() {
         let dir = scratch("name");
         // A genuine certificate, issued the way the server issues them.
-        let cred = lochor_config::mtls::issue_client(&dir, "marie", 30).unwrap();
+        let cred = locaryn_config::mtls::issue_client(&dir, "marie", 30).unwrap();
         assert_eq!(common_name(&cred.bundle_pem).as_deref(), Some("marie"));
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn a_certificate_without_its_key_is_refused_with_a_usable_message() {
         let dir = scratch("nokey");
-        let cred = lochor_config::mtls::issue_client(&dir, "paul", 30).unwrap();
+        let cred = locaryn_config::mtls::issue_client(&dir, "paul", 30).unwrap();
         // Strip the key: the classic mistake of sending only the certificate.
         let cert_only: String = cred
             .bundle_pem
@@ -221,7 +221,7 @@ mod tests {
 
 /// Where the session token is kept between launches.
 fn token_path() -> PathBuf {
-    lochor_config::default_data_dir().join("session-token.json")
+    locaryn_config::default_data_dir().join("session-token.json")
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
@@ -248,7 +248,7 @@ pub async fn sign_in(
     // The fingerprint is read here rather than taken from the caller: it is the
     // one thing that decides whether this really is the company's server, and a
     // value arriving from the interface could have come from anywhere.
-    let fingerprint = lochor_config::provision::load()
+    let fingerprint = locaryn_config::provision::load()
         .ok()
         .flatten()
         .and_then(|p| p.certificate_fingerprint);
@@ -315,7 +315,7 @@ pub async fn sign_in(
         token,
     };
     let json = serde_json::to_string_pretty(&session).map_err(|e| format!("sérialisation : {e}"))?;
-    std::fs::create_dir_all(lochor_config::default_data_dir())
+    std::fs::create_dir_all(locaryn_config::default_data_dir())
         .map_err(|e| format!("dossier de données : {e}"))?;
     std::fs::write(token_path(), json).map_err(|e| format!("écriture du jeton : {e}"))?;
     restrict(&token_path());

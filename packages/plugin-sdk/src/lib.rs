@@ -1,4 +1,4 @@
-//! Lochor plugin SDK — the API extension authors code against.
+//! Locaryn plugin SDK — the API extension authors code against.
 //!
 //! In V1, plugins are mostly markdown + MCP server declarations (no native
 //! code). This SDK therefore exposes:
@@ -9,10 +9,10 @@
 //! V1.1 wires `wasmtime` and proc macros so a Rust plugin can compile to
 //! WASM and register tools/hooks/skills directly.
 
-pub use lochor_extensions::manifest::{
+pub use locaryn_extensions::manifest::{
     Components, PermissionRequest, PermissionValue, PermissionsMap, PluginManifest,
 };
-pub use lochor_shared_types::Permission;
+pub use locaryn_shared_types::Permission;
 
 use serde::{Deserialize, Serialize};
 
@@ -34,7 +34,7 @@ pub struct PluginBuilder {
 impl PluginBuilder {
     pub fn new(name: impl Into<String>, version: impl Into<String>) -> Self {
         let m = PluginManifest {
-            schema: "https://lochor.dev/schema/plugin.json/v0.1".into(),
+            schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
             api_version: "0.1".into(),
             name: name.into(),
             version: version.into(),
@@ -103,14 +103,14 @@ impl PluginBuilder {
     }
 }
 
-/// Validate a manifest (delegates to `lochor-extensions`).
-pub fn validate(m: &PluginManifest) -> Result<(), lochor_extensions::manifest::ManifestError> {
-    lochor_extensions::manifest::validate(m)
+/// Validate a manifest (delegates to `locaryn-extensions`).
+pub fn validate(m: &PluginManifest) -> Result<(), locaryn_extensions::manifest::ManifestError> {
+    locaryn_extensions::manifest::validate(m)
 }
 
 /// Trait a native plugin (V1.1) would implement. Skeleton now.
 #[async_trait::async_trait]
-pub trait LochorPlugin: Send + Sync {
+pub trait LocarynPlugin: Send + Sync {
     fn name(&self) -> &str;
     fn version(&self) -> &str;
     fn tools(&self) -> Vec<ToolDecl> {

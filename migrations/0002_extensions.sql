@@ -1,4 +1,4 @@
--- Lochor extension system schema (V0.1)
+-- Locaryn extension system schema (V0.1)
 
 -- ===== Extensions (unified registry) =====
 CREATE TABLE IF NOT EXISTS extensions (

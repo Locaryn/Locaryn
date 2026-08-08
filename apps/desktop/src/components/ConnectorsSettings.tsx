@@ -144,19 +144,19 @@ export function ConnectorsSettings() {
   });
 
   return (
-    <div className="lochor-conn-settings">
-      <div className="lochor-store-tabs" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+    <div className="locaryn-conn-settings">
+      <div className="locaryn-store-tabs" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             type="button"
-            className={`lochor-tab-btn${tab === "browse" ? " lochor-active" : ""}`}
+            className={`locaryn-tab-btn${tab === "browse" ? " locaryn-active" : ""}`}
             onClick={() => setTab("browse")}
           >
             Store & Catalogue
           </button>
           <button
             type="button"
-            className={`lochor-tab-btn${tab === "installed" ? " lochor-active" : ""}`}
+            className={`locaryn-tab-btn${tab === "installed" ? " locaryn-active" : ""}`}
             onClick={() => setTab("installed")}
           >
             Actifs / Installés ({enabledIds.size + servers.length})
@@ -166,7 +166,7 @@ export function ConnectorsSettings() {
         <div style={{ display: "flex", gap: "8px" }}>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             style={{ fontSize: "12px", padding: "4px 12px" }}
             onClick={() => setExtDialogOpen(true)}
             title="Installe un plugin ou une extension depuis un dépôt GitHub, un dossier local ou une archive ZIP"
@@ -175,7 +175,7 @@ export function ConnectorsSettings() {
           </button>
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             style={{ fontSize: "12px", padding: "4px 12px" }}
             onClick={() => setMcpFormOpen(true)}
           >
@@ -186,58 +186,58 @@ export function ConnectorsSettings() {
 
       {tab === "browse" ? (
         <>
-          <div className="lochor-size-chips" style={{ marginBottom: "16px" }}>
+          <div className="locaryn-size-chips" style={{ marginBottom: "16px" }}>
             <button
               type="button"
-              className={`lochor-chip${categoryFilter === "all" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${categoryFilter === "all" ? " locaryn-chip-on" : ""}`}
               onClick={() => setCategoryFilter("all")}
             >
               Tous
             </button>
             <button
               type="button"
-              className={`lochor-chip${categoryFilter === "extension" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${categoryFilter === "extension" ? " locaryn-chip-on" : ""}`}
               onClick={() => setCategoryFilter("extension")}
             >
               Extensions & MCP
             </button>
             <button
               type="button"
-              className={`lochor-chip${categoryFilter === "connector" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${categoryFilter === "connector" ? " locaryn-chip-on" : ""}`}
               onClick={() => setCategoryFilter("connector")}
             >
               Connecteurs Réseau / BDD
             </button>
             <button
               type="button"
-              className={`lochor-chip${categoryFilter === "plugin" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${categoryFilter === "plugin" ? " locaryn-chip-on" : ""}`}
               onClick={() => setCategoryFilter("plugin")}
             >
               Plugins d'Exécution
             </button>
           </div>
 
-          <div className="lochor-model-grid">
+          <div className="locaryn-model-grid">
             {filteredTypes.map((t) => {
               const isEnabled = enabledIds.has(t.type_id);
               return (
-                <div key={t.type_id} className="lochor-box-card" style={{ minHeight: "180px" }}>
-                  <div className="lochor-box-head">
+                <div key={t.type_id} className="locaryn-box-card" style={{ minHeight: "180px" }}>
+                  <div className="locaryn-box-head">
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <span style={{ fontSize: "24px" }} aria-hidden="true">
                         {t.icon}
                       </span>
                       <div>
-                        <h3 className="lochor-box-name">{t.display_name}</h3>
-                        <span className="lochor-box-brand">{t.source}</span>
+                        <h3 className="locaryn-box-name">{t.display_name}</h3>
+                        <span className="locaryn-box-brand">{t.source}</span>
                       </div>
                     </div>
-                    <span className="lochor-tag">{t.category}</span>
+                    <span className="locaryn-tag">{t.category}</span>
                   </div>
 
-                  <p className="lochor-box-desc">{t.summary}</p>
+                  <p className="locaryn-box-desc">{t.summary}</p>
                   {t.install_hint && (
-                    <code className="lochor-connector-cmd" title="Commande qui lance ce serveur MCP">
+                    <code className="locaryn-connector-cmd" title="Commande qui lance ce serveur MCP">
                       {t.install_hint}
                     </code>
                   )}
@@ -246,7 +246,7 @@ export function ConnectorsSettings() {
                     {t.type_id === "ssh" ? (
                       <button
                         type="button"
-                        className="lochor-btn-primary"
+                        className="locaryn-btn-primary"
                         onClick={() => setSshFormOpen(true)}
                       >
                         + Ajouter serveur SSH
@@ -254,7 +254,7 @@ export function ConnectorsSettings() {
                     ) : (
                       <button
                         type="button"
-                        className={`lochor-btn-${isEnabled ? "ghost" : "primary"}`}
+                        className={`locaryn-btn-${isEnabled ? "ghost" : "primary"}`}
                         onClick={() => toggleEnable(t.type_id)}
                       >
                         {isEnabled ? "Actif ✓" : "Installer / Activer"}
@@ -269,26 +269,26 @@ export function ConnectorsSettings() {
       ) : (
         <div>
           <h3 style={{ fontSize: "var(--text-md)", marginBottom: "12px" }}>Extensions & Connecteurs Actifs</h3>
-          <div className="lochor-model-grid" style={{ marginBottom: "28px" }}>
+          <div className="locaryn-model-grid" style={{ marginBottom: "28px" }}>
             {Array.from(enabledIds).map((id) => {
               const t = types.find((item) => item.type_id === id);
               if (!t) return null;
               return (
-                <div key={t.type_id} className="lochor-box-card">
-                  <div className="lochor-box-head">
+                <div key={t.type_id} className="locaryn-box-card">
+                  <div className="locaryn-box-head">
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <span style={{ fontSize: "24px" }}>{t.icon}</span>
                       <div>
-                        <h3 className="lochor-box-name">{t.display_name}</h3>
-                        <span className="lochor-tag lochor-tag-installed">actif</span>
+                        <h3 className="locaryn-box-name">{t.display_name}</h3>
+                        <span className="locaryn-tag locaryn-tag-installed">actif</span>
                       </div>
                     </div>
                   </div>
-                  <p className="lochor-box-desc">{t.summary}</p>
+                  <p className="locaryn-box-desc">{t.summary}</p>
                   <div style={{ marginTop: "auto", paddingTop: "12px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }}>
                     <button
                       type="button"
-                      className="lochor-btn-ghost"
+                      className="locaryn-btn-ghost"
                       style={{ color: "var(--danger)", fontSize: "12px" }}
                       onClick={() => toggleEnable(t.type_id)}
                     >
@@ -304,30 +304,30 @@ export function ConnectorsSettings() {
             Serveurs MCP ({mcpServers.length})
           </h3>
           {mcpServers.length === 0 ? (
-            <p className="lochor-field-hint" style={{ marginBottom: "28px" }}>
+            <p className="locaryn-field-hint" style={{ marginBottom: "28px" }}>
               Aucun serveur MCP. Ajoutez-en un depuis l'onglet « Parcourir » — n'importe
               quel serveur du protocole convient, y compris ceux prévus pour Claude Code
               ou Cursor.
             </p>
           ) : (
-            <div className="lochor-model-grid" style={{ marginBottom: "28px" }}>
+            <div className="locaryn-model-grid" style={{ marginBottom: "28px" }}>
               {mcpServers.map((m) => (
-                <div key={m.name} className="lochor-box-card">
-                  <div className="lochor-box-head">
+                <div key={m.name} className="locaryn-box-card">
+                  <div className="locaryn-box-head">
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span
-                        className={`lochor-health-dot ${
-                          m.running ? "lochor-health-ok" : "lochor-health-off"
+                        className={`locaryn-health-dot ${
+                          m.running ? "locaryn-health-ok" : "locaryn-health-off"
                         }`}
                       />
                       <div>
-                        <h3 className="lochor-box-name">{m.name}</h3>
-                        <span className="lochor-box-brand">{m.transport}</span>
+                        <h3 className="locaryn-box-name">{m.name}</h3>
+                        <span className="locaryn-box-brand">{m.transport}</span>
                       </div>
                     </div>
                   </div>
-                  <code className="lochor-connector-cmd">{m.target}</code>
-                  <p className="lochor-box-desc">
+                  <code className="locaryn-connector-cmd">{m.target}</code>
+                  <p className="locaryn-box-desc">
                     {m.running
                       ? m.tools.length > 0
                         ? `${m.tools.length} outil${m.tools.length > 1 ? "s" : ""} : ${m.tools.slice(0, 4).join(", ")}${m.tools.length > 4 ? "…" : ""}`
@@ -345,7 +345,7 @@ export function ConnectorsSettings() {
                   >
                     <button
                       type="button"
-                      className="lochor-btn-ghost"
+                      className="locaryn-btn-ghost"
                       style={{ color: "var(--danger)", fontSize: "12px" }}
                       disabled={mcpBusy === m.name}
                       onClick={() => removeMcp(m)}
@@ -354,7 +354,7 @@ export function ConnectorsSettings() {
                     </button>
                     <button
                       type="button"
-                      className={`lochor-btn-${m.running ? "ghost" : "primary"}`}
+                      className={`locaryn-btn-${m.running ? "ghost" : "primary"}`}
                       disabled={mcpBusy === m.name}
                       onClick={() => toggleMcp(m)}
                     >
@@ -365,36 +365,36 @@ export function ConnectorsSettings() {
               ))}
             </div>
           )}
-          {mcpError && <div className="lochor-vp-error" style={{ marginBottom: "28px" }}>{mcpError}</div>}
+          {mcpError && <div className="locaryn-vp-error" style={{ marginBottom: "28px" }}>{mcpError}</div>}
 
           {servers.length > 0 && (
             <>
               <h3 style={{ fontSize: "var(--text-md)", marginBottom: "12px" }}>Serveurs SSH enregistrés ({servers.length})</h3>
-              <div className="lochor-model-grid">
+              <div className="locaryn-model-grid">
                 {servers.map((s) => (
-                  <div key={s.id} className="lochor-box-card">
-                    <div className="lochor-box-head">
+                  <div key={s.id} className="locaryn-box-card">
+                    <div className="locaryn-box-head">
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span
-                          className={`lochor-health-dot ${
-                            s.status === "ok" ? "lochor-health-ok" : "lochor-health-off"
+                          className={`locaryn-health-dot ${
+                            s.status === "ok" ? "locaryn-health-ok" : "locaryn-health-off"
                           }`}
                         />
                         <div>
-                          <h3 className="lochor-box-name">{s.name}</h3>
-                          <span className="lochor-box-brand">
+                          <h3 className="locaryn-box-name">{s.name}</h3>
+                          <span className="locaryn-box-brand">
                             {s.username}@{s.host}:{s.port}
                           </span>
                         </div>
                       </div>
                     </div>
-                    <p className="lochor-box-desc">{s.description || "Serveur SSH distant"}</p>
+                    <p className="locaryn-box-desc">{s.description || "Serveur SSH distant"}</p>
                     
                     <div style={{ marginTop: "auto", paddingTop: "12px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "8px" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>Accès IA :</span>
                         <select
-                          className="lochor-select lochor-select-sm"
+                          className="locaryn-select locaryn-select-sm"
                           value={s.ai_access}
                           onChange={(e) => changeAiAccess(s, e.target.value as SshAiAccess)}
                         >
@@ -407,7 +407,7 @@ export function ConnectorsSettings() {
                       </div>
                       <button
                         type="button"
-                        className="lochor-btn-ghost"
+                        className="locaryn-btn-ghost"
                         style={{ color: "var(--danger)", fontSize: "12px", alignSelf: "flex-end" }}
                         onClick={() => removeSsh(s)}
                       >
@@ -424,27 +424,27 @@ export function ConnectorsSettings() {
 
       {/* Form modal to add custom MCP server */}
       {mcpFormOpen && (
-        <div className="lochor-settings-backdrop" onClick={() => setMcpFormOpen(false)}>
-          <div className="lochor-card" style={{ width: "480px", margin: "100px auto" }} onClick={(e) => e.stopPropagation()}>
+        <div className="locaryn-settings-backdrop" onClick={() => setMcpFormOpen(false)}>
+          <div className="locaryn-card" style={{ width: "480px", margin: "100px auto" }} onClick={(e) => e.stopPropagation()}>
             <h3>Ajouter un serveur MCP</h3>
-            {mcpError && <div className="lochor-vp-error">{mcpError}</div>}
-            <div className="lochor-field">
-              <label className="lochor-field-label">Nom du serveur MCP</label>
+            {mcpError && <div className="locaryn-vp-error">{mcpError}</div>}
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">Nom du serveur MCP</label>
               <input
-                className="lochor-input"
+                className="locaryn-input"
                 placeholder="graphify"
                 value={mcpName}
                 onChange={(e) => setMcpName(e.target.value)}
               />
-              <p className="lochor-field-hint">
+              <p className="locaryn-field-hint">
                 Ce nom préfixe les outils vus par le modèle : lettres, chiffres,
                 « - » et « _ » uniquement.
               </p>
             </div>
-            <div className="lochor-field">
-              <label className="lochor-field-label">Protocole Transport</label>
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">Protocole Transport</label>
               <select
-                className="lochor-select"
+                className="locaryn-select"
                 value={mcpType}
                 onChange={(e) => setMcpType(e.target.value as "stdio" | "http")}
               >
@@ -452,12 +452,12 @@ export function ConnectorsSettings() {
                 <option value="http">Adresse HTTP</option>
               </select>
             </div>
-            <div className="lochor-field">
-              <label className="lochor-field-label">
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">
                 {mcpType === "stdio" ? "Commande à lancer" : "Adresse du serveur"}
               </label>
               <input
-                className="lochor-input"
+                className="locaryn-input"
                 placeholder={
                   mcpType === "stdio"
                     ? "npx -y @modelcontextprotocol/server-filesystem D:/Documents"
@@ -467,13 +467,13 @@ export function ConnectorsSettings() {
                 onChange={(e) => setMcpCommand(e.target.value)}
               />
             </div>
-            <div className="lochor-field-actions" style={{ marginTop: "16px", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button type="button" className="lochor-btn-ghost" onClick={() => setMcpFormOpen(false)}>
+            <div className="locaryn-field-actions" style={{ marginTop: "16px", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button type="button" className="locaryn-btn-ghost" onClick={() => setMcpFormOpen(false)}>
                 Annuler
               </button>
               <button
                 type="button"
-                className="lochor-btn-primary"
+                className="locaryn-btn-primary"
                 disabled={mcpBusy === "__add__"}
                 onClick={saveCustomMcp}
               >

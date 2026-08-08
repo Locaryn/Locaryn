@@ -1,14 +1,14 @@
 [package]
-name = "lochor-config"
+name = "locaryn-config"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Hierarchical Lochor configuration (global/user/workspace + env)."
+description = "Hierarchical Locaryn configuration (global/user/workspace + env)."
 
 [dependencies]
-lochor-shared-types = { workspace = true }
+locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

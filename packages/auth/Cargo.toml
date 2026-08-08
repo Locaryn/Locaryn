@@ -1,5 +1,5 @@
 [package]
-name = "lochor-auth"
+name = "locaryn-auth"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 description = "Auth: token management, OS keychain, Argon2id hashing (server-side), audit."
 
 [dependencies]
-lochor-shared-types = { workspace = true }
+locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }

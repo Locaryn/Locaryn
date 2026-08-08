@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 /// on every managed install, silently downgrading generation to a stub.
 pub fn find_sd_binary() -> Option<PathBuf> {
     let exe = if cfg!(windows) { "sd.exe" } else { "sd" };
-    let bin = lochor_config::bin_dir();
+    let bin = locaryn_config::bin_dir();
     for candidate in [bin.join("sd").join(exe), bin.join(exe)] {
         if candidate.exists() {
             return Some(candidate);
@@ -332,7 +332,7 @@ mod tests {
 
     fn scratch(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "lochor_sd_test_{tag}_{}",
+            "locaryn_sd_test_{tag}_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -662,7 +662,7 @@ mod batch_tests {
 
     #[test]
     fn batch_flag_is_only_emitted_when_more_than_one_is_asked_for() {
-        let dir = std::env::temp_dir().join("lochor_batch_flag_test");
+        let dir = std::env::temp_dir().join("locaryn_batch_flag_test");
         std::fs::create_dir_all(&dir).unwrap();
         let model = dir.join("stable-diffusion-v1-5-Q4_0.gguf");
         std::fs::write(&model, [0u8; 32]).unwrap();

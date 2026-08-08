@@ -1,6 +1,6 @@
 //! Turning the desktop application into a shared server.
 //!
-//! The app does not serve HTTP itself: it supervises `lochor-daemon`, which
+//! The app does not serve HTTP itself: it supervises `locaryn-daemon`, which
 //! already carries the authentication, the TLS and the account model. Adding a
 //! second HTTP implementation inside Tauri would mean two places to keep
 //! correct, and the security-critical one would be the one nobody tested.
@@ -35,7 +35,7 @@ pub struct ServerStatus {
 fn daemon_binary() -> Option<std::path::PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
-    let name = if cfg!(windows) { "lochor-daemon.exe" } else { "lochor-daemon" };
+    let name = if cfg!(windows) { "locaryn-daemon.exe" } else { "locaryn-daemon" };
     // Beside the app when installed; in the build output during development.
     for candidate in [dir.join(name), dir.join("..").join(name)] {
         if candidate.is_file() {
@@ -60,19 +60,19 @@ pub fn local_address() -> String {
 }
 
 fn read_fingerprint() -> Option<String> {
-    let path = lochor_config::default_data_dir()
+    let path = locaryn_config::default_data_dir()
         .join("tls")
         .join("daemon-cert.pem");
     let pem = std::fs::read_to_string(path).ok()?;
-    lochor_config::provision::certificate_fingerprint(&pem)
+    locaryn_config::provision::certificate_fingerprint(&pem)
 }
 
 async fn account_count() -> u32 {
-    let db = lochor_config::default_data_dir().join("lochor.db");
-    let Ok(pool) = lochor_storage::open(&db).await else {
+    let db = locaryn_config::default_data_dir().join("locaryn.db");
+    let Ok(pool) = locaryn_storage::open(&db).await else {
         return 0;
     };
-    lochor_storage::users::UserRepo::new(pool)
+    locaryn_storage::users::UserRepo::new(pool)
         .count()
         .await
         .unwrap_or(0)
@@ -99,13 +99,13 @@ pub async fn server_status() -> Result<ServerStatus, String> {
     };
 
     let accounts = account_count().await;
-    let port = lochor_config::load(None).map(|c| c.daemon.port).unwrap_or(7474);
+    let port = locaryn_config::load(None).map(|c| c.daemon.port).unwrap_or(7474);
     let ip = local_address();
 
     let blocker = if daemon_binary().is_none() {
         Some(
-            "Le service Lochor est introuvable à côté de l'application. \
-             Réinstallez-la, ou lancez `lochor-daemon` manuellement."
+            "Le service Locaryn est introuvable à côté de l'application. \
+             Réinstallez-la, ou lancez `locaryn-daemon` manuellement."
                 .to_string(),
         )
     } else if accounts == 0 {
@@ -162,15 +162,15 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
         return Ok(status);
     }
 
-    let bin = daemon_binary().ok_or("service Lochor introuvable")?;
+    let bin = daemon_binary().ok_or("service Locaryn introuvable")?;
     let port = args.port.unwrap_or(status.port);
     let child = std::process::Command::new(&bin)
         // Exposing it is what makes the daemon demand authentication and TLS.
-        .env("LOCHOR_DAEMON_BIND", "0.0.0.0")
-        .env("LOCHOR_DAEMON_PORT", port.to_string())
+        .env("LOCARYN_DAEMON_BIND", "0.0.0.0")
+        .env("LOCARYN_DAEMON_PORT", port.to_string())
         .env(
-            "LOCHOR_DATA_DIR",
-            lochor_config::default_data_dir().to_string_lossy().to_string(),
+            "LOCARYN_DATA_DIR",
+            locaryn_config::default_data_dir().to_string_lossy().to_string(),
         )
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -188,8 +188,8 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
 
 /// Settings an administrator hands to their users, if this machine has some.
 #[tauri::command]
-pub fn provisioning() -> Result<Option<lochor_config::provision::Provisioning>, String> {
-    lochor_config::provision::load()
+pub fn provisioning() -> Result<Option<locaryn_config::provision::Provisioning>, String> {
+    locaryn_config::provision::load()
 }
 
 #[cfg(test)]

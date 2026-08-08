@@ -1,7 +1,7 @@
 # ADR-0001 — Rust core + Tauri v2 desktop
 
 ## Context
-Lochor requires desktop + CLI + local daemon + remote-server to share **exactly the same** business core (no agent logic duplication in the UI). The desktop must be native, lightweight, multi-arch (x64 + ARM64) on Windows/macOS/Linux, with an integrated preview panel and sidecar support for local LLM runtimes.
+Locaryn requires desktop + CLI + local daemon + remote-server to share **exactly the same** business core (no agent logic duplication in the UI). The desktop must be native, lightweight, multi-arch (x64 + ARM64) on Windows/macOS/Linux, with an integrated preview panel and sidecar support for local LLM runtimes.
 
 ## Decision
 - Core: **Rust** crates workspace (`packages/*`) — the single shared core.

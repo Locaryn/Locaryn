@@ -2,7 +2,7 @@
 
 use crate::manifest;
 use crate::{ExtensionEntry, PermissionSet};
-use lochor_shared_types::{ExtensionKind, ExtensionScope, Permission};
+use locaryn_shared_types::{ExtensionKind, ExtensionScope, Permission};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -135,7 +135,7 @@ impl ExtensionRegistry {
 // Ecosystem import layer
 // ============================================================================
 
-/// Result of importing a foreign bundle into Lochor's format.
+/// Result of importing a foreign bundle into Locaryn's format.
 #[derive(Debug, Clone)]
 pub struct ImportSummary {
     pub agents: usize,
@@ -207,7 +207,7 @@ pub fn import_claude_code(src: &Path, out: &Path) -> Result<ImportSummary, Regis
         s.hooks_files += 1;
     }
     if src.join("CLAUDE.md").exists() {
-        std::fs::copy(src.join("CLAUDE.md"), out.join("LOCHOR.md"))?;
+        std::fs::copy(src.join("CLAUDE.md"), out.join("LOCARYN.md"))?;
         s.rules_files += 1;
     }
     let rules = src.join("rules");

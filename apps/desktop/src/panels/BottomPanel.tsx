@@ -9,7 +9,7 @@ export function BottomPanel({ cwd, sessionId }: Props) {
   const [resolvedCwd, setResolvedCwd] = useState<string | null>(cwd ?? null);
   const [tab, setTab] = useState<"terminal" | "logs">("terminal");
   const [lines, setLines] = useState<TermLine[]>([
-    { stream: "meta", text: "Lochor terminal — line-based exec (full PTY in V1)" },
+    { stream: "meta", text: "Locaryn terminal — line-based exec (full PTY in V1)" },
   ]);
   const [cmd, setCmd] = useState("");
   const [running, setRunning] = useState(false);
@@ -81,18 +81,18 @@ export function BottomPanel({ cwd, sessionId }: Props) {
   }
 
   return (
-    <footer className="lochor-bottom">
-      <div className="lochor-bottom-tabs">
+    <footer className="locaryn-bottom">
+      <div className="locaryn-bottom-tabs">
         <button
           type="button"
-          className={`lochor-tab-btn${tab === "terminal" ? " lochor-active" : ""}`}
+          className={`locaryn-tab-btn${tab === "terminal" ? " locaryn-active" : ""}`}
           onClick={() => setTab("terminal")}
         >
           Terminal
         </button>
         <button
           type="button"
-          className={`lochor-tab-btn${tab === "logs" ? " lochor-active" : ""}`}
+          className={`locaryn-tab-btn${tab === "logs" ? " locaryn-active" : ""}`}
           onClick={() => setTab("logs")}
         >
           Logs
@@ -100,7 +100,7 @@ export function BottomPanel({ cwd, sessionId }: Props) {
         {tab === "terminal" && lines.length > 1 && (
           <button
             type="button"
-            className="lochor-tab-action"
+            className="locaryn-tab-action"
             onClick={() =>
               setLines([{ stream: "meta", text: "cleared" }])
             }
@@ -108,24 +108,24 @@ export function BottomPanel({ cwd, sessionId }: Props) {
             clear
           </button>
         )}
-        <span className="lochor-term-cwd" title={resolvedCwd ?? ""}>
+        <span className="locaryn-term-cwd" title={resolvedCwd ?? ""}>
           {resolvedCwd ?? "no workspace"}
         </span>
       </div>
-      <div className="lochor-bottom-content">
+      <div className="locaryn-bottom-content">
         {tab === "terminal" ? (
-          <div className="lochor-terminal">
-            <div className="lochor-term-scroll" ref={scrollRef}>
+          <div className="locaryn-terminal">
+            <div className="locaryn-term-scroll" ref={scrollRef}>
               {lines.map((l, i) => (
-                <div key={i} className={`lochor-term-line lochor-term-${l.stream}`}>
+                <div key={i} className={`locaryn-term-line locaryn-term-${l.stream}`}>
                   {l.text}
                 </div>
               ))}
             </div>
-            <div className="lochor-term-input-row">
-              <span className="lochor-term-prompt">{running ? "…" : "❯"}</span>
+            <div className="locaryn-term-input-row">
+              <span className="locaryn-term-prompt">{running ? "…" : "❯"}</span>
               <input
-                className="lochor-term-input"
+                className="locaryn-term-input"
                 value={cmd}
                 disabled={running}
                 spellCheck={false}
@@ -138,7 +138,7 @@ export function BottomPanel({ cwd, sessionId }: Props) {
             </div>
           </div>
         ) : (
-          <div className="lochor-logs-empty">
+          <div className="locaryn-logs-empty">
             <code>Daemon &amp; supervisor logs land here in V1.</code>
           </div>
         )}

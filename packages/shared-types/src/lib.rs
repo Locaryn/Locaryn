@@ -1,4 +1,4 @@
-//! Lochor shared types — serializable, zero business logic dependency.
+//! Locaryn shared types — serializable, zero business logic dependency.
 //!
 //! These types cross every boundary: Rust core <-> daemon HTTP API <->
 //! remote-server HTTP API <-> CLI <-> Tauri frontend (via serde_json).
@@ -241,12 +241,12 @@ pub const ALL_PERMISSIONS: &[Permission] = &[
 
 /// Which upstream ecosystem a bundle comes from. Drives two things: how the
 /// browse UI groups entries, and which adapter converts the bundle at install
-/// time. `Lochor` needs no conversion.
+/// time. `Locaryn` needs no conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum ExtensionEcosystem {
     #[default]
-    #[serde(rename = "lochor")]
-    Lochor,
+    #[serde(rename = "locaryn")]
+    Locaryn,
     #[serde(rename = "claude_code")]
     ClaudeCode,
     #[serde(rename = "gemini_cli")]
@@ -267,7 +267,7 @@ pub enum ExtensionEcosystem {
 impl ExtensionEcosystem {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Lochor => "lochor",
+            Self::Locaryn => "locaryn",
             Self::ClaudeCode => "claude_code",
             Self::GeminiCli => "gemini_cli",
             Self::OpenCode => "opencode",
@@ -281,7 +281,7 @@ impl ExtensionEcosystem {
     /// Human label for the browse UI. Product names are never translated.
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Lochor => "Lochor",
+            Self::Locaryn => "Locaryn",
             Self::ClaudeCode => "Claude Code",
             Self::GeminiCli => "Gemini CLI",
             Self::OpenCode => "OpenCode",
@@ -361,20 +361,20 @@ pub struct InstalledExtension {
     pub updated_at: DateTime<Utc>,
 }
 
-/// How well a catalog entry can actually run inside Lochor. Set by the
+/// How well a catalog entry can actually run inside Locaryn. Set by the
 /// adapter that would handle it, so the browse UI never promises more than
 /// the loader delivers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CatalogCompat {
-    /// A Lochor plugin. Installs and runs as-is.
+    /// A Locaryn plugin. Installs and runs as-is.
     Native,
     /// Foreign but fully declarative — the adapter converts it losslessly.
     Adapted,
     /// Only part of the bundle can run here (e.g. host-specific runtime code
     /// is skipped, the MCP servers and markdown still work).
     Partial,
-    /// Listed so it is findable, but nothing in it can run in Lochor.
+    /// Listed so it is findable, but nothing in it can run in Locaryn.
     Unsupported,
 }
 
@@ -412,7 +412,7 @@ pub struct CatalogEntry {
     pub installed: bool,
 }
 
-/// A remote catalog Lochor can read. Built-in sources ship with the app; the
+/// A remote catalog Locaryn can read. Built-in sources ship with the app; the
 /// user can add more (any repo exposing a supported index file).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogSource {
@@ -538,7 +538,7 @@ pub enum ApprovalVerdict {
 }
 
 /// Severity of a tool invocation. Drives the approval UX (modal vs auto-run,
-/// banner color, minimum approval scope). See `lochor-agent-runtime::tools`
+/// banner color, minimum approval scope). See `locaryn-agent-runtime::tools`
 /// for the canonical decision tables that consume this enum.
 ///
 /// `Critical` is reserved for tools that cross the local trust boundary

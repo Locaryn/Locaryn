@@ -1,4 +1,4 @@
-//! Bridge between `lochor-mcp` running clients and the agent tool loop.
+//! Bridge between `locaryn-mcp` running clients and the agent tool loop.
 //!
 //! Two operations:
 //! - `collect_mcp_tools`: scans all running MCP servers, calls `discover()`
@@ -8,7 +8,7 @@
 //!   server and forwards the call via `invoke_tool()`.
 
 use crate::tools::{ToolResult, ToolSpec};
-use lochor_mcp::{McpClient, McpState};
+use locaryn_mcp::{McpClient, McpState};
 use std::collections::HashMap;
 use std::sync::Arc;
 

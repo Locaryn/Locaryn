@@ -1,10 +1,10 @@
 @echo off
-:: Lochor clean script (Windows).
+:: Locaryn clean script (Windows).
 :: Removes release/, target/, node_modules, and Tauri bundle outputs.
 
 cd /d "%~dp0.."
 
-echo [Lochor] Cleaning build artifacts...
+echo [Locaryn] Cleaning build artifacts...
 
 if exist release rmdir /s /q release
 if exist target rmdir /s /q target
@@ -16,4 +16,4 @@ if exist packages-ui\preview\node_modules rmdir /s /q packages-ui\preview\node_m
 if exist packages-ui\terminal\node_modules rmdir /s /q packages-ui\terminal\node_modules
 if exist node_modules rmdir /s /q node_modules
 
-echo [Lochor] Clean complete.
+echo [Locaryn] Clean complete.

@@ -17,16 +17,16 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@lochor/ui-chat':
+      '@locaryn/ui-chat':
         specifier: workspace:*
         version: link:../../packages-ui/chat
-      '@lochor/ui-core':
+      '@locaryn/ui-core':
         specifier: workspace:*
         version: link:../../packages-ui/core
-      '@lochor/ui-preview':
+      '@locaryn/ui-preview':
         specifier: workspace:*
         version: link:../../packages-ui/preview
-      '@lochor/ui-terminal':
+      '@locaryn/ui-terminal':
         specifier: workspace:*
         version: link:../../packages-ui/terminal
       '@tauri-apps/api':
@@ -103,7 +103,7 @@ importers:
 
   packages-ui/chat:
     dependencies:
-      '@lochor/ui-core':
+      '@locaryn/ui-core':
         specifier: workspace:*
         version: link:../core
       react:

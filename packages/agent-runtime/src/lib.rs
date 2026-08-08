@@ -1,4 +1,4 @@
-//! Lochor agent runtime — the agentic tool-use loop and specialized
+//! Locaryn agent runtime — the agentic tool-use loop and specialized
 //! subagents. This is the heart of the product; V1 wires a real loop with
 //! tool dispatch, approval gating, and streaming. The skeleton defines the
 //! interfaces so other crates can compile against them.
@@ -19,8 +19,8 @@ pub use profile::{AgentProfile, AgentRegistry};
 pub use tools::{ToolContext, ToolError, ToolResult, ToolSpec};
 
 use futures::Stream;
-use lochor_events::StreamEvent;
-use lochor_shared_types::ConnectionMode;
+use locaryn_events::StreamEvent;
+use locaryn_shared_types::ConnectionMode;
 
 /// Input to an agent run.
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ pub struct AgentInput {
     /// `OllamaAgent` runs the agentic tool-use loop instead of simple streaming.
     pub project_id: Option<uuid::Uuid>,
     pub project_path: Option<std::path::PathBuf>,
-    pub trust: Option<lochor_shared_types::TrustLevel>,
+    pub trust: Option<locaryn_shared_types::TrustLevel>,
     /// Base64-encoded images attached to the user message (no data-URL prefix).
     /// Passed through to vision-capable models via Ollama's `images` field.
     pub images: Vec<String>,
@@ -48,7 +48,7 @@ pub struct AgentInput {
     /// running MCP servers and makes them available to the model alongside
     /// built-in tools. Tool names are prefixed `mcp__{server}__{tool}` to avoid
     /// collisions across servers.
-    pub mcp_state: Option<std::sync::Arc<lochor_mcp::McpState>>,
+    pub mcp_state: Option<std::sync::Arc<locaryn_mcp::McpState>>,
     /// Extra instructions appended to the system prompt: workspace rules and
     /// the skill index contributed by enabled extensions. Empty when no
     /// extension is enabled, in which case the prompt is byte-for-byte what it

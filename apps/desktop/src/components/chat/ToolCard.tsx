@@ -33,39 +33,39 @@ export function ToolCard({ tool, args, status, output }: Props) {
   const icon = TOOL_ICONS[tool] ?? "🔧";
 
   return (
-    <div className={`lochor-tool-card lochor-tool-${status}`}>
+    <div className={`locaryn-tool-card locaryn-tool-${status}`}>
       <button
         type="button"
-        className="lochor-tool-head"
+        className="locaryn-tool-head"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
-        <span className="lochor-tool-icon" aria-hidden="true">
+        <span className="locaryn-tool-icon" aria-hidden="true">
           {icon}
         </span>
-        <span className="lochor-tool-name">{tool}</span>
-        <span className="lochor-tool-summary">{argsSummary(args)}</span>
-        <span className={`lochor-tool-status lochor-tool-status-${status}`}>
+        <span className="locaryn-tool-name">{tool}</span>
+        <span className="locaryn-tool-summary">{argsSummary(args)}</span>
+        <span className={`locaryn-tool-status locaryn-tool-status-${status}`}>
           {status === "running" ? (
-            <span className="lochor-tool-spinner" aria-label="running" />
+            <span className="locaryn-tool-spinner" aria-label="running" />
           ) : status === "ok" ? (
             "✓"
           ) : (
             "✗"
           )}
         </span>
-        <span className="lochor-tool-chevron" aria-hidden="true">
+        <span className="locaryn-tool-chevron" aria-hidden="true">
           {open ? "▾" : "▸"}
         </span>
       </button>
       {open && (
-        <div className="lochor-tool-body">
-          <div className="lochor-tool-section">args</div>
-          <pre className="lochor-tool-pre">{JSON.stringify(args, null, 2)}</pre>
+        <div className="locaryn-tool-body">
+          <div className="locaryn-tool-section">args</div>
+          <pre className="locaryn-tool-pre">{JSON.stringify(args, null, 2)}</pre>
           {output && (
             <>
-              <div className="lochor-tool-section">output</div>
-              <pre className="lochor-tool-pre">
+              <div className="locaryn-tool-section">output</div>
+              <pre className="locaryn-tool-pre">
                 {output.length > 4000 ? `${output.slice(0, 4000)}…` : output}
               </pre>
             </>

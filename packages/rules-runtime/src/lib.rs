@@ -1,6 +1,6 @@
-//! Lochor workspace rules runtime. Aggregates markdown rules across scopes:
-//!   - global:  `~/.lochor/rules/*.md` (+ `~/.lochor/LOCHOR.md`)
-//!   - workspace: `<project>/.lochor/rules/*.md` (+ `<project>/LOCHOR.md`)
+//! Locaryn workspace rules runtime. Aggregates markdown rules across scopes:
+//!   - global:  `~/.locaryn/rules/*.md` (+ `~/.locaryn/LOCARYN.md`)
+//!   - workspace: `<project>/.locaryn/rules/*.md` (+ `<project>/LOCARYN.md`)
 //!
 //! Higher-priority (workspace) rules are appended last so they take effect
 //! in the system prompt. Compatible with `CLAUDE.md` / `AGENTS.md` imports.
@@ -42,7 +42,7 @@ pub fn load_all(project_root: &Path) -> Result<Vec<RuleFile>, RulesError> {
     let mut files = Vec::new();
 
     // Global.
-    let global_dir = lochor_config::global_dir().join("rules");
+    let global_dir = locaryn_config::global_dir().join("rules");
     if global_dir.is_dir() {
         for e in std::fs::read_dir(&global_dir)? {
             let e = e?;
@@ -58,18 +58,18 @@ pub fn load_all(project_root: &Path) -> Result<Vec<RuleFile>, RulesError> {
             }
         }
     }
-    let global_lochor = lochor_config::global_dir().join("LOCHOR.md");
-    if global_lochor.is_file() {
+    let global_locaryn = locaryn_config::global_dir().join("LOCARYN.md");
+    if global_locaryn.is_file() {
         files.push(RuleFile {
             scope: RuleScope::Global,
             priority: RuleScope::Global.base_priority() - 1,
-            source_path: global_lochor.clone(),
-            content: std::fs::read_to_string(&global_lochor)?,
+            source_path: global_locaryn.clone(),
+            content: std::fs::read_to_string(&global_locaryn)?,
         });
     }
 
     // Workspace.
-    let ws_rules = project_root.join(".lochor").join("rules");
+    let ws_rules = project_root.join(".locaryn").join("rules");
     if ws_rules.is_dir() {
         for e in std::fs::read_dir(&ws_rules)? {
             let e = e?;
@@ -88,13 +88,13 @@ pub fn load_all(project_root: &Path) -> Result<Vec<RuleFile>, RulesError> {
             }
         }
     }
-    let ws_lochor = project_root.join("LOCHOR.md");
-    if ws_lochor.is_file() {
+    let ws_locaryn = project_root.join("LOCARYN.md");
+    if ws_locaryn.is_file() {
         files.push(RuleFile {
             scope: RuleScope::Workspace,
             priority: RuleScope::Workspace.base_priority() - 1,
-            source_path: ws_lochor.clone(),
-            content: std::fs::read_to_string(&ws_lochor)?,
+            source_path: ws_locaryn.clone(),
+            content: std::fs::read_to_string(&ws_locaryn)?,
         });
     }
 

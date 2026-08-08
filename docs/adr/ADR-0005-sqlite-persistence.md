@@ -1,15 +1,15 @@
 # ADR-0005 — SQLite as primary persistence
 
 ## Context
-Lochor is local-first. The daemon (loopback) and the client need embedded persistence for projects, sessions, messages, tasks, artifacts, providers, runtime state, extensions, MCP servers, commands, hooks, skills, agents, rules, LSP adapters, users, auth tokens, audit logs. The remote-server needs the same schema; enterprises with high load may later need a heavier DB.
+Locaryn is local-first. The daemon (loopback) and the client need embedded persistence for projects, sessions, messages, tasks, artifacts, providers, runtime state, extensions, MCP servers, commands, hooks, skills, agents, rules, LSP adapters, users, auth tokens, audit logs. The remote-server needs the same schema; enterprises with high load may later need a heavier DB.
 
 ## Decision
 - **SQLite (via sqlx, `runtime-tokio-rustls`)** as the primary persistence for daemon, client, and remote-server.
 - Migrations versionned in `migrations/` applied at startup via `sqlx::migrate!`.
 - WAL mode for concurrency (desktop + CLI on the same daemon).
-- `lochor-storage` abstracts repository access so a **PostgreSQL** backend can be added in V2 for the enterprise remote-server without rewriting callers.
+- `locaryn-storage` abstracts repository access so a **PostgreSQL** backend can be added in V2 for the enterprise remote-server without rewriting callers.
 - **Filesystem** for workspace artifacts, plugin files, rules markdown — not in DB (only paths/metadata are).
-- **OS keychain** for secrets (provider API keys, auth tokens plaintext on client) — DB stores only references (`keychain:lochor/...`).
+- **OS keychain** for secrets (provider API keys, auth tokens plaintext on client) — DB stores only references (`keychain:locaryn/...`).
 
 ## Consequences
 - **Positive:** Zero-config local install; single-file DB (easy backup via `VACUUM INTO`); good enough concurrency with WAL; same schema local and remote; trivial CI (in-memory or file SQLite).

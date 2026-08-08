@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 /**
- * Lochor theme — the UI is near-monochrome; the ONE thing worth customizing
+ * Locaryn theme — the UI is near-monochrome; the ONE thing worth customizing
  * is the accent hue. Everything else (surfaces, borders, text) is a fixed
  * warm-neutral scale in global.css. The accent is injected as CSS custom
  * properties on the document root so changes are instant and global.
  *
- * Persists to localStorage under `lochor:theme`.
+ * Persists to localStorage under `locaryn:theme`.
  */
 
 /** Muted, natural accent presets (calm, not neon). First = default. */
@@ -31,7 +31,7 @@ const DEFAULT_THEME: ThemeSettings = {
   accentRgb: ACCENT_PRESETS[0].rgb,
 };
 
-const STORAGE_KEY = "lochor:theme";
+const STORAGE_KEY = "locaryn:theme";
 
 /** Convert a hex color (#RRGGBB) to "r,g,b". */
 function hexToRgb(hex: string): string {

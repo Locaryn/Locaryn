@@ -54,11 +54,11 @@ export function TopBar({
   const isChatView = activeView === "chat";
 
   return (
-    <header className="lochor-topbar">
-      <div className="lochor-topbar-left">
+    <header className="locaryn-topbar">
+      <div className="locaryn-topbar-left">
         <button
           type="button"
-          className="lochor-icon-btn lochor-menu-btn"
+          className="locaryn-icon-btn locaryn-menu-btn"
           title="Ouvrir le menu de navigation (Marketplace, Batch API, Entraînement...)"
           onClick={onToggleNavDrawer}
         >
@@ -69,25 +69,25 @@ export function TopBar({
           </svg>
         </button>
 
-        <span className="lochor-logo">
-          <span className="lochor-logo-dot" aria-hidden="true" />
-          Lochor
+        <span className="locaryn-logo">
+          <span className="locaryn-logo-dot" aria-hidden="true" />
+          Locaryn
         </span>
-        <span className="lochor-sep" aria-hidden="true">
+        <span className="locaryn-sep" aria-hidden="true">
           /
         </span>
-        <span className="lochor-project">
+        <span className="locaryn-project">
           {isChatView ? project : VIEW_TITLES[activeView] || "Navigation"}
         </span>
-        {demo && <span className="lochor-demo-badge">demo</span>}
+        {demo && <span className="locaryn-demo-badge">demo</span>}
       </div>
 
       {/* Render chat-specific right controls ONLY when in Chat view */}
       {isChatView && (
-        <div className="lochor-topbar-right">
-          <span className="lochor-provider-badge" title={provider?.endpoint ?? "no model"}>
+        <div className="locaryn-topbar-right">
+          <span className="locaryn-provider-badge" title={provider?.endpoint ?? "no model"}>
             <span
-              className={`lochor-health-dot ${provider ? "lochor-health-ok" : "lochor-health-off"}`}
+              className={`locaryn-health-dot ${provider ? "locaryn-health-ok" : "locaryn-health-off"}`}
               aria-hidden="true"
             />
             {provider
@@ -95,11 +95,11 @@ export function TopBar({
               : "no model"}
           </span>
 
-          <div className="lochor-topbar-toggles">
+          <div className="locaryn-topbar-toggles">
             {/* Terminal / Logs icon */}
             <button
               type="button"
-              className={`lochor-icon-btn${showBottom ? " lochor-icon-btn-active" : ""}`}
+              className={`locaryn-icon-btn${showBottom ? " locaryn-icon-btn-active" : ""}`}
               title="Terminal / Journaux"
               aria-pressed={showBottom}
               onClick={onToggleBottom}
@@ -113,7 +113,7 @@ export function TopBar({
             {/* Preview / Artifacts icon */}
             <button
               type="button"
-              className={`lochor-icon-btn${showPreview ? " lochor-icon-btn-active" : ""}`}
+              className={`locaryn-icon-btn${showPreview ? " locaryn-icon-btn-active" : ""}`}
               title="Aperçu des Artefacts"
               aria-pressed={showPreview}
               onClick={onTogglePreview}
@@ -127,7 +127,7 @@ export function TopBar({
             {/* Model Parameters icon */}
             <button
               type="button"
-              className={`lochor-icon-btn${showModelConfig ? " lochor-icon-btn-active" : ""}`}
+              className={`locaryn-icon-btn${showModelConfig ? " locaryn-icon-btn-active" : ""}`}
               title="Paramètres du modèle et de la conversation"
               aria-pressed={showModelConfig}
               onClick={onChatSettingsClick ?? onToggleModelConfig}
@@ -148,7 +148,7 @@ export function TopBar({
             {/* Chat Permissions Settings icon */}
             <button
               type="button"
-              className="lochor-icon-btn"
+              className="locaryn-icon-btn"
               title="Gouvernance et Autorisations du Chat"
               onClick={onSettingsClick}
             >

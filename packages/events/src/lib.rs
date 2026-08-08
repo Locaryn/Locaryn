@@ -1,10 +1,10 @@
-//! Lochor streaming events. These are serialized as SSE
+//! Locaryn streaming events. These are serialized as SSE
 //! (`event: <type>\ndata: <json>\n\n`) on the wire.
 
 use bytes::Bytes;
 use futures::Stream;
-use lochor_shared_types::{ArtifactKind, ProviderEngine, ProviderKind};
-pub use lochor_shared_types::Risk;
+use locaryn_shared_types::{ArtifactKind, ProviderEngine, ProviderKind};
+pub use locaryn_shared_types::Risk;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -82,7 +82,7 @@ pub enum StreamEvent {
     },
 }
 
-// Risk is re-exported from lochor_shared_types so there is a single
+// Risk is re-exported from locaryn_shared_types so there is a single
 // canonical definition across the workspace. No need to define it here.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

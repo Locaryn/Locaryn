@@ -358,7 +358,7 @@ export const MODEL_CATEGORIES: { id: ModelCategory; label: string; icon: string 
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const CACHE_KEY = "lochor_model_registry_cache_v17";
+const CACHE_KEY = "locaryn_model_registry_cache_v17";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const QUANTS_SMALL = ["q4_K_M", "q5_K_M", "q8_0", "fp16"];

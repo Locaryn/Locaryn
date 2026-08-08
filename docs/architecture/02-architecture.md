@@ -8,7 +8,7 @@ Deux architectures étudiées. **A** est recommandée (cf. `03-tech-decisions.md
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                         Lochor monorepo (Rust core)                          │
+│                         Locaryn monorepo (Rust core)                          │
 │                                                                              │
 │   packages/* (16 crates) = LE CŒUR PARTAGÉ                                   │
 │   shared-types sdk auth config storage events preview extensions             │
@@ -41,7 +41,7 @@ Deux architectures étudiées. **A** est recommandée (cf. `03-tech-decisions.md
 │ apps/cli         │────┘                  │
 │ clap, thin client│                       │
 │ talks to daemon  │                       │
-│ via lochor-sdk   │                       │
+│ via locaryn-sdk   │                       │
 └──────────────────┘                       │
                                            │
         Connexion client (3 modes):        │
@@ -58,7 +58,7 @@ Deux architectures étudiées. **A** est recommandée (cf. `03-tech-decisions.md
 | --- | --- | --- |
 | `packages/*` (16 crates) | Cœur métier partagé: types, SDK client, auth, config, storage (SQLite), events, preview, extensions, MCP, plugin-sdk, runtimes (command/hook/skill/agent/rules), LSP adapters | Rust |
 | `apps/desktop` | Native desktop: embarque le core en in-process (lib) **et** peut parler au daemon standalone. UI React/TS, Monaco, xterm.js, preview iframe sandboxed | Tauri v2 + React/TS |
-| `apps/cli` | CLI légère, thin client: parle au daemon via `lochor-sdk` (HTTP/SSE), ou en `--no-daemon` embarque le core | Rust + clap |
+| `apps/cli` | CLI légère, thin client: parle au daemon via `locaryn-sdk` (HTTP/SSE), ou en `--no-daemon` embarque le core | Rust + clap |
 | `services/daemon` | Daemon local loopback :7474, HTTP/SSE, gère sessions/projets/persistence, supervise extensions, parle au provider-supervisor | Rust + axum |
 | `services/remote-server` | Gateway sécurisée: TLS, auth, sessions, audit, healthchecks, streaming, providers configurés côté serveur, module enterprise (BSL) | Rust + axum + rustls |
 | `services/provider-supervisor` | Auto-start/supervise les runtimes locaux sur loopback, healthchecks, idle shutdown | Rust + tokio::process |
@@ -66,9 +66,9 @@ Deux architectures étudiées. **A** est recommandée (cf. `03-tech-decisions.md
 ### Flux de données
 
 1. **Desktop local:** UI → Tauri command → core (in-process) → provider-supervisor → Ollama (loopback) → stream tokens → Tauri channel → UI.
-2. **CLI local:** CLI → `lochor-sdk` → HTTP/SSE → daemon → core → provider-supervisor → Ollama → SSE → CLI.
+2. **CLI local:** CLI → `locaryn-sdk` → HTTP/SSE → daemon → core → provider-supervisor → Ollama → SSE → CLI.
 3. **Desktop/CLI remote (auto):** client → healthcheck remote-server → si OK: TLS + token → remote-server → provider distant (ou DGX) → SSE → client. Si KO: fallback daemon local.
-4. **Extensions:** core charge plugin depuis `~/.lochor/plugins/` ou `.lochor/plugins/` → valide manifest → enregistre tools/hooks/skills/commands/agents/MCP → permissions prompt → hot-reload via fs watcher.
+4. **Extensions:** core charge plugin depuis `~/.locaryn/plugins/` ou `.locaryn/plugins/` → valide manifest → enregistre tools/hooks/skills/commands/agents/MCP → permissions prompt → hot-reload via fs watcher.
 5. **Preview:** agent émet artifact → core écrit dans workspace artifacts → desktop preview panel charge l'artifact en iframe sandboxed (CSP strict, pas de network sauf permission).
 
 ### Choix techno (résumé — détail en `03`)
@@ -102,7 +102,7 @@ Deux architectures étudiées. **A** est recommandée (cf. `03-tech-decisions.md
 | --- | --- |
 | Dépendance webview système (différences Edge/WebKit) | Preview standardisée sur HTML/CSS/JS portable; tests cross-webview |
 | Sidecar provider-supervisor cross-arch | Build matrix CI; fallback "user-provided Ollama" si binaire absent |
-| `rmcp` maturité vs Python SDK | Wrapper d'abstraction dans `lochor-mcp`; adapter si besoin |
+| `rmcp` maturité vs Python SDK | Wrapper d'abstraction dans `locaryn-mcp`; adapter si besoin |
 | Remote-server enterprise BSL adoption | Change date 4 ans + gate fonctionnel, pas juridique |
 
 ## Architecture B — Electron + Python daemon + Go remote-server (alternative)

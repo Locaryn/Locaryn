@@ -1,6 +1,6 @@
-# Lochor dev launcher (Windows PowerShell).
+# Locaryn dev launcher (Windows PowerShell).
 #
-# The desktop app embeds the Lochor core in-process, so it does NOT need the
+# The desktop app embeds the Locaryn core in-process, so it does NOT need the
 # daemon to run. By default this just starts the Tauri desktop dev server.
 # Pass -WithDaemon to also run the local daemon (needed only for the CLI).
 #
@@ -40,7 +40,7 @@ function Wait-Health {
 }
 
 if (-not (Test-Command -Name "cargo")) {
-    Write-Host "[Lochor] cargo not found in PATH. Install Rust: https://rustup.rs/" -ForegroundColor Red
+    Write-Host "[Locaryn] cargo not found in PATH. Install Rust: https://rustup.rs/" -ForegroundColor Red
     exit 1
 }
 
@@ -52,32 +52,32 @@ $daemonProcess = $null
 $runDaemon = $WithDaemon -or $DaemonOnly
 
 if ($runDaemon) {
-    $daemonExe = Join-Path $Root "target\debug\lochor-daemon.exe"
+    $daemonExe = Join-Path $Root "target\debug\locaryn-daemon.exe"
     if (-not $SkipBuild -and -not (Test-Path $daemonExe)) {
-        Write-Host "[Lochor] Building daemon... (first run can take a few minutes)" -ForegroundColor Cyan
-        cargo build -p lochor-daemon
+        Write-Host "[Locaryn] Building daemon... (first run can take a few minutes)" -ForegroundColor Cyan
+        cargo build -p locaryn-daemon
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 
-    if (Get-Process -Name "lochor-daemon" -ErrorAction SilentlyContinue) {
-        Write-Host "[Lochor] Daemon already running. Reusing it." -ForegroundColor Yellow
+    if (Get-Process -Name "locaryn-daemon" -ErrorAction SilentlyContinue) {
+        Write-Host "[Locaryn] Daemon already running. Reusing it." -ForegroundColor Yellow
     } elseif (Test-Path $daemonExe) {
-        Write-Host "[Lochor] Starting daemon on http://127.0.0.1:7474 ..." -ForegroundColor Cyan
+        Write-Host "[Locaryn] Starting daemon on http://127.0.0.1:7474 ..." -ForegroundColor Cyan
         $daemonProcess = Start-Process -NoNewWindow -FilePath $daemonExe -PassThru `
-            -RedirectStandardOutput (Join-Path $tmpDir "lochor-daemon.log") `
-            -RedirectStandardError (Join-Path $tmpDir "lochor-daemon.err")
+            -RedirectStandardOutput (Join-Path $tmpDir "locaryn-daemon.log") `
+            -RedirectStandardError (Join-Path $tmpDir "locaryn-daemon.err")
         if (Wait-Health) {
-            Write-Host "[Lochor] Daemon ready (PID $($daemonProcess.Id))." -ForegroundColor Green
+            Write-Host "[Locaryn] Daemon ready (PID $($daemonProcess.Id))." -ForegroundColor Green
         } else {
             # Non-fatal: the desktop app does not need the daemon.
-            Write-Host "[Lochor] Daemon health check failed (see tmp\lochor-daemon.log). Continuing." -ForegroundColor Yellow
+            Write-Host "[Locaryn] Daemon health check failed (see tmp\locaryn-daemon.log). Continuing." -ForegroundColor Yellow
         }
     } else {
-        Write-Host "[Lochor] Daemon binary not found and build was skipped. Continuing without it." -ForegroundColor Yellow
+        Write-Host "[Locaryn] Daemon binary not found and build was skipped. Continuing without it." -ForegroundColor Yellow
     }
 
     if ($DaemonOnly) {
-        Write-Host "[Lochor] Daemon running. Press Ctrl+C to stop." -ForegroundColor Cyan
+        Write-Host "[Locaryn] Daemon running. Press Ctrl+C to stop." -ForegroundColor Cyan
         if ($daemonProcess) { Wait-Process -Id $daemonProcess.Id }
         exit 0
     }
@@ -85,13 +85,13 @@ if ($runDaemon) {
 
 # --- Launch the desktop app -----------------------------------------------
 if (-not (Test-Command -Name "pnpm")) {
-    Write-Host "[Lochor] pnpm not found in PATH. Install pnpm: https://pnpm.io/installation" -ForegroundColor Red
+    Write-Host "[Locaryn] pnpm not found in PATH. Install pnpm: https://pnpm.io/installation" -ForegroundColor Red
     exit 1
 }
 
 $portConn = Get-NetTCPConnection -LocalPort 1420 -ErrorAction SilentlyContinue
 if ($portConn) {
-    Write-Host "[Lochor] Releasing port 1420 (PID $($portConn.OwningProcess))..." -ForegroundColor Yellow
+    Write-Host "[Locaryn] Releasing port 1420 (PID $($portConn.OwningProcess))..." -ForegroundColor Yellow
     Stop-Process -Id $portConn.OwningProcess -Force -ErrorAction SilentlyContinue
 }
 
@@ -101,23 +101,23 @@ try {
     $tauriBin = if (Test-Path $desktopTauri) { $desktopTauri } elseif (Test-Path $rootTauri) { $rootTauri } else { $null }
 
     if (-not $tauriBin) {
-        Write-Host "[Lochor] Tauri CLI not found. Running pnpm install..." -ForegroundColor Yellow
+        Write-Host "[Locaryn] Tauri CLI not found. Running pnpm install..." -ForegroundColor Yellow
         pnpm install
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         $tauriBin = if (Test-Path $desktopTauri) { $desktopTauri } elseif (Test-Path $rootTauri) { $rootTauri } else { $null }
         if (-not $tauriBin) {
-            Write-Host "[Lochor] Tauri CLI still missing after install. Check apps/desktop/package.json." -ForegroundColor Red
+            Write-Host "[Locaryn] Tauri CLI still missing after install. Check apps/desktop/package.json." -ForegroundColor Red
             exit 1
         }
     }
 
-    Write-Host "[Lochor] Starting desktop dev (tauri dev)..." -ForegroundColor Cyan
+    Write-Host "[Locaryn] Starting desktop dev (tauri dev)..." -ForegroundColor Cyan
     Push-Location (Join-Path $Root "apps\desktop")
     & $tauriBin dev
     Pop-Location
 } finally {
     if ($daemonProcess) {
-        Write-Host "[Lochor] Stopping daemon (PID $($daemonProcess.Id))..." -ForegroundColor Cyan
+        Write-Host "[Locaryn] Stopping daemon (PID $($daemonProcess.Id))..." -ForegroundColor Cyan
         Stop-Process -Id $daemonProcess.Id -Force -ErrorAction SilentlyContinue
     }
 }

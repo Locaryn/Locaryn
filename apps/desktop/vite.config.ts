@@ -5,10 +5,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@lochor/ui-core": "../../packages-ui/core/src/index.tsx",
-      "@lochor/ui-chat": "../../packages-ui/chat/src/index.tsx",
-      "@lochor/ui-preview": "../../packages-ui/preview/src/index.tsx",
-      "@lochor/ui-terminal": "../../packages-ui/terminal/src/index.tsx",
+      "@locaryn/ui-core": "../../packages-ui/core/src/index.tsx",
+      "@locaryn/ui-chat": "../../packages-ui/chat/src/index.tsx",
+      "@locaryn/ui-preview": "../../packages-ui/preview/src/index.tsx",
+      "@locaryn/ui-terminal": "../../packages-ui/terminal/src/index.tsx",
     },
   },
   clearScreen: false,

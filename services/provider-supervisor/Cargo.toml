@@ -1,24 +1,24 @@
 [package]
-name = "lochor-provider-supervisor"
+name = "locaryn-provider-supervisor"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Lochor provider supervisor — auto-start and healthcheck local LLM runtimes on loopback."
+description = "Locaryn provider supervisor — auto-start and healthcheck local LLM runtimes on loopback."
 
 [lib]
-name = "lochor_provider_supervisor"
+name = "locaryn_provider_supervisor"
 path = "src/lib.rs"
 
 [[bin]]
-name = "lochor-supervisor"
+name = "locaryn-supervisor"
 path = "src/main.rs"
 
 [dependencies]
-lochor-shared-types = { workspace = true }
-lochor-config = { workspace = true }
-lochor-storage = { workspace = true }
+locaryn-shared-types = { workspace = true }
+locaryn-config = { workspace = true }
+locaryn-storage = { workspace = true }
 reqwest.workspace = true
 tokio = { workspace = true }
 serde = { workspace = true }

@@ -1,4 +1,4 @@
-package dev.lochor.mobile
+package dev.locaryn.mobile
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

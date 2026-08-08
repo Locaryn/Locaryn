@@ -13,7 +13,7 @@
 //! snapshot locally, so the store still works offline and a single dead source
 //! degrades to "this one source failed" instead of an empty page.
 
-use lochor_shared_types::{
+use locaryn_shared_types::{
     CatalogCompat, CatalogEntry, CatalogSnapshot, CatalogSource, CatalogSourceStatus,
     ExtensionEcosystem,
 };
@@ -90,7 +90,7 @@ pub struct CatalogClient {
 
 impl CatalogClient {
     pub fn new(http: reqwest::Client) -> Self {
-        let cache_path = lochor_config::global_dir()
+        let cache_path = locaryn_config::global_dir()
             .join("cache")
             .join("extension-catalog.json");
         Self { http, cache_path }
@@ -696,16 +696,16 @@ mod tests {
     }
 
     /// Hits all four live endpoints. Ignored by default; run with
-    /// `cargo test -p lochor-extensions -- --ignored --nocapture`.
+    /// `cargo test -p locaryn-extensions -- --ignored --nocapture`.
     #[tokio::test]
     #[ignore = "requires network"]
     async fn every_builtin_source_answers() {
         let http = reqwest::Client::builder()
-            .user_agent("lochor/0.1")
+            .user_agent("locaryn/0.1")
             .timeout(std::time::Duration::from_secs(60))
             .build()
             .unwrap();
-        let cache = std::env::temp_dir().join("lochor-catalog-test.json");
+        let cache = std::env::temp_dir().join("locaryn-catalog-test.json");
         let _ = std::fs::remove_file(&cache);
         let client = CatalogClient::with_cache_path(http, cache);
 

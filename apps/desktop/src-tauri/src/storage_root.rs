@@ -1,8 +1,8 @@
-//! Where Lochor puts the bulky things, and how to move them.
+//! Where Locaryn puts the bulky things, and how to move them.
 //!
 //! Model weights, engine binaries and generation scratch files add up to tens
 //! of gigabytes. Keeping them on the system drive is not viable, so the
-//! location is user-configurable ([`lochor_config::storage_root`]) and this
+//! location is user-configurable ([`locaryn_config::storage_root`]) and this
 //! module exposes the inspection and migration commands the settings UI needs.
 //!
 //! Migration is deliberately conservative: it copies, verifies the byte count,
@@ -115,15 +115,15 @@ fn entry(key: &str, label: &str, path: PathBuf, root: &Path) -> StorageEntry {
 
 #[tauri::command]
 pub fn storage_info() -> Result<StorageInfo, String> {
-    let root = lochor_config::storage_root();
+    let root = locaryn_config::storage_root();
     let entries = vec![
-        entry("models", "Modèles (poids)", lochor_config::models_dir(), &root),
-        entry("bin", "Moteurs (llama.cpp, sd.cpp)", lochor_config::bin_dir(), &root),
-        entry("tmp", "Fichiers temporaires", lochor_config::temp_dir(), &root),
+        entry("models", "Modèles (poids)", locaryn_config::models_dir(), &root),
+        entry("bin", "Moteurs (llama.cpp, sd.cpp)", locaryn_config::bin_dir(), &root),
+        entry("tmp", "Fichiers temporaires", locaryn_config::temp_dir(), &root),
         entry(
             "free_chats",
             "Pièces jointes des chats",
-            lochor_config::free_chats_dir(),
+            locaryn_config::free_chats_dir(),
             &root,
         ),
     ];
@@ -143,10 +143,10 @@ pub fn storage_info() -> Result<StorageInfo, String> {
     drives.sort_by(|a, b| a.mount.cmp(&b.mount));
     drives.dedup_by(|a, b| a.mount == b.mount);
 
-    let db_path = lochor_config::default_data_dir().join("lochor.db");
+    let db_path = locaryn_config::default_data_dir().join("locaryn.db");
     Ok(StorageInfo {
         root: root.to_string_lossy().to_string(),
-        configured: lochor_config::configured_storage_root().is_some(),
+        configured: locaryn_config::configured_storage_root().is_some(),
         entries,
         total_bytes,
         drives,
@@ -273,7 +273,7 @@ pub struct SetRootArgs {
     pub move_data: bool,
 }
 
-/// Point Lochor at a new storage root, optionally relocating what is already
+/// Point Locaryn at a new storage root, optionally relocating what is already
 /// there. Runs on a blocking thread: moving tens of gigabytes must not stall
 /// the async runtime.
 #[tauri::command]
@@ -282,10 +282,10 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
     if new_root.as_os_str().is_empty() {
         return Err("Chemin vide.".into());
     }
-    let old_root = lochor_config::storage_root();
-    let old_models = lochor_config::models_dir();
-    let old_bin = lochor_config::bin_dir();
-    let old_free_chats = lochor_config::free_chats_dir();
+    let old_root = locaryn_config::storage_root();
+    let old_models = locaryn_config::models_dir();
+    let old_bin = locaryn_config::bin_dir();
+    let old_free_chats = locaryn_config::free_chats_dir();
 
     if new_root == old_root {
         return storage_info();
@@ -302,13 +302,13 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
         .map_err(|e| format!("impossible de créer {}: {e}", new_root.display()))?;
 
     // Fail early on a read-only or full destination rather than mid-copy.
-    let probe = new_root.join(".lochor-write-test");
+    let probe = new_root.join(".locaryn-write-test");
     std::fs::write(&probe, b"ok")
         .map_err(|e| format!("dossier non inscriptible ({}): {e}", new_root.display()))?;
     let _ = std::fs::remove_file(&probe);
 
     if !args.move_data {
-        lochor_config::set_storage_root(Some(&new_root))
+        locaryn_config::set_storage_root(Some(&new_root))
             .map_err(|e| format!("enregistrement du réglage: {e}"))?;
         return storage_info();
     }
@@ -318,7 +318,7 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
         let report = move |p: MigrationProgress| emit(&app2, p);
         // Scratch files are disposable; dropping them avoids copying gigabytes
         // of intermediates that nothing will ever read again.
-        let tmp = lochor_config::temp_dir();
+        let tmp = locaryn_config::temp_dir();
         if tmp.is_dir() {
             let _ = std::fs::remove_dir_all(&tmp);
         }
@@ -354,7 +354,7 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
 
         // Written last: until this succeeds the app still points at data that
         // is known to be complete.
-        lochor_config::set_storage_root(Some(&new_root))
+        locaryn_config::set_storage_root(Some(&new_root))
             .map_err(|e| format!("enregistrement du réglage: {e}"))?;
         Ok(())
     })
@@ -393,15 +393,15 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
     }
 }
 
-/// Delete Lochor's scratch files. Returns the number of bytes reclaimed.
+/// Delete Locaryn's scratch files. Returns the number of bytes reclaimed.
 ///
-/// Only touches Lochor's own temp directory and the `lochor_*` leftovers it
+/// Only touches Locaryn's own temp directory and the `locaryn_*` leftovers it
 /// wrote to the OS temp dir in earlier versions — never the OS temp dir itself.
 #[tauri::command]
 pub fn clean_temp() -> Result<u64, String> {
     let mut freed = 0u64;
 
-    let own = lochor_config::temp_dir();
+    let own = locaryn_config::temp_dir();
     if own.is_dir() {
         freed += dir_size(&own);
         std::fs::remove_dir_all(&own).map_err(|e| format!("nettoyage {}: {e}", own.display()))?;
@@ -412,7 +412,7 @@ pub fn clean_temp() -> Result<u64, String> {
     if os_temp != own {
         for e in std::fs::read_dir(&os_temp).into_iter().flatten().flatten() {
             let name = e.file_name().to_string_lossy().to_ascii_lowercase();
-            if !name.starts_with("lochor") {
+            if !name.starts_with("locaryn") {
                 continue;
             }
             let path = e.path();
@@ -444,7 +444,7 @@ mod tests {
     /// tests must not touch the user's real storage root.
     fn scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_storage_test_{tag}_{}",
+            "locaryn_storage_test_{tag}_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -556,11 +556,11 @@ mod tests {
     fn same_volume_compares_drive_letters() {
         assert!(same_volume(
             Path::new(r"D:\Documents\Syncho\models"),
-            Path::new(r"D:\LochorData")
+            Path::new(r"D:\LocarynData")
         ));
         assert!(!same_volume(
-            Path::new(r"C:\Users\x\.lochor\data"),
-            Path::new(r"D:\LochorData")
+            Path::new(r"C:\Users\x\.locaryn\data"),
+            Path::new(r"D:\LocarynData")
         ));
         // Case must not decide which strategy we take.
         assert!(same_volume(Path::new(r"d:\a"), Path::new(r"D:\b")));
@@ -612,7 +612,7 @@ mod tests {
 
     #[test]
     fn entry_flags_directories_that_sit_outside_the_root() {
-        let root = Path::new(r"D:\LochorData");
+        let root = Path::new(r"D:\LocarynData");
         let inside = entry("models", "M", root.join("models"), root);
         let outside = entry("models", "M", PathBuf::from(r"C:\elsewhere\models"), root);
         assert!(!inside.outside_root);

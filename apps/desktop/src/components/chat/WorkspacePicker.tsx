@@ -21,7 +21,7 @@ type Props = {
   /** True when the current chat is a free conversation (no project).
    *  Free chats use an auto-created temp folder, so local/SSH options are hidden. */
   freeChat?: boolean;
-  /** Whether the app is currently connected to a Lochor cloud server.
+  /** Whether the app is currently connected to a Locaryn cloud server.
    *  When false, the Cloud workspace is shown as disabled/off. */
   cloudConnected?: boolean;
 };
@@ -71,75 +71,75 @@ export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeC
   if (freeChat) {
     const meta = value.kind === "temp" ? KIND_META[value.kind] : KIND_META.temp;
     return (
-      <div className="lochor-ws">
+      <div className="locaryn-ws">
         <button
           type="button"
-          className="lochor-ws-trigger"
+          className="locaryn-ws-trigger"
           disabled
           title={meta.hint}
           style={{ cursor: "default" }}
         >
           <span>{meta.icon}</span>
-          <span className="lochor-ws-label">{meta.label}</span>
+          <span className="locaryn-ws-label">{meta.label}</span>
         </button>
       </div>
     );
   }
 
   return (
-    <div className="lochor-ws" ref={ref}>
+    <div className="locaryn-ws" ref={ref}>
       <button
         type="button"
-        className="lochor-ws-trigger"
+        className="locaryn-ws-trigger"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
         title={meta.hint}
       >
         <span>{meta.icon}</span>
-        <span className="lochor-ws-label">{value.label}</span>
-        <span className="lochor-ws-caret">{open ? "▾" : "▸"}</span>
+        <span className="locaryn-ws-label">{value.label}</span>
+        <span className="locaryn-ws-caret">{open ? "▾" : "▸"}</span>
       </button>
 
       {open && (
-        <div className="lochor-ws-menu" role="menu">
+        <div className="locaryn-ws-menu" role="menu">
           <button
             type="button"
-            className={`lochor-ws-item${value.kind === "cloud" && cloudConnected ? " lochor-active" : ""}`}
+            className={`locaryn-ws-item${value.kind === "cloud" && cloudConnected ? " locaryn-active" : ""}`}
             disabled={!cloudConnected}
             onClick={() => {
               if (!cloudConnected) return;
               onChange({ kind: "cloud", id: null, label: "Cloud" });
               setOpen(false);
             }}
-            title={cloudConnected ? KIND_META.cloud.hint : "Cloud indisponible — connectez l'app à un serveur Lochor"}
+            title={cloudConnected ? KIND_META.cloud.hint : "Cloud indisponible — connectez l'app à un serveur Locaryn"}
             style={!cloudConnected ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
           >
             <span>☁️</span>
-            <span className="lochor-ws-item-text">
+            <span className="locaryn-ws-item-text">
               <span>Cloud {cloudConnected ? "" : "(off)"}</span>
-              <span className="lochor-ws-item-hint">
-                {cloudConnected ? KIND_META.cloud.hint : "Connectez l'app à un serveur Lochor pour activer"}
+              <span className="locaryn-ws-item-hint">
+                {cloudConnected ? KIND_META.cloud.hint : "Connectez l'app à un serveur Locaryn pour activer"}
               </span>
             </span>
           </button>
 
-          <div className="lochor-ws-sep">
+          <div className="locaryn-ws-sep">
             <span>📁 Dossiers locaux</span>
             {onAddProject && (
-              <button type="button" className="lochor-ws-add" onClick={() => { setOpen(false); onAddProject(); }} title="Ajouter un dossier">
+              <button type="button" className="locaryn-ws-add" onClick={() => { setOpen(false); onAddProject(); }} title="Ajouter un dossier">
                 +
               </button>
             )}
           </div>
           {projects.length === 0 ? (
-            <div className="lochor-ws-empty">Aucun projet</div>
+            <div className="locaryn-ws-empty">Aucun projet</div>
           ) : (
             projects.map((p) => (
               <button
                 key={p.id}
                 type="button"
-                className={`lochor-ws-item${value.kind === "local" && value.id === p.id ? " lochor-active" : ""}`}
+                className={`locaryn-ws-item${value.kind === "local" && value.id === p.id ? " locaryn-active" : ""}`}
                 onClick={() => {
                   onChange({ kind: "local", id: p.id, label: p.name });
                   setOpen(false);
@@ -147,30 +147,30 @@ export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeC
                 title={p.path}
               >
                 <span>📁</span>
-                <span className="lochor-ws-item-text">
+                <span className="locaryn-ws-item-text">
                   <span>{p.name}</span>
-                  <span className="lochor-ws-item-hint">{p.path}</span>
+                  <span className="locaryn-ws-item-hint">{p.path}</span>
                 </span>
               </button>
             ))
           )}
 
-          <div className="lochor-ws-sep">
+          <div className="locaryn-ws-sep">
             <span>🖧 Serveurs SSH</span>
             {onAddSsh && (
-              <button type="button" className="lochor-ws-add" onClick={() => { setOpen(false); onAddSsh(); }} title="Ajouter une connexion SSH">
+              <button type="button" className="locaryn-ws-add" onClick={() => { setOpen(false); onAddSsh(); }} title="Ajouter une connexion SSH">
                 +
               </button>
             )}
           </div>
           {servers.length === 0 ? (
-            <div className="lochor-ws-empty">Aucun serveur enregistré</div>
+            <div className="locaryn-ws-empty">Aucun serveur enregistré</div>
           ) : (
             servers.map((s) => (
               <button
                 key={s.id}
                 type="button"
-                className={`lochor-ws-item${value.kind === "ssh" && value.id === s.id ? " lochor-active" : ""}`}
+                className={`locaryn-ws-item${value.kind === "ssh" && value.id === s.id ? " locaryn-active" : ""}`}
                 onClick={() => {
                   onChange({ kind: "ssh", id: s.id, label: s.name });
                   setOpen(false);
@@ -178,9 +178,9 @@ export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeC
                 title={`${s.username}@${s.host}:${s.port}`}
               >
                 <span>🖧</span>
-                <span className="lochor-ws-item-text">
+                <span className="locaryn-ws-item-text">
                   <span>{s.name}</span>
-                  <span className="lochor-ws-item-hint">{s.username}@{s.host}</span>
+                  <span className="locaryn-ws-item-hint">{s.username}@{s.host}</span>
                 </span>
               </button>
             ))

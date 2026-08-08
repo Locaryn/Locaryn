@@ -1,11 +1,11 @@
 [package]
-name = "lochor-shared-types"
+name = "locaryn-shared-types"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Shared serializable types for Lochor (sessions, projects, messages, tasks, artifacts, providers, permissions, extensions)."
+description = "Shared serializable types for Locaryn (sessions, projects, messages, tasks, artifacts, providers, permissions, extensions)."
 
 [dependencies]
 serde = { workspace = true }

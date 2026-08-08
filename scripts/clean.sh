@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Lochor clean script (Unix).
+# Locaryn clean script (Unix).
 # Removes release/, target/, node_modules, and Tauri bundle outputs.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "[Lochor] Cleaning build artifacts..."
+echo "[Locaryn] Cleaning build artifacts..."
 
 DIRS=(
     "$ROOT/release"
@@ -27,4 +27,4 @@ for dir in "${DIRS[@]}"; do
     fi
 done
 
-echo "[Lochor] Clean complete."
+echo "[Locaryn] Clean complete."

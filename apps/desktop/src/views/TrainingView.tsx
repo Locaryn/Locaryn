@@ -98,26 +98,26 @@ export function TrainingView({ onOpenModels }: Props) {
   }
 
   return (
-    <section className="lochor-view-container">
-      <div className="lochor-view-header">
+    <section className="locaryn-view-container">
+      <div className="locaryn-view-header">
         <h2>Entraînement & Modification de Modèles</h2>
-        <p className="lochor-view-desc">
+        <p className="locaryn-view-desc">
           Entraînez des adaptateurs LoRA ou neutralisez les filtres de refus sur vos modèles locaux installés.
         </p>
       </div>
 
       {/* Tabs Switcher */}
-      <div className="lochor-store-tabs" style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+      <div className="locaryn-store-tabs" style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
         <button
           type="button"
-          className={`lochor-tab-btn${tab === "finetune" ? " lochor-active" : ""}`}
+          className={`locaryn-tab-btn${tab === "finetune" ? " locaryn-active" : ""}`}
           onClick={() => setTab("finetune")}
         >
           🎯 Fine-Tuning LoRA / QLoRA
         </button>
         <button
           type="button"
-          className={`lochor-tab-btn${tab === "obliteration" ? " lochor-active" : ""}`}
+          className={`locaryn-tab-btn${tab === "obliteration" ? " locaryn-active" : ""}`}
           style={tab === "obliteration" ? { borderColor: "var(--danger)", color: "var(--danger)" } : {}}
           onClick={() => setTab("obliteration")}
         >
@@ -127,14 +127,14 @@ export function TrainingView({ onOpenModels }: Props) {
 
       {/* TAB 1: Fine-Tuning */}
       {tab === "finetune" && (
-        <div className="lochor-training-grid">
-          <div className="lochor-card">
+        <div className="locaryn-training-grid">
+          <div className="locaryn-card">
             <h3>Configuration du Fine-Tuning LoRA</h3>
 
-            <div className="lochor-field">
-              <label className="lochor-field-label">Modèle de base</label>
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">Modèle de base</label>
               <select
-                className="lochor-select"
+                className="locaryn-select"
                 value={baseModel}
                 onChange={(e) => setBaseModel(e.target.value)}
               >
@@ -154,42 +154,42 @@ export function TrainingView({ onOpenModels }: Props) {
               </select>
             </div>
 
-            <div className="lochor-field">
-              <label className="lochor-field-label">Fichier Dataset (.jsonl / .txt)</label>
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">Fichier Dataset (.jsonl / .txt)</label>
               <input
-                className="lochor-input"
+                className="locaryn-input"
                 placeholder="/chemin/vers/mon_dataset.jsonl"
                 value={datasetPath}
                 onChange={(e) => setDatasetPath(e.target.value)}
               />
             </div>
 
-            <div className="lochor-field-row" style={{ gap: "16px", marginTop: "12px" }}>
-              <div className="lochor-field" style={{ flex: 1 }}>
-                <label className="lochor-field-label">Taux d'apprentissage (LR)</label>
+            <div className="locaryn-field-row" style={{ gap: "16px", marginTop: "12px" }}>
+              <div className="locaryn-field" style={{ flex: 1 }}>
+                <label className="locaryn-field-label">Taux d'apprentissage (LR)</label>
                 <input
                   type="number"
                   step="0.00005"
-                  className="lochor-input"
+                  className="locaryn-input"
                   value={lr}
                   onChange={(e) => setLr(parseFloat(e.target.value))}
                 />
               </div>
-              <div className="lochor-field" style={{ flex: 1 }}>
-                <label className="lochor-field-label">Époques (Epochs)</label>
+              <div className="locaryn-field" style={{ flex: 1 }}>
+                <label className="locaryn-field-label">Époques (Epochs)</label>
                 <input
                   type="number"
-                  className="lochor-input"
+                  className="locaryn-input"
                   value={epochs}
                   onChange={(e) => setEpochs(parseInt(e.target.value, 10))}
                 />
               </div>
             </div>
 
-            <div className="lochor-field-actions" style={{ marginTop: "20px" }}>
+            <div className="locaryn-field-actions" style={{ marginTop: "20px" }}>
               <button
                 type="button"
-                className="lochor-btn-primary"
+                className="locaryn-btn-primary"
                 disabled={isTraining}
                 onClick={startTraining}
               >
@@ -198,14 +198,14 @@ export function TrainingView({ onOpenModels }: Props) {
             </div>
           </div>
 
-          <div className="lochor-card">
+          <div className="locaryn-card">
             <h3>Journaux d'Entraînement</h3>
-            <div className="lochor-training-logs">
+            <div className="locaryn-training-logs">
               {logs.length === 0 ? (
-                <span className="lochor-text-faint">Aucun entraînement en cours...</span>
+                <span className="locaryn-text-faint">Aucun entraînement en cours...</span>
               ) : (
                 logs.map((log, i) => (
-                  <div key={i} className="lochor-log-line">
+                  <div key={i} className="locaryn-log-line">
                     {log}
                   </div>
                 ))
@@ -217,10 +217,10 @@ export function TrainingView({ onOpenModels }: Props) {
 
       {/* TAB 2: Obliteration Studio */}
       {tab === "obliteration" && (
-        <div className="lochor-training-grid">
-          <div className="lochor-card">
+        <div className="locaryn-training-grid">
+          <div className="locaryn-card">
             <h3>🔓 Paramètres de l'Oblitération (RepE Refusal Ablation)</h3>
-            <p className="lochor-field-hint" style={{ marginBottom: "16px" }}>
+            <p className="locaryn-field-hint" style={{ marginBottom: "16px" }}>
               Calcule le vecteur de direction de refus d'un modèle **déjà installé** et applique une projection orthogonale pour neutraliser les filtres.
             </p>
 
@@ -243,7 +243,7 @@ export function TrainingView({ onOpenModels }: Props) {
                 {onOpenModels && (
                   <button
                     type="button"
-                    className="lochor-btn-primary"
+                    className="locaryn-btn-primary"
                     style={{ fontSize: "12px", marginTop: "6px" }}
                     onClick={onOpenModels}
                   >
@@ -269,7 +269,7 @@ export function TrainingView({ onOpenModels }: Props) {
                   <br />
                   L'oblitération des contraintes de refus est dédiée **exclusivement au pentesting d'infrastructure encadré et à la recherche en cybersécurité**.
                   <div style={{ marginTop: "8px" }}>
-                    <label className="lochor-checkbox-row">
+                    <label className="locaryn-checkbox-row">
                       <input
                         type="checkbox"
                         checked={disclaimerAccepted}
@@ -282,10 +282,10 @@ export function TrainingView({ onOpenModels }: Props) {
                   </div>
                 </div>
 
-                <div className="lochor-field" style={{ marginBottom: "14px" }}>
-                  <label className="lochor-field-label">Modèle local installé à oblitérer ({installedModels.length} disponibles)</label>
+                <div className="locaryn-field" style={{ marginBottom: "14px" }}>
+                  <label className="locaryn-field-label">Modèle local installé à oblitérer ({installedModels.length} disponibles)</label>
                   <select
-                    className="lochor-select"
+                    className="locaryn-select"
                     value={oblModel}
                     onChange={(e) => setOblModel(e.target.value)}
                     disabled={isObliterating}
@@ -298,11 +298,11 @@ export function TrainingView({ onOpenModels }: Props) {
                   </select>
                 </div>
 
-                <div className="lochor-field-row" style={{ gap: "16px" }}>
-                  <div className="lochor-field" style={{ flex: 1 }}>
-                    <label className="lochor-field-label">Méthode d'Ablation</label>
+                <div className="locaryn-field-row" style={{ gap: "16px" }}>
+                  <div className="locaryn-field" style={{ flex: 1 }}>
+                    <label className="locaryn-field-label">Méthode d'Ablation</label>
                     <select
-                      className="lochor-select"
+                      className="locaryn-select"
                       value={ablationMethod}
                       onChange={(e) => setAblationMethod(e.target.value)}
                       disabled={isObliterating}
@@ -312,10 +312,10 @@ export function TrainingView({ onOpenModels }: Props) {
                     </select>
                   </div>
 
-                  <div className="lochor-field" style={{ flex: 1 }}>
-                    <label className="lochor-field-label">Couches cibles</label>
+                  <div className="locaryn-field" style={{ flex: 1 }}>
+                    <label className="locaryn-field-label">Couches cibles</label>
                     <input
-                      className="lochor-input"
+                      className="locaryn-input"
                       value={targetLayers}
                       onChange={(e) => setTargetLayers(e.target.value)}
                       disabled={isObliterating}
@@ -323,8 +323,8 @@ export function TrainingView({ onOpenModels }: Props) {
                   </div>
                 </div>
 
-                <div className="lochor-field" style={{ marginTop: "14px" }}>
-                  <label className="lochor-field-label">Intensité Alpha ({intensity})</label>
+                <div className="locaryn-field" style={{ marginTop: "14px" }}>
+                  <label className="locaryn-field-label">Intensité Alpha ({intensity})</label>
                   <input
                     type="range"
                     min="0.5"
@@ -349,10 +349,10 @@ export function TrainingView({ onOpenModels }: Props) {
                   </div>
                 )}
 
-                <div className="lochor-field-actions" style={{ marginTop: "20px" }}>
+                <div className="locaryn-field-actions" style={{ marginTop: "20px" }}>
                   <button
                     type="button"
-                    className="lochor-btn-primary"
+                    className="locaryn-btn-primary"
                     style={{ background: disclaimerAccepted ? "var(--danger)" : "var(--border)", color: "#fff" }}
                     disabled={!disclaimerAccepted || isObliterating}
                     onClick={startObliteration}
@@ -364,14 +364,14 @@ export function TrainingView({ onOpenModels }: Props) {
             )}
           </div>
 
-          <div className="lochor-card">
+          <div className="locaryn-card">
             <h3>Console du Script d'Oblitération</h3>
-            <div className="lochor-training-logs">
+            <div className="locaryn-training-logs">
               {oblLogs.length === 0 ? (
-                <span className="lochor-text-faint">Sélectionnez un modèle installé et validez la décharge pour démarrer...</span>
+                <span className="locaryn-text-faint">Sélectionnez un modèle installé et validez la décharge pour démarrer...</span>
               ) : (
                 oblLogs.map((log, i) => (
-                  <div key={i} className="lochor-log-line" style={{ color: log.includes("✅") ? "var(--accent)" : "var(--text)" }}>
+                  <div key={i} className="locaryn-log-line" style={{ color: log.includes("✅") ? "var(--accent)" : "var(--text)" }}>
                     {log}
                   </div>
                 ))

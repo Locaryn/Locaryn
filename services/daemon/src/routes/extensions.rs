@@ -1,7 +1,7 @@
 //! Extension routes — manage plugins, MCP servers, commands, skills, hooks,
 //! agents, rules, and LSP adapters.
 //!
-//! All routes delegate to `lochor_extensions::ExtensionRegistry` which owns
+//! All routes delegate to `locaryn_extensions::ExtensionRegistry` which owns
 //! the in-memory state and permission bookkeeping. Persistence to SQLite is
 //! planned for V1.1 (the registry already has the skeleton).
 //!
@@ -21,8 +21,8 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use lochor_extensions::RegistryError;
-use lochor_shared_types::{ExtensionScope, Permission};
+use locaryn_extensions::RegistryError;
+use locaryn_shared_types::{ExtensionScope, Permission};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -96,7 +96,7 @@ fn registry_error_response(e: RegistryError) -> (StatusCode, Json<serde_json::Va
     )
 }
 
-fn entry_to_json(e: &lochor_extensions::ExtensionEntry) -> serde_json::Value {
+fn entry_to_json(e: &locaryn_extensions::ExtensionEntry) -> serde_json::Value {
     serde_json::json!({
         "id": e.id,
         "name": e.name,

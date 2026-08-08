@@ -383,18 +383,18 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
   const isFilterActive = size !== "all" || query !== "" || brand !== "all" || onlyRecommended || riskFilter !== "all";
 
   return (
-    <div className="lochor-models">
+    <div className="locaryn-models">
       {/* Top Controls & Filters */}
-      <div className="lochor-models-top-bar">
-        <div className="lochor-models-search-row">
+      <div className="locaryn-models-top-bar">
+        <div className="locaryn-models-search-row">
           <input
-            className="lochor-input lochor-input-text"
+            className="locaryn-input locaryn-input-text"
             placeholder="Rechercher parmi les modèles (Gemma 4, Kimi K3, MiMo, GLM 5.2, DeepSeek-R1, Qwen2.5...)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           <select
-            className="lochor-select"
+            className="locaryn-select"
             value={brand}
             onChange={(e) => setBrand(e.target.value)}
             aria-label="Filtrer par marque"
@@ -408,7 +408,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           </select>
 
           <select
-            className="lochor-select"
+            className="locaryn-select"
             value={yearFilter}
             onChange={(e) => setYearFilter(e.target.value)}
             aria-label="Filtrer par année de sortie"
@@ -422,7 +422,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           </select>
 
           <select
-            className="lochor-select"
+            className="locaryn-select"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as "compat" | "newest" | "name" | "pulls")}
             aria-label="Trier les modèles"
@@ -440,7 +440,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             <button
               key={cat.id}
               type="button"
-              className={`lochor-chip${category === cat.id ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${category === cat.id ? " locaryn-chip-on" : ""}`}
               onClick={() => setCategory(cat.id)}
             >
               {cat.icon} {cat.label}
@@ -448,7 +448,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           ))}
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             style={{ fontSize: "11px", marginLeft: "auto", padding: "2px 8px" }}
             onClick={async () => {
               clearRegistryCache();
@@ -467,7 +467,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
         {/* Custom Model Tag & HuggingFace Pull Input + Live API Fetch Button */}
         <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
           <input
-            className="lochor-input"
+            className="locaryn-input"
             style={{ flex: 1, fontSize: "12px" }}
             placeholder="➕ Télécharger un modèle spécifique ou dépôt HuggingFace (ex: gemma4:2b, kimi-k3:8b, mimo:7b, glm5.2:9b, hf.co/user/repo)..."
             value={customTagInput}
@@ -475,7 +475,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           />
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             style={{ fontSize: "12px", whiteSpace: "nowrap" }}
             disabled={!customTagInput.trim()}
             onClick={() => {
@@ -487,7 +487,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           </button>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             style={{ fontSize: "12px", border: "1px solid var(--accent)", color: "var(--accent)", whiteSpace: "nowrap" }}
             onClick={handleFetchLiveApiModels}
             disabled={isFetchingLive}
@@ -497,11 +497,11 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           </button>
         </div>
 
-        <div className="lochor-models-toolbar" style={{ marginTop: "8px" }}>
-          <div className="lochor-size-chips">
+        <div className="locaryn-models-toolbar" style={{ marginTop: "8px" }}>
+          <div className="locaryn-size-chips">
             <button
               type="button"
-              className={`lochor-chip${size === "all" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${size === "all" ? " locaryn-chip-on" : ""}`}
               onClick={() => setSize("all")}
             >
               Toutes tailles
@@ -510,7 +510,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
               <button
                 key={b.id}
                 type="button"
-                className={`lochor-chip${size === b.id ? " lochor-chip-on" : ""}`}
+                className={`locaryn-chip${size === b.id ? " locaryn-chip-on" : ""}`}
                 onClick={() => setSize(b.id)}
               >
                 {b.label}
@@ -519,7 +519,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
 
             <button
               type="button"
-              className={`lochor-chip lochor-chip-ft${onlyRecommended ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip locaryn-chip-ft${onlyRecommended ? " locaryn-chip-on" : ""}`}
               style={onlyRecommended ? { background: "rgba(100, 200, 120, 0.2)", borderColor: "#64c878", color: "#64c878" } : {}}
               onClick={() => setOnlyRecommended((prev) => !prev)}
               title="Filtrer uniquement les modèles adaptés aux composants de votre PC"
@@ -529,7 +529,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
 
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{ fontSize: "11px", marginLeft: "auto", padding: "2px 8px" }}
               onClick={() => setHardwareModalOpen(true)}
               title="Analyser les composants de mon PC pour adapter les recommandations"
@@ -539,7 +539,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
 
             <button
               type="button"
-              className={`lochor-chip lochor-chip-ft${onlyFinetunable ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip locaryn-chip-ft${onlyFinetunable ? " locaryn-chip-on" : ""}`}
               onClick={() => setOnlyFinetunable((prev) => !prev)}
               title="Afficher uniquement les modèles réentraînables via Fine-Tuning / LoRA"
             >
@@ -547,7 +547,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             </button>
             <button
               type="button"
-              className={`lochor-chip lochor-chip-ft${riskFilter === "safe" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip locaryn-chip-ft${riskFilter === "safe" ? " locaryn-chip-on" : ""}`}
               style={riskFilter === "safe" ? { background: "rgba(90, 168, 106, 0.2)", borderColor: "#5aa86a", color: "#5aa86a" } : {}}
               onClick={() => setRiskFilter((prev) => (prev === "safe" ? "all" : "safe"))}
               title="Afficher uniquement les modèles classiques avec garde-fous"
@@ -556,7 +556,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             </button>
             <button
               type="button"
-              className={`lochor-chip lochor-chip-ft${riskFilter === "uncensored" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip locaryn-chip-ft${riskFilter === "uncensored" ? " locaryn-chip-on" : ""}`}
               style={riskFilter === "uncensored" ? { background: "rgba(204, 125, 114, 0.25)", borderColor: "var(--danger)", color: "var(--danger)" } : {}}
               onClick={() => setRiskFilter((prev) => (prev === "uncensored" ? "all" : "uncensored"))}
               title="Afficher uniquement les modèles sans garde-fous / oblitérés"
@@ -565,7 +565,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             </button>
             <button
               type="button"
-              className={`lochor-chip lochor-chip-ft${riskFilter === "nsfw" ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip locaryn-chip-ft${riskFilter === "nsfw" ? " locaryn-chip-on" : ""}`}
               style={riskFilter === "nsfw" ? { background: "rgba(204, 125, 114, 0.25)", borderColor: "var(--danger)", color: "var(--danger)" } : {}}
               onClick={() => setRiskFilter((prev) => (prev === "nsfw" ? "all" : "nsfw"))}
               title="Afficher uniquement les modèles NSFW / sans garde-fous connus"
@@ -574,7 +574,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             </button>
             <button
               type="button"
-              className={`lochor-chip lochor-chip-ft${showCloud ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip locaryn-chip-ft${showCloud ? " locaryn-chip-on" : ""}`}
               style={showCloud ? { background: "rgba(96, 165, 250, 0.2)", borderColor: "#60a5fa", color: "#60a5fa" } : {}}
               onClick={() => setShowCloud((prev) => !prev)}
               title="Par défaut, les modèles cloud-only sont masqués pour privilégier les téléchargements locaux"
@@ -586,7 +586,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{ fontSize: "12px", border: "1px solid var(--accent)", color: "var(--accent)" }}
               onClick={() => setHardwareModalOpen(true)}
               title="Tester les composants de votre PC et analyser les performances d'inférence"
@@ -596,7 +596,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
 
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{ color: "var(--danger)", fontSize: "12px", border: "1px solid rgba(204, 125, 114, 0.3)" }}
               onClick={() => {
                 if (onOpenTraining) {
@@ -611,10 +611,10 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             </button>
 
             {/* View mode switcher */}
-            <div className="lochor-view-toggle">
+            <div className="locaryn-view-toggle">
               <button
                 type="button"
-                className={`lochor-view-toggle-btn ${viewMode === "grid" ? "lochor-active" : ""}`}
+                className={`locaryn-view-toggle-btn ${viewMode === "grid" ? "locaryn-active" : ""}`}
                 onClick={() => setViewMode("grid")}
                 title="Affichage en Grille / Cartes"
               >
@@ -628,7 +628,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
               </button>
               <button
                 type="button"
-                className={`lochor-view-toggle-btn ${viewMode === "list" ? "lochor-active" : ""}`}
+                className={`locaryn-view-toggle-btn ${viewMode === "list" ? "locaryn-active" : ""}`}
                 onClick={() => setViewMode("list")}
                 title="Affichage en Liste Détaillée"
               >
@@ -654,35 +654,35 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           { cloud: 0, gpu: 0, offload: 0, heavy: 0, unknown: 0 } as Record<CompatLevel, number>,
         );
         return (
-          <div className="lochor-hw-banner">
-            <span className="lochor-hw-banner-pc">
+          <div className="locaryn-hw-banner">
+            <span className="locaryn-hw-banner-pc">
               🖥️ Votre PC&nbsp;: <b>{hardwareSpec.total_ram_gb} Go RAM</b>
               {hardwareSpec.total_vram_gb > 0 && <> · <b>{hardwareSpec.total_vram_gb} Go VRAM</b></>}
             </span>
-            <span className="lochor-hw-banner-counts">
+            <span className="locaryn-hw-banner-counts">
               <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
               <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
               <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
               <span style={{ color: "#cc7d72" }}>🔴 {counts.heavy} trop lourds</span>
-              <span className="lochor-hw-banner-note">— triés du plus adapté au plus lourd</span>
+              <span className="locaryn-hw-banner-note">— triés du plus adapté au plus lourd</span>
             </span>
           </div>
         );
       })() : (
-        <div className="lochor-hw-banner lochor-hw-banner-muted">
+        <div className="locaryn-hw-banner locaryn-hw-banner-muted">
           <span>🖥️ Analyse du PC en cours… la compatibilité de chaque modèle s'affichera automatiquement.</span>
         </div>
       )}
 
       {families.length === 0 && (
-        <div className="lochor-field-hint" style={{ marginTop: "24px", textAlign: "center" }}>
+        <div className="locaryn-field-hint" style={{ marginTop: "24px", textAlign: "center" }}>
           Aucun modèle ne correspond à vos filtres.
         </div>
       )}
 
       {/* GRID / BOXES VIEW */}
       {viewMode === "grid" && (
-        <div className="lochor-model-grid">
+        <div className="locaryn-model-grid">
           {families.map((f) => {
             const isExpanded = Boolean(isFilterActive || expandedCards[f.id]);
             const paramNums = f.variants.map((v) => v.params);
@@ -695,71 +695,71 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             const compat = familyBestCompat(f.variants, hardwareSpec);
 
             return (
-              <div key={f.id} className={`lochor-box-card lochor-compat-${compat.level}`}>
-                <div className="lochor-box-head">
+              <div key={f.id} className={`locaryn-box-card locaryn-compat-${compat.level}`}>
+                <div className="locaryn-box-head">
                   <div style={{ minWidth: 140, flex: "1 1 55%" }}>
-                    <span className="lochor-box-brand">{f.brand}</span>
-                    <h3 className="lochor-box-name">{f.name}</h3>
+                    <span className="locaryn-box-brand">{f.brand}</span>
+                    <h3 className="locaryn-box-name">{f.name}</h3>
                   </div>
-                  <div className="lochor-box-badges">
+                  <div className="locaryn-box-badges">
                     <span
-                      className="lochor-tag"
+                      className="locaryn-tag"
                       style={{ background: `${compat.color}22`, color: compat.color, border: `1px solid ${compat.color}66` }}
                       title={compat.label}
                     >
                       {compat.icon} {compat.short}
                     </span>
-                    <span className="lochor-tag" style={{ background: "rgba(100, 150, 255, 0.15)", color: "var(--accent)" }}>
+                    <span className="locaryn-tag" style={{ background: "rgba(100, 150, 255, 0.15)", color: "var(--accent)" }}>
                       {cleanSizeRange}
                     </span>
-                    <span className="lochor-tag lochor-tag-soft" title="Date de sortie officielle">
+                    <span className="locaryn-tag locaryn-tag-soft" title="Date de sortie officielle">
                       📅 {f.releaseDate}
                     </span>
                     {(() => {
                       const c = classifyModel(`${f.name} ${f.id}`, { uncensored: f.uncensored });
                       if (c.risk === "safe") return null;
                       return (
-                        <span className="lochor-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)" }} title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}>
+                        <span className="locaryn-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)" }} title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}>
                           {c.icon} {c.label}
                         </span>
                       );
                     })()}
                     {f.finetunable && (
-                      <span className="lochor-tag lochor-tag-ft" title="Modèle prêt pour le fine-tuning LoRA">
+                      <span className="locaryn-tag locaryn-tag-ft" title="Modèle prêt pour le fine-tuning LoRA">
                         🎯 LoRA
                       </span>
                     )}
                     {capBadges(f).map((c) => (
-                      <span key={c} className="lochor-tag">
+                      <span key={c} className="locaryn-tag">
                         {c}
                       </span>
                     ))}
                   </div>
                 </div>
 
-                <p className="lochor-box-desc">{f.description}</p>
+                <p className="locaryn-box-desc">{f.description}</p>
 
-                <div className="lochor-box-stats">
+                <div className="locaryn-box-stats">
                   {f.contextWindow && (
-                    <div className="lochor-stat-item">
-                      <span className="lochor-stat-label">Contexte</span>
-                      <span className="lochor-stat-value">{f.contextWindow}</span>
+                    <div className="locaryn-stat-item">
+                      <span className="locaryn-stat-label">Contexte</span>
+                      <span className="locaryn-stat-value">{f.contextWindow}</span>
                     </div>
                   )}
-                  <div className="lochor-stat-item">
-                    <span className="lochor-stat-label">Licence</span>
-                    <span className="lochor-stat-value">{f.license}</span>
+                  <div className="locaryn-stat-item">
+                    <span className="locaryn-stat-label">Licence</span>
+                    <span className="locaryn-stat-value">{f.license}</span>
                   </div>
-                  <div className="lochor-stat-item">
-                    <span className="lochor-stat-label">Sortie</span>
-                    <span className="lochor-stat-value">{f.releaseDate}</span>
+                  <div className="locaryn-stat-item">
+                    <span className="locaryn-stat-label">Sortie</span>
+                    <span className="locaryn-stat-value">{f.releaseDate}</span>
                   </div>
                 </div>
 
                 {!isFilterActive && (
                   <button
                     type="button"
-                    className="lochor-btn-ghost"
+                    className="locaryn-btn-ghost"
                     style={{
                       width: "100%",
                       marginTop: "8px",
@@ -777,15 +777,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {expandLabel}
                     </span>
-                    <span className="lochor-tag lochor-tag-soft" style={{ flex: "none", marginLeft: "6px" }}>
+                    <span className="locaryn-tag locaryn-tag-soft" style={{ flex: "none", marginLeft: "6px" }}>
                       {f.variants.length} modèles
                     </span>
                   </button>
                 )}
 
                 {isExpanded && (
-                  <div className="lochor-box-variants" style={{ marginTop: "12px" }}>
-                    <span className="lochor-box-variants-title">Variantes & Quantisations :</span>
+                  <div className="locaryn-box-variants" style={{ marginTop: "12px" }}>
+                    <span className="locaryn-box-variants-title">Variantes & Quantisations :</span>
                     {f.variants.map((v) => {
                       const activeQuant = selectedQuants[v.tag] || v.quants[0] || "q4_K_M";
                       const targetTag = getQuantTag(v.tag, activeQuant);
@@ -796,15 +796,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
 
                       return (
-                        <div key={v.tag} className="lochor-box-variant-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "6px" }}>
+                        <div key={v.tag} className="locaryn-box-variant-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "6px" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div className="lochor-box-variant-info">
-                              <span className="lochor-variant-size">{v.size}</span>
-                              <span className="lochor-stat-vram">💾 ~{targetStorageGb} Go</span>
+                            <div className="locaryn-box-variant-info">
+                              <span className="locaryn-variant-size">{v.size}</span>
+                              <span className="locaryn-stat-vram">💾 ~{targetStorageGb} Go</span>
                               {(() => { const c = variantCompat(targetStorageGb, hardwareSpec); return (
-                                <span className="lochor-tag" style={{ background: `${c.color}22`, color: c.color }} title={c.label}>{c.icon} {c.short}</span>
+                                <span className="locaryn-tag" style={{ background: `${c.color}22`, color: c.color }} title={c.label}>{c.icon} {c.short}</span>
                               ); })()}
-                              {isInstalled && <span className="lochor-tag lochor-tag-installed">Installé ✓</span>}
+                              {isInstalled && <span className="locaryn-tag locaryn-tag-installed">Installé ✓</span>}
                             </div>
 
                             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -813,7 +813,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                   {f.imageGen || looksLikeImageModel(targetTag) ? (
                                     <button
                                       type="button"
-                                      className="lochor-btn-primary"
+                                      className="locaryn-btn-primary"
                                       style={{ padding: "3px 8px", fontSize: "11px" }}
                                       onClick={() => onOpenImageGen?.()}
                                       title="Ouvrir la génération d'images avec ce modèle"
@@ -823,7 +823,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                   ) : (
                                     <button
                                       type="button"
-                                      className="lochor-btn-primary"
+                                      className="locaryn-btn-primary"
                                       style={{ padding: "3px 8px", fontSize: "11px" }}
                                       onClick={() => onSelectModelForChat?.(targetTag)}
                                       title="Utiliser ce modèle dans le Chat"
@@ -833,7 +833,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                   )}
                                   <button
                                     type="button"
-                                    className="lochor-btn-ghost"
+                                    className="locaryn-btn-ghost"
                                     style={{ color: "var(--danger)", padding: "3px 8px", fontSize: "11px" }}
                                     onClick={() => handleDeleteModel(targetTag)}
                                     disabled={isDeleting}
@@ -845,7 +845,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                               ) : isInstalling ? (
                                 <button
                                   type="button"
-                                  className="lochor-btn-ghost"
+                                  className="locaryn-btn-ghost"
                                   style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "3px 8px", fontSize: "11px" }}
                                   onClick={() => handleCancelInstall(targetTag)}
                                   title="Annuler le téléchargement en cours"
@@ -854,7 +854,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                 </button>
                               ) : (                                  <button
                                   type="button"
-                                  className="lochor-btn-primary lochor-variant-use"
+                                  className="locaryn-btn-primary locaryn-variant-use"
                                   onClick={() => requestInstall(targetTag, f.name, Boolean(f.uncensored))}
                                   title={`Installer la quantisation ${activeQuant}`}
                                 >
@@ -872,7 +872,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                 <button
                                   key={q}
                                   type="button"
-                                  className={`lochor-quant-chip${isSelected ? " lochor-quant-chip-active" : ""}`}
+                                  className={`locaryn-quant-chip${isSelected ? " locaryn-quant-chip-active" : ""}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedQuants((prev) => ({ ...prev, [v.tag]: q }));
@@ -897,50 +897,50 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
 
       {/* ACCORDION LIST VIEW */}
       {viewMode === "list" && (
-        <div className="lochor-model-list">
+        <div className="locaryn-model-list">
           {families.map((f) => {
             const open = openId === f.id;
             return (
-              <div key={f.id} className="lochor-model-card">
+              <div key={f.id} className="locaryn-model-card">
                 <button
                   type="button"
-                  className="lochor-model-head"
+                  className="locaryn-model-head"
                   onClick={() => setOpenId(open ? null : f.id)}
                   aria-expanded={open}
                 >
-                  <div className="lochor-model-title">
-                    <span className="lochor-model-name">{f.name}</span>
-                    <span className="lochor-model-brand">{f.brand}</span>
+                  <div className="locaryn-model-title">
+                    <span className="locaryn-model-name">{f.name}</span>
+                    <span className="locaryn-model-brand">{f.brand}</span>
                   </div>
-                  <div className="lochor-model-badges">
-                    <span className="lochor-tag lochor-tag-soft">📅 {f.releaseDate}</span>
+                  <div className="locaryn-model-badges">
+                    <span className="locaryn-tag locaryn-tag-soft">📅 {f.releaseDate}</span>
                     {(() => {
                       const c = classifyModel(`${f.name} ${f.id}`, { uncensored: f.uncensored });
                       if (c.risk === "safe") return null;
                       return (
-                        <span className="lochor-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)" }} title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}>
+                        <span className="locaryn-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)" }} title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}>
                           {c.icon} {c.label}
                         </span>
                       );
                     })()}
                     {f.finetunable && (
-                      <span className="lochor-tag lochor-tag-ft">
+                      <span className="locaryn-tag locaryn-tag-ft">
                         🎯 LoRA Ready
                       </span>
                     )}
                     {capBadges(f).map((c) => (
-                      <span key={c} className="lochor-tag">
+                      <span key={c} className="locaryn-tag">
                         {c}
                       </span>
                     ))}
-                    <span className="lochor-tag lochor-tag-soft">{f.license}</span>
-                    <span className="lochor-model-chevron">{open ? "▾" : "▸"}</span>
+                    <span className="locaryn-tag locaryn-tag-soft">{f.license}</span>
+                    <span className="locaryn-model-chevron">{open ? "▾" : "▸"}</span>
                   </div>
                 </button>
 
                 {open && (
-                  <div className="lochor-model-body">
-                    <p className="lochor-model-desc">{f.description}</p>
+                  <div className="locaryn-model-body">
+                    <p className="locaryn-model-desc">{f.description}</p>
                     {f.variants.map((v) => {
                       const activeQuant = selectedQuants[v.tag] || v.quants[0] || "q4_K_M";
                       const targetTag = getQuantTag(v.tag, activeQuant);
@@ -951,17 +951,17 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
 
                       return (
-                        <div key={v.tag} className="lochor-variant">
-                          <div className="lochor-variant-top">
-                            <span className="lochor-variant-size">{v.size}</span>
-                            <span className="lochor-stat-vram">💾 ~{targetStorageGb} Go Stockage</span>
+                        <div key={v.tag} className="locaryn-variant">
+                          <div className="locaryn-variant-top">
+                            <span className="locaryn-variant-size">{v.size}</span>
+                            <span className="locaryn-stat-vram">💾 ~{targetStorageGb} Go Stockage</span>
                             {(() => { const c = variantCompat(targetStorageGb, hardwareSpec); return (
-                              <span className="lochor-tag" style={{ background: `${c.color}22`, color: c.color }} title={c.label}>{c.icon} {c.short}</span>
+                              <span className="locaryn-tag" style={{ background: `${c.color}22`, color: c.color }} title={c.label}>{c.icon} {c.short}</span>
                             ); })()}
                             {isInstalled && (
-                              <span className="lochor-tag lochor-tag-installed">Installé ✓</span>
+                              <span className="locaryn-tag locaryn-tag-installed">Installé ✓</span>
                             )}
-                            <code className="lochor-variant-tag">{targetTag}</code>
+                            <code className="locaryn-variant-tag">{targetTag}</code>
 
                             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                               {isInstalled ? (
@@ -969,7 +969,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                   {f.imageGen || looksLikeImageModel(targetTag) ? (
                                     <button
                                       type="button"
-                                      className="lochor-btn-primary"
+                                      className="locaryn-btn-primary"
                                       style={{ padding: "3px 8px", fontSize: "11px" }}
                                       onClick={() => onOpenImageGen?.()}
                                       title="Ouvrir la génération d'images avec ce modèle"
@@ -979,7 +979,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                   ) : (
                                     <button
                                       type="button"
-                                      className="lochor-btn-primary"
+                                      className="locaryn-btn-primary"
                                       style={{ padding: "3px 8px", fontSize: "11px" }}
                                       onClick={() => onSelectModelForChat?.(targetTag)}
                                       title="Utiliser ce modèle dans le Chat"
@@ -989,7 +989,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                   )}
                                   <button
                                     type="button"
-                                    className="lochor-btn-ghost"
+                                    className="locaryn-btn-ghost"
                                     style={{ color: "var(--danger)", padding: "3px 8px", fontSize: "11px" }}
                                     onClick={() => handleDeleteModel(targetTag)}
                                     disabled={isDeleting}
@@ -1001,7 +1001,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                               ) : isInstalling ? (
                                 <button
                                   type="button"
-                                  className="lochor-btn-ghost"
+                                  className="locaryn-btn-ghost"
                                   style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "3px 8px", fontSize: "11px" }}
                                   onClick={() => handleCancelInstall(targetTag)}
                                   title="Annuler le téléchargement en cours"
@@ -1010,7 +1010,7 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                 </button>
                               ) : (                                  <button
                                   type="button"
-                                  className="lochor-btn-primary lochor-variant-use"
+                                  className="locaryn-btn-primary locaryn-variant-use"
                                   onClick={() => requestInstall(targetTag, f.name, Boolean(f.uncensored))}
                                   title={`Installer la quantisation ${activeQuant}`}
                                 >
@@ -1019,15 +1019,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                               )}
                             </div>
                           </div>
-                          <div className="lochor-quant-row">
-                            <span className="lochor-quant-label">quant:</span>
+                          <div className="locaryn-quant-row">
+                            <span className="locaryn-quant-label">quant:</span>
                             {v.quants.map((q) => {
                               const isSelected = activeQuant === q;
                               return (
                                 <button
                                   key={q}
                                   type="button"
-                                  className={`lochor-quant-chip${isSelected ? " lochor-quant-chip-active" : ""}`}
+                                  className={`locaryn-quant-chip${isSelected ? " locaryn-quant-chip-active" : ""}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedQuants((prev) => ({ ...prev, [v.tag]: q }));

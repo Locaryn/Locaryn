@@ -1,10 +1,10 @@
-# Lochor Store + SSH Connector — Implementation Plan
+# Locaryn Store + SSH Connector — Implementation Plan
 
 > Produced by a multi-agent design pass (explore → design panel → synthesis). This is the reference for building the extensions/connectors Store and the SSH server connector.
 
 ## 1. Recommended architecture
 
-Ship an **SSH-specific connector** (dedicated `ssh_servers` table + `SshServerRepo` parallel to `ProviderRepo`), **not** a new `ExtensionKind` and **not** a fully-generic connector spine. Keep one cheap piece of extensibility: a static in-code connector catalog (`Vec<ConnectorType>`) so the Store's Discover tab is data-driven and a second connector is a drop-in later; the SSH config form is hand-written. SSH I/O lives in a new `packages/ssh` crate (`lochor-ssh`, russh). `agent-runtime` stays decoupled via a `ServerStore` trait object on `ToolContext`. Secrets live only in the OS Keychain (`packages/auth`); the DB holds `secret_ref`. Host keys are TOFU-pinned with explicit user confirmation; the AI only sees servers whose per-server `ai_access` was explicitly widened by the user.
+Ship an **SSH-specific connector** (dedicated `ssh_servers` table + `SshServerRepo` parallel to `ProviderRepo`), **not** a new `ExtensionKind` and **not** a fully-generic connector spine. Keep one cheap piece of extensibility: a static in-code connector catalog (`Vec<ConnectorType>`) so the Store's Discover tab is data-driven and a second connector is a drop-in later; the SSH config form is hand-written. SSH I/O lives in a new `packages/ssh` crate (`locaryn-ssh`, russh). `agent-runtime` stays decoupled via a `ServerStore` trait object on `ToolContext`. Secrets live only in the OS Keychain (`packages/auth`); the DB holds `secret_ref`. Host keys are TOFU-pinned with explicit user confirmation; the AI only sees servers whose per-server `ai_access` was explicitly widened by the user.
 
 ## 2. SSH library
 
@@ -14,13 +14,13 @@ Ship an **SSH-specific connector** (dedicated `ssh_servers` table + `SshServerRe
 
 New migration `migrations/0003_ssh_servers.sql`. **No column ever holds a password or private key** — only `secret_ref` (Keychain key). Table `ssh_servers`: id, name, description, host, port, username, auth_method (`password|key|agent`), secret_ref, key_path, jump_json, host_key_algo, host_key_sha256, host_key_verified, ai_access (`none|read_only|approval|trusted`), capabilities (JSON), scope, status, enabled, last_connected_at, created_at, updated_at, `UNIQUE(name, scope)`.
 
-Secrets: password → Keychain `lochor/ssh/{id}`; key → reference `key_path` on disk, vault only passphrase; agent → nothing vaulted. Delete returns the freed `secret_ref` so the command layer deletes it from the Keychain (storage never imports auth).
+Secrets: password → Keychain `locaryn/ssh/{id}`; key → reference `key_path` on disk, vault only passphrase; agent → nothing vaulted. Delete returns the freed `secret_ref` so the command layer deletes it from the Keychain (storage never imports auth).
 
 Shared types: `SshServer` (no secret field), `SshAuthMethod`, `SshAiAccess`, `SshJump`. Reuse `ExtensionScope`.
 
 ## 4. Rust
 
-New crate `packages/ssh` (`lochor-ssh`): `SshTarget`, `SshAuth`, `SshClient::{connect,run,probe}`, host-key handler that captures on first contact and constant-time compares against a pin on reconnect (hard fail on change). Probe: whoami/id, sudo -n true, uname, `ls -la $HOME` (read), SFTP write/read/delete `~/.syncho_probe` (write), all self-cleaning.
+New crate `packages/ssh` (`locaryn-ssh`): `SshTarget`, `SshAuth`, `SshClient::{connect,run,probe}`, host-key handler that captures on first contact and constant-time compares against a pin on reconnect (hard fail on change). Probe: whoami/id, sudo -n true, uname, `ls -la $HOME` (read), SFTP write/read/delete `~/.syncho_probe` (write), all self-cleaning.
 
 Tauri commands (desktop `lib.rs`): `list_connector_types`, `list_ssh_servers`, `test_ssh_connection` (streams `SshTestEvent`, no persist), `confirm_ssh_host_key`, `save_ssh_server` (server-side gated on a `test_token` + confirmed host key), `update_ssh_server`, `set_ssh_ai_access` (only user-initiated widening), `delete_ssh_server`. `Core` gains `keychain` + `pending_tests`.
 
@@ -125,7 +125,7 @@ denied on `Deny`, and updates the in-memory allowlist on
 | `Project`  | Migration `0004_approval_decisions.sql` (V1.1). Keyed by `(project_id, tool)`. | Chip; warns before save ("every edit in this project will auto-run"). |
 | `Always`   | Same table as Project, plus global flag overrides per server `ai_access`.     | Chip; hidden for Critical unless the user types the project path to confirm. |
 
-The `is_allowed_for(risk_tier, scope)` matrix in `lochor-shared-types`
+The `is_allowed_for(risk_tier, scope)` matrix in `locaryn-shared-types`
 is the single source of truth — both the Rust rule table and the React
 modal call into it, so they cannot disagree.
 
@@ -207,9 +207,9 @@ type Props = {
 ```
 
 `ToolApprovalRequest` mirrors the `StreamEvent::ToolApproval` variant
-from `lochor-events` plus a `suggested_min_scope` derived from the rule
+from `locaryn-events` plus a `suggested_min_scope` derived from the rule
 table (see §5.4). `ToolApprovalDecision` mirrors the Rust struct in
-`lochor-shared-types` exactly; the frontend never invents extra fields.
+`locaryn-shared-types` exactly; the frontend never invents extra fields.
 
 #### Layout (must follow this order)
 
@@ -254,7 +254,7 @@ for Critical (must click Deny explicitly) — the modal traps focus on
 Critical calls.
 
 **Accessibility.** `role="dialog"`, `aria-modal="true"`,
-`aria-labelledby="lochor-approval-title"`. Focus is moved to the
+`aria-labelledby="locaryn-approval-title"`. Focus is moved to the
 type-to-confirm input on Critical; to the Allow button otherwise. The
 modal restores focus to the chat composer when closed.
 
@@ -262,7 +262,7 @@ modal restores focus to the chat composer when closed.
 POSTs the decision through `core.approveToolCall(...)` and the backend
 mirrors it in `approval_decisions` (V1.1 migration 0004). For now (V1)
 `Session` scope is in-memory only and is reset every daemon restart —
-clearly labelled in the chip tooltip ("lost when you quit Lochor").
+clearly labelled in the chip tooltip ("lost when you quit Locaryn").
 
 #### Wire events
 
@@ -311,7 +311,7 @@ remote-server users get their actual ID in V1.1).
 6. core.ts bindings + demo fakes.
 7. Store view + form + CSS.
 8. Agent description loop (`ServerStore` + `update_server_description` + injection).
-9. **Risk-based approval rule table** (§5) + `Risk::Critical` enum value + `approval_decision` API in `lochor-agent-runtime`.
+9. **Risk-based approval rule table** (§5) + `Risk::Critical` enum value + `approval_decision` API in `locaryn-agent-runtime`.
 10. **Tool Approval Modal** (§6.5) — React component with severity banner, diff preview, scope chips, Critical type-to-confirm.
 11. Wire `StreamEvent::ToolApproval` → modal → `approve_tool_call` IPC → agent resume (Critical paths tested first).
 12. **`ssh_run_command` tool behind Critical + ai_access allowlist** (the first tool that pays for the new gate).

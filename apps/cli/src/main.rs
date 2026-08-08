@@ -1,31 +1,31 @@
-//! Lochor CLI — a thin client over the local daemon (or the remote server).
+//! Locaryn CLI — a thin client over the local daemon (or the remote server).
 //!
 //! Usage:
-//!   lochor                      — the agent, in the current directory
-//!   lochor chat                 — plain conversation, no file access
-//!   lochor status
-//!   lochor projects add <path>
-//!   lochor plugin install <path>
-//!   lochor import claude-code <path>
+//!   locaryn                      — the agent, in the current directory
+//!   locaryn chat                 — plain conversation, no file access
+//!   locaryn status
+//!   locaryn projects add <path>
+//!   locaryn plugin install <path>
+//!   locaryn import claude-code <path>
 
 use clap::{Parser, Subcommand};
-use lochor_sdk::LochorClient;
+use locaryn_sdk::LocarynClient;
 use std::io::BufRead;
 
 #[derive(Parser)]
 #[command(
-    name = "lochor",
+    name = "locaryn",
     version,
-    about = "Lochor — agentic coding platform CLI"
+    about = "Locaryn — agentic coding platform CLI"
 )]
 struct Cli {
     /// Daemon / server base URL. Defaults to the local daemon.
-    #[arg(long, env = "LOCHOR_SERVER_URL")]
+    #[arg(long, env = "LOCARYN_SERVER_URL")]
     server: Option<String>,
     /// Bearer token (remote server only).
-    #[arg(long, env = "LOCHOR_TOKEN")]
+    #[arg(long, env = "LOCARYN_TOKEN")]
     token: Option<String>,
-    /// Without a subcommand, Lochor opens its agent in the current directory.
+    /// Without a subcommand, Locaryn opens its agent in the current directory.
     #[command(subcommand)]
     cmd: Option<Cmd>,
 }
@@ -79,7 +79,7 @@ enum Cmd {
         format: String,
         /// Source path.
         path: String,
-        /// Output directory (defaults to ./.lochor/).
+        /// Output directory (defaults to ./.locaryn/).
         #[arg(long)]
         out: Option<String>,
     },
@@ -171,7 +171,7 @@ enum McpCmd {
     Add {
         name: String,
         target: String,
-        /// Start it whenever Lochor starts.
+        /// Start it whenever Locaryn starts.
         #[arg(long)]
         auto: bool,
     },
@@ -247,9 +247,9 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    let cfg = lochor_config::load(None)?;
+    let cfg = locaryn_config::load(None)?;
     let base_url = cli.server.unwrap_or(cfg.connection.local_url.clone());
-    let client = LochorClient::new(&base_url, cli.token)?;
+    let client = LocarynClient::new(&base_url, cli.token)?;
 
     // Most commands talk to the daemon, so an unreachable one is the single
     // most likely first-run failure. A raw reqwest chain tells the user nothing
@@ -275,15 +275,15 @@ async fn main() -> anyhow::Result<()> {
         && client.health().await.is_err()
     {
         anyhow::bail!(
-            "Aucun service Lochor n'écoute sur {base_url}.\n\
-             Démarrez-le avec `lochor daemon start`, ou lancez l'application Lochor \
+            "Aucun service Locaryn n'écoute sur {base_url}.\n\
+             Démarrez-le avec `locaryn daemon start`, ou lancez l'application Locaryn \
              (son mode serveur expose la même interface).\n\
-             Pour viser une autre machine : `lochor --server http://IP:7474 …`"
+             Pour viser une autre machine : `locaryn --server http://IP:7474 …`"
         );
     }
 
     let Some(cmd) = cli.cmd else {
-        // Bare `lochor`: the agent, working in the current directory.
+        // Bare `locaryn`: the agent, working in the current directory.
         return converse(&client, None, None, true).await;
     };
 
@@ -339,9 +339,9 @@ async fn main() -> anyhow::Result<()> {
             }
             ProviderCmd::Use { target } => {
                 let mode = match target.as_str() {
-                    "auto" => lochor_shared_types::ConnectionMode::Auto,
-                    "local" => lochor_shared_types::ConnectionMode::Local,
-                    "remote" => lochor_shared_types::ConnectionMode::Remote,
+                    "auto" => locaryn_shared_types::ConnectionMode::Auto,
+                    "local" => locaryn_shared_types::ConnectionMode::Local,
+                    "remote" => locaryn_shared_types::ConnectionMode::Remote,
                     _ => anyhow::bail!("invalid mode: {target} (use auto|local|remote)"),
                 };
                 let p = client.switch_provider(mode).await?;
@@ -362,7 +362,7 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Plugin { action } => match action {
             PluginCmd::Install { path, scope } => {
                 let scope = parse_scope(&scope)?;
-                let reg = lochor_extensions::ExtensionRegistry::new();
+                let reg = locaryn_extensions::ExtensionRegistry::new();
                 let entry = reg.install_from_dir(std::path::Path::new(&path), scope)?;
                 println!(
                     "installed {} v{} ({}), permissions pending approval",
@@ -396,14 +396,14 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Mcp { action } => mcp_cmd(action, &client).await,
         Cmd::Travel { action } => travel_cmd(action, &client).await,
         Cmd::Import { format, path, out } => {
-            let out = out.unwrap_or_else(|| "./.lochor/imported".into());
+            let out = out.unwrap_or_else(|| "./.locaryn/imported".into());
             let out_path = std::path::Path::new(&out);
             let summary = match format.as_str() {
-                "claude-code" | "claude_code" => lochor_extensions::registry::import_claude_code(
+                "claude-code" | "claude_code" => locaryn_extensions::registry::import_claude_code(
                     std::path::Path::new(&path),
                     out_path,
                 )?,
-                "cursor" => lochor_extensions::registry::import_cursor(
+                "cursor" => locaryn_extensions::registry::import_cursor(
                     std::path::Path::new(&path),
                     out_path,
                 )?,
@@ -422,7 +422,7 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Users { action } => users_cmd(action).await,
         Cmd::Daemon { action } => match action {
             DaemonCmd::Start => {
-                println!("use `cargo run -p lochor-daemon` to start the daemon in dev");
+                println!("use `cargo run -p locaryn-daemon` to start the daemon in dev");
                 Ok(())
             }
             DaemonCmd::Stop => {
@@ -437,9 +437,9 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
-async fn print_status(client: &LochorClient) -> anyhow::Result<()> {
+async fn print_status(client: &LocarynClient) -> anyhow::Result<()> {
     let h = client.health().await?;
-    println!("Lochor status");
+    println!("Locaryn status");
     println!("  version : {}", h.version);
     println!("  mode    : {:?}", h.mode);
     if let Some(p) = h.active_provider {
@@ -457,7 +457,7 @@ async fn print_status(client: &LochorClient) -> anyhow::Result<()> {
 /// The previous version posted to an all-zero session id, so nothing was ever
 /// stored and the agent had no project context to work from.
 async fn resolve_session(
-    client: &LochorClient,
+    client: &LocarynClient,
     resume: Option<String>,
     agentic: bool,
 ) -> anyhow::Result<String> {
@@ -471,14 +471,14 @@ async fn resolve_session(
         // The container the desktop uses for chats that belong to no project.
         // Its path is a marker, not a directory, so the runtime stays in plain
         // conversation mode.
-        const FREE: &str = "__lochor_free_chats__";
+        const FREE: &str = "__locaryn_free_chats__";
         let projects = client.list_projects().await?;
         let free = match projects.iter().find(|p| p.path == FREE) {
             Some(p) => p.clone(),
             None => {
                 client
                     .create_project(FREE, "Conversations libres",
-                                    lochor_shared_types::TrustLevel::Sandbox)
+                                    locaryn_shared_types::TrustLevel::Sandbox)
                     .await?
             }
         };
@@ -513,7 +513,7 @@ async fn resolve_session(
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_else(|| "projet".into())
                         .as_str(),
-                    lochor_shared_types::TrustLevel::Untrusted,
+                    locaryn_shared_types::TrustLevel::Untrusted,
                 )
                 .await?;
             println!("nouveau projet : {} ({})", p.name, p.path);
@@ -531,13 +531,13 @@ async fn resolve_session(
 /// gives the runtime a workspace: a real directory turns on the tool loop, the
 /// internal free-chat container leaves it off.
 async fn converse(
-    client: &LochorClient,
+    client: &LocarynClient,
     resume: Option<String>,
     agent: Option<String>,
     agentic: bool,
 ) -> anyhow::Result<()> {
     use futures::StreamExt;
-    use lochor_agent_runtime::reasoning::{peek, split_reasoning};
+    use locaryn_agent_runtime::reasoning::{peek, split_reasoning};
 
     let session_id = resolve_session(client, resume, agentic).await?;
     if let Some(a) = &agent {
@@ -545,7 +545,7 @@ async fn converse(
     }
     if agentic {
         println!(
-            "Agent Lochor — il peut lire et modifier les fichiers de ce dossier.\n\
+            "Agent Locaryn — il peut lire et modifier les fichiers de ce dossier.\n\
              /exit pour quitter, /think pour voir le raisonnement\n"
         );
     } else {
@@ -591,7 +591,7 @@ async fn converse(
 
         while let Some(ev) = stream.next().await {
             match ev? {
-                lochor_events::StreamEvent::Token { text } => {
+                locaryn_events::StreamEvent::Token { text } => {
                     full.push_str(&text);
                     let split = split_reasoning(&full);
 
@@ -618,14 +618,14 @@ async fn converse(
                         printed = split.answer.len();
                     }
                 }
-                lochor_events::StreamEvent::ToolCall { tool, .. } => {
+                locaryn_events::StreamEvent::ToolCall { tool, .. } => {
                     if thinking_shown {
                         print!("\r\x1b[2K");
                         thinking_shown = false;
                     }
                     println!("\n  · {tool}");
                 }
-                lochor_events::StreamEvent::MessageEnd { .. } => {
+                locaryn_events::StreamEvent::MessageEnd { .. } => {
                     if thinking_shown {
                         print!("\r\x1b[2K");
                     }
@@ -644,14 +644,14 @@ async fn converse(
 /// two options: refuse every connection, or accept any certificate at all. The
 /// second is what makes an interception trivial.
 fn certificate_fingerprint() -> Option<String> {
-    let cfg = lochor_config::load(None).ok()?;
+    let cfg = locaryn_config::load(None).ok()?;
     let data_dir = cfg
         .daemon
         .data_dir
         .clone()
-        .unwrap_or_else(lochor_config::default_data_dir);
+        .unwrap_or_else(locaryn_config::default_data_dir);
     let pem = std::fs::read_to_string(data_dir.join("tls").join("daemon-cert.pem")).ok()?;
-    lochor_config::provision::certificate_fingerprint(&pem)
+    locaryn_config::provision::certificate_fingerprint(&pem)
 }
 
 async fn provision_cmd(
@@ -660,8 +660,8 @@ async fn provision_cmd(
     note: Option<String>,
     out: Option<String>,
 ) -> anyhow::Result<()> {
-    let cfg = lochor_config::load(None)?;
-    let server_url = lochor_config::provision::normalise_url(&url, cfg.daemon.port)
+    let cfg = locaryn_config::load(None)?;
+    let server_url = locaryn_config::provision::normalise_url(&url, cfg.daemon.port)
         .map_err(|e| anyhow::anyhow!(e))?;
 
     let fingerprint = certificate_fingerprint();
@@ -680,8 +680,8 @@ async fn provision_cmd(
         .daemon
         .data_dir
         .clone()
-        .unwrap_or_else(lochor_config::default_data_dir);
-    let authority_pem = lochor_config::mtls::authority(&data_dir)
+        .unwrap_or_else(locaryn_config::default_data_dir);
+    let authority_pem = locaryn_config::mtls::authority(&data_dir)
         .map(|a| a.cert_pem)
         .ok();
     if authority_pem.is_none() {
@@ -691,7 +691,7 @@ async fn provision_cmd(
         );
     }
 
-    let p = lochor_config::provision::Provisioning {
+    let p = locaryn_config::provision::Provisioning {
         server_url: server_url.clone(),
         organisation: org.unwrap_or_default(),
         certificate_fingerprint: fingerprint,
@@ -699,29 +699,29 @@ async fn provision_cmd(
         note: note.unwrap_or_default(),
     };
     let dir = std::path::PathBuf::from(out.unwrap_or_else(|| ".".into()));
-    let path = lochor_config::provision::write(&dir, &p).map_err(|e| anyhow::anyhow!(e))?;
+    let path = locaryn_config::provision::write(&dir, &p).map_err(|e| anyhow::anyhow!(e))?;
 
     println!("Configuration écrite : {}", path.display());
     println!("Serveur : {server_url}");
     println!();
     println!("À distribuer aux postes, avec l'installeur :");
     println!("  • placez ce fichier à côté du .msi, ou");
-    println!("  • déposez-le dans C:\\ProgramData\\Lochor\\ sur chaque poste");
+    println!("  • déposez-le dans C:\\ProgramData\\Locaryn\\ sur chaque poste");
     println!();
     println!("Les employés n'auront qu'à ouvrir l'application et saisir leurs identifiants.");
     Ok(())
 }
 
 /// Open the same database the daemon uses.
-async fn open_users() -> anyhow::Result<lochor_storage::users::UserRepo> {
-    let cfg = lochor_config::load(None)?;
+async fn open_users() -> anyhow::Result<locaryn_storage::users::UserRepo> {
+    let cfg = locaryn_config::load(None)?;
     let data_dir = cfg
         .daemon
         .data_dir
         .clone()
-        .unwrap_or_else(lochor_config::default_data_dir);
-    let pool = lochor_storage::open(&data_dir.join("lochor.db")).await?;
-    Ok(lochor_storage::users::UserRepo::new(pool))
+        .unwrap_or_else(locaryn_config::default_data_dir);
+    let pool = locaryn_storage::open(&data_dir.join("locaryn.db")).await?;
+    Ok(locaryn_storage::users::UserRepo::new(pool))
 }
 
 /// MCP servers.
@@ -730,10 +730,10 @@ async fn open_users() -> anyhow::Result<lochor_storage::users::UserRepo> {
 /// `mcp.json` the application uses, so it works on a machine where the daemon
 /// is not running. Only start and stop need the daemon: a server is a child
 /// process, and a command that exits would take it with it.
-async fn mcp_cmd(action: McpCmd, client: &LochorClient) -> anyhow::Result<()> {
-    use lochor_mcp::{build_client, McpConfig, McpServerEntry, Transport};
+async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
+    use locaryn_mcp::{build_client, McpConfig, McpServerEntry, Transport};
 
-    let path = lochor_mcp::config_path(lochor_shared_types::ExtensionScope::Global, None);
+    let path = locaryn_mcp::config_path(locaryn_shared_types::ExtensionScope::Global, None);
     let load = || McpConfig::load(&path).unwrap_or_default();
 
     match action {
@@ -741,7 +741,7 @@ async fn mcp_cmd(action: McpCmd, client: &LochorClient) -> anyhow::Result<()> {
             let cfg = load();
             if cfg.mcp_servers.is_empty() {
                 println!("Aucun serveur MCP enregistré.");
-                println!("  lochor mcp add <nom> \"npx -y @modelcontextprotocol/server-filesystem /chemin\"");
+                println!("  locaryn mcp add <nom> \"npx -y @modelcontextprotocol/server-filesystem /chemin\"");
                 return Ok(());
             }
             let mut names: Vec<_> = cfg.mcp_servers.keys().cloned().collect();
@@ -805,7 +805,7 @@ async fn mcp_cmd(action: McpCmd, client: &LochorClient) -> anyhow::Result<()> {
             }
             cfg.save(&path)?;
             println!("« {name} » enregistré dans {}", path.display());
-            println!("Vérifiez-le avec :  lochor mcp test {name}");
+            println!("Vérifiez-le avec :  locaryn mcp test {name}");
             Ok(())
         }
 
@@ -854,7 +854,7 @@ async fn mcp_cmd(action: McpCmd, client: &LochorClient) -> anyhow::Result<()> {
             client
                 .start_mcp(&name)
                 .await
-                .map_err(|e| anyhow::anyhow!("{e}. Le serveur Lochor doit tourner pour héberger un serveur MCP."))?;
+                .map_err(|e| anyhow::anyhow!("{e}. Le serveur Locaryn doit tourner pour héberger un serveur MCP."))?;
             println!("« {name} » démarré.");
             Ok(())
         }
@@ -871,10 +871,10 @@ async fn mcp_cmd(action: McpCmd, client: &LochorClient) -> anyhow::Result<()> {
 ///
 /// Everything goes through the daemon: the tunnel is a child process that has
 /// to outlive this command, which exits in a second.
-async fn travel_cmd(action: Option<TravelCmd>, client: &LochorClient) -> anyhow::Result<()> {
+async fn travel_cmd(action: Option<TravelCmd>, client: &LocarynClient) -> anyhow::Result<()> {
     /// Print the code full width, with what it is for above it.
     fn show(link: &str, title: &str, footer: &str) -> anyhow::Result<()> {
-        let code = lochor_travel::qr::terminal(link)
+        let code = locaryn_travel::qr::terminal(link)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         println!();
         println!("  {title}");
@@ -898,14 +898,14 @@ async fn travel_cmd(action: Option<TravelCmd>, client: &LochorClient) -> anyhow:
             show(
                 link,
                 "Scannez ce code avec l'appareil photo du téléphone :",
-                "Ce code expire dans 10 minutes. Pour en réafficher un : lochor travel qr",
+                "Ce code expire dans 10 minutes. Pour en réafficher un : locaryn travel qr",
             )
         }
 
         TravelCmd::Off => {
             client.set_travel(None).await?;
             println!("Mode voyage désactivé.");
-            println!("Sur le téléphone, scannez le code de retour : lochor travel home");
+            println!("Sur le téléphone, scannez le code de retour : locaryn travel home");
             Ok(())
         }
 
@@ -916,7 +916,7 @@ async fn travel_cmd(action: Option<TravelCmd>, client: &LochorClient) -> anyhow:
                     Some(b) => println!("Mode voyage inactif : {b}"),
                     None => {
                         println!("Mode voyage inactif.");
-                        println!("Pour l'activer :  lochor travel on --via cloudflare");
+                        println!("Pour l'activer :  locaryn travel on --via cloudflare");
                     }
                 }
                 return Ok(());
@@ -949,7 +949,7 @@ async fn travel_cmd(action: Option<TravelCmd>, client: &LochorClient) -> anyhow:
 }
 
 async fn users_cmd(action: UsersCmd) -> anyhow::Result<()> {
-    use lochor_storage::users::Role;
+    use locaryn_storage::users::Role;
     let repo = open_users().await?;
     match action {
         UsersCmd::List => {
@@ -989,13 +989,13 @@ async fn users_cmd(action: UsersCmd) -> anyhow::Result<()> {
             Ok(())
         }
         UsersCmd::Cert { ref username, days } => {
-            let cfg = lochor_config::load(None)?;
+            let cfg = locaryn_config::load(None)?;
             let data_dir = cfg
                 .daemon
                 .data_dir
                 .clone()
-                .unwrap_or_else(lochor_config::default_data_dir);
-            let cred = lochor_config::mtls::issue_client(&data_dir, username, days)?;
+                .unwrap_or_else(locaryn_config::default_data_dir);
+            let cred = locaryn_config::mtls::issue_client(&data_dir, username, days)?;
             let ca_path = data_dir.join("tls").join("ca-cert.pem");
 
             // On a headless server the path is the whole point: nothing will
@@ -1010,7 +1010,7 @@ async fn users_cmd(action: UsersCmd) -> anyhow::Result<()> {
             println!("  • le second lui permet de vérifier qu'il parle au bon serveur.");
             println!();
             println!("Activez ensuite l'exigence côté serveur :");
-            println!("  require_client_cert = true   (ou LOCHOR_REQUIRE_CLIENT_CERT=1)");
+            println!("  require_client_cert = true   (ou LOCARYN_REQUIRE_CLIENT_CERT=1)");
             println!("Attention : les clients sans certificat cesseront de se connecter.");
             Ok(())
         }
@@ -1039,31 +1039,31 @@ async fn users_cmd(action: UsersCmd) -> anyhow::Result<()> {
     }
 }
 
-fn parse_trust(s: &str) -> anyhow::Result<lochor_shared_types::TrustLevel> {
+fn parse_trust(s: &str) -> anyhow::Result<locaryn_shared_types::TrustLevel> {
     Ok(match s.to_lowercase().as_str() {
-        "trusted" => lochor_shared_types::TrustLevel::Trusted,
-        "untrusted" => lochor_shared_types::TrustLevel::Untrusted,
-        "sandbox" => lochor_shared_types::TrustLevel::Sandbox,
+        "trusted" => locaryn_shared_types::TrustLevel::Trusted,
+        "untrusted" => locaryn_shared_types::TrustLevel::Untrusted,
+        "sandbox" => locaryn_shared_types::TrustLevel::Sandbox,
         _ => anyhow::bail!("invalid trust: {s} (use trusted|untrusted|sandbox)"),
     })
 }
 
-fn parse_engine(s: &str) -> anyhow::Result<lochor_shared_types::ProviderEngine> {
+fn parse_engine(s: &str) -> anyhow::Result<locaryn_shared_types::ProviderEngine> {
     Ok(match s.to_lowercase().as_str() {
-        "ollama" => lochor_shared_types::ProviderEngine::Ollama,
-        "llama_cpp" | "llama-cpp" => lochor_shared_types::ProviderEngine::LlamaCpp,
-        "lmstudio" | "lm_studio" => lochor_shared_types::ProviderEngine::Lmstudio,
-        "vllm" => lochor_shared_types::ProviderEngine::Vllm,
+        "ollama" => locaryn_shared_types::ProviderEngine::Ollama,
+        "llama_cpp" | "llama-cpp" => locaryn_shared_types::ProviderEngine::LlamaCpp,
+        "lmstudio" | "lm_studio" => locaryn_shared_types::ProviderEngine::Lmstudio,
+        "vllm" => locaryn_shared_types::ProviderEngine::Vllm,
         _ => anyhow::bail!("unknown engine: {s}"),
     })
 }
 
-fn parse_scope(s: &str) -> anyhow::Result<lochor_shared_types::ExtensionScope> {
+fn parse_scope(s: &str) -> anyhow::Result<locaryn_shared_types::ExtensionScope> {
     Ok(match s.to_lowercase().as_str() {
-        "global" => lochor_shared_types::ExtensionScope::Global,
-        "user" => lochor_shared_types::ExtensionScope::User,
-        "workspace" => lochor_shared_types::ExtensionScope::Workspace,
-        "session" => lochor_shared_types::ExtensionScope::Session,
+        "global" => locaryn_shared_types::ExtensionScope::Global,
+        "user" => locaryn_shared_types::ExtensionScope::User,
+        "workspace" => locaryn_shared_types::ExtensionScope::Workspace,
+        "session" => locaryn_shared_types::ExtensionScope::Session,
         _ => anyhow::bail!("invalid scope: {s}"),
     })
 }

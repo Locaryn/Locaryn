@@ -16,7 +16,7 @@
 //! address is random, unlisted, and gone when the tunnel closes. Both are
 //! exposure; only one is *found* without looking.
 
-use lochor_travel::{link, providers, qr, Provider};
+use locaryn_travel::{link, providers, qr, Provider};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -25,7 +25,7 @@ use tokio::sync::Mutex;
 pub struct TravelStatus {
     pub active: bool,
     pub provider: Option<String>,
-    /// The signed `lochor://` link a phone reads. Not the server address —
+    /// The signed `locaryn://` link a phone reads. Not the server address —
     /// showing that would be showing the very configuration we are hiding.
     pub link: Option<String>,
     /// The same link, drawn.
@@ -107,7 +107,7 @@ impl TravelState {
         url: &str,
         provider: Provider,
     ) -> Result<TravelStatus, String> {
-        let ca = lochor_config::mtls::authority(data_dir)
+        let ca = locaryn_config::mtls::authority(data_dir)
             .map_err(|e| format!("autorité locale illisible : {e}"))?;
         let uri = link::sign(
             &ca.cert_pem,
@@ -146,7 +146,7 @@ impl TravelState {
         data_dir: &std::path::Path,
         local_url: &str,
     ) -> Result<(String, String), String> {
-        let ca = lochor_config::mtls::authority(data_dir)
+        let ca = locaryn_config::mtls::authority(data_dir)
             .map_err(|e| format!("autorité locale illisible : {e}"))?;
         let uri = link::sign(
             &ca.cert_pem,
@@ -206,7 +206,7 @@ pub fn announce(uri: &str, provider: Provider) {
             }
             println!();
             println!("  Ce code expire dans {} minutes.", link::DEFAULT_TTL_SECONDS / 60);
-            println!("  Pour en afficher un nouveau :  lochor travel qr");
+            println!("  Pour en afficher un nouveau :  locaryn travel qr");
             println!();
         }
         Err(e) => tracing::warn!("code non affichable : {e}"),
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn the_home_link_round_trips_through_verification() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_travel_home_{}",
+            "locaryn_travel_home_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -244,7 +244,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let (uri, svg) = TravelState::home_link(&dir, "https://192.168.1.10:7474").unwrap();
 
-        let ca = lochor_config::mtls::authority(&dir).unwrap();
+        let ca = locaryn_config::mtls::authority(&dir).unwrap();
         let kid = link::key_id(&ca.cert_pem).unwrap();
         let parsed = link::verify(&uri, &|k| (k == kid).then(|| ca.cert_pem.clone()), now()).unwrap();
         assert_eq!(parsed.mode, link::Mode::Home);
@@ -257,7 +257,7 @@ mod tests {
     fn what_is_shown_never_contains_the_address_itself() {
         // The point of the whole flow is that nobody reads an IP off a screen.
         let dir = std::env::temp_dir().join(format!(
-            "lochor_travel_priv_{}",
+            "locaryn_travel_priv_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

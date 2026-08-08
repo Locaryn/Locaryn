@@ -2,7 +2,7 @@
 // Change Date: 2030-07-18 (4 years after the 0.1.0 release)
 // For commercial use terms see LICENSES.md.
 
-//! Lochor enterprise module — the commercial layer of the remote server.
+//! Locaryn enterprise module — the commercial layer of the remote server.
 //!
 //! Covers:
 //! - **Team context sharing**: pre-indexed project context shared across
@@ -13,7 +13,7 @@
 //!   concurrent authenticated sessions; this module enforces the limit.
 //!
 //! This module is compiled in only when the `enterprise` feature of
-//! `lochor-remote-server` is enabled. Without it, the remote-server runs
+//! `locaryn-remote-server` is enabled. Without it, the remote-server runs
 //! fully under Apache-2.0 as the free tier.
 
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ use std::sync::Arc;
 pub const VERSION: &str = "0.1.0";
 
 pub fn version_string() -> String {
-    format!("lochor-enterprise {VERSION} (BSL 1.1, change date 2030-07-18)")
+    format!("locaryn-enterprise {VERSION} (BSL 1.1, change date 2030-07-18)")
 }
 
 /// Free-tier concurrent-client cap. Enterprise builds lift this via config.

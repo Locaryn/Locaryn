@@ -223,7 +223,7 @@ pub fn applies_to(model: &str) -> EngineSupport {
 // ============================================================================
 
 fn presets_dir() -> PathBuf {
-    lochor_config::storage_root().join("voice_presets")
+    locaryn_config::storage_root().join("voice_presets")
 }
 
 fn preset_dir(id: &str) -> PathBuf {
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn wav_duration_is_read_from_the_header() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_preset_wav_{}",
+            "locaryn_preset_wav_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -538,7 +538,7 @@ mod roundtrip {
     #[test]
     fn a_preset_survives_the_source_recording_being_deleted() {
         let base = std::env::temp_dir().join(format!(
-            "lochor_preset_rt_{}",
+            "locaryn_preset_rt_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -548,7 +548,7 @@ mod roundtrip {
         let src_dir = base.join("downloads");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::create_dir_all(&src_dir).unwrap();
-        std::env::set_var("LOCHOR_STORAGE_ROOT", &root);
+        std::env::set_var("LOCARYN_STORAGE_ROOT", &root);
 
         // A throwaway "recording" the user might later move or delete.
         let src = src_dir.join("ma_soeur.wav");
@@ -607,7 +607,7 @@ mod roundtrip {
         // Deleting twice is not an error.
         delete_voice_preset(saved.id).unwrap();
 
-        std::env::remove_var("LOCHOR_STORAGE_ROOT");
+        std::env::remove_var("LOCARYN_STORAGE_ROOT");
         std::fs::remove_dir_all(&base).ok();
     }
 

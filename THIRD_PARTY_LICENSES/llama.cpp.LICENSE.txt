@@ -1,7 +1,7 @@
 llama.cpp and ggml
 https://github.com/ggml-org/llama.cpp
 
-Bundled in Lochor as: data_dir/bin/llama/ (llama-server.exe, ggml-*.dll,
+Bundled in Locaryn as: data_dir/bin/llama/ (llama-server.exe, ggml-*.dll,
 llama-*.dll, ggml-rpc-server.exe, and related runtime files).
 
 --------------------------------------------------------------------------------

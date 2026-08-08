@@ -1,4 +1,4 @@
-//! Lochor skill runtime. A skill is a `SKILL.md` file with YAML frontmatter
+//! Locaryn skill runtime. A skill is a `SKILL.md` file with YAML frontmatter
 //! (compatible with Claude Code) plus a markdown body that is injected into
 //! the system prompt when triggered.
 

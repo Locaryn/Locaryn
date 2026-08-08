@@ -124,7 +124,7 @@ pub fn parse(spec: &str) -> Result<InstallSource, SourceError> {
     // rather than downloading a tarball we cannot run.
     if let Some(rest) = spec.strip_prefix("npm:") {
         return Err(SourceError::Unsupported(format!(
-            "npm package `{rest}` — Lochor installs plugins from git or a local \
+            "npm package `{rest}` — Locaryn installs plugins from git or a local \
              directory. Clone it and install from the folder."
         )));
     }
@@ -724,7 +724,7 @@ mod tests {
     async fn local_zip_extracts_and_strips_the_single_root() {
         use std::io::Write;
 
-        let base = std::env::temp_dir().join("lochor-src-zip");
+        let base = std::env::temp_dir().join("locaryn-src-zip");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
 
@@ -773,7 +773,7 @@ mod tests {
 
     #[test]
     fn subdir_traversal_is_rejected() {
-        let tmp = std::env::temp_dir().join("lochor-src-test");
+        let tmp = std::env::temp_dir().join("locaryn-src-test");
         std::fs::create_dir_all(&tmp).unwrap();
         assert!(resolve_subdir(&tmp, Some("../escape")).is_err());
     }

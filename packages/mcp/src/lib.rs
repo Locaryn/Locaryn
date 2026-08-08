@@ -1,4 +1,4 @@
-//! Lochor MCP — wrapper around the Model Context Protocol (spec 2026-07-28).
+//! Locaryn MCP — wrapper around the Model Context Protocol (spec 2026-07-28).
 //!
 //! Supports:
 //! - **stdio** transport: spawn a local MCP server subprocess, communicate
@@ -10,7 +10,7 @@
 //! The client abstraction wraps the JSON-RPC protocol so the rest of the
 //! codebase never touches protocol details.
 
-use lochor_shared_types::ExtensionScope;
+use locaryn_shared_types::ExtensionScope;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,7 +21,7 @@ use tokio::sync::RwLock;
 // Registry (.mcp.json)
 // ============================================================================
 
-/// `.lochor/mcp.json` / `~/.lochor/mcp.json` — compatible with the
+/// `.locaryn/mcp.json` / `~/.locaryn/mcp.json` — compatible with the
 /// Claude Code / Cursor `mcpServers` format.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct McpConfig {
@@ -196,7 +196,7 @@ struct StdioTransport {
 
 impl StdioTransport {
     async fn spawn(command: &str, args: &[String], env: &HashMap<String, String>) -> Result<Self, McpError> {
-        let mut cmd = tokio::process::Command::new(lochor_config::resolve_program(command));
+        let mut cmd = tokio::process::Command::new(locaryn_config::resolve_program(command));
         cmd.args(args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -1210,13 +1210,13 @@ impl McpState {
 pub fn config_path(scope: ExtensionScope, workspace_root: Option<&std::path::Path>) -> PathBuf {
     match scope {
         ExtensionScope::Global | ExtensionScope::User => {
-            lochor_config::global_dir().join("mcp.json")
+            locaryn_config::global_dir().join("mcp.json")
         }
         ExtensionScope::Workspace => workspace_root
             .unwrap_or_else(|| std::path::Path::new("."))
-            .join(".lochor")
+            .join(".locaryn")
             .join("mcp.json"),
-        ExtensionScope::Session => std::env::temp_dir().join("lochor-mcp-session.json"),
+        ExtensionScope::Session => std::env::temp_dir().join("locaryn-mcp-session.json"),
     }
 }
 

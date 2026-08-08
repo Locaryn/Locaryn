@@ -113,22 +113,22 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
 
   if (role === "user") {
     return (
-      <div className="lochor-msg-row lochor-msg-row-user">
-        <div className="lochor-msg lochor-msg-user">
+      <div className="locaryn-msg-row locaryn-msg-row-user">
+        <div className="locaryn-msg locaryn-msg-user">
           {images && images.length > 0 && (
-            <div className="lochor-msg-images">
+            <div className="locaryn-msg-images">
               {images.map((src, i) => (
-                <img key={i} src={src} alt="attachment" className="lochor-msg-image" />
+                <img key={i} src={src} alt="attachment" className="locaryn-msg-image" />
               ))}
             </div>
           )}
-          {text && <div className="lochor-msg-text">{text}</div>}
-          <div className="lochor-msg-actions">
-            <button type="button" className="lochor-msg-action" onClick={copy}>
+          {text && <div className="locaryn-msg-text">{text}</div>}
+          <div className="locaryn-msg-actions">
+            <button type="button" className="locaryn-msg-action" onClick={copy}>
               {copied ? "Copied ✓" : "Copy"}
             </button>
             {canEdit && onEdit && (
-              <button type="button" className="lochor-msg-action" onClick={onEdit}>
+              <button type="button" className="locaryn-msg-action" onClick={onEdit}>
                 Edit
               </button>
             )}
@@ -139,26 +139,26 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
   }
 
   return (
-    <div className="lochor-msg-row lochor-msg-row-assistant">
-      <div className="lochor-msg-meta">
-        <span className="lochor-msg-avatar" aria-hidden="true" />
-        <span className="lochor-msg-author">Lochor</span>
-        <button type="button" className="lochor-msg-action" onClick={copy}>
+    <div className="locaryn-msg-row locaryn-msg-row-assistant">
+      <div className="locaryn-msg-meta">
+        <span className="locaryn-msg-avatar" aria-hidden="true" />
+        <span className="locaryn-msg-author">Locaryn</span>
+        <button type="button" className="locaryn-msg-action" onClick={copy}>
           {copied ? "Copied ✓" : "Copy"}
         </button>
       </div>
       <ReasoningBlock reasoning={reasoning} inProgress={reasoningInProgress} />
       <div
         ref={mdRef}
-        className="lochor-msg-md"
+        className="locaryn-msg-md"
         // Safe: renderMarkdown escapes all source HTML before injecting
         // its own tags (see lib/markdown.ts safety model).
         dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
       />
       {images && images.length > 0 && (
-        <div className="lochor-msg-images">
+        <div className="locaryn-msg-images">
           {images.map((src, i) => (
-            <img key={i} src={src} alt="génération" className="lochor-msg-image" />
+            <img key={i} src={src} alt="génération" className="locaryn-msg-image" />
           ))}
         </div>
       )}

@@ -1,18 +1,18 @@
 [package]
-name = "lochor-desktop"
+name = "locaryn-desktop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Lochor desktop app (Tauri v2 shell)."
+description = "Locaryn desktop app (Tauri v2 shell)."
 
 [lib]
-name = "lochor_desktop_lib"
+name = "locaryn_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "lochor-desktop"
+name = "locaryn-desktop"
 path = "src/main.rs"
 
 [build-dependencies]
@@ -22,19 +22,19 @@ tauri-build = { version = "2.0", features = [] }
 tauri = { version = "2.1", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-shell = "2.0"
 tauri-plugin-deep-link = "2"
-lochor-shared-types = { workspace = true }
-lochor-agent-runtime = { workspace = true }
-lochor-preview = { workspace = true }
-lochor-events = { workspace = true }
-lochor-storage = { workspace = true, features = ["ssh-connector"] }
-lochor-config = { workspace = true }
-lochor-extensions = { workspace = true }
-lochor-command-runtime = { workspace = true }
-lochor-provider-supervisor = { workspace = true }
-lochor-auth = { workspace = true, features = ["system-keychain"] }
-lochor-ssh = { workspace = true }
-lochor-mcp = { workspace = true }
-lochor-travel = { workspace = true }
+locaryn-shared-types = { workspace = true }
+locaryn-agent-runtime = { workspace = true }
+locaryn-preview = { workspace = true }
+locaryn-events = { workspace = true }
+locaryn-storage = { workspace = true, features = ["ssh-connector"] }
+locaryn-config = { workspace = true }
+locaryn-extensions = { workspace = true }
+locaryn-command-runtime = { workspace = true }
+locaryn-provider-supervisor = { workspace = true }
+locaryn-auth = { workspace = true, features = ["system-keychain"] }
+locaryn-ssh = { workspace = true }
+locaryn-mcp = { workspace = true }
+locaryn-travel = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true, features = ["std"] }
 tokio-util = { workspace = true }

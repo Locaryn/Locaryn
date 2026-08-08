@@ -1,57 +1,57 @@
 import { useState } from "react";
 
 export function AccountView() {
-  const [serverUrl, setServerUrl] = useState("https://private.lochor.internal");
+  const [serverUrl, setServerUrl] = useState("https://private.locaryn.internal");
   const [token, setToken] = useState("");
   const [username, setUsername] = useState("Teano");
   const [isConnected, setIsConnected] = useState(true);
 
   return (
-    <section className="lochor-view-container">
-      <div className="lochor-view-header">
+    <section className="locaryn-view-container">
+      <div className="locaryn-view-header">
         <h2>Gestion du Compte & Serveur Privé</h2>
-        <p className="lochor-view-desc">
+        <p className="locaryn-view-desc">
           Connectez votre instance desktop à un serveur privé distant pour la synchronisation, les modèles hébergés et l'exécution distante.
         </p>
       </div>
 
-      <div className="lochor-card" style={{ maxWidth: "600px" }}>
+      <div className="locaryn-card" style={{ maxWidth: "600px" }}>
         <h3>Profil Utilisateur</h3>
-        <div className="lochor-field">
-          <label className="lochor-field-label">Nom d'utilisateur / Alias</label>
+        <div className="locaryn-field">
+          <label className="locaryn-field-label">Nom d'utilisateur / Alias</label>
           <input
-            className="lochor-input"
+            className="locaryn-input"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
         </div>
 
         <h3 style={{ marginTop: "24px" }}>Connexion Serveur Privé (Gateway)</h3>
-        <div className="lochor-field">
-          <label className="lochor-field-label">URL du Serveur Privé</label>
+        <div className="locaryn-field">
+          <label className="locaryn-field-label">URL du Serveur Privé</label>
           <input
-            className="lochor-input"
-            placeholder="https://votre-serveur-lochor.net"
+            className="locaryn-input"
+            placeholder="https://votre-serveur-locaryn.net"
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
           />
         </div>
 
-        <div className="lochor-field">
-          <label className="lochor-field-label">Jeton d'accès (API Key / Token)</label>
+        <div className="locaryn-field">
+          <label className="locaryn-field-label">Jeton d'accès (API Key / Token)</label>
           <input
             type="password"
-            className="lochor-input"
+            className="locaryn-input"
             placeholder="loch_sec_..."
             value={token}
             onChange={(e) => setToken(e.target.value)}
           />
         </div>
 
-        <div className="lochor-field-actions" style={{ marginTop: "20px", display: "flex", gap: "12px" }}>
+        <div className="locaryn-field-actions" style={{ marginTop: "20px", display: "flex", gap: "12px" }}>
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             onClick={() => setIsConnected(true)}
           >
             Enregistrer et Connecter
@@ -59,7 +59,7 @@ export function AccountView() {
           {isConnected && (
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{ color: "var(--danger)" }}
               onClick={() => setIsConnected(false)}
             >
@@ -68,9 +68,9 @@ export function AccountView() {
           )}
         </div>
 
-        <div className="lochor-account-status" style={{ marginTop: "16px" }}>
+        <div className="locaryn-account-status" style={{ marginTop: "16px" }}>
           <span
-            className={`lochor-health-dot ${isConnected ? "lochor-health-ok" : "lochor-health-off"}`}
+            className={`locaryn-health-dot ${isConnected ? "locaryn-health-ok" : "locaryn-health-off"}`}
           />
           {isConnected
             ? `Connecté à ${serverUrl} en tant que ${username}`

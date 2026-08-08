@@ -47,21 +47,21 @@ export function ExtensionPermissionsModal({ extension, initialGrants, onDone }: 
   }
 
   return (
-    <div className="lochor-settings-backdrop">
+    <div className="locaryn-settings-backdrop">
       <dialog
         open
-        className="lochor-card lochor-modal-card"
+        className="locaryn-card locaryn-modal-card"
         aria-modal="true"
         aria-label={`Autorisations demandées par ${extension.name}`}
         style={{ width: 520, margin: "80px auto", padding: 20 }}
       >
         <h3 style={{ marginBottom: 4 }}>{extension.name} demande des autorisations</h3>
-        <p className="lochor-field-hint" style={{ marginBottom: 14 }}>
+        <p className="locaryn-field-hint" style={{ marginBottom: 14 }}>
           Refusez ce qui n'est pas nécessaire : l'extension se charge quand même, sans la
           fonctionnalité concernée.
         </p>
         {error && (
-          <p className="lochor-field-hint" style={{ color: "var(--danger)", marginBottom: 10 }}>
+          <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginBottom: 10 }}>
             {error}
           </p>
         )}
@@ -91,7 +91,7 @@ export function ExtensionPermissionsModal({ extension, initialGrants, onDone }: 
             <span>
               <strong style={{ fontSize: 13 }}>{PERMISSION_LABELS[p.permission]}</strong>
               {p.reason && (
-                <span className="lochor-field-hint" style={{ display: "block" }}>
+                <span className="locaryn-field-hint" style={{ display: "block" }}>
                   {p.reason}
                 </span>
               )}
@@ -102,7 +102,7 @@ export function ExtensionPermissionsModal({ extension, initialGrants, onDone }: 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             disabled={busy}
             onClick={() => save(false)}
           >
@@ -110,7 +110,7 @@ export function ExtensionPermissionsModal({ extension, initialGrants, onDone }: 
           </button>
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             disabled={busy}
             onClick={() => save(true)}
           >

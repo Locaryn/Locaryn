@@ -497,14 +497,14 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className={inline ? "" : "lochor-card"} style={{ padding: inline ? 0 : 24, maxWidth: 1100, margin: "0 auto" }}>
+    <div className={inline ? "" : "locaryn-card"} style={{ padding: inline ? 0 : 24, maxWidth: 1100, margin: "0 auto" }}>
       {/* ── Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div>
           <h3 style={{ margin: 0 }}>Synthèse vocale IA</h3>
-          <p className="lochor-field-hint" style={{ margin: "4px 0 0" }}>Choisissez un modèle, un mode de génération, puis entrez votre texte.</p>
+          <p className="locaryn-field-hint" style={{ margin: "4px 0 0" }}>Choisissez un modèle, un mode de génération, puis entrez votre texte.</p>
         </div>
-        {!inline && <button type="button" className="lochor-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>}
+        {!inline && <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>}
       </div>
 
       {/* ── Model picker ── */}
@@ -521,7 +521,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
         <div style={{ marginBottom: 16 }}>
           <input
             type="text"
-            className="lochor-input"
+            className="locaryn-input"
             value={modelSearch}
             onChange={(e) => setModelSearch(e.target.value)}
             placeholder="Rechercher un modèle…"
@@ -529,7 +529,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
             style={{ width: "100%", marginBottom: 8, fontSize: 13 }}
           />
           <select
-            className="lochor-input"
+            className="locaryn-input"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             disabled={jobRunning}
@@ -633,7 +633,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
               Text to Synthesize
             </label>
             <textarea
-              className="lochor-input"
+              className="locaryn-input"
               rows={4}
               placeholder="Saisissez le texte que vous souhaitez faire parler..."
               value={text}
@@ -653,7 +653,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
                 Language
               </label>
               <select
-                className="lochor-input"
+                className="locaryn-input"
                 value={synthesisLang}
                 onChange={(e) => setSynthesisLang(e.target.value)}
                 disabled={jobRunning}
@@ -737,7 +737,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
           {/* Generate button */}
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             onClick={handleGenerate}
             disabled={!text.trim() || jobRunning || isGenerating || !hasModels}
             style={{

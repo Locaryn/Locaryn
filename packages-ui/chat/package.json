@@ -1,5 +1,5 @@
 {
-  "name": "@lochor/ui-chat",
+  "name": "@locaryn/ui-chat",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lochor/ui-core": "workspace:*"
+    "@locaryn/ui-core": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

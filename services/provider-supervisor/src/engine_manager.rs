@@ -12,7 +12,7 @@ use tokio::fs;
 /// detect what's present and log guidance when something is missing — no
 /// startup download that can fail.
 pub async fn ensure_engines() -> Result<()> {
-    let bin_dir = lochor_config::bin_dir();
+    let bin_dir = locaryn_config::bin_dir();
     fs::create_dir_all(&bin_dir).await?;
 
     #[cfg(windows)]

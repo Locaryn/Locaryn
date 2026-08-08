@@ -45,41 +45,41 @@ export function ImageSettings() {
     }
   }
 
-  if (!cfg) return <p className="lochor-field-hint">Chargement…</p>;
+  if (!cfg) return <p className="locaryn-field-hint">Chargement…</p>;
 
   return (
     <div>
-      <div className="lochor-field">
-        <label className="lochor-field-label">
+      <div className="locaryn-field">
+        <label className="locaryn-field-label">
           Qualité par défaut
           {saved && <span style={{ marginLeft: 8, color: "var(--accent)", fontSize: "var(--text-xs)" }}>enregistré ✓</span>}
         </label>
-        <p className="lochor-field-hint">
+        <p className="locaryn-field-hint">
           Appliquée à <code>/image</code> et au bouton Créer quand aucune valeur n'est précisée.
         </p>
-        <div className="lochor-imgset-grid" style={{ marginTop: 10 }}>
+        <div className="locaryn-imgset-grid" style={{ marginTop: 10 }}>
           {IMAGE_QUALITIES.map((q) => (
             <button
               key={q.id}
               type="button"
-              className={`lochor-imgset-item${cfg.quality === q.id ? " lochor-active" : ""}`}
+              className={`locaryn-imgset-item${cfg.quality === q.id ? " locaryn-active" : ""}`}
               onClick={() => patch({ quality: q.id })}
             >
-              <span className="lochor-imgset-px">{q.px}px</span>
-              <span className="lochor-imgset-label">{q.label}</span>
-              <span className="lochor-imgset-hint">{q.hint}</span>
+              <span className="locaryn-imgset-px">{q.px}px</span>
+              <span className="locaryn-imgset-label">{q.label}</span>
+              <span className="locaryn-imgset-hint">{q.hint}</span>
             </button>
           ))}
         </div>
-        <p className="lochor-field-hint" style={{ marginTop: 8 }}>
+        <p className="locaryn-field-hint" style={{ marginTop: 8 }}>
           Résolution active : <strong>{cfg.width}×{cfg.height}</strong>
           {cfg.quality === "custom" && " (personnalisée)"}
         </p>
       </div>
 
-      <div className="lochor-field" style={{ marginTop: 20 }}>
-        <label className="lochor-field-label">Mémoire (dispatch RAM/VRAM)</label>
-        <div className="lochor-imgset-row" style={{ marginTop: 8 }}>
+      <div className="locaryn-field" style={{ marginTop: 20 }}>
+        <label className="locaryn-field-label">Mémoire (dispatch RAM/VRAM)</label>
+        <div className="locaryn-imgset-row" style={{ marginTop: 8 }}>
           {VRAM_MODES.map((m) => (
             <button
               key={m.id}
@@ -92,14 +92,14 @@ export function ImageSettings() {
             </button>
           ))}
         </div>
-        <p className="lochor-field-hint" style={{ marginTop: 6 }}>
+        <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
           {VRAM_MODES.find((m) => m.id === cfg.vram_mode)?.hint}
         </p>
       </div>
 
-      <div className="lochor-field" style={{ marginTop: 20 }}>
-        <label className="lochor-field-label">Étapes (steps)</label>
-        <p className="lochor-field-hint">
+      <div className="locaryn-field" style={{ marginTop: 20 }}>
+        <label className="locaryn-field-label">Étapes (steps)</label>
+        <p className="locaryn-field-hint">
           0 = laisser le modèle décider. Les modèles turbo sont bornés automatiquement
           (≈8 étapes) : monter plus haut les ralentit sans gain.
         </p>
@@ -107,21 +107,21 @@ export function ImageSettings() {
           type="number"
           min={0}
           max={50}
-          className="lochor-input"
+          className="locaryn-input"
           style={{ width: 120, marginTop: 8 }}
           value={cfg.steps}
           onChange={(e) => patch({ steps: Math.max(0, Math.min(50, Number(e.target.value) || 0)) })}
         />
       </div>
 
-      <div className="lochor-field" style={{ marginTop: 20 }}>
-        <label className="lochor-field-label">Variantes par génération</label>
-        <p className="lochor-field-hint">
+      <div className="locaryn-field" style={{ marginTop: 20 }}>
+        <label className="locaryn-field-label">Variantes par génération</label>
+        <p className="locaryn-field-hint">
           Produit plusieurs images d'un coup pour en choisir une. Le modèle n'est chargé
           qu'une fois : chaque variante supplémentaire coûte nettement moins cher qu'une
           génération séparée. Utile quand un prompt demande plusieurs essais.
         </p>
-        <div className="lochor-imgset-row" style={{ marginTop: 8 }}>
+        <div className="locaryn-imgset-row" style={{ marginTop: 8 }}>
           {[1, 2, 3, 4, 6, 8].map((n) => (
             <button
               key={n}
@@ -133,7 +133,7 @@ export function ImageSettings() {
             </button>
           ))}
         </div>
-        <p className="lochor-field-hint" style={{ marginTop: 6 }}>
+        <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
           {cfg.variants > 1
             ? `≈ ${cfg.variants} images par demande — comptez environ ${Math.round(
                 (100 * (1 - (1 + (cfg.variants - 1) * 0.69) / cfg.variants)),
@@ -142,11 +142,11 @@ export function ImageSettings() {
         </p>
       </div>
 
-      <div className="lochor-field" style={{ marginTop: 20 }}>
-        <label className="lochor-field-label">Prompt négatif par défaut</label>
-        <p className="lochor-field-hint">Ce que les images doivent éviter (facultatif).</p>
+      <div className="locaryn-field" style={{ marginTop: 20 }}>
+        <label className="locaryn-field-label">Prompt négatif par défaut</label>
+        <p className="locaryn-field-hint">Ce que les images doivent éviter (facultatif).</p>
         <input
-          className="lochor-input"
+          className="locaryn-input"
           style={{ marginTop: 8 }}
           placeholder="flou, filigrane, difforme…"
           value={cfg.negative_prompt}

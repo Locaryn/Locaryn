@@ -6,7 +6,7 @@
 //!
 //! Three pieces:
 //! - [`providers`] opens an outbound tunnel through a relay,
-//! - [`link`] produces the signed `lochor://` address the phone will read,
+//! - [`link`] produces the signed `locaryn://` address the phone will read,
 //! - [`qr`] turns that address into something a camera can see.
 
 pub mod link;

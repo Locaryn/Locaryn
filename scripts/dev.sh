@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Lochor dev launcher (Unix).
+# Locaryn dev launcher (Unix).
 #
-# The desktop app embeds the Lochor core in-process, so it does NOT need the
+# The desktop app embeds the Locaryn core in-process, so it does NOT need the
 # daemon to run. By default this just starts the Tauri desktop dev server.
 # Pass --with-daemon to also run the local daemon (needed only for the CLI).
 #
@@ -32,7 +32,7 @@ done
 
 check_command() {
     if ! command -v "$1" &> /dev/null; then
-        echo "[Lochor] $1 not found in PATH. Please install $2."
+        echo "[Locaryn] $1 not found in PATH. Please install $2."
         exit 1
     fi
 }
@@ -53,7 +53,7 @@ check_command cargo "Rust (https://rustup.rs/)"
 DAEMON_PID=""
 cleanup() {
     if [ -n "$DAEMON_PID" ]; then
-        echo "[Lochor] Stopping daemon (PID $DAEMON_PID)..."
+        echo "[Locaryn] Stopping daemon (PID $DAEMON_PID)..."
         kill "$DAEMON_PID" &> /dev/null || true
     fi
 }
@@ -61,29 +61,29 @@ trap cleanup EXIT
 
 # --- Optionally start the daemon ------------------------------------------
 if [ "$WITH_DAEMON" -eq 1 ] || [ "$DAEMON_ONLY" -eq 1 ]; then
-    DAEMON_EXE="$ROOT/target/debug/lochor-daemon"
+    DAEMON_EXE="$ROOT/target/debug/locaryn-daemon"
     if [ "$SKIP_BUILD" -eq 0 ] && [ ! -f "$DAEMON_EXE" ]; then
-        echo "[Lochor] Building daemon... (first run can take a few minutes)"
-        cargo build -p lochor-daemon
+        echo "[Locaryn] Building daemon... (first run can take a few minutes)"
+        cargo build -p locaryn-daemon
     fi
 
-    if pgrep -x "lochor-daemon" &> /dev/null; then
-        echo "[Lochor] Daemon already running. Reusing it."
+    if pgrep -x "locaryn-daemon" &> /dev/null; then
+        echo "[Locaryn] Daemon already running. Reusing it."
     elif [ -f "$DAEMON_EXE" ]; then
-        echo "[Lochor] Starting daemon on http://127.0.0.1:7474 ..."
-        "$DAEMON_EXE" > "$TMP_DIR/lochor-daemon.log" 2> "$TMP_DIR/lochor-daemon.err" &
+        echo "[Locaryn] Starting daemon on http://127.0.0.1:7474 ..."
+        "$DAEMON_EXE" > "$TMP_DIR/locaryn-daemon.log" 2> "$TMP_DIR/locaryn-daemon.err" &
         DAEMON_PID=$!
         if wait_health; then
-            echo "[Lochor] Daemon ready (PID $DAEMON_PID)."
+            echo "[Locaryn] Daemon ready (PID $DAEMON_PID)."
         else
-            echo "[Lochor] Daemon health check failed (see tmp/lochor-daemon.log). Continuing."
+            echo "[Locaryn] Daemon health check failed (see tmp/locaryn-daemon.log). Continuing."
         fi
     else
-        echo "[Lochor] Daemon binary not found and build skipped. Continuing without it."
+        echo "[Locaryn] Daemon binary not found and build skipped. Continuing without it."
     fi
 
     if [ "$DAEMON_ONLY" -eq 1 ]; then
-        echo "[Lochor] Daemon running. Press Ctrl+C to stop."
+        echo "[Locaryn] Daemon running. Press Ctrl+C to stop."
         [ -n "$DAEMON_PID" ] && wait "$DAEMON_PID"
         exit 0
     fi
@@ -100,16 +100,16 @@ elif [ -x "$ROOT/node_modules/.bin/tauri" ]; then
 fi
 
 if [ -z "$TAURI_BIN" ]; then
-    echo "[Lochor] Tauri CLI not found. Running pnpm install..."
+    echo "[Locaryn] Tauri CLI not found. Running pnpm install..."
     pnpm install
     if [ -x "$ROOT/apps/desktop/node_modules/.bin/tauri" ]; then
         TAURI_BIN="$ROOT/apps/desktop/node_modules/.bin/tauri"
     elif [ -x "$ROOT/node_modules/.bin/tauri" ]; then
         TAURI_BIN="$ROOT/node_modules/.bin/tauri"
     fi
-    [ -z "$TAURI_BIN" ] && { echo "[Lochor] Tauri CLI still missing. Check apps/desktop/package.json."; exit 1; }
+    [ -z "$TAURI_BIN" ] && { echo "[Locaryn] Tauri CLI still missing. Check apps/desktop/package.json."; exit 1; }
 fi
 
-echo "[Lochor] Starting desktop dev (tauri dev)..."
+echo "[Locaryn] Starting desktop dev (tauri dev)..."
 cd "$ROOT/apps/desktop"
 "$TAURI_BIN" dev

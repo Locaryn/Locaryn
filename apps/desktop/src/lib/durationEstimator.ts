@@ -26,7 +26,7 @@ interface EstimatorStore {
   text: Record<string, TimedRecord[]>;
 }
 
-const STORAGE_KEY = "lochor_duration_estimates_v1";
+const STORAGE_KEY = "locaryn_duration_estimates_v1";
 const MAX_RECORDS_PER_KEY = 20;
 
 function loadStore(): EstimatorStore {

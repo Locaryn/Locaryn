@@ -1,4 +1,4 @@
-//! Lochor SSH connector — connect to a remote host, run commands, and probe
+//! Locaryn SSH connector — connect to a remote host, run commands, and probe
 //! its capabilities. Built on `russh` (pure-Rust async SSH).
 //!
 //! Security notes:

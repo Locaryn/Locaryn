@@ -100,7 +100,7 @@ fn generate(data_dir: &Path, host: &str) -> anyhow::Result<TlsFiles> {
 fn fingerprint(der: &[u8]) -> String {
     // Shared with the provisioning command and the client, so all three print
     // the same value for the same certificate.
-    lochor_config::provision::sha256(der)
+    locaryn_config::provision::sha256(der)
         .iter()
         .map(|b| format!("{b:02X}"))
         .collect::<Vec<_>>()
@@ -156,7 +156,7 @@ mod tests {
     fn sha256_matches_known_vectors() {
         // Without this the fingerprint we print could be quietly wrong, and a
         // fingerprint nobody can verify is worse than none.
-        use lochor_config::provision::sha256;
+        use locaryn_config::provision::sha256;
         let hex = |d: [u8; 32]| d.iter().map(|b| format!("{b:02x}")).collect::<String>();
         assert_eq!(
             hex(sha256(b"")),
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn a_generated_pair_is_reused_on_the_next_start() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_tls_{}",
+            "locaryn_tls_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

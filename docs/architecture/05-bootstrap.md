@@ -17,7 +17,7 @@ comment le construire/lancer en local.
 | `packages-ui/*` | `core`, `chat`, `preview`, `terminal` (React/TS) | ✅ `pnpm typecheck` |
 | `docs/architecture/` | 10 documents (cette spec) | ✅ |
 | `docs/adr/` | 5 ADR | ✅ |
-| `examples/` | plugin Lochor complet + mcp.json + SKILL.md + command.md + agent.md + hooks.json + workspace-rules.md | ✅ |
+| `examples/` | plugin Locaryn complet + mcp.json + SKILL.md + command.md + agent.md + hooks.json + workspace-rules.md | ✅ |
 | `migrations/` | 0001_init.sql + 0002_extensions.sql | ✅ |
 | `.github/workflows/ci.yml` | CI complète | ✅ |
 
@@ -40,21 +40,21 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 
 # 3. Daemon local (loopback :7474)
-cargo run -p lochor-daemon
+cargo run -p locaryn-daemon
 # → http://127.0.0.1:7474/health
 
 # 4. CLI (parle au daemon)
-cargo run -p lochor-cli -- chat
-cargo run -p lochor-cli -- --server http://127.0.0.1:7474 status
+cargo run -p locaryn-cli -- chat
+cargo run -p locaryn-cli -- --server http://127.0.0.1:7474 status
 
 # 5. Desktop (dev)
 cd apps/desktop && pnpm tauri dev
 
 # 6. Remote-server (build only en MVP — TLS cert requis pour run)
-cargo build -p lochor-remote-server
+cargo build -p locaryn-remote-server
 
 # 7. Provider-supervisor
-cargo run -p lochor-provider-supervisor -- status
+cargo run -p locaryn-provider-supervisor -- status
 ```
 
 ## Vérifications minimales
@@ -66,16 +66,16 @@ cargo run -p lochor-provider-supervisor -- status
 | TS typecheck | `pnpm typecheck` | 0 erreur |
 | Lint biome | `pnpm lint` | 0 erreur |
 | Daemon santé | `curl http://127.0.0.1:7474/health` | `{"status":"ok",...}` |
-| CLI status | `lochor status` | provider actif, mode |
+| CLI status | `locaryn status` | provider actif, mode |
 
 ## Ce qui n'est PAS encore implémenté (MVP reste à coder)
 
-- Logique agentique réelle (tool-use loop, planning) — `lochor-agent-runtime` squelette.
+- Logique agentique réelle (tool-use loop, planning) — `locaryn-agent-runtime` squelette.
 - Provider-supervisor réel (spawn Ollama/llama-server) — stub détection only.
-- MCP runtime réel (rmcp wiring) — `lochor-mcp` squelette.
-- Persistence réelle (sqlx migrations appliquées) — `lochor-storage` interface.
-- Remote-server TLS/auth réels — `lochor-auth` interface.
-- Hot-reload extensions — `lochor-extensions` registry skeleton.
+- MCP runtime réel (rmcp wiring) — `locaryn-mcp` squelette.
+- Persistence réelle (sqlx migrations appliquées) — `locaryn-storage` interface.
+- Remote-server TLS/auth réels — `locaryn-auth` interface.
+- Hot-reload extensions — `locaryn-extensions` registry skeleton.
 - Preview live wiring — UI panel mock.
 
 Le squelette est **structurellement complet et buildable**, prêt à être rempli

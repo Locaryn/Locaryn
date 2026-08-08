@@ -1,4 +1,4 @@
-//! Lochor hook runtime. Events match the Claude Code vocabulary for
+//! Locaryn hook runtime. Events match the Claude Code vocabulary for
 //! compatibility: `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStop`,
 //! `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreCompact`,
 //! `Notification`.
@@ -199,14 +199,14 @@ pub fn hook_env(
 ) -> HashMap<String, String> {
     let mut env = HashMap::new();
     env.insert(
-        "LOCHOR_PLUGIN_ROOT".into(),
+        "LOCARYN_PLUGIN_ROOT".into(),
         plugin_root.display().to_string(),
     );
     env.insert(
-        "LOCHOR_PROJECT_ROOT".into(),
+        "LOCARYN_PROJECT_ROOT".into(),
         project_root.display().to_string(),
     );
-    env.insert("LOCHOR_SESSION_ID".into(), session_id.to_string());
+    env.insert("LOCARYN_SESSION_ID".into(), session_id.to_string());
     env
 }
 

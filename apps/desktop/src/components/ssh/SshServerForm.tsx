@@ -140,13 +140,13 @@ export function SshServerForm({ onClose, onSaved }: Props) {
 
   return (
     <>
-      <div className="lochor-settings-backdrop" onClick={onClose} />
-      <div className="lochor-form-modal" role="dialog" aria-modal="true" aria-label="Add SSH server">
-        <div className="lochor-settings-header">
-          <span className="lochor-settings-title">Add SSH server</span>
+      <div className="locaryn-settings-backdrop" onClick={onClose} />
+      <div className="locaryn-form-modal" role="dialog" aria-modal="true" aria-label="Add SSH server">
+        <div className="locaryn-settings-header">
+          <span className="locaryn-settings-title">Add SSH server</span>
           <button
             type="button"
-            className="lochor-settings-close"
+            className="locaryn-settings-close"
             onClick={onClose}
             aria-label="Close"
           >
@@ -154,22 +154,22 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           </button>
         </div>
 
-        <div className="lochor-form-body">
-          <div className="lochor-field">
-            <label className="lochor-field-label">Name</label>
+        <div className="locaryn-form-body">
+          <div className="locaryn-field">
+            <label className="locaryn-field-label">Name</label>
             <input
-              className="lochor-input lochor-input-text"
+              className="locaryn-input locaryn-input-text"
               value={name}
               placeholder="web-prod"
               onChange={(e) => setName(e.target.value)}
             />
           </div>
 
-          <div className="lochor-field-grid">
-            <div className="lochor-field lochor-field-grow">
-              <label className="lochor-field-label">Host / IP</label>
+          <div className="locaryn-field-grid">
+            <div className="locaryn-field locaryn-field-grow">
+              <label className="locaryn-field-label">Host / IP</label>
               <input
-                className="lochor-input"
+                className="locaryn-input"
                 value={host}
                 placeholder="10.0.0.4"
                 spellCheck={false}
@@ -179,10 +179,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                 }}
               />
             </div>
-            <div className="lochor-field lochor-field-port">
-              <label className="lochor-field-label">Port</label>
+            <div className="locaryn-field locaryn-field-port">
+              <label className="locaryn-field-label">Port</label>
               <input
-                className="lochor-input"
+                className="locaryn-input"
                 value={port}
                 onChange={(e) => {
                   setPort(e.target.value.replace(/\D/g, ""));
@@ -192,10 +192,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
             </div>
           </div>
 
-          <div className="lochor-field">
-            <label className="lochor-field-label">Username</label>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label">Username</label>
             <input
-              className="lochor-input"
+              className="locaryn-input"
               value={username}
               placeholder="deploy"
               spellCheck={false}
@@ -206,10 +206,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
             />
           </div>
 
-          <div className="lochor-field">
-            <label className="lochor-field-label">Authentication</label>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label">Authentication</label>
             <select
-              className="lochor-select"
+              className="locaryn-select"
               value={authMethod}
               onChange={(e) => {
                 setAuthMethod(e.target.value as SshAuthMethod);
@@ -220,7 +220,7 @@ export function SshServerForm({ onClose, onSaved }: Props) {
               <option value="key">Private key file</option>
               <option value="password">Password</option>
             </select>
-            <p className="lochor-field-hint">
+            <p className="locaryn-field-hint">
               {authMethod === "agent"
                 ? "Uses keys already loaded in your system's SSH agent (ssh-add on macOS/Linux, Pageant/OpenSSH agent on Windows). Nothing to enter here — pick this if `ssh you@host` already works in your terminal."
                 : authMethod === "key"
@@ -230,10 +230,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           </div>
 
           {authMethod === "key" && (
-            <div className="lochor-field">
-              <label className="lochor-field-label">Private key path</label>
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">Private key path</label>
               <input
-                className="lochor-input"
+                className="locaryn-input"
                 value={keyPath}
                 placeholder="~/.ssh/id_ed25519"
                 spellCheck={false}
@@ -243,7 +243,7 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                 }}
               />
               <input
-                className="lochor-input lochor-input-text"
+                className="locaryn-input locaryn-input-text"
                 type="password"
                 value={passphrase}
                 placeholder="key passphrase (optional)"
@@ -253,10 +253,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           )}
 
           {authMethod === "password" && (
-            <div className="lochor-field">
-              <label className="lochor-field-label">Password</label>
+            <div className="locaryn-field">
+              <label className="locaryn-field-label">Password</label>
               <input
-                className="lochor-input lochor-input-text"
+                className="locaryn-input locaryn-input-text"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -264,9 +264,9 @@ export function SshServerForm({ onClose, onSaved }: Props) {
             </div>
           )}
 
-          <div className="lochor-field">
-            <label className="lochor-toggle-row">
-              <span className="lochor-field-label">Connect through a jump host</span>
+          <div className="locaryn-field">
+            <label className="locaryn-toggle-row">
+              <span className="locaryn-field-label">Connect through a jump host</span>
               <input
                 type="checkbox"
                 checked={useJump}
@@ -279,12 +279,12 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           </div>
 
           {useJump && (
-            <div className="lochor-jump-box">
-              <div className="lochor-field-grid">
-                <div className="lochor-field lochor-field-grow">
-                  <label className="lochor-field-label">Jump host</label>
+            <div className="locaryn-jump-box">
+              <div className="locaryn-field-grid">
+                <div className="locaryn-field locaryn-field-grow">
+                  <label className="locaryn-field-label">Jump host</label>
                   <input
-                    className="lochor-input"
+                    className="locaryn-input"
                     value={jHost}
                     spellCheck={false}
                     onChange={(e) => {
@@ -293,10 +293,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                     }}
                   />
                 </div>
-                <div className="lochor-field lochor-field-port">
-                  <label className="lochor-field-label">Port</label>
+                <div className="locaryn-field locaryn-field-port">
+                  <label className="locaryn-field-label">Port</label>
                   <input
-                    className="lochor-input"
+                    className="locaryn-input"
                     value={jPort}
                     onChange={(e) => {
                       setJPort(e.target.value.replace(/\D/g, ""));
@@ -305,10 +305,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                   />
                 </div>
               </div>
-              <div className="lochor-field">
-                <label className="lochor-field-label">Jump username</label>
+              <div className="locaryn-field">
+                <label className="locaryn-field-label">Jump username</label>
                 <input
-                  className="lochor-input"
+                  className="locaryn-input"
                   value={jUser}
                   spellCheck={false}
                   onChange={(e) => {
@@ -317,10 +317,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                   }}
                 />
               </div>
-              <div className="lochor-field">
-                <label className="lochor-field-label">Jump auth</label>
+              <div className="locaryn-field">
+                <label className="locaryn-field-label">Jump auth</label>
                 <select
-                  className="lochor-select"
+                  className="locaryn-select"
                   value={jAuth}
                   onChange={(e) => {
                     setJAuth(e.target.value as "agent" | "key");
@@ -332,10 +332,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                 </select>
               </div>
               {jAuth === "key" && (
-                <div className="lochor-field">
-                  <label className="lochor-field-label">Jump key path</label>
+                <div className="locaryn-field">
+                  <label className="locaryn-field-label">Jump key path</label>
                   <input
-                    className="lochor-input"
+                    className="locaryn-input"
                     value={jKeyPath}
                     spellCheck={false}
                     onChange={(e) => {
@@ -348,10 +348,10 @@ export function SshServerForm({ onClose, onSaved }: Props) {
             </div>
           )}
 
-          <div className="lochor-field">
-            <label className="lochor-field-label">Description</label>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label">Description</label>
             <textarea
-              className="lochor-textarea"
+              className="locaryn-textarea"
               value={description}
               rows={2}
               placeholder="What is this server for? (auto-filled from the connection test)"
@@ -360,11 +360,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           </div>
 
           {/* Test + host-key confirmation */}
-          <div className="lochor-field">
-            <div className="lochor-field-row">
+          <div className="locaryn-field">
+            <div className="locaryn-field-row">
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 onClick={runTest}
                 disabled={testState === "testing"}
               >
@@ -372,37 +372,37 @@ export function SshServerForm({ onClose, onSaved }: Props) {
               </button>
               {statusLine && (
                 <div
-                  className={`lochor-conn ${
+                  className={`locaryn-conn ${
                     testState === "error"
-                      ? "lochor-conn-error"
+                      ? "locaryn-conn-error"
                       : testState === "tested"
-                        ? "lochor-conn-ok"
-                        : "lochor-conn-testing"
+                        ? "locaryn-conn-ok"
+                        : "locaryn-conn-testing"
                   }`}
                 >
-                  <span className="lochor-conn-dot" />
+                  <span className="locaryn-conn-dot" />
                   {statusLine}
                 </div>
               )}
             </div>
 
             {probe && (
-              <div className="lochor-probe">
-                <div className="lochor-probe-caps">
+              <div className="locaryn-probe">
+                <div className="locaryn-probe-caps">
                   <span>{probe.os ?? "unknown OS"}</span>
                   <span>read: {probe.can_read ? "yes" : "no"}</span>
                   <span>write: {probe.can_write ? "yes" : "no"}</span>
                   <span>sudo: {probe.is_sudoer ? "yes" : "no"}</span>
                 </div>
-                <div className="lochor-hostkey">
-                  <div className="lochor-hostkey-label">
+                <div className="locaryn-hostkey">
+                  <div className="locaryn-hostkey-label">
                     Host key ({probe.host_key.algo}) — verify out of band:
                   </div>
-                  <code className="lochor-hostkey-fp">{probe.host_key.sha256}</code>
+                  <code className="locaryn-hostkey-fp">{probe.host_key.sha256}</code>
                   {hostKeyConfirmed ? (
-                    <span className="lochor-hostkey-ok">✓ confirmed</span>
+                    <span className="locaryn-hostkey-ok">✓ confirmed</span>
                   ) : (
-                    <button type="button" className="lochor-btn-ghost" onClick={confirmKey}>
+                    <button type="button" className="locaryn-btn-ghost" onClick={confirmKey}>
                       Confirm fingerprint
                     </button>
                   )}
@@ -412,13 +412,13 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           </div>
         </div>
 
-        <div className="lochor-form-footer">
-          <button type="button" className="lochor-btn-ghost" onClick={onClose}>
+        <div className="locaryn-form-footer">
+          <button type="button" className="locaryn-btn-ghost" onClick={onClose}>
             Cancel
           </button>
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             onClick={save}
             disabled={!canSave}
             title={

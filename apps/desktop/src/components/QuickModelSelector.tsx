@@ -147,9 +147,9 @@ export function QuickModelSelector({
   if (!isOpen) return null;
 
   return (
-    <div className="lochor-settings-backdrop" onClick={onClose}>
+    <div className="locaryn-settings-backdrop" onClick={onClose}>
       <div
-        className="lochor-card"
+        className="locaryn-card"
         style={{
           width: "520px",
           maxHeight: "80vh",
@@ -163,11 +163,11 @@ export function QuickModelSelector({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="lochor-field-head" style={{ marginBottom: "10px" }}>
+        <div className="locaryn-field-head" style={{ marginBottom: "10px" }}>
           <h3 style={{ margin: 0, fontSize: "var(--text-md)", display: "flex", alignItems: "center", gap: "6px" }}>
             <span>⚡</span> Changer de Modèle Installé
           </h3>
-          <button type="button" className="lochor-icon-btn" onClick={onClose}>
+          <button type="button" className="locaryn-icon-btn" onClick={onClose}>
             ✕
           </button>
         </div>
@@ -179,35 +179,35 @@ export function QuickModelSelector({
         <div style={{ display: "flex", gap: "4px", marginBottom: "10px", flexWrap: "wrap" }}>
           <button
             type="button"
-            className={`lochor-chip${activeTab === "all" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${activeTab === "all" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("all")}
           >
             Tous ({options.length})
           </button>
           <button
             type="button"
-            className={`lochor-chip${activeTab === "text" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${activeTab === "text" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("text")}
           >
             💬 Text to Text ({options.filter((o) => o.category === "text").length})
           </button>
           <button
             type="button"
-            className={`lochor-chip${activeTab === "code" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${activeTab === "code" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("code")}
           >
             💻 Code ({options.filter((o) => o.category === "code").length})
           </button>
           <button
             type="button"
-            className={`lochor-chip${activeTab === "reasoning" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${activeTab === "reasoning" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("reasoning")}
           >
             🧠 Raisonnement ({options.filter((o) => o.category === "reasoning").length})
           </button>
           <button
             type="button"
-            className={`lochor-chip${activeTab === "vision" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${activeTab === "vision" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("vision")}
           >
             🖼️ Vision ({options.filter((o) => o.category === "vision").length})
@@ -216,7 +216,7 @@ export function QuickModelSelector({
 
         {/* Search Bar */}
         <input
-          className="lochor-input"
+          className="locaryn-input"
           placeholder="🔍 Rechercher parmi vos modèles installés..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -234,7 +234,7 @@ export function QuickModelSelector({
               {onOpenMarketplace && (
                 <button
                   type="button"
-                  className="lochor-btn-primary"
+                  className="locaryn-btn-primary"
                   style={{ fontSize: "12px" }}
                   onClick={() => {
                     onClose();
@@ -252,7 +252,7 @@ export function QuickModelSelector({
                 <button
                   key={item.tag}
                   type="button"
-                  className="lochor-box-variant-row"
+                  className="locaryn-box-variant-row"
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -294,11 +294,11 @@ export function QuickModelSelector({
                     >
                       {item.categoryLabel}
                     </span>
-                    <span className="lochor-tag" style={{ fontSize: "10px" }}>
+                    <span className="locaryn-tag" style={{ fontSize: "10px" }}>
                       {item.isLocal ? "LOCAL" : "CLOUD"}
                     </span>
                     {isActive && (
-                      <span className="lochor-tag lochor-tag-installed" style={{ fontSize: "10px" }}>
+                      <span className="locaryn-tag locaryn-tag-installed" style={{ fontSize: "10px" }}>
                         ACTIF ✓
                       </span>
                     )}

@@ -1,4 +1,4 @@
--- Lochor SSH server connector schema (V0.1)
+-- Locaryn SSH server connector schema (V0.1)
 --
 -- Stores SSH server connections managed by the SSH connector. No column ever
 -- holds a password or private key: only `secret_ref` (an OS-keychain key) and

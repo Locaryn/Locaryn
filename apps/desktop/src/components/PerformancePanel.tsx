@@ -397,7 +397,7 @@ export function PerformancePanel() {
             </div>
             <input
               type="text"
-              className="lochor-input perf-draft-input"
+              className="locaryn-input perf-draft-input"
               placeholder="Chemin vers le modèle draft (ex: models/gemma-2b.gguf)"
               value={cfg.draft_model_path}
               onChange={(e) => patch({ draft_model_path: e.target.value })}
@@ -429,7 +429,7 @@ export function PerformancePanel() {
               <input
                 type="number"
                 min={0}
-                className="lochor-input perf-moe-input"
+                className="locaryn-input perf-moe-input"
                 placeholder="N couches"
                 value={cfg.n_cpu_moe > 0 ? cfg.n_cpu_moe : ""}
                 onChange={(e) => {
@@ -449,7 +449,7 @@ export function PerformancePanel() {
             </div>
             <input
               type="text"
-              className="lochor-input perf-draft-input"
+              className="locaryn-input perf-draft-input"
               placeholder="host:port,host:port (ex: 192.168.1.20:50052)"
               value={cfg.rpc_servers}
               onChange={(e) => patch({ rpc_servers: e.target.value })}

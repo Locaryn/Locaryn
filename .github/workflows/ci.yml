@@ -61,4 +61,4 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - name: Tauri build check (dev)
-        run: cargo check -p lochor-desktop
+        run: cargo check -p locaryn-desktop

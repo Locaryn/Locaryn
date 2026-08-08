@@ -1,9 +1,9 @@
 {
-  "$schema": "https://lochor.dev/schema/mcp.json/v0.1",
+  "$schema": "https://locaryn.dev/schema/mcp.json/v0.1",
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${LOCHOR_PROJECT_ROOT}"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${LOCARYN_PROJECT_ROOT}"],
       "transport": "stdio",
       "auto_start": false,
       "scope": "workspace"

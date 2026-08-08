@@ -26,7 +26,7 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 }
 
 /**
- * The phone's view of Lochor.
+ * The phone's view of Locaryn.
  *
  * Everything heavy happens on the machine at the other end; what is here is a
  * conversation and the pairing that keeps it reachable.

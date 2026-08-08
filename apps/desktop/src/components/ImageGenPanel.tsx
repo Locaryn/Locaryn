@@ -438,7 +438,7 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
             </div>
           ) : (
             <select
-              className="lochor-select"
+              className="locaryn-select"
               value={uncensored ? HERETIC_VALUE : selectedModel}
               disabled={jobRunning || installedOptions.length === 0}
               onChange={(e) => {
@@ -475,7 +475,7 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
                 e.preventDefault();
                 e.stopPropagation();
                 // Accept drops from gallery: path in custom type, or URL fallback
-                const path = e.dataTransfer.getData("text/x-lochor-image-path");
+                const path = e.dataTransfer.getData("text/x-locaryn-image-path");
                 const url = e.dataTransfer.getData("text/plain");
                 if (path) {
                   setSourceImagePath(path);
@@ -516,7 +516,7 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
             {mode === "img2img" ? "Instructions de modification" : "Description de l'image"}
           </label>
           <textarea
-            className="lochor-input img-gen-textarea"
+            className="locaryn-input img-gen-textarea"
             rows={3}
             placeholder={
               mode === "img2img"
@@ -549,7 +549,7 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
                 <label className="img-gen-label">Prompt négatif</label>
                 <input
                   type="text"
-                  className="lochor-input"
+                  className="locaryn-input"
                   placeholder="blurry, ugly, watermark..."
                   value={negPrompt}
                   onChange={(e) => setNegPrompt(e.target.value)}
@@ -611,7 +611,7 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
 
             {/* Uncensored mode — uses an abliterated text encoder, gated by consent */}
             <div className="img-gen-adv-item" style={{ marginTop: 12 }}>
-              <label className="lochor-checkbox-row" style={{ cursor: "pointer" }}>
+              <label className="locaryn-checkbox-row" style={{ cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={uncensored}
@@ -714,7 +714,7 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
             ⏱️ Durée estimée : {formatEstimatedDuration(estimatedDuration)}
           </span>
           {!inline && (
-            <button type="button" className="lochor-btn-ghost" onClick={onClose} disabled={isInstalling}>
+            <button type="button" className="locaryn-btn-ghost" onClick={onClose} disabled={isInstalling}>
               Fermer
             </button>
           )}

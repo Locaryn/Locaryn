@@ -119,32 +119,32 @@ export function RagPanel({ projectId, onClose }: Props) {
 
   return (
     <>
-      <div className="lochor-settings-backdrop" onClick={onClose} />
-      <div className="lochor-settings-modal" role="dialog" aria-modal="true" aria-label="Documents (RAG)">
-        <div className="lochor-settings-header">
-          <span className="lochor-settings-title">📚 Base de connaissances (RAG)</span>
-          <button type="button" className="lochor-settings-close" onClick={onClose} aria-label="Fermer">✕</button>
+      <div className="locaryn-settings-backdrop" onClick={onClose} />
+      <div className="locaryn-settings-modal" role="dialog" aria-modal="true" aria-label="Documents (RAG)">
+        <div className="locaryn-settings-header">
+          <span className="locaryn-settings-title">📚 Base de connaissances (RAG)</span>
+          <button type="button" className="locaryn-settings-close" onClick={onClose} aria-label="Fermer">✕</button>
         </div>
 
-        <div className="lochor-settings-pane" style={{ padding: 20, overflowY: "auto" }}>
-          <p className="lochor-rag-what">
+        <div className="locaryn-settings-pane" style={{ padding: 20, overflowY: "auto" }}>
+          <p className="locaryn-rag-what">
             <b>À quoi ça sert ?</b> Donnez vos documents au modèle une bonne fois pour toutes.
-            Ensuite, à <i>chaque</i> message de ce projet, Lochor retrouve automatiquement les
+            Ensuite, à <i>chaque</i> message de ce projet, Locaryn retrouve automatiquement les
             passages utiles et les glisse dans la question — le modèle répond avec
             <b> vos</b> infos, sans que vous ayez à les recoller à chaque fois.
           </p>
-          <p className="lochor-field-hint">
+          <p className="locaryn-field-hint">
             Tout reste en local (aucun envoi vers Internet). La première indexation démarre un
             petit serveur d'embeddings : comptez quelques secondes.
           </p>
-          <p className="lochor-field-hint" style={{ marginTop: 6 }}>
+          <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
             ⓘ Par défaut, c'est votre <strong>modèle de chat actif</strong> qui produit les embeddings
             (zéro configuration). Pour une récupération nettement plus fine, installez un vrai modèle
             d'<em>embedding</em> (nomic-embed, bge, e5) — un modèle de chat sépare mal les sens.
           </p>
 
-          <div className="lochor-conn" style={{ marginTop: 10 }}>
-            <span className={`lochor-health-dot ${status && status.chunk_count > 0 ? "lochor-health-ok" : "lochor-health-off"}`} />
+          <div className="locaryn-conn" style={{ marginTop: 10 }}>
+            <span className={`locaryn-health-dot ${status && status.chunk_count > 0 ? "locaryn-health-ok" : "locaryn-health-off"}`} />
             <span>
               {status
                 ? status.chunk_count > 0
@@ -155,19 +155,19 @@ export function RagPanel({ projectId, onClose }: Props) {
           </div>
 
           {status && status.sources.length > 0 && (
-            <ul className="lochor-lora-list" style={{ marginTop: 10 }}>
+            <ul className="locaryn-lora-list" style={{ marginTop: 10 }}>
               {status.sources.map((s) => (
-                <li key={s.source} className="lochor-lora-row">
-                  <span className="lochor-lora-path" title={s.source}>{s.source}</span>
-                  <span className="lochor-lora-scale">{s.chunks}</span>
+                <li key={s.source} className="locaryn-lora-row">
+                  <span className="locaryn-lora-path" title={s.source}>{s.source}</span>
+                  <span className="locaryn-lora-scale">{s.chunks}</span>
                 </li>
               ))}
             </ul>
           )}
 
           {/* Drop zone — import files directly instead of pasting text. */}
-          <div className="lochor-field" style={{ marginTop: 20 }}>
-            <label className="lochor-field-label">Importer des fichiers</label>
+          <div className="locaryn-field" style={{ marginTop: 20 }}>
+            <label className="locaryn-field-label">Importer des fichiers</label>
             <input
               ref={fileRef}
               type="file"
@@ -180,7 +180,7 @@ export function RagPanel({ projectId, onClose }: Props) {
               }}
             />
             <div
-              className={`lochor-dropzone${dragOver ? " over" : ""}`}
+              className={`locaryn-dropzone${dragOver ? " over" : ""}`}
               onClick={() => !busy && fileRef.current?.click()}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
@@ -196,8 +196,8 @@ export function RagPanel({ projectId, onClose }: Props) {
                 <>⏳ Indexation de <b>{importing}</b>…</>
               ) : (
                 <>
-                  <div className="lochor-dropzone-main">📄 Glissez vos documents ici, ou cliquez pour choisir</div>
-                  <div className="lochor-dropzone-sub">
+                  <div className="locaryn-dropzone-main">📄 Glissez vos documents ici, ou cliquez pour choisir</div>
+                  <div className="locaryn-dropzone-sub">
                     .txt .md .csv .json .html, code source… — plusieurs fichiers acceptés
                   </div>
                 </>
@@ -205,58 +205,58 @@ export function RagPanel({ projectId, onClose }: Props) {
             </div>
           </div>
 
-          <div className="lochor-field" style={{ marginTop: 16 }}>
-            <label className="lochor-field-label">Ou coller du texte</label>
+          <div className="locaryn-field" style={{ marginTop: 16 }}>
+            <label className="locaryn-field-label">Ou coller du texte</label>
             <input
-              className="lochor-input"
+              className="locaryn-input"
               placeholder="Nom de la source (ex: notes-archi.md)"
               value={source}
               onChange={(e) => setSource(e.target.value)}
               style={{ marginBottom: 8 }}
             />
             <textarea
-              className="lochor-input"
+              className="locaryn-input"
               placeholder="Collez ici le texte à indexer…"
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={6}
               style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)" }}
             />
-            <div className="lochor-field-actions" style={{ marginTop: 10 }}>
-              <button type="button" className="lochor-btn-primary" onClick={index} disabled={busy || !text.trim()}>
+            <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
+              <button type="button" className="locaryn-btn-primary" onClick={index} disabled={busy || !text.trim()}>
                 {busy ? "Indexation…" : "Indexer"}
               </button>
               {status && status.chunk_count > 0 && (
-                <button type="button" className="lochor-btn-ghost" onClick={clearAll} disabled={busy}>
+                <button type="button" className="locaryn-btn-ghost" onClick={clearAll} disabled={busy}>
                   Tout effacer
                 </button>
               )}
             </div>
           </div>
 
-          <div className="lochor-field" style={{ marginTop: 20 }}>
-            <label className="lochor-field-label">Tester la recherche</label>
-            <div className="lochor-field-row">
+          <div className="locaryn-field" style={{ marginTop: 20 }}>
+            <label className="locaryn-field-label">Tester la recherche</label>
+            <div className="locaryn-field-row">
               <input
-                className="lochor-input"
+                className="locaryn-input"
                 placeholder="Une question pour voir ce qui remonte…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") search(); }}
               />
-              <button type="button" className="lochor-btn-ghost" onClick={search} disabled={busy || !query.trim()}>
+              <button type="button" className="locaryn-btn-ghost" onClick={search} disabled={busy || !query.trim()}>
                 Chercher
               </button>
             </div>
             {hits && (
               hits.length === 0 ? (
-                <p className="lochor-field-hint" style={{ marginTop: 8 }}>Aucun résultat.</p>
+                <p className="locaryn-field-hint" style={{ marginTop: 8 }}>Aucun résultat.</p>
               ) : (
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                   {hits.map((h, i) => (
-                    <div key={i} className="lochor-lora-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
+                    <div key={i} className="locaryn-lora-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", color: "var(--text-dim)" }}>
-                        <span className="lochor-kv-mono">{h.source}</span>
+                        <span className="locaryn-kv-mono">{h.source}</span>
                         <span>{h.score.toFixed(3)}</span>
                       </div>
                       <div style={{ fontSize: "var(--text-xs)", lineHeight: 1.5 }}>
@@ -269,7 +269,7 @@ export function RagPanel({ projectId, onClose }: Props) {
             )}
           </div>
 
-          {error && <p className="lochor-field-hint" style={{ color: "var(--danger)", marginTop: 8 }}>{error}</p>}
+          {error && <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginTop: 8 }}>{error}</p>}
         </div>
       </div>
     </>

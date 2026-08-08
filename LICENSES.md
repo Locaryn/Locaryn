@@ -1,6 +1,6 @@
-# Lochor licensing
+# Locaryn licensing
 
-Lochor is **open-core**: a permissive Apache-2.0 core (CLI, desktop app, local
+Locaryn is **open-core**: a permissive Apache-2.0 core (CLI, desktop app, local
 daemon, provider-supervisor, all shared packages, examples, docs) plus a
 Business Source License (BSL 1.1) module for the enterprise collaboration
 features of the remote server. The BSL module converts to Apache-2.0 four years
@@ -46,7 +46,7 @@ See `docs/adr/ADR-0003-open-core-license.md` for the full rationale.
 
 ## Third-party dependencies & bundled engines
 
-Everything Lochor bundles or depends on is **permissively licensed** — there is
+Everything Locaryn bundles or depends on is **permissively licensed** — there is
 **no GPL/AGPL/SSPL** anywhere — so the paid, closed-source build is compliant.
 Two obligations remain: **ship the notices** and **don't modify MPL-2.0 files**.
 

@@ -3200,15 +3200,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
-name = "lochor-agent-runtime"
+name = "locaryn-agent-runtime"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
  "futures",
- "lochor-events",
- "lochor-mcp",
- "lochor-shared-types",
+ "locaryn-events",
+ "locaryn-mcp",
+ "locaryn-shared-types",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3220,14 +3220,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-auth"
+name = "locaryn-auth"
 version = "0.1.0"
 dependencies = [
  "argon2",
  "chrono",
  "futures",
  "keyring",
- "lochor-shared-types",
+ "locaryn-shared-types",
  "rand 0.8.7",
  "serde",
  "serde_json",
@@ -3238,21 +3238,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-cli"
+name = "locaryn-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
  "futures",
- "lochor-agent-runtime",
- "lochor-config",
- "lochor-events",
- "lochor-extensions",
- "lochor-mcp",
- "lochor-sdk",
- "lochor-shared-types",
- "lochor-storage",
- "lochor-travel",
+ "locaryn-agent-runtime",
+ "locaryn-config",
+ "locaryn-events",
+ "locaryn-extensions",
+ "locaryn-mcp",
+ "locaryn-sdk",
+ "locaryn-shared-types",
+ "locaryn-storage",
+ "locaryn-travel",
  "serde",
  "serde_json",
  "tokio",
@@ -3261,10 +3261,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-command-runtime"
+name = "locaryn-command-runtime"
 version = "0.1.0"
 dependencies = [
- "lochor-shared-types",
+ "locaryn-shared-types",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3273,12 +3273,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-config"
+name = "locaryn-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
- "lochor-shared-types",
+ "locaryn-shared-types",
  "rcgen",
  "serde",
  "serde_json",
@@ -3287,7 +3287,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-daemon"
+name = "locaryn-daemon"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3296,19 +3296,19 @@ dependencies = [
  "chrono",
  "futures",
  "igd-next",
- "lochor-agent-runtime",
- "lochor-auth",
- "lochor-config",
- "lochor-events",
- "lochor-extensions",
- "lochor-mcp",
- "lochor-preview",
- "lochor-provider-supervisor",
- "lochor-rules-runtime",
- "lochor-sdk",
- "lochor-shared-types",
- "lochor-storage",
- "lochor-travel",
+ "locaryn-agent-runtime",
+ "locaryn-auth",
+ "locaryn-config",
+ "locaryn-events",
+ "locaryn-extensions",
+ "locaryn-mcp",
+ "locaryn-preview",
+ "locaryn-provider-supervisor",
+ "locaryn-rules-runtime",
+ "locaryn-sdk",
+ "locaryn-shared-types",
+ "locaryn-storage",
+ "locaryn-travel",
  "rcgen",
  "rustls",
  "serde",
@@ -3322,26 +3322,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-desktop"
+name = "locaryn-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
  "chrono",
  "futures",
- "lochor-agent-runtime",
- "lochor-auth",
- "lochor-command-runtime",
- "lochor-config",
- "lochor-events",
- "lochor-extensions",
- "lochor-mcp",
- "lochor-preview",
- "lochor-provider-supervisor",
- "lochor-shared-types",
- "lochor-ssh",
- "lochor-storage",
- "lochor-travel",
+ "locaryn-agent-runtime",
+ "locaryn-auth",
+ "locaryn-command-runtime",
+ "locaryn-config",
+ "locaryn-events",
+ "locaryn-extensions",
+ "locaryn-mcp",
+ "locaryn-preview",
+ "locaryn-provider-supervisor",
+ "locaryn-shared-types",
+ "locaryn-ssh",
+ "locaryn-storage",
+ "locaryn-travel",
  "reqwest 0.12.28",
  "rustls",
  "serde",
@@ -3362,10 +3362,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-enterprise"
+name = "locaryn-enterprise"
 version = "0.1.0"
 dependencies = [
- "lochor-shared-types",
+ "locaryn-shared-types",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3375,12 +3375,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-events"
+name = "locaryn-events"
 version = "0.1.0"
 dependencies = [
  "bytes",
  "futures",
- "lochor-shared-types",
+ "locaryn-shared-types",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3389,17 +3389,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-extensions"
+name = "locaryn-extensions"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "lochor-command-runtime",
- "lochor-config",
- "lochor-hook-runtime",
- "lochor-lsp-adapters",
- "lochor-mcp",
- "lochor-shared-types",
- "lochor-skill-runtime",
+ "locaryn-command-runtime",
+ "locaryn-config",
+ "locaryn-hook-runtime",
+ "locaryn-lsp-adapters",
+ "locaryn-mcp",
+ "locaryn-shared-types",
+ "locaryn-skill-runtime",
  "notify",
  "parking_lot",
  "reqwest 0.12.28",
@@ -3414,10 +3414,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-hook-runtime"
+name = "locaryn-hook-runtime"
 version = "0.1.0"
 dependencies = [
- "lochor-shared-types",
+ "locaryn-shared-types",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3426,11 +3426,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-lsp-adapters"
+name = "locaryn-lsp-adapters"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "lochor-shared-types",
+ "locaryn-shared-types",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3439,14 +3439,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-mcp"
+name = "locaryn-mcp"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
  "futures",
- "lochor-config",
- "lochor-shared-types",
+ "locaryn-config",
+ "locaryn-shared-types",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3457,11 +3457,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-mobile"
+name = "locaryn-mobile"
 version = "0.1.0"
 dependencies = [
- "lochor-config",
- "lochor-travel",
+ "locaryn-config",
+ "locaryn-travel",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3474,23 +3474,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-plugin-sdk"
+name = "locaryn-plugin-sdk"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "lochor-extensions",
- "lochor-shared-types",
+ "locaryn-extensions",
+ "locaryn-shared-types",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
 ]
 
 [[package]]
-name = "lochor-preview"
+name = "locaryn-preview"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "lochor-shared-types",
+ "locaryn-shared-types",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3498,16 +3498,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-provider-supervisor"
+name = "locaryn-provider-supervisor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
  "futures",
- "lochor-config",
- "lochor-shared-types",
- "lochor-storage",
+ "locaryn-config",
+ "locaryn-shared-types",
+ "locaryn-storage",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3521,23 +3521,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-remote-server"
+name = "locaryn-remote-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
  "chrono",
  "clap",
- "lochor-agent-runtime",
- "lochor-auth",
- "lochor-config",
- "lochor-enterprise",
- "lochor-events",
- "lochor-extensions",
- "lochor-mcp",
- "lochor-sdk",
- "lochor-shared-types",
- "lochor-storage",
+ "locaryn-agent-runtime",
+ "locaryn-auth",
+ "locaryn-config",
+ "locaryn-enterprise",
+ "locaryn-events",
+ "locaryn-extensions",
+ "locaryn-mcp",
+ "locaryn-sdk",
+ "locaryn-shared-types",
+ "locaryn-storage",
  "serde",
  "serde_json",
  "tokio",
@@ -3549,23 +3549,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-rules-runtime"
+name = "locaryn-rules-runtime"
 version = "0.1.0"
 dependencies = [
- "lochor-config",
- "lochor-shared-types",
+ "locaryn-config",
+ "locaryn-shared-types",
  "serde",
  "thiserror 2.0.18",
 ]
 
 [[package]]
-name = "lochor-sdk"
+name = "locaryn-sdk"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "futures",
- "lochor-events",
- "lochor-shared-types",
+ "locaryn-events",
+ "locaryn-shared-types",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3575,7 +3575,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-shared-types"
+name = "locaryn-shared-types"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -3585,10 +3585,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-skill-runtime"
+name = "locaryn-skill-runtime"
 version = "0.1.0"
 dependencies = [
- "lochor-shared-types",
+ "locaryn-shared-types",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3596,7 +3596,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-ssh"
+name = "locaryn-ssh"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3607,12 +3607,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-storage"
+name = "locaryn-storage"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "lochor-auth",
- "lochor-shared-types",
+ "locaryn-auth",
+ "locaryn-shared-types",
  "serde",
  "serde_json",
  "sqlx",
@@ -3623,10 +3623,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "lochor-travel"
+name = "locaryn-travel"
 version = "0.1.0"
 dependencies = [
- "lochor-config",
+ "locaryn-config",
  "qrcode",
  "ring",
  "serde",

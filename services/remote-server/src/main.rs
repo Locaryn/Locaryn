@@ -1,4 +1,4 @@
-//! Lochor remote server — a secured TLS gateway that exposes the same API
+//! Locaryn remote server — a secured TLS gateway that exposes the same API
 //! as the local daemon, plus authentication, audit, and (optionally) the
 //! enterprise collaboration module.
 //!
@@ -18,19 +18,19 @@ use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(
-    name = "lochor-remote-server",
+    name = "locaryn-remote-server",
     version,
-    about = "Lochor secured remote server"
+    about = "Locaryn secured remote server"
 )]
 struct Cli {
     /// Bind address. Default 0.0.0.0:7473 (TLS required).
     #[arg(long, default_value = "0.0.0.0:7473")]
     bind: String,
     /// Path to TLS cert PEM.
-    #[arg(long, env = "LOCHOR_TLS_CERT")]
+    #[arg(long, env = "LOCARYN_TLS_CERT")]
     tls_cert: Option<String>,
     /// Path to TLS key PEM.
-    #[arg(long, env = "LOCHOR_TLS_KEY")]
+    #[arg(long, env = "LOCARYN_TLS_KEY")]
     tls_key: Option<String>,
     /// Disable the enterprise module even if compiled in.
     #[arg(long)]
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("enterprise module enabled (BSL 1.1)");
         #[cfg(feature = "enterprise")]
         {
-            let _ = lochor_enterprise::version_string();
+            let _ = locaryn_enterprise::version_string();
         }
     }
 
@@ -76,13 +76,13 @@ async fn main() -> anyhow::Result<()> {
              Use --tls-cert/--tls-key or a reverse proxy (Caddy/Traefik) for production."
         );
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        tracing::info!("lochor-remote-server (plain) listening on http://{addr}");
+        tracing::info!("locaryn-remote-server (plain) listening on http://{addr}");
         axum::serve(listener, app).await?;
     } else {
         // V1.1 wires rustls + axum-server for TLS. Skeleton warns.
         tracing::warn!("TLS wiring (rustls) lands in V1.1; falling back to plain HTTP for now");
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        tracing::info!("lochor-remote-server (tls-pending) listening on http://{addr}");
+        tracing::info!("locaryn-remote-server (tls-pending) listening on http://{addr}");
         axum::serve(listener, app).await?;
     }
 
@@ -100,8 +100,8 @@ async fn health(State(s): State<Arc<ServerState>>) -> Json<serde_json::Value> {
 
 async fn login(State(_s): State<Arc<ServerState>>, Json(body): Json<LoginBody>) -> Response {
     // V1 wires real auth (Argon2id + token issuance). Skeleton accepts anything.
-    let token = lochor_auth::generate_token();
-    let expires = lochor_auth::default_expiry();
+    let token = locaryn_auth::generate_token();
+    let expires = locaryn_auth::default_expiry();
     tracing::info!(user = %body.user, "login issued (skeleton)");
     (
         StatusCode::OK,

@@ -1,9 +1,9 @@
-//! Lochor provider supervisor â€” detects, starts, healthchecks, and stops
+//! Locaryn provider supervisor â€” detects, starts, healthchecks, and stops
 //! local LLM runtimes (Ollama, llama-server, LM Studio, vLLM) on loopback
 //! only.
 //!
 //! Used as a library by the daemon (in-process) and as a standalone CLI
-//! (`lochor-supervisor`). The supervisor is responsible for:
+//! (`locaryn-supervisor`). The supervisor is responsible for:
 //!
 //! 1. **Auto-spawning** a local runtime when the daemon needs it and it is
 //!    not already running (e.g. `ollama serve`).
@@ -17,8 +17,8 @@
 //! The supervisor only ever binds on **loopback**. It never exposes a local
 //! runtime on the network â€” that is the job of the remote-server gateway.
 
-use lochor_shared_types::{ProviderEngine, ProviderStatus};
-use lochor_storage::Storage;
+use locaryn_shared_types::{ProviderEngine, ProviderStatus};
+use locaryn_storage::Storage;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -76,7 +76,7 @@ pub enum SupervisorError {
     #[error("binary not found on PATH: {0}")]
     BinaryNotFound(String),
     #[error("storage error: {0}")]
-    Storage(#[from] lochor_storage::StorageError),
+    Storage(#[from] locaryn_storage::StorageError),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -562,7 +562,7 @@ async fn spawn_llama_server(
     _cfg: &SupervisorConfig,
     active_model: Option<&str>,
 ) -> Result<Child, SupervisorError> {
-    let data_dir = lochor_config::default_data_dir();
+    let data_dir = locaryn_config::default_data_dir();
 
     // Load inference config — determines which args to pass.
     let inference_cfg_path = data_dir.join("inference_config.json");
@@ -586,7 +586,7 @@ async fn spawn_llama_server(
     // installed/updated by the app, pinned modern build), then the legacy
     // flat bin dir, then PATH.
     let exe_name = if cfg!(windows) { "llama-server.exe" } else { "llama-server" };
-    let bin_root = lochor_config::bin_dir();
+    let bin_root = locaryn_config::bin_dir();
     let managed = bin_root.join("llama").join(exe_name);
     let legacy = bin_root.join(exe_name);
     let bin = if managed.exists() {
@@ -611,7 +611,7 @@ async fn spawn_llama_server(
     } else {
         model_name
     };
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let full_model_path = if std::path::Path::new(model_file).is_absolute() {
         std::path::PathBuf::from(model_file)
     } else {

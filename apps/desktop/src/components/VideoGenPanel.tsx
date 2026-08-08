@@ -171,26 +171,26 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
     : { padding: 24, maxWidth: 900, margin: "0 auto" };
 
   return (
-    <div className={inline ? "" : "lochor-card"} style={containerStyle}>
+    <div className={inline ? "" : "locaryn-card"} style={containerStyle}>
       {/* ── Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
           <h3 style={{ margin: 0 }}>Génération de vidéo</h3>
-          <p className="lochor-field-hint" style={{ margin: "4px 0 0" }}>
+          <p className="locaryn-field-hint" style={{ margin: "4px 0 0" }}>
             Créez des vidéos à partir de texte ou d'images avec des modèles locaux.
           </p>
         </div>
         {!inline && (
-          <button type="button" className="lochor-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>
+          <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>
         )}
       </div>
 
       {/* ── Model selector ── */}
       {hasModels ? (
         <div style={{ marginBottom: 20 }}>
-          <label className="lochor-field-label">Modèle vidéo</label>
+          <label className="locaryn-field-label">Modèle vidéo</label>
           <select
-            className="lochor-input"
+            className="locaryn-input"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             disabled={jobRunning}
@@ -266,16 +266,16 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Image source (i2v) ── */}
       {mode === "i2v" && (
-        <div className="lochor-field" style={{ marginBottom: 16 }}>
-          <label className="lochor-field-label">Image source</label>
+        <div className="locaryn-field" style={{ marginBottom: 16 }}>
+          <label className="locaryn-field-label">Image source</label>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePickImage} />
           {inputImage ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 12, color: "var(--text)" }}>🖼️ {inputImageName}</span>
-              <button type="button" className="lochor-icon-btn" onClick={clearImage} aria-label="Supprimer">✕</button>
+              <button type="button" className="locaryn-icon-btn" onClick={clearImage} aria-label="Supprimer">✕</button>
             </div>
           ) : (
-            <button type="button" className="lochor-btn-ghost" onClick={() => fileInputRef.current?.click()} disabled={jobRunning} style={{ fontSize: 12 }}>
+            <button type="button" className="locaryn-btn-ghost" onClick={() => fileInputRef.current?.click()} disabled={jobRunning} style={{ fontSize: 12 }}>
               + Choisir une image
             </button>
           )}
@@ -283,15 +283,15 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
       )}
 
       {/* ── Prompt input ── */}
-      <div className="lochor-field" style={{ marginBottom: 16 }}>
-        <label className="lochor-field-label">
+      <div className="locaryn-field" style={{ marginBottom: 16 }}>
+        <label className="locaryn-field-label">
           Prompt
           <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}>
             Décrivez la vidéo à générer
           </span>
         </label>
         <textarea
-          className="lochor-input"
+          className="locaryn-input"
           rows={3}
           placeholder="Ex: 'A cinematic shot of a dolphin swimming through neon-lit cyberpunk canals, slow motion'"
           value={prompt}
@@ -308,13 +308,13 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 20px" }}>
           {/* Duration */}
           <div>
-            <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Durée</label>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Durée</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {DURATION_PRESETS.map((d) => (
                 <button
                   key={d.value}
                   type="button"
-                  className={`lochor-chip${duration === d.value ? " lochor-chip-on" : ""}`}
+                  className={`locaryn-chip${duration === d.value ? " locaryn-chip-on" : ""}`}
                   onClick={() => setDuration(d.value)}
                   disabled={jobRunning}
                   style={{ fontSize: 11, padding: "2px 8px" }}
@@ -327,7 +327,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Steps */}
           <div>
-            <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
               Étapes : {steps}
             </label>
             <input
@@ -344,7 +344,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* CFG Scale */}
           <div>
-            <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
               Guidance (CFG) : {cfgScale.toFixed(1)}
             </label>
             <input
@@ -361,10 +361,10 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Negative prompt */}
           <div>
-            <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Prompt négatif</label>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Prompt négatif</label>
             <input
               type="text"
-              className="lochor-input"
+              className="locaryn-input"
               value={negativePrompt}
               onChange={(e) => setNegativePrompt(e.target.value)}
               placeholder="Éléments à éviter…"
@@ -385,31 +385,31 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Result ── */}
       {generatedResult && (
-        <div className="lochor-field" style={{ marginBottom: 16 }}>
-          <label className="lochor-field-label">Vidéo générée</label>
+        <div className="locaryn-field" style={{ marginBottom: 16 }}>
+          <label className="locaryn-field-label">Vidéo générée</label>
           <video src={generatedResult.url} controls style={{ width: "100%", borderRadius: 8, maxHeight: 400 }} />
         </div>
       )}
 
       {/* ── Progress + Actions ── */}
-      <div className="lochor-field-actions" style={{ justifyContent: "space-between" }}>
+      <div className="locaryn-field-actions" style={{ justifyContent: "space-between" }}>
         {jobRunning && (
           <div style={{ flex: 1, marginRight: 12 }}>
             <div className="img-gen-progress-bar">
               <div className="img-gen-progress-fill" style={{ width: `${taskProgress?.progress ?? 0}%` }} />
             </div>
-            <span className="lochor-field-hint">{taskProgress?.detail ?? "Génération en cours…"}</span>
+            <span className="locaryn-field-hint">{taskProgress?.detail ?? "Génération en cours…"}</span>
           </div>
         )}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           {!inline && (
-            <button type="button" className="lochor-btn-ghost" onClick={onClose} disabled={isGenerating}>
+            <button type="button" className="locaryn-btn-ghost" onClick={onClose} disabled={isGenerating}>
               Fermer
             </button>
           )}
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             onClick={handleGenerate}
             disabled={!prompt.trim() || jobRunning || !hasModels || (mode === "i2v" && !inputImage)}
           >

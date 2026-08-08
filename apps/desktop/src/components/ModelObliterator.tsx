@@ -77,9 +77,9 @@ export function ModelObliterator({
   }
 
   return (
-    <div className="lochor-settings-backdrop" onClick={onClose}>
+    <div className="locaryn-settings-backdrop" onClick={onClose}>
       <div
-        className="lochor-card"
+        className="locaryn-card"
         style={{
           width: "680px",
           maxHeight: "88vh",
@@ -99,7 +99,7 @@ export function ModelObliterator({
               Neutralisez les filtres de refus de n'importe quel modèle local via représentation vectorielle (Open Source Script).
             </span>
           </div>
-          <button type="button" className="lochor-icon-btn" onClick={onClose}>
+          <button type="button" className="locaryn-icon-btn" onClick={onClose}>
             ✕
           </button>
         </div>
@@ -120,7 +120,7 @@ export function ModelObliterator({
           <br />
           Le script d'oblitération modifie directement les tenseurs d'activation du modèle pour supprimer le blocage des réponses. Cet outil est destiné **exclusivement à la recherche en cybersécurité, aux tests d'intrusion (pentesting encadré) et à l'audit de robustesse des LLM**.
           <div style={{ marginTop: "8px" }}>
-            <label className="lochor-checkbox-row">
+            <label className="locaryn-checkbox-row">
               <input
                 type="checkbox"
                 checked={disclaimerAccepted}
@@ -134,10 +134,10 @@ export function ModelObliterator({
         </div>
 
         {/* Model Selection */}
-        <div className="lochor-field" style={{ marginBottom: "16px" }}>
-          <label className="lochor-field-label">Modèle Source à Oblitérer</label>
+        <div className="locaryn-field" style={{ marginBottom: "16px" }}>
+          <label className="locaryn-field-label">Modèle Source à Oblitérer</label>
           <select
-            className="lochor-select"
+            className="locaryn-select"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             disabled={isProcessing}
@@ -152,10 +152,10 @@ export function ModelObliterator({
 
         {/* Parameters Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
-          <div className="lochor-field">
-            <label className="lochor-field-label">Méthode d'Ablation Vectorielle</label>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label">Méthode d'Ablation Vectorielle</label>
             <select
-              className="lochor-select"
+              className="locaryn-select"
               value={ablationMethod}
               onChange={(e) => setAblationMethod(e.target.value as any)}
               disabled={isProcessing}
@@ -166,10 +166,10 @@ export function ModelObliterator({
             </select>
           </div>
 
-          <div className="lochor-field">
-            <label className="lochor-field-label">Couches Cibles (Layer Range)</label>
+          <div className="locaryn-field">
+            <label className="locaryn-field-label">Couches Cibles (Layer Range)</label>
             <input
-              className="lochor-input"
+              className="locaryn-input"
               value={targetLayers}
               onChange={(e) => setTargetLayers(e.target.value)}
               placeholder="10-28"
@@ -178,7 +178,7 @@ export function ModelObliterator({
           </div>
         </div>
 
-        <div className="lochor-field" style={{ marginBottom: "20px" }}>
+        <div className="locaryn-field" style={{ marginBottom: "20px" }}>
           <div className="lmc-field-head">
             <label className="lmc-label">Intensité d'Ablation (Alpha : {intensity})</label>
             <span className="lmc-value">{intensity}</span>
@@ -209,14 +209,14 @@ export function ModelObliterator({
         )}
 
         {/* Output Logs */}
-        <div className="lochor-field">
-          <label className="lochor-field-label">Console du Script d'Oblitération</label>
-          <div className="lochor-training-logs" style={{ height: "160px" }}>
+        <div className="locaryn-field">
+          <label className="locaryn-field-label">Console du Script d'Oblitération</label>
+          <div className="locaryn-training-logs" style={{ height: "160px" }}>
             {logs.length === 0 ? (
-              <span className="lochor-text-faint">Sélectionnez un modèle et cliquez sur "Lancer l'Oblitération".</span>
+              <span className="locaryn-text-faint">Sélectionnez un modèle et cliquez sur "Lancer l'Oblitération".</span>
             ) : (
               logs.map((l, i) => (
-                <div key={i} className="lochor-log-line" style={{ color: l.includes("✅") ? "var(--accent)" : "var(--text)" }}>
+                <div key={i} className="locaryn-log-line" style={{ color: l.includes("✅") ? "var(--accent)" : "var(--text)" }}>
                   {l}
                 </div>
               ))
@@ -224,13 +224,13 @@ export function ModelObliterator({
           </div>
         </div>
 
-        <div className="lochor-field-actions" style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-          <button type="button" className="lochor-btn-ghost" onClick={onClose} disabled={isProcessing}>
+        <div className="locaryn-field-actions" style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+          <button type="button" className="locaryn-btn-ghost" onClick={onClose} disabled={isProcessing}>
             Fermer
           </button>
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             style={{ background: disclaimerAccepted ? "var(--danger)" : "var(--border)", color: "#fff" }}
             disabled={!disclaimerAccepted || isProcessing}
             onClick={startObliteration}

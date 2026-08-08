@@ -356,7 +356,7 @@ pub async fn edit_region(
         format!("edit_{stamp}.png")
     });
 
-    let scratch = lochor_config::ensure_temp_dir();
+    let scratch = locaryn_config::ensure_temp_dir();
     let mask_file = scratch.join(format!("mask_{stamp}.png"));
 
     // The webview cannot hand over a disk path, so an attached image arrives
@@ -402,7 +402,7 @@ pub async fn edit_region(
         .await?;
 
         let model = args.model.as_deref().unwrap_or_default();
-        let models_dir = lochor_config::models_dir();
+        let models_dir = locaryn_config::models_dir();
         let model_path = models_dir.join(model);
         if model.is_empty() || !model_path.exists() {
             return Err("Choisissez un modèle d'image installé pour un remplacement.".into());
@@ -614,7 +614,7 @@ mod tests {
     #[test]
     fn png_and_jpeg_dimensions_are_read_from_the_header() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_dims_{}",
+            "locaryn_dims_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

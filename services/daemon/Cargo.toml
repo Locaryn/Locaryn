@@ -1,30 +1,30 @@
 [package]
-name = "lochor-daemon"
+name = "locaryn-daemon"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Lochor local daemon — loopback HTTP/SSE API, sessions, projects, extensions."
+description = "Locaryn local daemon — loopback HTTP/SSE API, sessions, projects, extensions."
 
 [[bin]]
-name = "lochor-daemon"
+name = "locaryn-daemon"
 path = "src/main.rs"
 
 [dependencies]
-lochor-shared-types = { workspace = true }
-lochor-sdk = { workspace = true }
-lochor-config = { workspace = true }
-lochor-storage = { workspace = true }
-lochor-events = { workspace = true }
-lochor-agent-runtime = { workspace = true }
-lochor-provider-supervisor = { workspace = true }
-lochor-extensions = { workspace = true }
-lochor-mcp = { workspace = true }
-lochor-travel = { workspace = true }
-lochor-preview = { workspace = true }
-lochor-auth = { workspace = true }
-lochor-rules-runtime = { workspace = true }
+locaryn-shared-types = { workspace = true }
+locaryn-sdk = { workspace = true }
+locaryn-config = { workspace = true }
+locaryn-storage = { workspace = true }
+locaryn-events = { workspace = true }
+locaryn-agent-runtime = { workspace = true }
+locaryn-provider-supervisor = { workspace = true }
+locaryn-extensions = { workspace = true }
+locaryn-mcp = { workspace = true }
+locaryn-travel = { workspace = true }
+locaryn-preview = { workspace = true }
+locaryn-auth = { workspace = true }
+locaryn-rules-runtime = { workspace = true }
 axum = { workspace = true }
 axum-server = { workspace = true }
 rcgen = { workspace = true }

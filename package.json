@@ -1,5 +1,5 @@
 {
-  "name": "lochor",
+  "name": "locaryn",
   "version": "0.1.0",
   "private": true,
   "description": "Open-core agentic coding platform — desktop + CLI + secured remote server, sharing one Rust core.",
@@ -13,8 +13,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "tauri:dev": "pnpm --filter @lochor/desktop tauri dev",
-    "tauri:build": "pnpm --filter @lochor/desktop tauri build",
+    "tauri:dev": "pnpm --filter @locaryn/desktop tauri dev",
+    "tauri:build": "pnpm --filter @locaryn/desktop tauri build",
     "cargo:check": "cargo check --workspace",
     "cargo:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
     "cargo:test": "cargo test --workspace",

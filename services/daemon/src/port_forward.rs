@@ -102,7 +102,7 @@ pub async fn open(port: u16, client_certs_required: bool) -> Result<Mapping, For
             port,
             SocketAddr::V4(SocketAddrV4::new(local, port)),
             LEASE_SECONDS,
-            "Lochor",
+            "Locaryn",
         )
         .await
         .map_err(|e| ForwardError::Rejected(e.to_string()))?;
@@ -151,7 +151,7 @@ pub fn spawn_renewal(port: u16) -> tokio::task::JoinHandle<()> {
                     port,
                     SocketAddr::V4(SocketAddrV4::new(local, port)),
                     LEASE_SECONDS,
-                    "Lochor",
+                    "Locaryn",
                 )
                 .await
             {

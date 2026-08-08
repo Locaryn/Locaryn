@@ -1,5 +1,5 @@
 {
-  "name": "@lochor/desktop",
+  "name": "@locaryn/desktop",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,10 +11,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@lochor/ui-chat": "workspace:*",
-    "@lochor/ui-core": "workspace:*",
-    "@lochor/ui-preview": "workspace:*",
-    "@lochor/ui-terminal": "workspace:*",
+    "@locaryn/ui-chat": "workspace:*",
+    "@locaryn/ui-core": "workspace:*",
+    "@locaryn/ui-preview": "workspace:*",
+    "@locaryn/ui-terminal": "workspace:*",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-shell": "^2.0.1",

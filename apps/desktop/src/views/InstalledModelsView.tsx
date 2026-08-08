@@ -121,20 +121,20 @@ export function InstalledModelsView({
   }
 
   return (
-    <div className="lochor-view-container">
+    <div className="locaryn-view-container">
       {/* ── View Header ── */}
-      <div className="lochor-view-header">
+      <div className="locaryn-view-header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <h2>💾 Mes Modèles Installés ({dedupedModels.length})</h2>
-            <p className="lochor-view-desc">
+            <p className="locaryn-view-desc">
               Gérez vos modèles d'IA stockés localement sur votre disque. Ouvrez leur emplacement ou sélectionnez-les directement pour vos chats et générations.
             </p>
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{ fontSize: "12px", border: "1px solid var(--border-strong)" }}
               onClick={() => handleOpenFolder(modelsDir)}
             >
@@ -143,7 +143,7 @@ export function InstalledModelsView({
             {onOpenMarketplace && (
               <button
                 type="button"
-                className="lochor-btn-primary"
+                className="locaryn-btn-primary"
                 style={{ fontSize: "12px" }}
                 onClick={onOpenMarketplace}
               >
@@ -158,7 +158,7 @@ export function InstalledModelsView({
       <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px" }}>
         <input
           type="text"
-          className="lochor-input"
+          className="locaryn-input"
           style={{ flex: 1, fontSize: "13px" }}
           placeholder="Filtrer mes modèles installés (Gemma, Qwen, DeepSeek, SD...)"
           value={query}
@@ -168,21 +168,21 @@ export function InstalledModelsView({
         <div style={{ display: "flex", gap: "4px" }}>
           <button
             type="button"
-            className={`lochor-chip${filterType === "all" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${filterType === "all" ? " locaryn-chip-on" : ""}`}
             onClick={() => setFilterType("all")}
           >
             Tous ({dedupedModels.length})
           </button>
           <button
             type="button"
-            className={`lochor-chip${filterType === "text" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${filterType === "text" ? " locaryn-chip-on" : ""}`}
             onClick={() => setFilterType("text")}
           >
             💬 LLM Texte
           </button>
           <button
             type="button"
-            className={`lochor-chip${filterType === "image" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${filterType === "image" ? " locaryn-chip-on" : ""}`}
             onClick={() => setFilterType("image")}
           >
             🎨 Modèles Image
@@ -191,21 +191,21 @@ export function InstalledModelsView({
         <div style={{ display: "flex", gap: "4px" }}>
           <button
             type="button"
-            className={`lochor-chip${riskFilter === "safe" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${riskFilter === "safe" ? " locaryn-chip-on" : ""}`}
             onClick={() => setRiskFilter((prev) => (prev === "safe" ? "all" : "safe"))}
           >
             🛡️ Safe
           </button>
           <button
             type="button"
-            className={`lochor-chip${riskFilter === "uncensored" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${riskFilter === "uncensored" ? " locaryn-chip-on" : ""}`}
             onClick={() => setRiskFilter((prev) => (prev === "uncensored" ? "all" : "uncensored"))}
           >
             🔓 Sans limite
           </button>
           <button
             type="button"
-            className={`lochor-chip${riskFilter === "nsfw" ? " lochor-chip-on" : ""}`}
+            className={`locaryn-chip${riskFilter === "nsfw" ? " locaryn-chip-on" : ""}`}
             onClick={() => setRiskFilter((prev) => (prev === "nsfw" ? "all" : "nsfw"))}
           >
             🔞 NSFW
@@ -238,7 +238,7 @@ export function InstalledModelsView({
               : "Essayez de modifier votre terme de recherche ou de réinitialiser le filtre."}
           </p>
           {onOpenMarketplace && (
-            <button type="button" className="lochor-btn-primary" onClick={onOpenMarketplace}>
+            <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}>
               🛒 Télécharger un modèle depuis le Marketplace
             </button>
           )}
@@ -256,7 +256,7 @@ export function InstalledModelsView({
         {filtered.map((m) => (
           <div
             key={m.rawTag}
-            className="lochor-box-card"
+            className="locaryn-box-card"
             style={{
               padding: "16px",
               display: "flex",
@@ -269,20 +269,20 @@ export function InstalledModelsView({
           >
             {/* Title & Engine tag */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-              <div style={{ minWidth: 0, flex: 1 }}>                <span className="lochor-box-brand" style={{ fontSize: "10px" }}>
+              <div style={{ minWidth: 0, flex: 1 }}>                <span className="locaryn-box-brand" style={{ fontSize: "10px" }}>
                     {m.isImage ? "🎨 IMAGE MODEL" : "💬 TEXT LLM"} · {m.engine}
                   </span>
                   {(() => {
                     const c = classifyModel(m.rawTag);
                     if (c.risk === "safe") return null;
                     return (
-                      <span className="lochor-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)", fontSize: "10px", marginLeft: "6px" }} title={nsfwReason(m.rawTag) ?? c.label}>
+                      <span className="locaryn-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)", fontSize: "10px", marginLeft: "6px" }} title={nsfwReason(m.rawTag) ?? c.label}>
                         {c.icon} {c.label}
                       </span>
                     );
                   })()}
                 <h3
-                  className="lochor-box-name"
+                  className="locaryn-box-name"
                   style={{
                     fontSize: "14px",
                     fontWeight: 700,
@@ -294,7 +294,7 @@ export function InstalledModelsView({
                 </h3>
               </div>
               <span
-                className="lochor-tag lochor-tag-installed"
+                className="locaryn-tag locaryn-tag-installed"
                 style={{ fontSize: "10px", padding: "2px 6px" }}
               >
                 Stocké localement ✓
@@ -322,7 +322,7 @@ export function InstalledModelsView({
               {m.isImage ? (
                 <button
                   type="button"
-                  className="lochor-btn-primary"
+                  className="locaryn-btn-primary"
                   style={{ flex: 1, fontSize: "12px", whiteSpace: "nowrap" }}
                   onClick={() => onOpenImageGen?.()}
                 >
@@ -331,7 +331,7 @@ export function InstalledModelsView({
               ) : (
                 <button
                   type="button"
-                  className="lochor-btn-primary"
+                  className="locaryn-btn-primary"
                   style={{ flex: 1, fontSize: "12px", whiteSpace: "nowrap" }}
                   disabled={activatingModel === m.rawTag}
                   onClick={() => handleUseForChat(m.rawTag)}
@@ -342,7 +342,7 @@ export function InstalledModelsView({
 
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 style={{ fontSize: "12px", padding: "4px 8px" }}
                 onClick={() => handleOpenFolder(m.fullPath)}
                 title="Ouvrir l'emplacement de ce fichier sur le disque"
@@ -353,7 +353,7 @@ export function InstalledModelsView({
               {onDeleteModel && (
                 <button
                   type="button"
-                  className="lochor-btn-ghost"
+                  className="locaryn-btn-ghost"
                   style={{ color: "var(--danger)", fontSize: "12px", padding: "4px 8px" }}
                   onClick={() => onDeleteModel(m.rawTag)}
                   title="Supprimer ce modèle pour libérer de l'espace disque"

@@ -15,10 +15,10 @@ export function RunPanel() {
 
   if (!run) {
     return (
-      <aside className="lochor-right">
-        <div className="lochor-run-empty">
-          <div className="lochor-run-empty-title">Rien à afficher</div>
-          <div className="lochor-run-empty-sub">
+      <aside className="locaryn-right">
+        <div className="locaryn-run-empty">
+          <div className="locaryn-run-empty-title">Rien à afficher</div>
+          <div className="locaryn-run-empty-sub">
             Exécutez un bloc de code depuis une réponse : la sortie du terminal ou
             la page rendue s'affichera ici.
           </div>
@@ -28,24 +28,24 @@ export function RunPanel() {
   }
 
   return (
-    <aside className="lochor-right">
-      <div className="lochor-run-head">
-        <span className="lochor-run-title">
+    <aside className="locaryn-right">
+      <div className="locaryn-run-head">
+        <span className="locaryn-run-title">
           {run.kind === "terminal" ? `Terminal · ${run.lang}` : run.title}
         </span>
         {run.kind === "terminal" && run.running && (
-          <span className="lochor-run-badge">en cours…</span>
+          <span className="locaryn-run-badge">en cours…</span>
         )}
         {run.kind === "terminal" && !run.running && (
           <span
-            className={`lochor-run-badge${run.exitCode ? " lochor-run-badge-bad" : ""}`}
+            className={`locaryn-run-badge${run.exitCode ? " locaryn-run-badge-bad" : ""}`}
           >
             {run.exitCode ? `code ${run.exitCode}` : "terminé"}
           </span>
         )}
         <button
           type="button"
-          className="lochor-icon-btn"
+          className="locaryn-icon-btn"
           onClick={clearRun}
           aria-label="Fermer"
           title="Fermer"
@@ -72,17 +72,17 @@ function TerminalView({ run }: { run: Extract<RunView, { kind: "terminal" }> }) 
   }, [run.lines]);
 
   return (
-    <div className="lochor-run-term" ref={ref}>
-      <div className="lochor-run-cwd">{run.cwd}</div>
-      <div className="lochor-run-cmd">$ {run.command}</div>
+    <div className="locaryn-run-term" ref={ref}>
+      <div className="locaryn-run-cwd">{run.cwd}</div>
+      <div className="locaryn-run-cmd">$ {run.command}</div>
       {run.lines.map((l, i) => (
-        <div className="lochor-run-line" key={i}>
+        <div className="locaryn-run-line" key={i}>
           {l}
         </div>
       ))}
-      {run.running && <div className="lochor-run-cursor" />}
+      {run.running && <div className="locaryn-run-cursor" />}
       {!run.running && run.lines.length === 0 && (
-        <div className="lochor-run-line lochor-run-dim">(aucune sortie)</div>
+        <div className="locaryn-run-line locaryn-run-dim">(aucune sortie)</div>
       )}
     </div>
   );
@@ -94,7 +94,7 @@ function WebView({ html }: { html: string }) {
   // so a demo page actually behaves like one, but they run walled off.
   return (
     <iframe
-      className="lochor-run-web"
+      className="locaryn-run-web"
       title="Aperçu"
       sandbox="allow-scripts"
       srcDoc={html}

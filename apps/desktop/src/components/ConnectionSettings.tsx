@@ -45,29 +45,29 @@ export function ConnectionSettings() {
   }
 
   return (
-    <div className="lochor-field" style={{ marginTop: 28 }}>
-      <label className="lochor-field-label">Se connecter à un serveur</label>
-      <p className="lochor-field-hint">
+    <div className="locaryn-field" style={{ marginTop: 28 }}>
+      <label className="locaryn-field-label">Se connecter à un serveur</label>
+      <p className="locaryn-field-hint">
         Quand les modèles tournent sur une autre machine. La connexion est établie
         au démarrage ; ce qui suit permet de la changer.
       </p>
 
       {session ? (
         <>
-          <div className="lochor-kv-list" style={{ marginTop: 12 }}>
-            <div className="lochor-kv">
-              <span className="lochor-kv-key">Serveur</span>
-              <span className="lochor-kv-val lochor-kv-mono">{session.server_url}</span>
+          <div className="locaryn-kv-list" style={{ marginTop: 12 }}>
+            <div className="locaryn-kv">
+              <span className="locaryn-kv-key">Serveur</span>
+              <span className="locaryn-kv-val locaryn-kv-mono">{session.server_url}</span>
             </div>
-            <div className="lochor-kv">
-              <span className="lochor-kv-key">Compte</span>
-              <span className="lochor-kv-val lochor-kv-mono">{session.username}</span>
+            <div className="locaryn-kv">
+              <span className="locaryn-kv-key">Compte</span>
+              <span className="locaryn-kv-val locaryn-kv-mono">{session.username}</span>
             </div>
           </div>
-          <div className="lochor-field-actions" style={{ marginTop: 10 }}>
+          <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
@@ -83,26 +83,26 @@ export function ConnectionSettings() {
           </div>
         </>
       ) : (
-        <p className="lochor-field-hint" style={{ marginTop: 10 }}>
+        <p className="locaryn-field-hint" style={{ marginTop: 10 }}>
           Aucune session. Cette installation utilise les modèles de cet ordinateur.
         </p>
       )}
 
-      <label className="lochor-field-label" style={{ marginTop: 20 }}>
+      <label className="locaryn-field-label" style={{ marginTop: 20 }}>
         Certificat de connexion
       </label>
-      <p className="lochor-field-hint">
+      <p className="locaryn-field-hint">
         Certains serveurs n'acceptent que les postes qu'ils ont eux-mêmes autorisés.
         Le fichier « .pem » transmis par votre administrateur s'installe ici.
       </p>
-      <div className="lochor-connect-cert" style={{ marginTop: 10 }}>
+      <div className="locaryn-connect-cert" style={{ marginTop: 10 }}>
         {cert?.installed ? (
           <>
-            <span className="lochor-connect-cert-ok">✓</span>
+            <span className="locaryn-connect-cert-ok">✓</span>
             <span>Installé{cert.issued_to ? ` — ${cert.issued_to}` : ""}</span>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               disabled={busy}
               onClick={async () => setCert(await core.removeClientCertificate())}
             >
@@ -112,19 +112,19 @@ export function ConnectionSettings() {
         ) : (
           <>
             <span>Aucun certificat</span>
-            <button type="button" className="lochor-btn-ghost" disabled={busy} onClick={install}>
+            <button type="button" className="locaryn-btn-ghost" disabled={busy} onClick={install}>
               Installer…
             </button>
           </>
         )}
       </div>
       {cert?.installed && cert.path && (
-        <p className="lochor-connect-hint" style={{ marginTop: 8 }}>
+        <p className="locaryn-connect-hint" style={{ marginTop: 8 }}>
           {cert.path}
         </p>
       )}
 
-      {error && <div className="lochor-vp-error">{error}</div>}
+      {error && <div className="locaryn-vp-error">{error}</div>}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-# 10 — Roadmap Lochor
+# 10 — Roadmap Locaryn
 
 > Document maître de planification. Couvre l'intégralité du prompt produit original.
 > Dernière mise à jour : session de bootstrap + intégration Liquid Glass + thème dynamique.
@@ -23,11 +23,11 @@ Le monorepo est bootstrappé et compile vert (`cargo check`, `cargo clippy -D wa
 | `events` | **Fonctionnel** | `StreamEvent` (Token, ToolCall, ToolResult, Artifact, PreviewUpdate, ProviderChanged, MessageEnd, Error, TaskUpdate), encodage/décodage SSE, `sse_stream()`. | Rien (utilisable tel quel). |
 | `storage` | **Squelette** | `Database` struct, `open()` + `open_memory()` + `sqlx::migrate!`, 6 repos (Project, Session, Message, Task, Artifact, Provider) avec interfaces typées. | **Toutes les requêtes SQL réelles** (les repos retournent des stubs vides/hardcodés). |
 | `auth` | **Réel** | Argon2id salé, jetons issus du CSPRNG système, vérification en temps constant, trait `Keychain` + `SystemKeychain`. Autorité mTLS et émission de certificats dans `config::mtls`. | Rotation automatique des jetons, keychain OS pour le stockage client. |
-| `sdk` | **Fonctionnel** | `LochorClient` HTTP/SSE complet : health, info, projects CRUD, sessions CRUD, messages (send_message → stream), tasks (cancel, approve), providers (list, switch, start_local), `resolve_auto()` fallback remote→local. | Gestion retry, timeout configurable, reconnect SSE. |
+| `sdk` | **Fonctionnel** | `LocarynClient` HTTP/SSE complet : health, info, projects CRUD, sessions CRUD, messages (send_message → stream), tasks (cancel, approve), providers (list, switch, start_local), `resolve_auto()` fallback remote→local. | Gestion retry, timeout configurable, reconnect SSE. |
 | `preview` | **Partiel** | `PreviewRequest`, `PreviewRender`, `PreviewOrigin` (Tauri/Daemon), `wrap_html()` (CSP strict/network), `resolve_render()`, `artifact_to_request()`. | `render_markdown()` réel (marked + sanitize), export Python → PNG/HTML, serving depuis le daemon. |
 | `extensions` | **Partiel** | `PluginManifest` + validation, `Components` (hooks/skills/commands/slashCommands/agents/mcpServers/rules/lsp), `PermissionRequest` (reason/scope/requireApproval), `Registry` (install_from_dir, reload, list, import_claude_code, import_cursor), `ExtensionScope` (Global/User/Workspace). | **DB-backed registry** (in-memory), **hot-reload via fs watcher**, résolution dépendances, sandbox d'exécution, marketplace local. |
 | `mcp` | **Squelette** | `McpConfig` (`.mcp.json` parsing), `McpServerEntry` (transport stdio/http), `Transport` enum, `McpClient` trait, `StubClient`, `build_client()`, `config_path()` par scope. | **Client MCP réel via `rmcp`**, spawn subprocess stdio, HTTP stateless, tool discovery, tool invocation. |
-| `plugin-sdk` | **Partiel** | `PluginBuilder` (fluent API), `ToolDecl`, `LochorPlugin` trait (async_trait), `PluginError`, re-exports manifest types. | **WASM sandbox** (wasmtime), proc macro `#[lochor_plugin]`, runtime d'exécution. |
+| `plugin-sdk` | **Partiel** | `PluginBuilder` (fluent API), `ToolDecl`, `LocarynPlugin` trait (async_trait), `PluginError`, re-exports manifest types. | **WASM sandbox** (wasmtime), proc macro `#[locaryn_plugin]`, runtime d'exécution. |
 | `command-runtime` | **Squelette** | `CommandDef` (name/description/prompt), `CommandRegistry` (register/list/resolve), parsing frontmatter TOML. | Exécution réelle (dispatch vers agent avec prompt injecté), variables de template, chaînes de commandes. |
 | `hook-runtime` | **Partiel** | `HookEvent` (9 events Claude-Code-compatibles), `HooksFile` parsing (PascalCase + snake_case), `MatcherEntry`, `HookAction`, `run_hook()` (spawn cmd/bash avec timeout), `hook_env()`. | Exécution async réelle, parallel hooks, hook chain ordering, veto/block logic, stdout parsing pour décisions. |
 | `skill-runtime` | **Partiel** | `SkillBundle` (frontmatter name/description/version/auto_trigger/allowed_tools), `SkillRegistry` (register/list/auto_trigger_candidates), parsing TOML frontmatter. | Matching sémantique (embeddings), priorité de skills conflictuels, injection contextuelle. |
@@ -79,11 +79,11 @@ Travaux réalisés en dehors du découpage S1–S10, documentés dans
 | Sujet | État | Note |
 | --- | --- | --- |
 | Authentification réelle | OK | Argon2id + CSPRNG. Les primitives précédentes étaient des factices étiquetés `argon2id$placeholder$` |
-| Comptes et jetons | OK | `lochor users`, révocation immédiate, pas d'énumération possible |
+| Comptes et jetons | OK | `locaryn users`, révocation immédiate, pas d'énumération possible |
 | TLS du daemon | OK | Certificat fourni ou auto-signé généré une fois ; empreinte SHA-256 affichée au démarrage |
 | Sécurité liée à l'adresse d'écoute | OK | Exposé ⇒ authentification **et** TLS obligatoires ; refuse de démarrer sans compte |
-| Déploiement pré-configuré | OK | `lochor provision` produit `lochor-connect.json` |
-| CLI en deux modes | OK | `lochor` = agent avec outils ; `lochor chat` = conversation seule |
+| Déploiement pré-configuré | OK | `locaryn provision` produit `locaryn-connect.json` |
+| CLI en deux modes | OK | `locaryn` = agent avec outils ; `locaryn chat` = conversation seule |
 | Raisonnement replié | OK | Desktop et CLI ; découpage partagé dans `agent-runtime` |
 | Chaîne de publication | OK | `.msi`, `.deb`, portables, `.apk` — release en brouillon |
 | Mode serveur dans l'interface | OK | Paramètres → Partage réseau ; l'app supervise le daemon plutôt que de servir elle-même |
@@ -111,21 +111,21 @@ touchaient des chemins critiques :
 
 ### Objectif
 
-Un utilisateur solo peut installer Lochor, ouvrir un projet, chatter avec un agent (via Ollama local), lire/éditer des fichiers, exécuter des commandes (avec approval), générer et prévisualiser un artefact HTML, et reprendre la même session en CLI.
+Un utilisateur solo peut installer Locaryn, ouvrir un projet, chatter avec un agent (via Ollama local), lire/éditer des fichiers, exécuter des commandes (avec approval), générer et prévisualiser un artefact HTML, et reprendre la même session en CLI.
 
 ### Work breakdown par semaine
 
 | Semaine | Livrables | Crates touchés | Critères d'acceptation |
 |---------|-----------|----------------|----------------------|
 | **S1** ✅ | Monorepo bootstrappé, tous crates compilent, CI gate vert, Liquid Glass + thème dynamique | Tous | `cargo check` + `clippy -D warnings` + `cargo test` + `tsc --noEmit` verts. |
-| **S2** ✅ | Storage réel : implémenter les 6 repos avec vraies requêtes SQL (INSERT/SELECT/UPDATE). Wiring daemon → storage. | `storage`, `daemon` | `lochor projects add` crée une vraie ligne en DB. `lochor sessions list` retourne les vraies sessions. |
-| **S3** ✅ | Provider Ollama réel : implémenter `OllamaAgent` qui appelle `http://localhost:11434/api/chat` avec streaming. Brancher `StubAgent` → `OllamaAgent` dans le daemon. Streaming tokens SSE daemon → CLI. | `agent-runtime`, `events`, `daemon`, `cli` | `lochor chat` produit des tokens réels via Ollama local. Premier token < 1s. |
-| **S4** ✅ | Boucle tool-use + approval : implémenter la boucle agent avec dispatch des tools (`read_file`, `write_file`, `run_command`, `search`, `list_dir`). Approval gating (run_command et write_file demandent consentement). Provider-supervisor réel : spawn `ollama serve` via tokio::process, healthcheck loop, auto-start. | `agent-runtime`, `provider-supervisor`, `daemon` | Tool approval fonctionne (run_command demande approval). `lochor provider start ollama` lance Ollama. Auto-start si Ollama absent. |
+| **S2** ✅ | Storage réel : implémenter les 6 repos avec vraies requêtes SQL (INSERT/SELECT/UPDATE). Wiring daemon → storage. | `storage`, `daemon` | `locaryn projects add` crée une vraie ligne en DB. `locaryn sessions list` retourne les vraies sessions. |
+| **S3** ✅ | Provider Ollama réel : implémenter `OllamaAgent` qui appelle `http://localhost:11434/api/chat` avec streaming. Brancher `StubAgent` → `OllamaAgent` dans le daemon. Streaming tokens SSE daemon → CLI. | `agent-runtime`, `events`, `daemon`, `cli` | `locaryn chat` produit des tokens réels via Ollama local. Premier token < 1s. |
+| **S4** ✅ | Boucle tool-use + approval : implémenter la boucle agent avec dispatch des tools (`read_file`, `write_file`, `run_command`, `search`, `list_dir`). Approval gating (run_command et write_file demandent consentement). Provider-supervisor réel : spawn `ollama serve` via tokio::process, healthcheck loop, auto-start. | `agent-runtime`, `provider-supervisor`, `daemon` | Tool approval fonctionne (run_command demande approval). `locaryn provider start ollama` lance Ollama. Auto-start si Ollama absent. |
 | **S5** ✅ | Desktop agent wiring : cœur in-process (même SQLite que daemon/CLI), Tauri commands `bootstrap`/`send_message`/CRUD projets-sessions-messages, streaming via `tauri::ipc::Channel`, ChatPanel réel (tokens + tool cards + historique), LeftPanel réel (projets/sessions), terminal line-based via `run_terminal` (PTY xterm.js reporté en V1). | `desktop` (Tauri + React), `agent-runtime` | Desktop chat produit des tokens réels. Terminal exécute des commandes. Desktop et CLI partagent la même session SQLite (test : créer session en CLI, la voir dans le desktop). |
-| **S6** | Preview panel réel : iframe sandboxed + CSP, `event: artifact` → render HTML/markdown. `lochor-preview` `render_markdown()` réel (marked + sanitize). Monaco mini pour code blocks. File serving depuis le daemon (`/preview/:id`). | `preview`, `desktop`, `daemon` | Preview d'un artefact HTML sandboxed fonctionne. Markdown rendu correctement. Code blocks éditables dans Monaco. |
-| **S7** | Extensions + MCP + plugin-sdk : install plugin via `plugin.json`, registry DB-backed, permissions prompt, `.lochor/mcp.json` loading, 1 MCP server stdio de démo. Hot-reload via fs watcher. | `extensions`, `mcp`, `plugin-sdk`, `daemon` | 1 plugin installable via `lochor plugin install ./examples/plugins/my-plugin`. 1 MCP server stdio chargeable via `.lochor/mcp.json`. Hot-reload détecte un changement de `plugin.json`. |
+| **S6** | Preview panel réel : iframe sandboxed + CSP, `event: artifact` → render HTML/markdown. `locaryn-preview` `render_markdown()` réel (marked + sanitize). Monaco mini pour code blocks. File serving depuis le daemon (`/preview/:id`). | `preview`, `desktop`, `daemon` | Preview d'un artefact HTML sandboxed fonctionne. Markdown rendu correctement. Code blocks éditables dans Monaco. |
+| **S7** | Extensions + MCP + plugin-sdk : install plugin via `plugin.json`, registry DB-backed, permissions prompt, `.locaryn/mcp.json` loading, 1 MCP server stdio de démo. Hot-reload via fs watcher. | `extensions`, `mcp`, `plugin-sdk`, `daemon` | 1 plugin installable via `locaryn plugin install ./examples/plugins/my-plugin`. 1 MCP server stdio chargeable via `.locaryn/mcp.json`. Hot-reload détecte un changement de `plugin.json`. |
 | **S8** | Commands + skills + hooks : slash commands exécution réelle (dispatch vers agent avec prompt injecté), skills auto-trigger (matching par mots-clés), hooks (PreToolUse/PostToolUse/Stop) exécution async avec timeout. | `command-runtime`, `skill-runtime`, `hook-runtime`, `agent-runtime` | `/refactor` slash command s'exécute. Skill auto-trigger suggère un skill quand l'utilisateur demande une migration DB. Hook PreToolUse bloque un run_command non approuvé. |
-| **S9** | Rules + subagents + import : `LOCHOR.md` + rules agrégées dans system prompt (hot-reload), agent profiles + subagents (spawn agent spécialisé), `lochor import claude-code` et `lochor import cursor` (conversion réelle des bundles). | `rules-runtime`, `agent-runtime`, `extensions` | Rules `LOCHOR.md` apparaissent dans le system prompt. Subagent spécialisé s'exécute pour une tâche de refactor. `lochor import claude-code ./examples` importe un bundle (plugin.json + hooks + skills convertis). |
+| **S9** | Rules + subagents + import : `LOCARYN.md` + rules agrégées dans system prompt (hot-reload), agent profiles + subagents (spawn agent spécialisé), `locaryn import claude-code` et `locaryn import cursor` (conversion réelle des bundles). | `rules-runtime`, `agent-runtime`, `extensions` | Rules `LOCARYN.md` apparaissent dans le system prompt. Subagent spécialisé s'exécute pour une tâche de refactor. `locaryn import claude-code ./examples` importe un bundle (plugin.json + hooks + skills convertis). |
 | **Buffer** | Polish, tests unitaires + intégration, packaging (MSI/DMG/AppImage), CI build matrix, release `v0.1.0`. | Tous | Tests verts. Packaging génère des binaires pour Win11 x64, macOS arm64, Linux x64. |
 
 ### Définition of Done MVP
@@ -133,14 +133,14 @@ Un utilisateur solo peut installer Lochor, ouvrir un projet, chatter avec un age
 - [ ] `cargo check --workspace` + `cargo clippy -D warnings` + `cargo test` verts.
 - [ ] `pnpm typecheck` + `pnpm lint` verts.
 - [ ] Desktop launch sur Win11 x64, macOS arm64, Linux x64.
-- [ ] CLI `lochor chat` produit des tokens via Ollama local.
+- [ ] CLI `locaryn chat` produit des tokens via Ollama local.
 - [ ] Desktop et CLI partagent la même session (test : créer session en CLI, la voir dans le desktop).
 - [ ] Tool approval fonctionne (run_command demande approval).
 - [ ] Preview d'un artefact HTML sandboxed fonctionne.
-- [ ] 1 plugin installable via `lochor plugin install ./examples/plugins/my-plugin`.
-- [ ] 1 MCP server stdio chargeable via `.lochor/mcp.json`.
+- [ ] 1 plugin installable via `locaryn plugin install ./examples/plugins/my-plugin`.
+- [ ] 1 MCP server stdio chargeable via `.locaryn/mcp.json`.
 - [ ] `/refactor` slash command s'exécute.
-- [ ] `lochor import claude-code ./examples` importe un bundle.
+- [ ] `locaryn import claude-code ./examples` importe un bundle.
 - [ ] Settings panel : accent color, glass blur, mesh toggle fonctionnent et persistent.
 
 ---
@@ -179,7 +179,7 @@ Un utilisateur solo peut installer Lochor, ouvrir un projet, chatter avec un age
 | rust-analyzer | Client LSP over stdio, exposé comme tools agent (go-to-def, diagnostics, hover, rename). | `lsp-adapters`, `agent-runtime` |
 | typescript-language-server | Idem pour TypeScript/JavaScript. | `lsp-adapters` |
 | python-lsp-server | Idem pour Python (pylsp). | `lsp-adapters` |
-| Configuration | `.lochor/lsp.json` pour configurer les serveurs LSP par projet. | `lsp-adapters`, `config` |
+| Configuration | `.locaryn/lsp.json` pour configurer les serveurs LSP par projet. | `lsp-adapters`, `config` |
 
 ### 2.4 Packaging complet
 
@@ -208,8 +208,8 @@ CI release : tags → build matrix → GitHub Releases + SHA256 + cosign (signin
 | **mTLS** | Certificat client pour le remote-server. Support Tailscale/Headscale pour déploiements homelab/entreprise. | `auth`, `remote-server` |
 | **Rate limiting avancé** | Par utilisateur, par endpoint, par extension. Sliding window. | `remote-server` |
 | **IP allowlist** | Liste blanche d'IPs côté remote-server. | `remote-server` |
-| **WASM plugins** | `wasmtime` sandbox pour exécuter du code plugin natif en sécurité. Proc macro `#[lochor_plugin]`. | `plugin-sdk`, `extensions` |
-| **Marketplace local** | Index d'extensions installables depuis une URL ou un repo git. `lochor plugin install <url>`. | `extensions` |
+| **WASM plugins** | `wasmtime` sandbox pour exécuter du code plugin natif en sécurité. Proc macro `#[locaryn_plugin]`. | `plugin-sdk`, `extensions` |
+| **Marketplace local** | Index d'extensions installables depuis une URL ou un repo git. `locaryn plugin install <url>`. | `extensions` |
 | **Python viz** | Export graphiques Python → plotly HTML / matplotlib PNG dans le panel preview. | `preview` |
 | **Audit log UI** | Visualisation des audit logs dans le desktop (admin). Filtres par action, utilisateur, date. | `desktop`, `storage` |
 | **Token rotation** | Rotation automatique des tokens (30 jours), révocation, liste de tokens actifs. | `auth` |
@@ -223,7 +223,7 @@ CI release : tags → build matrix → GitHub Releases + SHA256 + cosign (signin
 | Item | Description | Crates |
 |------|-------------|--------|
 | **Enterprise module complet** | Contexte partagé pré-indexé pour gros projets (vector index + chunk store). Orchestration DGX Spark. RBAC complet. SSO OIDC/SAML. | `remote-server/enterprise` |
-| **PostgreSQL optionnel** | Abstraction `lochor-storage` pour supporter PostgreSQL en plus de SQLite (remote-server uniquement). | `storage` |
+| **PostgreSQL optionnel** | Abstraction `locaryn-storage` pour supporter PostgreSQL en plus de SQLite (remote-server uniquement). | `storage` |
 | **Marketplace distant** | Catalogue d'extensions signées (cosign), notation, reviews, install en un clic. | `extensions` |
 | **Realtime collaboration** | Partage de session live entre utilisateurs (CRDT ou OT). Presence cursors. | `events`, `remote-server` |
 | **Mobile** | Tauri v2 mobile — iOS/Android client léger (chat + preview, pas d'éditeur). | `apps/desktop` (mobile) |
@@ -239,7 +239,7 @@ La sécurité est une exigence transverse qui progresse à chaque phase.
 
 | Exigence | MVP | V1 | V1.1 | V2 |
 |----------|-----|----|----|-----|
-| **Sandbox preview** | iframe `sandbox="allow-scripts"` + CSP strict (fait dans `lochor-preview`) | Idem + CSP network variant | Idem | Idem |
+| **Sandbox preview** | iframe `sandbox="allow-scripts"` + CSP strict (fait dans `locaryn-preview`) | Idem + CSP network variant | Idem | Idem |
 | **Permissions explicites** | `PermissionRequest` (reason/scope/requireApproval) dans plugin manifest (fait) | UI de consentement dans desktop | Sandbox WASM | RBAC |
 | **Approval gating** | Tool approval (run_command, write_file demandent approval) | Idem + scopes (once/session/project/always) | Idem | Idem |
 | **Séparation workspace/runtime** | Workspace utilisateur vs runtime interne séparés | Idem | Idem | Idem |
@@ -264,7 +264,7 @@ La sécurité est une exigence transverse qui progresse à chaque phase.
 | **Hooks** | PreToolUse/PostToolUse/Stop exécution (S8) | Hook chain + veto logic | Idem | Idem |
 | **Skills** | Auto-trigger (S8) | Matching sémantique (embeddings) | Idem | Idem |
 | **Agents spécialisés** | Agent profiles + subagents (S8) | Subagents parallèles | Idem | Orchestration avancée |
-| **Workspace rules** | `LOCHOR.md` + rules agrégées (S8) | Hot-reload + conflit resolution | Idem | Idem |
+| **Workspace rules** | `LOCARYN.md` + rules agrégées (S8) | Hot-reload + conflit resolution | Idem | Idem |
 | **LSP adapters** | Squelette | rust-analyzer + tsserver + pylsp | Idem | Plus de langages |
 | **Scopes** | Global/User/Workspace (fait dans `ExtensionScope`) | + Organisation scope (RBAC) | + Session scope | Idem |
 | **Hot-reload** | fs watcher (S7) | Idem | Idem | Idem |
@@ -273,18 +273,18 @@ La sécurité est une exigence transverse qui progresse à chaque phase.
 
 ### Compatibilité avec écosystème Claude Code / Antigravity
 
-| Concept | Compatible MCP standard ? | Nécessite adaptateur ? | Spécifique Lochor ? |
+| Concept | Compatible MCP standard ? | Nécessite adaptateur ? | Spécifique Locaryn ? |
 |---------|--------------------------|----------------------|---------------------|
 | MCP servers (stdio) | **Oui** (direct) | Non | Non |
 | MCP servers (HTTP stateless) | **Oui** (direct, spec 2026-07-28) | Non | Non |
-| Hooks (PreToolUse etc.) | Non (concept Claude Code) | **Adaptateur** : `import_claude_code` convertit `hooks.json` → Lochor hooks | Lochor vocabulary (compatible) |
-| Skills (markdown bundles) | Non | **Adaptateur** : conversion frontmatter | Format Lochor (compatible) |
-| Slash commands | Non (concept Claude Code) | **Adaptateur** : conversion | Format Lochor (compatible) |
-| Agent profiles | Non | **Adaptateur** : conversion | Format Lochor (compatible) |
-| Workspace rules (CLAUDE.md) | Non | **Adaptateur** : `CLAUDE.md` → `LOCHOR.md` | Lochor (compatible) |
-| LSP adapters | Non (concept Lochor) | N/A | **Spécifique Lochor** |
-| Plugin manifest | Non (concept Lochor) | N/A | **Spécifique Lochor** (inspiré de Claude Code) |
-| Permissions model | Non (concept Lochor) | N/A | **Spécifique Lochor** |
+| Hooks (PreToolUse etc.) | Non (concept Claude Code) | **Adaptateur** : `import_claude_code` convertit `hooks.json` → Locaryn hooks | Locaryn vocabulary (compatible) |
+| Skills (markdown bundles) | Non | **Adaptateur** : conversion frontmatter | Format Locaryn (compatible) |
+| Slash commands | Non (concept Claude Code) | **Adaptateur** : conversion | Format Locaryn (compatible) |
+| Agent profiles | Non | **Adaptateur** : conversion | Format Locaryn (compatible) |
+| Workspace rules (CLAUDE.md) | Non | **Adaptateur** : `CLAUDE.md` → `LOCARYN.md` | Locaryn (compatible) |
+| LSP adapters | Non (concept Locaryn) | N/A | **Spécifique Locaryn** |
+| Plugin manifest | Non (concept Locaryn) | N/A | **Spécifique Locaryn** (inspiré de Claude Code) |
+| Permissions model | Non (concept Locaryn) | N/A | **Spécifique Locaryn** |
 
 ---
 
@@ -347,21 +347,21 @@ Les migrations sont déjà définies (`migrations/0001_init.sql` + `migrations/0
 | États loading/error/offline | Skeleton loaders, error toasts, offline banner | Idem + retry automatique |
 | Signalétique remote/local | Provider badge color + texte | Banner + indicateur de latence |
 | Extensions UI | N/A (MVP = CLI only) | Install/activate/désactivate, permissions prompt, MCP servers list |
-| Rules UI | N/A | Éditeur `LOCHOR.md`, preview du system prompt |
+| Rules UI | N/A | Éditeur `LOCARYN.md`, preview du system prompt |
 
 ### CLI
 
 | Commande | MVP | V1 |
 |----------|-----|-----|
-| `lochor status` | Mode, provider, daemon, projets | + extensions actives, MCP servers, health |
-| `lochor chat` | Streaming via daemon, slash commands | + subagents, skills auto-trigger |
-| `lochor projects add/list` | CRUD via daemon | + import, export |
-| `lochor sessions new/list` | Via daemon | + reprise, fork |
-| `lochor providers list/use/health/start` | Via daemon + supervisor | + remote providers |
-| `lochor plugins list/install/remove` | Registry | + marketplace, permissions |
-| `lochor mcp list/start/discover` | MCP registry | + tool discovery, tool call |
-| `lochor daemon start/stop/logs` | Process management | + config, TLS |
-| `lochor import claude-code/cursor` | Bundle import | + continue.dev, cline |
+| `locaryn status` | Mode, provider, daemon, projets | + extensions actives, MCP servers, health |
+| `locaryn chat` | Streaming via daemon, slash commands | + subagents, skills auto-trigger |
+| `locaryn projects add/list` | CRUD via daemon | + import, export |
+| `locaryn sessions new/list` | Via daemon | + reprise, fork |
+| `locaryn providers list/use/health/start` | Via daemon + supervisor | + remote providers |
+| `locaryn plugins list/install/remove` | Registry | + marketplace, permissions |
+| `locaryn mcp list/start/discover` | MCP registry | + tool discovery, tool call |
+| `locaryn daemon start/stop/logs` | Process management | + config, TLS |
+| `locaryn import claude-code/cursor` | Bundle import | + continue.dev, cline |
 
 ---
 
@@ -380,7 +380,7 @@ Les migrations sont déjà définies (`migrations/0001_init.sql` + `migrations/0
 
 | Risque | Impact | Probabilité | Mitigation |
 |--------|--------|------------|------------|
-| `rmcp` maturité insuffisante | MCP non fonctionnel | Moyenne | Wrapper d'abstraction dans `lochor-mcp` ; fallback client MCP HTTP stateless manuel ; tests d'intégration avec serveurs MCP de référence. |
+| `rmcp` maturité insuffisante | MCP non fonctionnel | Moyenne | Wrapper d'abstraction dans `locaryn-mcp` ; fallback client MCP HTTP stateless manuel ; tests d'intégration avec serveurs MCP de référence. |
 | Tauri webview différences pour preview | Preview cassé sur certaines plateformes | Moyenne | Standardiser artefacts HTML portables ; tests cross-webview CI ; fallback `about:blank` + injection JS. |
 | Sidecar provider-supervisor cross-arch | Ollama ne démarre pas sur ARM64 | Faible | Build matrix CI ; fallback "user-provided Ollama" si binaire absent ; documentation d'installation manuelle. |
 | BSL adoption enterprise | Adoption limitée | Faible | Change date 4 ans + gate fonctionnel (pas juridique) + core 100% Apache ; BSL uniquement sur enterprise module. |
@@ -395,18 +395,18 @@ Les migrations sont déjà définies (`migrations/0001_init.sql` + `migrations/0
 
 | Élément | Convention | Exemple |
 |---------|-----------|---------|
-| Binaires | `lochor-*` | `lochor` (CLI), `lochor-daemon`, `lochor-remote-server`, `lochor-supervisor` |
-| Crates | `lochor-*` | `lochor-shared-types`, `lochor-agent-runtime` |
-| Packages UI | `@lochor/ui-*` | `@lochor/ui-core`, `@lochor/ui-chat` |
-| Extension scopes | `Global` / `User` / `Organisation` (V1) / `Workspace` / `Session` (V1.1) | `.lochor/` (workspace), `~/.lochor/` (user), `LOCHOR.md` (project) |
-| Config files | `.lochor/` | `.lochor/mcp.json`, `.lochor/config.toml`, `LOCHOR.md` |
+| Binaires | `locaryn-*` | `locaryn` (CLI), `locaryn-daemon`, `locaryn-remote-server`, `locaryn-supervisor` |
+| Crates | `locaryn-*` | `locaryn-shared-types`, `locaryn-agent-runtime` |
+| Packages UI | `@locaryn/ui-*` | `@locaryn/ui-core`, `@locaryn/ui-chat` |
+| Extension scopes | `Global` / `User` / `Organisation` (V1) / `Workspace` / `Session` (V1.1) | `.locaryn/` (workspace), `~/.locaryn/` (user), `LOCARYN.md` (project) |
+| Config files | `.locaryn/` | `.locaryn/mcp.json`, `.locaryn/config.toml`, `LOCARYN.md` |
 | Plugin manifest | `plugin.json` | `examples/plugins/my-plugin/plugin.json` |
-| MCP config | `mcp.json` | `.lochor/mcp.json` |
-| Hooks | `hooks.json` | `.lochor/hooks.json` |
-| Skills | `*.md` (frontmatter) | `.lochor/skills/db-migration.md` |
-| Agent profiles | `*.md` (frontmatter) | `.lochor/agents/refactorer.md` |
-| Workspace rules | `*.md` | `.lochor/rules/security.md`, `LOCHOR.md` |
-| Env vars | `LOCHOR_*` | `LOCHOR_TLS_CERT`, `LOCHOR_DAEMON_PORT` |
+| MCP config | `mcp.json` | `.locaryn/mcp.json` |
+| Hooks | `hooks.json` | `.locaryn/hooks.json` |
+| Skills | `*.md` (frontmatter) | `.locaryn/skills/db-migration.md` |
+| Agent profiles | `*.md` (frontmatter) | `.locaryn/agents/refactorer.md` |
+| Workspace rules | `*.md` | `.locaryn/rules/security.md`, `LOCARYN.md` |
+| Env vars | `LOCARYN_*` | `LOCARYN_TLS_CERT`, `LOCARYN_DAEMON_PORT` |
 
 ---
 

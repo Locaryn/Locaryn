@@ -72,7 +72,7 @@ const COMPAT: Record<string, { label: string; hint: string }> = {
   },
   unsupported: {
     label: "Non exécutable",
-    hint: "Listé pour la recherche : rien dans ce paquet ne peut tourner dans Lochor.",
+    hint: "Listé pour la recherche : rien dans ce paquet ne peut tourner dans Locaryn.",
   },
 };
 
@@ -107,7 +107,7 @@ export function ExtensionsSettings() {
   const [installDialog, setInstallDialog] = useState<{
     open: boolean;
     kind: "extension" | "marketplace";
-    /** Source pré-remplie (deep link lochor://install?src=…). */
+    /** Source pré-remplie (deep link locaryn://install?src=…). */
     initialSource?: string;
   }>({ open: false, kind: "extension" });
   const [permissionExt, setPermissionExt] = useState<{
@@ -154,7 +154,7 @@ export function ExtensionsSettings() {
     return () => window.removeEventListener("keydown", onKey);
   }, [permissionExt]);
 
-  // Lien lochor://install?src=… : l'intention est posée par App et consommée
+  // Lien locaryn://install?src=… : l'intention est posée par App et consommée
   // ici — ouvre la fenêtre d'ajout avec la source pré-remplie. Vérifiée au
   // montage (le panneau peut arriver après le lien) puis à chaque événement.
   useEffect(() => {
@@ -473,7 +473,7 @@ export function ExtensionsSettings() {
   const pendingCount = batchTargets.filter((t) => !t.skip).length;
 
   return (
-    <div className="lochor-ext-settings">
+    <div className="locaryn-ext-settings">
       <div
         style={{
           display: "flex",
@@ -487,14 +487,14 @@ export function ExtensionsSettings() {
         <div style={{ display: "flex", gap: 8 }}>
           <button
             type="button"
-            className={`lochor-tab-btn${tab === "installed" ? " lochor-active" : ""}`}
+            className={`locaryn-tab-btn${tab === "installed" ? " locaryn-active" : ""}`}
             onClick={() => setTab("installed")}
           >
             Installées ({installed.length})
           </button>
           <button
             type="button"
-            className={`lochor-tab-btn${tab === "browse" ? " lochor-active" : ""}`}
+            className={`locaryn-tab-btn${tab === "browse" ? " locaryn-active" : ""}`}
             onClick={() => setTab("browse")}
           >
             Découvrir
@@ -504,7 +504,7 @@ export function ExtensionsSettings() {
         <div style={{ display: "flex", gap: 8 }}>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             style={{ fontSize: 12 }}
             disabled={updatingAll || busy !== null || pendingCount === 0}
             title={
@@ -518,7 +518,7 @@ export function ExtensionsSettings() {
           </button>
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             style={{ fontSize: 12 }}
             onClick={() => setSourcesOpen((v) => !v)}
           >
@@ -526,7 +526,7 @@ export function ExtensionsSettings() {
           </button>
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             style={{ fontSize: 12, padding: "4px 12px" }}
             onClick={() => setInstallDialog({ open: true, kind: "extension" })}
           >
@@ -536,7 +536,7 @@ export function ExtensionsSettings() {
       </div>
 
       {batchProgress && (
-        <div className="lochor-card" style={{ marginBottom: 12, padding: "10px 14px" }}>
+        <div className="locaryn-card" style={{ marginBottom: 12, padding: "10px 14px" }}>
           <div
             style={{
               display: "flex",
@@ -545,7 +545,7 @@ export function ExtensionsSettings() {
               gap: 12,
             }}
           >
-            <p className="lochor-field-hint" style={{ margin: 0 }}>
+            <p className="locaryn-field-hint" style={{ margin: 0 }}>
               {batchProgress.done}/{batchProgress.total} —{" "}
               {batchProgress.current.length > 0
                 ? `en cours : ${batchProgress.current.join(", ")}`
@@ -553,7 +553,7 @@ export function ExtensionsSettings() {
             </p>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{ fontSize: 12, flexShrink: 0 }}
               onClick={cancelBatch}
             >
@@ -582,7 +582,7 @@ export function ExtensionsSettings() {
       )}
 
       {batchReport && (
-        <div className="lochor-card" style={{ marginBottom: 12, padding: "12px 14px" }}>
+        <div className="locaryn-card" style={{ marginBottom: 12, padding: "12px 14px" }}>
           <div
             style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
           >
@@ -593,14 +593,14 @@ export function ExtensionsSettings() {
             </strong>
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{ fontSize: 12 }}
               onClick={() => setBatchReport(null)}
             >
               Fermer
             </button>
           </div>
-          <p className="lochor-field-hint" style={{ marginTop: 6 }}>
+          <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
             {batchReport.updated.length === 0
               ? "Aucune mise à jour"
               : `${batchReport.updated.length} mise${batchReport.updated.length > 1 ? "s" : ""} à jour`}
@@ -613,7 +613,7 @@ export function ExtensionsSettings() {
             {batchReport.cancelled ? ", arrêtée sur demande." : "."}
           </p>
           {batchReport.updated.length > 0 && (
-            <p className="lochor-field-hint" style={{ marginTop: 4 }}>
+            <p className="locaryn-field-hint" style={{ marginTop: 4 }}>
               À jour : {batchReport.updated.join(", ")}
             </p>
           )}
@@ -630,20 +630,20 @@ export function ExtensionsSettings() {
       )}
 
       {error && (
-        <p className="lochor-field-hint" style={{ color: "var(--danger)", marginBottom: 12 }}>
+        <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginBottom: 12 }}>
           {error}
         </p>
       )}
       {notice && (
-        <p className="lochor-field-hint" style={{ marginBottom: 12 }}>
+        <p className="locaryn-field-hint" style={{ marginBottom: 12 }}>
           {notice}
         </p>
       )}
 
       {sourcesOpen && (
-        <div className="lochor-card" style={{ marginBottom: 20, padding: 16 }}>
+        <div className="locaryn-card" style={{ marginBottom: 20, padding: 16 }}>
           <h4 style={{ fontSize: "var(--text-md)", marginBottom: 4 }}>Sources de catalogue</h4>
-          <p className="lochor-field-hint" style={{ marginBottom: 12 }}>
+          <p className="locaryn-field-hint" style={{ marginBottom: 12 }}>
             Les marketplaces Claude Code sont des dépôts contenant{" "}
             <code>.claude-plugin/marketplace.json</code>. Ajoutez-en une par <code>owner/repo</code>
             .
@@ -665,15 +665,15 @@ export function ExtensionsSettings() {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
-                      className={`lochor-health-dot ${
-                        st ? (st.ok ? "lochor-health-ok" : "lochor-health-off") : ""
+                      className={`locaryn-health-dot ${
+                        st ? (st.ok ? "locaryn-health-ok" : "locaryn-health-off") : ""
                       }`}
                     />
                     <strong style={{ fontSize: 13 }}>{s.label}</strong>
-                    <span className="lochor-tag">{ECOSYSTEM_LABELS[s.ecosystem]}</span>
+                    <span className="locaryn-tag">{ECOSYSTEM_LABELS[s.ecosystem]}</span>
                   </div>
                   <span
-                    className="lochor-field-hint"
+                    className="locaryn-field-hint"
                     style={{ display: "block", wordBreak: "break-all" }}
                   >
                     {st?.error ?? (st ? `${st.entry_count} entrées` : s.url)}
@@ -682,7 +682,7 @@ export function ExtensionsSettings() {
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button
                     type="button"
-                    className="lochor-btn-ghost"
+                    className="locaryn-btn-ghost"
                     style={{ fontSize: 12 }}
                     onClick={() => core.setCatalogSourceEnabled(s.id, !s.enabled).then(setSources)}
                   >
@@ -691,7 +691,7 @@ export function ExtensionsSettings() {
                   {!s.builtin && (
                     <button
                       type="button"
-                      className="lochor-btn-ghost"
+                      className="locaryn-btn-ghost"
                       style={{ fontSize: 12, color: "var(--danger)" }}
                       onClick={() => core.removeCatalogSource(s.id).then(setSources)}
                     >
@@ -704,7 +704,7 @@ export function ExtensionsSettings() {
           })}
           <button
             type="button"
-            className="lochor-btn-ghost"
+            className="locaryn-btn-ghost"
             style={{ fontSize: 12, marginTop: 12 }}
             onClick={() => setInstallDialog({ open: true, kind: "marketplace" })}
           >
@@ -715,7 +715,7 @@ export function ExtensionsSettings() {
 
       {tab === "installed" ? (
         installed.length === 0 ? (
-          <p className="lochor-field-hint">
+          <p className="locaryn-field-hint">
             Aucune extension installée. Ouvrez « Découvrir » pour parcourir les catalogues Claude
             Code, Gemini CLI, OpenCode et MCP, ou installez directement depuis un dépôt GitHub.
           </p>
@@ -725,23 +725,23 @@ export function ExtensionsSettings() {
               <h4 style={{ fontSize: "var(--text-md)", marginBottom: 10 }}>
                 {ECOSYSTEM_LABELS[eco]}
               </h4>
-              <div className="lochor-model-grid">
+              <div className="locaryn-model-grid">
                 {list.map((e) => (
-                  <div key={e.id} className="lochor-box-card">
-                    <div className="lochor-box-head">
+                  <div key={e.id} className="locaryn-box-card">
+                    <div className="locaryn-box-head">
                       <div>
-                        <h3 className="lochor-box-name">{e.name}</h3>
-                        <span className="lochor-box-brand">
+                        <h3 className="locaryn-box-name">{e.name}</h3>
+                        <span className="locaryn-box-brand">
                           v{e.version}
                           {e.author ? ` · ${e.author}` : ""}
                         </span>
                       </div>
-                      <span className={`lochor-tag${e.enabled ? " lochor-tag-installed" : ""}`}>
+                      <span className={`locaryn-tag${e.enabled ? " locaryn-tag-installed" : ""}`}>
                         {e.enabled ? "actif" : "inactif"}
                       </span>
                       {updates[e.id]?.update_available && (
                         <span
-                          className="lochor-tag"
+                          className="locaryn-tag"
                           style={{ color: "var(--accent)" }}
                           title={`v${updates[e.id]?.latest_version ?? ""} disponible sur la branche par défaut du dépôt`}
                         >
@@ -750,13 +750,13 @@ export function ExtensionsSettings() {
                       )}
                     </div>
 
-                    <p className="lochor-box-desc">
+                    <p className="locaryn-box-desc">
                       {e.description ?? "Pas de description fournie."}
                     </p>
-                    <p className="lochor-field-hint">{componentSummary(e)}</p>
+                    <p className="locaryn-field-hint">{componentSummary(e)}</p>
                     {updates[e.id]?.error && (
                       <p
-                        className="lochor-field-hint"
+                        className="locaryn-field-hint"
                         style={{ color: "var(--text-faint)", marginTop: 4 }}
                       >
                         Vérification de mise à jour impossible : {updates[e.id]?.error}
@@ -764,7 +764,7 @@ export function ExtensionsSettings() {
                     )}
 
                     {e.permissions.length > 0 && (
-                      <p className="lochor-field-hint" style={{ marginTop: 6 }}>
+                      <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
                         Permissions :{" "}
                         {e.permissions
                           .map(
@@ -777,7 +777,7 @@ export function ExtensionsSettings() {
 
                     {e.load_errors.length > 0 && (
                       <p
-                        className="lochor-field-hint"
+                        className="locaryn-field-hint"
                         style={{ color: "var(--danger)", marginTop: 6 }}
                       >
                         {e.load_errors.length} composant(s) illisible(s) : {e.load_errors[0]}
@@ -797,7 +797,7 @@ export function ExtensionsSettings() {
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button
                           type="button"
-                          className="lochor-btn-ghost"
+                          className="locaryn-btn-ghost"
                           style={{ fontSize: 12 }}
                           disabled={updatingAll || busy === e.id || !e.source}
                           title={
@@ -811,7 +811,7 @@ export function ExtensionsSettings() {
                         </button>
                         <button
                           type="button"
-                          className="lochor-btn-ghost"
+                          className="locaryn-btn-ghost"
                           style={{ fontSize: 12 }}
                           disabled={updatingAll}
                           onClick={() => setConfiguring(e)}
@@ -820,7 +820,7 @@ export function ExtensionsSettings() {
                         </button>
                         <button
                           type="button"
-                          className="lochor-btn-ghost"
+                          className="locaryn-btn-ghost"
                           style={{ fontSize: 12 }}
                           onClick={() =>
                             setPermissionExt({
@@ -839,7 +839,7 @@ export function ExtensionsSettings() {
                       <div style={{ display: "flex", gap: 8 }}>
                         <button
                           type="button"
-                          className={e.enabled ? "lochor-btn-ghost" : "lochor-btn-primary"}
+                          className={e.enabled ? "locaryn-btn-ghost" : "locaryn-btn-primary"}
                           style={{ fontSize: 12 }}
                           disabled={updatingAll || busy === e.id}
                           onClick={() => toggleEnabled(e)}
@@ -848,7 +848,7 @@ export function ExtensionsSettings() {
                         </button>
                         <button
                           type="button"
-                          className="lochor-btn-ghost"
+                          className="locaryn-btn-ghost"
                           style={{ fontSize: 12, color: "var(--danger)" }}
                           disabled={updatingAll || busy === e.id}
                           onClick={() => remove(e)}
@@ -867,7 +867,7 @@ export function ExtensionsSettings() {
         <>
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <input
-              className="lochor-input"
+              className="locaryn-input"
               style={{ flex: "1 1 220px" }}
               placeholder="Rechercher une extension…"
               value={query}
@@ -875,7 +875,7 @@ export function ExtensionsSettings() {
             />
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               disabled={refreshing}
               onClick={refreshCatalog}
             >
@@ -883,12 +883,12 @@ export function ExtensionsSettings() {
             </button>
           </div>
 
-          <div className="lochor-size-chips" style={{ marginBottom: 16 }}>
+          <div className="locaryn-size-chips" style={{ marginBottom: 16 }}>
             {ECOSYSTEM_FILTERS.map((f) => (
               <button
                 key={f.id}
                 type="button"
-                className={`lochor-chip${ecosystem === f.id ? " lochor-chip-on" : ""}`}
+                className={`locaryn-chip${ecosystem === f.id ? " locaryn-chip-on" : ""}`}
                 onClick={() => setEcosystem(f.id)}
               >
                 {f.label}
@@ -897,33 +897,33 @@ export function ExtensionsSettings() {
           </div>
 
           {snapshot?.fetched_at == null ? (
-            <p className="lochor-field-hint">
+            <p className="locaryn-field-hint">
               Aucun catalogue en cache. Lancez « Actualiser » pour lire les marketplaces Claude
               Code, l'index Gemini CLI, le registre MCP officiel et les plugins OpenCode publiés sur
               npm.
             </p>
           ) : entries.length === 0 ? (
-            <p className="lochor-field-hint">Aucun résultat pour cette recherche.</p>
+            <p className="locaryn-field-hint">Aucun résultat pour cette recherche.</p>
           ) : (
-            <div className="lochor-model-grid">
+            <div className="locaryn-model-grid">
               {entries.map((c: CatalogEntry) => {
                 const compat = COMPAT[c.compat] ?? COMPAT.unsupported;
                 const canInstall = c.compat !== "unsupported" && !!c.install_source;
                 return (
-                  <div key={c.id} className="lochor-box-card">
-                    <div className="lochor-box-head">
+                  <div key={c.id} className="locaryn-box-card">
+                    <div className="locaryn-box-head">
                       <div style={{ minWidth: 0 }}>
-                        <h3 className="lochor-box-name">{c.display_name}</h3>
-                        <span className="lochor-box-brand">{c.catalog_label}</span>
+                        <h3 className="locaryn-box-name">{c.display_name}</h3>
+                        <span className="locaryn-box-brand">{c.catalog_label}</span>
                       </div>
-                      <span className="lochor-tag">{ECOSYSTEM_LABELS[c.ecosystem]}</span>
+                      <span className="locaryn-tag">{ECOSYSTEM_LABELS[c.ecosystem]}</span>
                     </div>
 
-                    <p className="lochor-box-desc">
+                    <p className="locaryn-box-desc">
                       {c.description ?? "Pas de description fournie."}
                     </p>
 
-                    <p className="lochor-field-hint" title={compat.hint}>
+                    <p className="locaryn-field-hint" title={compat.hint}>
                       {compat.label}
                       {c.advertised.length > 0 && ` · ${c.advertised.join(" · ")}`}
                     </p>
@@ -938,11 +938,11 @@ export function ExtensionsSettings() {
                       }}
                     >
                       {c.installed ? (
-                        <span className="lochor-tag lochor-tag-installed">installée</span>
+                        <span className="locaryn-tag locaryn-tag-installed">installée</span>
                       ) : (
                         <button
                           type="button"
-                          className="lochor-btn-primary"
+                          className="locaryn-btn-primary"
                           style={{ fontSize: 12 }}
                           disabled={!canInstall || busy === c.id || updatingAll}
                           title={canInstall ? c.install_source : compat.hint}

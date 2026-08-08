@@ -33,27 +33,27 @@ export function ReasoningBlock({ reasoning, inProgress }: Props) {
 
   const peek = reasoningPeek(reasoning);
   return (
-    <div className={`lochor-reason${inProgress ? " lochor-reason-live" : ""}`}>
+    <div className={`locaryn-reason${inProgress ? " locaryn-reason-live" : ""}`}>
       <button
         type="button"
-        className="lochor-reason-head"
+        className="locaryn-reason-head"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
-        <span className="lochor-reason-caret" aria-hidden="true">
+        <span className="locaryn-reason-caret" aria-hidden="true">
           {open ? "▾" : "▸"}
         </span>
-        <span className="lochor-reason-label">
+        <span className="locaryn-reason-label">
           {inProgress ? "Réflexion…" : "Raisonnement"}
         </span>
         {!open && (
-          <span className="lochor-reason-peek">
+          <span className="locaryn-reason-peek">
             {inProgress ? peek : reasoningSummary(reasoning)}
           </span>
         )}
       </button>
       {open && (
-        <div className="lochor-reason-body" ref={bodyRef}>
+        <div className="locaryn-reason-body" ref={bodyRef}>
           {reasoning}
         </div>
       )}

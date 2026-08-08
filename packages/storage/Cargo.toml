@@ -1,19 +1,19 @@
 [package]
-name = "lochor-storage"
+name = "locaryn-storage"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "SQLite persistence layer for Lochor (sqlx, migrations, repositories)."
+description = "SQLite persistence layer for Locaryn (sqlx, migrations, repositories)."
 
 [features]
 default = []
 ssh-connector = []
 
 [dependencies]
-lochor-shared-types = { workspace = true }
-lochor-auth = { workspace = true }
+locaryn-shared-types = { workspace = true }
+locaryn-auth = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

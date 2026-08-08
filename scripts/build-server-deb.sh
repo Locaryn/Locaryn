@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lochor server binaries .deb packager (Linux only).
+# Locaryn server binaries .deb packager (Linux only).
 # Builds the server binaries and creates a Debian package in release/.
 #
 # Usage:
@@ -13,12 +13,12 @@ RELEASE_DIR="$ROOT/release"
 PKG_DIR="$RELEASE_DIR/deb-pkg"
 
 if ! command -v dpkg-deb &> /dev/null; then
-    echo "[Lochor] dpkg-deb not found. This script only works on Debian/Ubuntu."
+    echo "[Locaryn] dpkg-deb not found. This script only works on Debian/Ubuntu."
     exit 1
 fi
 
 if ! command -v cargo &> /dev/null; then
-    echo "[Lochor] cargo not found in PATH. Please install Rust: https://rustup.rs/"
+    echo "[Locaryn] cargo not found in PATH. Please install Rust: https://rustup.rs/"
     exit 1
 fi
 
@@ -57,46 +57,46 @@ elif command -v awk &> /dev/null; then
 fi
 
 if [ "$VERSION" = "0.1.0" ]; then
-    echo "[Lochor] Warning: could not extract workspace version from Cargo.toml. Using fallback $VERSION."
+    echo "[Locaryn] Warning: could not extract workspace version from Cargo.toml. Using fallback $VERSION."
 fi
 
-PKG_NAME="lochor-servers-$VARIANT"
+PKG_NAME="locaryn-servers-$VARIANT"
 DEB_NAME="${PKG_NAME}_${VERSION}_${ARCH}.deb"
 
-echo "[Lochor] Building $VARIANT server binaries for $TARGET"
+echo "[Locaryn] Building $VARIANT server binaries for $TARGET"
 
-cargo build --release -p lochor-cli -p lochor-daemon -p lochor-provider-supervisor
+cargo build --release -p locaryn-cli -p locaryn-daemon -p locaryn-provider-supervisor
 if [ "$PERSONAL" -eq 1 ]; then
-    cargo build --release -p lochor-remote-server --no-default-features
+    cargo build --release -p locaryn-remote-server --no-default-features
 else
-    cargo build --release -p lochor-remote-server
+    cargo build --release -p locaryn-remote-server
 fi
 
-echo "[Lochor] Creating Debian package structure..."
+echo "[Locaryn] Creating Debian package structure..."
 rm -rf "$PKG_DIR"
-mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/usr/bin" "$PKG_DIR/usr/share/doc/lochor-servers"
+mkdir -p "$PKG_DIR/DEBIAN" "$PKG_DIR/usr/bin" "$PKG_DIR/usr/share/doc/locaryn-servers"
 
-for bin in lochor lochor-daemon lochor-remote-server lochor-supervisor; do
+for bin in locaryn locaryn-daemon locaryn-remote-server locaryn-supervisor; do
     SRC="$ROOT/target/release/$bin"
     if [ ! -f "$SRC" ]; then
-        echo "[Lochor] Error: binary not found: $SRC"
-        echo "[Lochor] Run 'bash scripts/build-servers.sh' first."
+        echo "[Locaryn] Error: binary not found: $SRC"
+        echo "[Locaryn] Run 'bash scripts/build-servers.sh' first."
         exit 1
     fi
     cp "$SRC" "$PKG_DIR/usr/bin/"
 done
 
 # Install systemd units and default config.
-mkdir -p "$PKG_DIR/lib/systemd/system" "$PKG_DIR/etc/lochor"
+mkdir -p "$PKG_DIR/lib/systemd/system" "$PKG_DIR/etc/locaryn"
 
-cat > "$PKG_DIR/lib/systemd/system/lochor-daemon.service" <<'EOF'
+cat > "$PKG_DIR/lib/systemd/system/locaryn-daemon.service" <<'EOF'
 [Unit]
-Description=Lochor local daemon
+Description=Locaryn local daemon
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/lochor-daemon
+ExecStart=/usr/bin/locaryn-daemon
 Restart=on-failure
 RestartSec=5
 
@@ -104,14 +104,14 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-cat > "$PKG_DIR/lib/systemd/system/lochor-remote-server.service" <<'EOF'
+cat > "$PKG_DIR/lib/systemd/system/locaryn-remote-server.service" <<'EOF'
 [Unit]
-Description=Lochor remote server
+Description=Locaryn remote server
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/lochor-remote-server
+ExecStart=/usr/bin/locaryn-remote-server
 Restart=on-failure
 RestartSec=5
 
@@ -119,9 +119,9 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-cat > "$PKG_DIR/etc/lochor/lochor.toml" <<'EOF'
-# Lochor server configuration
-# See https://lochor.dev/docs for full options.
+cat > "$PKG_DIR/etc/locaryn/locaryn.toml" <<'EOF'
+# Locaryn server configuration
+# See https://locaryn.dev/docs for full options.
 
 [server]
 host = "127.0.0.1"
@@ -134,15 +134,15 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: $ARCH
-Maintainer: Lochor Contributors <contact@lochor.dev>
-Description: Lochor server binaries ($VARIANT)
- Lochor server binaries: CLI, daemon, remote server, and provider supervisor.
+Maintainer: Locaryn Contributors <contact@locaryn.dev>
+Description: Locaryn server binaries ($VARIANT)
+ Locaryn server binaries: CLI, daemon, remote server, and provider supervisor.
  This is the $VARIANT edition.
 EOF
 
-cat > "$PKG_DIR/usr/share/doc/lochor-servers/copyright" <<EOF
-Lochor server binaries ($VARIANT edition)
-Copyright (C) Lochor Contributors
+cat > "$PKG_DIR/usr/share/doc/locaryn-servers/copyright" <<EOF
+Locaryn server binaries ($VARIANT edition)
+Copyright (C) Locaryn Contributors
 Licensed under Apache-2.0.
 EOF
 
@@ -150,14 +150,14 @@ cat > "$PKG_DIR/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
 systemctl daemon-reload >/dev/null 2>&1 || true
-systemctl enable lochor-daemon.service lochor-remote-server.service >/dev/null 2>&1 || true
+systemctl enable locaryn-daemon.service locaryn-remote-server.service >/dev/null 2>&1 || true
 EOF
 
 cat > "$PKG_DIR/DEBIAN/prerm" <<'EOF'
 #!/bin/sh
 set -e
-systemctl stop lochor-daemon.service lochor-remote-server.service >/dev/null 2>&1 || true
-systemctl disable lochor-daemon.service lochor-remote-server.service >/dev/null 2>&1 || true
+systemctl stop locaryn-daemon.service locaryn-remote-server.service >/dev/null 2>&1 || true
+systemctl disable locaryn-daemon.service locaryn-remote-server.service >/dev/null 2>&1 || true
 EOF
 
 chmod 755 "$PKG_DIR/DEBIAN"
@@ -170,4 +170,4 @@ find "$PKG_DIR/etc" -type d -exec chmod 755 {} \; 2>/dev/null || true
 dpkg-deb --build "$PKG_DIR" "$RELEASE_DIR/$DEB_NAME"
 rm -rf "$PKG_DIR"
 
-echo "[Lochor] Debian package created: $RELEASE_DIR/$DEB_NAME"
+echo "[Locaryn] Debian package created: $RELEASE_DIR/$DEB_NAME"

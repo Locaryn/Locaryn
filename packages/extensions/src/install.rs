@@ -9,7 +9,7 @@ use crate::adapters::{self, AdaptError};
 use crate::loader::{self, LoadedPlugin};
 use crate::manifest::PluginManifest;
 use crate::source::{self, SourceError};
-use lochor_shared_types::{ExtensionEcosystem, ExtensionScope};
+use locaryn_shared_types::{ExtensionEcosystem, ExtensionScope};
 use std::path::{Path, PathBuf};
 
 /// A catalog entry from the MCP registry installs as a one-server plugin
@@ -28,7 +28,7 @@ pub enum InstallError {
     Manifest(#[from] crate::manifest::ManifestError),
     #[error(transparent)]
     Load(#[from] crate::loader::LoadError),
-    #[error("nothing to install: the source contains no components Lochor can load")]
+    #[error("nothing to install: the source contains no components Locaryn can load")]
     Empty,
 }
 
@@ -40,7 +40,7 @@ pub struct InstallOutcome {
     pub loaded: LoadedPlugin,
     /// What the adapter converted or skipped.
     pub notes: Vec<String>,
-    /// Part of the bundle could not be represented in Lochor.
+    /// Part of the bundle could not be represented in Locaryn.
     pub partial: bool,
     /// Canonical source string, stored so an update can re-fetch.
     pub source: String,
@@ -193,7 +193,7 @@ mod tests {
 
     #[tokio::test]
     async fn installs_a_local_claude_code_plugin_end_to_end() {
-        let base = std::env::temp_dir().join("lochor-install-local");
+        let base = std::env::temp_dir().join("locaryn-install-local");
         let _ = std::fs::remove_dir_all(&base);
         let src = base.join("src");
         std::fs::create_dir_all(src.join(".claude-plugin")).unwrap();
@@ -223,7 +223,7 @@ mod tests {
         assert!(out.root.ends_with("local-tool"));
         assert!(out.root.join("plugin.json").is_file());
         // Staging directories are cleaned up.
-        let leftovers: Vec<_> = std::fs::read_dir(workspace.join(".lochor/plugins"))
+        let leftovers: Vec<_> = std::fs::read_dir(workspace.join(".locaryn/plugins"))
             .unwrap()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_name().to_string_lossy().starts_with(".staging-"))
@@ -235,7 +235,7 @@ mod tests {
     async fn installs_a_local_zip_end_to_end() {
         use std::io::Write;
 
-        let base = std::env::temp_dir().join("lochor-install-zip");
+        let base = std::env::temp_dir().join("locaryn-install-zip");
         let _ = std::fs::remove_dir_all(&base);
         let src = base.join("src");
         std::fs::create_dir_all(src.join(".claude-plugin")).unwrap();
@@ -302,7 +302,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_empty_bundle_is_refused() {
-        let base = std::env::temp_dir().join("lochor-install-empty");
+        let base = std::env::temp_dir().join("locaryn-install-empty");
         let _ = std::fs::remove_dir_all(&base);
         let src = base.join("src");
         std::fs::create_dir_all(src.join(".claude-plugin")).unwrap();
@@ -327,15 +327,15 @@ mod tests {
     }
 
     /// Hits github.com. Ignored by default so CI stays offline-safe; run with
-    /// `cargo test -p lochor-extensions -- --ignored --nocapture`.
+    /// `cargo test -p locaryn-extensions -- --ignored --nocapture`.
     #[tokio::test]
     #[ignore = "requires network"]
     async fn installs_a_real_claude_code_plugin_from_github() {
-        let base = std::env::temp_dir().join("lochor-install-net");
+        let base = std::env::temp_dir().join("locaryn-install-net");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         let http = reqwest::Client::builder()
-            .user_agent("lochor/0.1")
+            .user_agent("locaryn/0.1")
             .build()
             .unwrap();
 
@@ -371,11 +371,11 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires network"]
     async fn installs_a_real_gemini_extension_from_github() {
-        let base = std::env::temp_dir().join("lochor-install-gemini");
+        let base = std::env::temp_dir().join("locaryn-install-gemini");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         let http = reqwest::Client::builder()
-            .user_agent("lochor/0.1")
+            .user_agent("locaryn/0.1")
             .build()
             .unwrap();
 
@@ -404,10 +404,10 @@ mod tests {
 
     #[test]
     fn remove_refuses_paths_outside_the_scope_dir() {
-        let outside = std::env::temp_dir().join("lochor-not-a-plugin");
+        let outside = std::env::temp_dir().join("locaryn-not-a-plugin");
         std::fs::create_dir_all(&outside).unwrap();
-        let ws = std::env::temp_dir().join("lochor-rm-ws");
-        std::fs::create_dir_all(ws.join(".lochor/plugins")).unwrap();
+        let ws = std::env::temp_dir().join("locaryn-rm-ws");
+        std::fs::create_dir_all(ws.join(".locaryn/plugins")).unwrap();
         assert!(!remove_files(&outside, ExtensionScope::Workspace, Some(&ws)));
         assert!(outside.is_dir(), "the directory must survive");
     }

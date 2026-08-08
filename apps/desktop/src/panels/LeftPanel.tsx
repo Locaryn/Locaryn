@@ -103,22 +103,22 @@ export function LeftPanel({
   }
 
   return (
-    <aside className="lochor-left">
-      <button type="button" className="lochor-newchat-full" onClick={onNewStandaloneChat}>
+    <aside className="locaryn-left">
+      <button type="button" className="locaryn-newchat-full" onClick={onNewStandaloneChat}>
         + Nouveau Chat Libre
       </button>
 
       {/* Standalone chats section */}
-      <div className="lochor-section-title">Conversations Libres</div>
-      <ul className="lochor-tree" style={{ marginBottom: "16px" }}>
+      <div className="locaryn-section-title">Conversations Libres</div>
+      <ul className="locaryn-tree" style={{ marginBottom: "16px" }}>
         {standaloneSessions.length === 0 ? (
-          <li className="lochor-tree-empty">Aucune conversation libre</li>
+          <li className="locaryn-tree-empty">Aucune conversation libre</li>
         ) : (
           standaloneSessions.map((s, i) => (
-            <li key={s.id} className="lochor-session-row">
+            <li key={s.id} className="locaryn-session-row">
               <button
                 type="button"
-                className={`lochor-tree-item${s.id === activeSession?.id ? " lochor-active" : ""}`}
+                className={`locaryn-tree-item${s.id === activeSession?.id ? " locaryn-active" : ""}`}
                 style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 onClick={() => {
                   onSelectProject(null);
@@ -130,7 +130,7 @@ export function LeftPanel({
               {onDeleteSession && (
                 <button
                   type="button"
-                  className="lochor-session-delete-btn"
+                  className="locaryn-session-delete-btn"
                   title="Supprimer cette conversation libre"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -146,8 +146,8 @@ export function LeftPanel({
       </ul>
 
       {/* Projects section */}
-      <div className="lochor-section-title">Projets Code</div>
-      <ul className="lochor-tree">
+      <div className="locaryn-section-title">Projets Code</div>
+      <ul className="locaryn-tree">
         {projects.map((p) => {
           const isActive = p.id === activeProject?.id;
           return (
@@ -155,17 +155,17 @@ export function LeftPanel({
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <button
                   type="button"
-                  className={`lochor-tree-item${isActive ? " lochor-active" : ""}`}
+                  className={`locaryn-tree-item${isActive ? " locaryn-active" : ""}`}
                   style={{ flex: 1 }}
                   onClick={() => onSelectProject(p)}
                   title={p.path}
                 >
-                  <span className="lochor-caret">{isActive ? "▾" : "▸"}</span> 📁 {p.name}
+                  <span className="locaryn-caret">{isActive ? "▾" : "▸"}</span> 📁 {p.name}
                 </button>
-                <div className="lochor-proj-menu-wrap" ref={menuFor === p.id ? menuRef : undefined}>
+                <div className="locaryn-proj-menu-wrap" ref={menuFor === p.id ? menuRef : undefined}>
                   <button
                     type="button"
-                    className="lochor-icon-btn"
+                    className="locaryn-icon-btn"
                     style={{ padding: "2px 6px", fontSize: "12px" }}
                     title={`Actions sur ${p.name}`}
                     aria-haspopup="menu"
@@ -177,11 +177,11 @@ export function LeftPanel({
 
                   {menuFor === p.id && (
                     <div
-                      className="lochor-proj-menu"
+                      className="locaryn-proj-menu"
                       role="menu"
                       style={{ top: menuPos.top, right: menuPos.right }}
                     >
-                      <div className="lochor-proj-menu-head" title={p.path}>{p.path}</div>
+                      <div className="locaryn-proj-menu-head" title={p.path}>{p.path}</div>
                       <button
                         type="button"
                         role="menuitem"
@@ -215,7 +215,7 @@ export function LeftPanel({
                           ⚙️ Paramètres du projet
                         </button>
                       )}
-                      <div className="lochor-proj-menu-sep" />
+                      <div className="locaryn-proj-menu-sep" />
                       <button
                         type="button"
                         role="menuitem"
@@ -232,11 +232,11 @@ export function LeftPanel({
               {isActive && (
                 <ul>
                   {sessions.map((s, i) => (
-                    <li key={s.id} className="lochor-session-row">
+                    <li key={s.id} className="locaryn-session-row">
                       <button
                         type="button"
-                        className={`lochor-tree-item${
-                          s.id === activeSession?.id ? " lochor-active" : ""
+                        className={`locaryn-tree-item${
+                          s.id === activeSession?.id ? " locaryn-active" : ""
                         }`}
                         style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                         onClick={() => onSelectSession(s)}
@@ -246,7 +246,7 @@ export function LeftPanel({
                       {onDeleteSession && (
                         <button
                           type="button"
-                          className="lochor-session-delete-btn"
+                          className="locaryn-session-delete-btn"
                           title="Supprimer cette conversation"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -261,7 +261,7 @@ export function LeftPanel({
                   <li>
                     <button
                       type="button"
-                      className="lochor-tree-item lochor-tree-new"
+                      className="locaryn-tree-item locaryn-tree-new"
                       onClick={() => onNewSession(p)}
                     >
                       + session projet
@@ -273,7 +273,7 @@ export function LeftPanel({
           );
         })}
       </ul>
-      <button type="button" className="lochor-add-btn" onClick={promptAddProject}>
+      <button type="button" className="locaryn-add-btn" onClick={promptAddProject}>
         + Ajouter un projet
       </button>
     </aside>

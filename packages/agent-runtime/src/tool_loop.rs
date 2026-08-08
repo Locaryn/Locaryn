@@ -25,8 +25,8 @@
 
 use crate::tools::{builtin_tools, dispatch_tool, ollama_tools_json, requires_approval, ToolContext, ToolSpec};
 use crate::{AgentError, AgentInput, EventStream};
-use lochor_events::{LogLevel, StreamEvent};
-use lochor_shared_types::TrustLevel;
+use locaryn_events::{LogLevel, StreamEvent};
+use locaryn_shared_types::TrustLevel;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -143,7 +143,7 @@ pub async fn run_tool_loop(
     let model_loop = model.clone();
     let tools_json_loop = tools_json.clone();
     let tools_for_dispatch = all_tools.clone();
-    let mcp_state_for_dispatch: Option<Arc<lochor_mcp::McpState>> = input.mcp_state.clone();
+    let mcp_state_for_dispatch: Option<Arc<locaryn_mcp::McpState>> = input.mcp_state.clone();
     tokio::spawn(async move {
         let ctx = ToolContext {
             project_id: input.project_id.unwrap_or_default(),
@@ -279,7 +279,7 @@ async fn process_chunk(
     trust: TrustLevel,
     total_tokens_in: &mut u64,
     total_tokens_out: &mut u64,
-    mcp_state: &Option<Arc<lochor_mcp::McpState>>,
+    mcp_state: &Option<Arc<locaryn_mcp::McpState>>,
 ) -> ChunkOutcome {
     // Accumulate token counts.
     if let Some(pi) = chunk.get("prompt_eval_count").and_then(|v| v.as_u64()) {
@@ -442,18 +442,18 @@ async fn process_chunk(
     ChunkOutcome::Final(String::new())
 }
 
-fn risk_to_event_risk(risk: Option<crate::tools::Risk>) -> lochor_events::Risk {
+fn risk_to_event_risk(risk: Option<crate::tools::Risk>) -> locaryn_events::Risk {
     match risk {
-        Some(crate::tools::Risk::Low) => lochor_events::Risk::Low,
-        Some(crate::tools::Risk::Medium) => lochor_events::Risk::Medium,
-        Some(crate::tools::Risk::High) => lochor_events::Risk::High,
-        Some(crate::tools::Risk::Critical) => lochor_events::Risk::Critical,
-        None => lochor_events::Risk::High,
+        Some(crate::tools::Risk::Low) => locaryn_events::Risk::Low,
+        Some(crate::tools::Risk::Medium) => locaryn_events::Risk::Medium,
+        Some(crate::tools::Risk::High) => locaryn_events::Risk::High,
+        Some(crate::tools::Risk::Critical) => locaryn_events::Risk::Critical,
+        None => locaryn_events::Risk::High,
     }
 }
 
 fn system_prompt_for_dev_agent() -> String {
-    "You are Lochor, an AI coding assistant with access to tools for interacting with the user's local project. \
+    "You are Locaryn, an AI coding assistant with access to tools for interacting with the user's local project. \
      \n\nCRITICAL RULES:\n\
      1. DO NOT guess or hallucinate code or file contents. If you need to know what is in a file, you MUST use the `read_file` tool.\n\
      2. DO NOT assume the directory structure. If you are unsure where a file is, use the `search` tool to find it.\

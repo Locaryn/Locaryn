@@ -13,19 +13,19 @@
 //! which the bundled sqlx sqlite-sys satisfies).
 
 use crate::error::StorageError;
-use lochor_shared_types::{
+use locaryn_shared_types::{
     Artifact, ArtifactKind, ExtensionEcosystem, ExtensionKind, ExtensionScope, Message,
     MessageRole, Permission, Project, Provider, ProviderEngine, ProviderKind, ProviderStatus,
     Session, Task, TaskStatus, ToolCall, TrustLevel,
 };
 #[cfg(feature = "ssh-connector")]
-use lochor_shared_types::{SshAiAccess, SshAuthMethod, SshJump, SshServer, SshStatus};
+use locaryn_shared_types::{SshAiAccess, SshAuthMethod, SshJump, SshServer, SshStatus};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 // ============================================================================
 // Row structs (sqlx::FromRow) — map 1:1 to columns. Conversions from these
-// to the shared `lochor_shared_types::*` happen in small `try_into` helpers.
+// to the shared `locaryn_shared_types::*` happen in small `try_into` helpers.
 // ============================================================================
 
 #[derive(sqlx::FromRow)]
@@ -462,7 +462,7 @@ impl FromToken for ExtensionEcosystem {
             "cursor" => ExtensionEcosystem::Cursor,
             "continue" => ExtensionEcosystem::Continue,
             "cline" => ExtensionEcosystem::Cline,
-            _ => ExtensionEcosystem::Lochor,
+            _ => ExtensionEcosystem::Locaryn,
         }
     }
 }
@@ -2018,7 +2018,7 @@ impl Storage {
 #[cfg(all(test, feature = "ssh-connector"))]
 mod ssh_tests {
     use super::*;
-    use lochor_shared_types::{ExtensionScope, SshAiAccess, SshAuthMethod};
+    use locaryn_shared_types::{ExtensionScope, SshAiAccess, SshAuthMethod};
 
     fn new_server(name: &str) -> NewSshServer {
         NewSshServer {

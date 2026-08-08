@@ -1,15 +1,15 @@
 [package]
-name = "lochor-sdk"
+name = "locaryn-sdk"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "HTTP/SSE client SDK for the Lochor daemon and remote-server."
+description = "HTTP/SSE client SDK for the Locaryn daemon and remote-server."
 
 [dependencies]
-lochor-shared-types = { workspace = true }
-lochor-events = { workspace = true }
+locaryn-shared-types = { workspace = true }
+locaryn-events = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

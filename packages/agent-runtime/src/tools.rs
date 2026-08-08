@@ -16,13 +16,13 @@
 //!     `"run_command" | "write_file"` is **deleted** — any new tool takes
 //!     its risk from the spec, not from a hardcoded string list.
 
-use lochor_shared_types::{RiskScope, TrustLevel};
+use locaryn_shared_types::{RiskScope, TrustLevel};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 // Re-export the canonical Risk alias used across crates so existing
 // callers (events, daemon) keep compiling without churn.
-pub use lochor_shared_types::Risk;
+pub use locaryn_shared_types::Risk;
 
 /// A tool the agent can call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,10 +33,10 @@ pub struct ToolSpec {
     /// Risk level — high-risk tools always require explicit approval.
     pub risk: Risk,
     /// Permissions required to invoke this tool.
-    pub required_permissions: Vec<lochor_shared_types::Permission>,
+    pub required_permissions: Vec<locaryn_shared_types::Permission>,
 }
 
-// Risk is re-exported from lochor_events at the top of this file; see that
+// Risk is re-exported from locaryn_events at the top of this file; see that
 // definition for the canonical docstring and safety rails. The duplicate
 // enum body that previously lived here was removed in favour of the
 // re-export to avoid clippy `dead_code` warnings.
@@ -100,7 +100,7 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
                 "required": ["path"]
             }),
             risk: Risk::Low,
-            required_permissions: vec![lochor_shared_types::Permission::FilesRead],
+            required_permissions: vec![locaryn_shared_types::Permission::FilesRead],
         },
         ToolSpec {
             name: "write_file".into(),
@@ -114,7 +114,7 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
                 "required": ["path", "content"]
             }),
             risk: Risk::Medium,
-            required_permissions: vec![lochor_shared_types::Permission::FilesWrite],
+            required_permissions: vec![locaryn_shared_types::Permission::FilesWrite],
         },
         ToolSpec {
             name: "search".into(),
@@ -128,7 +128,7 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
                 "required": ["pattern"]
             }),
             risk: Risk::Low,
-            required_permissions: vec![lochor_shared_types::Permission::FilesRead],
+            required_permissions: vec![locaryn_shared_types::Permission::FilesRead],
         },
         ToolSpec {
             name: "run_command".into(),
@@ -139,7 +139,7 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
                 "required": ["command"]
             }),
             risk: Risk::High,
-            required_permissions: vec![lochor_shared_types::Permission::Shell],
+            required_permissions: vec![locaryn_shared_types::Permission::Shell],
         },
     ]
 }
@@ -368,7 +368,7 @@ fn render_diff(
 #[cfg(test)]
 mod approval_tests {
     use super::*;
-    use lochor_shared_types::Permission;
+    use locaryn_shared_types::Permission;
 
     fn spec(name: &str, risk: Risk) -> ToolSpec {
         ToolSpec {
@@ -645,7 +645,7 @@ fn err(msg: &str) -> ToolResult {
     ToolResult { ok: false, output: msg.to_string() }
 }
 
-/// Convert Lochor's ToolSpec list to the Ollama tools JSON format.
+/// Convert Locaryn's ToolSpec list to the Ollama tools JSON format.
 pub fn ollama_tools_json(specs: &[ToolSpec]) -> serde_json::Value {
     serde_json::Value::Array(
         specs

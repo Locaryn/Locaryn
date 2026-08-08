@@ -79,7 +79,7 @@ function ParameterColumn({
             <button
               key={s.id}
               type="button"
-              className={`lochor-chip${active ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${active ? " locaryn-chip-on" : ""}`}
               onClick={() => update("speaker", s.id)}
               disabled={jobRunning}
               style={{ fontSize: 10, padding: "2px 8px" }}
@@ -189,7 +189,7 @@ export function VoiceABTestTab({
         </p>
         <button
           type="button"
-          className="lochor-btn-ghost"
+          className="locaryn-btn-ghost"
           onClick={onSwap}
           disabled={jobRunning}
           style={{ fontSize: 11, padding: "4px 10px" }}

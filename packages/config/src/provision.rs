@@ -46,7 +46,7 @@ pub struct Provisioning {
 }
 
 /// Standard file name. Recognisable next to an installer.
-pub const PROVISION_FILE: &str = "lochor-connect.json";
+pub const PROVISION_FILE: &str = "locaryn-connect.json";
 
 /// Where a client looks for its settings, most specific first.
 ///
@@ -61,10 +61,10 @@ pub fn search_paths() -> Vec<PathBuf> {
         }
     }
     if let Ok(dir) = std::env::var("PROGRAMDATA") {
-        out.push(PathBuf::from(dir).join("Lochor").join(PROVISION_FILE));
+        out.push(PathBuf::from(dir).join("Locaryn").join(PROVISION_FILE));
     }
     #[cfg(not(windows))]
-    out.push(PathBuf::from("/etc/lochor").join(PROVISION_FILE));
+    out.push(PathBuf::from("/etc/locaryn").join(PROVISION_FILE));
     out.push(global_dir().join(PROVISION_FILE));
     out
 }
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn a_written_file_reads_back_identically() {
         let dir = std::env::temp_dir().join(format!(
-            "lochor_prov_{}",
+            "locaryn_prov_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

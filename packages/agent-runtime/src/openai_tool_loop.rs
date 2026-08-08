@@ -18,8 +18,8 @@ use crate::tools::{
 };
 use crate::{AgentError, AgentInput, EventStream};
 use futures::StreamExt as _;
-use lochor_events::{LogLevel, StreamEvent};
-use lochor_shared_types::TrustLevel;
+use locaryn_events::{LogLevel, StreamEvent};
+use locaryn_shared_types::TrustLevel;
 use std::time::Instant;
 
 const MAX_TOOL_ROUNDS: u32 = 10;
@@ -97,7 +97,7 @@ pub async fn run_openai_tool_loop(
     let base_prompt = if use_tools {
         system_prompt_for_dev_agent()
     } else {
-        "You are Lochor, a helpful, concise AI assistant running on a local model.".to_string()
+        "You are Locaryn, a helpful, concise AI assistant running on a local model.".to_string()
     };
     let system_prompt = crate::compose_system_prompt(&base_prompt, input.extra_system.as_ref());
 
@@ -303,7 +303,7 @@ pub async fn run_openai_tool_loop(
                         needs_user_consent: true,
                         reason: "Unknown tool — not in the built-in tool set.".into(),
                         diff: None,
-                        min_scope: lochor_shared_types::RiskScope::Once,
+                        min_scope: locaryn_shared_types::RiskScope::Once,
                         hard_blocked: true,
                         debug_trace: "tool not found in builtin_tools()".into(),
                     },
@@ -518,7 +518,7 @@ async fn stream_one_round(
 
 
 fn system_prompt_for_dev_agent() -> String {
-    "You are Lochor, an AI coding assistant with access to tools for interacting with the user's local project. \
+    "You are Locaryn, an AI coding assistant with access to tools for interacting with the user's local project. \
      \n\nCRITICAL RULES:\n\
      1. DO NOT guess or hallucinate code or file contents. If you need to know what is in a file, you MUST use the `read_file` tool.\n\
      2. DO NOT assume the directory structure. If you are unsure where a file is, use the `search` tool to find it.\

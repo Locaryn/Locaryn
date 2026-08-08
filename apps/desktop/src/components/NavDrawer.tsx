@@ -24,16 +24,16 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
   if (!isOpen) return null;
 
   return (
-    <div className="lochor-nav-drawer-overlay" onClick={onClose}>
-      <aside className="lochor-nav-drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="lochor-nav-drawer-head">
+    <div className="locaryn-nav-drawer-overlay" onClick={onClose}>
+      <aside className="locaryn-nav-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="locaryn-nav-drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span className="lochor-logo-dot" />
-            <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Lochor Navigation</strong>
+            <span className="locaryn-logo-dot" />
+            <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Locaryn Navigation</strong>
           </div>
           <button
             type="button"
-            className="lochor-icon-btn"
+            className="locaryn-icon-btn"
             onClick={onClose}
             title="Fermer le menu"
             style={{ fontSize: "16px" }}
@@ -42,8 +42,8 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
           </button>
         </div>
 
-        <div className="lochor-nav-drawer-body">
-          <span className="lochor-box-variants-title" style={{ marginBottom: "8px", display: "block" }}>
+        <div className="locaryn-nav-drawer-body">
+          <span className="locaryn-box-variants-title" style={{ marginBottom: "8px", display: "block" }}>
             VUES PRINCIPALES
           </span>
 
@@ -54,16 +54,16 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
                 <button
                   key={item.id}
                   type="button"
-                  className={`lochor-nav-drawer-item${isActive ? " lochor-active" : ""}`}
+                  className={`locaryn-nav-drawer-item${isActive ? " locaryn-active" : ""}`}
                   onClick={() => {
                     onSelectView(item.id);
                     onClose();
                   }}
                 >
-                  <span className="lochor-nav-drawer-icon">{item.icon}</span>
+                  <span className="locaryn-nav-drawer-icon">{item.icon}</span>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", textAlign: "left" }}>
-                    <span className="lochor-nav-drawer-label">{item.label}</span>
-                    <span className="lochor-nav-drawer-desc">{item.desc}</span>
+                    <span className="locaryn-nav-drawer-label">{item.label}</span>
+                    <span className="locaryn-nav-drawer-desc">{item.desc}</span>
                   </div>
                 </button>
               );
@@ -71,9 +71,9 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
           </div>
         </div>
 
-        <div className="lochor-nav-drawer-foot">
+        <div className="locaryn-nav-drawer-foot">
           <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-            Lochor Agentic Platform v0.1.0
+            Locaryn Agentic Platform v0.1.0
           </span>
         </div>
       </aside>

@@ -14,7 +14,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use lochor_storage::users::{Role, User, UserRepo};
+use locaryn_storage::users::{Role, User, UserRepo};
 use serde::Deserialize;
 use std::sync::Arc;
 

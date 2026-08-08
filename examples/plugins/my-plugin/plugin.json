@@ -1,5 +1,5 @@
 {
-  "schema": "https://lochor.dev/schema/plugin.json/v0.1",
+  "schema": "https://locaryn.dev/schema/plugin.json/v0.1",
   "apiVersion": "0.1",
   "name": "my-plugin",
   "version": "1.0.0",
@@ -9,7 +9,7 @@
   "homepage": "https://github.com/jane/my-plugin",
   "repository": "https://github.com/jane/my-plugin",
   "keywords": ["review", "migration", "sql"],
-  "minLochorVersion": "0.1.0",
+  "minLocarynVersion": "0.1.0",
   "permissions": {
     "shell": { "reason": "Run migrations and linters", "scope": "project" },
     "files.read": { "reason": "Read source files for review", "scope": "project" },

@@ -1,5 +1,5 @@
 [package]
-name = "lochor-extensions"
+name = "locaryn-extensions"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,13 +8,13 @@ authors.workspace = true
 description = "Extension registry, loader, manifest validation, permissions, hot-reload, ecosystem import."
 
 [dependencies]
-lochor-shared-types = { workspace = true }
-lochor-config = { workspace = true }
-lochor-mcp = { workspace = true }
-lochor-skill-runtime = { workspace = true }
-lochor-command-runtime = { workspace = true }
-lochor-hook-runtime = { workspace = true }
-lochor-lsp-adapters = { workspace = true }
+locaryn-shared-types = { workspace = true }
+locaryn-config = { workspace = true }
+locaryn-mcp = { workspace = true }
+locaryn-skill-runtime = { workspace = true }
+locaryn-command-runtime = { workspace = true }
+locaryn-hook-runtime = { workspace = true }
+locaryn-lsp-adapters = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }

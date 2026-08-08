@@ -1,6 +1,6 @@
 # 06 — API Contract
 
-Contrat **unique** partagé entre le daemon local et le remote-server. Le remote-server ajoute `/auth`, TLS, audit, et les endpoints enterprise. Le `lochor-sdk` parle les deux indifféremment (seul l'endpoint change).
+Contrat **unique** partagé entre le daemon local et le remote-server. Le remote-server ajoute `/auth`, TLS, audit, et les endpoints enterprise. Le `locaryn-sdk` parle les deux indifféremment (seul l'endpoint change).
 
 ## Conventions
 
@@ -68,7 +68,7 @@ event: task.update
 data: {"task_id":"...","status":"running","progress":0.4}
 
 event: preview.update
-data: {"artifact_id":"...","url":"lochor-preview://artifact/foo.html"}
+data: {"artifact_id":"...","url":"locaryn-preview://artifact/foo.html"}
 
 event: provider.changed
 data: {"provider":"local","engine":"ollama","model":"qwen2.5-coder:7b","reason":"remote_unavailable"}

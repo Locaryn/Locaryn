@@ -1,8 +1,8 @@
 //! `plugin.json` manifest schema and validation.
 //!
-//! Schema URL: https://lochor.dev/schema/plugin.json/v0.1
+//! Schema URL: https://locaryn.dev/schema/plugin.json/v0.1
 
-use lochor_shared_types::Permission;
+use locaryn_shared_types::Permission;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -25,8 +25,8 @@ pub struct PluginManifest {
     pub repository: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
-    #[serde(default, rename = "minLochorVersion")]
-    pub min_lochor_version: Option<String>,
+    #[serde(default, rename = "minLocarynVersion")]
+    pub min_locaryn_version: Option<String>,
     #[serde(default)]
     pub permissions: PermissionsMap,
     #[serde(default)]
@@ -78,7 +78,7 @@ pub struct Components {
 }
 
 impl Components {
-    /// True when the bundle contributes nothing Lochor can load.
+    /// True when the bundle contributes nothing Locaryn can load.
     pub fn is_empty(&self) -> bool {
         self.skills.is_empty()
             && self.commands.is_empty()
@@ -131,7 +131,7 @@ pub fn validate(m: &PluginManifest) -> Result<(), ManifestError> {
     if m.api_version.is_empty() {
         return Err(ManifestError::Invalid("apiVersion is required".into()));
     }
-    // apiVersion must be a known Lochor extension API version.
+    // apiVersion must be a known Locaryn extension API version.
     if !is_supported_api_version(&m.api_version) {
         return Err(ManifestError::Invalid(format!(
             "unsupported apiVersion {} (supported: 0.1)",
@@ -151,7 +151,7 @@ pub fn validate(m: &PluginManifest) -> Result<(), ManifestError> {
     Ok(())
 }
 
-/// Lochor extension API versions this build supports.
+/// Locaryn extension API versions this build supports.
 pub fn supported_api_versions() -> &'static [&'static str] {
     &["0.1"]
 }

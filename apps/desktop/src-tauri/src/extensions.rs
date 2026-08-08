@@ -6,7 +6,7 @@
 //! ever actually run.
 //!
 //! This module is the connection. Installing fetches and adapts a bundle
-//! (`lochor_extensions::install`), records it in SQLite, and — once the user
+//! (`locaryn_extensions::install`), records it in SQLite, and — once the user
 //! has granted the permissions it asked for — registers its components with
 //! the runtimes that were already there: MCP servers into `core.mcp`, rules
 //! and skills into the system prompt, commands into the slash palette.
@@ -16,15 +16,15 @@
 //! point. Saying so in the UI is better than a plugin whose hooks quietly
 //! never run.
 
-use lochor_extensions::loader::LoadedPlugin;
-use lochor_extensions::manifest::PluginManifest;
-use lochor_extensions::{latest_github_version, version_gt, SourceError};
-use lochor_mcp::{build_client, McpClient, McpConfig, McpServerEntry, Transport};
-use lochor_shared_types::{
+use locaryn_extensions::loader::LoadedPlugin;
+use locaryn_extensions::manifest::PluginManifest;
+use locaryn_extensions::{latest_github_version, version_gt, SourceError};
+use locaryn_mcp::{build_client, McpClient, McpConfig, McpServerEntry, Transport};
+use locaryn_shared_types::{
     CatalogEntry, CatalogSnapshot, CatalogSource, ExtensionComponents, ExtensionEcosystem,
     ExtensionKind, ExtensionPermissionState, ExtensionScope, InstalledExtension, Permission,
 };
-use lochor_storage::NewExtension;
+use locaryn_storage::NewExtension;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -53,7 +53,7 @@ pub struct ExtensionRuntime {
 
 impl ExtensionRuntime {
     /// A command contributed by any enabled plugin, by its namespaced name.
-    pub fn command(&self, name: &str) -> Option<(&str, &lochor_command_runtime::CommandDef)> {
+    pub fn command(&self, name: &str) -> Option<(&str, &locaryn_command_runtime::CommandDef)> {
         for p in self.loaded.values() {
             for c in &p.commands {
                 if c.name == name || format!("{}:{}", p.manifest.name, c.name) == name {
@@ -97,7 +97,7 @@ pub async fn reload(core: &Core) -> Result<(), String> {
         let Some(root) = plugin_root(&row.manifest_path) else {
             continue;
         };
-        match lochor_extensions::loader::load(&root) {
+        match locaryn_extensions::loader::load(&root) {
             Ok(p) => {
                 prompt.push_str(&p.system_prompt_fragment());
                 next.loaded.insert(row.id, p);
@@ -223,7 +223,7 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
         // only holds identity and the user's decisions.
         let manifest = root
             .as_deref()
-            .and_then(|r| lochor_extensions::manifest::load(r).ok());
+            .and_then(|r| locaryn_extensions::manifest::load(r).ok());
 
         // An enabled plugin is already loaded; for a disabled one, parse it now
         // so the card can still say what it would contribute.
@@ -231,7 +231,7 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
             Some(p) => (p.counts(), p.errors.clone()),
             None => match (&root, &manifest) {
                 (Some(r), Some(m)) => {
-                    let p = lochor_extensions::loader::load_with_manifest(r, m.clone());
+                    let p = locaryn_extensions::loader::load_with_manifest(r, m.clone());
                     (p.counts(), p.errors)
                 }
                 _ => (
@@ -246,7 +246,7 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
 
         let requested = manifest
             .as_ref()
-            .map(lochor_extensions::manifest::requested_permissions)
+            .map(locaryn_extensions::manifest::requested_permissions)
             .unwrap_or_default();
         let permissions: Vec<ExtensionPermissionState> = requested
             .iter()
@@ -329,7 +329,7 @@ pub async fn resolve_extension_command(
         .command(&name)
         .ok_or_else(|| format!("« {name} » n'est pas une commande d'extension."))?;
     let parts: Vec<String> = args.split_whitespace().map(str::to_string).collect();
-    Ok(lochor_command_runtime::resolve(&def.body, &parts))
+    Ok(locaryn_command_runtime::resolve(&def.body, &parts))
 }
 
 #[tauri::command]
@@ -342,12 +342,12 @@ pub async fn install_extension(
     let scope = parse_scope(scope.as_deref());
     let workspace_root = workspace.as_deref().map(Path::new);
 
-    let outcome = lochor_extensions::install(&core.http, source.trim(), scope, workspace_root)
+    let outcome = locaryn_extensions::install(&core.http, source.trim(), scope, workspace_root)
         .await
         .map_err(|e| e.to_string())?;
 
     let requested: Vec<Permission> =
-        lochor_extensions::manifest::requested_permissions(&outcome.manifest)
+        locaryn_extensions::manifest::requested_permissions(&outcome.manifest)
             .into_iter()
             .map(|(p, _)| p)
             .collect();
@@ -442,12 +442,12 @@ async fn reinstall_from_source(
     scope: ExtensionScope,
     source: &str,
 ) -> Result<InstalledExtension, String> {
-    let outcome = lochor_extensions::install(&core.http, source.trim(), scope, None)
+    let outcome = locaryn_extensions::install(&core.http, source.trim(), scope, None)
         .await
         .map_err(|e| e.to_string())?;
 
     let requested: Vec<Permission> =
-        lochor_extensions::manifest::requested_permissions(&outcome.manifest)
+        locaryn_extensions::manifest::requested_permissions(&outcome.manifest)
             .into_iter()
             .map(|(p, _)| p)
             .collect();
@@ -526,8 +526,8 @@ pub struct ExtensionUpdateCheck {
 pub async fn preview_extension_source(
     core: State<'_, Core>,
     source: String,
-) -> Result<lochor_extensions::SourcePreview, String> {
-    lochor_extensions::preview_source(&core.http, source.trim())
+) -> Result<locaryn_extensions::SourcePreview, String> {
+    locaryn_extensions::preview_source(&core.http, source.trim())
         .await
         .map_err(|e| e.to_string())
 }
@@ -651,7 +651,7 @@ pub async fn remove_extension(
 
     if let Some(root) = plugin_root(&record.manifest_path) {
         let workspace_root = workspace.as_deref().map(Path::new);
-        if !lochor_extensions::remove_files(&root, record.scope, workspace_root) {
+        if !locaryn_extensions::remove_files(&root, record.scope, workspace_root) {
             tracing::warn!(path = %root.display(), "fichiers de l'extension non supprimés");
         }
     }
@@ -675,7 +675,7 @@ fn parse_scope(s: Option<&str>) -> ExtensionScope {
 
 /// An extension's settings form, as declared by the extension itself.
 ///
-/// Lochor renders `schema` and stores `values`; it knows nothing about what
+/// Locaryn renders `schema` and stores `values`; it knows nothing about what
 /// any particular extension needs. That is the whole point: an extension says
 /// what it wants on screen, the app draws it, and an app that has never seen
 /// that extension carries no trace of it.
@@ -719,7 +719,7 @@ fn read_values(root: &Path, schema: &serde_json::Value) -> serde_json::Value {
 }
 
 fn manifest_schema(root: &Path) -> serde_json::Value {
-    lochor_extensions::manifest::load(root)
+    locaryn_extensions::manifest::load(root)
         .ok()
         .and_then(|m| m.config)
         .map(|c| c.schema)
@@ -900,7 +900,7 @@ pub async fn get_extension_mcp_servers(
         .ok_or_else(|| "extension introuvable".to_string())?;
     let root = plugin_root(&record.manifest_path)
         .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
-    let manifest = lochor_extensions::manifest::load(&root).map_err(|e| e.to_string())?;
+    let manifest = locaryn_extensions::manifest::load(&root).map_err(|e| e.to_string())?;
     let Some(path) = extension_mcp_file(&root, &manifest) else {
         return Ok(Vec::new());
     };
@@ -934,7 +934,7 @@ pub async fn set_extension_mcp_servers(
         .ok_or_else(|| "extension introuvable".to_string())?;
     let root = plugin_root(&record.manifest_path)
         .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
-    let manifest = lochor_extensions::manifest::load(&root).map_err(|e| e.to_string())?;
+    let manifest = locaryn_extensions::manifest::load(&root).map_err(|e| e.to_string())?;
     let path = extension_mcp_file(&root, &manifest)
         .ok_or_else(|| "cette extension ne déclare aucun serveur MCP modifiable".to_string())?;
 
@@ -976,7 +976,7 @@ struct SourcePrefs {
 }
 
 fn prefs_path() -> PathBuf {
-    lochor_config::global_dir().join("extension-sources.json")
+    locaryn_config::global_dir().join("extension-sources.json")
 }
 
 fn load_prefs() -> SourcePrefs {
@@ -998,7 +998,7 @@ fn save_prefs(p: &SourcePrefs) {
 
 fn effective_sources() -> Vec<CatalogSource> {
     let prefs = load_prefs();
-    let mut all = lochor_extensions::builtin_sources();
+    let mut all = locaryn_extensions::builtin_sources();
     for s in &mut all {
         s.enabled = !prefs.disabled.contains(&s.id);
     }
@@ -1020,17 +1020,17 @@ pub async fn add_catalog_source(
     _core: State<'_, Core>,
     spec: String,
 ) -> Result<Vec<CatalogSource>, String> {
-    let parsed = lochor_extensions::source::parse(spec.trim()).map_err(|e| e.to_string())?;
-    let lochor_extensions::InstallSource::GitHub { owner, repo, .. } = parsed else {
+    let parsed = locaryn_extensions::source::parse(spec.trim()).map_err(|e| e.to_string())?;
+    let locaryn_extensions::InstallSource::GitHub { owner, repo, .. } = parsed else {
         return Err(
             "Indiquez un dépôt GitHub (owner/repo) contenant .claude-plugin/marketplace.json."
                 .into(),
         );
     };
-    let source = lochor_extensions::catalog::marketplace_source(&owner, &repo);
+    let source = locaryn_extensions::catalog::marketplace_source(&owner, &repo);
     let mut prefs = load_prefs();
     if prefs.custom.iter().any(|s| s.id == source.id)
-        || lochor_extensions::builtin_sources()
+        || locaryn_extensions::builtin_sources()
             .iter()
             .any(|s| s.id == source.id)
     {
@@ -1076,7 +1076,7 @@ pub async fn remove_catalog_source(
 /// calls it on demand rather than on every visit to the store.
 #[tauri::command]
 pub async fn refresh_extension_catalog(core: State<'_, Core>) -> Result<CatalogSnapshot, String> {
-    let client = lochor_extensions::CatalogClient::new(core.http.clone());
+    let client = locaryn_extensions::CatalogClient::new(core.http.clone());
     let snapshot = client.refresh(&effective_sources()).await;
     Ok(mark_installed(&core, snapshot).await)
 }
@@ -1090,7 +1090,7 @@ pub async fn browse_extension_catalog(
     ecosystem: Option<String>,
     limit: Option<u32>,
 ) -> Result<CatalogSnapshot, String> {
-    let client = lochor_extensions::CatalogClient::new(core.http.clone());
+    let client = locaryn_extensions::CatalogClient::new(core.http.clone());
     let Some(snapshot) = client.cached() else {
         return Ok(CatalogSnapshot {
             entries: Vec::new(),
@@ -1100,7 +1100,7 @@ pub async fn browse_extension_catalog(
         });
     };
     let eco = ecosystem.as_deref().and_then(parse_ecosystem);
-    let filtered = lochor_extensions::catalog::filter(
+    let filtered = locaryn_extensions::catalog::filter(
         &snapshot.entries,
         query.as_deref().unwrap_or(""),
         eco,
@@ -1137,7 +1137,7 @@ async fn mark_installed(core: &Core, mut snapshot: CatalogSnapshot) -> CatalogSn
 
 fn parse_ecosystem(s: &str) -> Option<ExtensionEcosystem> {
     match s {
-        "lochor" => Some(ExtensionEcosystem::Lochor),
+        "locaryn" => Some(ExtensionEcosystem::Locaryn),
         "claude_code" => Some(ExtensionEcosystem::ClaudeCode),
         "gemini_cli" => Some(ExtensionEcosystem::GeminiCli),
         "opencode" => Some(ExtensionEcosystem::OpenCode),
@@ -1152,7 +1152,7 @@ pub async fn catalog_entry_details(
     core: State<'_, Core>,
     id: String,
 ) -> Result<Option<CatalogEntry>, String> {
-    let client = lochor_extensions::CatalogClient::new(core.http.clone());
+    let client = locaryn_extensions::CatalogClient::new(core.http.clone());
     Ok(client
         .cached()
         .and_then(|s| s.entries.into_iter().find(|e| e.id == id)))

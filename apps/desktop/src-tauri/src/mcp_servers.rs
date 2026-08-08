@@ -10,7 +10,7 @@
 //! mistyped command into a chat that silently has no tools, half an hour
 //! later, with nothing pointing at the cause.
 
-use lochor_mcp::{build_client, McpClient, McpServerEntry, McpState, Transport};
+use locaryn_mcp::{build_client, McpClient, McpServerEntry, McpState, Transport};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -399,7 +399,7 @@ fn playwright_browser_roots() -> Vec<PathBuf> {
     roots
 }
 
-fn extension_roots(records: &[lochor_storage::repos::ExtensionRecord]) -> Vec<PathBuf> {
+fn extension_roots(records: &[locaryn_storage::repos::ExtensionRecord]) -> Vec<PathBuf> {
     records
         .iter()
         .filter(|r| r.name.to_lowercase().contains("snap"))

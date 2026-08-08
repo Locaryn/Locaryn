@@ -61,7 +61,7 @@ type Props = {
   /** Workspace picker: register a new SSH connection. */
   onAddSsh?: () => void;
   /** Connection mode from the Rust core. Cloud workspace is only enabled
-   *  when the app is connected to a remote Lochor server (mode === "remote"). */
+   *  when the app is connected to a remote Locaryn server (mode === "remote"). */
   connectionMode?: ConnectionMode;
 };
 
@@ -562,7 +562,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
       ? code
       : (() => {
           const ext = lang.startsWith("py") ? "py" : lang === "powershell" || lang === "ps1" ? "ps1" : "js";
-          const file = `lochor_snippet_${Date.now()}.${ext}`;
+          const file = `locaryn_snippet_${Date.now()}.${ext}`;
           const body = code.replace(/'/g, "''");
           const write = `@'\n${body}\n'@ | Set-Content -Encoding utf8 "$env:TEMP\\${file}"`;
           const run = (runners[lang] ?? runners.python)(`$env:TEMP\\${file}`);
@@ -692,7 +692,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
   }
 
   return (
-    <section className="lochor-chat">
+    <section className="locaryn-chat">
       <QuickModelSelector
         isOpen={quickModelOpen}
         onClose={() => setQuickModelOpen(false)}
@@ -703,19 +703,19 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
         onOpenMarketplace={onOpenMarketplace}
       />
 
-      <div className="lochor-chat-scroll" ref={streamRef}>
+      <div className="locaryn-chat-scroll" ref={streamRef}>
         {empty ? (
-          <div className="lochor-empty">
-            <div className="lochor-empty-title">Assistant IA Lochor</div>
-            <div className="lochor-empty-sub">
-              Lochor peut lire, chercher, éditer et exécuter du code dans ce projet ou en chat libre.
+          <div className="locaryn-empty">
+            <div className="locaryn-empty-title">Assistant IA Locaryn</div>
+            <div className="locaryn-empty-sub">
+              Locaryn peut lire, chercher, éditer et exécuter du code dans ce projet ou en chat libre.
             </div>
-            <div className="lochor-empty-suggestions">
+            <div className="locaryn-empty-suggestions">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   type="button"
-                  className="lochor-suggestion"
+                  className="locaryn-suggestion"
                   disabled={!canCompose}
                   onClick={() => send(s)}
                 >
@@ -725,7 +725,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             </div>
           </div>
         ) : (
-          <div className="lochor-chat-column">
+          <div className="locaryn-chat-column">
             {items.map((it, i) => {
               if (it.kind === "msg") {
                 return (
@@ -786,30 +786,30 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
                 );
               }
               return (
-                <div key={i} className="lochor-chat-log">
+                <div key={i} className="locaryn-chat-log">
                   {it.text}
                 </div>
               );
             })}
             {streaming && (
-              <div className="lochor-thinking" aria-live="polite">
-                <span className="lochor-thinking-dot" />
-                <span className="lochor-thinking-dot" />
-                <span className="lochor-thinking-dot" />
+              <div className="locaryn-thinking" aria-live="polite">
+                <span className="locaryn-thinking-dot" />
+                <span className="locaryn-thinking-dot" />
+                <span className="locaryn-thinking-dot" />
               </div>
             )}
 
             {/* Next-step suggestions, asked to the model in the background. */}
             {!streaming && (followupsLoading || followups.length > 0) && (
-              <div className="lochor-followups">
-                <span className="lochor-followups-label">
+              <div className="locaryn-followups">
+                <span className="locaryn-followups-label">
                   {followupsLoading ? "Suggestions…" : "Et ensuite ?"}
                 </span>
                 {followups.map((f) => (
                   <button
                     key={f}
                     type="button"
-                    className="lochor-followup"
+                    className="locaryn-followup"
                     onClick={() => {
                       // A suggestion may be a slash command (e.g. "/image brouillon"
                       // for a throwaway icon) — run it instead of sending it as text.
@@ -837,17 +837,17 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
         )}
       </div>
 
-      <div className="lochor-composer">
+      <div className="locaryn-composer">
         {/* Message queue visual display */}
         {messageQueue.length > 0 && (
-          <div className="lochor-queue-container">
-            <div className="lochor-queue-title">File d'attente ({messageQueue.length})</div>
+          <div className="locaryn-queue-container">
+            <div className="locaryn-queue-title">File d'attente ({messageQueue.length})</div>
             {messageQueue.map((qm, i) => (
-              <div key={i} className="lochor-queue-item">
-                <span className="lochor-queue-text">{qm.text || "(Image seule)"}</span>
+              <div key={i} className="locaryn-queue-item">
+                <span className="locaryn-queue-text">{qm.text || "(Image seule)"}</span>
                 <button
                   type="button"
-                  className="lochor-queue-remove"
+                  className="locaryn-queue-remove"
                   onClick={() => removeQueuedMessage(i)}
                   title="Retirer de la file d'attente"
                 >
@@ -860,9 +860,9 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
 
         {/* Slash-command palette (type "/" in the composer) */}
         {slash && slash.items.length > 0 && (
-          <div className="lochor-slash" role="listbox" aria-label="Commandes">
+          <div className="locaryn-slash" role="listbox" aria-label="Commandes">
             {slash.kind === "args" && (
-              <div className="lochor-slash-head">
+              <div className="locaryn-slash-head">
                 {slash.command.icon} {slash.command.label} — choisissez la qualite
               </div>
             )}
@@ -873,16 +873,16 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
                     type="button"
                     role="option"
                     aria-selected={i === slashIndex}
-                    className={`lochor-slash-item${i === slashIndex ? " lochor-active" : ""}`}
+                    className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
                     onMouseEnter={() => setSlashIndex(i)}
                     onClick={() => runSlash(c.action)}
                   >
-                    <span className="lochor-slash-icon">{c.icon}</span>
-                    <span className="lochor-slash-text">
-                      <span className="lochor-slash-label">{c.label}</span>
-                      <span className="lochor-slash-hint">{c.hint}</span>
+                    <span className="locaryn-slash-icon">{c.icon}</span>
+                    <span className="locaryn-slash-text">
+                      <span className="locaryn-slash-label">{c.label}</span>
+                      <span className="locaryn-slash-hint">{c.hint}</span>
                     </span>
-                    <code className="lochor-slash-cmd">
+                    <code className="locaryn-slash-cmd">
                       /{c.name}{c.args && c.args.length ? " ..." : ""}
                     </code>
                   </button>
@@ -893,22 +893,22 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
                     type="button"
                     role="option"
                     aria-selected={i === slashIndex}
-                    className={`lochor-slash-item${i === slashIndex ? " lochor-active" : ""}`}
+                    className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
                     onMouseEnter={() => setSlashIndex(i)}
                     onClick={() => runSlash(slash.command.action, argToSize(a.value))}
                   >
-                    <span className="lochor-slash-icon">&#128208;</span>
-                    <span className="lochor-slash-text">
-                      <span className="lochor-slash-label">{a.label}</span>
-                      <span className="lochor-slash-hint">{a.hint}</span>
+                    <span className="locaryn-slash-icon">&#128208;</span>
+                    <span className="locaryn-slash-text">
+                      <span className="locaryn-slash-label">{a.label}</span>
+                      <span className="locaryn-slash-hint">{a.hint}</span>
                     </span>
-                    <code className="lochor-slash-cmd">{a.value}</code>
+                    <code className="locaryn-slash-cmd">{a.value}</code>
                   </button>
                 ))}
           </div>
         )}
 
-        <div className="lochor-composer-context">
+        <div className="locaryn-composer-context">
           <WorkspacePicker
             value={workspace}
             onChange={setWorkspace}
@@ -919,15 +919,15 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
           />
         </div>
 
-        <div className="lochor-composer-card">
+        <div className="locaryn-composer-card">
           {attachments.length > 0 && (
-            <div className="lochor-attach-strip">
+            <div className="locaryn-attach-strip">
               {attachments.map((a, i) => (
-                <div key={i} className="lochor-attach-chip">
+                <div key={i} className="locaryn-attach-chip">
                   <img src={a.dataUrl} alt={a.name} />
                   <button
                     type="button"
-                    className="lochor-attach-remove"
+                    className="locaryn-attach-remove"
                     aria-label="Retirer l'image"
                     onClick={() =>
                       setAttachments((prev) => prev.filter((_, idx) => idx !== i))
@@ -941,10 +941,10 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
           )}
           <textarea
             ref={inputRef}
-            className="lochor-composer-input"
+            className="locaryn-composer-input"
             rows={1}
             placeholder={
-              sessionId ? "Posez votre question à Lochor…" : "Sélectionnez ou créez une session"
+              sessionId ? "Posez votre question à Locaryn…" : "Sélectionnez ou créez une session"
             }
             value={input}
             disabled={!canCompose}
@@ -956,7 +956,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             }}
             onKeyDown={handleComposerKeyDown}
           />
-          <div className="lochor-composer-bar">
+          <div className="locaryn-composer-bar">
             <input
               ref={fileRef}
               type="file"
@@ -968,7 +968,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             {/* Action chips — each states what it does and whether it's ON. */}
             <button
               type="button"
-              className="lochor-chip-btn"
+              className="locaryn-chip-btn"
               title="Joindre une image au message"
               disabled={!canCompose}
               onClick={() => fileRef.current?.click()}
@@ -977,7 +977,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             </button>
             <button
               type="button"
-              className="lochor-chip-btn"
+              className="locaryn-chip-btn"
               title="Générer ou éditer une image avec l'IA locale"
               disabled={!canCompose}
               onClick={() => setImageGenOpen(true)}
@@ -989,20 +989,20 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
 
             <button
               type="button"
-              className={`lochor-chip-btn${ragCount > 0 ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip-btn${ragCount > 0 ? " locaryn-chip-on" : ""}`}
               title="Base de connaissances : ajoutez des documents, le modèle s'en servira pour répondre"
               disabled={!projectId}
               onClick={() => setRagOpen(true)}
             >
               <span aria-hidden="true">📚</span> Documents
-              {ragCount > 0 && <span className="lochor-chip-state">{ragCount}</span>}
+              {ragCount > 0 && <span className="locaryn-chip-state">{ragCount}</span>}
             </button>
-            <span className="lochor-composer-hint">
+            <span className="locaryn-composer-hint">
               Entrée pour envoyer · Shift+Entrée pour saut de ligne
             </span>
             <button
               type="button"
-              className="lochor-send"
+              className="locaryn-send"
               onClick={() => send()}
               disabled={!canSend}
               aria-label="Send message"
@@ -1016,7 +1016,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             {/* Model Quick Picker pill */}
             <button
               type="button"
-              className="lochor-btn-ghost"
+              className="locaryn-btn-ghost"
               style={{
                 fontSize: "11px",
                 display: "flex",
@@ -1040,17 +1040,17 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             </button>
 
             {/* Context gauge */}
-            <div className="lochor-ctx-gauge-wrap" title={`~${ctxFmt(usedTokens)} / ${ctxFmt(ctxWindow)} tokens utilisés`}>
+            <div className="locaryn-ctx-gauge-wrap" title={`~${ctxFmt(usedTokens)} / ${ctxFmt(ctxWindow)} tokens utilisés`}>
               <div
-                className={`lochor-ctx-gauge-bar lochor-ctx-gauge-${ctxWarnLevel}`}
+                className={`locaryn-ctx-gauge-bar locaryn-ctx-gauge-${ctxWarnLevel}`}
                 style={{ width: `${ctxPct * 100}%` }}
               />
-              <span className="lochor-ctx-gauge-label">
-                <span className={`lochor-ctx-gauge-used lochor-ctx-gauge-text-${ctxWarnLevel}`}>
+              <span className="locaryn-ctx-gauge-label">
+                <span className={`locaryn-ctx-gauge-used locaryn-ctx-gauge-text-${ctxWarnLevel}`}>
                   ~{ctxFmt(usedTokens)}
                 </span>
-                <span className="lochor-ctx-gauge-sep">/</span>
-                <span className="lochor-ctx-gauge-total">{ctxFmt(ctxWindow)} ctx</span>
+                <span className="locaryn-ctx-gauge-sep">/</span>
+                <span className="locaryn-ctx-gauge-total">{ctxFmt(ctxWindow)} ctx</span>
               </span>
             </div>
           </div>

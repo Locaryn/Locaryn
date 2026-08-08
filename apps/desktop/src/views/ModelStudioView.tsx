@@ -41,50 +41,50 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
   }, []);
 
   return (
-    <section className="lochor-view-container">
-      <div className="lochor-view-header">
+    <section className="locaryn-view-container">
+      <div className="locaryn-view-header">
         <h2>Édition & optimisation de modèle</h2>
-        <p className="lochor-view-desc">
-          Ce que Lochor peut appliquer à un modèle en local, et ce qui demande une pile
+        <p className="locaryn-view-desc">
+          Ce que Locaryn peut appliquer à un modèle en local, et ce qui demande une pile
           d'entraînement séparée. Rien n'est simulé ici.
         </p>
       </div>
 
-      <div className="lochor-card">
+      <div className="locaryn-card">
         <h3>Disponible dans l'application</h3>
-        <div className="lochor-caps-grid" style={{ marginTop: 12 }}>
+        <div className="locaryn-caps-grid" style={{ marginTop: 12 }}>
           {DOABLE.map((d) => (
-            <div key={d.label} className="lochor-cap-chip">
+            <div key={d.label} className="locaryn-cap-chip">
               <span style={{ flex: "0 0 auto" }}>{d.icon}</span>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{d.label}</div>
-                <div className="lochor-field-hint" style={{ margin: 0 }}>{d.desc}</div>
+                <div className="locaryn-field-hint" style={{ margin: 0 }}>{d.desc}</div>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="lochor-field" style={{ marginTop: 20 }}>
-          <label className="lochor-field-label">Adaptateurs LoRA chargés</label>
+        <div className="locaryn-field" style={{ marginTop: 20 }}>
+          <label className="locaryn-field-label">Adaptateurs LoRA chargés</label>
           {cfg && cfg.lora_adapters.length > 0 ? (
-            <ul className="lochor-lora-list">
+            <ul className="locaryn-lora-list">
               {cfg.lora_adapters.map((p) => (
-                <li key={p} className="lochor-lora-row">
-                  <span className="lochor-lora-path" title={p}>{p}</span>
-                  <span className="lochor-lora-scale">
+                <li key={p} className="locaryn-lora-row">
+                  <span className="locaryn-lora-path" title={p}>{p}</span>
+                  <span className="locaryn-lora-scale">
                     {lora?.find((a) => a.path === p)?.scale?.toFixed(2) ?? "—"}
                   </span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="lochor-field-hint" style={{ fontStyle: "italic" }}>
+            <p className="locaryn-field-hint" style={{ fontStyle: "italic" }}>
               Aucun adaptateur. Ajoutez-en depuis Paramètres → Moteur IA.
             </p>
           )}
-          <div className="lochor-field-actions" style={{ marginTop: 10 }}>
+          <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
             {onOpenSettings && (
-              <button type="button" className="lochor-btn-ghost" onClick={onOpenSettings}>
+              <button type="button" className="locaryn-btn-ghost" onClick={onOpenSettings}>
                 ⚙ Gérer les adaptateurs
               </button>
             )}
@@ -92,26 +92,26 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
         </div>
       </div>
 
-      <div className="lochor-card" style={{ marginTop: 16 }}>
+      <div className="locaryn-card" style={{ marginTop: 16 }}>
         <h3>Hors de portée de ce moteur</h3>
-        <p className="lochor-field-hint">
+        <p className="locaryn-field-hint">
           llama.cpp exécute des modèles, il ne les entraîne pas. Ces opérations demandent
           PyTorch et un GPU adapté ; le résultat (GGUF) se charge ensuite ici.
         </p>
-        <ul className="lochor-caps-unavailable" style={{ marginTop: 10 }}>
+        <ul className="locaryn-caps-unavailable" style={{ marginTop: 10 }}>
           {NOT_DOABLE.map((n) => (
             <li key={n.label}>
               <strong>{n.label}</strong> — {n.why}
             </li>
           ))}
         </ul>
-        <p className="lochor-field-hint" style={{ marginTop: 12 }}>
+        <p className="locaryn-field-hint" style={{ marginTop: 12 }}>
           En pratique : des modèles <em>déjà</em> distillés ou débridés existent publiquement et
-          s'exécutent tels quels dans Lochor.
+          s'exécutent tels quels dans Locaryn.
         </p>
         {onOpenMarketplace && (
-          <div className="lochor-field-actions" style={{ marginTop: 10 }}>
-            <button type="button" className="lochor-btn-primary" onClick={onOpenMarketplace}>
+          <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
+            <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}>
               🛒 Parcourir le marketplace
             </button>
           </div>
@@ -119,7 +119,7 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
       </div>
 
       {caps && (
-        <p className="lochor-field-hint" style={{ marginTop: 14 }}>
+        <p className="locaryn-field-hint" style={{ marginTop: 14 }}>
           Runtime : {caps.runtime_installed ? `llama.cpp ${caps.runtime_version ?? ""}` : "non installé"} ·
           formats supportés : {caps.weight_formats.join(", ")}
         </p>

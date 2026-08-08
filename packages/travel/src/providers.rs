@@ -8,7 +8,7 @@
 //! account at all, ngrok is what many people already have, and Microsoft's dev
 //! tunnels are the one an employer is most likely to permit.
 //!
-//! None of them ships with Lochor. Bundling somebody else's binary means
+//! None of them ships with Locaryn. Bundling somebody else's binary means
 //! shipping their updates and their vulnerabilities; instead the tool is
 //! detected, and if it is missing the user is told exactly how to get it.
 
@@ -86,7 +86,7 @@ impl Provider {
     }
 
     pub fn is_available(&self) -> bool {
-        lochor_config::program_exists(self.binary())
+        locaryn_config::program_exists(self.binary())
     }
 
     fn args(&self, port: u16) -> Vec<String> {
@@ -204,7 +204,7 @@ pub async fn start(provider: Provider, port: u16) -> Result<Tunnel, TunnelError>
         ));
     }
 
-    let mut child = tokio::process::Command::new(lochor_config::resolve_program(provider.binary()))
+    let mut child = tokio::process::Command::new(locaryn_config::resolve_program(provider.binary()))
         .args(provider.args(port))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -1,7 +1,7 @@
 export function PreviewFrame({ url, sandbox = "allow-scripts" }: { url: string; sandbox?: string }) {
   return (
     <iframe
-      title="lochor-preview"
+      title="locaryn-preview"
       sandbox={sandbox}
       src={url}
       style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}

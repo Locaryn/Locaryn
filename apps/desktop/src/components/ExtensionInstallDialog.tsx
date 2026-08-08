@@ -15,7 +15,7 @@ import { pickAnyFile, pickFolder } from "../lib/dialog";
 type Props = {
   /** "extension" = dépôt / dossier / ZIP ; "marketplace" = dépôt marketplace.json. */
   kind?: "extension" | "marketplace";
-  /** Source pré-remplie dans le champ (deep link `lochor://install?src=…`). */
+  /** Source pré-remplie dans le champ (deep link `locaryn://install?src=…`). */
   initialSource?: string;
   onClose: () => void;
   /** Extension installée et (le cas échéant) activée. `enable` = activée.
@@ -139,19 +139,19 @@ export function ExtensionInstallDialog({
 
   return (
     <>
-      <div className="lochor-settings-backdrop">
+      <div className="locaryn-settings-backdrop">
         {/* A real button, so dismissing by clicking away is reachable from
             the keyboard and from a screen reader instead of being an
             onClick nailed to a div. */}
         <button
           type="button"
-          className="lochor-backdrop-dismiss"
+          className="locaryn-backdrop-dismiss"
           aria-label="Fermer"
           onClick={onClose}
         />
         <dialog
           open
-          className="lochor-card lochor-modal-card"
+          className="locaryn-card locaryn-modal-card"
           aria-modal="true"
           aria-label="Installer une extension"
           style={{ width: 520, margin: "100px auto", padding: 20 }}
@@ -161,7 +161,7 @@ export function ExtensionInstallDialog({
               ? "Ajouter une marketplace"
               : "Installer une extension (dépôt, dossier ou ZIP)"}
           </h3>
-          <p className="lochor-field-hint" style={{ marginBottom: 14 }}>
+          <p className="locaryn-field-hint" style={{ marginBottom: 14 }}>
             {kind === "marketplace" ? (
               <>
                 Dépôt GitHub contenant <code>.claude-plugin/marketplace.json</code>.
@@ -171,19 +171,19 @@ export function ExtensionInstallDialog({
                 Accepte <code>owner/repo</code>, une URL GitHub (y compris{" "}
                 <code>/tree/branche/sous-dossier</code>), <code>github:owner/repo@tag</code>, un
                 dossier local ou une archive <code>.zip</code>. Le format est détecté
-                automatiquement : plugin Lochor, plugin Claude Code, extension Gemini CLI, paquet
+                automatiquement : plugin Locaryn, plugin Claude Code, extension Gemini CLI, paquet
                 OpenCode ou <code>.mcp.json</code> seul.
               </>
             )}
           </p>
           {dialogError && (
-            <p className="lochor-field-hint" style={{ color: "var(--danger)", marginBottom: 10 }}>
+            <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginBottom: 10 }}>
               {dialogError}
             </p>
           )}
-          <div className="lochor-field">
+          <div className="locaryn-field">
             <input
-              className="lochor-input"
+              className="locaryn-input"
               ref={inputRef}
               placeholder={
                 kind === "marketplace"
@@ -203,7 +203,7 @@ export function ExtensionInstallDialog({
               <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  className="lochor-btn-ghost"
+                  className="locaryn-btn-ghost"
                   style={{ fontSize: 12 }}
                   onClick={async () => {
                     if (!navigator.clipboard?.readText) {
@@ -230,7 +230,7 @@ export function ExtensionInstallDialog({
                 </button>
                 <button
                   type="button"
-                  className="lochor-btn-ghost"
+                  className="locaryn-btn-ghost"
                   style={{ fontSize: 12 }}
                   onClick={async () => {
                     const p = await pickFolder();
@@ -244,7 +244,7 @@ export function ExtensionInstallDialog({
                 </button>
                 <button
                   type="button"
-                  className="lochor-btn-ghost"
+                  className="locaryn-btn-ghost"
                   style={{ fontSize: 12 }}
                   onClick={async () => {
                     const p = await pickAnyFile("Archive ZIP", ["zip"]);
@@ -259,9 +259,9 @@ export function ExtensionInstallDialog({
               )}
             </div>
             {(preview || previewing || previewError) && kind === "extension" && (
-              <div className="lochor-card" style={{ marginTop: 12, padding: "10px 12px" }}>
+              <div className="locaryn-card" style={{ marginTop: 12, padding: "10px 12px" }}>
                 {previewing && !preview ? (
-                  <p className="lochor-field-hint" style={{ margin: 0 }}>
+                  <p className="locaryn-field-hint" style={{ margin: 0 }}>
                     Analyse de la source…
                   </p>
                 ) : preview ? (
@@ -275,27 +275,27 @@ export function ExtensionInstallDialog({
                       }}
                     >
                       <strong style={{ fontSize: 13 }}>{preview.name}</strong>
-                      <span className="lochor-tag">
+                      <span className="locaryn-tag">
                         {ECOSYSTEM_LABELS[preview.ecosystem as ExtensionEcosystem] ??
                           preview.ecosystem}
                       </span>
                     </div>
                     {preview.version && (
-                      <p className="lochor-field-hint" style={{ margin: "2px 0 0" }}>
+                      <p className="locaryn-field-hint" style={{ margin: "2px 0 0" }}>
                         v{preview.version}
                       </p>
                     )}
                     {preview.description && (
-                      <p className="lochor-box-desc" style={{ marginTop: 6 }}>
+                      <p className="locaryn-box-desc" style={{ marginTop: 6 }}>
                         {preview.description}
                       </p>
                     )}
-                    <p className="lochor-field-hint" style={{ marginTop: 6 }}>
+                    <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
                       Manifeste : <code>{preview.manifest_file}</code>
                       {preview.author ? ` · ${preview.author}` : ""}
                     </p>
                     {preview.requested_permissions.length > 0 && (
-                      <p className="lochor-field-hint" style={{ marginTop: 6 }}>
+                      <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
                         Permissions demandées :{" "}
                         {preview.requested_permissions
                           .map((p) => PERMISSION_LABELS[p as ExtensionPermission] ?? p)
@@ -304,7 +304,7 @@ export function ExtensionInstallDialog({
                     )}
                     {preview.mcp_servers.length > 0 && (
                       <div style={{ marginTop: 6 }}>
-                        <p className="lochor-field-hint" style={{ margin: "0 0 4px" }}>
+                        <p className="locaryn-field-hint" style={{ margin: "0 0 4px" }}>
                           Serveurs MCP déclarés ({preview.mcp_servers.length}) :
                         </p>
                         {preview.mcp_servers.map((s) => (
@@ -320,11 +320,11 @@ export function ExtensionInstallDialog({
                           >
                             <code style={{ fontSize: 12, flexShrink: 0 }}>{s.name}</code>
                             {s.command ? (
-                              <span className="lochor-field-hint" style={{ wordBreak: "break-all" }}>
+                              <span className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
                                 — {s.command}
                               </span>
                             ) : s.url ? (
-                              <span className="lochor-field-hint" style={{ wordBreak: "break-all" }}>
+                              <span className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
                                 — {s.url}
                               </span>
                             ) : null}
@@ -335,7 +335,7 @@ export function ExtensionInstallDialog({
                   </>
                 ) : previewError ? (
                   <p
-                    className="lochor-field-hint"
+                    className="locaryn-field-hint"
                     style={{ margin: 0, color: "var(--text-faint)" }}
                   >
                     Aperçu indisponible pour cette source : {previewError}
@@ -344,12 +344,12 @@ export function ExtensionInstallDialog({
               </div>
             )}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
-            <button type="button" className="lochor-btn-ghost" onClick={onClose}>
+            <button type="button" className="locaryn-btn-ghost" onClick={onClose}>
               Annuler
             </button>
             <button
               type="button"
-              className="lochor-btn-primary"
+              className="locaryn-btn-primary"
               disabled={busy || !spec.trim()}
               onClick={submit}
             >

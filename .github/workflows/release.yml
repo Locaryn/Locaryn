@@ -2,9 +2,9 @@ name: Release
 
 # Two products, deliberately separate:
 #
-#   * lochor-server — headless. Meant for a machine with a GPU and no desktop
+#   * locaryn-server — headless. Meant for a machine with a GPU and no desktop
 #     session, so it must not drag in WebKit or a window toolkit.
-#   * lochor — the desktop application, which can also serve.
+#   * locaryn — the desktop application, which can also serve.
 #
 # Both ship as an installer and as a portable archive, because a locked-down
 # workstation often cannot run an installer at all.
@@ -40,29 +40,29 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build server binaries
-        run: cargo build --release --target ${{ matrix.target }} -p lochor-daemon -p lochor-cli
+        run: cargo build --release --target ${{ matrix.target }} -p locaryn-daemon -p locaryn-cli
 
       # ── Portable archive ───────────────────────────────────────────────
       - name: Package portable (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $out = "dist/lochor-server-portable"
+          $out = "dist/locaryn-server-portable"
           New-Item -ItemType Directory -Force $out | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/lochor-daemon.exe" $out
-          Copy-Item "target/${{ matrix.target }}/release/lochor.exe" $out
+          Copy-Item "target/${{ matrix.target }}/release/locaryn-daemon.exe" $out
+          Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $out
           Copy-Item "README.md","LICENSE*" $out -EA SilentlyContinue
-          Compress-Archive -Path "$out/*" -DestinationPath "dist/lochor-server-windows-x64.zip" -Force
+          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-server-windows-x64.zip" -Force
 
       - name: Package portable (Linux)
         if: runner.os == 'Linux'
         run: |
-          out=dist/lochor-server-portable
+          out=dist/locaryn-server-portable
           mkdir -p "$out"
-          cp target/${{ matrix.target }}/release/lochor-daemon "$out/"
-          cp target/${{ matrix.target }}/release/lochor "$out/"
+          cp target/${{ matrix.target }}/release/locaryn-daemon "$out/"
+          cp target/${{ matrix.target }}/release/locaryn "$out/"
           cp README.md "$out/" 2>/dev/null || true
-          tar -C "$out" -czf dist/lochor-server-linux-x64.tar.gz .
+          tar -C "$out" -czf dist/locaryn-server-linux-x64.tar.gz .
 
       # ── Installers ─────────────────────────────────────────────────────
       - name: Build .msi (Windows)
@@ -73,15 +73,15 @@ jobs:
           # Initialise the WiX definition on first run; committed afterwards so
           # the installer layout stays reviewable rather than regenerated.
           if (-not (Test-Path "services/daemon/wix/main.wxs")) {
-            cargo wix init --package lochor-daemon --force
+            cargo wix init --package locaryn-daemon --force
           }
-          cargo wix --package lochor-daemon --nocapture --output dist/lochor-server-windows-x64.msi
+          cargo wix --package locaryn-daemon --nocapture --output dist/locaryn-server-windows-x64.msi
 
       - name: Build .deb (Linux)
         if: runner.os == 'Linux'
         run: |
           cargo install cargo-deb --locked
-          cargo deb -p lochor-daemon --target ${{ matrix.target }} --output dist/lochor-server-linux-x64.deb
+          cargo deb -p locaryn-daemon --target ${{ matrix.target }} --output dist/locaryn-server-linux-x64.deb
 
       - uses: actions/upload-artifact@v4
         with:
@@ -133,19 +133,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $out = "dist/lochor-portable"
+          $out = "dist/locaryn-portable"
           New-Item -ItemType Directory -Force $out | Out-Null
-          Copy-Item "target/release/Lochor.exe" $out
-          Copy-Item "target/release/lochor.exe" $out -EA SilentlyContinue
-          Compress-Archive -Path "$out/*" -DestinationPath "dist/lochor-desktop-windows-x64.zip" -Force
+          Copy-Item "target/release/Locaryn.exe" $out
+          Copy-Item "target/release/locaryn.exe" $out -EA SilentlyContinue
+          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-desktop-windows-x64.zip" -Force
 
       - name: Package portable (Linux)
         if: runner.os == 'Linux'
         run: |
-          out=dist/lochor-portable
+          out=dist/locaryn-portable
           mkdir -p "$out"
-          cp target/release/lochor-desktop "$out/" 2>/dev/null || cp target/release/Lochor "$out/" 2>/dev/null || true
-          tar -C "$out" -czf dist/lochor-desktop-linux-x64.tar.gz .
+          cp target/release/locaryn-desktop "$out/" 2>/dev/null || cp target/release/Locaryn "$out/" 2>/dev/null || true
+          tar -C "$out" -czf dist/locaryn-desktop-linux-x64.tar.gz .
 
       - uses: actions/upload-artifact@v4
         with:

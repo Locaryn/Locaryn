@@ -88,12 +88,12 @@ export function BatchStudio() {
   }
 
   return (
-    <div className="lochor-view-container" style={{ padding: "var(--space-4)", overflowY: "auto" }}>
-      <div className="lochor-view-header">
+    <div className="locaryn-view-container" style={{ padding: "var(--space-4)", overflowY: "auto" }}>
+      <div className="locaryn-view-header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <h2>⚡ Batch API Studio (-50% Coût des Jetons)</h2>
-            <p className="lochor-view-desc">
+            <p className="locaryn-view-desc">
               Traitez vos gros volumes de prompts et d'analyse de codebase par lots asynchrones. Économisez 50% sur le tarif des tokens API (OpenAI, Anthropic, DeepSeek) et dépassez les limites de quota minute.
             </p>
           </div>
@@ -112,19 +112,19 @@ export function BatchStudio() {
       </div>
 
       {/* New Batch Creation Form */}
-      <div className="lochor-box-card" style={{ marginTop: "16px", padding: "16px" }}>
+      <div className="locaryn-box-card" style={{ marginTop: "16px", padding: "16px" }}>
         <h3 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>➕ Créer un nouveau Lot de Traitement (Batch JSONL)</h3>
         
         <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: "12px", marginBottom: "12px" }}>
           <input
-            className="lochor-input"
+            className="locaryn-input"
             placeholder="Nom du lot (ex: Indexation de 80 fichiers / Audit de sécurité)..."
             value={newJobName}
             onChange={(e) => setNewJobName(e.target.value)}
           />
 
           <select
-            className="lochor-select"
+            className="locaryn-select"
             value={selectedProvider}
             onChange={(e) => setSelectedProvider(e.target.value as BatchJob["provider"])}
           >
@@ -140,7 +140,7 @@ export function BatchStudio() {
             Fichier Batch au format JSONL (1 requête par ligne avec custom_id) :
           </label>
           <textarea
-            className="lochor-input"
+            className="locaryn-input"
             rows={4}
             style={{ fontFamily: "var(--font-mono)", fontSize: "11px", width: "100%", resize: "vertical" }}
             value={batchFileText}
@@ -154,7 +154,7 @@ export function BatchStudio() {
           </span>
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             disabled={!newJobName.trim()}
             onClick={handleCreateBatch}
           >
@@ -167,19 +167,19 @@ export function BatchStudio() {
       <div style={{ marginTop: "24px" }}>
         <h3 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>📋 Historique des Lots de Traitement</h3>
 
-        <div className="lochor-model-list">
+        <div className="locaryn-model-list">
           {jobs.map((j) => {
             const pct = Math.round((j.completedRequests / j.totalRequests) * 100);
             return (
-              <div key={j.id} className="lochor-box-card" style={{ padding: "12px 16px", marginBottom: "8px" }}>
+              <div key={j.id} className="locaryn-box-card" style={{ padding: "12px 16px", marginBottom: "8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       <strong style={{ fontSize: "13px" }}>{j.name}</strong>
-                      <span className="lochor-tag" style={{ background: "rgba(100, 200, 120, 0.15)", color: "#64c878" }}>
+                      <span className="locaryn-tag" style={{ background: "rgba(100, 200, 120, 0.15)", color: "#64c878" }}>
                         {j.provider}
                       </span>
-                      <span className="lochor-tag lochor-tag-soft">{j.createdAt}</span>
+                      <span className="locaryn-tag locaryn-tag-soft">{j.createdAt}</span>
                     </div>
                     <span style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "4px", display: "block" }}>
                       ID: {j.id} — {j.completedRequests} / {j.totalRequests} requêtes • Economie : ~{j.tokensSaved.toLocaleString()} tokens (${j.costSavedUsd.toFixed(2)})
@@ -188,9 +188,9 @@ export function BatchStudio() {
 
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     {j.status === "completed" ? (
-                      <span className="lochor-tag lochor-tag-installed">Terminé ✓</span>
+                      <span className="locaryn-tag locaryn-tag-installed">Terminé ✓</span>
                     ) : (
-                      <span className="lochor-tag" style={{ background: "rgba(100, 150, 255, 0.2)", color: "var(--accent)" }}>
+                      <span className="locaryn-tag" style={{ background: "rgba(100, 150, 255, 0.2)", color: "var(--accent)" }}>
                         En cours ({pct}%)
                       </span>
                     )}
@@ -198,7 +198,7 @@ export function BatchStudio() {
                     {j.status === "completed" && (
                       <button
                         type="button"
-                        className="lochor-btn-ghost"
+                        className="locaryn-btn-ghost"
                         style={{ fontSize: "11px", padding: "4px 8px" }}
                         onClick={() => alert(`Téléchargement des résultats JSONL pour ${j.id}`)}
                       >
@@ -209,8 +209,8 @@ export function BatchStudio() {
                 </div>
 
                 {j.status === "in_progress" && (
-                  <div className="lochor-footer-progress-track" style={{ width: "100%", marginTop: "8px", height: "4px" }}>
-                    <div className="lochor-footer-progress-fill" style={{ width: `${pct}%` }} />
+                  <div className="locaryn-footer-progress-track" style={{ width: "100%", marginTop: "8px", height: "4px" }}>
+                    <div className="locaryn-footer-progress-fill" style={{ width: `${pct}%` }} />
                   </div>
                 )}
               </div>

@@ -13,4 +13,4 @@ git-fetch-with-cli = true
 
 [env]
 # Loopback-only default for any embedded provider process
-LOCHOR_LOOPBACK_ONLY = "1"
+LOCARYN_LOOPBACK_ONLY = "1"

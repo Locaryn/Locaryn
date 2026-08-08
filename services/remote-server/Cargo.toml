@@ -1,27 +1,27 @@
 [package]
-name = "lochor-remote-server"
+name = "locaryn-remote-server"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Lochor remote server — secured TLS gateway, auth, audit, provider proxying, enterprise module."
+description = "Locaryn remote server — secured TLS gateway, auth, audit, provider proxying, enterprise module."
 
 [[bin]]
-name = "lochor-remote-server"
+name = "locaryn-remote-server"
 path = "src/main.rs"
 
 [dependencies]
-lochor-shared-types = { workspace = true }
-lochor-sdk = { workspace = true }
-lochor-config = { workspace = true }
-lochor-storage = { workspace = true }
-lochor-events = { workspace = true }
-lochor-auth = { workspace = true }
-lochor-extensions = { workspace = true }
-lochor-mcp = { workspace = true }
-lochor-agent-runtime = { workspace = true }
-lochor-enterprise = { path = "enterprise", version = "0.1.0", optional = true }
+locaryn-shared-types = { workspace = true }
+locaryn-sdk = { workspace = true }
+locaryn-config = { workspace = true }
+locaryn-storage = { workspace = true }
+locaryn-events = { workspace = true }
+locaryn-auth = { workspace = true }
+locaryn-extensions = { workspace = true }
+locaryn-mcp = { workspace = true }
+locaryn-agent-runtime = { workspace = true }
+locaryn-enterprise = { path = "enterprise", version = "0.1.0", optional = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -37,4 +37,4 @@ chrono = { workspace = true }
 
 [features]
 default = ["enterprise"]
-enterprise = ["dep:lochor-enterprise"]
+enterprise = ["dep:locaryn-enterprise"]

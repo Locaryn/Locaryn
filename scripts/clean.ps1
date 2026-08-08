@@ -1,11 +1,11 @@
-# Lochor clean script (Windows).
+# Locaryn clean script (Windows).
 # Removes release/, target/, node_modules, and Tauri bundle outputs.
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path | Join-Path -ChildPath ".." | Resolve-Path
 Set-Location $Root
 
-Write-Host "[Lochor] Cleaning build artifacts..." -ForegroundColor Cyan
+Write-Host "[Locaryn] Cleaning build artifacts..." -ForegroundColor Cyan
 
 $Dirs = @(
     "release",
@@ -27,4 +27,4 @@ foreach ($dir in $Dirs) {
     }
 }
 
-Write-Host "[Lochor] Clean complete." -ForegroundColor Green
+Write-Host "[Locaryn] Clean complete." -ForegroundColor Green

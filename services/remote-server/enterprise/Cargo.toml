@@ -1,19 +1,19 @@
 [package]
-name = "lochor-enterprise"
+name = "locaryn-enterprise"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 # BSL 1.1 (SPDX: BUSL-1.1) — converts to Apache-2.0 4 years after each release.
 license = "BUSL-1.1"
 authors.workspace = true
-description = "Lochor enterprise module (BSL) — team context sharing, DGX Spark orchestration, concurrent-client gate."
+description = "Locaryn enterprise module (BSL) — team context sharing, DGX Spark orchestration, concurrent-client gate."
 
 [lib]
-name = "lochor_enterprise"
+name = "locaryn_enterprise"
 path = "src/lib.rs"
 
 [dependencies]
-lochor-shared-types = { workspace = true }
+locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

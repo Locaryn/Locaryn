@@ -105,10 +105,10 @@ export function App() {
     bootstrap();
   }, []);
 
-  // Deep links (`lochor://install?src=owner/repo`): a link can open the app
+  // Deep links (`locaryn://install?src=owner/repo`): a link can open the app
   // from a cold start (URL passed as CLI argument — read via `get_current`)
   // or land while it is already running (forwarded by the plugin as an event,
-  // and re-emitted by Rust as `lochor://deep-link`). Either way: remember the
+  // and re-emitted by Rust as `locaryn://deep-link`). Either way: remember the
   // intent and open the settings panel; the extensions section picks it up
   // when it mounts and pre-fills the install dialog.
   useEffect(() => {
@@ -136,11 +136,11 @@ export function App() {
       })
         .then((un) => unlisteners.push(un))
         .catch(() => {});
-      listen<string>("lochor://deep-link", (ev) => handleUrl(ev.payload))
+      listen<string>("locaryn://deep-link", (ev) => handleUrl(ev.payload))
         .then((un) => unlisteners.push(un))
         .catch(() => {});
     } else {
-      // En démo (navigateur), on simule un lien par ancre : #lochor://install?src=…
+      // En démo (navigateur), on simule un lien par ancre : #locaryn://install?src=…
       const fromHash = () => {
         const h = window.location.hash.replace(/^#/, "");
         if (h) handleUrl(h);
@@ -422,7 +422,7 @@ export function App() {
   }
 
   if (gate === "checking") {
-    return <div className="lochor-app lochor-connect-wait" />;
+    return <div className="locaryn-app locaryn-connect-wait" />;
   }
   if (gate === "connect" && provisioning) {
     return (
@@ -435,7 +435,7 @@ export function App() {
 
   return (
     <div
-      className="lochor-app"
+      className="locaryn-app"
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}
@@ -506,7 +506,7 @@ export function App() {
         onSelectView={(v) => setActiveView(v)}
       />
 
-      <div className="lochor-body" style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
+      <div className="locaryn-body" style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
         {activeView === "chat" && leftOpen && (
           <>
             <div style={{ width: leftW, flex: "none" }}>
@@ -540,7 +540,7 @@ export function App() {
               />
             </div>
             <div
-              className="lochor-resizer lochor-resizer-v"
+              className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("leftW")}
               role="separator"
               aria-orientation="vertical"
@@ -570,10 +570,10 @@ export function App() {
         )}
 
         {activeView === "models" && (
-          <div className="lochor-view-container">
-            <div className="lochor-view-header">
+          <div className="locaryn-view-container">
+            <div className="locaryn-view-header">
               <h2>Marketplace Modèles (HuggingFace Hub & Modèles Locaux)</h2>
-              <p className="lochor-view-desc">
+              <p className="locaryn-view-desc">
                 Explorez, installez et gérez vos modèles d'IA locaux (Gemma 2 E2B/E4B, Instruct 💬, Audio 🎙️, Kimi K3, MiMo, GLM 5.2...).
               </p>
             </div>
@@ -663,7 +663,7 @@ export function App() {
         )}
 
         {activeView === "connectors" && (
-          <div className="lochor-view-container">
+          <div className="locaryn-view-container">
             <ConnectorsSettings />
           </div>
         )}
@@ -688,7 +688,7 @@ export function App() {
         {activeView === "chat" && showModelConfig && (
           <>
             <div
-              className="lochor-resizer lochor-resizer-v"
+              className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("rightW")}
               role="separator"
               aria-orientation="vertical"
@@ -700,7 +700,7 @@ export function App() {
         {activeView === "chat" && showPreview && (
           <>
             <div
-              className="lochor-resizer lochor-resizer-v"
+              className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("rightW")}
               role="separator"
               aria-orientation="vertical"
@@ -713,7 +713,7 @@ export function App() {
       {activeView === "chat" && showBottom && (
         <>
           <div
-            className="lochor-resizer lochor-resizer-h"
+            className="locaryn-resizer locaryn-resizer-h"
             onPointerDown={startDrag("bottomH")}
             role="separator"
             aria-orientation="horizontal"
@@ -723,24 +723,24 @@ export function App() {
       )}
 
       {/* Global Live Footer Status & Download Progress Bar */}
-      <footer className="lochor-footer-bar">
-        <div className="lochor-footer-left">
-          <span className="lochor-footer-icon">{downloadProgress ? "⏬" : "🟢"}</span>
-          <span className="lochor-footer-text">
+      <footer className="locaryn-footer-bar">
+        <div className="locaryn-footer-left">
+          <span className="locaryn-footer-icon">{downloadProgress ? "⏬" : "🟢"}</span>
+          <span className="locaryn-footer-text">
             {downloadProgress
               ? `${downloadProgress.status ? `${downloadProgress.status} ` : `Téléchargement de ${downloadProgress.tag}... `}(${downloadProgress.progress}%)`
-              : `Lochor v0.1.0 — Modèle actif : ${health?.active_provider?.model ?? "default"} (${health?.active_provider?.endpoint ?? "127.0.0.1:8080"})`}
+              : `Locaryn v0.1.0 — Modèle actif : ${health?.active_provider?.model ?? "default"} (${health?.active_provider?.endpoint ?? "127.0.0.1:8080"})`}
           </span>
         </div>
         <div style={{ display: "flex", gap: "10px", fontSize: "11px", color: "var(--text-faint)", alignItems: "center" }}>
           {downloadProgress && (
             <>
-              <div className="lochor-footer-progress-track" style={{ width: "120px" }}>
-                <div className="lochor-footer-progress-fill" style={{ width: `${downloadProgress.progress}%` }} />
+              <div className="locaryn-footer-progress-track" style={{ width: "120px" }}>
+                <div className="locaryn-footer-progress-fill" style={{ width: `${downloadProgress.progress}%` }} />
               </div>
               <button
                 type="button"
-                className="lochor-btn-ghost"
+                className="locaryn-btn-ghost"
                 style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "2px 8px", fontSize: "11px" }}
                 onClick={handleCancelDownload}
                 title="Annuler le téléchargement en cours"

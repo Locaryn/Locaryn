@@ -1,14 +1,14 @@
 [package]
-name = "lochor-events"
+name = "locaryn-events"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Event types + SSE (de)serialization for Lochor streaming."
+description = "Event types + SSE (de)serialization for Locaryn streaming."
 
 [dependencies]
-lochor-shared-types = { workspace = true }
+locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 futures = { workspace = true }

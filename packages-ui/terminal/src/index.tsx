@@ -1,4 +1,4 @@
-// @lochor/ui-terminal — xterm.js wrapper. V1 wires the real xterm + PTY
+// @locaryn/ui-terminal — xterm.js wrapper. V1 wires the real xterm + PTY
 // via a Tauri command; this skeleton exports a typed placeholder.
 
 export function Terminal({ lines }: { lines: string[] }) {

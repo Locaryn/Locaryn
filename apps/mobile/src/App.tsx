@@ -26,7 +26,7 @@ export function App() {
 
   /**
    * A code was read — from the in-app scanner, or handed to us by Android
-   * because the camera app opened a `lochor://` link.
+   * because the camera app opened a `locaryn://` link.
    *
    * The verification is entirely in Rust: this only decides what to show.
    */

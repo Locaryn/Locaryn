@@ -1,8 +1,8 @@
-# Lochor
+# Locaryn
 
 > Open-core agentic coding platform — native desktop + CLI + secured remote server, sharing one Rust core.
 
-Lochor is an open-source, LLM-assisted development platform built around a single
+Locaryn is an open-source, LLM-assisted development platform built around a single
 shared core that powers both a native desktop application (Tauri v2 + React/TS) and
 a lightweight CLI. A secured remote server acts as an authenticated gateway to
 distant providers, while a local daemon and provider supervisor handle local
@@ -28,7 +28,7 @@ See [LICENSES.md](LICENSES.md) for the full breakdown and the rationale in
 ## Repository layout
 
 ```
-lochor/
+locaryn/
 ├── apps/
 │   ├── cli/                 # Rust CLI (clap) — thin client over the daemon
 │   └── desktop/             # Tauri v2 + React + TS (Monaco, xterm.js, preview)
@@ -57,16 +57,16 @@ lochor/
 # Rust toolchain (1.83+), Node 22+, pnpm 9+
 pnpm install
 cargo check --workspace
-cargo build -p lochor-daemon -p lochor-cli
+cargo build -p locaryn-daemon -p locaryn-cli
 
 # Run the local daemon (loopback :7474)
-cargo run -p lochor-daemon
+cargo run -p locaryn-daemon
 
 # In another shell — the agent, working in the current directory
-cargo run -p lochor-cli
+cargo run -p locaryn-cli
 
 # …or a plain conversation with no access to your files
-cargo run -p lochor-cli -- chat
+cargo run -p locaryn-cli -- chat
 
 # Desktop app (dev)
 cd apps/desktop && pnpm tauri dev
@@ -88,11 +88,11 @@ The script automatically changes to the repository root, so it can be launched
 from any directory.
 
 > **Note:** closing the terminal window skips cleanup and leaves the daemon
-> running. Stop it manually with `taskkill /IM lochor-daemon.exe /F`.
+> running. Stop it manually with `taskkill /IM locaryn-daemon.exe /F`.
 
 ## Running as a shared server
 
-The desktop application and `lochor-daemon` expose the same HTTP API, so a
+The desktop application and `locaryn-daemon` expose the same HTTP API, so a
 machine with a GPU can serve a whole team. Security follows the listening
 address rather than a setting:
 
@@ -106,18 +106,18 @@ checkbox was missed — the daemon refuses to start exposed with no account.
 
 ```bash
 # 1. Create the first administrator (reads the password from stdin)
-lochor users add patron --admin
+locaryn users add patron --admin
 
 # 2. Expose the daemon. TLS is set up automatically on first start;
 #    the certificate fingerprint is printed for clients to verify.
-LOCHOR_DAEMON_BIND=0.0.0.0 lochor-daemon
+LOCARYN_DAEMON_BIND=0.0.0.0 locaryn-daemon
 
 # 3. Produce the settings employees will need
-lochor provision 192.168.1.188 --org "Your Company"
+locaryn provision 192.168.1.188 --org "Your Company"
 ```
 
-Step 3 writes `lochor-connect.json`. Put it next to the `.msi` or in
-`C:\ProgramData\Lochor\`, and staff only have to install the app and type the
+Step 3 writes `locaryn-connect.json`. Put it next to the `.msi` or in
+`C:\ProgramData\Locaryn\`, and staff only have to install the app and type the
 credentials they were given — no address, no port, no certificate to copy. The
 file holds no secret and can be distributed freely.
 

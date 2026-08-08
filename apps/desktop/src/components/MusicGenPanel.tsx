@@ -177,26 +177,26 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
     : { padding: 24, maxWidth: 900, margin: "0 auto" };
 
   return (
-    <div className={inline ? "" : "lochor-card"} style={containerStyle}>
+    <div className={inline ? "" : "locaryn-card"} style={containerStyle}>
       {/* ── Header ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
           <h3 style={{ margin: 0 }}>Génération de musique</h3>
-          <p className="lochor-field-hint" style={{ margin: "4px 0 0" }}>
+          <p className="locaryn-field-hint" style={{ margin: "4px 0 0" }}>
             Créez de la musique et des sons à partir de texte avec des modèles locaux.
           </p>
         </div>
         {!inline && (
-          <button type="button" className="lochor-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>
+          <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>
         )}
       </div>
 
       {/* ── Model selector ── */}
       {hasModels ? (
         <div style={{ marginBottom: 20 }}>
-          <label className="lochor-field-label">Modèle musical</label>
+          <label className="locaryn-field-label">Modèle musical</label>
           <select
-            className="lochor-input"
+            className="locaryn-input"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             disabled={jobRunning}
@@ -227,15 +227,15 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
       )}
 
       {/* ── Prompt input ── */}
-      <div className="lochor-field" style={{ marginBottom: 16 }}>
-        <label className="lochor-field-label">
+      <div className="locaryn-field" style={{ marginBottom: 16 }}>
+        <label className="locaryn-field-label">
           Prompt
           <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}>
             Décrivez la musique à générer
           </span>
         </label>
         <textarea
-          className="lochor-input"
+          className="locaryn-input"
           rows={3}
           placeholder="Ex: 'Lo-fi hip hop beat with warm piano and vinyl crackle, study music'"
           value={prompt}
@@ -248,7 +248,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
         />
 
         {/* ── Style presets ── */}
-        <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 6 }}>
+        <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 6 }}>
           Ou choisissez un style prédéfini
         </label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -256,7 +256,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
             <button
               key={s.label}
               type="button"
-              className={`lochor-chip${selectedStyle === s.prompt ? " lochor-chip-on" : ""}`}
+              className={`locaryn-chip${selectedStyle === s.prompt ? " locaryn-chip-on" : ""}`}
               onClick={() => {
                 setSelectedStyle(selectedStyle === s.prompt ? null : s.prompt);
                 setPrompt("");
@@ -278,13 +278,13 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 20px" }}>
           {/* Duration */}
           <div>
-            <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Durée</label>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Durée</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {DURATION_PRESETS.map((d) => (
                 <button
                   key={d.value}
                   type="button"
-                  className={`lochor-chip${duration === d.value ? " lochor-chip-on" : ""}`}
+                  className={`locaryn-chip${duration === d.value ? " locaryn-chip-on" : ""}`}
                   onClick={() => setDuration(d.value)}
                   disabled={jobRunning}
                   style={{ fontSize: 11, padding: "2px 8px" }}
@@ -297,7 +297,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Steps */}
           <div>
-            <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
               Étapes : {steps}
             </label>
             <input
@@ -314,7 +314,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* CFG Scale */}
           <div>
-            <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
               Guidance (CFG) : {cfgScale.toFixed(1)}
             </label>
             <input
@@ -331,10 +331,10 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Negative prompt */}
           <div>
-            <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Prompt négatif</label>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Prompt négatif</label>
             <input
               type="text"
-              className="lochor-input"
+              className="locaryn-input"
               value={negativePrompt}
               onChange={(e) => setNegativePrompt(e.target.value)}
               placeholder="Éléments à éviter…"
@@ -346,20 +346,20 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
         {/* Melody reference (MusicGen Melody mode) */}
         <div style={{ marginTop: 12 }}>
-          <label className="lochor-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+          <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
             Référence mélodique (optionnel)
           </label>
           {melodyFile ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text)" }}>
               <span>🎵 {melodyFileName}</span>
-              <button type="button" className="lochor-icon-btn" onClick={clearMelody} aria-label="Supprimer" style={{ fontSize: 14 }}>
+              <button type="button" className="locaryn-icon-btn" onClick={clearMelody} aria-label="Supprimer" style={{ fontSize: 14 }}>
                 ✕
               </button>
               {/* melodyFile is a disk path: a webview cannot load it directly. */}
               <audio src={toMediaUrl(melodyFile)} controls style={{ height: 28, flex: 1 }} />
             </div>
           ) : (
-            <button type="button" className="lochor-btn-ghost" onClick={handlePickMelody} disabled={jobRunning} style={{ fontSize: 12 }}>
+            <button type="button" className="locaryn-btn-ghost" onClick={handlePickMelody} disabled={jobRunning} style={{ fontSize: 12 }}>
               + Importer un fichier audio
             </button>
           )}
@@ -376,31 +376,31 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Result ── */}
       {generatedResult && (
-        <div className="lochor-field" style={{ marginBottom: 16 }}>
-          <label className="lochor-field-label">Musique générée</label>
+        <div className="locaryn-field" style={{ marginBottom: 16 }}>
+          <label className="locaryn-field-label">Musique générée</label>
           <audio src={generatedResult.url} controls style={{ width: "100%" }} />
         </div>
       )}
 
       {/* ── Progress + Actions ── */}
-      <div className="lochor-field-actions" style={{ justifyContent: "space-between" }}>
+      <div className="locaryn-field-actions" style={{ justifyContent: "space-between" }}>
         {jobRunning && (
           <div style={{ flex: 1, marginRight: 12 }}>
             <div className="img-gen-progress-bar">
               <div className="img-gen-progress-fill" style={{ width: `${taskProgress?.progress ?? 0}%` }} />
             </div>
-            <span className="lochor-field-hint">{taskProgress?.detail ?? "Génération en cours…"}</span>
+            <span className="locaryn-field-hint">{taskProgress?.detail ?? "Génération en cours…"}</span>
           </div>
         )}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           {!inline && (
-            <button type="button" className="lochor-btn-ghost" onClick={onClose} disabled={isGenerating}>
+            <button type="button" className="locaryn-btn-ghost" onClick={onClose} disabled={isGenerating}>
               Fermer
             </button>
           )}
           <button
             type="button"
-            className="lochor-btn-primary"
+            className="locaryn-btn-primary"
             onClick={handleGenerate}
             disabled={(!prompt.trim() && !selectedStyle) || jobRunning || !hasModels}
           >

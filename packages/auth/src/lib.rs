@@ -1,4 +1,4 @@
-//! Lochor auth: token management, OS keychain abstraction, server-side
+//! Locaryn auth: token management, OS keychain abstraction, server-side
 //! Argon2id hashing. Used by both the daemon (local credential storage for
 //! remote-server tokens) and the remote-server (token issuance + verification).
 //!
@@ -62,7 +62,7 @@ pub fn generate_token() -> String {
     const ALPHABET: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::with_capacity(50);
-    out.push_str("lochor_");
+    out.push_str("locaryn_");
     for chunk in bytes.chunks(3) {
         let b = [
             chunk[0],
@@ -133,7 +133,7 @@ pub enum KeychainError {
 
 /// OS-agnostic secret store. V1.1 wires the real keychain crates
 /// (`keyring` on Windows/macOS, `secret-service` on Linux). Skeleton uses
-/// a file-backed store under `~/.lochor/credentials.toml` (mode 0600).
+/// a file-backed store under `~/.locaryn/credentials.toml` (mode 0600).
 pub trait Keychain: Send + Sync {
     fn put(&self, key: &str, value: &str) -> Result<(), KeychainError>;
     fn get(&self, key: &str) -> Result<String, KeychainError>;
@@ -156,16 +156,16 @@ impl Keychain for NullKeychain {
 }
 
 pub fn provider_key(provider_id: Uuid) -> String {
-    format!("lochor/provider/{provider_id}")
+    format!("locaryn/provider/{provider_id}")
 }
 
 pub fn token_key(server_url: &str) -> String {
-    format!("lochor/remote/{server_url}")
+    format!("locaryn/remote/{server_url}")
 }
 
 /// Keychain entry name for an SSH server's secret (password or key passphrase).
 pub fn ssh_key(server_id: Uuid) -> String {
-    format!("lochor/ssh/{server_id}")
+    format!("locaryn/ssh/{server_id}")
 }
 
 // ============================================================================
@@ -181,7 +181,7 @@ pub struct SystemKeychain {
 
 #[cfg(feature = "system-keychain")]
 impl SystemKeychain {
-    /// `service` is the keychain service/namespace (e.g. "lochor").
+    /// `service` is the keychain service/namespace (e.g. "locaryn").
     pub fn new(service: impl Into<String>) -> Self {
         Self {
             service: service.into(),
@@ -230,9 +230,9 @@ mod crypto_tests {
         assert_eq!(set.len(), n, "collision — le générateur n'est pas aléatoire");
 
         let t = generate_token();
-        assert!(t.starts_with("lochor_"));
+        assert!(t.starts_with("locaryn_"));
         // 32 bytes of entropy, base64 → at least 42 characters after the prefix.
-        assert!(t.len() - "lochor_".len() >= 42, "entropie insuffisante: {t}");
+        assert!(t.len() - "locaryn_".len() >= 42, "entropie insuffisante: {t}");
         // URL-safe alphabet only: it travels in an Authorization header.
         assert!(
             t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
@@ -256,7 +256,7 @@ mod crypto_tests {
 
     #[test]
     fn hashing_is_salted_and_verifiable() {
-        let secret = "lochor_un_secret_de_test";
+        let secret = "locaryn_un_secret_de_test";
         let h1 = hash_token(secret);
         let h2 = hash_token(secret);
 

@@ -1,15 +1,15 @@
 [package]
-name = "lochor-plugin-sdk"
+name = "locaryn-plugin-sdk"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "SDK for Lochor plugin authors (declare tools, hooks, skills, commands, agents, MCP, rules, LSP)."
+description = "SDK for Locaryn plugin authors (declare tools, hooks, skills, commands, agents, MCP, rules, LSP)."
 
 [dependencies]
-lochor-shared-types = { workspace = true }
-lochor-extensions = { workspace = true }
+locaryn-shared-types = { workspace = true }
+locaryn-extensions = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }

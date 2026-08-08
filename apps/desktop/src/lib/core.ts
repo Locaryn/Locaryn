@@ -1,5 +1,5 @@
 // Typed bridge to the in-process Rust core (Tauri commands + channels).
-// Types mirror `lochor-shared-types` and `lochor-events` (serde snake_case).
+// Types mirror `locaryn-shared-types` and `locaryn-events` (serde snake_case).
 //
 // When the app runs outside Tauri (plain `vite dev` in a browser), a demo
 // implementation with canned data takes over so the UI can be designed and
@@ -137,7 +137,7 @@ export function formatBytes(n: number): string {
 }
 
 // ── Tool approval (risk-based, doc 11 §5) ──────────────────────────────
-// Mirrors `lochor_events::Risk` and `lochor_shared_types::{RiskScope,
+// Mirrors `locaryn_events::Risk` and `locaryn_shared_types::{RiskScope,
 // ApprovalVerdict, ToolApprovalDecision}`. The two enums stay byte-for-byte
 // in sync with the Rust cargo workspace; divergence deserialises to a
 // malformed `StreamEvent`.
@@ -267,7 +267,7 @@ export interface ConnectorType {
 
 /** Where a bundle came from. Product names are never translated. */
 export type ExtensionEcosystem =
-  | "lochor"
+  | "locaryn"
   | "claude_code"
   | "gemini_cli"
   | "opencode"
@@ -277,7 +277,7 @@ export type ExtensionEcosystem =
   | "cline";
 
 export const ECOSYSTEM_LABELS: Record<ExtensionEcosystem, string> = {
-  lochor: "Lochor",
+  locaryn: "Locaryn",
   claude_code: "Claude Code",
   gemini_cli: "Gemini CLI",
   opencode: "OpenCode",
@@ -467,11 +467,11 @@ export interface ExtensionUpdateCheck {
 
 /** Aperçu d'une source d'installation : ce que le manifeste déclare, sans
  *  télécharger le paquet. Les permissions sont telles que déclarées par la
- *  source (pas forcément dans le vocabulaire Lochor). */
+ *  source (pas forcément dans le vocabulaire Locaryn). */
 export interface ExtensionSourcePreview {
   /** plugin.json, .claude-plugin/plugin.json, … */
   manifest_file: string;
-  /** lochor, claude_code, gemini_cli, opencode, mcp */
+  /** locaryn, claude_code, gemini_cli, opencode, mcp */
   ecosystem: string;
   name: string;
   version: string | null;
@@ -672,7 +672,7 @@ export interface RegionEditArgs {
 }
 
 // ── Server mode ────────────────────────────────────────────────────────
-// The app supervises the Lochor service rather than serving HTTP itself, so
+// The app supervises the Locaryn service rather than serving HTTP itself, so
 // the accounts, tokens and encryption all live in one implementation.
 
 export interface ServerStatus {
@@ -762,7 +762,7 @@ export interface CertificateStatus {
   authority_installed: boolean;
 }
 
-/** A signed-in session against a remote Lochor server. */
+/** A signed-in session against a remote Locaryn server. */
 export interface ServerSession {
   server_url: string;
   username: string;
@@ -876,7 +876,7 @@ export interface RuntimeCapabilities {
   unavailable: string[];
 }
 
-// `StreamEvent` from lochor-events — #[serde(tag = "type", snake_case)].
+// `StreamEvent` from locaryn-events — #[serde(tag = "type", snake_case)].
 export type StreamEvent =
   | { type: "message_start"; message_id: string; task_id: string }
   | { type: "token"; text: string }
@@ -1085,7 +1085,7 @@ export interface CoreApi {
   removeClientCertificate(): Promise<CertificateStatus>;
 
   storageInfo(): Promise<StorageInfo>;
-  /** Point Lochor at `newRoot`, optionally relocating the existing data.
+  /** Point Locaryn at `newRoot`, optionally relocating the existing data.
    *  Progress arrives on the `storage-migration` event. */
   setStorageRoot(newRoot: string, moveData: boolean): Promise<StorageInfo>;
   /** Delete scratch files. Resolves with the number of bytes reclaimed. */
@@ -1319,7 +1319,7 @@ export interface CoreApi {
   setInferenceConfig(config: InferenceConfig, consent?: boolean): Promise<void>;
   getProfilePreset(profile: InferenceProfile): Promise<InferenceConfig>;
   openModelsFolder(path?: string): Promise<void>;
-  /** URL de deep link (`lochor://…`) qui a ouvert l'app, si elle en a reçu une.
+  /** URL de deep link (`locaryn://…`) qui a ouvert l'app, si elle en a reçu une.
    *  Lue une fois au démarrage ; les liens suivants arrivent par événement. */
   pendingDeepLink(): Promise<string | null>;
 }
@@ -1803,7 +1803,7 @@ const demoMessages: Message[] = [
     session_id: "demo-session-1",
     role: "assistant",
     content:
-      "**Lochor** is an open-core agentic coding platform:\n\n- Native desktop (Tauri v2 + React) and a CLI sharing one Rust core\n- Local daemon with SQLite persistence\n- Provider supervisor for local runtimes (`ollama`, `llama.cpp`, …)\n\n```rust\nlet agent = OllamaAgent::with_defaults(None, None);\nlet stream = agent.run(input).await?;\n```\n\nSee `docs/architecture/10-roadmap.md` for the current milestone.",
+      "**Locaryn** is an open-core agentic coding platform:\n\n- Native desktop (Tauri v2 + React) and a CLI sharing one Rust core\n- Local daemon with SQLite persistence\n- Provider supervisor for local runtimes (`ollama`, `llama.cpp`, …)\n\n```rust\nlet agent = OllamaAgent::with_defaults(None, None);\nlet stream = agent.run(input).await?;\n```\n\nSee `docs/architecture/10-roadmap.md` for the current milestone.",
     tool_calls: null,
     tool_call_id: null,
     tokens_in: 2007,
@@ -2103,7 +2103,7 @@ let demoExtensions: InstalledExtension[] = [
     scope: "user",
     ecosystem: "claude_code",
     source: "github:anthropics/claude-code#plugins/code-review",
-    install_dir: "~/.lochor/plugins/code-review",
+    install_dir: "~/.locaryn/plugins/code-review",
     enabled: true,
     components: {
       skills: 2,
@@ -2132,7 +2132,7 @@ let demoExtensions: InstalledExtension[] = [
     scope: "user",
     ecosystem: "gemini_cli",
     source: "https://github.com/gemini-cli-extensions/security",
-    install_dir: "~/.lochor/plugins/security",
+    install_dir: "~/.locaryn/plugins/security",
     enabled: false,
     components: {
       skills: 1,
@@ -2372,10 +2372,10 @@ const demoCore: CoreApi = {
   freeChatProject: async () => ({
     ...demoProject,
     id: "demo-free",
-    path: "__lochor_free_chats__",
+    path: "__locaryn_free_chats__",
     name: "Conversations libres",
   }),
-  sessionWorkspace: async () => "/tmp/lochor-demo",
+  sessionWorkspace: async () => "/tmp/locaryn-demo",
   appendAssistantMessage: async () => {},
   detectImageRequest: async (message) => {
     const m =
@@ -2475,7 +2475,7 @@ const demoCore: CoreApi = {
       type: "tool_result",
       call_id: "c1",
       ok: true,
-      output: 'fn main() {\n    println!("hello lochor");\n}\n',
+      output: 'fn main() {\n    println!("hello locaryn");\n}\n',
     });
     await sleep(400);
     const reply =
@@ -2563,9 +2563,9 @@ const demoCore: CoreApi = {
   appInfo: async () => ({
     version: "0.1.0-demo",
     mode: "local",
-    data_dir: "C:/Users/you/.lochor/data",
-    db_path: "C:/Users/you/.lochor/data/lochor.db",
-    models_dir: "C:/Users/you/.lochor/data/models",
+    data_dir: "C:/Users/you/.locaryn/data",
+    db_path: "C:/Users/you/.locaryn/data/locaryn.db",
+    models_dir: "C:/Users/you/.locaryn/data/models",
   }),
 
   listVoicePresets: async () => [
@@ -2573,7 +2573,7 @@ const demoCore: CoreApi = {
       id: "demo-1",
       name: "Ma petite soeur",
       note: "voix douce, débit rapide",
-      referenceAudio: "C:/Users/you/.lochor/voice_presets/demo-1/reference.wav",
+      referenceAudio: "C:/Users/you/.locaryn/voice_presets/demo-1/reference.wav",
       referenceText: "et ça m'énerve genre pendant le chargement là tu vois",
       language: "fr",
       durationS: 12,
@@ -2671,14 +2671,14 @@ const demoCore: CoreApi = {
   }),
 
   storageInfo: async () => ({
-    root: "C:/Users/you/.lochor/data",
+    root: "C:/Users/you/.locaryn/data",
     configured: false,
     total_bytes: 41_231_686_042,
     entries: [
       {
         key: "models",
         label: "Modèles (poids)",
-        path: "C:/Users/you/.lochor/data/models",
+        path: "C:/Users/you/.locaryn/data/models",
         size_bytes: 41_284_378_624,
         exists: true,
         outside_root: false,
@@ -2686,7 +2686,7 @@ const demoCore: CoreApi = {
       {
         key: "bin",
         label: "Moteurs (llama.cpp, sd.cpp)",
-        path: "C:/Users/you/.lochor/data/bin",
+        path: "C:/Users/you/.locaryn/data/bin",
         size_bytes: 322_961_408,
         exists: true,
         outside_root: false,
@@ -2694,7 +2694,7 @@ const demoCore: CoreApi = {
       {
         key: "tmp",
         label: "Fichiers temporaires",
-        path: "C:/Users/you/.lochor/data/tmp",
+        path: "C:/Users/you/.locaryn/data/tmp",
         size_bytes: 0,
         exists: false,
         outside_root: false,
@@ -2702,13 +2702,13 @@ const demoCore: CoreApi = {
       {
         key: "free_chats",
         label: "Pièces jointes des chats",
-        path: "C:/Users/you/.lochor/data/free_chats",
+        path: "C:/Users/you/.locaryn/data/free_chats",
         size_bytes: 12_582_912,
         exists: true,
         outside_root: false,
       },
     ],
-    db_path: "C:/Users/you/.lochor/data/lochor.db",
+    db_path: "C:/Users/you/.locaryn/data/locaryn.db",
     db_bytes: 4_194_304,
     drives: [
       { mount: "C:\\", total_bytes: 511_000_000_000, free_bytes: 1_288_490_188, is_current: true },
@@ -2726,7 +2726,7 @@ const demoCore: CoreApi = {
     total_bytes: 0,
     entries: [],
     drives: [],
-    db_path: "C:/Users/you/.lochor/data/lochor.db",
+    db_path: "C:/Users/you/.locaryn/data/locaryn.db",
     db_bytes: 4_194_304,
   }),
   cleanTemp: async () => 8_589_934_592,
@@ -2749,9 +2749,9 @@ const demoCore: CoreApi = {
       homepage: entry?.homepage ?? null,
       kind: "plugin",
       scope: "user",
-      ecosystem: entry?.ecosystem ?? "lochor",
+      ecosystem: entry?.ecosystem ?? "locaryn",
       source,
-      install_dir: `~/.lochor/plugins/${entry?.name ?? "extension-demo"}`,
+      install_dir: `~/.locaryn/plugins/${entry?.name ?? "extension-demo"}`,
       enabled: false,
       components: {
         skills: 1,
@@ -2966,7 +2966,7 @@ const demoCore: CoreApi = {
     demo: true,
     tool,
     arguments: args,
-    message: `Outil ${tool} simulé en mode navigateur. Lancez Lochor Tauri pour un compte réel.`,
+    message: `Outil ${tool} simulé en mode navigateur. Lancez Locaryn Tauri pour un compte réel.`,
   }),
   diagnoseSnapMcp: async () => ({
     checked_at: new Date().toISOString(),
@@ -2976,7 +2976,7 @@ const demoCore: CoreApi = {
       status: "warning",
       detail: "Le diagnostic réel nécessite l'application Tauri.",
       value: null,
-      fix: "Lancer Lochor Desktop.",
+      fix: "Lancer Locaryn Desktop.",
     }],
   }),
   writeTestAudio: async () => "demo://audio",
@@ -3130,7 +3130,7 @@ const demoCore: CoreApi = {
       version: "b10088",
       up_to_date: true,
       pinned: "b10088",
-      path: "C:/Users/you/.lochor/data/bin/llama",
+      path: "C:/Users/you/.locaryn/data/bin/llama",
     };
   },
   async setupLlamaRuntime(_variant, onProgress) {
@@ -3143,7 +3143,7 @@ const demoCore: CoreApi = {
       version: "b10088",
       up_to_date: true,
       pinned: "b10088",
-      path: "C:/Users/you/.lochor/data/bin/llama",
+      path: "C:/Users/you/.locaryn/data/bin/llama",
     };
   },
   async generateImage(
@@ -3403,10 +3403,10 @@ const demoCore: CoreApi = {
     return presets[profile] ?? presets.balanced;
   },
   async openModelsFolder() {},
-  // En démo (navigateur), un lien s'imite par ancre : #lochor://install?src=…
+  // En démo (navigateur), un lien s'imite par ancre : #locaryn://install?src=…
   async pendingDeepLink() {
     const h = window.location.hash.replace(/^#/, "");
-    return h.startsWith("lochor://") ? h : null;
+    return h.startsWith("locaryn://") ? h : null;
   },
 };
 

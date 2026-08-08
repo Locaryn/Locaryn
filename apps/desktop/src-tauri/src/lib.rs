@@ -1,11 +1,11 @@
-//! Lochor desktop Tauri shell. Embeds the Lochor Rust core in-process so
+//! Locaryn desktop Tauri shell. Embeds the Locaryn Rust core in-process so
 //! the UI has zero-hop access to the agent runtime, storage, extensions,
 //! and preview (no loopback HTTP needed for the desktop).
 //!
 //! S5: the shell opens the SAME SQLite database as the daemon/CLI
-//! (`<data_dir>/lochor.db`), so sessions created in the CLI show up in the
+//! (`<data_dir>/locaryn.db`), so sessions created in the CLI show up in the
 //! desktop and vice versa. The agent loop is delegated to
-//! `lochor_agent_runtime` exactly like the daemon does — no agent logic
+//! `locaryn_agent_runtime` exactly like the daemon does — no agent logic
 //! lives in the shell.
 
 mod client_cert;
@@ -20,16 +20,16 @@ mod voice_presets;
 mod storage_root;
 
 use futures::StreamExt as _;
-use lochor_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent};
-use lochor_auth::{Keychain, SystemKeychain};
-use lochor_events::StreamEvent;
-use lochor_preview::{PreviewOrigin, PreviewRender};
-use lochor_provider_supervisor::{Supervisor, SupervisorConfig};
-use lochor_shared_types::{
+use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent};
+use locaryn_auth::{Keychain, SystemKeychain};
+use locaryn_events::StreamEvent;
+use locaryn_preview::{PreviewOrigin, PreviewRender};
+use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
+use locaryn_shared_types::{
     ConnectionMode, Health, Message, MessageRole, Project, Provider, ProviderEngine,
     ProviderSummary, Session, SshAiAccess, SshServer, TrustLevel,
 };
-use lochor_storage::Storage;
+use locaryn_storage::Storage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -48,7 +48,7 @@ struct Core {
     keychain: Arc<dyn Keychain>,
     /// Registered MCP servers and the ones currently running. Shares
     /// `mcp.json` with the daemon, so a server added here is visible there.
-    mcp: Arc<lochor_mcp::McpState>,
+    mcp: Arc<locaryn_mcp::McpState>,
     /// Enabled extensions, loaded. Rebuilt on every install/enable/disable;
     /// supplies the MCP servers registered above and the extension section of
     /// the system prompt.
@@ -74,7 +74,7 @@ struct Core {
 #[allow(dead_code)]
 struct PendingApproval {
     created: std::time::Instant,
-    effective_risk: lochor_events::Risk,
+    effective_risk: locaryn_events::Risk,
     tool: String,
     remote_target: Option<String>,
 }
@@ -143,7 +143,7 @@ struct PendingTest {
 
 /// Prune temp folders left behind by deleted free-chat sessions.
 async fn cleanup_orphan_free_chat_dirs(storage: &Storage) {
-    let free_dir = lochor_config::free_chats_dir();
+    let free_dir = locaryn_config::free_chats_dir();
     let mut entries = match tokio::fs::read_dir(&free_dir).await {
         Ok(e) => e,
         Err(_) => return,
@@ -170,16 +170,16 @@ async fn cleanup_orphan_free_chat_dirs(storage: &Storage) {
 }
 
 async fn init_core() -> anyhow::Result<Core> {
-    let cfg = lochor_config::load(None)?;
+    let cfg = locaryn_config::load(None)?;
 
     let data_dir = cfg
         .daemon
         .data_dir
         .clone()
-        .unwrap_or_else(lochor_config::default_data_dir);
-    let db_path = data_dir.join("lochor.db");
+        .unwrap_or_else(locaryn_config::default_data_dir);
+    let db_path = data_dir.join("locaryn.db");
     tracing::info!(?db_path, "desktop opening shared storage");
-    let pool = lochor_storage::open(&db_path).await?;
+    let pool = locaryn_storage::open(&db_path).await?;
     let storage = Storage::new(pool);
     cleanup_orphan_free_chat_dirs(&storage).await;
 
@@ -215,7 +215,7 @@ async fn init_core() -> anyhow::Result<Core> {
     tokio::spawn(async move {
         // Resolves the engine dir itself: it follows the storage root, which
         // the user can move independently of the database.
-        if let Err(e) = lochor_provider_supervisor::engine_manager::ensure_engines().await {
+        if let Err(e) = locaryn_provider_supervisor::engine_manager::ensure_engines().await {
             tracing::error!("Failed to ensure engines: {}", e);
         }
     });
@@ -225,7 +225,7 @@ async fn init_core() -> anyhow::Result<Core> {
         .build()
         .unwrap_or_default();
 
-    let keychain: Arc<dyn Keychain> = Arc::new(SystemKeychain::new("lochor"));
+    let keychain: Arc<dyn Keychain> = Arc::new(SystemKeychain::new("locaryn"));
 
     Ok(Core {
         storage,
@@ -234,7 +234,7 @@ async fn init_core() -> anyhow::Result<Core> {
         data_dir,
         http,
         keychain,
-        mcp: Arc::new(lochor_mcp::McpState::new()),
+        mcp: Arc::new(locaryn_mcp::McpState::new()),
         extensions: Arc::new(tokio::sync::RwLock::new(
             extensions::ExtensionRuntime::default(),
         )),
@@ -268,10 +268,10 @@ async fn core_health(core: State<'_, Core>) -> Result<Health, String> {
 
 #[tauri::command]
 fn resolve_preview(artifact_id: String) -> PreviewRender {
-    lochor_preview::resolve_render(
-        lochor_preview::PreviewRequest {
+    locaryn_preview::resolve_render(
+        locaryn_preview::PreviewRequest {
             artifact_id,
-            kind: lochor_shared_types::ArtifactKind::Html,
+            kind: locaryn_shared_types::ArtifactKind::Html,
             allow_network: false,
         },
         PreviewOrigin::Tauri,
@@ -308,7 +308,7 @@ fn write_test_audio(audio_base64: String, mime_type: String) -> Result<String, S
     } else {
         "webm"
     };
-    let path = lochor_config::ensure_temp_dir().join(format!(
+    let path = locaryn_config::ensure_temp_dir().join(format!(
         "snapmcp-test-{}.{}",
         Uuid::new_v4(),
         extension
@@ -320,7 +320,7 @@ fn write_test_audio(audio_base64: String, mime_type: String) -> Result<String, S
 /// Remove only scratch audio files created by `write_test_audio`.
 #[tauri::command]
 fn remove_test_audio(path: String) -> Result<(), String> {
-    let root = lochor_config::ensure_temp_dir();
+    let root = locaryn_config::ensure_temp_dir();
     let candidate = std::path::PathBuf::from(&path);
     if candidate.parent() != Some(root.as_path()) || !candidate.file_name().is_some_and(|n| n.to_string_lossy().starts_with("snapmcp-test-")) {
         return Err("chemin audio de test refusé".into());
@@ -370,11 +370,11 @@ async fn update_project(
 /// `sessions.project_id` is NOT NULL, so free chats live in this hidden project
 /// instead of leaking into a real one (which made the same session show up both
 /// as a free chat and inside a project).
-pub const FREE_CHAT_PROJECT_PATH: &str = "__lochor_free_chats__";
+pub const FREE_CHAT_PROJECT_PATH: &str = "__locaryn_free_chats__";
 
 /// Temp folder created for a single free-chat session.
 fn free_session_dir(data_dir: &std::path::Path, session_id: Uuid) -> std::path::PathBuf {
-    lochor_config::free_chats_dir().join(session_id.to_string())
+    locaryn_config::free_chats_dir().join(session_id.to_string())
 }
 
 /// Get (or create) the hidden project that owns free chats.
@@ -693,9 +693,9 @@ async fn compact_history(
     core: &Core,
     endpoint: &str,
     model: &str,
-    turns: Vec<lochor_agent_runtime::ChatTurn>,
+    turns: Vec<locaryn_agent_runtime::ChatTurn>,
     budget_tokens: usize,
-) -> Vec<lochor_agent_runtime::ChatTurn> {
+) -> Vec<locaryn_agent_runtime::ChatTurn> {
     let total: usize = turns.iter().map(|t| approx_tokens(&t.content)).sum();
     if total <= budget_tokens || turns.len() < 6 {
         return turns;
@@ -742,7 +742,7 @@ async fn compact_history(
     match summary {
         Some(sum) if !sum.trim().is_empty() => {
             tracing::info!(turns = old.len(), "compacted conversation history");
-            out.push(lochor_agent_runtime::ChatTurn {
+            out.push(locaryn_agent_runtime::ChatTurn {
                 role: "system".into(),
                 content: format!("[Résumé des échanges précédents]
 {}", sum.trim()),
@@ -1152,10 +1152,10 @@ async fn send_message(
             .list_for_session(session_id)
             .await
             .unwrap_or_default();
-        let mut turns: Vec<lochor_agent_runtime::ChatTurn> = prior
+        let mut turns: Vec<locaryn_agent_runtime::ChatTurn> = prior
             .into_iter()
             .filter(|m| matches!(m.role, MessageRole::User | MessageRole::Assistant))
-            .map(|m| lochor_agent_runtime::ChatTurn {
+            .map(|m| locaryn_agent_runtime::ChatTurn {
                 role: match m.role {
                     MessageRole::Assistant => "assistant".to_string(),
                     _ => "user".to_string(),
@@ -1479,7 +1479,7 @@ async fn list_models(_core: State<'_, Core>, _endpoint: String) -> Result<Vec<St
     // weight/config files. For directories, we pick a canonical representative
     // weight file so the user sees "hexgrad__Kokoro-82M" once, not once per
     // shard.
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let mut names: Vec<String> = Vec::new();
 
     fn is_weight_file(path: &std::path::Path) -> bool {
@@ -1674,7 +1674,7 @@ async fn pull_model(
         );
     }
 
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     std::fs::create_dir_all(&models_dir).map_err(|e| e.to_string())?;
     let file_name = filename_from_url(&url);
     let final_path = models_dir.join(&file_name);
@@ -1735,7 +1735,7 @@ async fn pull_hf_repo(
         .unwrap_or(repo_id);
 
     let dir_name = repo_id.replace('/', "__");
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let dest_dir = models_dir.join(&dir_name);
 
     // If the directory already exists, skip the download.
@@ -2023,7 +2023,7 @@ async fn install_audio_companions(
             return install_kokoro_companions(core, url, installed_file, on_event).await;
         }
         // Standard Piper .onnx → fetch the .onnx.json config sibling.
-        let models_dir = lochor_config::models_dir();
+        let models_dir = locaryn_config::models_dir();
         let json_url = format!("{url}.json");
         let json_name = format!("{installed_file}.json");
         let dest = models_dir.join(&json_name);
@@ -2079,7 +2079,7 @@ async fn install_kokoro_companions(
     installed_file: &str,
     on_event: &Channel<PullProgressEvent>,
 ) -> Result<(), String> {
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
 
     // Extract the HuggingFace repo id from the URL.
     // URL pattern: https://huggingface.co/<author>/<repo>/resolve/main/<path>/<file>
@@ -2289,7 +2289,7 @@ async fn install_image_companions(
         return Ok(());
     }
 
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
 
     let companions: Vec<&Companion> = if is_z_image {
         if heretic {
@@ -2347,7 +2347,7 @@ async fn approve_tool_call(
     core: State<'_, Core>,
     payload: ApproveToolCallPayload,
 ) -> Result<(), String> {
-    use lochor_events::Risk;
+    use locaryn_events::Risk;
     let _risk: Risk = serde_json::from_value(serde_json::Value::String(payload.risk.clone()))
         .map_err(|e| format!("invalid risk: {e}"))?;
 
@@ -2649,7 +2649,7 @@ async fn generate_image(
 
     // ── Real generation via stable-diffusion.cpp ────────────────────────
     let sd_bin = sd_bin.ok_or("moteur d'images introuvable")?;
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let model_path = models_dir.join(model);
     if !model_path.exists() {
         return Err(format!("modèle introuvable : {}", model_path.display()));
@@ -2815,7 +2815,7 @@ fn decode_data_url_to_temp(data_url: &str) -> Result<std::path::PathBuf, String>
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload.trim())
         .map_err(|e| format!("décodage base64: {e}"))?;
-    let path = lochor_config::ensure_temp_dir().join(format!(
+    let path = locaryn_config::ensure_temp_dir().join(format!(
         "sd_init_{}.{ext}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -2892,11 +2892,11 @@ async fn run_img2img_ip2p(
         "image/webp" => "webp",
         _ => "png",
     };
-    // Lochor's own scratch dir, not the OS one: decoded source images run to
+    // Locaryn's own scratch dir, not the OS one: decoded source images run to
     // tens of megabytes each and the system drive is the one that fills up.
-    let temp_dir = lochor_config::ensure_temp_dir();
+    let temp_dir = locaryn_config::ensure_temp_dir();
     let temp_input = temp_dir.join(format!(
-        "lochor_img2img_input_{}.{}",
+        "locaryn_img2img_input_{}.{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -3107,7 +3107,7 @@ fn python_string_literal(s: &str) -> String {
 
 #[tauri::command]
 async fn list_image_models(_core: State<'_, Core>) -> Result<Vec<String>, String> {
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let mut names: Vec<String> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
         for entry in entries.flatten() {
@@ -3133,7 +3133,7 @@ async fn list_image_models(_core: State<'_, Core>) -> Result<Vec<String>, String
 /// True when an abliterated ("heretic") text encoder is installed.
 #[tauri::command]
 fn has_abliterated_encoder() -> bool {
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
         for entry in entries.flatten() {
             if let Some(name) = entry.file_name().to_str() {
@@ -3296,21 +3296,21 @@ fn find_python() -> Option<String> {
 
 /// Where a managed Python virtualenv may live, most specific first.
 ///
-/// `LOCHOR_PYTHON_VENV` lets a user point at their own; otherwise we look
+/// `LOCARYN_PYTHON_VENV` lets a user point at their own; otherwise we look
 /// beside the model weights, then in the working tree.
 fn python_venv_candidates() -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
-    if let Some(v) = std::env::var_os("LOCHOR_PYTHON_VENV") {
+    if let Some(v) = std::env::var_os("LOCARYN_PYTHON_VENV") {
         let p = std::path::PathBuf::from(v);
         if !p.as_os_str().is_empty() {
             out.push(p);
         }
     }
-    out.push(lochor_config::storage_root().join("python-env"));
+    out.push(locaryn_config::storage_root().join("python-env"));
     // Also look beside the weights: that volume is the one with room, so a
     // hand-made venv usually lands there. Found regardless of the working
     // directory, unlike the `.venv` fallback below.
-    if let Some(parent) = lochor_config::models_dir().parent() {
+    if let Some(parent) = locaryn_config::models_dir().parent() {
         out.push(parent.join("python-env"));
         out.push(parent.join(".venv"));
     }
@@ -3327,7 +3327,7 @@ fn python_venv_candidates() -> Vec<std::path::PathBuf> {
 /// downloads default to `~/.cache` — which is how a system drive ends up with
 /// no free space after a few model pulls.
 fn python_env() -> Vec<(&'static str, String)> {
-    let hf = lochor_config::hf_cache_dir();
+    let hf = locaryn_config::hf_cache_dir();
     let _ = std::fs::create_dir_all(&hf);
     vec![
         ("HF_HOME", hf.to_string_lossy().to_string()),
@@ -3335,9 +3335,9 @@ fn python_env() -> Vec<(&'static str, String)> {
         ("USE_TF", "0".to_string()),
         ("TF_CPP_MIN_LOG_LEVEL", "3".to_string()),
         // Build/extract scratch also belongs off the system drive.
-        ("TMPDIR", lochor_config::ensure_temp_dir().to_string_lossy().to_string()),
-        ("TEMP", lochor_config::ensure_temp_dir().to_string_lossy().to_string()),
-        ("TMP", lochor_config::ensure_temp_dir().to_string_lossy().to_string()),
+        ("TMPDIR", locaryn_config::ensure_temp_dir().to_string_lossy().to_string()),
+        ("TEMP", locaryn_config::ensure_temp_dir().to_string_lossy().to_string()),
+        ("TMP", locaryn_config::ensure_temp_dir().to_string_lossy().to_string()),
     ]
 }
 
@@ -4786,7 +4786,7 @@ async fn generate_audio(
     );
     let out_file = output_path.join(out_file_name);
 
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let (engine, model_path, config_path) =
         resolve_tts_engine(&models_dir, &model);
 
@@ -4938,7 +4938,7 @@ async fn generate_audio(
 /// if the `voices/` directory is missing.
 #[tauri::command]
 async fn list_kokoro_voices(model: String) -> Result<Vec<String>, String> {
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let (engine, model_path, _config) = resolve_tts_engine(&models_dir, &model);
     if engine != TtsEngine::Kokoro {
         return Ok(Vec::new());
@@ -4955,7 +4955,7 @@ async fn list_audio_models() -> Result<Vec<String>, String> {
     // We deliberately do NOT list individual voice .pt profiles (e.g.
     // Kokoro's 54 voices/af_heart.pt) as separate "models" — those are voice
     // presets, not standalone TTS models.
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let mut names: Vec<String> = Vec::new();
 
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
@@ -5145,7 +5145,7 @@ async fn generate_music(
     );
     let out_file = output_path.join(out_file_name);
 
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let model_path = models_dir.join(&model);
     let repo_dir = if model_path.is_dir() {
         model_path
@@ -5431,7 +5431,7 @@ async fn generate_video(
     );
     let out_file = output_path.join(out_file_name);
 
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let model_path = models_dir.join(&model);
     let repo_dir = if model_path.is_dir() {
         model_path
@@ -5724,7 +5724,7 @@ async fn generate_3d(
     );
     let out_file = output_path.join(out_file_name);
 
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let model_path = models_dir.join(&model);
     let repo_dir = if model_path.is_dir() {
         model_path
@@ -6311,7 +6311,7 @@ fn check_hardware() -> Result<HardwareSpec, String> {
 
 #[tauri::command]
 fn delete_model_cmd(_endpoint: String, model: String) -> Result<(), String> {
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let path = models_dir.join(&model);
 
     if path.is_dir() {
@@ -6359,7 +6359,7 @@ fn delete_model_cmd(_endpoint: String, model: String) -> Result<(), String> {
 fn open_models_folder(path: Option<String>) -> Result<(), String> {
     let dir = match path {
         Some(p) if !p.is_empty() => std::path::PathBuf::from(p),
-        _ => lochor_config::models_dir(),
+        _ => locaryn_config::models_dir(),
     };
     if cfg!(target_os = "windows") {
         std::process::Command::new("explorer")
@@ -6402,8 +6402,8 @@ fn app_info(core: State<'_, Core>) -> Result<AppInfo, String> {
         version: env!("CARGO_PKG_VERSION").to_string(),
         mode: format!("{:?}", core.mode).to_lowercase(),
         data_dir: core.data_dir.to_string_lossy().to_string(),
-        db_path: core.data_dir.join("lochor.db").to_string_lossy().to_string(),
-        models_dir: lochor_config::models_dir().to_string_lossy().to_string(),
+        db_path: core.data_dir.join("locaryn.db").to_string_lossy().to_string(),
+        models_dir: locaryn_config::models_dir().to_string_lossy().to_string(),
     })
 }
 
@@ -6426,7 +6426,7 @@ pub struct RuntimePlan {
 
 #[tauri::command]
 fn plan_model_runtime(core: State<'_, Core>, model: String) -> Result<RuntimePlan, String> {
-    let models_dir = lochor_config::models_dir();
+    let models_dir = locaryn_config::models_dir();
     let path = models_dir.join(&model);
     let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let size_gb = size_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
@@ -6478,7 +6478,7 @@ pub struct RuntimeCapabilities {
 
 #[tauri::command]
 fn runtime_capabilities(core: State<'_, Core>) -> Result<RuntimeCapabilities, String> {
-    let llama_bin = lochor_config::bin_dir().join("llama-server.exe");
+    let llama_bin = locaryn_config::bin_dir().join("llama-server.exe");
     let runtime_installed = llama_bin.exists();
 
     Ok(RuntimeCapabilities {
@@ -6656,7 +6656,7 @@ pub struct LlamaRuntimeStatus {
 
 #[tauri::command]
 fn llama_runtime_status(core: State<'_, Core>) -> Result<LlamaRuntimeStatus, String> {
-    let bin = lochor_config::bin_dir().join("llama-server.exe");
+    let bin = locaryn_config::bin_dir().join("llama-server.exe");
     let installed = bin.exists();
     Ok(LlamaRuntimeStatus {
         installed,
@@ -6673,7 +6673,7 @@ async fn setup_llama_runtime(
     _variant: Option<String>,
     on_event: Channel<PullProgressEvent>,
 ) -> Result<LlamaRuntimeStatus, String> {
-    let bin_dir = lochor_config::bin_dir();
+    let bin_dir = locaryn_config::bin_dir();
     std::fs::create_dir_all(&bin_dir).map_err(|e| e.to_string())?;
 
     // Download the pinned llama-server binary.
@@ -6920,7 +6920,7 @@ ligne utile B
             // The raw scripts are already syntactically valid Python:
             // `{repo_dir_json}` is a legal Python set literal (undefined var
             // at runtime, but compile() only checks syntax).
-            let tmpdir = std::env::temp_dir().join("lochor_tts_test");
+            let tmpdir = std::env::temp_dir().join("locaryn_tts_test");
             let _ = std::fs::create_dir_all(&tmpdir);
             let tmpfile = tmpdir.join(name);
             std::fs::write(&tmpfile, &src)
@@ -6962,12 +6962,12 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,lochor=debug")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,locaryn=debug")),
         )
         .with_target(true)
         .init();
 
-    tracing::info!("Starting Lochor desktop v{}", env!("CARGO_PKG_VERSION"));
+    tracing::info!("Starting Locaryn desktop v{}", env!("CARGO_PKG_VERSION"));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -6983,7 +6983,7 @@ pub fn run() {
             });
             app.manage(core);
 
-            // Deep links (lochor://install?src=…). Registering makes the OS
+            // Deep links (locaryn://install?src=…). Registering makes the OS
             // treat this app as the handler for the scheme; the frontend
             // already subscribes to the plugin's `deep-link://new-url` event
             // and polls `get_current` on load, so a URL that arrives while the
@@ -6991,15 +6991,15 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                if let Err(e) = app.deep_link().register("lochor") {
-                    tracing::warn!(error = %e, "enregistrement du schéma lochor:// impossible");
+                if let Err(e) = app.deep_link().register("locaryn") {
+                    tracing::warn!(error = %e, "enregistrement du schéma locaryn:// impossible");
                 }
                 // Warm links while the app is already running: forward every
                 // opened URL to the frontend as a custom event.
                 let handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     for url in event.urls() {
-                        let _ = handle.emit("lochor://deep-link", url.to_string());
+                        let _ = handle.emit("locaryn://deep-link", url.to_string());
                     }
                 });
             }
@@ -7140,5 +7140,5 @@ pub fn run() {
             bootstrap
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Lochor desktop");
+        .expect("error while running Locaryn desktop");
 }
