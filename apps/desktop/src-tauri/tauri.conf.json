@@ -24,19 +24,32 @@
       "csp": "default-src 'self' asset: http://asset.localhost https://asset.localhost; img-src 'self' data: asset: http://asset.localhost https://asset.localhost blob:; media-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
     "externalBin": []
   },
   "plugins": {
     "deep-link": {
-      "desktop": { "schemes": ["locaryn"] }
+      "desktop": {
+        "schemes": [
+          "locaryn"
+        ]
+      }
     }
   }
 }
