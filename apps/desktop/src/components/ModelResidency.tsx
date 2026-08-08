@@ -12,7 +12,7 @@
 // avertissement.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { core, type ModelFit, type ResidencyStatus } from "../lib/core";
+import { type ModelFit, type ResidencyStatus, core } from "../lib/core";
 
 /** Le point de l'indicateur : couleur et libellé disent la même chose, pour
  *  que l'information ne repose pas seulement sur la couleur. */
@@ -146,7 +146,8 @@ export function ModelResidency() {
 
       {loaded && !status?.pinned && (
         <span className="locaryn-res-hint">
-          libéré dans {minutes(Math.max(0, (status?.idle_timeout_seconds ?? 0) - (status?.idle_seconds ?? 0)))}
+          libéré dans{" "}
+          {minutes(Math.max(0, (status?.idle_timeout_seconds ?? 0) - (status?.idle_seconds ?? 0)))}
         </span>
       )}
 
@@ -181,7 +182,9 @@ export function ModelResidency() {
             ))}
           </div>
 
-          {busy === "fit" && <div className="locaryn-res-checking">Vérification de la mémoire…</div>}
+          {busy === "fit" && (
+            <div className="locaryn-res-checking">Vérification de la mémoire…</div>
+          )}
 
           {fit && (
             <div className={`locaryn-res-fit ${fit.verdict}`}>

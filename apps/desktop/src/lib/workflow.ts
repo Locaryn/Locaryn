@@ -6,7 +6,7 @@
 // Orchestration lives in the frontend on purpose: each step is a normal
 // streamed chat turn, so the user sees the work happen in the conversation.
 
-import { core, type StreamEvent } from "./core";
+import { type StreamEvent, core } from "./core";
 import { taskCenter } from "./taskCenter";
 
 export interface WorkflowHooks {
@@ -36,7 +36,9 @@ function verificationFailed(answer: string): boolean {
   if (okTrue) return false;
   if (okFalse) return true;
   // No verdict emitted — only clear, unambiguous failure statements count.
-  return /(ne fonctionne (toujours )?pas|erreur persiste|toujours cass|\b[ée]chec\b|tests? (ont )?[ée]chou)/.test(a);
+  return /(ne fonctionne (toujours )?pas|erreur persiste|toujours cass|\b[ée]chec\b|tests? (ont )?[ée]chou)/.test(
+    a,
+  );
 }
 
 /**

@@ -4366,6 +4366,18 @@ pre.md-code {
 }
 
 /* ── Niveau de prudence (Réglages › Performance) ───────────────────────── */
+/* `fieldset` porte la sémantique de groupe ; son habillage par défaut n'a
+   rien à voir avec le reste des réglages, d'où la remise à zéro. */
+.locaryn-caution-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.locaryn-caution-fieldset > legend {
+  padding: 0;
+}
+
 .locaryn-caution-choices {
   display: flex;
   flex-direction: column;

@@ -87,7 +87,7 @@ function restoreTasks() {
     }
     // Bump the sequence counter past the restored ids
     for (const t of saved) {
-      const num = parseInt(t.id.replace(/^t/, ""), 10);
+      const num = Number.parseInt(t.id.replace(/^t/, ""), 10);
       if (num >= seq) seq = num + 1;
     }
   } catch {
@@ -134,7 +134,17 @@ export const taskCenter = {
   addWorkflow(label: string): string {
     const id = `t${++seq}`;
     tasks = [
-      { id, type: "workflow", label, status: "running", attempt: 1, stepIndex: 0, steps: [], createdAt: now(), updatedAt: now() },
+      {
+        id,
+        type: "workflow",
+        label,
+        status: "running",
+        attempt: 1,
+        stepIndex: 0,
+        steps: [],
+        createdAt: now(),
+        updatedAt: now(),
+      },
       ...tasks,
     ];
     emit();
@@ -152,7 +162,13 @@ export const taskCenter = {
   /** Final check failed → relaunch: bump the attempt counter, reset progress. */
   retryWorkflow(id: string) {
     const t = tasks.find((x) => x.id === id);
-    if (t) this.update(id, { attempt: (t.attempt ?? 1) + 1, stepIndex: 0, status: "running", error: undefined });
+    if (t)
+      this.update(id, {
+        attempt: (t.attempt ?? 1) + 1,
+        stepIndex: 0,
+        status: "running",
+        error: undefined,
+      });
   },
 
   remove(id: string) {

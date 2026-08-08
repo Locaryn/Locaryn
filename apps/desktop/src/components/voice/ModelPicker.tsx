@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface ParsedModel {
   id: string;
@@ -69,21 +69,36 @@ export function ModelPicker({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {selectedInfo.lang !== "-" && (
-            <span style={{
-              fontSize: 9, padding: "1px 5px", borderRadius: 3,
-              background: "rgba(255,255,255,0.05)", color: "var(--text-faint)",
-              border: "1px solid var(--border)",
-            }}>
+            <span
+              style={{
+                fontSize: 9,
+                padding: "1px 5px",
+                borderRadius: 3,
+                background: "rgba(255,255,255,0.05)",
+                color: "var(--text-faint)",
+                border: "1px solid var(--border)",
+              }}
+            >
               {selectedInfo.lang}
             </span>
           )}
           {selectedInfo.quality !== "-" && (
-            <span style={{
-              fontSize: 9, padding: "1px 5px", borderRadius: 3,
-              background: selectedInfo.quality === "Clonage" || selectedInfo.quality === "Custom Voice" ? "rgba(150, 100, 255, 0.15)" : "rgba(100, 200, 150, 0.12)",
-              color: selectedInfo.quality === "Clonage" || selectedInfo.quality === "Custom Voice" ? "var(--accent)" : "var(--text-faint)",
-              border: "1px solid var(--border)",
-            }}>
+            <span
+              style={{
+                fontSize: 9,
+                padding: "1px 5px",
+                borderRadius: 3,
+                background:
+                  selectedInfo.quality === "Clonage" || selectedInfo.quality === "Custom Voice"
+                    ? "rgba(150, 100, 255, 0.15)"
+                    : "rgba(100, 200, 150, 0.12)",
+                color:
+                  selectedInfo.quality === "Clonage" || selectedInfo.quality === "Custom Voice"
+                    ? "var(--accent)"
+                    : "var(--text-faint)",
+                border: "1px solid var(--border)",
+              }}
+            >
               {selectedInfo.quality}
             </span>
           )}
@@ -108,7 +123,9 @@ export function ModelPicker({
           }}
         >
           {groups.length === 0 && (
-            <div style={{ padding: 12, fontSize: 12, color: "var(--text-faint)" }}>Aucun modèle</div>
+            <div style={{ padding: 12, fontSize: 12, color: "var(--text-faint)" }}>
+              Aucun modèle
+            </div>
           )}
           {groups.map(([engine, models]) => (
             <div key={engine}>

@@ -239,7 +239,10 @@ impl CatalogClient {
                     .and_then(|d| d.as_str())
                     .map(str::to_string),
                 author: p.get("author").and_then(json_author),
-                version: p.get("version").and_then(|x| x.as_str()).map(str::to_string),
+                version: p
+                    .get("version")
+                    .and_then(|x| x.as_str())
+                    .map(str::to_string),
                 homepage: p
                     .get("homepage")
                     .and_then(|x| x.as_str())
@@ -305,11 +308,7 @@ impl CatalogClient {
             }
             // Hooks and skills convert cleanly; a Policy Engine bundle does not,
             // and neither does an MCP server that needs its own npm install.
-            let compat = if e
-                .get("hasMCP")
-                .and_then(|x| x.as_bool())
-                .unwrap_or(false)
-            {
+            let compat = if e.get("hasMCP").and_then(|x| x.as_bool()).unwrap_or(false) {
                 CatalogCompat::Partial
             } else {
                 CatalogCompat::Adapted
@@ -411,7 +410,10 @@ impl CatalogClient {
                         .and_then(|x| x.as_str())
                         .map(str::to_string),
                     author: full.split('/').next().map(str::to_string),
-                    version: s.get("version").and_then(|x| x.as_str()).map(str::to_string),
+                    version: s
+                        .get("version")
+                        .and_then(|x| x.as_str())
+                        .map(str::to_string),
                     homepage: s
                         .get("repository")
                         .and_then(|r| r.get("url"))
@@ -449,7 +451,9 @@ impl CatalogClient {
             .ok_or_else(|| "réponse npm sans `objects`".to_string())?;
         let mut out = Vec::new();
         for o in objects {
-            let Some(pkg) = o.get("package") else { continue };
+            let Some(pkg) = o.get("package") else {
+                continue;
+            };
             let Some(name) = pkg.get("name").and_then(|x| x.as_str()) else {
                 continue;
             };
@@ -490,7 +494,10 @@ impl CatalogClient {
                     .and_then(|p| p.get("username"))
                     .and_then(|x| x.as_str())
                     .map(str::to_string),
-                version: pkg.get("version").and_then(|x| x.as_str()).map(str::to_string),
+                version: pkg
+                    .get("version")
+                    .and_then(|x| x.as_str())
+                    .map(str::to_string),
                 homepage: repo,
                 ecosystem: ExtensionEcosystem::OpenCode,
                 catalog_id: source.id.clone(),
@@ -650,7 +657,11 @@ pub fn filter(
         b.compat
             .installable()
             .cmp(&a.compat.installable())
-            .then_with(|| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()))
+            .then_with(|| {
+                a.display_name
+                    .to_lowercase()
+                    .cmp(&b.display_name.to_lowercase())
+            })
     });
     hits.into_iter().take(limit).cloned().collect()
 }
@@ -662,8 +673,7 @@ mod tests {
     #[test]
     fn relative_marketplace_source_becomes_a_github_subdir() {
         let v = serde_json::json!("./plugins/code-review");
-        let (spec, compat) =
-            claude_source_to_install(Some(&v), "anthropics", "claude-code", None);
+        let (spec, compat) = claude_source_to_install(Some(&v), "anthropics", "claude-code", None);
         assert_eq!(spec, "github:anthropics/claude-code#plugins/code-review");
         assert_eq!(compat, CatalogCompat::Adapted);
     }
@@ -671,13 +681,11 @@ mod tests {
     #[test]
     fn plugin_root_is_prepended_once() {
         let v = serde_json::json!("formatter");
-        let (spec, _) =
-            claude_source_to_install(Some(&v), "acme", "tools", Some("./plugins"));
+        let (spec, _) = claude_source_to_install(Some(&v), "acme", "tools", Some("./plugins"));
         assert_eq!(spec, "github:acme/tools#plugins/formatter");
         // Already-prefixed paths are not doubled.
         let v2 = serde_json::json!("./plugins/formatter");
-        let (spec2, _) =
-            claude_source_to_install(Some(&v2), "acme", "tools", Some("plugins"));
+        let (spec2, _) = claude_source_to_install(Some(&v2), "acme", "tools", Some("plugins"));
         assert_eq!(spec2, "github:acme/tools#plugins/formatter");
     }
 

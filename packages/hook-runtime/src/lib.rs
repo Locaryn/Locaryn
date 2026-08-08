@@ -131,10 +131,7 @@ pub fn load_hooks(path: &Path) -> Result<HooksFile, HookError> {
 pub fn parse_hooks_str(raw: &str) -> Result<HooksFile, HookError> {
     let v: serde_json::Value = serde_json::from_str(raw)?;
     // Gemini CLI nests the events one level down under `hooks`.
-    let root = v
-        .get("hooks")
-        .filter(|h| h.is_object())
-        .unwrap_or(&v);
+    let root = v.get("hooks").filter(|h| h.is_object()).unwrap_or(&v);
 
     let mut h = HooksFile::default();
     for (key, val) in root.as_object().map(|m| m.iter()).into_iter().flatten() {

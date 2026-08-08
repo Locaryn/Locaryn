@@ -29,7 +29,8 @@ export function BottomPanel({ cwd, sessionId }: Props) {
       setResolvedCwd(cwd ?? null);
       return;
     }
-    core.sessionWorkspace(sessionId)
+    core
+      .sessionWorkspace(sessionId)
       .then((p) => setResolvedCwd(p))
       .catch(() => setResolvedCwd(cwd ?? null));
   }, [sessionId, cwd]);
@@ -101,9 +102,7 @@ export function BottomPanel({ cwd, sessionId }: Props) {
           <button
             type="button"
             className="locaryn-tab-action"
-            onClick={() =>
-              setLines([{ stream: "meta", text: "cleared" }])
-            }
+            onClick={() => setLines([{ stream: "meta", text: "cleared" }])}
           >
             clear
           </button>

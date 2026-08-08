@@ -1,32 +1,39 @@
-import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { pickFolder } from "./lib/dialog";
-import { TopBar } from "./components/TopBar";
-import { ModelBrowser } from "./components/ModelBrowser";
-import { SettingsPanel } from "./components/SettingsPanel";
+import { useEffect, useRef, useState } from "react";
+import { BatchStudio } from "./components/BatchStudio";
 import { ChatPermissionsModal } from "./components/ChatPermissionsModal";
-import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
-import { SettingsView } from "./views/SettingsView";
-import { ModelStudioView } from "./views/ModelStudioView";
-import { StudioView } from "./views/StudioView";
+import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
-import { LeftPanel } from "./panels/LeftPanel";
+import { ModelBrowser } from "./components/ModelBrowser";
+import { ModelResidency } from "./components/ModelResidency";
+import { NavDrawer } from "./components/NavDrawer";
+import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { TaskCenter } from "./components/TaskCenter";
+import { TopBar } from "./components/TopBar";
+import { useTheme } from "./hooks/useTheme";
+import { FREE_CHAT_PATH } from "./lib/constants";
+import {
+  type Health,
+  type Project,
+  type Provisioning,
+  type Session,
+  core,
+  coreMode,
+} from "./lib/core";
+import { parseInstallLink, setPendingInstall } from "./lib/deepLink";
+import { pickFolder } from "./lib/dialog";
+import { setRunReveal } from "./lib/runPanel";
+import { taskCenter } from "./lib/taskCenter";
+import { BottomPanel } from "./panels/BottomPanel";
 import { ChatPanel } from "./panels/ChatPanel";
+import { LeftPanel } from "./panels/LeftPanel";
 import { ModelConfigPanel } from "./panels/ModelConfigPanel";
 import { RunPanel } from "./panels/RunPanel";
-import { setRunReveal } from "./lib/runPanel";
-import { BottomPanel } from "./panels/BottomPanel";
-import { BatchStudio } from "./components/BatchStudio";
 import { InstalledModelsView } from "./views/InstalledModelsView";
-import { NavDrawer } from "./components/NavDrawer";
-import { ConnectScreen } from "./components/ConnectScreen";
-import { TaskCenter } from "./components/TaskCenter";
-import { ModelResidency } from "./components/ModelResidency";
-import { taskCenter } from "./lib/taskCenter";
-import { useTheme } from "./hooks/useTheme";
-import { core, coreMode, type Health, type Project, type Provisioning, type Session } from "./lib/core";
-import { parseInstallLink, setPendingInstall } from "./lib/deepLink";
-import { FREE_CHAT_PATH } from "./lib/constants";
+import { ModelStudioView } from "./views/ModelStudioView";
+import { SettingsView } from "./views/SettingsView";
+import { StudioView } from "./views/StudioView";
 
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -38,10 +45,14 @@ export function App() {
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
-  
+
   const theme = useTheme();
 
-  const [downloadProgress, setDownloadProgress] = useState<{ tag: string; progress: number; status?: string } | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<{
+    tag: string;
+    progress: number;
+    status?: string;
+  } | null>(null);
 
   // Active top-level view: "chat" | "models" | "studio" | "training" | "connectors" | "settings" | "account"
   const [activeView, setActiveView] = useState<string>("chat");
@@ -78,10 +89,7 @@ export function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [prov, session] = await Promise.all([
-          core.provisioning(),
-          core.currentSession(),
-        ]);
+        const [prov, session] = await Promise.all([core.provisioning(), core.currentSession()]);
         if (cancelled) return;
         setProvisioning(prov);
         setGate(prov && !session ? "connect" : "ready");
@@ -274,17 +282,14 @@ export function App() {
       setActiveSession(s);
 
       // Ask the LLM for a concise title in the background.
-      core.generateSessionTitle(s.id, firstPrompt)
+      core
+        .generateSessionTitle(s.id, firstPrompt)
         .then((title) => {
           const newS = { ...s, title };
           if (!activeProject) {
-            setStandaloneSessions((prev) =>
-              prev.map((x) => (x.id === s.id ? newS : x)),
-            );
+            setStandaloneSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
           } else {
-            setSessions((prev) =>
-              prev.map((x) => (x.id === s.id ? newS : x)),
-            );
+            setSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
           }
           if (activeSession?.id === s.id) {
             setActiveSession(newS);
@@ -311,7 +316,12 @@ export function App() {
     }
   }
 
-  async function handleInstallModel(tag: string, onProgress?: (pct: number) => void, heretic?: boolean, consent?: boolean) {
+  async function handleInstallModel(
+    tag: string,
+    onProgress?: (pct: number) => void,
+    heretic?: boolean,
+    consent?: boolean,
+  ) {
     const p = await core.listProviders();
     const active = p.find((pr) => pr.is_active) ?? p[0];
     if (!active) return;
@@ -326,11 +336,17 @@ export function App() {
 
     try {
       // `heretic` makes the backend auto-install the uncensored companions.
-      await core.pullModel(active.endpoint, tag, (pct, statusText) => {
-        onProgress?.(pct);
-        setDownloadProgress({ tag, progress: pct, status: statusText });
-        taskCenter.update(taskId, { progress: pct, detail: statusText ?? `${pct}%` });
-      }, heretic, consent);
+      await core.pullModel(
+        active.endpoint,
+        tag,
+        (pct, statusText) => {
+          onProgress?.(pct);
+          setDownloadProgress({ tag, progress: pct, status: statusText });
+          taskCenter.update(taskId, { progress: pct, detail: statusText ?? `${pct}%` });
+        },
+        heretic,
+        consent,
+      );
       setDownloadProgress({ tag, progress: 100, status: "Téléchargement terminé ✓" });
       taskCenter.done(taskId);
       setTimeout(() => setDownloadProgress(null), 3000);
@@ -426,12 +442,7 @@ export function App() {
     return <div className="locaryn-app locaryn-connect-wait" />;
   }
   if (gate === "connect" && provisioning) {
-    return (
-      <ConnectScreen
-        provisioning={provisioning}
-        onConnected={() => setGate("ready")}
-      />
-    );
+    return <ConnectScreen provisioning={provisioning} onConnected={() => setGate("ready")} />;
   }
 
   return (
@@ -507,7 +518,10 @@ export function App() {
         onSelectView={(v) => setActiveView(v)}
       />
 
-      <div className="locaryn-body" style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
+      <div
+        className="locaryn-body"
+        style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}
+      >
         {activeView === "chat" && leftOpen && (
           <>
             <div style={{ width: leftW, flex: "none" }}>
@@ -560,7 +574,14 @@ export function App() {
             onAddProject={async () => {
               const path = await pickFolder();
               if (!path) return;
-              const name = window.prompt("Nom du projet:", path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "projet") ?? "projet";
+              const name =
+                window.prompt(
+                  "Nom du projet:",
+                  path
+                    .replace(/[\\/]+$/, "")
+                    .split(/[\\/]/)
+                    .pop() ?? "projet",
+                ) ?? "projet";
               handleAddProject(path, name);
             }}
             onAddSsh={() => setActiveView("connectors")}
@@ -575,7 +596,8 @@ export function App() {
             <div className="locaryn-view-header">
               <h2>Marketplace Modèles (HuggingFace Hub & Modèles Locaux)</h2>
               <p className="locaryn-view-desc">
-                Explorez, installez et gérez vos modèles d'IA locaux (Gemma 2 E2B/E4B, Instruct 💬, Audio 🎙️, Kimi K3, MiMo, GLM 5.2...).
+                Explorez, installez et gérez vos modèles d'IA locaux (Gemma 2 E2B/E4B, Instruct 💬,
+                Audio 🎙️, Kimi K3, MiMo, GLM 5.2...).
               </p>
             </div>
             <ModelBrowser
@@ -643,10 +665,7 @@ export function App() {
               // Append the image to the active chat session, then switch to chat view.
               if (activeSession) {
                 try {
-                  await core.appendAssistantMessage(
-                    activeSession.id,
-                    `🖼️ ${label}\n\n![](${url})`,
-                  );
+                  await core.appendAssistantMessage(activeSession.id, `🖼️ ${label}\n\n![](${url})`);
                 } catch (e) {
                   console.warn("Failed to append image message:", e);
                 }
@@ -731,7 +750,15 @@ export function App() {
         <div className="locaryn-footer-left">
           <ModelResidency />
         </div>
-        <div style={{ display: "flex", gap: "10px", fontSize: "11px", color: "var(--text-faint)", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            fontSize: "11px",
+            color: "var(--text-faint)",
+            alignItems: "center",
+          }}
+        >
           {downloadProgress && (
             <>
               <span className="locaryn-footer-text">
@@ -740,12 +767,20 @@ export function App() {
                   : `Téléchargement de ${downloadProgress.tag} — ${downloadProgress.progress} %`}
               </span>
               <div className="locaryn-footer-progress-track" style={{ width: "120px" }}>
-                <div className="locaryn-footer-progress-fill" style={{ width: `${downloadProgress.progress}%` }} />
+                <div
+                  className="locaryn-footer-progress-fill"
+                  style={{ width: `${downloadProgress.progress}%` }}
+                />
               </div>
               <button
                 type="button"
                 className="locaryn-btn-ghost"
-                style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "2px 8px", fontSize: "11px" }}
+                style={{
+                  color: "var(--danger)",
+                  border: "1px solid var(--danger)",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                }}
                 onClick={handleCancelDownload}
                 title="Annuler le téléchargement en cours"
               >

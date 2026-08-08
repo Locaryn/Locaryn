@@ -67,7 +67,10 @@ export function splitReasoning(text: string): SplitMessage {
   }
 
   return {
-    reasoning: blocks.map((b) => b.trim()).filter(Boolean).join("\n\n"),
+    reasoning: blocks
+      .map((b) => b.trim())
+      .filter(Boolean)
+      .join("\n\n"),
     answer: answer.replace(/^\s+/, ""),
     reasoningInProgress: inProgress,
   };
@@ -78,7 +81,10 @@ export function splitReasoning(text: string): SplitMessage {
  * model is still thinking. Long lines are cut so the row cannot grow.
  */
 export function reasoningPeek(reasoning: string, max = 90): string {
-  const lines = reasoning.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = reasoning
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const last = lines[lines.length - 1] ?? "";
   return last.length > max ? `${last.slice(0, max - 1)}…` : last;
 }

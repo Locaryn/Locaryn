@@ -236,10 +236,7 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
                 }
                 _ => (
                     ExtensionComponents::default(),
-                    vec![format!(
-                        "fichiers introuvables : {}",
-                        row.manifest_path
-                    )],
+                    vec![format!("fichiers introuvables : {}", row.manifest_path)],
                 ),
             },
         };
@@ -437,7 +434,7 @@ pub async fn update_extension_source(
 /// intacts), puis redémarre les serveurs MCP du plugin et recharge le runtime.
 async fn reinstall_from_source(
     core: &Core,
-    id: Uuid,
+    _id: Uuid,
     name: &str,
     scope: ExtensionScope,
     source: &str,
@@ -555,18 +552,15 @@ pub async fn check_extension_updates(
         .map(|r| (r.id.to_string(), r.version, r.source))
         .collect();
     let http = &core.http;
-    let results: Vec<(
-        String,
-        String,
-        Result<Option<String>, SourceError>,
-    )> = futures::future::join_all(checks.iter().map(|(id, version, source)| async move {
-        let latest = match source {
-            Some(s) => latest_github_version(http, s).await,
-            None => Ok(None),
-        };
-        (id.clone(), version.clone(), latest)
-    }))
-    .await;
+    let results: Vec<(String, String, Result<Option<String>, SourceError>)> =
+        futures::future::join_all(checks.iter().map(|(id, version, source)| async move {
+            let latest = match source {
+                Some(s) => latest_github_version(http, s).await,
+                None => Ok(None),
+            };
+            (id.clone(), version.clone(), latest)
+        }))
+        .await;
 
     let mut out = Vec::with_capacity(results.len());
     for (id, installed, latest) in results {
@@ -702,7 +696,10 @@ fn read_values(root: &Path, schema: &serde_json::Value) -> serde_json::Value {
     // its declared default rather than a blank.
     if let Some(fields) = schema.as_object() {
         for (key, field) in fields {
-            let default = field.get("default").cloned().unwrap_or(serde_json::Value::Null);
+            let default = field
+                .get("default")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             values.insert(key.clone(), default);
         }
     }
@@ -767,11 +764,7 @@ pub async fn set_extension_config(
         return Err("les valeurs doivent être un objet".into());
     };
     let known = current.schema.as_object();
-    let mut merged = current
-        .values
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let mut merged = current.values.as_object().cloned().unwrap_or_default();
     for (key, value) in patch {
         if known.is_some_and(|k| !k.contains_key(key)) {
             tracing::warn!(key = %key, "réglage inconnu ignoré");
@@ -1065,7 +1058,9 @@ pub async fn remove_catalog_source(
     let before = prefs.custom.len();
     prefs.custom.retain(|s| s.id != id);
     if prefs.custom.len() == before {
-        return Err("Les sources fournies avec l'application ne peuvent qu'être désactivées.".into());
+        return Err(
+            "Les sources fournies avec l'application ne peuvent qu'être désactivées.".into(),
+        );
     }
     prefs.disabled.retain(|d| d != &id);
     save_prefs(&prefs);

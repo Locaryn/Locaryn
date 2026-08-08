@@ -8,7 +8,7 @@
 // que de laisser la machine s'effondrer.
 
 import { useEffect, useState } from "react";
-import { core, CAUTION_LABELS, type CautionLevel } from "../lib/core";
+import { CAUTION_LABELS, type CautionLevel, core } from "../lib/core";
 
 const ORDER: CautionLevel[] = ["prudent", "equilibre", "risque"];
 
@@ -44,27 +44,33 @@ export function CautionSettings() {
 
   return (
     <div className="locaryn-field">
-      <label className="locaryn-field-label">Prudence au chargement d'un modèle</label>
-      <p className="locaryn-field-hint">
-        La mémoire libre est vérifiée avant chaque chargement. Ce réglage décide de la marge
-        exigée — et de ce qui est refusé plutôt que tenté.
-      </p>
+      {/* Un groupe de boutons n'est pas un champ : `label` ne désignerait rien.
+          `fieldset` + `legend` est la forme que les lecteurs d'écran annoncent
+          avant d'égrener les options — obtenir le même effet avec un `div` et
+          `role="group"` marcherait, mais réinventerait un élément qui existe. */}
+      <fieldset className="locaryn-caution-fieldset">
+        <legend className="locaryn-field-label">Prudence au chargement d'un modèle</legend>
+        <p className="locaryn-field-hint">
+          La mémoire libre est vérifiée avant chaque chargement. Ce réglage décide de la marge
+          exigée — et de ce qui est refusé plutôt que tenté.
+        </p>
 
-      <div className="locaryn-caution-choices">
-        {ORDER.map((id) => (
-          <button
-            key={id}
-            type="button"
-            className={`locaryn-caution-choice${level === id ? " locaryn-active" : ""}`}
-            onClick={() => void choose(id)}
-            disabled={saving || level === null}
-            aria-pressed={level === id}
-          >
-            <span className="locaryn-caution-name">{CAUTION_LABELS[id].label}</span>
-            <span className="locaryn-caution-desc">{CAUTION_LABELS[id].hint}</span>
-          </button>
-        ))}
-      </div>
+        <div className="locaryn-caution-choices">
+          {ORDER.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={`locaryn-caution-choice${level === id ? " locaryn-active" : ""}`}
+              onClick={() => void choose(id)}
+              disabled={saving || level === null}
+              aria-pressed={level === id}
+            >
+              <span className="locaryn-caution-name">{CAUTION_LABELS[id].label}</span>
+              <span className="locaryn-caution-desc">{CAUTION_LABELS[id].hint}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
       {level === "risque" && (
         <p className="locaryn-caution-warning">

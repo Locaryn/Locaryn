@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type MobileStatus } from "../lib/core";
+import { type MobileStatus, api } from "../lib/core";
 
 type Props = {
   status: MobileStatus;
@@ -43,9 +43,7 @@ export function SignIn({ status, onSignedIn, onScan }: Props) {
       <div className="lo-center">
         <h1 className="lo-title">{status.server_name ?? "Locaryn"}</h1>
         <p className="lo-sub">
-          {status.travelling
-            ? "Connexion depuis l'extérieur."
-            : "Connexion sur le réseau local."}
+          {status.travelling ? "Connexion depuis l'extérieur." : "Connexion sur le réseau local."}
         </p>
 
         <div>

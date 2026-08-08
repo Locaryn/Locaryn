@@ -119,18 +119,27 @@ importers:
 
   packages-ui/core:
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.31
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
 
   packages-ui/preview:
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.31
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
 
   packages-ui/terminal:
     devDependencies:
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.31
       typescript:
         specifier: ^5.6.3
         version: 5.9.3

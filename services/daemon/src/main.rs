@@ -17,8 +17,8 @@ use futures::StreamExt as _;
 use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent, StubAgent};
 use locaryn_events::{sse_event_tag, StreamEvent};
 use locaryn_extensions::ExtensionRegistry;
-use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
 use locaryn_mcp::McpState;
+use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
 use locaryn_shared_types::{
     ArtifactKind, ConnectionMode, Health, MessageRole, ProviderEngine, ProviderSummary, TaskStatus,
     ToolCall,
@@ -30,8 +30,8 @@ use std::collections::HashMap;
 mod auth;
 mod mtls;
 mod port_forward;
-mod travel;
 mod tls;
+mod travel;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -71,7 +71,10 @@ struct DaemonState {
 /// This machine's address on the local network, for certificate names.
 fn local_ip_string() -> String {
     std::net::UdpSocket::bind("0.0.0.0:0")
-        .and_then(|s| { s.connect("8.8.8.8:80")?; s.local_addr() })
+        .and_then(|s| {
+            s.connect("8.8.8.8:80")?;
+            s.local_addr()
+        })
         .map(|a| a.ip().to_string())
         .unwrap_or_else(|_| "127.0.0.1".to_string())
 }
@@ -170,7 +173,10 @@ async fn main() -> anyhow::Result<()> {
             get(list_sessions).post(create_session),
         )
         .route("/v1/sessions/:id", get(get_session))
-        .route("/v1/sessions/:id/messages", get(list_messages).post(send_message))
+        .route(
+            "/v1/sessions/:id/messages",
+            get(list_messages).post(send_message),
+        )
         .route("/v1/sessions/:id/cancel", post(cancel_session))
         .route(
             "/v1/sessions/:id/artifacts",
@@ -187,7 +193,10 @@ async fn main() -> anyhow::Result<()> {
             "/v1/extensions/install",
             post(routes::extensions::install_extension),
         )
-        .route("/v1/extensions/reload", post(routes::extensions::reload_extensions))
+        .route(
+            "/v1/extensions/reload",
+            post(routes::extensions::reload_extensions),
+        )
         .route(
             "/v1/extensions/:name/enable",
             post(routes::extensions::enable_extension),
@@ -206,9 +215,15 @@ async fn main() -> anyhow::Result<()> {
                 .post(routes::extensions::set_extension_permission),
         )
         // MCP routes
-        .route("/v1/travel", get(routes::travel::status).post(routes::travel::set))
+        .route(
+            "/v1/travel",
+            get(routes::travel::status).post(routes::travel::set),
+        )
         .route("/v1/travel/home", get(routes::travel::home))
-        .route("/v1/mcp/servers", get(routes::mcp::list_servers).post(routes::mcp::register_server))
+        .route(
+            "/v1/mcp/servers",
+            get(routes::mcp::list_servers).post(routes::mcp::register_server),
+        )
         .route(
             "/v1/mcp/servers/:name",
             delete(routes::mcp::unregister_server),
@@ -217,10 +232,7 @@ async fn main() -> anyhow::Result<()> {
             "/v1/mcp/servers/:name/start",
             post(routes::mcp::start_server),
         )
-        .route(
-            "/v1/mcp/servers/:name/stop",
-            post(routes::mcp::stop_server),
-        )
+        .route("/v1/mcp/servers/:name/stop", post(routes::mcp::stop_server))
         .route(
             "/v1/mcp/servers/:name/discover",
             get(routes::mcp::discover_server),
@@ -230,18 +242,9 @@ async fn main() -> anyhow::Result<()> {
             post(routes::mcp::invoke_tool),
         )
         .route("/v1/providers", get(list_providers))
-        .route(
-            "/v1/supervisor/status",
-            get(supervisor_status),
-        )
-        .route(
-            "/v1/supervisor/start",
-            post(supervisor_start),
-        )
-        .route(
-            "/v1/supervisor/stop",
-            post(supervisor_stop),
-        )
+        .route("/v1/supervisor/status", get(supervisor_status))
+        .route("/v1/supervisor/start", post(supervisor_start))
+        .route("/v1/supervisor/stop", post(supervisor_stop))
         .with_state(state)
         // Auth endpoints carry their own state, so they are built separately
         // and merged in.
@@ -289,11 +292,8 @@ async fn main() -> anyhow::Result<()> {
             ];
             let (srv_cert, srv_key) =
                 locaryn_config::mtls::ensure_server_cert(&data_dir_for_tls, names)?;
-            let cfg_rustls = mtls::server_config_requiring_clients(
-                &srv_cert,
-                &srv_key,
-                &ca.cert_pem,
-            )?;
+            let cfg_rustls =
+                mtls::server_config_requiring_clients(&srv_cert, &srv_key, &ca.cert_pem)?;
             tracing::info!("mTLS actif : un certificat client signé par cette machine est exigé");
             axum_server::tls_rustls::RustlsConfig::from_config(std::sync::Arc::new(cfg_rustls))
         } else {
@@ -303,7 +303,11 @@ async fn main() -> anyhow::Result<()> {
         };
         tracing::info!(
             "locaryn-daemon à l écoute sur https://{addr} ({})",
-            if files.self_signed { "certificat auto-signé" } else { "certificat fourni" }
+            if files.self_signed {
+                "certificat auto-signé"
+            } else {
+                "certificat fourni"
+            }
         );
         // Travel mode, if it was asked for. Started before serving so the
         // code is printed with the rest of the startup rather than minutes
@@ -311,10 +315,7 @@ async fn main() -> anyhow::Result<()> {
         if let Some(name) = cfg.daemon.travel.clone() {
             match locaryn_travel::Provider::parse(&name) {
                 Some(p) => {
-                    match travel_state
-                        .start(p, port, &data_dir_for_tls, true)
-                        .await
-                    {
+                    match travel_state.start(p, port, &data_dir_for_tls, true).await {
                         Ok(st) => {
                             if let Some(uri) = st.link.as_deref() {
                                 travel::announce(uri, p);
@@ -343,7 +344,8 @@ async fn main() -> anyhow::Result<()> {
                 Ok(m) => {
                     tracing::info!(
                         "joignable depuis Internet sur https://{}:{}",
-                        m.external_ip, m.external_port
+                        m.external_ip,
+                        m.external_port
                     );
                     renewal = Some(port_forward::spawn_renewal(port));
                 }
@@ -399,11 +401,7 @@ async fn seed_default_provider(storage: &Storage) {
         tracing::info!("seeding default local llama-server provider");
         if let Err(e) = storage
             .providers
-            .upsert_local(
-                ProviderEngine::LlamaCpp,
-                "http://127.0.0.1:8080",
-                None,
-            )
+            .upsert_local(ProviderEngine::LlamaCpp, "http://127.0.0.1:8080", None)
             .await
         {
             tracing::warn!(error = %e, "failed to seed default provider");
@@ -461,9 +459,7 @@ async fn create_project(
         Ok(p) => (StatusCode::CREATED, Json(p)).into_response(),
         Err(e) => {
             let (code, status) = match &e {
-                locaryn_storage::StorageError::Conflict(_) => {
-                    ("conflict", StatusCode::CONFLICT)
-                }
+                locaryn_storage::StorageError::Conflict(_) => ("conflict", StatusCode::CONFLICT),
                 _ => ("storage_error", StatusCode::INTERNAL_SERVER_ERROR),
             };
             (
@@ -485,10 +481,7 @@ struct CreateProjectBody {
     trust_level: locaryn_shared_types::TrustLevel,
 }
 
-async fn list_sessions(
-    State(s): State<Arc<DaemonState>>,
-    Path(pid): Path<String>,
-) -> Response {
+async fn list_sessions(State(s): State<Arc<DaemonState>>, Path(pid): Path<String>) -> Response {
     let project_id = match Uuid::parse_str(&pid) {
         Ok(u) => u,
         Err(_) => {
@@ -588,10 +581,7 @@ async fn get_session(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) 
 /// and the HTTP response to the client ends.
 /// Also finds any pending/running tasks for this session and cancels
 /// them in storage so the status is consistent.
-async fn cancel_session(
-    State(s): State<Arc<DaemonState>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn cancel_session(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> Response {
     let session_uuid = match Uuid::parse_str(&id) {
         Ok(u) => u,
         Err(_) => {
@@ -606,12 +596,7 @@ async fn cancel_session(
     };
 
     // Fire the cancellation flag (if a stream is active).
-    let found = s
-        .cancel_map
-        .lock()
-        .unwrap()
-        .get(&session_uuid)
-        .cloned();
+    let found = s.cancel_map.lock().unwrap().get(&session_uuid).cloned();
     match found {
         Some(flag) => {
             flag.store(true, Ordering::Relaxed);
@@ -625,8 +610,16 @@ async fn cancel_session(
     // Cancel any pending/running tasks for this session in storage.
     if let Ok(tasks) = s.storage.tasks.list_for_session(session_uuid).await {
         for task in tasks {
-            if matches!(task.status, TaskStatus::Pending | TaskStatus::Running | TaskStatus::AwaitingApproval) {
-                if let Err(e) = s.storage.tasks.update_status(task.id, TaskStatus::Cancelled).await {
+            if matches!(
+                task.status,
+                TaskStatus::Pending | TaskStatus::Running | TaskStatus::AwaitingApproval
+            ) {
+                if let Err(e) = s
+                    .storage
+                    .tasks
+                    .update_status(task.id, TaskStatus::Cancelled)
+                    .await
+                {
                     tracing::warn!(task_id = %task.id, error = %e, "failed to cancel task");
                 }
             }
@@ -786,7 +779,11 @@ async fn send_message(
     // 4. Run the agent: OpenAiCompatAgent (llama-server) if possible, otherwise StubAgent.
     let event_stream: EventStream = {
         match &active_provider {
-            Some(p) if (p.engine == ProviderEngine::LlamaCpp || p.engine == ProviderEngine::OpenAiCompat) && supervisor_ok => {
+            Some(p)
+                if (p.engine == ProviderEngine::LlamaCpp
+                    || p.engine == ProviderEngine::OpenAiCompat)
+                    && supervisor_ok =>
+            {
                 tracing::info!(endpoint = %p.endpoint, model = ?model, "using OpenAiCompatAgent");
                 let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
                 match agent.run(input.clone()).await {
@@ -798,7 +795,9 @@ async fn send_message(
                 }
             }
             _ => {
-                tracing::warn!("falling back to StubAgent (no local provider or supervisor failed)");
+                tracing::warn!(
+                    "falling back to StubAgent (no local provider or supervisor failed)"
+                );
                 run_stub_agent(input).await
             }
         }
@@ -826,13 +825,27 @@ async fn send_message(
         while let Some(ev) = rx.recv().await {
             match ev {
                 StreamEvent::Token { text } => full_text.push_str(&text),
-                StreamEvent::ToolCall { call_id, tool, args } => {
-                    tool_calls.push(ToolCall { call_id, tool, args });
+                StreamEvent::ToolCall {
+                    call_id,
+                    tool,
+                    args,
+                } => {
+                    tool_calls.push(ToolCall {
+                        call_id,
+                        tool,
+                        args,
+                    });
                 }
-                StreamEvent::ToolResult { call_id, output, .. } => {
+                StreamEvent::ToolResult {
+                    call_id, output, ..
+                } => {
                     tool_results.push((call_id, output));
                 }
-                StreamEvent::MessageEnd { tokens_in: ti, tokens_out: to, .. } => {
+                StreamEvent::MessageEnd {
+                    tokens_in: ti,
+                    tokens_out: to,
+                    ..
+                } => {
                     tokens_in = ti;
                     tokens_out = to;
                 }
@@ -929,12 +942,12 @@ async fn send_message(
             futures::future::ready(keep)
         })
         .map(move |ev: StreamEvent| {
-        let _ = tx.try_send(ev.clone());
-        let json = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".into());
-        Ok::<Event, std::convert::Infallible>(
-            Event::default().event(sse_event_tag(&ev)).data(json),
-        )
-    });
+            let _ = tx.try_send(ev.clone());
+            let json = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".into());
+            Ok::<Event, std::convert::Infallible>(
+                Event::default().event(sse_event_tag(&ev)).data(json),
+            )
+        });
 
     Sse::new(sse_stream).keep_alive(KeepAlive::default())
 }
@@ -1019,8 +1032,17 @@ async fn cancel_task(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) 
                 .into_response();
         }
     };
-    match s.storage.tasks.update_status(task_id, TaskStatus::Cancelled).await {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "status": "cancelled" }))).into_response(),
+    match s
+        .storage
+        .tasks
+        .update_status(task_id, TaskStatus::Cancelled)
+        .await
+    {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "cancelled" })),
+        )
+            .into_response(),
         Err(e) => {
             let status = match &e {
                 locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
@@ -1095,7 +1117,8 @@ async fn approve_task(
             Json(serde_json::json!({
                 "status": match new_status { TaskStatus::Running => "approved", _ => "denied" }
             })),
-        ).into_response(),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
@@ -1269,10 +1292,7 @@ async fn get_artifact(State(s): State<Arc<DaemonState>>, Path(id): Path<String>)
 }
 
 /// GET /v1/artifacts/{id}/raw — serve the raw artifact file with Content-Type
-async fn get_artifact_raw(
-    State(s): State<Arc<DaemonState>>,
-    Path(id): Path<String>,
-) -> Response {
+async fn get_artifact_raw(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> Response {
     let artifact_id = match Uuid::parse_str(&id) {
         Ok(u) => u,
         Err(_) => {
@@ -1335,7 +1355,7 @@ async fn get_artifact_raw(
 /// otherwise falls back to a minimal implementation.
 fn base64_encode(bytes: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
@@ -1362,7 +1382,9 @@ fn base64_encode(bytes: &[u8]) -> String {
 // ============================================================================
 
 /// GET /v1/supervisor/status — snapshot of all local runtimes.
-async fn supervisor_status(State(s): State<Arc<DaemonState>>) -> Json<Vec<locaryn_provider_supervisor::EngineSnapshot>> {
+async fn supervisor_status(
+    State(s): State<Arc<DaemonState>>,
+) -> Json<Vec<locaryn_provider_supervisor::EngineSnapshot>> {
     let snapshot = s.supervisor.status_snapshot().await;
     Json(snapshot)
 }

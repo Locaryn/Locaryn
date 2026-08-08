@@ -9,8 +9,8 @@ import {
   PERMISSION_LABELS,
   core,
 } from "../lib/core";
-import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
 import { pickAnyFile, pickFolder } from "../lib/dialog";
+import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
 
 type Props = {
   /** "extension" = dépôt / dossier / ZIP ; "marketplace" = dépôt marketplace.json. */
@@ -89,7 +89,11 @@ export function ExtensionInstallDialog({
       } catch (e) {
         if (previewIdRef.current === id) {
           setPreview(null);
-          setPreviewError(String(e).replace(/^Error:\s*/, "").slice(0, 140));
+          setPreviewError(
+            String(e)
+              .replace(/^Error:\s*/, "")
+              .slice(0, 140),
+          );
         }
       } finally {
         if (previewIdRef.current === id) setPreviewing(false);
@@ -253,97 +257,96 @@ export function ExtensionInstallDialog({
                       inputRef.current?.focus();
                     }
                   }}
-                >                    Choisir une archive ZIP…
-                  </button>
-                </div>
-              )}
-            </div>
-            {(preview || previewing || previewError) && kind === "extension" && (
-              <div className="locaryn-card" style={{ marginTop: 12, padding: "10px 12px" }}>
-                {previewing && !preview ? (
-                  <p className="locaryn-field-hint" style={{ margin: 0 }}>
-                    Analyse de la source…
-                  </p>
-                ) : preview ? (
-                  <>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <strong style={{ fontSize: 13 }}>{preview.name}</strong>
-                      <span className="locaryn-tag">
-                        {ECOSYSTEM_LABELS[preview.ecosystem as ExtensionEcosystem] ??
-                          preview.ecosystem}
-                      </span>
-                    </div>
-                    {preview.version && (
-                      <p className="locaryn-field-hint" style={{ margin: "2px 0 0" }}>
-                        v{preview.version}
-                      </p>
-                    )}
-                    {preview.description && (
-                      <p className="locaryn-box-desc" style={{ marginTop: 6 }}>
-                        {preview.description}
-                      </p>
-                    )}
-                    <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
-                      Manifeste : <code>{preview.manifest_file}</code>
-                      {preview.author ? ` · ${preview.author}` : ""}
-                    </p>
-                    {preview.requested_permissions.length > 0 && (
-                      <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
-                        Permissions demandées :{" "}
-                        {preview.requested_permissions
-                          .map((p) => PERMISSION_LABELS[p as ExtensionPermission] ?? p)
-                          .join(", ")}
-                      </p>
-                    )}
-                    {preview.mcp_servers.length > 0 && (
-                      <div style={{ marginTop: 6 }}>
-                        <p className="locaryn-field-hint" style={{ margin: "0 0 4px" }}>
-                          Serveurs MCP déclarés ({preview.mcp_servers.length}) :
-                        </p>
-                        {preview.mcp_servers.map((s) => (
-                          <div
-                            key={s.name}
-                            style={{
-                              display: "flex",
-                              alignItems: "baseline",
-                              gap: 6,
-                              fontSize: 12,
-                              marginBottom: 2,
-                            }}
-                          >
-                            <code style={{ fontSize: 12, flexShrink: 0 }}>{s.name}</code>
-                            {s.command ? (
-                              <span className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
-                                — {s.command}
-                              </span>
-                            ) : s.url ? (
-                              <span className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
-                                — {s.url}
-                              </span>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : previewError ? (
-                  <p
-                    className="locaryn-field-hint"
-                    style={{ margin: 0, color: "var(--text-faint)" }}
-                  >
-                    Aperçu indisponible pour cette source : {previewError}
-                  </p>
-                ) : null}
+                >
+                  {" "}
+                  Choisir une archive ZIP…
+                </button>
               </div>
             )}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+          </div>
+          {(preview || previewing || previewError) && kind === "extension" && (
+            <div className="locaryn-card" style={{ marginTop: 12, padding: "10px 12px" }}>
+              {previewing && !preview ? (
+                <p className="locaryn-field-hint" style={{ margin: 0 }}>
+                  Analyse de la source…
+                </p>
+              ) : preview ? (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <strong style={{ fontSize: 13 }}>{preview.name}</strong>
+                    <span className="locaryn-tag">
+                      {ECOSYSTEM_LABELS[preview.ecosystem as ExtensionEcosystem] ??
+                        preview.ecosystem}
+                    </span>
+                  </div>
+                  {preview.version && (
+                    <p className="locaryn-field-hint" style={{ margin: "2px 0 0" }}>
+                      v{preview.version}
+                    </p>
+                  )}
+                  {preview.description && (
+                    <p className="locaryn-box-desc" style={{ marginTop: 6 }}>
+                      {preview.description}
+                    </p>
+                  )}
+                  <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
+                    Manifeste : <code>{preview.manifest_file}</code>
+                    {preview.author ? ` · ${preview.author}` : ""}
+                  </p>
+                  {preview.requested_permissions.length > 0 && (
+                    <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
+                      Permissions demandées :{" "}
+                      {preview.requested_permissions
+                        .map((p) => PERMISSION_LABELS[p as ExtensionPermission] ?? p)
+                        .join(", ")}
+                    </p>
+                  )}
+                  {preview.mcp_servers.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <p className="locaryn-field-hint" style={{ margin: "0 0 4px" }}>
+                        Serveurs MCP déclarés ({preview.mcp_servers.length}) :
+                      </p>
+                      {preview.mcp_servers.map((s) => (
+                        <div
+                          key={s.name}
+                          style={{
+                            display: "flex",
+                            alignItems: "baseline",
+                            gap: 6,
+                            fontSize: 12,
+                            marginBottom: 2,
+                          }}
+                        >
+                          <code style={{ fontSize: 12, flexShrink: 0 }}>{s.name}</code>
+                          {s.command ? (
+                            <span className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
+                              — {s.command}
+                            </span>
+                          ) : s.url ? (
+                            <span className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
+                              — {s.url}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : previewError ? (
+                <p className="locaryn-field-hint" style={{ margin: 0, color: "var(--text-faint)" }}>
+                  Aperçu indisponible pour cette source : {previewError}
+                </p>
+              ) : null}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
             <button type="button" className="locaryn-btn-ghost" onClick={onClose}>
               Annuler
             </button>

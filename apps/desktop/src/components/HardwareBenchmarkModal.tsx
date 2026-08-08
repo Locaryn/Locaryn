@@ -1,18 +1,17 @@
 import { useState } from "react";
-import { MODEL_CATALOG } from "../lib/modelCatalog";
 import { core } from "../lib/core";
+import { MODEL_CATALOG } from "../lib/modelCatalog";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  onApplyFilter: (onlyRecommended: boolean, hw?: { total_ram_gb: number, total_vram_gb: number }) => void;
+  onApplyFilter: (
+    onlyRecommended: boolean,
+    hw?: { total_ram_gb: number; total_vram_gb: number },
+  ) => void;
 };
 
-export function HardwareBenchmarkModal({
-  isOpen,
-  onClose,
-  onApplyFilter,
-}: Props) {
+export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props) {
   const [ramGb, setRamGb] = useState<number>(16);
   const [vramGb, setVramGb] = useState<number>(8);
   const [cpuCores, setCpuCores] = useState<number>(8);
@@ -97,7 +96,8 @@ export function HardwareBenchmarkModal({
               📊 Analyseur de Performances & Compatibilité Matérielle
             </h3>
             <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
-              Ajustez vos composants matériels pour identifier les modèles utilisables sur votre ordinateur.
+              Ajustez vos composants matériels pour identifier les modèles utilisables sur votre
+              ordinateur.
             </span>
           </div>
           <button type="button" className="locaryn-icon-btn" onClick={onClose}>
@@ -107,7 +107,14 @@ export function HardwareBenchmarkModal({
 
         {/* Presets Row */}
         <div style={{ marginBottom: "16px" }}>
-          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)", display: "block", marginBottom: "6px" }}>
+          <span
+            style={{
+              fontSize: "var(--text-xs)",
+              color: "var(--text-faint)",
+              display: "block",
+              marginBottom: "6px",
+            }}
+          >
             Sélectionner votre profil matériel :
           </span>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -152,7 +159,14 @@ export function HardwareBenchmarkModal({
             marginBottom: "20px",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "12px",
+            }}
+          >
             <span style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}>
               ⚙️ Composants Matériels de votre Machine :
             </span>
@@ -170,7 +184,9 @@ export function HardwareBenchmarkModal({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
             {/* RAM Input */}
             <div className="locaryn-box-card" style={{ padding: "12px" }}>
-              <label className="locaryn-stat-label" htmlFor="ram-input">Mémoire RAM Système</label>
+              <label className="locaryn-stat-label" htmlFor="ram-input">
+                Mémoire RAM Système
+              </label>
               <select
                 id="ram-input"
                 className="locaryn-select"
@@ -181,19 +197,31 @@ export function HardwareBenchmarkModal({
                   setPreset("custom");
                 }}
               >
-                {Array.from(new Set([4, 8, 12, 16, 24, 32, 48, 64, 128, ramGb])).sort((a,b)=>a-b).map((val) => (
-                  <option key={`ram-${val}`} value={val}>{val} Go RAM</option>
-                ))}
+                {Array.from(new Set([4, 8, 12, 16, 24, 32, 48, 64, 128, ramGb]))
+                  .sort((a, b) => a - b)
+                  .map((val) => (
+                    <option key={`ram-${val}`} value={val}>
+                      {val} Go RAM
+                    </option>
+                  ))}
               </select>
             </div>
 
             {/* VRAM Input */}
             <div className="locaryn-box-card" style={{ padding: "12px" }}>
-              <label className="locaryn-stat-label" htmlFor="vram-input">VRAM Carte Graphique</label>
+              <label className="locaryn-stat-label" htmlFor="vram-input">
+                VRAM Carte Graphique
+              </label>
               <select
                 id="vram-input"
                 className="locaryn-select"
-                style={{ width: "100%", marginTop: "6px", fontSize: "14px", fontWeight: 700, color: "var(--accent)" }}
+                style={{
+                  width: "100%",
+                  marginTop: "6px",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  color: "var(--accent)",
+                }}
                 value={vramGb}
                 onChange={(e) => {
                   setVramGb(Number(e.target.value));
@@ -201,15 +229,22 @@ export function HardwareBenchmarkModal({
                 }}
               >
                 <option value={0}>0 Go (CPU Seul)</option>
-                {Array.from(new Set([2, 4, 6, 8, 10, 12, 16, 20, 24, vramGb])).filter(v => v > 0).sort((a,b)=>a-b).map((val) => (
-                  <option key={`vram-${val}`} value={val}>{val} Go VRAM</option>
-                ))}
+                {Array.from(new Set([2, 4, 6, 8, 10, 12, 16, 20, 24, vramGb]))
+                  .filter((v) => v > 0)
+                  .sort((a, b) => a - b)
+                  .map((val) => (
+                    <option key={`vram-${val}`} value={val}>
+                      {val} Go VRAM
+                    </option>
+                  ))}
               </select>
             </div>
 
             {/* CPU Cores Input */}
             <div className="locaryn-box-card" style={{ padding: "12px" }}>
-              <label className="locaryn-stat-label" htmlFor="cpu-input">Cœurs CPU</label>
+              <label className="locaryn-stat-label" htmlFor="cpu-input">
+                Cœurs CPU
+              </label>
               <select
                 id="cpu-input"
                 className="locaryn-select"
@@ -220,9 +255,13 @@ export function HardwareBenchmarkModal({
                   setPreset("custom");
                 }}
               >
-                {Array.from(new Set([2, 4, 6, 8, 10, 12, 14, 16, 24, 32, 64, cpuCores])).sort((a,b)=>a-b).map((val) => (
-                  <option key={`cpu-${val}`} value={val}>{val} Cœurs CPU</option>
-                ))}
+                {Array.from(new Set([2, 4, 6, 8, 10, 12, 14, 16, 24, 32, 64, cpuCores]))
+                  .sort((a, b) => a - b)
+                  .map((val) => (
+                    <option key={`cpu-${val}`} value={val}>
+                      {val} Cœurs CPU
+                    </option>
+                  ))}
               </select>
             </div>
           </div>
@@ -235,45 +274,94 @@ export function HardwareBenchmarkModal({
           </h4>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <div className="locaryn-box-variant-row" style={{ background: "rgba(100, 200, 120, 0.1)", border: "1px solid rgba(100, 200, 120, 0.3)" }}>
+            <div
+              className="locaryn-box-variant-row"
+              style={{
+                background: "rgba(100, 200, 120, 0.1)",
+                border: "1px solid rgba(100, 200, 120, 0.3)",
+              }}
+            >
               <div>
-                <span style={{ fontWeight: 700, color: "#64c878" }}>🟢 {optimalCount} Modèles Optimaux (Recommandés)</span>
-                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}>
-                  Taille jusqu'à {vramGb > 0 ? vramGb : Math.round(ramGb * 0.45)} Go. Exécution GPU ultra-rapide.
+                <span style={{ fontWeight: 700, color: "#64c878" }}>
+                  🟢 {optimalCount} Modèles Optimaux (Recommandés)
+                </span>
+                <span
+                  style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}
+                >
+                  Taille jusqu'à {vramGb > 0 ? vramGb : Math.round(ramGb * 0.45)} Go. Exécution GPU
+                  ultra-rapide.
                 </span>
               </div>
-              <span className="locaryn-tag" style={{ background: "#64c878", color: "#000", fontWeight: 700 }}>
+              <span
+                className="locaryn-tag"
+                style={{ background: "#64c878", color: "#000", fontWeight: 700 }}
+              >
                 Fluidité Maximale
               </span>
             </div>
 
-            <div className="locaryn-box-variant-row" style={{ background: "rgba(220, 180, 80, 0.1)", border: "1px solid rgba(220, 180, 80, 0.3)" }}>
+            <div
+              className="locaryn-box-variant-row"
+              style={{
+                background: "rgba(220, 180, 80, 0.1)",
+                border: "1px solid rgba(220, 180, 80, 0.3)",
+              }}
+            >
               <div>
-                <span style={{ fontWeight: 700, color: "#dcb450" }}>🟡 {mediumCount} Modèles Exécutables avec Shared Memory</span>
-                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}>
+                <span style={{ fontWeight: 700, color: "#dcb450" }}>
+                  🟡 {mediumCount} Modèles Exécutables avec Shared Memory
+                </span>
+                <span
+                  style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}
+                >
                   Inférence possible via partage RAM/CPU jusqu'à {Math.round(ramGb * 0.85)} Go.
                 </span>
               </div>
-              <span className="locaryn-tag" style={{ background: "#dcb450", color: "#000", fontWeight: 700 }}>
+              <span
+                className="locaryn-tag"
+                style={{ background: "#dcb450", color: "#000", fontWeight: 700 }}
+              >
                 Vitesse Modérée
               </span>
             </div>
 
-            <div className="locaryn-box-variant-row" style={{ background: "rgba(204, 125, 114, 0.1)", border: "1px solid rgba(204, 125, 114, 0.3)" }}>
+            <div
+              className="locaryn-box-variant-row"
+              style={{
+                background: "rgba(204, 125, 114, 0.1)",
+                border: "1px solid rgba(204, 125, 114, 0.3)",
+              }}
+            >
               <div>
-                <span style={{ fontWeight: 700, color: "var(--danger)" }}>🔴 {heavyCount} Modèles Trop Lourds pour cette Config</span>
-                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}>
-                  Taille supérieure à {Math.round(ramGb * 0.85)} Go. Nécessite une extension de mémoire.
+                <span style={{ fontWeight: 700, color: "var(--danger)" }}>
+                  🔴 {heavyCount} Modèles Trop Lourds pour cette Config
+                </span>
+                <span
+                  style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}
+                >
+                  Taille supérieure à {Math.round(ramGb * 0.85)} Go. Nécessite une extension de
+                  mémoire.
                 </span>
               </div>
-              <span className="locaryn-tag" style={{ background: "var(--danger)", color: "#fff", fontWeight: 700 }}>
+              <span
+                className="locaryn-tag"
+                style={{ background: "var(--danger)", color: "#fff", fontWeight: 700 }}
+              >
                 Non Recommandé
               </span>
             </div>
           </div>
         </div>
 
-        <div className="locaryn-field-actions" style={{ marginTop: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          className="locaryn-field-actions"
+          style={{
+            marginTop: "24px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <button
             type="button"
             className="locaryn-btn-ghost"

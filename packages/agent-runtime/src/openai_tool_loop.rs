@@ -54,7 +54,11 @@ pub async fn run_openai_tool_loop(
 
     let use_tools = input.project_path.is_some();
     let trust = input.trust.unwrap_or(TrustLevel::Sandbox);
-    let tools = if use_tools { builtin_tools() } else { Vec::new() };
+    let tools = if use_tools {
+        builtin_tools()
+    } else {
+        Vec::new()
+    };
     let mcp_tools = if use_tools {
         if let Some(ref mcp) = input.mcp_state {
             crate::mcp_tools::collect_mcp_tools(mcp).await
@@ -77,9 +81,8 @@ pub async fn run_openai_tool_loop(
     let user_content: serde_json::Value = if input.images.is_empty() {
         serde_json::json!(input.message)
     } else {
-        let mut parts: Vec<serde_json::Value> = vec![
-            serde_json::json!({ "type": "text", "text": input.message }),
-        ];
+        let mut parts: Vec<serde_json::Value> =
+            vec![serde_json::json!({ "type": "text", "text": input.message })];
         for img_b64 in &input.images {
             let url = if img_b64.starts_with("data:") {
                 img_b64.clone()
@@ -311,10 +314,7 @@ pub async fn run_openai_tool_loop(
 
                 let result_content = if decision.needs_user_consent || decision.hard_blocked {
                     let denial = if decision.hard_blocked {
-                        format!(
-                            "Tool '{}' was blocked. {}.",
-                            call.name, decision.reason
-                        )
+                        format!("Tool '{}' was blocked. {}.", call.name, decision.reason)
                     } else {
                         format!(
                             "Tool '{}' requires your approval. {}.",
@@ -514,8 +514,6 @@ async fn stream_one_round(
     }
     Ok(out)
 }
-
-
 
 fn system_prompt_for_dev_agent() -> String {
     "You are Locaryn, an AI coding assistant with access to tools for interacting with the user's local project. \

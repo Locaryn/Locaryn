@@ -480,12 +480,12 @@ impl RiskScope {
     /// disable any weaker option (e.g. Critical refuses Once).
     pub const fn minimum_for(risk_tier: u8) -> Self {
         match risk_tier {
-            0 => RiskScope::Once,    // Low: doesn't matter, not displayed
-            1 => RiskScope::Once,    // Medium
-            2 => RiskScope::Once,    // High
-            _ => RiskScope::Once,    // Critical: still requires fresh consent per call
-                                  //       (the user can then UP-grade to Project
-                                  //       or Always by clicking the appropriate chip)
+            0 => RiskScope::Once, // Low: doesn't matter, not displayed
+            1 => RiskScope::Once, // Medium
+            2 => RiskScope::Once, // High
+            _ => RiskScope::Once, // Critical: still requires fresh consent per call
+                                   //       (the user can then UP-grade to Project
+                                   //       or Always by clicking the appropriate chip)
         }
     }
 
@@ -523,7 +523,7 @@ pub struct ToolApprovalDecision {
     pub scope: RiskScope,
     /// Set for `Project` and `Always` so downstream renewals can verify.
     pub project_id: Option<Uuid>,
-    pub decided_by: String,                // "local" or user id (remote)
+    pub decided_by: String, // "local" or user id (remote)
     pub decided_at: DateTime<Utc>,
     /// Optional user-typed reason ("because I'm refactoring the auth module")
     /// captured for the audit log. Empty string == none.

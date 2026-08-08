@@ -138,8 +138,8 @@ export function SnapMcpTestBench() {
         core.listMcpServers(),
         core.listExtensions(),
       ]);
-      const selected = nextServers.find((item) => /snapmcp|snap-astreinte/i.test(item.name))
-        ?? nextServers[0];
+      const selected =
+        nextServers.find((item) => /snapmcp|snap-astreinte/i.test(item.name)) ?? nextServers[0];
       setServers(nextServers);
       setExtensions(nextExtensions);
       setServerName(selected?.name ?? "");
@@ -209,9 +209,10 @@ export function SnapMcpTestBench() {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"].find(
-        (candidate) => MediaRecorder.isTypeSupported(candidate),
-      ) ?? "";
+      const mime =
+        ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"].find((candidate) =>
+          MediaRecorder.isTypeSupported(candidate),
+        ) ?? "";
       const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
       recorder.ondataavailable = (event) => {
@@ -229,7 +230,10 @@ export function SnapMcpTestBench() {
           const path = await core.writeTestAudio(dataUrl, blob.type);
           setVoicePath(path);
           setVoiceMime(blob.type || "audio/webm");
-          setResult({ title: "Enregistrement terminé", value: { path, mimeType: blob.type, bytes: blob.size } });
+          setResult({
+            title: "Enregistrement terminé",
+            value: { path, mimeType: blob.type, bytes: blob.size },
+          });
         } catch (e) {
           setError(String(e));
         } finally {
@@ -262,17 +266,24 @@ export function SnapMcpTestBench() {
     await core.setExtensionConfig(extension.id, extensionConfig(selectedBackend));
     await core.reloadExtensions();
     const available = await core.listMcpServers();
-    const selected = available.find((item) => /snapmcp|snap-astreinte/i.test(item.name))
-      ?? available[0];
+    const selected =
+      available.find((item) => /snapmcp|snap-astreinte/i.test(item.name)) ?? available[0];
     if (!selected) throw new Error("Serveur SnapMCP introuvable. Recharge l'extension.");
     if (!selected.running) await core.startMcpServer(selected.name);
-    setServers(available.map((item) => item.name === selected.name ? { ...item, running: true } : item));
+    setServers(
+      available.map((item) => (item.name === selected.name ? { ...item, running: true } : item)),
+    );
     setServerName(selected.name);
     setConfiguredBackend(selectedBackend);
     return selected.name;
   }
 
-  async function invoke(title: string, tool: string, args: Record<string, unknown> = {}, selectedBackend = backend) {
+  async function invoke(
+    title: string,
+    tool: string,
+    args: Record<string, unknown> = {},
+    selectedBackend = backend,
+  ) {
     setBusy(true);
     setError(null);
     try {
@@ -296,7 +307,12 @@ export function SnapMcpTestBench() {
 
   async function verifySnapchatWebLogin() {
     setBackend("web");
-    const verified = await invoke("Connexion Snapchat Web vérifiée", "web_session_status", {}, "web");
+    const verified = await invoke(
+      "Connexion Snapchat Web vérifiée",
+      "web_session_status",
+      {},
+      "web",
+    );
     if (verified !== null) setSetupChecked((current) => ({ ...current, "snapchat-web": true }));
   }
 
@@ -365,7 +381,8 @@ export function SnapMcpTestBench() {
   }
 
   async function clearVoice() {
-    if (voicePath.includes("snapmcp-test-")) await core.removeTestAudio(voicePath).catch(() => undefined);
+    if (voicePath.includes("snapmcp-test-"))
+      await core.removeTestAudio(voicePath).catch(() => undefined);
     setVoicePath("");
   }
 
@@ -374,15 +391,21 @@ export function SnapMcpTestBench() {
       await navigator.clipboard.writeText(command);
       setResult({ title: "Commande copiée", value: command });
     } catch {
-      setError("Impossible de copier la commande. Sélectionne-la depuis le résultat du diagnostic.");
+      setError(
+        "Impossible de copier la commande. Sélectionne-la depuis le résultat du diagnostic.",
+      );
     }
   }
 
   const diagnosticOk = (ids: string[] | undefined): boolean =>
-    ids !== undefined
-    && ids.length > 0
-    && ids.every((id) => diagnostics?.checks.some((check) => check.id === id && check.status === "ok") === true);
-  const setupDone = (step: SetupStep): boolean => Boolean(setupChecked[step.id]) || diagnosticOk(step.checks);
+    ids !== undefined &&
+    ids.length > 0 &&
+    ids.every(
+      (id) =>
+        diagnostics?.checks.some((check) => check.id === id && check.status === "ok") === true,
+    );
+  const setupDone = (step: SetupStep): boolean =>
+    Boolean(setupChecked[step.id]) || diagnosticOk(step.checks);
   const completedSetup = SETUP_STEPS.filter(setupDone).length;
   const nextSetupStep = SETUP_STEPS.find((step) => !setupDone(step));
 
@@ -397,26 +420,48 @@ export function SnapMcpTestBench() {
           <span className={`locaryn-tag${serverReady ? " locaryn-tag-installed" : ""}`}>
             {serverReady ? "prêt" : installed ? "à connecter" : "extension absente"}
           </span>
-        </div>          <p className="locaryn-box-desc">
-            Choisis un backend et utilise les boutons. La connexion MCP et le serveur sont gérés automatiquement.
-            Pour Snapchat Web, « Ouvrir… / QR » ouvre Chromium avec le QR code. Scanne-le, puis clique sur « Vérifier la connexion Web » : la session est alors sauvegardée.
-          </p>
-
+        </div>{" "}
+        <p className="locaryn-box-desc">
+          Choisis un backend et utilise les boutons. La connexion MCP et le serveur sont gérés
+          automatiquement. Pour Snapchat Web, « Ouvrir… / QR » ouvre Chromium avec le QR code.
+          Scanne-le, puis clique sur « Vérifier la connexion Web » : la session est alors
+          sauvegardée.
+        </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div className="locaryn-field">
-            <label className="locaryn-field-label" htmlFor="snapmcp-backend">Plateforme</label>
-            <select id="snapmcp-backend" className="locaryn-select" value={backend} onChange={(e) => setBackend(e.target.value as Backend)}>
-              {BACKENDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            <label className="locaryn-field-label" htmlFor="snapmcp-backend">
+              Plateforme
+            </label>
+            <select
+              id="snapmcp-backend"
+              className="locaryn-select"
+              value={backend}
+              onChange={(e) => setBackend(e.target.value as Backend)}
+            >
+              {BACKENDS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
             </select>
             <p className="locaryn-field-hint">{backendInfo.note}</p>
           </div>
           <div className="locaryn-field">
-            <label className="locaryn-field-label" htmlFor="snapmcp-conversation">Contact ou conversation</label>
-            <input id="snapmcp-conversation" className="locaryn-input" value={conversationId} onChange={(e) => setConversationId(e.target.value)} placeholder="@pseudo, ID ou nom Snapchat" />
-            <p className="locaryn-field-hint">Le même identifiant est transmis à la plateforme choisie.</p>
+            <label className="locaryn-field-label" htmlFor="snapmcp-conversation">
+              Contact ou conversation
+            </label>
+            <input
+              id="snapmcp-conversation"
+              className="locaryn-input"
+              value={conversationId}
+              onChange={(e) => setConversationId(e.target.value)}
+              placeholder="@pseudo, ID ou nom Snapchat"
+            />
+            <p className="locaryn-field-hint">
+              Le même identifiant est transmis à la plateforme choisie.
+            </p>
           </div>
         </div>
-
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           <button
             type="button"
@@ -442,9 +487,15 @@ export function SnapMcpTestBench() {
           >
             Vérifier la connexion Web
           </button>
-          <button type="button" className="locaryn-btn-ghost" onClick={() => void invoke("Conversations", "get_conversations")} disabled={busy}>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void invoke("Conversations", "get_conversations")}
+            disabled={busy}
+          >
             Lister les conversations
-          </button>          <button
+          </button>{" "}
+          <button
             type="button"
             className="locaryn-btn-ghost"
             onClick={() => void refresh()}
@@ -469,15 +520,33 @@ export function SnapMcpTestBench() {
             <h3 className="locaryn-box-name">Mise en route guidée</h3>
             <span className="locaryn-box-brand">PC, Telegram, Android et Snapchat</span>
           </div>
-          <span className={`locaryn-tag${completedSetup === SETUP_STEPS.length ? " locaryn-tag-installed" : ""}`}>
+          <span
+            className={`locaryn-tag${completedSetup === SETUP_STEPS.length ? " locaryn-tag-installed" : ""}`}
+          >
             {completedSetup}/{SETUP_STEPS.length}
           </span>
         </div>
         <p className="locaryn-box-desc">
-          Suis les étapes dans l'ordre. Le diagnostic coche automatiquement les prérequis détectés ; tes validations manuelles sont conservées sur ce PC.
+          Suis les étapes dans l'ordre. Le diagnostic coche automatiquement les prérequis détectés ;
+          tes validations manuelles sont conservées sur ce PC.
         </p>
-        <div style={{ height: 6, borderRadius: 999, background: "var(--surface-muted, rgba(127, 127, 127, 0.14))", overflow: "hidden", margin: "10px 0 14px" }}>
-          <div style={{ height: "100%", width: `${Math.round((completedSetup / SETUP_STEPS.length) * 100)}%`, background: "var(--accent, #4f9d69)", transition: "width 250ms ease" }} />
+        <div
+          style={{
+            height: 6,
+            borderRadius: 999,
+            background: "var(--surface-muted, rgba(127, 127, 127, 0.14))",
+            overflow: "hidden",
+            margin: "10px 0 14px",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${Math.round((completedSetup / SETUP_STEPS.length) * 100)}%`,
+              background: "var(--accent, #4f9d69)",
+              transition: "width 250ms ease",
+            }}
+          />
         </div>
         <div style={{ display: "grid", gap: 8 }}>
           {SETUP_STEPS.map((step, index) => {
@@ -485,39 +554,82 @@ export function SnapMcpTestBench() {
             const done = setupDone(step);
             const isNext = nextSetupStep?.id === step.id;
             return (
-              <div key={step.id} style={{ border: `1px solid ${isNext ? "var(--accent, #4f9d69)" : "var(--border, rgba(127, 127, 127, 0.18))"}`, borderRadius: 8, padding: "9px 10px", background: isNext ? "var(--surface-muted, rgba(127, 127, 127, 0.06))" : undefined }}>
+              <div
+                key={step.id}
+                style={{
+                  border: `1px solid ${isNext ? "var(--accent, #4f9d69)" : "var(--border, rgba(127, 127, 127, 0.18))"}`,
+                  borderRadius: 8,
+                  padding: "9px 10px",
+                  background: isNext
+                    ? "var(--surface-muted, rgba(127, 127, 127, 0.06))"
+                    : undefined,
+                }}
+              >
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                   <input
                     type="checkbox"
                     checked={done}
                     disabled={autoDone}
-                    onChange={() => setSetupChecked((current) => ({ ...current, [step.id]: !done }))}
+                    onChange={() =>
+                      setSetupChecked((current) => ({ ...current, [step.id]: !done }))
+                    }
                     aria-label={`Étape ${index + 1} : ${step.title}`}
                     style={{ marginTop: 3 }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                      <strong>{index + 1}. {step.title}</strong>
+                    <div
+                      style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}
+                    >
+                      <strong>
+                        {index + 1}. {step.title}
+                      </strong>
                       <span className="locaryn-field-hint">{step.phase}</span>
                     </div>
                     <div className="locaryn-field-hint">{step.detail}</div>
-                    {autoDone && <div className="locaryn-field-hint" style={{ color: "var(--success, #4f9d69)", marginTop: 3 }}>Détecté automatiquement.</div>}
+                    {autoDone && (
+                      <div
+                        className="locaryn-field-hint"
+                        style={{ color: "var(--success, #4f9d69)", marginTop: 3 }}
+                      >
+                        Détecté automatiquement.
+                      </div>
+                    )}
                     {step.id === "telegram-session" && !autoDone && (
-                      <button type="button" className="locaryn-btn-ghost" onClick={() => void copySetupCommand("npm run telegram:login")} style={{ marginTop: 7 }}>
+                      <button
+                        type="button"
+                        className="locaryn-btn-ghost"
+                        onClick={() => void copySetupCommand("npm run telegram:login")}
+                        style={{ marginTop: 7 }}
+                      >
                         Copier la commande de connexion
                       </button>
                     )}
                     {step.id === "adb-tools" && !autoDone && (
-                      <button type="button" className="locaryn-btn-ghost" onClick={() => void copySetupCommand("adb devices")} style={{ marginTop: 7 }}>
+                      <button
+                        type="button"
+                        className="locaryn-btn-ghost"
+                        onClick={() => void copySetupCommand("adb devices")}
+                        style={{ marginTop: 7 }}
+                      >
                         Copier la commande de vérification
                       </button>
                     )}
                     {step.id === "snapchat-web" && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 7 }}>
-                        <button type="button" className="locaryn-btn-ghost" onClick={() => void openSnapchatWebLogin()} disabled={busy}>
+                        <button
+                          type="button"
+                          className="locaryn-btn-ghost"
+                          onClick={() => void openSnapchatWebLogin()}
+                          disabled={busy}
+                        >
                           Ouvrir le QR code
                         </button>
-                        <button type="button" className="locaryn-btn-ghost" onClick={() => void verifySnapchatWebLogin()} disabled={busy}>
+                        <button
+                          type="button"
+                          className="locaryn-btn-ghost"
+                          onClick={() => void verifySnapchatWebLogin()}
+                          disabled={busy}
+                        >
                           Vérifier Snapchat Web
                         </button>
                       </div>
@@ -528,7 +640,14 @@ export function SnapMcpTestBench() {
             );
           })}
         </div>
-        {completedSetup === SETUP_STEPS.length && <p className="locaryn-field-hint" style={{ color: "var(--success, #4f9d69)", marginTop: 12 }}>Configuration prête. Tu peux passer aux essais réels avec une conversation de test.</p>}
+        {completedSetup === SETUP_STEPS.length && (
+          <p
+            className="locaryn-field-hint"
+            style={{ color: "var(--success, #4f9d69)", marginTop: 12 }}
+          >
+            Configuration prête. Tu peux passer aux essais réels avec une conversation de test.
+          </p>
+        )}
       </div>
 
       {diagnostics && (
@@ -539,22 +658,39 @@ export function SnapMcpTestBench() {
               <span className="locaryn-box-brand">Vérification sans modifier de fichier</span>
             </div>
             <span className="locaryn-tag">
-              {diagnostics.checks.filter((item) => item.status === "ok").length}/{diagnostics.checks.length} OK
+              {diagnostics.checks.filter((item) => item.status === "ok").length}/
+              {diagnostics.checks.length} OK
             </span>
           </div>
           <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
             {diagnostics.checks.map((item) => {
-              const color = item.status === "ok"
-                ? "var(--success, #4f9d69)"
-                : item.status === "warning"
-                  ? "var(--warning, #b57b28)"
-                  : "var(--danger)";
+              const color =
+                item.status === "ok"
+                  ? "var(--success, #4f9d69)"
+                  : item.status === "warning"
+                    ? "var(--warning, #b57b28)"
+                    : "var(--danger)";
               return (
-                <div key={item.id} style={{ borderLeft: `3px solid ${color}`, padding: "7px 10px", background: "var(--surface-muted, rgba(127, 127, 127, 0.08))" }}>
+                <div
+                  key={item.id}
+                  style={{
+                    borderLeft: `3px solid ${color}`,
+                    padding: "7px 10px",
+                    background: "var(--surface-muted, rgba(127, 127, 127, 0.08))",
+                  }}
+                >
                   <strong style={{ color }}>{item.label}</strong>
                   <div className="locaryn-field-hint">{item.detail}</div>
-                  {item.value && <code style={{ display: "block", wordBreak: "break-all", marginTop: 4 }}>{item.value}</code>}
-                  {item.fix && <div className="locaryn-field-hint" style={{ marginTop: 4 }}>Action : {item.fix}</div>}
+                  {item.value && (
+                    <code style={{ display: "block", wordBreak: "break-all", marginTop: 4 }}>
+                      {item.value}
+                    </code>
+                  )}
+                  {item.fix && (
+                    <div className="locaryn-field-hint" style={{ marginTop: 4 }}>
+                      Action : {item.fix}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -562,49 +698,138 @@ export function SnapMcpTestBench() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginTop: 12 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: 12,
+          marginTop: 12,
+        }}
+      >
         <div className="locaryn-box-card">
           <h4 className="locaryn-box-name">Message texte</h4>
-          <textarea className="locaryn-input" rows={3} value={text} onChange={(e) => setText(e.target.value)} style={{ resize: "vertical", fontFamily: "inherit" }} />
-          <button type="button" className="locaryn-btn-primary" onClick={() => void invoke("Message envoyé", "send_message", { conversationId, text })} disabled={busy || !text.trim()}>
+          <textarea
+            className="locaryn-input"
+            rows={3}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            style={{ resize: "vertical", fontFamily: "inherit" }}
+          />
+          <button
+            type="button"
+            className="locaryn-btn-primary"
+            onClick={() => void invoke("Message envoyé", "send_message", { conversationId, text })}
+            disabled={busy || !text.trim()}
+          >
             Envoyer le texte
           </button>
         </div>
 
         <div className="locaryn-box-card">
           <h4 className="locaryn-box-name">Image ou vidéo</h4>
-          <input className="locaryn-input" value={mediaUrl} onChange={(e) => setMediaUrl(e.target.value)} placeholder="URL ou chemin local" />
+          <input
+            className="locaryn-input"
+            value={mediaUrl}
+            onChange={(e) => setMediaUrl(e.target.value)}
+            placeholder="URL ou chemin local"
+          />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
-            <select className="locaryn-select" value={mediaType} onChange={(e) => setMediaType(e.target.value as "image" | "video")} aria-label="Type de média">
+            <select
+              className="locaryn-select"
+              value={mediaType}
+              onChange={(e) => setMediaType(e.target.value as "image" | "video")}
+              aria-label="Type de média"
+            >
               <option value="image">Image</option>
               <option value="video">Vidéo</option>
             </select>
-            <select className="locaryn-select" value={visibility} onChange={(e) => setVisibility(e.target.value as MediaVisibility)} aria-label="Visibilité du média">
+            <select
+              className="locaryn-select"
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as MediaVisibility)}
+              aria-label="Visibilité du média"
+            >
               <option value="saved">Conservée</option>
-              <option value="timed_10s" disabled={backend !== "telegram"}>10 secondes</option>
-              <option value="view_once" disabled={backend !== "telegram"}>Vue unique</option>
-              <option value="view_once_replay" disabled={backend !== "telegram"}>Relecture unique non supportée</option>
+              <option value="timed_10s" disabled={backend !== "telegram"}>
+                10 secondes
+              </option>
+              <option value="view_once" disabled={backend !== "telegram"}>
+                Vue unique
+              </option>
+              <option value="view_once_replay" disabled={backend !== "telegram"}>
+                Relecture unique non supportée
+              </option>
             </select>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-            <button type="button" className="locaryn-btn-ghost" onClick={() => void chooseMedia()} disabled={busy}>Choisir un fichier</button>
-            <button type="button" className="locaryn-btn-primary" onClick={() => void sendMedia()} disabled={busy || !mediaUrl.trim()}>Envoyer le média</button>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() => void chooseMedia()}
+              disabled={busy}
+            >
+              Choisir un fichier
+            </button>
+            <button
+              type="button"
+              className="locaryn-btn-primary"
+              onClick={() => void sendMedia()}
+              disabled={busy || !mediaUrl.trim()}
+            >
+              Envoyer le média
+            </button>
           </div>
           <p className="locaryn-field-hint">Telegram éphémère : photo privée uniquement.</p>
         </div>
 
         <div className="locaryn-box-card">
           <h4 className="locaryn-box-name">Vocal</h4>
-          <p className="locaryn-field-hint">Le navigateur enregistre le micro du PC. ADB utilise le micro du téléphone.</p>
+          <p className="locaryn-field-hint">
+            Le navigateur enregistre le micro du PC. ADB utilise le micro du téléphone.
+          </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="locaryn-btn-ghost" onClick={recording ? stopRecording : startRecording} disabled={busy}>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={recording ? stopRecording : startRecording}
+              disabled={busy}
+            >
               {recording ? "Arrêter" : "Enregistrer au micro"}
             </button>
-            <button type="button" className="locaryn-btn-ghost" onClick={() => void chooseAudio()} disabled={busy || recording}>Choisir un audio</button>
-            {voicePath && <button type="button" className="locaryn-btn-ghost" onClick={() => void clearVoice()} disabled={busy}>Effacer</button>}
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() => void chooseAudio()}
+              disabled={busy || recording}
+            >
+              Choisir un audio
+            </button>
+            {voicePath && (
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                onClick={() => void clearVoice()}
+                disabled={busy}
+              >
+                Effacer
+              </button>
+            )}
           </div>
-          {voicePath && <code className="locaryn-connector-cmd" style={{ display: "block", marginTop: 8, wordBreak: "break-all" }}>{voicePath} · {voiceMime}</code>}
-          <button type="button" className="locaryn-btn-primary" onClick={() => void sendVoice()} disabled={busy || (!voicePath && !text.trim())} style={{ marginTop: 10 }}>
+          {voicePath && (
+            <code
+              className="locaryn-connector-cmd"
+              style={{ display: "block", marginTop: 8, wordBreak: "break-all" }}
+            >
+              {voicePath} · {voiceMime}
+            </code>
+          )}
+          <button
+            type="button"
+            className="locaryn-btn-primary"
+            onClick={() => void sendVoice()}
+            disabled={busy || (!voicePath && !text.trim())}
+            style={{ marginTop: 10 }}
+          >
             Envoyer le vocal
           </button>
         </div>
@@ -613,15 +838,45 @@ export function SnapMcpTestBench() {
           <h4 className="locaryn-box-name">Appel vocal</h4>
           <p className="locaryn-field-hint">Disponible selon le backend et sa session connectée.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="locaryn-btn-primary" onClick={() => void startCall()} disabled={busy}>Démarrer l'appel</button>
-            <button type="button" className="locaryn-btn-ghost" onClick={() => void endCall()} disabled={busy || !activeCallId}>Raccrocher</button>
+            <button
+              type="button"
+              className="locaryn-btn-primary"
+              onClick={() => void startCall()}
+              disabled={busy}
+            >
+              Démarrer l'appel
+            </button>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() => void endCall()}
+              disabled={busy || !activeCallId}
+            >
+              Raccrocher
+            </button>
           </div>
           {activeCallId && <p className="locaryn-field-hint">Appel actif : {activeCallId}</p>}
         </div>
       </div>
 
-      {error && <div className="locaryn-box-card" style={{ marginTop: 12, borderColor: "var(--danger)" }}><strong>Erreur</strong><p className="locaryn-field-hint" style={{ color: "var(--danger)" }}>{error}</p></div>}
-      {result && <div className="locaryn-box-card" style={{ marginTop: 12 }}><strong>{result.title}</strong><pre style={{ whiteSpace: "pre-wrap", overflowX: "auto", margin: "10px 0 0", fontSize: 12 }}>{pretty(result.value)}</pre></div>}
+      {error && (
+        <div className="locaryn-box-card" style={{ marginTop: 12, borderColor: "var(--danger)" }}>
+          <strong>Erreur</strong>
+          <p className="locaryn-field-hint" style={{ color: "var(--danger)" }}>
+            {error}
+          </p>
+        </div>
+      )}
+      {result && (
+        <div className="locaryn-box-card" style={{ marginTop: 12 }}>
+          <strong>{result.title}</strong>
+          <pre
+            style={{ whiteSpace: "pre-wrap", overflowX: "auto", margin: "10px 0 0", fontSize: 12 }}
+          >
+            {pretty(result.value)}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }

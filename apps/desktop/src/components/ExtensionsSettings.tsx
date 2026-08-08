@@ -11,10 +11,10 @@ import {
   PERMISSION_LABELS,
   core,
 } from "../lib/core";
+import { consumePendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { ExtensionConfigPanel } from "./ExtensionConfigPanel";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
 import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
-import { consumePendingInstall, subscribeDeepLink } from "../lib/deepLink";
 
 /**
  * The extension store, wired to the real registry.
@@ -39,8 +39,8 @@ const BATCH_CONCURRENCY = 3;
 
 /** Compare deux versions par segments numériques (miroir du `version_gt` Rust). */
 function versionGt(a: string, b: string): boolean {
-  const sa = a.split(".").map((s) => parseInt(s, 10) || 0);
-  const sb = b.split(".").map((s) => parseInt(s, 10) || 0);
+  const sa = a.split(".").map((s) => Number.parseInt(s, 10) || 0);
+  const sb = b.split(".").map((s) => Number.parseInt(s, 10) || 0);
   const n = Math.max(sa.length, sb.length);
   for (let i = 0; i < n; i++) {
     const x = sa[i] ?? 0;
@@ -514,7 +514,9 @@ export function ExtensionsSettings() {
             }
             onClick={updateAll}
           >
-            {updatingAll ? "Mise à jour…" : `Tout mettre à jour${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
+            {updatingAll
+              ? "Mise à jour…"
+              : `Tout mettre à jour${pendingCount > 0 ? ` (${pendingCount})` : ""}`}
           </button>
           <button
             type="button"
@@ -583,13 +585,9 @@ export function ExtensionsSettings() {
 
       {batchReport && (
         <div className="locaryn-card" style={{ marginBottom: 12, padding: "12px 14px" }}>
-          <div
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-          >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <strong style={{ fontSize: 13 }}>
-              {batchReport.cancelled
-                ? "Mise à jour en lot annulée"
-                : "Mise à jour en lot terminée"}
+              {batchReport.cancelled ? "Mise à jour en lot annulée" : "Mise à jour en lot terminée"}
             </strong>
             <button
               type="button"
@@ -604,9 +602,7 @@ export function ExtensionsSettings() {
             {batchReport.updated.length === 0
               ? "Aucune mise à jour"
               : `${batchReport.updated.length} mise${batchReport.updated.length > 1 ? "s" : ""} à jour`}
-            {batchReport.skipped > 0
-              ? `, ${batchReport.skipped} déjà à jour`
-              : ""}
+            {batchReport.skipped > 0 ? `, ${batchReport.skipped} déjà à jour` : ""}
             {batchReport.failed.length > 0
               ? `, ${batchReport.failed.length} échec${batchReport.failed.length > 1 ? "s" : ""}`
               : ""}

@@ -1,13 +1,20 @@
 name: Release
 
-# Two products, deliberately separate:
+# Trois produits, délibérément séparés :
 #
-#   * locaryn-server — headless. Meant for a machine with a GPU and no desktop
-#     session, so it must not drag in WebKit or a window toolkit.
-#   * locaryn — the desktop application, which can also serve.
+#   * locaryn-server — sans interface. Destiné à une machine avec un GPU et
+#     aucune session graphique : il ne doit donc entraîner ni WebKit ni boîte
+#     à outils de fenêtrage.
+#   * locaryn — l'application de bureau, qui sait aussi servir.
+#   * l'APK Android — le client mobile.
 #
-# Both ship as an installer and as a portable archive, because a locked-down
-# workstation often cannot run an installer at all.
+# Bureau et serveur sortent en installeur *et* en archive portable : un poste
+# verrouillé ne peut souvent pas lancer un installeur du tout.
+#
+# Couverture assumée : Windows x64, Linux x64, macOS universel (Intel +
+# Apple Silicon), Android. Linux ARM64 et Windows ARM64 sont absents faute de
+# runners ARM sur un dépôt privé — mieux vaut ne pas les annoncer que livrer
+# des binaires jamais construits.
 
 on:
   push:
@@ -15,16 +22,16 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build (leave empty for a draft from the current commit)"
+        description: "Tag à construire (vide = brouillon depuis le commit courant)"
         required: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ── Headless server: daemon + CLI, no GUI toolchain ────────────────────
+  # ── Serveur sans interface : démon + CLI, aucune chaîne graphique ───────
   server:
-    name: Server (${{ matrix.os }})
+    name: Serveur (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,18 +39,30 @@ jobs:
         include:
           - os: windows-2022
             target: x86_64-pc-windows-msvc
+            label: windows-x64
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            label: linux-x64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            label: macos-arm64
+          - os: macos-14
+            target: x86_64-apple-darwin
+            label: macos-x64
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.83
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
-      - name: Build server binaries
+      - name: Construire les binaires du serveur
         run: cargo build --release --target ${{ matrix.target }} -p locaryn-daemon -p locaryn-cli
 
-      # ── Portable archive ───────────────────────────────────────────────
-      - name: Package portable (Windows)
+      # ── Archive portable ───────────────────────────────────────────────
+      - name: Archive portable (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -52,32 +71,36 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/locaryn-daemon.exe" $out
           Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $out
           Copy-Item "README.md","LICENSE*" $out -EA SilentlyContinue
-          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-server-windows-x64.zip" -Force
+          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-server-${{ matrix.label }}.zip" -Force
 
-      - name: Package portable (Linux)
-        if: runner.os == 'Linux'
+      - name: Archive portable (Unix)
+        if: runner.os != 'Windows'
         run: |
           out=dist/locaryn-server-portable
           mkdir -p "$out"
           cp target/${{ matrix.target }}/release/locaryn-daemon "$out/"
           cp target/${{ matrix.target }}/release/locaryn "$out/"
-          cp README.md "$out/" 2>/dev/null || true
-          tar -C "$out" -czf dist/locaryn-server-linux-x64.tar.gz .
+          cp README.md LICENSE* "$out/" 2>/dev/null || true
+          tar -C "$out" -czf dist/locaryn-server-${{ matrix.label }}.tar.gz .
 
-      # ── Installers ─────────────────────────────────────────────────────
-      - name: Build .msi (Windows)
+      # ── Installeurs ────────────────────────────────────────────────────
+      # macOS n'en reçoit pas : signer et notariser exige un compte Apple
+      # Developer et des secrets que ce dépôt n'a pas. Une archive honnête
+      # vaut mieux qu'un .pkg que Gatekeeper refusera d'ouvrir.
+      - name: Installeur .msi (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           cargo install cargo-wix --locked
-          # Initialise the WiX definition on first run; committed afterwards so
-          # the installer layout stays reviewable rather than regenerated.
+          # La définition WiX est initialisée au premier passage, puis
+          # committée : la structure de l'installeur reste relisible plutôt
+          # que régénérée à chaque build.
           if (-not (Test-Path "services/daemon/wix/main.wxs")) {
             cargo wix init --package locaryn-daemon --force
           }
           cargo wix --package locaryn-daemon --nocapture --output dist/locaryn-server-windows-x64.msi
 
-      - name: Build .deb (Linux)
+      - name: Paquet .deb (Linux)
         if: runner.os == 'Linux'
         run: |
           cargo install cargo-deb --locked
@@ -85,22 +108,38 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: server-${{ matrix.target }}
+          name: server-${{ matrix.label }}
           path: dist/*
           if-no-files-found: error
 
-  # ── Desktop application (GUI, and can serve) ───────────────────────────
+  # ── Application de bureau (interface, et sait servir) ──────────────────
   desktop:
-    name: Desktop (${{ matrix.os }})
+    name: Bureau (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, ubuntu-22.04]
+        include:
+          - os: windows-2022
+            label: windows-x64
+            args: ""
+          - os: ubuntu-22.04
+            label: linux-x64
+            args: ""
+          # Un seul artefact macOS qui tourne sur les deux architectures :
+          # plus simple à publier, et personne n'a à deviner sa puce.
+          - os: macos-14
+            label: macos-universal
+            args: "--target universal-apple-darwin"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.83
+      - name: Cibles macOS pour le binaire universel
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-${{ matrix.label }}
       - uses: pnpm/action-setup@v4
         with:
           version: 9
@@ -109,37 +148,44 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install Linux Tauri deps
+      - name: Dépendances Tauri (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 
       - run: pnpm install --frozen-lockfile
-      - name: Build the app
-        run: pnpm --dir apps/desktop tauri build
+      - name: Construire l'application
+        run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}
 
-      - name: Collect installers
+      - name: Rassembler les installeurs
         shell: bash
         run: |
           mkdir -p dist
-          # Tauri's output layout differs per platform; take whatever it made.
-          find target/release/bundle -type f \
-            \( -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.exe' \) \
-            -exec cp {} dist/ \; 2>/dev/null || true
+          # La disposition de sortie de Tauri diffère par plateforme, et la
+          # cible universelle range ailleurs : on ratisse les deux racines.
+          for root in target/release/bundle target/universal-apple-darwin/release/bundle; do
+            [ -d "$root" ] || continue
+            find "$root" -type f \
+              \( -name '*.msi' -o -name '*.exe' -o -name '*.deb' \
+                 -o -name '*.AppImage' -o -name '*.dmg' -o -name '*.app.tar.gz' \) \
+              -exec cp {} dist/ \; 2>/dev/null || true
+          done
           ls -la dist/
+          # Un job qui « réussit » sans rien produire est un piège : il fait
+          # croire à une release complète.
+          [ -n "$(ls -A dist/ 2>/dev/null)" ] || { echo "::error::aucun installeur produit pour ${{ matrix.label }}"; exit 1; }
 
-      - name: Package portable (Windows)
+      - name: Archive portable (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $out = "dist/locaryn-portable"
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item "target/release/Locaryn.exe" $out
-          Copy-Item "target/release/locaryn.exe" $out -EA SilentlyContinue
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-desktop-windows-x64.zip" -Force
 
-      - name: Package portable (Linux)
+      - name: Archive portable (Linux)
         if: runner.os == 'Linux'
         run: |
           out=dist/locaryn-portable
@@ -149,53 +195,66 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ matrix.os }}
+          name: desktop-${{ matrix.label }}
           path: dist/*
-          if-no-files-found: warn
+          if-no-files-found: error
 
-  # ── Android client ─────────────────────────────────────────────────────
-  # Only builds once apps/mobile exists; skipped cleanly until then so a
-  # release is not blocked by an app that has not been written yet.
+  # ── Client Android ─────────────────────────────────────────────────────
   android:
-    name: Android APK
+    name: APK Android
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Is there a mobile app yet?
-        id: check
-        run: |
-          if [ -d apps/mobile ]; then echo "present=true" >> "$GITHUB_OUTPUT";
-          else echo "present=false" >> "$GITHUB_OUTPUT"; echo "apps/mobile absent — étape ignorée"; fi
       - uses: actions/setup-java@v4
-        if: steps.check.outputs.present == 'true'
         with:
           distribution: temurin
           java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Installer le NDK
+        run: |
+          sdkmanager --install "ndk;26.3.11579264" "platform-tools" "platforms;android-34"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@1.83
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android
       - uses: pnpm/action-setup@v4
-        if: steps.check.outputs.present == 'true'
         with:
           version: 9
       - uses: actions/setup-node@v4
-        if: steps.check.outputs.present == 'true'
         with:
           node-version: 22
           cache: pnpm
-      - name: Build APK
-        if: steps.check.outputs.present == 'true'
+
+      - run: pnpm install --frozen-lockfile
+      - name: Construire l'APK
+        run: pnpm --dir apps/mobile build:apk
+
+      # L'APK de diffusion sort **non signé**, délibérément : la clé décide de
+      # l'identité de l'application pour toutes ses mises à jour à venir. Une
+      # clé inventée par la CI et laissée dans le dépôt serait la mauvaise
+      # réponse à une question qui appartient au propriétaire du projet.
+      - name: Rassembler l'APK
         run: |
-          pnpm install --frozen-lockfile
-          pnpm --dir apps/mobile build:apk
+          mkdir -p dist
+          find apps/mobile/src-tauri/gen/android -name '*.apk' -path '*release*' -exec cp {} dist/ \;
+          ls -la dist/
+          [ -n "$(ls -A dist/ 2>/dev/null)" ] || { echo "::error::aucun APK produit"; exit 1; }
+
       - uses: actions/upload-artifact@v4
-        if: steps.check.outputs.present == 'true'
         with:
           name: android-apk
-          path: apps/mobile/**/*.apk
+          path: dist/*
           if-no-files-found: error
 
-  # ── Draft release ──────────────────────────────────────────────────────
+  # ── Brouillon de release ───────────────────────────────────────────────
   publish:
-    name: Draft release
-    needs: [server, desktop]
+    name: Brouillon de release
+    # L'Android est dans les dépendances : sans lui, la release partait
+    # systématiquement sans le client mobile.
+    needs: [server, desktop, android]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     permissions:
@@ -204,9 +263,23 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Draft, never publish automatically
+      - name: Brouillon, jamais publié automatiquement
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           files: artifacts/**/*
           generate_release_notes: true
+          body: |
+            ### Installation
+
+            | Plateforme | Fichier |
+            |---|---|
+            | Windows | `.msi` (installeur) ou `.zip` (portable) |
+            | macOS | `.dmg` — universel, Intel et Apple Silicon |
+            | Linux | `.deb`, `.AppImage`, ou `.tar.gz` (portable) |
+            | Android | `.apk` |
+
+            L'APK et les binaires macOS ne sont **pas signés** : la clé de
+            signature détermine l'identité de l'application pour toutes ses
+            mises à jour, elle appartient au propriétaire du projet et non à
+            la chaîne de construction.

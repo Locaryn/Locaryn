@@ -40,7 +40,10 @@ pub fn server_config_requiring_clients(
         .into_iter()
         .map(CertificateDer::from)
         .collect();
-    anyhow::ensure!(!certs.is_empty(), "aucun certificat dans le fichier serveur");
+    anyhow::ensure!(
+        !certs.is_empty(),
+        "aucun certificat dans le fichier serveur"
+    );
 
     let key_der = pem_blocks(&key_pem, "PRIVATE KEY")
         .into_iter()
@@ -116,10 +119,14 @@ mod pem_tests {
         // rests on; if this ever stops building, mTLS silently would not work.
         let mut roots = rustls::RootCertStore::empty();
         for der in pem_blocks(&c.ca_pem, "CERTIFICATE") {
-            roots.add(rustls::pki_types::CertificateDer::from(der)).unwrap();
+            roots
+                .add(rustls::pki_types::CertificateDer::from(der))
+                .unwrap();
         }
         assert!(
-            rustls::server::WebPkiClientVerifier::builder(roots.into()).build().is_ok(),
+            rustls::server::WebPkiClientVerifier::builder(roots.into())
+                .build()
+                .is_ok(),
             "l'autorité générée doit être utilisable comme racine"
         );
         std::fs::remove_dir_all(&dir).ok();

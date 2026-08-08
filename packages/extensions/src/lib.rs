@@ -21,8 +21,8 @@ pub use catalog::{builtin_sources, CatalogClient};
 pub use install::{install, remove_files, InstallError, InstallOutcome};
 pub use loader::{load, AgentDef, LoadError, LoadedHook, LoadedPlugin, RuleDoc};
 pub use manifest::{PermissionRequest, PluginManifest};
-pub use registry::{ExtensionRegistry, RegistryError};
 pub use preview::{preview_source, SourcePreview};
+pub use registry::{ExtensionRegistry, RegistryError};
 pub use source::{latest_github_version, version_gt, InstallSource, SourceError};
 
 use locaryn_shared_types::{ExtensionKind, ExtensionScope, Permission};

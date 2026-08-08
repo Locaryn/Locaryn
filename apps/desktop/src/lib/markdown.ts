@@ -64,9 +64,7 @@ export function renderMarkdown(src: string): string {
       }
       i += 1; // skip closing fence (or EOF)
       const langAttr = lang ? ` data-lang="${escapeHtml(lang)}"` : "";
-      out.push(
-        `<pre class="md-code"${langAttr}><code>${escapeHtml(code.join("\n"))}</code></pre>`,
-      );
+      out.push(`<pre class="md-code"${langAttr}><code>${escapeHtml(code.join("\n"))}</code></pre>`);
       continue;
     }
 

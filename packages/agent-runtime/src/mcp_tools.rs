@@ -107,12 +107,8 @@ pub async fn dispatch_mcp_tool(
     match client.invoke_tool(&tool_name, args).await {
         Ok(val) => {
             // Convert the JSON-RPC result to a display string.
-            let output = serde_json::to_string_pretty(&val)
-                .unwrap_or_else(|_| val.to_string());
-            ToolResult {
-                ok: true,
-                output,
-            }
+            let output = serde_json::to_string_pretty(&val).unwrap_or_else(|_| val.to_string());
+            ToolResult { ok: true, output }
         }
         Err(e) => ToolResult {
             ok: false,

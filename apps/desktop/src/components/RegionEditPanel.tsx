@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { core, type RegionEditResult } from "../lib/core";
+import { type RegionEditResult, core } from "../lib/core";
 import { pickImageFile } from "../lib/dialog";
 import { toImageUrl } from "../lib/imageJobs";
 import { looksLikeImageModel } from "../lib/modelRegistry";
@@ -42,7 +42,8 @@ export function RegionEditPanel({ installedModels }: Props) {
   const imageModels = installedModels.filter(looksLikeImageModel);
 
   useEffect(() => {
-    core.appInfo()
+    core
+      .appInfo()
       .then((i) => setOutputDir(`${i.data_dir}/edited_images`))
       .catch(() => setOutputDir(""));
   }, []);
@@ -121,8 +122,8 @@ export function RegionEditPanel({ installedModels }: Props) {
           Zone à modifier
         </label>
         <p className="locaryn-field-hint">
-          Décrivez-la en mots simples : « le t-shirt », « l'étagère en bois ». Visez un
-          seul élément — une description qui en désigne plusieurs sélectionne mal.
+          Décrivez-la en mots simples : « le t-shirt », « l'étagère en bois ». Visez un seul élément
+          — une description qui en désigne plusieurs sélectionne mal.
         </p>
         <input
           className="locaryn-input"
@@ -165,8 +166,8 @@ export function RegionEditPanel({ installedModels }: Props) {
         {mode === "recolor" ? (
           <>
             <p className="locaryn-field-hint" style={{ marginTop: 10 }}>
-              La matière, les plis et les impressions sont conservés : seule la teinte
-              change, et elle correspond exactement à la couleur choisie.
+              La matière, les plis et les impressions sont conservés : seule la teinte change, et
+              elle correspond exactement à la couleur choisie.
             </p>
             <div className="locaryn-region-swatches">
               {SWATCHES.map((s) => (
@@ -191,8 +192,8 @@ export function RegionEditPanel({ installedModels }: Props) {
         ) : (
           <>
             <p className="locaryn-field-hint" style={{ marginTop: 10 }}>
-              La zone est redessinée par le modèle. Seule la découpe autour d'elle lui
-              est envoyée, donc le détail ne dépend pas de la taille de la photo.
+              La zone est redessinée par le modèle. Seule la découpe autour d'elle lui est envoyée,
+              donc le détail ne dépend pas de la taille de la photo.
             </p>
             <input
               className="locaryn-input"
@@ -224,8 +225,7 @@ export function RegionEditPanel({ installedModels }: Props) {
           className="locaryn-btn-primary"
           style={{ marginTop: 16 }}
           disabled={
-            !!busy || !image || !target.trim() ||
-            (mode === "replace" && (!prompt.trim() || !model))
+            !!busy || !image || !target.trim() || (mode === "replace" && (!prompt.trim() || !model))
           }
           onClick={() => run(mode)}
         >
@@ -254,14 +254,13 @@ export function RegionEditPanel({ installedModels }: Props) {
             </div>
             {scattered ? (
               <p className="locaryn-vp-warn">
-                La sélection est éclatée en {preview.pieces} morceaux : la description
-                désigne probablement plusieurs objets. Reformulez en visant un seul
-                élément, sinon l'application sera refusée.
+                La sélection est éclatée en {preview.pieces} morceaux : la description désigne
+                probablement plusieurs objets. Reformulez en visant un seul élément, sinon
+                l'application sera refusée.
               </p>
             ) : (
               <p className="locaryn-field-hint">
-                Sélection cohérente. Si ce n'est pas la bonne zone, reformulez avant
-                d'appliquer.
+                Sélection cohérente. Si ce n'est pas la bonne zone, reformulez avant d'appliquer.
               </p>
             )}
           </>
@@ -279,8 +278,8 @@ export function RegionEditPanel({ installedModels }: Props) {
           <div className="locaryn-run-empty">
             <div className="locaryn-run-empty-title">Aperçu</div>
             <div className="locaryn-run-empty-sub">
-              Choisissez une image, décrivez la zone, puis « Voir la sélection » pour
-              vérifier ce qui sera modifié avant de lancer quoi que ce soit.
+              Choisissez une image, décrivez la zone, puis « Voir la sélection » pour vérifier ce
+              qui sera modifié avant de lancer quoi que ce soit.
             </div>
           </div>
         )}

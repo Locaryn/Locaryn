@@ -1,6 +1,6 @@
+import { toAudioUrl } from "./audioJobs";
 import { core } from "./core";
 import { taskCenter } from "./taskCenter";
-import { toAudioUrl } from "./audioJobs";
 
 export interface Model3DJobResult {
   url: string;

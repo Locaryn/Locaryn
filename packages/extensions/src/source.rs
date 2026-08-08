@@ -458,8 +458,7 @@ pub async fn latest_github_version(
         "gemini-extension.json",
         "opencode.json",
     ] {
-        let url =
-            format!("https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{prefix}{name}");
+        let url = format!("https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{prefix}{name}");
         let resp = http
             .get(&url)
             .send()
@@ -735,12 +734,13 @@ mod tests {
         let mut writer = zip::ZipWriter::new(file);
         let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
         for (name, content) in [
-            ("repo-main/plugin.json", r#"{"name":"zip-plugin","version":"1.0.0"}"#),
+            (
+                "repo-main/plugin.json",
+                r#"{"name":"zip-plugin","version":"1.0.0"}"#,
+            ),
             ("repo-main/commands/go.md", "---\nname: go\n---\nGo"),
         ] {
-            writer
-                .start_file(name, options)
-                .expect("start_file");
+            writer.start_file(name, options).expect("start_file");
             writer.write_all(content.as_bytes()).expect("write");
         }
         writer.finish().expect("finish");

@@ -59,8 +59,7 @@ pub fn generate_token() -> String {
     // `OsRng` reads the operating system's CSPRNG directly.
     rand::rngs::OsRng.fill_bytes(&mut bytes);
     // Unpadded URL-safe base64: no `+`, `/` or `=` to escape in a header.
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::with_capacity(50);
     out.push_str("locaryn_");
     for chunk in bytes.chunks(3) {
@@ -189,8 +188,7 @@ impl SystemKeychain {
     }
 
     fn entry(&self, key: &str) -> Result<keyring::Entry, KeychainError> {
-        keyring::Entry::new(&self.service, key)
-            .map_err(|e| KeychainError::Backend(e.to_string()))
+        keyring::Entry::new(&self.service, key).map_err(|e| KeychainError::Backend(e.to_string()))
     }
 }
 
@@ -227,15 +225,23 @@ mod crypto_tests {
     fn tokens_are_unpredictable_and_unique() {
         let n = 2000;
         let set: HashSet<String> = (0..n).map(|_| generate_token()).collect();
-        assert_eq!(set.len(), n, "collision — le générateur n'est pas aléatoire");
+        assert_eq!(
+            set.len(),
+            n,
+            "collision — le générateur n'est pas aléatoire"
+        );
 
         let t = generate_token();
         assert!(t.starts_with("locaryn_"));
         // 32 bytes of entropy, base64 → at least 42 characters after the prefix.
-        assert!(t.len() - "locaryn_".len() >= 42, "entropie insuffisante: {t}");
+        assert!(
+            t.len() - "locaryn_".len() >= 42,
+            "entropie insuffisante: {t}"
+        );
         // URL-safe alphabet only: it travels in an Authorization header.
         assert!(
-            t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+            t.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
             "caractère non URL-safe dans {t}"
         );
     }
@@ -246,12 +252,11 @@ mod crypto_tests {
         // together shared a long common prefix. Real randomness must not.
         let a = generate_token();
         let b = generate_token();
-        let common = a
-            .chars()
-            .zip(b.chars())
-            .take_while(|(x, y)| x == y)
-            .count();
-        assert!(common <= 10, "préfixe commun de {common} caractères: {a} / {b}");
+        let common = a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count();
+        assert!(
+            common <= 10,
+            "préfixe commun de {common} caractères: {a} / {b}"
+        );
     }
 
     #[test]
@@ -260,9 +265,19 @@ mod crypto_tests {
         let h1 = hash_token(secret);
         let h2 = hash_token(secret);
 
-        assert!(h1.hash.starts_with("$argon2id$"), "pas un vrai Argon2id: {}", h1.hash);
-        assert_ne!(h1.hash, h2.hash, "hachage non salé : deux fois le même résultat");
-        assert!(!h1.hash.contains(secret), "le secret ne doit jamais apparaître");
+        assert!(
+            h1.hash.starts_with("$argon2id$"),
+            "pas un vrai Argon2id: {}",
+            h1.hash
+        );
+        assert_ne!(
+            h1.hash, h2.hash,
+            "hachage non salé : deux fois le même résultat"
+        );
+        assert!(
+            !h1.hash.contains(secret),
+            "le secret ne doit jamais apparaître"
+        );
 
         assert!(verify_token(secret, &h1));
         assert!(verify_token(secret, &h2));

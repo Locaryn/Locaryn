@@ -27,10 +27,7 @@ use std::sync::Arc;
 /// Decode a fingerprint as displayed to users — `AB:CD:…`, any case, with or
 /// without the colons.
 fn parse_fingerprint(text: &str) -> Option<[u8; 32]> {
-    let hex: Vec<u8> = text
-        .bytes()
-        .filter(|b| b.is_ascii_hexdigit())
-        .collect();
+    let hex: Vec<u8> = text.bytes().filter(|b| b.is_ascii_hexdigit()).collect();
     if hex.len() != 64 {
         return None;
     }
@@ -152,9 +149,9 @@ pub fn build(
         Some(pem) => {
             let mut roots = rustls::RootCertStore::empty();
             for der in locaryn_config::mtls::pem_blocks(pem, "CERTIFICATE") {
-                roots
-                    .add(CertificateDer::from(der))
-                    .map_err(|e| format!("Le certificat d'autorité installé est illisible : {e}"))?;
+                roots.add(CertificateDer::from(der)).map_err(|e| {
+                    format!("Le certificat d'autorité installé est illisible : {e}")
+                })?;
             }
             if roots.is_empty() {
                 None
@@ -221,7 +218,10 @@ mod tests {
         .unwrap();
         // Exactly the form the connection screen and the CLI print.
         assert!(shown.contains(':'), "empreinte sans séparateurs : {shown}");
-        assert_eq!(parse_fingerprint(&shown), Some(locaryn_config::provision::sha256(der)));
+        assert_eq!(
+            parse_fingerprint(&shown),
+            Some(locaryn_config::provision::sha256(der))
+        );
         // Users retype these; be forgiving about case and colons.
         assert_eq!(
             parse_fingerprint(&shown.replace(':', "").to_lowercase()),
@@ -255,8 +255,13 @@ mod tests {
         let (certs, _key) = identity(&cred.bundle_pem).expect("bundle inutilisable");
         assert_eq!(certs.len(), 1);
         assert!(
-            build(Some(&cred.bundle_pem), Some(&cred.ca_pem), None, std::time::Duration::from_secs(5))
-                .is_ok(),
+            build(
+                Some(&cred.bundle_pem),
+                Some(&cred.ca_pem),
+                None,
+                std::time::Duration::from_secs(5)
+            )
+            .is_ok(),
             "client refusé alors que le certificat est valide"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -298,33 +303,49 @@ mod tests {
         let url = std::env::var("LOCARYN_TEST_SERVER").expect("LOCARYN_TEST_SERVER");
         let client_pem =
             std::fs::read_to_string(std::env::var("LOCARYN_TEST_CLIENT_PEM").unwrap()).unwrap();
-        let ca_pem = std::fs::read_to_string(std::env::var("LOCARYN_TEST_CA_PEM").unwrap()).unwrap();
+        let ca_pem =
+            std::fs::read_to_string(std::env::var("LOCARYN_TEST_CA_PEM").unwrap()).unwrap();
         let health = format!("{url}/health");
         let short = std::time::Duration::from_secs(10);
 
         // 1. The certificate the administrator issued gets through.
         let ok = build(Some(&client_pem), Some(&ca_pem), None, short).unwrap();
-        let r = ok.get(&health).send().await.expect("connexion refusée avec certificat");
+        let r = ok
+            .get(&health)
+            .send()
+            .await
+            .expect("connexion refusée avec certificat");
         assert!(r.status().is_success(), "statut {}", r.status());
         println!("avec certificat      : {}", r.status());
 
         // 2. Without it, the handshake fails — before any request is served.
         let bare = build(None, Some(&ca_pem), None, short).unwrap();
-        let err = bare.get(&health).send().await.expect_err("accepté sans certificat");
+        let err = bare
+            .get(&health)
+            .send()
+            .await
+            .expect_err("accepté sans certificat");
         println!("sans certificat      : refusé ({err})");
 
         // 3. A wrong fingerprint is caught even though the certificate chains
         //    correctly: the pin is what distinguishes this server from another
         //    one holding a certificate from the same authority.
         let wrong = build(Some(&client_pem), None, Some(&"AB".repeat(32)), short).unwrap();
-        let err = wrong.get(&health).send().await.expect_err("empreinte fausse acceptée");
+        let err = wrong
+            .get(&health)
+            .send()
+            .await
+            .expect_err("empreinte fausse acceptée");
         let mut chain = String::new();
         let mut cur: Option<&dyn std::error::Error> = Some(&err);
         while let Some(c) = cur {
             chain.push_str(&c.to_string());
             cur = c.source();
         }
-        assert!(chain.contains("empreinte"), "refus pour une autre raison : {chain}");
+        assert!(
+            chain.contains("empreinte"),
+            "refus pour une autre raison : {chain}"
+        );
         println!("empreinte incorrecte : refusé");
 
         // 4. And the credentials still decide who gets in: the certificate
@@ -339,10 +360,16 @@ mod tests {
                 .send()
                 .await
                 .unwrap();
-            assert!(r.status().is_success(), "connexion refusée : {}", r.status());
+            assert!(
+                r.status().is_success(),
+                "connexion refusée : {}",
+                r.status()
+            );
             let body: serde_json::Value = r.json().await.unwrap();
             assert!(
-                body.get("token").and_then(|t| t.as_str()).is_some_and(|t| t.len() > 20),
+                body.get("token")
+                    .and_then(|t| t.as_str())
+                    .is_some_and(|t| t.len() > 20),
                 "jeton absent ou trop court : {body}"
             );
             println!("identifiants valides : jeton reçu");
@@ -363,7 +390,11 @@ mod tests {
         const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         let mut out = String::new();
         for chunk in data.chunks(3) {
-            let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+            let b = [
+                chunk[0],
+                *chunk.get(1).unwrap_or(&0),
+                *chunk.get(2).unwrap_or(&0),
+            ];
             let n = u32::from_be_bytes([0, b[0], b[1], b[2]]);
             for i in 0..4 {
                 if i <= chunk.len() {

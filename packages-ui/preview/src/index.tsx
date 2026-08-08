@@ -1,4 +1,7 @@
-export function PreviewFrame({ url, sandbox = "allow-scripts" }: { url: string; sandbox?: string }) {
+export function PreviewFrame({
+  url,
+  sandbox = "allow-scripts",
+}: { url: string; sandbox?: string }) {
   return (
     <iframe
       title="locaryn-preview"

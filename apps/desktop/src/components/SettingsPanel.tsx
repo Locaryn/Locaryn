@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { UseThemeReturn } from "../hooks/useTheme";
-import { core, type AppInfo } from "../lib/core";
+import { type AppInfo, core } from "../lib/core";
 import { IMAGE_GEN_MODELS } from "../lib/modelRegistry";
 import { ModelBrowser } from "./ModelBrowser";
 import { PerformancePanel } from "./PerformancePanel";
@@ -34,7 +34,6 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
   const [saved, setSaved] = useState(false);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [modelView, setModelView] = useState<"server" | "browse">("server");
-
 
   // Close on Escape.
   // Load provider + app info on mount.
@@ -117,7 +116,12 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
     }
   }
 
-  async function useCatalogModel(tag: string, _onProgress?: (pct: number) => void, _heretic?: boolean, consent?: boolean) {
+  async function useCatalogModel(
+    tag: string,
+    _onProgress?: (pct: number) => void,
+    _heretic?: boolean,
+    consent?: boolean,
+  ) {
     try {
       if (!models.includes(tag)) {
         await core.pullModel(endpoint.trim(), tag, undefined, undefined, consent);
@@ -125,7 +129,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
       }
       // If it's an image gen model (tag starts with x/ or is in IMAGE_GEN_MODELS), we just install it.
       // We don't want to set it as the active LLM text model.
-      const isImage = IMAGE_GEN_MODELS.some(f => f.variants.some(v => v.tag === tag));
+      const isImage = IMAGE_GEN_MODELS.some((f) => f.variants.some((v) => v.tag === tag));
       if (tag.startsWith("x/") || isImage) {
         return;
       }
@@ -147,12 +151,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
   return (
     <>
       <div className="locaryn-settings-backdrop" onClick={() => setSettingsOpen(false)} />
-      <div
-        className="locaryn-settings-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Settings"
-      >
+      <div className="locaryn-settings-modal" role="dialog" aria-modal="true" aria-label="Settings">
         <div className="locaryn-settings-header">
           <span className="locaryn-settings-title">Paramètres du chat</span>
           <button
@@ -185,7 +184,10 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
               <button
                 type="button"
                 className="locaryn-settings-all"
-                onClick={() => { setSettingsOpen(false); onOpenFullSettings(); }}
+                onClick={() => {
+                  setSettingsOpen(false);
+                  onOpenFullSettings();
+                }}
                 title="Moteur, projets, extensions, apparence, stockage…"
               >
                 Tous les paramètres →
@@ -194,9 +196,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
           </nav>
 
           <div className="locaryn-settings-pane">
-
             {tab === "performance" && <PerformancePanel />}
-
 
             {tab === "provider" && (
               <>
@@ -218,97 +218,92 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
                 </div>
 
                 {modelView === "browse" ? (
-                  <ModelBrowser
-                    onInstall={useCatalogModel}
-                    installed={models}
-                  />
+                  <ModelBrowser onInstall={useCatalogModel} installed={models} />
                 ) : (
                   <>
-                <div className="locaryn-field">
-                  <label className="locaryn-field-label" htmlFor="locaryn-endpoint">
-                    Serveur de modèles local
-                  </label>
-                  <div className="locaryn-field-row">
-                    <input
-                      id="locaryn-endpoint"
-                      className="locaryn-input"
-                      value={endpoint}
-                      spellCheck={false}
-                      autoCapitalize="off"
-                      autoCorrect="off"
-                      placeholder={DEFAULT_ENDPOINT}
-                      onChange={(e) => {
-                        setEndpoint(e.target.value);
-                        setConn("idle");
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="locaryn-btn-ghost"
-                      onClick={refreshModels}
-                      disabled={conn === "testing" || !endpoint.trim()}
-                    >
-                      {conn === "testing" ? "Test…" : "Tester"}
-                    </button>
-                  </div>
-                  {conn !== "idle" && (
-                    <div className={`locaryn-conn locaryn-conn-${conn}`}>
-                      <span className="locaryn-conn-dot" />
-                      {connMsg ||
-                        (conn === "ok"
-                          ? "connecté"
-                          : conn === "testing"
-                            ? "connecting…"
-                            : "unreachable")}
+                    <div className="locaryn-field">
+                      <label className="locaryn-field-label" htmlFor="locaryn-endpoint">
+                        Serveur de modèles local
+                      </label>
+                      <div className="locaryn-field-row">
+                        <input
+                          id="locaryn-endpoint"
+                          className="locaryn-input"
+                          value={endpoint}
+                          spellCheck={false}
+                          autoCapitalize="off"
+                          autoCorrect="off"
+                          placeholder={DEFAULT_ENDPOINT}
+                          onChange={(e) => {
+                            setEndpoint(e.target.value);
+                            setConn("idle");
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="locaryn-btn-ghost"
+                          onClick={refreshModels}
+                          disabled={conn === "testing" || !endpoint.trim()}
+                        >
+                          {conn === "testing" ? "Test…" : "Tester"}
+                        </button>
+                      </div>
+                      {conn !== "idle" && (
+                        <div className={`locaryn-conn locaryn-conn-${conn}`}>
+                          <span className="locaryn-conn-dot" />
+                          {connMsg ||
+                            (conn === "ok"
+                              ? "connecté"
+                              : conn === "testing"
+                                ? "connecting…"
+                                : "unreachable")}
+                        </div>
+                      )}
+                      <p className="locaryn-field-hint">
+                        Adresse du serveur de modèles local. Cliquez sur Tester pour lister les
+                        modèles qu'il expose.
+                      </p>
                     </div>
-                  )}
-                  <p className="locaryn-field-hint">
-                    Adresse du serveur de modèles local. Cliquez sur Tester pour lister
-                    les modèles qu'il expose.
-                  </p>
-                </div>
 
-                <div className="locaryn-field">
-                  <label className="locaryn-field-label" htmlFor="locaryn-model">
-                    Model
-                  </label>
-                  <select
-                    id="locaryn-model"
-                    className="locaryn-select"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                  >
-                    {modelOptions.length === 0 ? (
-                      <option value="">— testez la connexion pour lister les modèles —</option>
-                    ) : (
-                      modelOptions.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <p className="locaryn-field-hint">
-                    L'agent utilise ce modèle pour chaque message en mode local.
-                  </p>
-                </div>
+                    <div className="locaryn-field">
+                      <label className="locaryn-field-label" htmlFor="locaryn-model">
+                        Model
+                      </label>
+                      <select
+                        id="locaryn-model"
+                        className="locaryn-select"
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                      >
+                        {modelOptions.length === 0 ? (
+                          <option value="">— testez la connexion pour lister les modèles —</option>
+                        ) : (
+                          modelOptions.map((m) => (
+                            <option key={m} value={m}>
+                              {m}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <p className="locaryn-field-hint">
+                        L'agent utilise ce modèle pour chaque message en mode local.
+                      </p>
+                    </div>
 
-                <div className="locaryn-field-actions">
-                  <button
-                    type="button"
-                    className="locaryn-btn-primary"
-                    onClick={save}
-                    disabled={saving || !endpoint.trim()}
-                  >
-                    {saving ? "Enregistrement…" : saved ? "Enregistré ✓" : "Enregistrer"}
-                  </button>
-                </div>
+                    <div className="locaryn-field-actions">
+                      <button
+                        type="button"
+                        className="locaryn-btn-primary"
+                        onClick={save}
+                        disabled={saving || !endpoint.trim()}
+                      >
+                        {saving ? "Enregistrement…" : saved ? "Enregistré ✓" : "Enregistrer"}
+                      </button>
+                    </div>
                   </>
                 )}
               </>
             )}
-
-
           </div>
         </div>
       </div>

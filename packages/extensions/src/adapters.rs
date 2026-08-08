@@ -36,9 +36,11 @@ pub enum AdaptError {
         #[source]
         source: serde_json::Error,
     },
-    #[error("no recognisable plugin found in {0} — expected plugin.json, \
+    #[error(
+        "no recognisable plugin found in {0} — expected plugin.json, \
              .claude-plugin/plugin.json, gemini-extension.json, opencode.json, \
-             or a commands/agents/skills directory")]
+             or a commands/agents/skills directory"
+    )]
     Unrecognised(String),
 }
 
@@ -93,8 +95,7 @@ pub fn detect(dir: &Path) -> Option<ExtensionEcosystem> {
 /// unmanifested Claude Code tree, a bare `.mcp.json`); pass the directory or
 /// repository name.
 pub fn adapt(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptError> {
-    let eco =
-        detect(dir).ok_or_else(|| AdaptError::Unrecognised(dir.display().to_string()))?;
+    let eco = detect(dir).ok_or_else(|| AdaptError::Unrecognised(dir.display().to_string()))?;
     match eco {
         ExtensionEcosystem::Locaryn => {
             let raw = std::fs::read_to_string(dir.join(LOCARYN_MANIFEST))?;
@@ -218,7 +219,10 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         .or_else(|| first_existing(dir, &["hooks/hooks.json", "hooks.json"]));
     if let Some(rel) = hooks_path {
         if dir.join(&rel).is_file() {
-            rewrite_vars(&dir.join(&rel), &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")])?;
+            rewrite_vars(
+                &dir.join(&rel),
+                &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")],
+            )?;
             c.hooks = Some(rel);
         }
     }
@@ -229,7 +233,10 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         .or_else(|| first_existing(dir, &[".mcp.json", "mcp.json", "mcp/mcp.json"]));
     if let Some(rel) = mcp_path {
         if dir.join(&rel).is_file() {
-            rewrite_vars(&dir.join(&rel), &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")])?;
+            rewrite_vars(
+                &dir.join(&rel),
+                &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")],
+            )?;
             c.mcp = Some(rel);
         }
     }
@@ -250,7 +257,9 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         ("themes", "themes"),
     ] {
         if dir.join(path).exists() {
-            notes.push(format!("`{path}` ignoré ({what} n'existe pas dans Locaryn)"));
+            notes.push(format!(
+                "`{path}` ignoré ({what} n'existe pas dans Locaryn)"
+            ));
             partial = true;
         }
     }
@@ -454,7 +463,10 @@ fn convert_gemini_commands(dir: &Path, notes: &mut Vec<String>) -> Result<Vec<St
         ));
     }
     if !out.is_empty() {
-        notes.push(format!("{} commande(s) TOML converties en markdown.", out.len()));
+        notes.push(format!(
+            "{} commande(s) TOML converties en markdown.",
+            out.len()
+        ));
     }
     Ok(out)
 }
@@ -650,7 +662,10 @@ fn infer_permissions(dir: &Path, c: &Components) -> crate::manifest::Permissions
         map.insert("shell".into(), obj("Exécuter les hooks du plugin"));
     }
     if let Some(mcp_rel) = &c.mcp {
-        map.insert("mcp".into(), obj("Enregistrer et démarrer ses serveurs MCP"));
+        map.insert(
+            "mcp".into(),
+            obj("Enregistrer et démarrer ses serveurs MCP"),
+        );
         // An HTTP server means outbound network; a stdio one does not.
         if let Ok(raw) = std::fs::read_to_string(dir.join(mcp_rel)) {
             if raw.contains("\"url\"") {
@@ -908,10 +923,7 @@ mod tests {
         assert_eq!(r.manifest.name, "code-review");
         assert_eq!(r.manifest.version, "1.2.0");
         assert_eq!(r.manifest.components.commands, vec!["commands/review.md"]);
-        assert_eq!(
-            r.manifest.components.skills,
-            vec!["skills/audit/SKILL.md"]
-        );
+        assert_eq!(r.manifest.components.skills, vec!["skills/audit/SKILL.md"]);
         assert_eq!(r.manifest.components.mcp.as_deref(), Some(".mcp.json"));
         // The plugin-root variable was rewritten to Locaryn's spelling.
         let mcp = std::fs::read_to_string(d.join(".mcp.json")).unwrap();

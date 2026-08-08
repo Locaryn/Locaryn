@@ -3,9 +3,9 @@
 // center; the finished image is delivered to the active chat via a handler.
 
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { core, type VramMode } from "./core";
-import { taskCenter } from "./taskCenter";
+import { type VramMode, core } from "./core";
 import { recordImageGenerationDuration } from "./durationEstimator";
+import { taskCenter } from "./taskCenter";
 
 export type ImageJobResult = {
   prompt: string;
@@ -100,8 +100,18 @@ export function startImageGeneration(p: ImageJobParams): string {
 
   core
     .generateImage(
-      p.model, p.prompt, p.outputDir, p.inputImage, p.negativePrompt,
-      p.steps, p.cfgScale, p.width, p.height, p.vramMode, p.uncensored, p.consent,
+      p.model,
+      p.prompt,
+      p.outputDir,
+      p.inputImage,
+      p.negativePrompt,
+      p.steps,
+      p.cfgScale,
+      p.width,
+      p.height,
+      p.vramMode,
+      p.uncensored,
+      p.consent,
       p.variants,
       (pct, detail) => {
         gotStep = true;
@@ -143,7 +153,10 @@ export function startImageGeneration(p: ImageJobParams): string {
           (allUrls.length > 1 ? ` · ${allUrls.length} variantes` : "") +
           (res.simulated ? " · simulé" : ""),
       });
-      if (activeJob?.taskId === taskId) { activeJob = { ...activeJob, running: false }; emitActive(); }
+      if (activeJob?.taskId === taskId) {
+        activeJob = { ...activeJob, running: false };
+        emitActive();
+      }
       // Persist into the requesting chat so the image survives switching chats.
       if (p.sessionId) {
         const heading =
@@ -174,7 +187,10 @@ export function startImageGeneration(p: ImageJobParams): string {
     .catch((e) => {
       window.clearInterval(timer);
       taskCenter.fail(taskId, String(e).replace(/^Error:\s*/, ""));
-      if (activeJob?.taskId === taskId) { activeJob = { ...activeJob, running: false }; emitActive(); }
+      if (activeJob?.taskId === taskId) {
+        activeJob = { ...activeJob, running: false };
+        emitActive();
+      }
     });
 
   return taskId;

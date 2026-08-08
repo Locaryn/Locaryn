@@ -11,7 +11,8 @@ export function AccountView() {
       <div className="locaryn-view-header">
         <h2>Gestion du Compte & Serveur Privé</h2>
         <p className="locaryn-view-desc">
-          Connectez votre instance desktop à un serveur privé distant pour la synchronisation, les modèles hébergés et l'exécution distante.
+          Connectez votre instance desktop à un serveur privé distant pour la synchronisation, les
+          modèles hébergés et l'exécution distante.
         </p>
       </div>
 
@@ -48,7 +49,10 @@ export function AccountView() {
           />
         </div>
 
-        <div className="locaryn-field-actions" style={{ marginTop: "20px", display: "flex", gap: "12px" }}>
+        <div
+          className="locaryn-field-actions"
+          style={{ marginTop: "20px", display: "flex", gap: "12px" }}
+        >
           <button
             type="button"
             className="locaryn-btn-primary"

@@ -1,10 +1,10 @@
 import { useState } from "react";
 import {
-  core,
   type SshAuthMethod,
   type SshProbeResult,
   type SshServerDraft,
   type SshTestEvent,
+  core,
 } from "../../lib/core";
 
 type Props = {
@@ -141,7 +141,12 @@ export function SshServerForm({ onClose, onSaved }: Props) {
   return (
     <>
       <div className="locaryn-settings-backdrop" onClick={onClose} />
-      <div className="locaryn-form-modal" role="dialog" aria-modal="true" aria-label="Add SSH server">
+      <div
+        className="locaryn-form-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add SSH server"
+      >
         <div className="locaryn-settings-header">
           <span className="locaryn-settings-title">Add SSH server</span>
           <button

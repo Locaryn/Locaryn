@@ -86,7 +86,10 @@ pub fn load() -> Result<Option<Provisioning>, String> {
         let p: Provisioning = serde_json::from_str(&raw)
             .map_err(|e| format!("{} est illisible : {e}", path.display()))?;
         if p.server_url.trim().is_empty() {
-            return Err(format!("{} ne contient pas d'adresse de serveur", path.display()));
+            return Err(format!(
+                "{} ne contient pas d'adresse de serveur",
+                path.display()
+            ));
         }
         tracing::info!(path = %path.display(), server = %p.server_url, "configuration de déploiement trouvée");
         return Ok(Some(p));
@@ -131,7 +134,9 @@ pub fn normalise_url(input: &str, default_port: u16) -> Result<String, String> {
     // A port is only absent if the host part has no colon — bracketed IPv6
     // literals carry their own.
     let has_port = if rest.starts_with('[') {
-        rest.rsplit_once(']').map(|(_, t)| t.starts_with(':')).unwrap_or(false)
+        rest.rsplit_once(']')
+            .map(|(_, t)| t.starts_with(':'))
+            .unwrap_or(false)
     } else {
         rest.contains(':')
     };
@@ -141,7 +146,6 @@ pub fn normalise_url(input: &str, default_port: u16) -> Result<String, String> {
         format!("{scheme}://{rest}:{default_port}")
     })
 }
-
 
 /// SHA-256 of a byte string.
 ///
@@ -278,22 +282,37 @@ mod tests {
     #[test]
     fn an_address_typed_any_of_the_usual_ways_becomes_a_usable_url() {
         // Bare host: HTTPS, because an exposed daemon always serves TLS.
-        assert_eq!(normalise_url("192.168.1.10", 7474).unwrap(), "https://192.168.1.10:7474");
-        assert_eq!(normalise_url("192.168.1.10:9000", 7474).unwrap(), "https://192.168.1.10:9000");
+        assert_eq!(
+            normalise_url("192.168.1.10", 7474).unwrap(),
+            "https://192.168.1.10:7474"
+        );
+        assert_eq!(
+            normalise_url("192.168.1.10:9000", 7474).unwrap(),
+            "https://192.168.1.10:9000"
+        );
         assert_eq!(
             normalise_url("https://serveur.local:7474/", 7474).unwrap(),
             "https://serveur.local:7474"
         );
-        assert_eq!(normalise_url("  serveur.local  ", 7474).unwrap(), "https://serveur.local:7474");
+        assert_eq!(
+            normalise_url("  serveur.local  ", 7474).unwrap(),
+            "https://serveur.local:7474"
+        );
         // Plain HTTP stays if explicitly asked for — a reverse proxy may
         // terminate TLS ahead of the daemon.
-        assert_eq!(normalise_url("http://10.0.0.5", 7474).unwrap(), "http://10.0.0.5:7474");
+        assert_eq!(
+            normalise_url("http://10.0.0.5", 7474).unwrap(),
+            "http://10.0.0.5:7474"
+        );
     }
 
     #[test]
     fn ipv6_literals_keep_their_own_colons() {
         assert_eq!(normalise_url("[::1]", 7474).unwrap(), "https://[::1]:7474");
-        assert_eq!(normalise_url("[::1]:9000", 7474).unwrap(), "https://[::1]:9000");
+        assert_eq!(
+            normalise_url("[::1]:9000", 7474).unwrap(),
+            "https://[::1]:9000"
+        );
     }
 
     #[test]
@@ -318,7 +337,7 @@ mod tests {
             organisation: "Atelier Durand".into(),
             certificate_fingerprint: Some("AB:CD:EF".into()),
             note: "Identifiants fournis par le service informatique.".into(),
-                    authority_pem: None,
+            authority_pem: None,
         };
         let path = write(&dir, &p).expect("écriture");
         let back: Provisioning =

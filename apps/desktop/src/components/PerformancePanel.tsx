@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { core, type InferenceConfig, type InferenceProfile, type KvCacheType } from "../lib/core";
+import { type InferenceConfig, type InferenceProfile, type KvCacheType, core } from "../lib/core";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,21 +26,37 @@ const PROFILES: ProfileCard[] = [
     icon: "⚡",
     label: "Équilibré",
     tagline: "Mix GPU/CPU, bon compromis",
-    details: ["Toutes les couches GPU", "Cache Q8 (÷2 VRAM)", "Contexte 8K tokens", "Flash Attention"],
+    details: [
+      "Toutes les couches GPU",
+      "Cache Q8 (÷2 VRAM)",
+      "Contexte 8K tokens",
+      "Flash Attention",
+    ],
   },
   {
     id: "performance",
     icon: "🚀",
     label: "Performance",
     tagline: "GPU au maximum, contexte long",
-    details: ["Toutes les couches GPU", "Cache Q8 compressé", "Contexte 16K tokens", "Flash Attention"],
+    details: [
+      "Toutes les couches GPU",
+      "Cache Q8 compressé",
+      "Contexte 16K tokens",
+      "Flash Attention",
+    ],
   },
   {
     id: "turbo",
     icon: "🔥",
     label: "Turbo",
     tagline: "KV Q4 + GPU max + contexte 32K",
-    details: ["Toutes les couches GPU", "Cache Q4 (÷4 VRAM)", "Contexte 32K tokens", "Flash Attention", "Batch 1024"],
+    details: [
+      "Toutes les couches GPU",
+      "Cache Q4 (÷4 VRAM)",
+      "Contexte 32K tokens",
+      "Flash Attention",
+      "Batch 1024",
+    ],
     badge: "Recommandé",
     badgeColor: "rgba(111, 156, 127, 0.9)",
   },
@@ -49,7 +65,13 @@ const PROFILES: ProfileCard[] = [
     icon: "↔",
     label: "Contexte long",
     tagline: "Cache KV 4-bit — max de contexte à VRAM égale",
-    details: ["Toutes les couches GPU", "Cache KV Q4 (÷4 VRAM)", "Contexte étendu", "Flash Attention", "llama.cpp géré"],
+    details: [
+      "Toutes les couches GPU",
+      "Cache KV Q4 (÷4 VRAM)",
+      "Contexte étendu",
+      "Flash Attention",
+      "llama.cpp géré",
+    ],
     badge: "Contexte max",
     badgeColor: "rgba(212, 160, 58, 0.9)",
   },
@@ -84,7 +106,9 @@ export function PerformancePanel() {
 
   useEffect(() => {
     core.getInferenceConfig().then(setCfg);
-    core.checkHardware().then((h) => setHw({ vram: h.total_vram_gb, ram: h.total_ram_gb, cores: h.cpu_cores ?? 4 }));
+    core
+      .checkHardware()
+      .then((h) => setHw({ vram: h.total_vram_gb, ram: h.total_ram_gb, cores: h.cpu_cores ?? 4 }));
   }, []);
 
   const autoSave = useCallback((newCfg: InferenceConfig) => {
@@ -102,30 +126,41 @@ export function PerformancePanel() {
     }, 600);
   }, []);
 
-  const patch = useCallback((delta: Partial<InferenceConfig>) => {
-    setCfg((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, ...delta };
-      // Any manual change → custom profile (unless we just applied a preset)
-      if (!("profile" in delta)) next.profile = "custom";
-      autoSave(next);
-      return next;
-    });
-  }, [autoSave]);
+  const patch = useCallback(
+    (delta: Partial<InferenceConfig>) => {
+      setCfg((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, ...delta };
+        // Any manual change → custom profile (unless we just applied a preset)
+        if (!("profile" in delta)) next.profile = "custom";
+        autoSave(next);
+        return next;
+      });
+    },
+    [autoSave],
+  );
 
-  const applyProfile = useCallback(async (id: InferenceProfile) => {
-    const preset = await core.getProfilePreset(id);
-    // Merge: keep draft_model_path from existing config
-    setCfg((prev) => {
-      const next = { ...preset, draft_model_path: prev?.draft_model_path ?? "" };
-      autoSave(next);
-      return next;
-    });
-  }, [autoSave]);
+  const applyProfile = useCallback(
+    async (id: InferenceProfile) => {
+      const preset = await core.getProfilePreset(id);
+      // Merge: keep draft_model_path from existing config
+      setCfg((prev) => {
+        const next = { ...preset, draft_model_path: prev?.draft_model_path ?? "" };
+        autoSave(next);
+        return next;
+      });
+    },
+    [autoSave],
+  );
 
   if (!cfg) return <div className="perf-loading">Chargement…</div>;
 
-  const gpuPct = cfg.gpu_layers === -1 ? 100 : cfg.gpu_layers === 0 ? 0 : Math.min(100, Math.round((cfg.gpu_layers / 80) * 100));
+  const gpuPct =
+    cfg.gpu_layers === -1
+      ? 100
+      : cfg.gpu_layers === 0
+        ? 0
+        : Math.min(100, Math.round((cfg.gpu_layers / 80) * 100));
 
   return (
     <div className="perf-panel">
@@ -138,7 +173,11 @@ export function PerformancePanel() {
           </div>
         </div>
         <div className="perf-save-badge">
-          {saving ? <span className="perf-saving">💾 Sauvegarde…</span> : saved ? <span className="perf-saved">✓ Sauvegardé</span> : null}
+          {saving ? (
+            <span className="perf-saving">💾 Sauvegarde…</span>
+          ) : saved ? (
+            <span className="perf-saved">✓ Sauvegardé</span>
+          ) : null}
         </div>
       </div>
 
@@ -189,7 +228,9 @@ export function PerformancePanel() {
               <div className="perf-card-tagline">{p.tagline}</div>
               {(isActive || isExpanded) && (
                 <ul className="perf-card-details">
-                  {p.details.map((d) => <li key={d}>{d}</li>)}
+                  {p.details.map((d) => (
+                    <li key={d}>{d}</li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -212,19 +253,29 @@ export function PerformancePanel() {
       >
         <span>{showExpert ? "▼" : "▶"} Réglages avancés</span>
         <span className="perf-expert-summary">
-          KV {cfg.kv_cache_type.toUpperCase()} · {cfg.context_length >= 1024 ? `${Math.round(cfg.context_length / 1024)}K` : cfg.context_length} ctx ·{" "}
-          {cfg.gpu_layers === -1 ? "GPU max" : cfg.gpu_layers === 0 ? "CPU only" : `${cfg.gpu_layers} layers`}
+          KV {cfg.kv_cache_type.toUpperCase()} ·{" "}
+          {cfg.context_length >= 1024
+            ? `${Math.round(cfg.context_length / 1024)}K`
+            : cfg.context_length}{" "}
+          ctx ·{" "}
+          {cfg.gpu_layers === -1
+            ? "GPU max"
+            : cfg.gpu_layers === 0
+              ? "CPU only"
+              : `${cfg.gpu_layers} layers`}
         </span>
       </button>
 
       {showExpert && (
         <div className="perf-expert-panel">
-
           {/* KV Cache Type */}
           <div className="perf-row">
             <div className="perf-row-left">
               <div className="perf-row-label">🗜️ Compression KV Cache</div>
-              <div className="perf-row-hint">Compresse la mémoire de conversation. Q4 = compression réelle max (÷4 VRAM) sous llama.cpp</div>
+              <div className="perf-row-hint">
+                Compresse la mémoire de conversation. Q4 = compression réelle max (÷4 VRAM) sous
+                llama.cpp
+              </div>
             </div>
             <div className="perf-kv-btns">
               {KV_OPTIONS.map((opt) => (
@@ -232,7 +283,11 @@ export function PerformancePanel() {
                   key={opt.value}
                   type="button"
                   className={`perf-kv-btn${cfg.kv_cache_type === opt.value ? " perf-kv-btn-active" : ""}`}
-                  style={cfg.kv_cache_type === opt.value ? { borderColor: opt.color, color: opt.color } : {}}
+                  style={
+                    cfg.kv_cache_type === opt.value
+                      ? { borderColor: opt.color, color: opt.color }
+                      : {}
+                  }
                   onClick={() => patch({ kv_cache_type: opt.value })}
                   title={opt.desc}
                 >
@@ -248,7 +303,11 @@ export function PerformancePanel() {
             <div className="perf-row-left">
               <div className="perf-row-label">🎮 Couches GPU (Offloading)</div>
               <div className="perf-row-hint">
-                {cfg.gpu_layers === -1 ? "Maximum — toutes les couches sur GPU" : cfg.gpu_layers === 0 ? "CPU uniquement — aucune couche sur GPU" : `${cfg.gpu_layers} couches sur GPU, reste en RAM`}
+                {cfg.gpu_layers === -1
+                  ? "Maximum — toutes les couches sur GPU"
+                  : cfg.gpu_layers === 0
+                    ? "CPU uniquement — aucune couche sur GPU"
+                    : `${cfg.gpu_layers} couches sur GPU, reste en RAM`}
               </div>
             </div>
             <div className="perf-slider-wrap">
@@ -269,8 +328,20 @@ export function PerformancePanel() {
                 }}
               />
               <div className="perf-slider-endpoints">
-                <button type="button" className="perf-mini-btn" onClick={() => patch({ gpu_layers: 0 })}>CPU seul</button>
-                <button type="button" className="perf-mini-btn" onClick={() => patch({ gpu_layers: -1 })}>Tout GPU</button>
+                <button
+                  type="button"
+                  className="perf-mini-btn"
+                  onClick={() => patch({ gpu_layers: 0 })}
+                >
+                  CPU seul
+                </button>
+                <button
+                  type="button"
+                  className="perf-mini-btn"
+                  onClick={() => patch({ gpu_layers: -1 })}
+                >
+                  Tout GPU
+                </button>
               </div>
             </div>
           </div>
@@ -279,7 +350,9 @@ export function PerformancePanel() {
           <div className="perf-row">
             <div className="perf-row-left">
               <div className="perf-row-label">📏 Fenêtre de Contexte</div>
-              <div className="perf-row-hint">Mémoire de la conversation. Plus grand = plus de VRAM</div>
+              <div className="perf-row-hint">
+                Mémoire de la conversation. Plus grand = plus de VRAM
+              </div>
             </div>
             <div className="perf-ctx-btns">
               {CTX_PRESETS.map((p) => (
@@ -330,7 +403,9 @@ export function PerformancePanel() {
             <div className="perf-row-left">
               <div className="perf-row-label">🧠 Threads CPU</div>
               <div className="perf-row-hint">
-                {cfg.cpu_threads === 0 ? `Auto — ${hw?.cores ?? "?"} cœurs détectés` : `${cfg.cpu_threads} threads manuels`}
+                {cfg.cpu_threads === 0
+                  ? `Auto — ${hw?.cores ?? "?"} cœurs détectés`
+                  : `${cfg.cpu_threads} threads manuels`}
               </div>
             </div>
             <div className="perf-slider-wrap">
@@ -343,8 +418,16 @@ export function PerformancePanel() {
                 onChange={(e) => patch({ cpu_threads: Number(e.target.value) })}
               />
               <div className="perf-slider-endpoints">
-                <button type="button" className="perf-mini-btn" onClick={() => patch({ cpu_threads: 0 })}>Auto</button>
-                <span className="perf-slider-pct">{cfg.cpu_threads === 0 ? "Auto" : cfg.cpu_threads}</span>
+                <button
+                  type="button"
+                  className="perf-mini-btn"
+                  onClick={() => patch({ cpu_threads: 0 })}
+                >
+                  Auto
+                </button>
+                <span className="perf-slider-pct">
+                  {cfg.cpu_threads === 0 ? "Auto" : cfg.cpu_threads}
+                </span>
               </div>
             </div>
           </div>
@@ -353,7 +436,9 @@ export function PerformancePanel() {
           <div className="perf-row">
             <div className="perf-row-left">
               <div className="perf-row-label">📦 Taille de Batch</div>
-              <div className="perf-row-hint">Tokens traités en parallèle. Plus grand = plus rapide mais +VRAM</div>
+              <div className="perf-row-hint">
+                Tokens traités en parallèle. Plus grand = plus rapide mais +VRAM
+              </div>
             </div>
             <div className="perf-ctx-btns">
               {[128, 256, 512, 1024, 2048].map((b) => (
@@ -373,7 +458,9 @@ export function PerformancePanel() {
           <div className="perf-row">
             <div className="perf-row-left">
               <div className="perf-row-label">🔀 Slots Parallèles</div>
-              <div className="perf-row-hint">Requêtes simultanées (utile pour plusieurs agents)</div>
+              <div className="perf-row-hint">
+                Requêtes simultanées (utile pour plusieurs agents)
+              </div>
             </div>
             <div className="perf-ctx-btns">
               {[1, 2, 4, 8].map((s) => (
@@ -393,7 +480,10 @@ export function PerformancePanel() {
           <div className="perf-row perf-row-col">
             <div className="perf-row-left">
               <div className="perf-row-label">🔮 Décodage Spéculatif</div>
-              <div className="perf-row-hint">Un petit modèle "draft" génère des tokens, le grand modèle les valide. ×2 vitesse de génération.</div>
+              <div className="perf-row-hint">
+                Un petit modèle "draft" génère des tokens, le grand modèle les valide. ×2 vitesse de
+                génération.
+              </div>
             </div>
             <input
               type="text"
@@ -408,7 +498,11 @@ export function PerformancePanel() {
           <div className="perf-row perf-row-col">
             <div className="perf-row-left">
               <div className="perf-row-label">🧩 Offload experts MoE → CPU</div>
-              <div className="perf-row-hint">Garde les experts d'un modèle MoE (GLM, Qwen3-MoE, DeepSeek) en RAM et l'attention sur le GPU. Fait tourner d'énormes modèles sur une petite carte, bien plus vite que le streaming SSD.</div>
+              <div className="perf-row-hint">
+                Garde les experts d'un modèle MoE (GLM, Qwen3-MoE, DeepSeek) en RAM et l'attention
+                sur le GPU. Fait tourner d'énormes modèles sur une petite carte, bien plus vite que
+                le streaming SSD.
+              </div>
             </div>
             <div className="perf-ctx-btns">
               <button
@@ -433,7 +527,7 @@ export function PerformancePanel() {
                 placeholder="N couches"
                 value={cfg.n_cpu_moe > 0 ? cfg.n_cpu_moe : ""}
                 onChange={(e) => {
-                  const n = parseInt(e.target.value, 10);
+                  const n = Number.parseInt(e.target.value, 10);
                   patch({ n_cpu_moe: Number.isFinite(n) && n > 0 ? n : 0 });
                 }}
                 title="Experts des N premières couches sur le CPU (-ncmoe N)"
@@ -445,7 +539,10 @@ export function PerformancePanel() {
           <div className="perf-row perf-row-col">
             <div className="perf-row-left">
               <div className="perf-row-label">🌐 Inférence distribuée (RPC)</div>
-              <div className="perf-row-hint">Répartit les couches du modèle sur plusieurs machines exécutant <code>ggml-rpc-server</code>. Laisse vide pour rester en local.</div>
+              <div className="perf-row-hint">
+                Répartit les couches du modèle sur plusieurs machines exécutant{" "}
+                <code>ggml-rpc-server</code>. Laisse vide pour rester en local.
+              </div>
             </div>
             <input
               type="text"
@@ -464,13 +561,12 @@ export function PerformancePanel() {
             <div className="perf-turboquant-banner">
               <span className="perf-tq-icon">🗜️</span>
               <div>
-                <strong>Cache KV 4-bit</strong> — compression maximale réelle du cache sous llama.cpp
-                (<code>-ctk q4_0 -ctv q4_0</code>, ÷4 VRAM), activée avec Flash Attention.
+                <strong>Cache KV 4-bit</strong> — compression maximale réelle du cache sous
+                llama.cpp (<code>-ctk q4_0 -ctv q4_0</code>, ÷4 VRAM), activée avec Flash Attention.
                 Léger impact sur la qualité aux très longs contextes.
               </div>
             </div>
           )}
-
         </div>
       )}
 
@@ -478,24 +574,36 @@ export function PerformancePanel() {
       <div className="perf-summary-bar">
         <div className="perf-summary-item">
           <span className="perf-summary-label">Cache KV</span>
-          <span className="perf-summary-val" style={{ color: KV_OPTIONS.find(k => k.value === cfg.kv_cache_type)?.color }}>
+          <span
+            className="perf-summary-val"
+            style={{ color: KV_OPTIONS.find((k) => k.value === cfg.kv_cache_type)?.color }}
+          >
             {cfg.kv_cache_type.toUpperCase()}
           </span>
         </div>
         <div className="perf-summary-sep" />
         <div className="perf-summary-item">
           <span className="perf-summary-label">GPU</span>
-          <span className="perf-summary-val">{cfg.gpu_layers === -1 ? "Max" : cfg.gpu_layers === 0 ? "OFF" : `${cfg.gpu_layers}L`}</span>
+          <span className="perf-summary-val">
+            {cfg.gpu_layers === -1 ? "Max" : cfg.gpu_layers === 0 ? "OFF" : `${cfg.gpu_layers}L`}
+          </span>
         </div>
         <div className="perf-summary-sep" />
         <div className="perf-summary-item">
           <span className="perf-summary-label">Contexte</span>
-          <span className="perf-summary-val">{cfg.context_length >= 1024 ? `${Math.round(cfg.context_length / 1024)}K` : cfg.context_length}</span>
+          <span className="perf-summary-val">
+            {cfg.context_length >= 1024
+              ? `${Math.round(cfg.context_length / 1024)}K`
+              : cfg.context_length}
+          </span>
         </div>
         <div className="perf-summary-sep" />
         <div className="perf-summary-item">
           <span className="perf-summary-label">Flash Attn</span>
-          <span className="perf-summary-val" style={{ color: cfg.flash_attention ? "#6f9c7f" : "#6a6d68" }}>
+          <span
+            className="perf-summary-val"
+            style={{ color: cfg.flash_attention ? "#6f9c7f" : "#6a6d68" }}
+          >
             {cfg.flash_attention ? "ON" : "OFF"}
           </span>
         </div>
@@ -509,14 +617,17 @@ export function PerformancePanel() {
             <div className="perf-summary-sep" />
             <div className="perf-summary-item">
               <span className="perf-summary-label">Spéculatif</span>
-              <span className="perf-summary-val" style={{ color: "#d4a03a" }}>✓</span>
+              <span className="perf-summary-val" style={{ color: "#d4a03a" }}>
+                ✓
+              </span>
             </div>
           </>
         )}
       </div>
 
       <p className="perf-restart-hint">
-        ⚠️ Les modifications s'appliquent au prochain redémarrage du moteur (nouvelle session ou reload du modèle).
+        ⚠️ Les modifications s'appliquent au prochain redémarrage du moteur (nouvelle session ou
+        reload du modèle).
       </p>
     </div>
   );

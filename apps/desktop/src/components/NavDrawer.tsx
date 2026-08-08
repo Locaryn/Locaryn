@@ -10,14 +10,54 @@ type Props = {
 };
 
 const NAV_ITEMS = [
-  { id: "chat", label: "Chat & Assistant Agent", icon: "💬", desc: "Environnement de chat principal, execution de code et prompts" },
-  { id: "studio", label: "Studio de génération", icon: "🎨", desc: "Image, vidéo, audio, musique, 3D et édition multimodale" },
-  { id: "installed", label: "Mes Modèles Installés", icon: "💾", desc: "Gérer vos modèles locaux, ouvrir le dossier et sélection rapide" },
-  { id: "models", label: "Marketplace Modèles", icon: "🛒", desc: "Découverte et installation de modèles locaux & HuggingFace" },
-  { id: "batch", label: "Batch API (-50%)", icon: "⚡", desc: "Traitement par lots asynchrone à moitié prix" },
-  { id: "training", label: "Entraînement & Oblitération", icon: "🔓", desc: "Studio d'entraînement LoRA et oblitération de modèles RepE" },
-  { id: "connectors", label: "Connecteurs & MCP", icon: "🔌", desc: "Integrations serveur distant SSH, plugins et extensions" },
-  { id: "settings", label: "Paramètres Système", icon: "⚙️", desc: "Configuration des moteurs d'inférence, thèmes et gouvernance" },
+  {
+    id: "chat",
+    label: "Chat & Assistant Agent",
+    icon: "💬",
+    desc: "Environnement de chat principal, execution de code et prompts",
+  },
+  {
+    id: "studio",
+    label: "Studio de génération",
+    icon: "🎨",
+    desc: "Image, vidéo, audio, musique, 3D et édition multimodale",
+  },
+  {
+    id: "installed",
+    label: "Mes Modèles Installés",
+    icon: "💾",
+    desc: "Gérer vos modèles locaux, ouvrir le dossier et sélection rapide",
+  },
+  {
+    id: "models",
+    label: "Marketplace Modèles",
+    icon: "🛒",
+    desc: "Découverte et installation de modèles locaux & HuggingFace",
+  },
+  {
+    id: "batch",
+    label: "Batch API (-50%)",
+    icon: "⚡",
+    desc: "Traitement par lots asynchrone à moitié prix",
+  },
+  {
+    id: "training",
+    label: "Entraînement & Oblitération",
+    icon: "🔓",
+    desc: "Studio d'entraînement LoRA et oblitération de modèles RepE",
+  },
+  {
+    id: "connectors",
+    label: "Connecteurs & MCP",
+    icon: "🔌",
+    desc: "Integrations serveur distant SSH, plugins et extensions",
+  },
+  {
+    id: "settings",
+    label: "Paramètres Système",
+    icon: "⚙️",
+    desc: "Configuration des moteurs d'inférence, thèmes et gouvernance",
+  },
 ];
 
 export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) {
@@ -29,7 +69,9 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
         <div className="locaryn-nav-drawer-head">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span className="locaryn-logo-dot" />
-            <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Locaryn Navigation</strong>
+            <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>
+              Locaryn Navigation
+            </strong>
           </div>
           <button
             type="button"
@@ -43,7 +85,10 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
         </div>
 
         <div className="locaryn-nav-drawer-body">
-          <span className="locaryn-box-variants-title" style={{ marginBottom: "8px", display: "block" }}>
+          <span
+            className="locaryn-box-variants-title"
+            style={{ marginBottom: "8px", display: "block" }}
+          >
             VUES PRINCIPALES
           </span>
 
@@ -61,7 +106,14 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
                   }}
                 >
                   <span className="locaryn-nav-drawer-icon">{item.icon}</span>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", textAlign: "left" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      textAlign: "left",
+                    }}
+                  >
                     <span className="locaryn-nav-drawer-label">{item.label}</span>
                     <span className="locaryn-nav-drawer-desc">{item.desc}</span>
                   </div>

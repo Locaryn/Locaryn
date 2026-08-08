@@ -313,7 +313,7 @@ c29tZXNhbHRzb21lc2FsdA$K5tGRnQxHF9k5jCPZ5F1n9wLhF7lQm2vJ8xN0oYZ3aM";
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     /// In-memory database, migrations applied — no files to clean up.
     async fn repo() -> (UserRepo, sqlx::SqlitePool) {
         let pool = crate::open_in_memory().await.expect("base en mémoire");
@@ -322,7 +322,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_account_authenticates_only_with_its_own_password() {
-        let (repo, pool) = repo().await;
+        let (repo, _pool) = repo().await;
 
         let u = repo
             .create("Marie", "un-mot-de-passe-solide", Role::Admin)
@@ -342,13 +342,16 @@ mod tests {
             .await
             .unwrap()
             .is_some());
-        assert!(repo.authenticate("Marie", "mauvais").await.unwrap().is_none());
+        assert!(repo
+            .authenticate("Marie", "mauvais")
+            .await
+            .unwrap()
+            .is_none());
         assert!(repo
             .authenticate("inconnu", "un-mot-de-passe-solide")
             .await
             .unwrap()
             .is_none());
-
     }
 
     #[tokio::test]
@@ -362,9 +365,11 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert!(!hash.contains("correct-horse-battery"), "mot de passe en clair !");
+        assert!(
+            !hash.contains("correct-horse-battery"),
+            "mot de passe en clair !"
+        );
         assert!(hash.starts_with("$argon2id$"), "pas un Argon2id: {hash}");
-
     }
 
     #[tokio::test]
@@ -377,11 +382,13 @@ mod tests {
         let dup = repo
             .create("ALICE", "un-autre-mot-de-passe", Role::Member)
             .await;
-        assert!(dup.is_err(), "un doublon insensible à la casse doit être refusé");
+        assert!(
+            dup.is_err(),
+            "un doublon insensible à la casse doit être refusé"
+        );
 
         let weak = repo.create("carl", "court", Role::Member).await;
         assert!(weak.is_err(), "un mot de passe court doit être refusé");
-
     }
 
     #[tokio::test]
@@ -403,23 +410,35 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert!(!stored.contains(&issued.plaintext), "jeton stocké en clair !");
+        assert!(
+            !stored.contains(&issued.plaintext),
+            "jeton stocké en clair !"
+        );
 
-        assert!(repo.user_for_token("locaryn_inventé").await.unwrap().is_none());
+        assert!(repo
+            .user_for_token("locaryn_inventé")
+            .await
+            .unwrap()
+            .is_none());
         assert!(repo.user_for_token("").await.unwrap().is_none());
 
         repo.revoke_token(issued.id).await.unwrap();
         assert!(
-            repo.user_for_token(&issued.plaintext).await.unwrap().is_none(),
+            repo.user_for_token(&issued.plaintext)
+                .await
+                .unwrap()
+                .is_none(),
             "un jeton révoqué doit cesser de fonctionner immédiatement"
         );
-
     }
 
     #[tokio::test]
     async fn disabling_an_account_kills_its_tokens_at_once() {
         let (repo, _pool) = repo().await;
-        let u = repo.create("eve", "mot-de-passe-valide", Role::Member).await.unwrap();
+        let u = repo
+            .create("eve", "mot-de-passe-valide", Role::Member)
+            .await
+            .unwrap();
         let tok = repo.issue_token(u.id, None, 30).await.unwrap();
         assert!(repo.user_for_token(&tok.plaintext).await.unwrap().is_some());
 
@@ -433,6 +452,5 @@ mod tests {
             .await
             .unwrap()
             .is_none());
-
     }
 }

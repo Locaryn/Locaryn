@@ -188,7 +188,10 @@ mod tests {
 
     #[test]
     fn remote_name_is_derived_from_the_host() {
-        assert_eq!(remote_server_name("https://mcp.example.com/x"), "mcp-example-com");
+        assert_eq!(
+            remote_server_name("https://mcp.example.com/x"),
+            "mcp-example-com"
+        );
     }
 
     #[tokio::test]
@@ -254,7 +257,10 @@ mod tests {
         let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
         for entry in walk(&src) {
             let rel = entry.strip_prefix(&src).unwrap();
-            let name = format!("zipped-tool-2.0.0/{}", rel.to_string_lossy().replace('\\', "/"));
+            let name = format!(
+                "zipped-tool-2.0.0/{}",
+                rel.to_string_lossy().replace('\\', "/")
+            );
             if entry.is_dir() {
                 writer.add_directory(name, options).expect("add_directory");
             } else {
@@ -408,7 +414,11 @@ mod tests {
         std::fs::create_dir_all(&outside).unwrap();
         let ws = std::env::temp_dir().join("locaryn-rm-ws");
         std::fs::create_dir_all(ws.join(".locaryn/plugins")).unwrap();
-        assert!(!remove_files(&outside, ExtensionScope::Workspace, Some(&ws)));
+        assert!(!remove_files(
+            &outside,
+            ExtensionScope::Workspace,
+            Some(&ws)
+        ));
         assert!(outside.is_dir(), "the directory must survive");
     }
 }

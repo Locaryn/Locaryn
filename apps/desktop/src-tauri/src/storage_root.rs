@@ -84,9 +84,9 @@ fn same_volume(a: &Path, b: &Path) -> bool {
     #[cfg(target_os = "windows")]
     {
         fn prefix(p: &Path) -> Option<String> {
-            p.components().next().map(|c| {
-                c.as_os_str().to_string_lossy().to_ascii_lowercase()
-            })
+            p.components()
+                .next()
+                .map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase())
         }
         // Compare the drive letter of the nearest existing ancestor, since the
         // destination itself may not exist yet.
@@ -117,9 +117,24 @@ fn entry(key: &str, label: &str, path: PathBuf, root: &Path) -> StorageEntry {
 pub fn storage_info() -> Result<StorageInfo, String> {
     let root = locaryn_config::storage_root();
     let entries = vec![
-        entry("models", "Modèles (poids)", locaryn_config::models_dir(), &root),
-        entry("bin", "Moteurs (llama.cpp, sd.cpp)", locaryn_config::bin_dir(), &root),
-        entry("tmp", "Fichiers temporaires", locaryn_config::temp_dir(), &root),
+        entry(
+            "models",
+            "Modèles (poids)",
+            locaryn_config::models_dir(),
+            &root,
+        ),
+        entry(
+            "bin",
+            "Moteurs (llama.cpp, sd.cpp)",
+            locaryn_config::bin_dir(),
+            &root,
+        ),
+        entry(
+            "tmp",
+            "Fichiers temporaires",
+            locaryn_config::temp_dir(),
+            &root,
+        ),
         entry(
             "free_chats",
             "Pièces jointes des chats",
@@ -218,32 +233,36 @@ fn move_dir(
     if !src.is_dir() || src == dst {
         return Ok(false);
     }
-    if dst.exists() && dst.read_dir().map(|mut d| d.next().is_some()).unwrap_or(false) {
+    if dst.exists()
+        && dst
+            .read_dir()
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false)
+    {
         return Err(format!(
             "{} existe déjà et n'est pas vide — déplacement annulé pour ne rien écraser.",
             dst.display()
         ));
     }
     if let Some(parent) = dst.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("création {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("création {}: {e}", parent.display()))?;
     }
 
-    if same_volume(src, dst) {
-        if std::fs::rename(src, dst).is_ok() {
-            *moved += dir_size(dst);
-            report(MigrationProgress {
-                phase: "déplacement instantané".into(),
-                current_file: src.to_string_lossy().to_string(),
-                moved_bytes: *moved,
-                total_bytes: total,
-                done: false,
-                error: None,
-            });
-            return Ok(true);
-        }
-        // Rename can still fail across mount points or with open handles;
-        // fall through to the copy path rather than giving up.
+    if same_volume(src, dst) && std::fs::rename(src, dst).is_ok() {
+        *moved += dir_size(dst);
+        report(MigrationProgress {
+            phase: "déplacement instantané".into(),
+            current_file: src.to_string_lossy().to_string(),
+            moved_bytes: *moved,
+            total_bytes: total,
+            done: false,
+            error: None,
+        });
+        return Ok(true);
     }
+    // Rename can still fail across mount points or with open handles;
+    // fall through to the copy path rather than giving up.
 
     let expected = dir_size(src);
     copy_tree(report, src, dst, moved, total)
@@ -338,11 +357,19 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
         // Only closed-file, bulky data moves. The database and the small JSON
         // settings stay put: they are held open by this very process, and
         // copying a live SQLite file is how databases get corrupted.
-        move_dir(&report, &old_models, &new_root.join("models"), &mut moved, total)?;
+        move_dir(
+            &report,
+            &old_models,
+            &new_root.join("models"),
+            &mut moved,
+            total,
+        )?;
         // Windows refuses to move a running executable, and llama-server may
         // well be up. Say so instead of surfacing a bare "access denied".
         move_dir(&report, &old_bin, &new_root.join("bin"), &mut moved, total).map_err(|e| {
-            format!("{e}\nSi un moteur tourne encore, arrêtez-le (onglet Moteur IA) puis réessayez.")
+            format!(
+                "{e}\nSi un moteur tourne encore, arrêtez-le (onglet Moteur IA) puis réessayez."
+            )
         })?;
         move_dir(
             &report,
@@ -491,7 +518,10 @@ mod tests {
 
         assert!(ok);
         assert!(!src.exists(), "source must be gone after a successful move");
-        assert_eq!(std::fs::read(dst.join("model.gguf")).unwrap(), vec![7u8; 4096]);
+        assert_eq!(
+            std::fs::read(dst.join("model.gguf")).unwrap(),
+            vec![7u8; 4096]
+        );
         assert_eq!(
             std::fs::read(dst.join("nested/vae.safetensors")).unwrap(),
             vec![3u8; 2048]
@@ -511,7 +541,10 @@ mod tests {
 
         assert!(err.contains("existe déjà"), "unexpected message: {err}");
         // Neither side may be touched when we bail out.
-        assert_eq!(std::fs::read(dst.join("precious.gguf")).unwrap(), b"precious");
+        assert_eq!(
+            std::fs::read(dst.join("precious.gguf")).unwrap(),
+            b"precious"
+        );
         assert_eq!(std::fs::read(src.join("new.gguf")).unwrap(), b"new");
         std::fs::remove_dir_all(&base).ok();
     }
@@ -588,7 +621,10 @@ mod tests {
             info.entries.iter().map(|e| e.size_bytes).sum::<u64>()
         );
 
-        println!("\n  racine    {} (configuré: {})", info.root, info.configured);
+        println!(
+            "\n  racine    {} (configuré: {})",
+            info.root, info.configured
+        );
         println!("  base      {} ({} octets)", info.db_path, info.db_bytes);
         for e in &info.entries {
             println!(
@@ -596,7 +632,11 @@ mod tests {
                 e.key,
                 e.size_bytes,
                 e.path,
-                if e.outside_root { "   [HORS RACINE]" } else { "" }
+                if e.outside_root {
+                    "   [HORS RACINE]"
+                } else {
+                    ""
+                }
             );
         }
         for d in &info.drives {

@@ -28,11 +28,7 @@ export interface ButtonProps {
 
 export function Button({ variant = "primary", label, onClick }: ButtonProps) {
   const bg =
-    variant === "primary"
-      ? tokens.green
-      : variant === "danger"
-        ? tokens.red
-        : tokens.panel;
+    variant === "primary" ? tokens.green : variant === "danger" ? tokens.red : tokens.panel;
   return (
     <button
       type="button"

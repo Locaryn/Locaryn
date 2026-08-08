@@ -71,7 +71,12 @@ export const demoCore: typeof core = {
     signed_in: true,
     servers: 1,
   }),
-  signOut: async () => ({ server_name: "Atelier Vasseur", travelling: false, signed_in: false, servers: 1 }),
+  signOut: async () => ({
+    server_name: "Atelier Vasseur",
+    travelling: false,
+    signed_in: false,
+    servers: 1,
+  }),
   applyPairingLink: async () => ({
     server_name: "Atelier Vasseur",
     travelling: true,

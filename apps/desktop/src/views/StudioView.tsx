@@ -1,12 +1,12 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AudioGenPanel } from "../components/AudioGenPanel";
-import { RegionEditPanel } from "../components/RegionEditPanel";
 import { ImageGenPanel } from "../components/ImageGenPanel";
 import { Model3DPanel } from "../components/Model3DPanel";
 import { MusicGenPanel } from "../components/MusicGenPanel";
+import { RegionEditPanel } from "../components/RegionEditPanel";
 import { VideoGenPanel } from "../components/VideoGenPanel";
 import { core } from "../lib/core";
-import { useTasks, taskCenter } from "../lib/taskCenter";
+import { taskCenter, useTasks } from "../lib/taskCenter";
 
 type StudioTab =
   | "image"
@@ -47,7 +47,13 @@ type Props = {
  * the HuggingFace Spaces directory. Most tabs start as placeholders exposing
  * the model registry; the actively wired tabs are Image and Audio (TTS).
  */
-export function StudioView({ installedModels, installedImageModels, onOpenImageGen, onCloseAudioGen, onSendImageToChat }: Props) {
+export function StudioView({
+  installedModels,
+  installedImageModels,
+  onOpenImageGen,
+  onCloseAudioGen,
+  onSendImageToChat,
+}: Props) {
   const [active, setActive] = useState<StudioTab>("image");
 
   // ── Galleries par type ───────────────────────────────────────────────
@@ -57,7 +63,12 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
     return tasks
       .filter((t) => {
         const isImageTask = t.type === "generation" || t.type === "edit";
-        return isImageTask && t.status === "done" && !!t.resultImageUrl && !t.resultImageUrl.startsWith("data:");
+        return (
+          isImageTask &&
+          t.status === "done" &&
+          !!t.resultImageUrl &&
+          !t.resultImageUrl.startsWith("data:")
+        );
       })
       .map((t) => ({
         id: t.id,
@@ -71,7 +82,13 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
 
   const audioItems = useMemo(() => {
     return tasks
-      .filter((t) => t.type === "audio" && t.status === "done" && !!t.resultAudioUrl && t.label?.startsWith("TTS"))
+      .filter(
+        (t) =>
+          t.type === "audio" &&
+          t.status === "done" &&
+          !!t.resultAudioUrl &&
+          t.label?.startsWith("TTS"),
+      )
       .map((t) => ({
         id: t.id,
         url: t.resultAudioUrl!,
@@ -84,7 +101,13 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
 
   const musicItems = useMemo(() => {
     return tasks
-      .filter((t) => t.type === "audio" && t.status === "done" && !!t.resultAudioUrl && t.label?.startsWith("Musique"))
+      .filter(
+        (t) =>
+          t.type === "audio" &&
+          t.status === "done" &&
+          !!t.resultAudioUrl &&
+          t.label?.startsWith("Musique"),
+      )
       .map((t) => ({
         id: t.id,
         url: t.resultAudioUrl!,
@@ -97,7 +120,13 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
 
   const videoItems = useMemo(() => {
     return tasks
-      .filter((t) => t.type === "generation" && t.status === "done" && !!t.resultAudioUrl && t.label?.startsWith("Vidéo"))
+      .filter(
+        (t) =>
+          t.type === "generation" &&
+          t.status === "done" &&
+          !!t.resultAudioUrl &&
+          t.label?.startsWith("Vidéo"),
+      )
       .map((t) => ({
         id: t.id,
         url: t.resultAudioUrl!,
@@ -110,7 +139,13 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
 
   const model3dItems = useMemo(() => {
     return tasks
-      .filter((t) => t.type === "generation" && t.status === "done" && !!t.resultAudioUrl && t.label?.startsWith("3D"))
+      .filter(
+        (t) =>
+          t.type === "generation" &&
+          t.status === "done" &&
+          !!t.resultAudioUrl &&
+          t.label?.startsWith("3D"),
+      )
       .map((t) => ({
         id: t.id,
         url: t.resultAudioUrl!,
@@ -122,17 +157,16 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
   }, [tasks]);
 
   interface GalleryItem {
-    id: string; url: string; path?: string;
-    label: string; detail?: string;
+    id: string;
+    url: string;
+    path?: string;
+    label: string;
+    detail?: string;
     mediaKind: "image" | "audio" | "video" | "model3d";
   }
 
   /** Shared gallery card rendering for all media types. */
-  function renderGallery(
-    items: GalleryItem[],
-    icon: string,
-    title: string,
-  ) {
+  function renderGallery(items: GalleryItem[], icon: string, title: string) {
     if (items.length === 0) return null;
     return (
       <div className="locaryn-card" style={{ marginTop: 24, padding: 16 }}>
@@ -143,18 +177,25 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
           <button
             type="button"
             className="locaryn-btn-ghost"
-            style={{ fontSize: 11, padding: "3px 10px", color: "var(--danger)", borderColor: "var(--danger)" }}
+            style={{
+              fontSize: 11,
+              padding: "3px 10px",
+              color: "var(--danger)",
+              borderColor: "var(--danger)",
+            }}
             onClick={() => taskCenter.clearGallery()}
             title="Supprimer toutes les entrées de la galerie"
           >
             🗑️ Tout effacer
           </button>
         </div>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-          gap: 12,
-        }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 12,
+          }}
+        >
           {items.map((item) => (
             <div
               key={item.id}
@@ -295,92 +336,102 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
                   <button
                     type="button"
                     className="locaryn-btn-ghost"
-                    style={{ fontSize: 11, padding: "3px 10px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                    style={{
+                      fontSize: 11,
+                      padding: "3px 10px",
+                      color: "var(--danger)",
+                      borderColor: "var(--danger)",
+                    }}
                     onClick={() => taskCenter.clearGallery()}
                     title="Supprimer toutes les entrées de la galerie"
                   >
                     🗑️ Tout effacer
                   </button>
                 </div>
-                <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-                  gap: 10,
-                }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                    gap: 10,
+                  }}
+                >
                   {galleryItems.map((item) => (
-                      <div
-                        key={item.id}
-                        style={{
-                          position: "relative",
-                          borderRadius: 8,
-                          overflow: "hidden",
-                          border: "1px solid var(--border)",
-                          background: "var(--bg-alt)",
-                          transition: "transform 0.15s, box-shadow 0.15s",
-                          cursor: "grab",
-                        }}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("text/plain", item.url);
-                          if (item.path) e.dataTransfer.setData("text/x-locaryn-image-path", item.path);
-                          e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        onMouseEnter={(e) => {
-                          const el = e.currentTarget as HTMLElement;
-                          el.style.transform = "scale(1.03)";
-                          el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
-                        }}
-                        onMouseLeave={(e) => {
-                          const el = e.currentTarget as HTMLElement;
-                          el.style.transform = "";
-                          el.style.boxShadow = "";
-                        }}
+                    <div
+                      key={item.id}
+                      style={{
+                        position: "relative",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        border: "1px solid var(--border)",
+                        background: "var(--bg-alt)",
+                        transition: "transform 0.15s, box-shadow 0.15s",
+                        cursor: "grab",
+                      }}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", item.url);
+                        if (item.path)
+                          e.dataTransfer.setData("text/x-locaryn-image-path", item.path);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onMouseEnter={(e) => {
+                        const el = e.currentTarget as HTMLElement;
+                        el.style.transform = "scale(1.03)";
+                        el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
+                      }}
+                      onMouseLeave={(e) => {
+                        const el = e.currentTarget as HTMLElement;
+                        el.style.transform = "";
+                        el.style.boxShadow = "";
+                      }}
+                    >
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={item.label}
+                        style={{ display: "block", textDecoration: "none", color: "inherit" }}
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={item.label}
-                          style={{ display: "block", textDecoration: "none", color: "inherit" }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <img
-                            src={item.url}
-                            alt={item.label}
-                            style={{
-                              width: "100%",
-                              height: 120,
-                              objectFit: "cover",
-                              display: "block",
-                            }}
-                          />
-                          <div style={{
+                        <img
+                          src={item.url}
+                          alt={item.label}
+                          style={{
+                            width: "100%",
+                            height: 120,
+                            objectFit: "cover",
+                            display: "block",
+                          }}
+                        />
+                        <div
+                          style={{
                             padding: "6px 8px",
                             fontSize: 11,
                             color: "var(--text-faint)",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
-                          }}>
-                            {item.detail ?? "Terminé"}
-                          </div>
-                        </a>
-                        {/* Bouton Envoyer au chat — visible au survol */}
-                        {onSendImageToChat && (
-                          <button
-                            type="button"
-                            title="Envoyer dans le chat actif"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSendImageToChat(item.url, item.label);
-                            }}
-                            className="img-gallery-send-btn"
-                          >
-                            💬 Chat
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                          }}
+                        >
+                          {item.detail ?? "Terminé"}
+                        </div>
+                      </a>
+                      {/* Bouton Envoyer au chat — visible au survol */}
+                      {onSendImageToChat && (
+                        <button
+                          type="button"
+                          title="Envoyer dans le chat actif"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSendImageToChat(item.url, item.label);
+                          }}
+                          className="img-gallery-send-btn"
+                        >
+                          💬 Chat
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -435,22 +486,22 @@ export function StudioView({ installedModels, installedImageModels, onOpenImageG
       case "object-detection":
         return renderPlaceholder(
           "Détection d'objets",
-          "Détection, segmentation et annotation d'objets dans des images et vidéos. Nécessite YOLO, DETR ou SAM."
+          "Détection, segmentation et annotation d'objets dans des images et vidéos. Nécessite YOLO, DETR ou SAM.",
         );
       case "translation":
         return renderPlaceholder(
           "Traduction automatique",
-          "Traduction de texte et de documents entre de nombreuses langues. Nécessite NLLB, M2M-100 ou Opus-MT."
+          "Traduction de texte et de documents entre de nombreuses langues. Nécessite NLLB, M2M-100 ou Opus-MT.",
         );
       case "text-analysis":
         return renderPlaceholder(
           "Analyse de texte",
-          "Classification de sentiment, reconnaissance d'entités (NER), embeddings et analyse sémantique."
+          "Classification de sentiment, reconnaissance d'entités (NER), embeddings et analyse sémantique.",
         );
       case "question-answering":
         return renderPlaceholder(
           "Question-réponse",
-          "Réponses précises à partir d'un corpus de documents ou d'un contexte donné."
+          "Réponses précises à partir d'un corpus de documents ou d'un contexte donné.",
         );
       default:
         return null;

@@ -11,14 +11,14 @@
 mod client_cert;
 mod extensions;
 mod mcp_servers;
-mod travel_mode;
-mod secure_client;
+mod model_residency;
 mod region_edit;
 mod sd_engine;
-mod model_residency;
+mod secure_client;
 mod server_mode;
-mod voice_presets;
 mod storage_root;
+mod travel_mode;
+mod voice_presets;
 
 use futures::StreamExt as _;
 use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent};
@@ -46,6 +46,12 @@ struct Core {
     data_dir: std::path::PathBuf,
     http: reqwest::Client,
     /// OS keychain for SSH secrets (passwords / key passphrases).
+    ///
+    /// Conservé sur le cœur bien que les commandes SSH ouvrent aujourd'hui
+    /// leur propre poignée : une seconde instance du trousseau signifierait
+    /// deux politiques d'accès aux secrets, et c'est exactement ce qu'on veut
+    /// éviter le jour où le chemin SSH sera recâblé ici.
+    #[allow(dead_code)]
     keychain: Arc<dyn Keychain>,
     /// Registered MCP servers and the ones currently running. Shares
     /// `mcp.json` with the daemon, so a server added here is visible there.
@@ -61,6 +67,11 @@ struct Core {
     pull_cancels: Arc<tokio::sync::Mutex<HashMap<String, tokio_util::sync::CancellationToken>>>,
     /// Lazily-spawned embeddings server for RAG: (embedding model filename, child).
     /// Pinned to the model that produced an index so queries stay comparable.
+    ///
+    /// Jamais relu, et c'est le but : ce champ *possède* le processus fils.
+    /// Le supprimer parce qu'il paraît inutilisé tuerait le serveur
+    /// d'embeddings à la fin de la fonction qui l'a lancé.
+    #[allow(dead_code)]
     embed_server: Arc<tokio::sync::Mutex<Option<(String, std::process::Child)>>>,
     /// Pending tool-approval decisions (doc 11 §5/§6.5 wire protocol).
     /// One entry per in-flight `StreamEvent::ToolApproval`. The agent loop
@@ -87,31 +98,82 @@ struct PendingApproval {
 /// Normalise a model identifier so substring matching ignores case, spacing,
 /// punctuation and path separators.
 fn normalize_model_name(name: &str) -> String {
-    name.to_lowercase()
-        .replace(|c: char| c.is_whitespace() || c == '_' || c == '-' || c == '–' || c == '—' || c == '.' || c == '/' || c == '\\', "")
+    name.to_lowercase().replace(
+        |c: char| {
+            c.is_whitespace()
+                || c == '_'
+                || c == '-'
+                || c == '–'
+                || c == '—'
+                || c == '.'
+                || c == '/'
+                || c == '\\'
+        },
+        "",
+    )
 }
 
 /// Diffusion checkpoints / merges explicitly fine-tuned or marketed as
 /// NSFW / unfiltered / sans garde-fous.
 const NSFW_CHECKPOINT_PATTERNS: &[&str] = &[
-    "realisticvision", "realistic_vision",
-    "urpm", "uberrealistic", "uber_realistic",
-    "ponydiffusion", "pony_diffusion",
-    "abyssorangemix", "abyss_orange",
-    "counterfeit", "chilloutmix", "chillout_mix",
-    "majicmix", "majic_mix",
-    "fluxuncensored", "flux_uncensored", "fluxunfiltered", "flux_unfiltered",
-    "flux-nsfw", "fluxnsfw",
-    "hunyuanvideonsfw", "hunyuanvideo_nsfw", "hunyuanvideo-nsfw",
-    "wan2.1nsfw", "wan2.1_nsfw", "wan2.1-nsfw", "wan21nsfw",
+    "realisticvision",
+    "realistic_vision",
+    "urpm",
+    "uberrealistic",
+    "uber_realistic",
+    "ponydiffusion",
+    "pony_diffusion",
+    "abyssorangemix",
+    "abyss_orange",
+    "counterfeit",
+    "chilloutmix",
+    "chillout_mix",
+    "majicmix",
+    "majic_mix",
+    "fluxuncensored",
+    "flux_uncensored",
+    "fluxunfiltered",
+    "flux_unfiltered",
+    "flux-nsfw",
+    "fluxnsfw",
+    "hunyuanvideonsfw",
+    "hunyuanvideo_nsfw",
+    "hunyuanvideo-nsfw",
+    "wan2.1nsfw",
+    "wan2.1_nsfw",
+    "wan2.1-nsfw",
+    "wan21nsfw",
 ];
 
 /// Terms used for NSFW LoRA / embedding files and user-supplied paths.
 const NSFW_LORA_PATTERNS: &[&str] = &[
-    "nsfw", "nude", "nudity", "porn", "porno", "sex", "sexual", "explicit", "erotic", "hentai",
-    "furry-nsfw", "furrynsfw", "uncensored", "unfiltered",
-    "spread_legs", "spreadlegs", "bent_over", "bentover", "ass_up", "assup", "doggy", "missionary",
-    "urpm", "realisticvision", "ponydiffusion", "abyssorangemix", "counterfeit",
+    "nsfw",
+    "nude",
+    "nudity",
+    "porn",
+    "porno",
+    "sex",
+    "sexual",
+    "explicit",
+    "erotic",
+    "hentai",
+    "furry-nsfw",
+    "furrynsfw",
+    "uncensored",
+    "unfiltered",
+    "spread_legs",
+    "spreadlegs",
+    "bent_over",
+    "bentover",
+    "ass_up",
+    "assup",
+    "doggy",
+    "missionary",
+    "urpm",
+    "realisticvision",
+    "ponydiffusion",
+    "abyssorangemix",
+    "counterfeit",
 ];
 
 fn is_nsfw_checkpoint(name: &str) -> bool {
@@ -130,6 +192,13 @@ fn is_nsfw_model(name: &str) -> bool {
 }
 
 /// A verified-but-unsaved SSH connection test. Gates `save_ssh_server`.
+///
+/// Plusieurs champs sont renseignés par la sonde sans être relus aujourd'hui :
+/// `save_ssh_server` se contente pour l'instant de vérifier `confirmed` et
+/// `draft_hash`. Ils sont conservés parce qu'ils décrivent ce qui a été
+/// réellement constaté sur l'hôte — les jeter maintenant obligerait à
+/// re-sonder pour l'audit. Voir la tâche de câblage du dossier SSH.
+#[allow(dead_code)]
 struct PendingTest {
     /// Hash of the connection-identifying draft fields; save must match.
     draft_hash: u64,
@@ -150,7 +219,7 @@ async fn cleanup_orphan_free_chat_dirs(storage: &Storage) {
         Err(_) => return,
     };
     while let Ok(Some(entry)) = entries.next_entry().await {
-        if !entry.file_type().await.map_or(false, |t| t.is_dir()) {
+        if !entry.file_type().await.is_ok_and(|t| t.is_dir()) {
             continue;
         }
         let name = entry.file_name();
@@ -199,9 +268,10 @@ async fn init_core() -> anyhow::Result<Core> {
         // Repair endpoints saved by an earlier build whose settings default was
         // Ollama's port (11434). llama-server listens on 8080, so those installs
         // answered "aucun modèle local n'a répondu" on every message.
-        for p in list.into_iter().filter(|p| {
-            p.engine == ProviderEngine::LlamaCpp && p.endpoint.contains(":11434")
-        }) {
+        for p in list
+            .into_iter()
+            .filter(|p| p.engine == ProviderEngine::LlamaCpp && p.endpoint.contains(":11434"))
+        {
             let fixed = p.endpoint.replace(":11434", ":8080");
             tracing::warn!(old = %p.endpoint, new = %fixed, "repairing llama.cpp endpoint (was Ollama's port)");
             if let Err(e) = storage.providers.set_endpoint(p.id, &fixed).await {
@@ -323,7 +393,11 @@ fn write_test_audio(audio_base64: String, mime_type: String) -> Result<String, S
 fn remove_test_audio(path: String) -> Result<(), String> {
     let root = locaryn_config::ensure_temp_dir();
     let candidate = std::path::PathBuf::from(&path);
-    if candidate.parent() != Some(root.as_path()) || !candidate.file_name().is_some_and(|n| n.to_string_lossy().starts_with("snapmcp-test-")) {
+    if candidate.parent() != Some(root.as_path())
+        || !candidate
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with("snapmcp-test-"))
+    {
         return Err("chemin audio de test refusé".into());
     }
     std::fs::remove_file(candidate).map_err(|e| e.to_string())
@@ -335,7 +409,11 @@ fn remove_test_audio(path: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn list_projects(core: State<'_, Core>) -> Result<Vec<Project>, String> {
-    core.storage.projects.list().await.map_err(|e| e.to_string())
+    core.storage
+        .projects
+        .list()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -374,20 +452,32 @@ async fn update_project(
 pub const FREE_CHAT_PROJECT_PATH: &str = "__locaryn_free_chats__";
 
 /// Temp folder created for a single free-chat session.
-fn free_session_dir(data_dir: &std::path::Path, session_id: Uuid) -> std::path::PathBuf {
+fn free_session_dir(_data_dir: &std::path::Path, session_id: Uuid) -> std::path::PathBuf {
     locaryn_config::free_chats_dir().join(session_id.to_string())
 }
 
 /// Get (or create) the hidden project that owns free chats.
 #[tauri::command]
 async fn free_chat_project(core: State<'_, Core>) -> Result<Project, String> {
-    let existing = core.storage.projects.list().await.map_err(|e| e.to_string())?;
-    if let Some(p) = existing.into_iter().find(|p| p.path == FREE_CHAT_PROJECT_PATH) {
+    let existing = core
+        .storage
+        .projects
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(p) = existing
+        .into_iter()
+        .find(|p| p.path == FREE_CHAT_PROJECT_PATH)
+    {
         return Ok(p);
     }
     core.storage
         .projects
-        .create(FREE_CHAT_PROJECT_PATH, "Conversations libres", TrustLevel::Sandbox)
+        .create(
+            FREE_CHAT_PROJECT_PATH,
+            "Conversations libres",
+            TrustLevel::Sandbox,
+        )
         .await
         .map_err(|e| e.to_string())
 }
@@ -395,10 +485,7 @@ async fn free_chat_project(core: State<'_, Core>) -> Result<Project, String> {
 /// Return the workspace directory for a session: the project path for normal
 /// chats, or an auto-created temp folder for free chats.
 #[tauri::command]
-async fn session_workspace(
-    core: State<'_, Core>,
-    session_id: Uuid,
-) -> Result<String, String> {
+async fn session_workspace(core: State<'_, Core>, session_id: Uuid) -> Result<String, String> {
     let session = core
         .storage
         .sessions
@@ -436,8 +523,6 @@ async fn append_assistant_message(
         .map(|_| ())
         .map_err(|e| e.to_string())
 }
-
-
 
 // ============================================================================
 // Image generation defaults
@@ -528,7 +613,6 @@ fn set_image_defaults(core: State<'_, Core>, config: ImageDefaults) -> Result<()
     cfg.save(&core.data_dir).map_err(|e| e.to_string())
 }
 
-
 /// A plan produced by the model for a non-trivial request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TaskPlan {
@@ -555,9 +639,15 @@ async fn plan_task(core: State<'_, Core>, request: String) -> Result<TaskPlan, S
         .flatten()
         .ok_or("no active provider")?;
     if provider.engine == ProviderEngine::LlamaCpp {
-        let _ = core.supervisor.ensure_running(ProviderEngine::LlamaCpp).await;
+        let _ = core
+            .supervisor
+            .ensure_running(ProviderEngine::LlamaCpp)
+            .await;
     }
-    let url = format!("{}/v1/chat/completions", provider.endpoint.trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/chat/completions",
+        provider.endpoint.trim_end_matches('/')
+    );
     let body = serde_json::json!({
         "model": provider.model.clone().unwrap_or_else(|| "default".into()),
         "messages": [
@@ -576,12 +666,19 @@ async fn plan_task(core: State<'_, Core>, request: String) -> Result<TaskPlan, S
         .timeout(std::time::Duration::from_secs(90))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.post(&url).json(&body).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("model returned {}", resp.status()));
     }
     let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let content = val["choices"][0]["message"]["content"].as_str().unwrap_or("{}");
+    let content = val["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("{}");
     let parsed: serde_json::Value = serde_json::from_str(content).unwrap_or(serde_json::json!({}));
     let steps: Vec<String> = parsed["steps"]
         .as_array()
@@ -600,7 +697,6 @@ async fn plan_task(core: State<'_, Core>, request: String) -> Result<TaskPlan, S
         steps,
     })
 }
-
 
 /// Verdict on whether a chat message is really an image request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -621,7 +717,10 @@ struct ImageIntent {
 /// generator, and to rewrite the prompt in English. The caller always asks the
 /// user to confirm — this only prepares the proposal, it never generates.
 #[tauri::command]
-async fn detect_image_request(core: State<'_, Core>, message: String) -> Result<ImageIntent, String> {
+async fn detect_image_request(
+    core: State<'_, Core>,
+    message: String,
+) -> Result<ImageIntent, String> {
     let provider = core
         .storage
         .providers
@@ -631,9 +730,15 @@ async fn detect_image_request(core: State<'_, Core>, message: String) -> Result<
         .flatten()
         .ok_or("no active provider")?;
     if provider.engine == ProviderEngine::LlamaCpp {
-        let _ = core.supervisor.ensure_running(ProviderEngine::LlamaCpp).await;
+        let _ = core
+            .supervisor
+            .ensure_running(ProviderEngine::LlamaCpp)
+            .await;
     }
-    let url = format!("{}/v1/chat/completions", provider.endpoint.trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/chat/completions",
+        provider.endpoint.trim_end_matches('/')
+    );
     let body = serde_json::json!({
         "model": provider.model.clone().unwrap_or_else(|| "default".into()),
         "messages": [
@@ -659,14 +764,25 @@ async fn detect_image_request(core: State<'_, Core>, message: String) -> Result<
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.post(&url).json(&body).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("model returned {}", resp.status()));
     }
     let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let content = val["choices"][0]["message"]["content"].as_str().unwrap_or("{}");
+    let content = val["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("{}");
     let p: serde_json::Value = serde_json::from_str(content).unwrap_or(serde_json::json!({}));
-    let english = p["english_prompt"].as_str().unwrap_or("").trim().to_string();
+    let english = p["english_prompt"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string();
     let quality = match p["quality"].as_str().unwrap_or("standard") {
         q @ ("draft" | "standard" | "high" | "max") => q,
         _ => "standard",
@@ -710,8 +826,10 @@ async fn compact_history(
         .iter()
         .map(|t| format!("{}: {}", t.role, t.content))
         .collect::<Vec<_>>()
-        .join("
-")
+        .join(
+            "
+",
+        )
         .chars()
         .take(12000)
         .collect();
@@ -731,11 +849,13 @@ async fn compact_history(
         "chat_template_kwargs": { "enable_thinking": false }
     });
     let summary = match core.http.post(&url).json(&body).send().await {
-        Ok(r) if r.status().is_success() => r
-            .json::<serde_json::Value>()
-            .await
-            .ok()
-            .and_then(|v| v["choices"][0]["message"]["content"].as_str().map(str::to_string)),
+        Ok(r) if r.status().is_success() => {
+            r.json::<serde_json::Value>().await.ok().and_then(|v| {
+                v["choices"][0]["message"]["content"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+        }
         _ => None,
     };
 
@@ -745,8 +865,11 @@ async fn compact_history(
             tracing::info!(turns = old.len(), "compacted conversation history");
             out.push(locaryn_agent_runtime::ChatTurn {
                 role: "system".into(),
-                content: format!("[Résumé des échanges précédents]
-{}", sum.trim()),
+                content: format!(
+                    "[Résumé des échanges précédents]
+{}",
+                    sum.trim()
+                ),
             });
         }
         // Summarisation failed: drop the oldest turns rather than blow the window.
@@ -770,12 +893,25 @@ async fn suggest_followups(core: State<'_, Core>, answer: String) -> Result<Vec<
         .flatten()
         .ok_or("no active provider")?;
     if provider.engine == ProviderEngine::LlamaCpp {
-        let _ = core.supervisor.ensure_running(ProviderEngine::LlamaCpp).await;
+        let _ = core
+            .supervisor
+            .ensure_running(ProviderEngine::LlamaCpp)
+            .await;
     }
 
     // Keep the context small: only the tail of the answer matters for "what next".
-    let tail: String = answer.chars().rev().take(1200).collect::<String>().chars().rev().collect();
-    let url = format!("{}/v1/chat/completions", provider.endpoint.trim_end_matches('/'));
+    let tail: String = answer
+        .chars()
+        .rev()
+        .take(1200)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    let url = format!(
+        "{}/v1/chat/completions",
+        provider.endpoint.trim_end_matches('/')
+    );
     let body = serde_json::json!({
         "model": provider.model.clone().unwrap_or_else(|| "default".into()),
         "messages": [
@@ -800,12 +936,19 @@ async fn suggest_followups(core: State<'_, Core>, answer: String) -> Result<Vec<
         .timeout(std::time::Duration::from_secs(45))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.post(&url).json(&body).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("model returned {}", resp.status()));
     }
     let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let content = val["choices"][0]["message"]["content"].as_str().unwrap_or("");
+    let content = val["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("");
     let parsed: serde_json::Value = serde_json::from_str(content).unwrap_or(serde_json::json!({}));
     let list = parsed["suggestions"]
         .as_array()
@@ -834,7 +977,11 @@ async fn archive_project(core: State<'_, Core>, id: Uuid) -> Result<(), String> 
 
 #[tauri::command]
 async fn delete_session(core: State<'_, Core>, id: Uuid) -> Result<(), String> {
-    core.storage.sessions.delete(id).await.map_err(|e| e.to_string())
+    core.storage
+        .sessions
+        .delete(id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -854,7 +1001,11 @@ async fn create_session(
 ) -> Result<Session, String> {
     let title = title.and_then(|t| {
         let t = t.trim().to_string();
-        if t.is_empty() { None } else { Some(t) }
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
     });
     core.storage
         .sessions
@@ -889,16 +1040,32 @@ async fn generate_session_title(
     session_id: Uuid,
     first_prompt: String,
 ) -> Result<String, String> {
-    let session = core.storage.sessions.get(session_id).await.map_err(|e| e.to_string())?;
-    let project = core.storage.projects.get(session.project_id).await.map_err(|e| e.to_string())?;
+    let session = core
+        .storage
+        .sessions
+        .get(session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let project = core
+        .storage
+        .projects
+        .get(session.project_id)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let active_provider = core.storage.providers.active().await.ok().flatten();
     let provider = active_provider.ok_or("no active provider")?;
     if provider.engine == ProviderEngine::LlamaCpp {
-        let _ = core.supervisor.ensure_running(ProviderEngine::LlamaCpp).await;
+        let _ = core
+            .supervisor
+            .ensure_running(ProviderEngine::LlamaCpp)
+            .await;
     }
 
-    let url = format!("{}/v1/chat/completions", provider.endpoint.trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/chat/completions",
+        provider.endpoint.trim_end_matches('/')
+    );
     let body = serde_json::json!({
         "model": provider.model.clone().unwrap_or_else(|| "default".into()),
         "messages": [
@@ -922,12 +1089,20 @@ async fn generate_session_title(
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.post(&url).json(&body).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("model returned {}", resp.status()));
     }
     let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let raw = val["choices"][0]["message"]["content"].as_str().unwrap_or("").trim();
+    let raw = val["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim();
     let title = raw
         .trim_matches(|c: char| c == '\'' || c == '"' || c == '“' || c == '”')
         .split('\n')
@@ -970,7 +1145,12 @@ struct Bootstrap {
 /// directory on a fresh install) and the most recent open session in it.
 #[tauri::command]
 async fn bootstrap(core: State<'_, Core>) -> Result<Bootstrap, String> {
-    let mut projects = core.storage.projects.list().await.map_err(|e| e.to_string())?;
+    let mut projects = core
+        .storage
+        .projects
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
     projects.sort_by_key(|p| p.updated_at);
     let project = match projects.pop() {
         Some(p) => p,
@@ -1081,10 +1261,16 @@ async fn send_message(
     // Ensure the local llama-server is running.
     if let Some(ref p) = active_provider {
         if p.engine == ProviderEngine::LlamaCpp {
-            if let Err(e) = core.supervisor.ensure_running(ProviderEngine::LlamaCpp).await {
+            if let Err(e) = core
+                .supervisor
+                .ensure_running(ProviderEngine::LlamaCpp)
+                .await
+            {
                 tracing::warn!(error = %e, "supervisor could not ensure llama-server running");
             } else {
-                core.supervisor.note_activity(ProviderEngine::LlamaCpp).await;
+                core.supervisor
+                    .note_activity(ProviderEngine::LlamaCpp)
+                    .await;
             }
         }
     }
@@ -1390,7 +1576,11 @@ async fn run_terminal(
 
 #[tauri::command]
 async fn list_providers(core: State<'_, Core>) -> Result<Vec<Provider>, String> {
-    core.storage.providers.list().await.map_err(|e| e.to_string())
+    core.storage
+        .providers
+        .list()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1449,12 +1639,35 @@ async fn configure_provider(
 fn is_image_asset(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
     const DIFFUSION: &[&str] = &[
-        "stable-diffusion", "stable_diffusion", "sd_xl", "sdxl", "sd15", "sd-v1", "sd_v1",
-        "sd3", "sd3.5", "z_image", "z-image", "flux", "krea", "dreamshaper", "juggernaut",
-        "pony", "playground-v", "kolors", "hunyuan-dit", "pixart",
+        "stable-diffusion",
+        "stable_diffusion",
+        "sd_xl",
+        "sdxl",
+        "sd15",
+        "sd-v1",
+        "sd_v1",
+        "sd3",
+        "sd3.5",
+        "z_image",
+        "z-image",
+        "flux",
+        "krea",
+        "dreamshaper",
+        "juggernaut",
+        "pony",
+        "playground-v",
+        "kolors",
+        "hunyuan-dit",
+        "pixart",
     ];
     const AUX: &[&str] = &[
-        "mmproj-", "ae.safetensors", "vae", "clip", "t5xxl", "text_encoder", "text-encoder",
+        "mmproj-",
+        "ae.safetensors",
+        "vae",
+        "clip",
+        "t5xxl",
+        "text_encoder",
+        "text-encoder",
     ];
     DIFFUSION.iter().any(|p| n.contains(p)) || AUX.iter().any(|p| n.contains(p))
 }
@@ -1464,8 +1677,15 @@ fn is_image_asset(file_name: &str) -> bool {
 fn is_diffusion_checkpoint(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
     const AUX: &[&str] = &[
-        "mmproj-", "ae.safetensors", "vae", "clip", "t5xxl", "text_encoder", "text-encoder",
-        "abliterat", "qwen",
+        "mmproj-",
+        "ae.safetensors",
+        "vae",
+        "clip",
+        "t5xxl",
+        "text_encoder",
+        "text-encoder",
+        "abliterat",
+        "qwen",
     ];
     is_image_asset(file_name) && !AUX.iter().any(|p| n.contains(p))
 }
@@ -1506,8 +1726,8 @@ async fn list_models(_core: State<'_, Core>, _endpoint: String) -> Result<Vec<St
 
     /// Pick the single best representative from a list of weight file paths.
     /// Prefer the same extensions everywhere so the frontend/backend agree.
-    fn representative_weight(files: &mut Vec<std::path::PathBuf>) -> Option<&std::path::PathBuf> {
-        fn score(path: &std::path::PathBuf) -> u8 {
+    fn representative_weight(files: &mut [std::path::PathBuf]) -> Option<&std::path::PathBuf> {
+        fn score(path: &std::path::Path) -> u8 {
             let ext = path
                 .extension()
                 .and_then(|e| e.to_str())
@@ -1552,7 +1772,11 @@ async fn list_models(_core: State<'_, Core>, _endpoint: String) -> Result<Vec<St
                 continue;
             }
 
-            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            let dir_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
             let mut weight_files: Vec<std::path::PathBuf> = walkdir_recursive(&path, 5)
                 .into_iter()
                 .filter(|p| is_weight_file(p) && !is_partial(p))
@@ -1564,7 +1788,7 @@ async fn list_models(_core: State<'_, Core>, _endpoint: String) -> Result<Vec<St
                     .unwrap_or(rep)
                     .to_string_lossy()
                     .to_string();
-                names.push(format!("{}/{}", dir_name, rel));
+                names.push(format!("{dir_name}/{rel}"));
             }
         }
     }
@@ -1596,9 +1820,6 @@ fn walkdir_recursive(dir: &std::path::Path, max_depth: usize) -> Vec<std::path::
     }
     results
 }
-
-
-
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1644,7 +1865,6 @@ async fn pull_model(
         );
     }
 
-
     // ── Repo-level download: if the URL points to a HuggingFace repository
     // (not a /resolve/main/<file> direct link), download the entire repo as a
     // ZIP archive and extract it into a subdirectory under models_dir. This
@@ -1659,7 +1879,13 @@ async fn pull_model(
     }
 
     // Refuse repository pages or directory URLs; we need a direct file link.
-    if !url.ends_with(".gguf") && !url.ends_with(".safetensors") && !url.ends_with(".onnx") && !url.ends_with(".bin") && !url.ends_with(".pth") && !url.ends_with(".pt") {
+    if !url.ends_with(".gguf")
+        && !url.ends_with(".safetensors")
+        && !url.ends_with(".onnx")
+        && !url.ends_with(".bin")
+        && !url.ends_with(".pth")
+        && !url.ends_with(".pt")
+    {
         return Err(
             "L'URL doit pointer vers un fichier modèle direct (.gguf, .safetensors, .onnx, .bin). \
              Les liens vers un dépôt complet ne sont pas supportés ici."
@@ -1668,11 +1894,9 @@ async fn pull_model(
     }
 
     if is_nsfw_model(&url) && !consent.unwrap_or(false) {
-        return Err(
-            "Ce modèle est classé NSFW / sans garde-fous. \
+        return Err("Ce modèle est classé NSFW / sans garde-fous. \
              Acceptez la responsabilité dans l'interface avant de télécharger."
-                .into(),
-        );
+            .into());
     }
 
     let models_dir = locaryn_config::models_dir();
@@ -1688,7 +1912,16 @@ async fn pull_model(
         .lock()
         .await
         .insert(file_name.clone(), cancel.clone());
-    let result = do_pull(&core, &url, &file_name, &final_path, &part_path, &on_event, &cancel).await;
+    let result = do_pull(
+        &core,
+        &url,
+        &file_name,
+        &final_path,
+        &part_path,
+        &on_event,
+        &cancel,
+    )
+    .await;
     core.pull_cancels.lock().await.remove(&file_name);
     result?;
 
@@ -1696,7 +1929,9 @@ async fn pull_model(
     // VAE and a text encoder; the uncensored ("heretic") setup additionally
     // needs the abliterated encoder. Fetch whatever is missing so installing one
     // entry from the marketplace yields a fully working model.
-    if let Err(e) = install_image_companions(&core, &file_name, heretic.unwrap_or(false), &on_event).await {
+    if let Err(e) =
+        install_image_companions(&core, &file_name, heretic.unwrap_or(false), &on_event).await
+    {
         tracing::warn!(error = %e, "companion install failed (model itself is installed)");
     }
     // Auto-setup: Piper TTS voices ship a .json config file next to the .onnx.
@@ -1705,7 +1940,6 @@ async fn pull_model(
     }
     Ok(())
 }
-
 
 /// Download an entire HuggingFace repository as a ZIP archive and extract it
 /// into a subdirectory under models_dir. This is needed for multi-file TTS
@@ -1742,7 +1976,7 @@ async fn pull_hf_repo(
     // If the directory already exists, skip the download.
     if dest_dir.exists() && dest_dir.is_dir() {
         let _ = on_event.send(PullProgressEvent {
-            status: format!("Le depot {} est deja installe.", repo_id),
+            status: format!("Le depot {repo_id} est deja installe."),
             completed: 0,
             total: 0,
             percentage: 100.0,
@@ -1751,13 +1985,10 @@ async fn pull_hf_repo(
     }
 
     // Step 1: List all files via the HuggingFace Tree API (recursive).
-    let tree_url = format!(
-        "https://huggingface.co/api/models/{}/tree/main?recursive=true",
-        repo_id
-    );
+    let tree_url = format!("https://huggingface.co/api/models/{repo_id}/tree/main?recursive=true");
 
     let _ = on_event.send(PullProgressEvent {
-        status: format!("Liste des fichiers du depot {}...", repo_id),
+        status: format!("Liste des fichiers du depot {repo_id}..."),
         completed: 0,
         total: 0,
         percentage: 0.0,
@@ -1772,7 +2003,7 @@ async fn pull_hf_repo(
         .get(&tree_url)
         .send()
         .await
-        .map_err(|e| format!("Tree API error: {}", e))?;
+        .map_err(|e| format!("Tree API error: {e}"))?;
 
     if !resp.status().is_success() {
         return Err(format!(
@@ -1782,29 +2013,30 @@ async fn pull_hf_repo(
         ));
     }
 
-    let tree_entries: Vec<serde_json::Value> = resp.json().await.map_err(|e| {
-        format!("Erreur parsing Tree API: {}", e)
-    })?;
+    let tree_entries: Vec<serde_json::Value> = resp
+        .json()
+        .await
+        .map_err(|e| format!("Erreur parsing Tree API: {e}"))?;
 
     // Filter: only files, skip eval/ samples/ .gitattributes (not needed for inference)
     let file_paths: Vec<String> = tree_entries
         .iter()
         .filter(|e| e.get("type").and_then(|v| v.as_str()) == Some("file"))
-        .filter_map(|e| e.get("path").and_then(|v| v.as_str()).map(|s| s.to_string()))
-        .filter(|p| {
-            !p.starts_with("eval/")
-            && !p.starts_with("samples/")
-            && p != ".gitattributes"
+        .filter_map(|e| {
+            e.get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
         })
+        .filter(|p| !p.starts_with("eval/") && !p.starts_with("samples/") && p != ".gitattributes")
         .collect();
 
     if file_paths.is_empty() {
-        return Err(format!("Aucun fichier trouve dans le depot {}", repo_id));
+        return Err(format!("Aucun fichier trouve dans le depot {repo_id}"));
     }
 
     let total = file_paths.len();
     let _ = on_event.send(PullProgressEvent {
-        status: format!("{} fichiers a telecharger", total),
+        status: format!("{total} fichiers a telecharger"),
         completed: 0,
         total: total as u64,
         percentage: 0.0,
@@ -1820,10 +2052,7 @@ async fn pull_hf_repo(
             return Err("Telechargement annule".into());
         }
 
-        let dl_url = format!(
-            "https://huggingface.co/{}/resolve/main/{}",
-            repo_id, file_path
-        );
+        let dl_url = format!("https://huggingface.co/{repo_id}/resolve/main/{file_path}");
 
         let out_path = dest_dir.join(file_path);
         if let Some(parent) = out_path.parent() {
@@ -1855,7 +2084,7 @@ async fn pull_hf_repo(
     }
 
     let _ = on_event.send(PullProgressEvent {
-        status: format!("Depot {} installe avec succes ({} fichiers)", repo_id, total),
+        status: format!("Depot {repo_id} installe avec succes ({total} fichiers)"),
         completed: total as u64,
         total: total as u64,
         percentage: 100.0,
@@ -1884,9 +2113,7 @@ async fn do_pull(
     // Check for resumable partial download.
     let mut offset: u64 = 0;
     if part_path.exists() {
-        offset = std::fs::metadata(part_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        offset = std::fs::metadata(part_path).map(|m| m.len()).unwrap_or(0);
     }
 
     let client = reqwest::Client::builder()
@@ -1899,7 +2126,10 @@ async fn do_pull(
         req = req.header("Range", format!("bytes={offset}-"));
     }
 
-    let resp = req.send().await.map_err(|e| format!("download error: {e}"))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("download error: {e}"))?;
 
     if !resp.status().is_success() && resp.status().as_u16() != 206 {
         return Err(format!("HTTP {} for {url}", resp.status()));
@@ -1908,10 +2138,14 @@ async fn do_pull(
     let total = resp.content_length().map(|l| l + offset).unwrap_or(0);
 
     let _ = on_event.send(PullProgressEvent {
-        status: format!("Telechargement de {}...", file_name),
+        status: format!("Telechargement de {file_name}..."),
         completed: offset,
         total,
-        percentage: if total > 0 { (offset as f64 / total as f64) * 100.0 } else { 0.0 },
+        percentage: if total > 0 {
+            (offset as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        },
     });
 
     // Open the partial file for append (or create new).
@@ -1941,7 +2175,10 @@ async fn do_pull(
         }
 
         let chunk = chunk_result.map_err(|e| format!("stream error: {e}"))?;
-        writer.write_all(&chunk).await.map_err(|e| format!("write error: {e}"))?;
+        writer
+            .write_all(&chunk)
+            .await
+            .map_err(|e| format!("write error: {e}"))?;
         downloaded += chunk.len() as u64;
 
         // Report progress at most every 200ms to avoid flooding IPC.
@@ -1952,7 +2189,7 @@ async fn do_pull(
                 0.0
             };
             let _ = on_event.send(PullProgressEvent {
-                status: format!("Telechargement de {}...", file_name),
+                status: format!("Telechargement de {file_name}..."),
                 completed: downloaded,
                 total,
                 percentage: pct,
@@ -1961,7 +2198,10 @@ async fn do_pull(
         }
     }
 
-    writer.flush().await.map_err(|e| format!("flush error: {e}"))?;
+    writer
+        .flush()
+        .await
+        .map_err(|e| format!("flush error: {e}"))?;
     drop(writer);
     drop(file);
 
@@ -1970,7 +2210,7 @@ async fn do_pull(
         .map_err(|e| format!("cannot rename partial file: {e}"))?;
 
     let _ = on_event.send(PullProgressEvent {
-        status: format!("{} installe avec succes", file_name),
+        status: format!("{file_name} installe avec succes"),
         completed: downloaded,
         total: if total > 0 { total } else { downloaded },
         percentage: 100.0,
@@ -2033,7 +2273,7 @@ async fn install_audio_companions(
         }
         tracing::info!(file = %json_name, "installing Piper audio companion");
         let _ = on_event.send(PullProgressEvent {
-            status: format!("Installation automatique : {}", json_name),
+            status: format!("Installation automatique : {json_name}"),
             completed: 0,
             total: 0,
             percentage: 0.0,
@@ -2113,7 +2353,7 @@ async fn install_kokoro_companions(
     // Download config.json from the same repo.
     let config_dest = dest_dir.join("config.json");
     if !config_dest.exists() {
-        let config_url = format!("https://huggingface.co/{}/resolve/main/config.json", repo_id);
+        let config_url = format!("https://huggingface.co/{repo_id}/resolve/main/config.json");
         tracing::info!(repo = repo_id, "downloading kokoro config.json");
         let _ = on_event.send(PullProgressEvent {
             status: "Installation automatique : config.json".to_string(),
@@ -2122,14 +2362,23 @@ async fn install_kokoro_companions(
             percentage: 0.0,
         });
         let part = dest_dir.join("config.json.part");
-        let _ = do_pull(core, &config_url, "config.json", &config_dest, &part, on_event, &cancel).await;
+        let _ = do_pull(
+            core,
+            &config_url,
+            "config.json",
+            &config_dest,
+            &part,
+            on_event,
+            &cancel,
+        )
+        .await;
     }
 
     // Download tokenizer.json from the same repo (if it exists — not all
     // Kokoro repos ship a tokenizer.json, so we tolerate a 404).
     let tok_dest = dest_dir.join("tokenizer.json");
     if !tok_dest.exists() {
-        let tok_url = format!("https://huggingface.co/{}/resolve/main/tokenizer.json", repo_id);
+        let tok_url = format!("https://huggingface.co/{repo_id}/resolve/main/tokenizer.json");
         tracing::info!(repo = repo_id, "downloading kokoro tokenizer.json");
         let _ = on_event.send(PullProgressEvent {
             status: "Installation automatique : tokenizer.json".to_string(),
@@ -2139,7 +2388,16 @@ async fn install_kokoro_companions(
         });
         let part = dest_dir.join("tokenizer.json.part");
         // Non-fatal: some repos don't have tokenizer.json.
-        let _ = do_pull(core, &tok_url, "tokenizer.json", &tok_dest, &part, on_event, &cancel).await;
+        let _ = do_pull(
+            core,
+            &tok_url,
+            "tokenizer.json",
+            &tok_dest,
+            &part,
+            on_event,
+            &cancel,
+        )
+        .await;
         // Clean up empty/failed download.
         if tok_dest.exists() && std::fs::metadata(&tok_dest).map(|m| m.len()).unwrap_or(0) == 0 {
             let _ = std::fs::remove_file(&tok_dest);
@@ -2150,10 +2408,7 @@ async fn install_kokoro_companions(
 
     // Download voices/ directory from the same repo.
     // We use the HuggingFace Tree API to list files in the voices/ path.
-    let tree_url = format!(
-        "https://huggingface.co/api/models/{}/tree/main/voices",
-        repo_id
-    );
+    let tree_url = format!("https://huggingface.co/api/models/{repo_id}/tree/main/voices");
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
@@ -2170,7 +2425,11 @@ async fn install_kokoro_companions(
                     let voice_files: Vec<String> = entries
                         .iter()
                         .filter(|e| e.get("type").and_then(|v| v.as_str()) == Some("file"))
-                        .filter_map(|e| e.get("path").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                        .filter_map(|e| {
+                            e.get("path")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        })
                         .collect();
 
                     let voices_dest = dest_dir.join("voices");
@@ -2190,15 +2449,25 @@ async fn install_kokoro_companions(
                             count += 1;
                             continue;
                         }
-                        let voice_url = format!("https://huggingface.co/{}/resolve/main/{}", repo_id, voice_path);
+                        let voice_url =
+                            format!("https://huggingface.co/{repo_id}/resolve/main/{voice_path}");
                         let _ = on_event.send(PullProgressEvent {
                             status: format!("Voix [{}/{}] : {}", i + 1, total_voices, voice_name),
                             completed: i as u64,
                             total: total_voices as u64,
                             percentage: ((i + 1) as f64 / total_voices.max(1) as f64) * 100.0,
                         });
-                        let part = voices_dest.join(format!("{}.part", voice_name));
-                        let _ = do_pull(core, &voice_url, voice_name, &voice_dest, &part, on_event, &cancel).await;
+                        let part = voices_dest.join(format!("{voice_name}.part"));
+                        let _ = do_pull(
+                            core,
+                            &voice_url,
+                            voice_name,
+                            &voice_dest,
+                            &part,
+                            on_event,
+                            &cancel,
+                        )
+                        .await;
                         count += 1;
                     }
                     count > 0
@@ -2225,7 +2494,8 @@ async fn install_kokoro_companions(
     if !voices_downloaded {
         let voices_bin_dest = dest_dir.join("voices-v1.0.bin");
         if !voices_bin_dest.exists() {
-            let voices_bin_url = format!("https://huggingface.co/{}/resolve/main/voices-v1.0.bin", repo_id);
+            let voices_bin_url =
+                format!("https://huggingface.co/{repo_id}/resolve/main/voices-v1.0.bin");
             tracing::info!(repo = repo_id, "downloading voices-v1.0.bin fallback");
             let _ = on_event.send(PullProgressEvent {
                 status: "Installation automatique : voices-v1.0.bin".to_string(),
@@ -2234,7 +2504,16 @@ async fn install_kokoro_companions(
                 percentage: 0.0,
             });
             let part = dest_dir.join("voices-v1.0.bin.part");
-            let _ = do_pull(core, &voices_bin_url, "voices-v1.0.bin", &voices_bin_dest, &part, on_event, &cancel).await;
+            let _ = do_pull(
+                core,
+                &voices_bin_url,
+                "voices-v1.0.bin",
+                &voices_bin_dest,
+                &part,
+                on_event,
+                &cancel,
+            )
+            .await;
         }
     }
 
@@ -2282,9 +2561,8 @@ async fn install_image_companions(
 ) -> Result<(), String> {
     let lower = installed_file.to_ascii_lowercase();
     let is_z_image = lower.contains("z_image") || lower.contains("z-image");
-    let is_sd = lower.contains("stable-diffusion")
-        || lower.contains("sd_xl")
-        || lower.contains("sd15");
+    let is_sd =
+        lower.contains("stable-diffusion") || lower.contains("sd_xl") || lower.contains("sd15");
 
     if !is_z_image && !is_sd {
         return Ok(());
@@ -2307,7 +2585,11 @@ async fn install_image_companions(
         if dest.exists() {
             continue;
         }
-        tracing::info!(file = comp.file, "installing image companion: {}", comp.label);
+        tracing::info!(
+            file = comp.file,
+            "installing image companion: {}",
+            comp.label
+        );
         let _ = on_event.send(PullProgressEvent {
             status: format!("Installation automatique : {} ({})", comp.label, comp.file),
             completed: 0,
@@ -2352,11 +2634,7 @@ async fn approve_tool_call(
     let _risk: Risk = serde_json::from_value(serde_json::Value::String(payload.risk.clone()))
         .map_err(|e| format!("invalid risk: {e}"))?;
 
-    let entry = core
-        .pending_approvals
-        .lock()
-        .await
-        .remove(&payload.call_id);
+    let entry = core.pending_approvals.lock().await.remove(&payload.call_id);
     match (entry, payload.decision.as_str()) {
         (Some(_), "allow") => {
             tracing::info!(
@@ -2428,8 +2706,10 @@ fn generate_test_wav(channels: u16, sample_rate: u32, _speed: f32) -> Vec<u8> {
     wav.write_all(&1u16.to_le_bytes()).unwrap();
     wav.write_all(&channels.to_le_bytes()).unwrap();
     wav.write_all(&sample_rate.to_le_bytes()).unwrap();
-    wav.write_all(&(sample_rate * channels as u32 * bytes_per_sample as u32).to_le_bytes()).unwrap();
-    wav.write_all(&(channels * bytes_per_sample).to_le_bytes()).unwrap();
+    wav.write_all(&(sample_rate * channels as u32 * bytes_per_sample as u32).to_le_bytes())
+        .unwrap();
+    wav.write_all(&(channels * bytes_per_sample).to_le_bytes())
+        .unwrap();
     wav.write_all(&16u16.to_le_bytes()).unwrap();
     wav.extend_from_slice(b"data");
     wav.write_all(&data_size.to_le_bytes()).unwrap();
@@ -2470,7 +2750,11 @@ fn generate_test_png(w: u32, h: u32, prompt: &str) -> Vec<u8> {
         for &b in kind.iter().chain(data.iter()) {
             crc ^= b as u32;
             for _ in 0..8 {
-                crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb88320 } else { crc >> 1 };
+                crc = if crc & 1 != 0 {
+                    (crc >> 1) ^ 0xedb88320
+                } else {
+                    crc >> 1
+                };
             }
         }
         out.extend_from_slice(&(!crc).to_be_bytes());
@@ -2494,12 +2778,16 @@ fn generate_test_png(w: u32, h: u32, prompt: &str) -> Vec<u8> {
     let mut raw = Vec::with_capacity((h as usize) * ((w as usize) * 3 + 1));
     for _row in 0..h {
         raw.push(0u8); // filter: none
-        raw.extend_from_slice(&pixels[((_row as usize) * ((w as usize) * 3))..(((_row as usize) + 1) * ((w as usize) * 3))]);
+        raw.extend_from_slice(
+            &pixels[((_row as usize) * ((w as usize) * 3))
+                ..(((_row as usize) + 1) * ((w as usize) * 3))],
+        );
     }
 
     let mut idat = Vec::new();
-    idat.push(0x78); idat.push(0x01); // zlib header
-    // Stored blocks
+    idat.push(0x78);
+    idat.push(0x01); // zlib header
+                     // Stored blocks
     let mut offset = 0;
     while offset < raw.len() {
         let remaining = raw.len() - offset;
@@ -2555,8 +2843,16 @@ async fn generate_image(
     let defaults = ImageDefaults::load(&core.data_dir);
     let width = width.unwrap_or(defaults.width);
     let height = height.unwrap_or(defaults.height);
-    let steps = steps.unwrap_or(if defaults.steps > 0 { defaults.steps } else { 8 });
-    let cfg_scale = cfg_scale.unwrap_or(if defaults.cfg_scale > 0.0 { defaults.cfg_scale } else { 7.0 });
+    let steps = steps.unwrap_or(if defaults.steps > 0 {
+        defaults.steps
+    } else {
+        8
+    });
+    let cfg_scale = cfg_scale.unwrap_or(if defaults.cfg_scale > 0.0 {
+        defaults.cfg_scale
+    } else {
+        7.0
+    });
     let vram_mode = vram_mode.unwrap_or(defaults.vram_mode.clone());
     let negative_prompt = negative_prompt.unwrap_or(defaults.negative_prompt.clone());
 
@@ -2567,11 +2863,9 @@ async fn generate_image(
     let model = model.trim();
 
     if is_nsfw_checkpoint(model) && !consent.unwrap_or(false) {
-        return Err(
-            "Ce modele est classe NSFW / sans garde-fous. \
+        return Err("Ce modele est classe NSFW / sans garde-fous. \
              Acceptez la responsabilite dans l'interface avant de generer."
-                .into(),
-        );
+            .into());
     }
 
     let prompt = prompt.trim();
@@ -2610,7 +2904,11 @@ async fn generate_image(
             &out_file,
             input_image.as_deref().unwrap_or(""),
             prompt,
-            if negative_prompt.is_empty() { None } else { Some(negative_prompt.as_str()) },
+            if negative_prompt.is_empty() {
+                None
+            } else {
+                Some(negative_prompt.as_str())
+            },
             steps,
             cfg_scale,
             &on_progress,
@@ -2636,16 +2934,15 @@ async fn generate_image(
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         let png = generate_test_png(width, height, prompt);
-        std::fs::write(&out_file, png)
-            .map_err(|e| format!("cannot write image: {e}"))?;
+        std::fs::write(&out_file, png).map_err(|e| format!("cannot write image: {e}"))?;
         on_progress
             .send(serde_json::json!({"progress": 100, "detail": "termine"}))
             .ok();
         return Ok(GeneratedImage {
             path: out_file.to_string_lossy().to_string(),
             simulated: true,
-        variants: vec![out_file.to_string_lossy().to_string()],
-    });
+            variants: vec![out_file.to_string_lossy().to_string()],
+        });
     }
 
     // ── Real generation via stable-diffusion.cpp ────────────────────────
@@ -2660,10 +2957,20 @@ async fn generate_image(
     // Diffusion. Flow-matching models diverge into noise at CFG 7, so when the
     // request still carries those defaults, use what the family actually wants.
     let (fam_steps, fam_cfg) = sd_engine::default_sampling(model);
-    let steps = if steps == 20 || steps == 8 { fam_steps } else { steps };
-    let cfg_scale = if (cfg_scale - 7.0).abs() < f32::EPSILON { fam_cfg } else { cfg_scale };
+    let steps = if steps == 20 || steps == 8 {
+        fam_steps
+    } else {
+        steps
+    };
+    let cfg_scale = if (cfg_scale - 7.0).abs() < f32::EPSILON {
+        fam_cfg
+    } else {
+        cfg_scale
+    };
 
-    let vram_gb = check_hardware().map(|h| h.total_vram_gb as f32).unwrap_or(0.0);
+    let vram_gb = check_hardware()
+        .map(|h| h.total_vram_gb as f32)
+        .unwrap_or(0.0);
 
     // An init image arrives as a base64 data URL from the webview, which has
     // no access to disk paths; decode it to scratch space first.
@@ -2676,7 +2983,11 @@ async fn generate_image(
         model_path: &model_path,
         models_dir: &models_dir,
         prompt,
-        negative_prompt: if negative_prompt.is_empty() { None } else { Some(&negative_prompt) },
+        negative_prompt: if negative_prompt.is_empty() {
+            None
+        } else {
+            Some(&negative_prompt)
+        },
         width,
         height,
         steps,
@@ -2731,7 +3042,10 @@ async fn generate_image(
 
     // The exit status is not the verdict: what matters is which files landed,
     // so a partially-failed batch still returns its usable images.
-    let _status = child.wait().await.map_err(|e| format!("attente de sd: {e}"))?;
+    let _status = child
+        .wait()
+        .await
+        .map_err(|e| format!("attente de sd: {e}"))?;
     let errors = log.await.unwrap_or_default();
     if let Some(tmp) = &init_tmp {
         let _ = std::fs::remove_file(tmp);
@@ -2878,7 +3192,7 @@ async fn run_img2img_ip2p(
             )
             .await;
         }
-        return Err(format!("format d'image source non reconnu"));
+        return Err("format d'image source non reconnu".to_string());
     };
 
     // Decode base64
@@ -2904,8 +3218,7 @@ async fn run_img2img_ip2p(
             .as_millis(),
         ext
     ));
-    std::fs::write(&temp_input, &img_bytes)
-        .map_err(|e| format!("ecriture temp input: {e}"))?;
+    std::fs::write(&temp_input, &img_bytes).map_err(|e| format!("ecriture temp input: {e}"))?;
 
     let result = run_img2img_ip2p_file(
         out_file,
@@ -2934,8 +3247,9 @@ async fn run_img2img_ip2p_file(
     cfg_scale: f32,
     on_progress: &Channel<serde_json::Value>,
 ) -> Result<GeneratedImage, String> {
-    let python = find_python()
-        .ok_or_else(|| "Python non trouve. Installez Python 3.10+ avec torch et diffusers.".to_string())?;
+    let python = find_python().ok_or_else(|| {
+        "Python non trouve. Installez Python 3.10+ avec torch et diffusers.".to_string()
+    })?;
 
     // image_guidance_scale: how closely to follow the original image.
     // Lower = more deviation, higher = closer to original. 1.2-1.5 is the
@@ -3056,7 +3370,9 @@ print(output_path, flush=True)
     let output = match tokio::time::timeout(
         std::time::Duration::from_secs(300),
         child.wait_with_output(),
-    ).await {
+    )
+    .await
+    {
         Ok(result) => result.map_err(|e| format!("python wait: {e}"))?,
         Err(_) => {
             return Err("InstructPix2Pix : timeout (5 min). Le telechargement du modele est peut-etre en cours ou le GPU est bloque.".into());
@@ -3066,8 +3382,10 @@ print(output_path, flush=True)
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!("InstructPix2Pix a echoue: {stderr}
-{stdout}"));
+        return Err(format!(
+            "InstructPix2Pix a echoue: {stderr}
+{stdout}"
+        ));
     }
 
     // The script prints the output path to stdout.
@@ -3077,8 +3395,7 @@ print(output_path, flush=True)
     // Verify the output file exists
     if !out_file.exists() {
         if !result_path.is_empty() && std::path::Path::new(result_path).exists() {
-            std::fs::copy(result_path, out_file)
-                .map_err(|e| format!("copie resultat: {e}"))?;
+            std::fs::copy(result_path, out_file).map_err(|e| format!("copie resultat: {e}"))?;
         } else {
             return Err(format!("fichier resultat non trouve. stdout: {stdout}"));
         }
@@ -3091,7 +3408,7 @@ print(output_path, flush=True)
     Ok(GeneratedImage {
         path: out_file.to_string_lossy().to_string(),
         simulated: false,
-    variants: vec![out_file.to_string_lossy().to_string()],
+        variants: vec![out_file.to_string_lossy().to_string()],
     })
 }
 
@@ -3103,7 +3420,7 @@ fn python_string_literal(s: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\0', "\\0");
-    format!("\"{}\"", escaped)
+    format!("\"{escaped}\"")
 }
 
 #[tauri::command]
@@ -3158,14 +3475,14 @@ fn has_abliterated_encoder() -> bool {
 /// Detect which TTS engine to use based on the model path/tag.
 /// Returns (engine, resolved_model_path, config_path_or_none).
 ///
-/// - `piper`   : single .onnx file + .json config sibling. No voice cloning.
-/// - `kokoro`  : extracted HF repo containing `kokoro-v1_0.pth` + `voices/*.pt`.
-///               Built-in voices, no external cloning (the .pt voice files
-///               ARE the voice profiles).
-/// - `xtts`    : extracted HF repo from `coqui/XTTS-v2`. Supports voice cloning
-///               via a `speaker_wav` reference file. Requires `coqui-tts`.
-/// - `python_generic` : any other repo that has a .pth/.pt/.safetensors —
-///               we attempt a generic Python TTS script.
+/// - `piper` : single .onnx file + .json config sibling. No voice cloning.
+/// - `kokoro` : extracted HF repo containing `kokoro-v1_0.pth` + `voices/*.pt`.
+///   Built-in voices, no external cloning (the .pt voice files ARE the voice
+///   profiles).
+/// - `xtts` : extracted HF repo from `coqui/XTTS-v2`. Supports voice cloning
+///   via a `speaker_wav` reference file. Requires `coqui-tts`.
+/// - `python_generic` : any other repo that has a .pth/.pt/.safetensors — we
+///   attempt a generic Python TTS script.
 fn resolve_tts_engine(
     models_dir: &std::path::Path,
     model_tag: &str,
@@ -3186,7 +3503,11 @@ fn resolve_tts_engine(
         } else {
             // Piper config is often named `<base>.onnx.json` → check `<base>.json`
             let alt = direct.with_extension("json");
-            if alt.exists() { Some(alt) } else { None }
+            if alt.exists() {
+                Some(alt)
+            } else {
+                None
+            }
         };
         return (TtsEngine::Piper, direct, cfg_path);
     }
@@ -3194,7 +3515,7 @@ fn resolve_tts_engine(
     // Single-component name (e.g. "hexgrad__Kokoro-82M") has no parent →
     // skip the parent-based resolution and fall through to as_dir check.
     let tag_path = std::path::Path::new(model_tag);
-    let has_parent = tag_path.parent().map_or(false, |p| !p.as_os_str().is_empty());
+    let has_parent = tag_path.parent().is_some_and(|p| !p.as_os_str().is_empty());
 
     if has_parent {
         // `repo_dir/relative/path` — extracted HF repo.
@@ -3282,7 +3603,9 @@ fn find_python() -> Option<String> {
     }
     // Fallback: check %LOCALAPPDATA%\Programs\Python\Python3xx\python.exe
     if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-        let base = std::path::Path::new(&localappdata).join("Programs").join("Python");
+        let base = std::path::Path::new(&localappdata)
+            .join("Programs")
+            .join("Python");
         if let Ok(entries) = std::fs::read_dir(&base) {
             for entry in entries.flatten() {
                 let python_exe = entry.path().join("python.exe");
@@ -3336,9 +3659,24 @@ fn python_env() -> Vec<(&'static str, String)> {
         ("USE_TF", "0".to_string()),
         ("TF_CPP_MIN_LOG_LEVEL", "3".to_string()),
         // Build/extract scratch also belongs off the system drive.
-        ("TMPDIR", locaryn_config::ensure_temp_dir().to_string_lossy().to_string()),
-        ("TEMP", locaryn_config::ensure_temp_dir().to_string_lossy().to_string()),
-        ("TMP", locaryn_config::ensure_temp_dir().to_string_lossy().to_string()),
+        (
+            "TMPDIR",
+            locaryn_config::ensure_temp_dir()
+                .to_string_lossy()
+                .to_string(),
+        ),
+        (
+            "TEMP",
+            locaryn_config::ensure_temp_dir()
+                .to_string_lossy()
+                .to_string(),
+        ),
+        (
+            "TMP",
+            locaryn_config::ensure_temp_dir()
+                .to_string_lossy()
+                .to_string(),
+        ),
     ]
 }
 
@@ -3356,38 +3694,74 @@ fn normalize_xtts_language(lang: &str) -> &str {
 
 fn detect_language(text: &str) -> &'static str {
     // Check for CJK characters → Chinese
-    if text.chars().any(|c| (c >= '\u{4e00}' && c <= '\u{9fff}') || (c >= '\u{3400}' && c <= '\u{4dbf}')) {
+    if text
+        .chars()
+        .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c) || ('\u{3400}'..='\u{4dbf}').contains(&c))
+    {
         return "zh-cn";
     }
     // Hiragana/Katakana → Japanese
-    if text.chars().any(|c| (c >= '\u{3040}' && c <= '\u{309f}') || (c >= '\u{30a0}' && c <= '\u{30ff}')) {
+    if text
+        .chars()
+        .any(|c| ('\u{3040}'..='\u{309f}').contains(&c) || ('\u{30a0}'..='\u{30ff}').contains(&c))
+    {
         return "ja";
     }
     // Hangul → Korean
-    if text.chars().any(|c| c >= '\u{ac00}' && c <= '\u{d7af}') {
+    if text.chars().any(|c| ('\u{ac00}'..='\u{d7af}').contains(&c)) {
         return "ko";
     }
     // Arabic
-    if text.chars().any(|c| c >= '\u{0600}' && c <= '\u{06ff}') {
+    if text.chars().any(|c| ('\u{0600}'..='\u{06ff}').contains(&c)) {
         return "ar";
     }
     // Cyrillic → Russian
-    if text.chars().any(|c| c >= '\u{0400}' && c <= '\u{04ff}') {
+    if text.chars().any(|c| ('\u{0400}'..='\u{04ff}').contains(&c)) {
         return "ru";
     }
     // Accented Latin chars → detect European language
-    let has_german = text.chars().any(|c| c == '\u{e4}' || c == '\u{f6}' || c == '\u{fc}' || c == '\u{c4}' || c == '\u{d6}' || c == '\u{dc}');
-    let has_french = text.chars().any(|c| c == '\u{e0}' || c == '\u{e8}' || c == '\u{e9}' || c == '\u{ea}' || c == '\u{eb}' || c == '\u{e7}' || c == '\u{f4}' || c == '\u{fb}');
-    let has_spanish = text.chars().any(|c| c == '\u{f1}' || c == '\u{bf}' || c == '\u{a1}');
+    let has_german = text.chars().any(|c| {
+        c == '\u{e4}'
+            || c == '\u{f6}'
+            || c == '\u{fc}'
+            || c == '\u{c4}'
+            || c == '\u{d6}'
+            || c == '\u{dc}'
+    });
+    let has_french = text.chars().any(|c| {
+        c == '\u{e0}'
+            || c == '\u{e8}'
+            || c == '\u{e9}'
+            || c == '\u{ea}'
+            || c == '\u{eb}'
+            || c == '\u{e7}'
+            || c == '\u{f4}'
+            || c == '\u{fb}'
+    });
+    let has_spanish = text
+        .chars()
+        .any(|c| c == '\u{f1}' || c == '\u{bf}' || c == '\u{a1}');
     // Portuguese: ã and õ are distinctive (ê is shared with French)
     let has_portuguese = text.chars().any(|c| c == '\u{e3}' || c == '\u{f5}');
-    if has_portuguese { return "pt"; }
-    if has_german { return "de"; }
-    if has_french { return "fr"; }
-    if has_spanish { return "es"; }
+    if has_portuguese {
+        return "pt";
+    }
+    if has_german {
+        return "de";
+    }
+    if has_french {
+        return "fr";
+    }
+    if has_spanish {
+        return "es";
+    }
     // Italian: à è ì ò ù are common; check after others to avoid overlap
-    let has_italian = text.chars().any(|c| c == '\u{ec}' || c == '\u{f2}' || c == '\u{f9}');
-    if has_italian { return "it"; }
+    let has_italian = text
+        .chars()
+        .any(|c| c == '\u{ec}' || c == '\u{f2}' || c == '\u{f9}');
+    if has_italian {
+        return "it";
+    }
     // Default: English
     "en"
 }
@@ -3404,6 +3778,9 @@ fn find_piper() -> Option<String> {
 
 /// Run Piper TTS: `piper -m voice.onnx -c voice.onnx.json -f output.wav --length-scale 1.0`
 /// Piper reads text from stdin and writes a WAV to -f.
+// Signature dictée par l'appel côté interface ; la regrouper en
+// structure rendrait le contrat IPC moins lisible, pas plus.
+#[allow(clippy::too_many_arguments)]
 async fn run_tts_piper(
     model_path: &std::path::Path,
     config_path: Option<&std::path::Path>,
@@ -3455,7 +3832,10 @@ async fn run_tts_piper(
     // Write text to Piper's stdin.
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(text.as_bytes()).await.map_err(|e| format!("piper stdin: {e}"))?;
+        stdin
+            .write_all(text.as_bytes())
+            .await
+            .map_err(|e| format!("piper stdin: {e}"))?;
         stdin.shutdown().await.ok();
     }
 
@@ -3463,7 +3843,10 @@ async fn run_tts_piper(
         .send(serde_json::json!({"progress": 50, "detail": "Piper : synthese en cours"}))
         .ok();
 
-    let output = child.wait_with_output().await.map_err(|e| format!("piper wait: {e}"))?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("piper wait: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -3511,7 +3894,9 @@ fn kokoro_voices_in_repo(repo_dir: &std::path::Path) -> Result<Vec<String>, Stri
                 if p.extension().and_then(|e| e.to_str()) != Some("pt") {
                     return None;
                 }
-                p.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string())
+                p.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
             })
             .collect();
     }
@@ -3547,7 +3932,7 @@ fn resolve_kokoro_voice(
 
     // Default to English when no language is provided.
     let target = language.unwrap_or("en");
-    let mut candidates: Vec<&String> = voices
+    let candidates: Vec<&String> = voices
         .iter()
         .filter(|v| kokoro_voice_lang(v).unwrap_or("") == target)
         .collect();
@@ -3555,25 +3940,22 @@ fn resolve_kokoro_voice(
     if candidates.is_empty() {
         let available = voices.join(", ");
         return Err(format!(
-            "Aucune voix Kokoro disponible pour la langue '{}'. Voix disponibles: {}.",
-            target, available
+            "Aucune voix Kokoro disponible pour la langue '{target}'. Voix disponibles: {available}."
         ));
     }
 
     // Prefer a gender matching the speaker hint, otherwise pick the first candidate.
     let preferred: Vec<&String> = candidates
         .iter()
-        .filter(|v| match (v.chars().nth(1), speaker) {
-            (Some('f'), Some("female")) => true,
-            (Some('m'), Some("male")) => true,
-            _ => false,
+        .filter(|v| {
+            matches!(
+                (v.chars().nth(1), speaker),
+                (Some('f'), Some("female")) | (Some('m'), Some("male"))
+            )
         })
         .copied()
         .collect();
-    let chosen = preferred
-        .first()
-        .or_else(|| candidates.first())
-        .unwrap();
+    let chosen = preferred.first().or_else(|| candidates.first()).unwrap();
     Ok((**chosen).clone())
 }
 
@@ -3583,6 +3965,9 @@ fn resolve_kokoro_voice(
 /// the .pt voice files ARE pre-computed style vectors. When a reference audio
 /// is provided, we analyze its pitch (ZCR) to pick the closest-matching
 /// built-in voice by gender. True zero-shot cloning requires XTTS.
+// Signature dictée par l'appel côté interface ; la regrouper en
+// structure rendrait le contrat IPC moins lisible, pas plus.
+#[allow(clippy::too_many_arguments)]
 async fn run_tts_kokoro(
     repo_dir: &std::path::Path,
     text: &str,
@@ -3598,8 +3983,8 @@ async fn run_tts_kokoro(
     design_prompt: Option<&str>,
     on_progress: &Channel<serde_json::Value>,
 ) -> Result<(), String> {
-    let python = find_python()
-        .ok_or_else(|| "Python non trouve. Installez Python 3.10+.".to_string())?;
+    let python =
+        find_python().ok_or_else(|| "Python non trouve. Installez Python 3.10+.".to_string())?;
 
     // Find the model weight file inside the repo: .pth (PyTorch) or .onnx
     // (ONNX export). The Kokoro pipeline uses .pth; kokoro-onnx uses .onnx.
@@ -3608,14 +3993,10 @@ async fn run_tts_kokoro(
         .find(|p| {
             p.extension()
                 .and_then(|e| e.to_str())
-                .map(|e| {
-                    e.eq_ignore_ascii_case("pth") || e.eq_ignore_ascii_case("onnx")
-                })
+                .map(|e| e.eq_ignore_ascii_case("pth") || e.eq_ignore_ascii_case("onnx"))
                 .unwrap_or(false)
         })
-        .ok_or_else(|| {
-            "Fichier .pth ou .onnx Kokoro introuvable dans le depot.".to_string()
-        })?;
+        .ok_or_else(|| "Fichier .pth ou .onnx Kokoro introuvable dans le depot.".to_string())?;
 
     if voice_description.is_some() || design_prompt.is_some() {
         tracing::info!("voice_description / design_prompt are ignored by Kokoro (engine does not support prompt-based voice design)");
@@ -3786,7 +4167,10 @@ except ImportError:
 
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(text.as_bytes()).await.map_err(|e| format!("python stdin: {e}"))?;
+        stdin
+            .write_all(text.as_bytes())
+            .await
+            .map_err(|e| format!("python stdin: {e}"))?;
         stdin.shutdown().await.ok();
     }
 
@@ -3794,7 +4178,10 @@ except ImportError:
         .send(serde_json::json!({"progress": 50, "detail": "Kokoro : synthese en cours"}))
         .ok();
 
-    let output = child.wait_with_output().await.map_err(|e| format!("python wait: {e}"))?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("python wait: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -3887,9 +4274,6 @@ except Exception as e:
     print(f"Parler-TTS generation failed: {{e}}", file=sys.stderr)
     sys.exit(1)
 "#,
-        repo_dir_json = repo_dir_json,
-        out_path_json = out_path_json,
-        description_json = description_json,
     );
 
     on_progress
@@ -3908,7 +4292,10 @@ except Exception as e:
 
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(text.as_bytes()).await.map_err(|e| format!("python stdin: {e}"))?;
+        stdin
+            .write_all(text.as_bytes())
+            .await
+            .map_err(|e| format!("python stdin: {e}"))?;
         stdin.shutdown().await.ok();
     }
 
@@ -3916,7 +4303,10 @@ except Exception as e:
         .send(serde_json::json!({"progress": 50, "detail": "Parler-TTS : synthese vocale"}))
         .ok();
 
-    let output = child.wait_with_output().await.map_err(|e| format!("python wait: {e}"))?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("python wait: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -3933,6 +4323,9 @@ except Exception as e:
 /// Run Coqui XTTS-v2 via a generated Python script.
 /// Requires `coqui-tts` (TTS package) installed. Supports voice cloning
 /// via `speaker_wav` reference audio.
+// Signature dictée par l'appel côté interface ; la regrouper en
+// structure rendrait le contrat IPC moins lisible, pas plus.
+#[allow(clippy::too_many_arguments)]
 async fn run_tts_xtts(
     repo_dir: &std::path::Path,
     text: &str,
@@ -3956,17 +4349,15 @@ async fn run_tts_xtts(
 
     // Verify the repo contains a model checkpoint — coqui-tts loads from
     // the directory, but we confirm weights exist.
-    let has_checkpoint = walkdir_recursive(repo_dir, 3)
-        .iter()
-        .any(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| {
-                    let l = n.to_ascii_lowercase();
-                    l.ends_with(".pth") || l.ends_with(".safetensors") || l.ends_with(".bin")
-                })
-                .unwrap_or(false)
-        });
+    let has_checkpoint = walkdir_recursive(repo_dir, 3).iter().any(|p| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| {
+                let l = n.to_ascii_lowercase();
+                l.ends_with(".pth") || l.ends_with(".safetensors") || l.ends_with(".bin")
+            })
+            .unwrap_or(false)
+    });
     if !has_checkpoint {
         return Err("Checkpoint XTTS introuvable dans le depot.".to_string());
     }
@@ -3976,10 +4367,26 @@ async fn run_tts_xtts(
             .unwrap_or_else(|_| format!("\"{}\"", r.replace('\\', "\\\\").replace('"', "\\\""))),
         None => "None".to_string(),
     };
-    let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy().as_ref())
-        .unwrap_or_else(|_| format!("\"{}\"", repo_dir.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")));
-    let out_path_json = serde_json::to_string(&out_file.to_string_lossy().as_ref())
-        .unwrap_or_else(|_| format!("\"{}\"", out_file.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")));
+    let repo_dir_json =
+        serde_json::to_string(&repo_dir.to_string_lossy().as_ref()).unwrap_or_else(|_| {
+            format!(
+                "\"{}\"",
+                repo_dir
+                    .to_string_lossy()
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+            )
+        });
+    let out_path_json =
+        serde_json::to_string(&out_file.to_string_lossy().as_ref()).unwrap_or_else(|_| {
+            format!(
+                "\"{}\"",
+                out_file
+                    .to_string_lossy()
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+            )
+        });
 
     let script = format!(
         r#"
@@ -3987,7 +4394,7 @@ import sys, os
 
 model_dir = {repo_dir_json}
 out_path = {out_path_json}
-language = "{lang}"
+language = "{language}"
 ref_path = {ref_json}
 
 text = sys.stdin.read()
@@ -4025,10 +4432,6 @@ else:
 
 print("OK")
 "#,
-        lang = language,
-        ref_json = ref_json,
-        repo_dir_json = repo_dir_json,
-        out_path_json = out_path_json,
     );
 
     on_progress
@@ -4047,7 +4450,10 @@ print("OK")
 
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(text.as_bytes()).await.map_err(|e| format!("python stdin: {e}"))?;
+        stdin
+            .write_all(text.as_bytes())
+            .await
+            .map_err(|e| format!("python stdin: {e}"))?;
         stdin.shutdown().await.ok();
     }
 
@@ -4055,7 +4461,10 @@ print("OK")
         .send(serde_json::json!({"progress": 50, "detail": "XTTS : synthese en cours"}))
         .ok();
 
-    let output = child.wait_with_output().await.map_err(|e| format!("python wait: {e}"))?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("python wait: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -4070,11 +4479,6 @@ print("OK")
 }
 
 // ── Qwen3-TTS ──────────────────────────────────────────────────────────────────
-/// Run Qwen3-TTS inference via Python transformers.
-/// Handles all three variants:
-///   - Base: simple TTS
-///   - CustomVoice: TTS with a speaker reference audio
-///   - VoiceDesign: TTS with voice description prompt
 /// Sampling and style controls for Qwen3-TTS.
 ///
 /// Defaults match the library's own, which are noticeably livelier than the
@@ -4144,6 +4548,9 @@ impl Default for TtsSampling {
     }
 }
 
+// Signature dictée par l'appel côté interface ; la regrouper en
+// structure rendrait le contrat IPC moins lisible, pas plus.
+#[allow(clippy::too_many_arguments)]
 async fn run_tts_qwen3(
     repo_dir: &std::path::Path,
     text: &str,
@@ -4156,20 +4563,36 @@ async fn run_tts_qwen3(
     sampling: &TtsSampling,
     on_progress: &Channel<serde_json::Value>,
 ) -> Result<(), String> {
-    let python = find_python()
-        .ok_or_else(|| "Python non trouve. Installez Python 3.10+.".to_string())?;
+    let python =
+        find_python().ok_or_else(|| "Python non trouve. Installez Python 3.10+.".to_string())?;
 
     let ref_json = match voice_reference {
         Some(r) => serde_json::to_string(r)
             .unwrap_or_else(|_| format!("\"{}\"", r.replace('\\', "\\\\").replace('"', "\\\""))),
         None => "None".to_string(),
     };
-    let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy().as_ref())
-        .unwrap_or_else(|_| format!("\"{}\"", repo_dir.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")));
-    let out_path_json = serde_json::to_string(&out_file.to_string_lossy().as_ref())
-        .unwrap_or_else(|_| format!("\"{}\"", out_file.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")));
+    let repo_dir_json =
+        serde_json::to_string(&repo_dir.to_string_lossy().as_ref()).unwrap_or_else(|_| {
+            format!(
+                "\"{}\"",
+                repo_dir
+                    .to_string_lossy()
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+            )
+        });
+    let out_path_json =
+        serde_json::to_string(&out_file.to_string_lossy().as_ref()).unwrap_or_else(|_| {
+            format!(
+                "\"{}\"",
+                out_file
+                    .to_string_lossy()
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+            )
+        });
     let lang_json = match language {
-        Some(l) => serde_json::to_string(l).unwrap_or_else(|_| format!("\"{}\"", l)),
+        Some(l) => serde_json::to_string(l).unwrap_or_else(|_| format!("\"{l}\"")),
         None => "None".to_string(),
     };
     // voice_description / design_prompt for the VoiceDesign variant
@@ -4635,7 +5058,10 @@ except Exception as e:
 
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(text.as_bytes()).await.map_err(|e| format!("python stdin: {e}"))?;
+        stdin
+            .write_all(text.as_bytes())
+            .await
+            .map_err(|e| format!("python stdin: {e}"))?;
         stdin.shutdown().await.ok();
     }
 
@@ -4689,7 +5115,10 @@ except Exception as e:
     let stderr_text = stderr_task.await.unwrap_or_default();
 
     if !status.success() {
-        return Err(format!("Qwen3-TTS a echoue: {}", summarise_python_error(&stderr_text)));
+        return Err(format!(
+            "Qwen3-TTS a echoue: {}",
+            summarise_python_error(&stderr_text)
+        ));
     }
 
     on_progress
@@ -4720,7 +5149,10 @@ fn summarise_python_error(stderr: &str) -> String {
         .collect();
 
     // The final exception line carries the actual cause; keep a little context.
-    if let Some(pos) = useful.iter().rposition(|l| l.contains("Error:") || l.contains("Exception:")) {
+    if let Some(pos) = useful
+        .iter()
+        .rposition(|l| l.contains("Error:") || l.contains("Exception:"))
+    {
         return useful[pos..].join(" ");
     }
     let tail: Vec<&str> = useful.iter().rev().take(4).rev().copied().collect();
@@ -4732,8 +5164,11 @@ fn summarise_python_error(stderr: &str) -> String {
 }
 
 #[tauri::command]
+// Signature dictée par l'appel côté interface ; la regrouper en
+// structure rendrait le contrat IPC moins lisible, pas plus.
+#[allow(clippy::too_many_arguments)]
 async fn generate_audio(
-    core: State<'_, Core>,
+    _core: State<'_, Core>,
     model: String,
     text: String,
     output_dir: String,
@@ -4766,10 +5201,14 @@ async fn generate_audio(
         tracing::debug!(language = %language.as_ref().unwrap(), "synthesis language provided");
     }
     if voice_description.as_ref().is_some_and(|s| !s.is_empty()) {
-        tracing::debug!("voice_description provided; it will be consumed by engines that support voice design");
+        tracing::debug!(
+            "voice_description provided; it will be consumed by engines that support voice design"
+        );
     }
     if design_prompt.as_ref().is_some_and(|s| !s.is_empty()) {
-        tracing::debug!("design_prompt provided; it will be consumed by engines that support voice design");
+        tracing::debug!(
+            "design_prompt provided; it will be consumed by engines that support voice design"
+        );
     }
 
     let output_path = std::path::Path::new(&output_dir);
@@ -4788,8 +5227,7 @@ async fn generate_audio(
     let out_file = output_path.join(out_file_name);
 
     let models_dir = locaryn_config::models_dir();
-    let (engine, model_path, config_path) =
-        resolve_tts_engine(&models_dir, &model);
+    let (engine, model_path, config_path) = resolve_tts_engine(&models_dir, &model);
 
     on_progress
         .send(serde_json::json!({"progress": 0, "detail": "initialisation"}))
@@ -4914,7 +5352,8 @@ async fn generate_audio(
     match result {
         Ok(()) => {
             // Verify the output file exists and is non-empty.
-            if out_file.exists() && std::fs::metadata(&out_file).map(|m| m.len()).unwrap_or(0) > 44 {
+            if out_file.exists() && std::fs::metadata(&out_file).map(|m| m.len()).unwrap_or(0) > 44
+            {
                 Ok(GeneratedAudio {
                     path: out_file.to_string_lossy().to_string(),
                     simulated: false,
@@ -4984,7 +5423,9 @@ async fn list_audio_models() -> Result<Vec<String>, String> {
                         .map(|n| {
                             let l = n.to_ascii_lowercase();
                             // Main model weights, not voice profiles
-                            l.ends_with(".pth") || l.ends_with(".safetensors") || l.ends_with(".bin")
+                            l.ends_with(".pth")
+                                || l.ends_with(".safetensors")
+                                || l.ends_with(".bin")
                         })
                         .unwrap_or(false)
                 });
@@ -4999,7 +5440,7 @@ async fn list_audio_models() -> Result<Vec<String>, String> {
                 let has_config = walker.iter().any(|p| {
                     p.file_name()
                         .and_then(|n| n.to_str())
-                        .map(|n| n.to_ascii_lowercase() == "config.json")
+                        .map(|n| n.eq_ignore_ascii_case("config.json"))
                         .unwrap_or(false)
                 });
                 if has_model_weight || (has_voice_dir && has_config) {
@@ -5030,7 +5471,10 @@ async fn extract_audio_from_video(
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
-    let is_video = matches!(ext.as_str(), "mp4" | "mkv" | "avi" | "mov" | "webm" | "m4v" | "mpg" | "mpeg");
+    let is_video = matches!(
+        ext.as_str(),
+        "mp4" | "mkv" | "avi" | "mov" | "webm" | "m4v" | "mpg" | "mpeg"
+    );
     if !is_video {
         return Ok(video_path.to_path_buf());
     }
@@ -5039,12 +5483,17 @@ async fn extract_audio_from_video(
     let output_dir = output_dir.to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        let ffmpeg_check = std::process::Command::new("ffmpeg").args(["-version"]).output();
+        let ffmpeg_check = std::process::Command::new("ffmpeg")
+            .args(["-version"])
+            .output();
         if ffmpeg_check.is_err() {
-            return Err("ffmpeg n'est pas installe. Installez ffmpeg pour importer une video.".into());
+            return Err(
+                "ffmpeg n'est pas installe. Installez ffmpeg pour importer une video.".into(),
+            );
         }
 
-        std::fs::create_dir_all(&output_dir).map_err(|e| format!("Impossible de creer le dossier de sortie: {}", e))?;
+        std::fs::create_dir_all(&output_dir)
+            .map_err(|e| format!("Impossible de creer le dossier de sortie: {e}"))?;
 
         let stem = video_path
             .file_stem()
@@ -5054,7 +5503,7 @@ async fn extract_audio_from_video(
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis().to_string())
             .unwrap_or_else(|_| "0".into());
-        let out_filename = format!("{}_extracted_{}.wav", stem, ts);
+        let out_filename = format!("{stem}_extracted_{ts}.wav");
         let out_path = output_dir.join(out_filename);
 
         let input_path = video_path.to_string_lossy().to_string();
@@ -5076,11 +5525,11 @@ async fn extract_audio_from_video(
                 &out_path_str,
             ])
             .output()
-            .map_err(|e| format!("Impossible de lancer ffmpeg: {}", e))?;
+            .map_err(|e| format!("Impossible de lancer ffmpeg: {e}"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Echec de l'extraction audio avec ffmpeg: {}", stderr));
+            return Err(format!("Echec de l'extraction audio avec ffmpeg: {stderr}"));
         }
 
         if !out_path.exists() {
@@ -5090,7 +5539,7 @@ async fn extract_audio_from_video(
         Ok(out_path)
     })
     .await
-    .map_err(|e| format!("ffmpeg task failed: {}", e))?
+    .map_err(|e| format!("ffmpeg task failed: {e}"))?
 }
 
 /// Convert a dialog `FilePath` to a local `PathBuf`, handling both plain
@@ -5113,8 +5562,11 @@ fn dialog_file_path_to_path(path: &tauri_plugin_dialog::FilePath) -> std::path::
 /// Python subprocess (similar to `run_tts_parler`).
 // Note: #[tauri::command] removed because of E0252 name collision with format!
 // macro named parameters in the Python script. We register it via the handler.
+// Signature dictée par l'appel côté interface ; la regrouper en
+// structure rendrait le contrat IPC moins lisible, pas plus.
+#[allow(clippy::too_many_arguments)]
 async fn generate_music(
-    core: State<'_, Core>,
+    _core: State<'_, Core>,
     model: String,
     prompt: String,
     output_dir: String,
@@ -5152,7 +5604,11 @@ async fn generate_music(
         model_path
     } else if let Some(parent) = std::path::Path::new(&model).parent() {
         let dir = models_dir.join(parent);
-        if dir.is_dir() { dir } else { model_path }
+        if dir.is_dir() {
+            dir
+        } else {
+            model_path
+        }
     } else {
         model_path
     };
@@ -5169,8 +5625,7 @@ async fn generate_music(
     // diffusers (AudioLDM / Stable Audio), then bark.
     let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy())
         .map_err(|e| format!("encode repo_dir: {e}"))?;
-    let prompt_json = serde_json::to_string(&prompt)
-        .map_err(|e| format!("encode prompt: {e}"))?;
+    let prompt_json = serde_json::to_string(&prompt).map_err(|e| format!("encode prompt: {e}"))?;
     let out_path_json = serde_json::to_string(&out_file.to_string_lossy())
         .map_err(|e| format!("encode out_path: {e}"))?;
     let duration_secs = duration;
@@ -5299,18 +5754,12 @@ except ImportError:
 report(100, "termine (%s)" % engine)
 print("OK", file=sys.stderr)
 "#,
-        repo_dir_json = repo_dir_json,
-        out_path_json = out_path_json,
-        prompt_json = prompt_json,
-        duration_secs = duration_secs,
-        steps_val = steps_val,
-        cfg_val = cfg_val,
-        melody_json = melody_json,
-        negative_json = negative_json,
     );
 
     on_progress
-        .send(serde_json::json!({"progress": 15, "detail": "MusicGen : lancement du script Python"}))
+        .send(
+            serde_json::json!({"progress": 15, "detail": "MusicGen : lancement du script Python"}),
+        )
         .ok();
 
     let mut child = tokio::process::Command::new(&python)
@@ -5364,9 +5813,11 @@ print("OK", file=sys.stderr)
         Ok(r) => r.map_err(|e| format!("python wait: {e}"))?,
         Err(_) => {
             let _ = child.kill().await;
-            return Err("La génération musicale a dépassé 30 minutes et a été interrompue. \
+            return Err(
+                "La génération musicale a dépassé 30 minutes et a été interrompue. \
                         Réduisez la durée demandée."
-                .into());
+                    .into(),
+            );
         }
     };
     let errs = err_task.await.unwrap_or_default();
@@ -5396,6 +5847,9 @@ print("OK", file=sys.stderr)
 // ── Video generation ────────────────────────────────────────────────────────
 
 #[tauri::command]
+// Signature dictée par l'appel côté interface ; la regrouper en
+// structure rendrait le contrat IPC moins lisible, pas plus.
+#[allow(clippy::too_many_arguments)]
 async fn generate_video(
     model: String,
     prompt: String,
@@ -5438,7 +5892,11 @@ async fn generate_video(
         model_path
     } else if let Some(parent) = std::path::Path::new(&model).parent() {
         let dir = models_dir.join(parent);
-        if dir.is_dir() { dir } else { model_path }
+        if dir.is_dir() {
+            dir
+        } else {
+            model_path
+        }
     } else {
         model_path
     };
@@ -5454,8 +5912,7 @@ async fn generate_video(
     // video-gen libraries in priority: diffusers (Wan2.1, LTX, CogVideo, SVD, Hunyuan, Mochi).
     let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy())
         .map_err(|e| format!("encode repo_dir: {e}"))?;
-    let prompt_json = serde_json::to_string(&prompt)
-        .map_err(|e| format!("encode prompt: {e}"))?;
+    let prompt_json = serde_json::to_string(&prompt).map_err(|e| format!("encode prompt: {e}"))?;
     let out_path_json = serde_json::to_string(&out_file.to_string_lossy())
         .map_err(|e| format!("encode out_path: {e}"))?;
     let input_image_json = match &input_image {
@@ -5627,20 +6084,12 @@ try:
 
     print("OK", file=sys.stderr)
 "#,
-        repo_dir_json = repo_dir_json,
-        out_path_json = out_path_json,
-        prompt_json = prompt_json,
-        input_image_json = input_image_json,
-        negative_prompt_json = negative_prompt_json,
-        duration_secs = duration_secs,
-        steps_val = steps_val,
-        cfg_val = cfg_val,
-        width_val = width_val,
-        height_val = height_val,
     );
 
     on_progress
-        .send(serde_json::json!({"progress": 15, "detail": "VideoGen : lancement du script Python"}))
+        .send(
+            serde_json::json!({"progress": 15, "detail": "VideoGen : lancement du script Python"}),
+        )
         .ok();
 
     let mut child = tokio::process::Command::new(&python)
@@ -5665,7 +6114,10 @@ try:
         }
     }
 
-    let status = child.wait().await.map_err(|e| format!("python wait: {e}"))?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("python wait: {e}"))?;
     if !status.success() {
         return Err("La génération vidéo a échoué. Vérifiez que le modèle est installé et que les dépendances Python sont présentes (pip install torch diffusers transformers imageio-ffmpeg).".into());
     }
@@ -5687,6 +6139,9 @@ try:
 // ── 3D generation ───────────────────────────────────────────────────────────
 
 #[tauri::command]
+// Signature dictée par l'appel côté interface ; la regrouper en
+// structure rendrait le contrat IPC moins lisible, pas plus.
+#[allow(clippy::too_many_arguments)]
 async fn generate_3d(
     model: String,
     prompt: String,
@@ -5731,7 +6186,11 @@ async fn generate_3d(
         model_path
     } else if let Some(parent) = std::path::Path::new(&model).parent() {
         let dir = models_dir.join(parent);
-        if dir.is_dir() { dir } else { model_path }
+        if dir.is_dir() {
+            dir
+        } else {
+            model_path
+        }
     } else {
         model_path
     };
@@ -5746,8 +6205,7 @@ async fn generate_3d(
     // Build the Python inference script. Try multiple 3D generation libraries.
     let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy())
         .map_err(|e| format!("encode repo_dir: {e}"))?;
-    let prompt_json = serde_json::to_string(&prompt)
-        .map_err(|e| format!("encode prompt: {e}"))?;
+    let prompt_json = serde_json::to_string(&prompt).map_err(|e| format!("encode prompt: {e}"))?;
     let out_path_json = serde_json::to_string(&out_file.to_string_lossy())
         .map_err(|e| format!("encode out_path: {e}"))?;
     let input_image_json = match &input_image {
@@ -5969,13 +6427,6 @@ except Exception as e:
     print(f"Erreur: {{e}}", file=sys.stderr)
     sys.exit(1)
 "#,
-        repo_dir_json = repo_dir_json,
-        out_path_json = out_path_json,
-        prompt_json = prompt_json,
-        input_image_json = input_image_json,
-        negative_prompt_json = negative_prompt_json,
-        steps_val = steps_val,
-        cfg_val = cfg_val,
     );
 
     on_progress
@@ -6004,7 +6455,10 @@ except Exception as e:
         }
     }
 
-    let status = child.wait().await.map_err(|e| format!("python wait: {e}"))?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("python wait: {e}"))?;
     if !status.success() {
         return Err("La génération 3D a échoué. Vérifiez que le modèle est installé et que les dépendances Python sont présentes (pip install torch trimesh shap-e point-e tsr).".into());
     }
@@ -6046,7 +6500,7 @@ async fn pick_voice_reference(app: tauri::AppHandle) -> Result<Option<String>, S
             let data_dir = app
                 .path()
                 .app_data_dir()
-                .map_err(|e| format!("Impossible d'acceder au dossier de donnees: {}", e))?;
+                .map_err(|e| format!("Impossible d'acceder au dossier de donnees: {e}"))?;
             let output_dir = data_dir.join("voice_references");
             let audio_path = extract_audio_from_video(&p, &output_dir).await?;
             Ok(Some(audio_path.to_string_lossy().to_string()))
@@ -6234,10 +6688,7 @@ fn get_provider_model_params(core: State<'_, Core>) -> ModelParams {
 }
 
 #[tauri::command]
-fn update_provider_model_params(
-    core: State<'_, Core>,
-    params: ModelParams,
-) -> Result<(), String> {
+fn update_provider_model_params(core: State<'_, Core>, params: ModelParams) -> Result<(), String> {
     params.save(&core.data_dir).map_err(|e| e.to_string())?;
     tracing::info!(temp = params.temperature, "model params updated");
     Ok(())
@@ -6268,8 +6719,7 @@ fn check_hardware() -> Result<HardwareSpec, String> {
             .and_then(|s| {
                 s.lines()
                     .filter(|l| l.trim().chars().all(|c| c.is_ascii_digit()))
-                    .filter(|l| !l.trim().is_empty())
-                    .next()
+                    .find(|l| !l.trim().is_empty())
                     .and_then(|n| n.trim().parse::<u64>().ok())
             })
             .map(|bytes| (bytes / (1024 * 1024 * 1024)) as u32)
@@ -6332,15 +6782,15 @@ fn delete_model_cmd(_endpoint: String, model: String) -> Result<(), String> {
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
         for entry in entries.flatten() {
             let p = entry.path();
-            let name = p.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
             // Try exact match first, then name-contains-tag.
             if name.to_lowercase() == lower_tag || name.to_lowercase().contains(&lower_tag) {
                 if p.is_dir() {
-                    std::fs::remove_dir_all(&p).map_err(|e| format!("Impossible de supprimer le dossier {name}: {e}"))?;
+                    std::fs::remove_dir_all(&p)
+                        .map_err(|e| format!("Impossible de supprimer le dossier {name}: {e}"))?;
                 } else if p.is_file() {
-                    std::fs::remove_file(&p).map_err(|e| format!("Impossible de supprimer le fichier {name}: {e}"))?;
+                    std::fs::remove_file(&p)
+                        .map_err(|e| format!("Impossible de supprimer le fichier {name}: {e}"))?;
                 } else {
                     continue;
                 }
@@ -6351,7 +6801,11 @@ fn delete_model_cmd(_endpoint: String, model: String) -> Result<(), String> {
     }
 
     if !deleted_any {
-        return Err(format!("Aucun modèle trouvé correspondant à '{}' dans {}", model, models_dir.display()));
+        return Err(format!(
+            "Aucun modèle trouvé correspondant à '{}' dans {}",
+            model,
+            models_dir.display()
+        ));
     }
     Ok(())
 }
@@ -6403,7 +6857,11 @@ fn app_info(core: State<'_, Core>) -> Result<AppInfo, String> {
         version: env!("CARGO_PKG_VERSION").to_string(),
         mode: format!("{:?}", core.mode).to_lowercase(),
         data_dir: core.data_dir.to_string_lossy().to_string(),
-        db_path: core.data_dir.join("locaryn.db").to_string_lossy().to_string(),
+        db_path: core
+            .data_dir
+            .join("locaryn.db")
+            .to_string_lossy()
+            .to_string(),
         models_dir: locaryn_config::models_dir().to_string_lossy().to_string(),
     })
 }
@@ -6426,7 +6884,7 @@ pub struct RuntimePlan {
 }
 
 #[tauri::command]
-fn plan_model_runtime(core: State<'_, Core>, model: String) -> Result<RuntimePlan, String> {
+fn plan_model_runtime(_core: State<'_, Core>, model: String) -> Result<RuntimePlan, String> {
     let models_dir = locaryn_config::models_dir();
     let path = models_dir.join(&model);
     let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
@@ -6439,7 +6897,11 @@ fn plan_model_runtime(core: State<'_, Core>, model: String) -> Result<RuntimePla
     let (mode, label, gpu_layers) = if size_gb <= vram_gb * 0.9 {
         ("gpu", String::new(), -1)
     } else if size_gb <= ram_gb * 0.8 {
-        ("offload", format!("offload RAM ({:.1} GB)", size_gb - vram_gb), 0)
+        (
+            "offload",
+            format!("offload RAM ({:.1} GB)", size_gb - vram_gb),
+            0,
+        )
     } else {
         ("heavy", "low VRAM".to_string(), 0)
     };
@@ -6478,7 +6940,7 @@ pub struct RuntimeCapabilities {
 }
 
 #[tauri::command]
-fn runtime_capabilities(core: State<'_, Core>) -> Result<RuntimeCapabilities, String> {
+fn runtime_capabilities(_core: State<'_, Core>) -> Result<RuntimeCapabilities, String> {
     let llama_bin = locaryn_config::bin_dir().join("llama-server.exe");
     let runtime_installed = llama_bin.exists();
 
@@ -6564,11 +7026,7 @@ pub struct RagHit {
 /// Build RAG context for a message: retrieve relevant chunks from the project's
 /// index and format them as a system note prepended to the user's message.
 /// Returns None if no index exists, so the caller skips the RAG step.
-async fn build_rag_context(
-    _core: &Core,
-    _project_id: &str,
-    _query: &str,
-) -> Option<String> {
+async fn build_rag_context(_core: &Core, _project_id: &str, _query: &str) -> Option<String> {
     // RAG index lookup will be implemented with an embeddings server.
     // For now, return None so the message is sent without RAG context.
     None
@@ -6656,7 +7114,7 @@ pub struct LlamaRuntimeStatus {
 }
 
 #[tauri::command]
-fn llama_runtime_status(core: State<'_, Core>) -> Result<LlamaRuntimeStatus, String> {
+fn llama_runtime_status(_core: State<'_, Core>) -> Result<LlamaRuntimeStatus, String> {
     let bin = locaryn_config::bin_dir().join("llama-server.exe");
     let installed = bin.exists();
     Ok(LlamaRuntimeStatus {
@@ -6697,7 +7155,10 @@ async fn setup_llama_runtime(
     };
     let _ = on_event.send(pull_event);
 
-    do_pull(&core, url, zip_name, &zip_path, &part_path, &on_event, &cancel).await?;
+    do_pull(
+        &core, url, zip_name, &zip_path, &part_path, &on_event, &cancel,
+    )
+    .await?;
 
     // Extract would go here; for now just report success.
     let bin = bin_dir.join("llama-server.exe");
@@ -6762,7 +7223,11 @@ fn list_connector_types() -> Result<Vec<ConnectorType>, String> {
 
 #[tauri::command]
 async fn list_ssh_servers(core: State<'_, Core>) -> Result<Vec<SshServer>, String> {
-    core.storage.ssh_servers.list().await.map_err(|e| e.to_string())
+    core.storage
+        .ssh_servers
+        .list()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -6776,10 +7241,7 @@ async fn test_ssh_connection(
 }
 
 #[tauri::command]
-async fn confirm_ssh_host_key(
-    core: State<'_, Core>,
-    test_token: String,
-) -> Result<(), String> {
+async fn confirm_ssh_host_key(core: State<'_, Core>, test_token: String) -> Result<(), String> {
     let mut tests = core.pending_tests.lock().await;
     if let Some(test) = tests.get_mut(&test_token) {
         test.confirmed = true;
@@ -6791,7 +7253,7 @@ async fn confirm_ssh_host_key(
 
 #[tauri::command]
 async fn save_ssh_server(
-    core: State<'_, Core>,
+    _core: State<'_, Core>,
     draft: serde_json::Value,
     secret: Option<String>,
     test_token: String,
@@ -6836,123 +7298,6 @@ async fn delete_ssh_server(core: State<'_, Core>, id: Uuid) -> Result<(), String
 // ============================================================================
 // Unit tests — Python script syntax validation
 // ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::summarise_python_error;
-    use std::process::Command;
-
-    /// Real sd.cpp output: the bar redraws with carriage returns, so a whole
-    /// render can arrive as a single line holding every step.
-    #[test]
-    fn sd_progress_is_read_from_the_redrawn_bar() {
-        let line = "[INFO ]   |=======>       | 1/7 - 17.40s/it  |==============>    | 2/7 - 7.16s/it                      |=====================>  | 3/7 - 6.15s/it";
-        assert_eq!(super::parse_sd_step(line), Some(3), "doit rendre l etape la plus recente");
-
-        assert_eq!(super::parse_sd_step("  |==>   | 1/21 - 8.56s/it"), Some(1));
-        assert_eq!(super::parse_sd_step("|##########| 452/452 - 945.11MB/s"), Some(452));
-        assert_eq!(super::parse_sd_step("[INFO ] sampling completed, taking 54.63s"), None);
-        assert_eq!(super::parse_sd_step(""), None);
-    }
-
-    /// Built from the traceback the user actually reported: absl banners, a
-    /// SoX warning and a full traceback around one meaningful ValueError.
-    #[test]
-    fn python_errors_are_reduced_to_the_actionable_line() {
-        let raw = "WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-            I0000 00:00:1785432677.183995 52864 port.cc:153] oneDNN custom operations are on.
-            'sox' n'est pas reconnu en tant que commande interne ou externe
-            SoX could not be found!
-            Traceback (most recent call last):
-              File \"<string>\", line 57, in <module>
-              File \"qwen3_tts_model.py\", line 163, in _validate_languages
-                raise ValueError(f\"Unsupported languages: {bad}\")
-            ValueError: Unsupported languages: ['fr']. Supported: ['auto', 'french']
-";
-
-        let out = summarise_python_error(raw);
-
-        assert!(out.starts_with("ValueError: Unsupported languages"), "got: {out}");
-        assert!(!out.contains("absl"), "absl banner leaked: {out}");
-        assert!(!out.contains("oneDNN"), "oneDNN banner leaked: {out}");
-        assert!(out.len() < 120, "still too long ({} chars): {out}", out.len());
-    }
-
-    #[test]
-    fn python_errors_without_an_exception_line_keep_the_tail() {
-        let out = summarise_python_error("bruit
-ligne utile A
-ligne utile B
-");
-        assert!(out.contains("ligne utile B"), "got: {out}");
-        assert_eq!(summarise_python_error("   
-  
-"), "erreur inconnue (aucune sortie)");
-    }
-
-    /// Validate Python syntax of all embedded TTS scripts.
-    /// Reads each .py file in `scripts/`, replaces Rust format!() placeholders
-    /// with dummy values, and runs `python3 -c compile()` to catch syntax
-    /// errors before they surface at runtime.
-    #[test]
-    fn validate_tts_python_syntax() {
-        let scripts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts");
-
-        let names = [
-            "kokoro_clone_tts.py",
-            "kokoro_std_tts.py",
-            "parler_tts.py",
-            "xtts_tts.py",
-            "qwen3_tts.py",
-        ];
-
-        for name in &names {
-            let path = scripts_dir.join(name);
-            assert!(
-                path.exists(),
-                "script not found: {}",
-                path.display()
-            );
-
-            let src = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-
-            // Write to a temp file so python3 can read it cleanly.
-            // The raw scripts are already syntactically valid Python:
-            // `{repo_dir_json}` is a legal Python set literal (undefined var
-            // at runtime, but compile() only checks syntax).
-            let tmpdir = std::env::temp_dir().join("locaryn_tts_test");
-            let _ = std::fs::create_dir_all(&tmpdir);
-            let tmpfile = tmpdir.join(name);
-            std::fs::write(&tmpfile, &src)
-                .unwrap_or_else(|e| panic!("failed to write temp script: {e}"));
-
-            // Use forward slashes so Python's parser doesn't interpret \U / \u escapes.
-            let py_path = tmpfile.to_str().unwrap().replace("\\", "/");
-            let out = Command::new("python3")
-                .args([
-                    "-c",
-                    &format!(
-                        "compile(open('{}', 'r').read(), '{}', 'exec')",
-                        py_path,
-                        name
-                    ),
-                ])
-                .output()
-                .unwrap_or_else(|e| panic!("failed to run python3: {e}"));
-
-            assert!(
-                out.status.success(),
-                "Python syntax error in {}:\n{}",
-                name,
-                String::from_utf8_lossy(&out.stderr)
-            );
-
-            // Clean up the temp file.
-            let _ = std::fs::remove_file(&tmpfile);
-        }
-    }
-}
 
 // ============================================================================
 // Entry point — Tauri builder with all commands registered
@@ -7148,4 +7493,141 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Locaryn desktop");
+}
+
+// Le module de test ferme le fichier : tout élément placé après lui se lit
+// mal et s'oublie facilement — c'est précisément ce que signale clippy.
+
+#[cfg(test)]
+mod tests {
+    use super::summarise_python_error;
+    use std::process::Command;
+
+    /// Real sd.cpp output: the bar redraws with carriage returns, so a whole
+    /// render can arrive as a single line holding every step.
+    #[test]
+    fn sd_progress_is_read_from_the_redrawn_bar() {
+        let line = "[INFO ]   |=======>       | 1/7 - 17.40s/it  |==============>    | 2/7 - 7.16s/it                      |=====================>  | 3/7 - 6.15s/it";
+        assert_eq!(
+            super::parse_sd_step(line),
+            Some(3),
+            "doit rendre l etape la plus recente"
+        );
+
+        assert_eq!(super::parse_sd_step("  |==>   | 1/21 - 8.56s/it"), Some(1));
+        assert_eq!(
+            super::parse_sd_step("|##########| 452/452 - 945.11MB/s"),
+            Some(452)
+        );
+        assert_eq!(
+            super::parse_sd_step("[INFO ] sampling completed, taking 54.63s"),
+            None
+        );
+        assert_eq!(super::parse_sd_step(""), None);
+    }
+
+    /// Built from the traceback the user actually reported: absl banners, a
+    /// SoX warning and a full traceback around one meaningful ValueError.
+    #[test]
+    fn python_errors_are_reduced_to_the_actionable_line() {
+        let raw =
+            "WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+            I0000 00:00:1785432677.183995 52864 port.cc:153] oneDNN custom operations are on.
+            'sox' n'est pas reconnu en tant que commande interne ou externe
+            SoX could not be found!
+            Traceback (most recent call last):
+              File \"<string>\", line 57, in <module>
+              File \"qwen3_tts_model.py\", line 163, in _validate_languages
+                raise ValueError(f\"Unsupported languages: {bad}\")
+            ValueError: Unsupported languages: ['fr']. Supported: ['auto', 'french']
+";
+
+        let out = summarise_python_error(raw);
+
+        assert!(
+            out.starts_with("ValueError: Unsupported languages"),
+            "got: {out}"
+        );
+        assert!(!out.contains("absl"), "absl banner leaked: {out}");
+        assert!(!out.contains("oneDNN"), "oneDNN banner leaked: {out}");
+        assert!(
+            out.len() < 120,
+            "still too long ({} chars): {out}",
+            out.len()
+        );
+    }
+
+    #[test]
+    fn python_errors_without_an_exception_line_keep_the_tail() {
+        let out = summarise_python_error(
+            "bruit
+ligne utile A
+ligne utile B
+",
+        );
+        assert!(out.contains("ligne utile B"), "got: {out}");
+        assert_eq!(
+            summarise_python_error(
+                "   
+  
+"
+            ),
+            "erreur inconnue (aucune sortie)"
+        );
+    }
+
+    /// Validate Python syntax of all embedded TTS scripts.
+    /// Reads each .py file in `scripts/`, replaces Rust format!() placeholders
+    /// with dummy values, and runs `python3 -c compile()` to catch syntax
+    /// errors before they surface at runtime.
+    #[test]
+    fn validate_tts_python_syntax() {
+        let scripts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts");
+
+        let names = [
+            "kokoro_clone_tts.py",
+            "kokoro_std_tts.py",
+            "parler_tts.py",
+            "xtts_tts.py",
+            "qwen3_tts.py",
+        ];
+
+        for name in &names {
+            let path = scripts_dir.join(name);
+            assert!(path.exists(), "script not found: {}", path.display());
+
+            let src = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+
+            // Write to a temp file so python3 can read it cleanly.
+            // The raw scripts are already syntactically valid Python:
+            // `{repo_dir_json}` is a legal Python set literal (undefined var
+            // at runtime, but compile() only checks syntax).
+            let tmpdir = std::env::temp_dir().join("locaryn_tts_test");
+            let _ = std::fs::create_dir_all(&tmpdir);
+            let tmpfile = tmpdir.join(name);
+            std::fs::write(&tmpfile, &src)
+                .unwrap_or_else(|e| panic!("failed to write temp script: {e}"));
+
+            // Use forward slashes so Python's parser doesn't interpret \U / \u escapes.
+            let py_path = tmpfile.to_str().unwrap().replace("\\", "/");
+            let out = Command::new("python3")
+                .args([
+                    "-c",
+                    &format!("compile(open('{py_path}', 'r').read(), '{name}', 'exec')"),
+                ])
+                .output()
+                .unwrap_or_else(|e| panic!("failed to run python3: {e}"));
+
+            assert!(
+                out.status.success(),
+                "Python syntax error in {}:\n{}",
+                name,
+                String::from_utf8_lossy(&out.stderr)
+            );
+
+            // Clean up the temp file.
+            let _ = std::fs::remove_file(&tmpfile);
+        }
+    }
 }

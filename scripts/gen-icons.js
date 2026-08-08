@@ -1,11 +1,12 @@
 // Temporary script: generate a proper 32x32 PNG + ICO for the Tauri app.
 // Run: node scripts/gen-icons.js
 // Delete after use.
-const fs = require("fs");
-const zlib = require("zlib");
-const path = require("path");
+const fs = require("node:fs");
+const zlib = require("node:zlib");
+const path = require("node:path");
 
-const W = 32, H = 32;
+const W = 32;
+const H = 32;
 const RAW_LEN = H * (1 + W * 3);
 const raw = Buffer.alloc(RAW_LEN);
 for (let y = 0; y < H; y++) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { clearRun, getRun, subscribeRun, type RunView } from "../lib/runPanel";
+import { type RunView, clearRun, getRun, subscribeRun } from "../lib/runPanel";
 
 /**
  * The right-hand pane: what running a code block produced.
@@ -19,8 +19,8 @@ export function RunPanel() {
         <div className="locaryn-run-empty">
           <div className="locaryn-run-empty-title">Rien à afficher</div>
           <div className="locaryn-run-empty-sub">
-            Exécutez un bloc de code depuis une réponse : la sortie du terminal ou
-            la page rendue s'affichera ici.
+            Exécutez un bloc de code depuis une réponse : la sortie du terminal ou la page rendue
+            s'affichera ici.
           </div>
         </div>
       </aside>
@@ -37,9 +37,7 @@ export function RunPanel() {
           <span className="locaryn-run-badge">en cours…</span>
         )}
         {run.kind === "terminal" && !run.running && (
-          <span
-            className={`locaryn-run-badge${run.exitCode ? " locaryn-run-badge-bad" : ""}`}
-          >
+          <span className={`locaryn-run-badge${run.exitCode ? " locaryn-run-badge-bad" : ""}`}>
             {run.exitCode ? `code ${run.exitCode}` : "terminé"}
           </span>
         )}
@@ -93,11 +91,6 @@ function WebView({ html }: { html: string }) {
   // must not reach this app's origin, storage or cookies. Scripts are allowed
   // so a demo page actually behaves like one, but they run walled off.
   return (
-    <iframe
-      className="locaryn-run-web"
-      title="Aperçu"
-      sandbox="allow-scripts"
-      srcDoc={html}
-    />
+    <iframe className="locaryn-run-web" title="Aperçu" sandbox="allow-scripts" srcDoc={html} />
   );
 }

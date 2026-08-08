@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { type Project, type Session, core } from "../lib/core";
 import { pickFolder } from "../lib/dialog";
-import { core, type Project, type Session } from "../lib/core";
 
 type Props = {
   projects: Project[];
@@ -97,8 +97,13 @@ export function LeftPanel({
     const path = await pickFolder();
     if (!path) return;
     const name =
-      window.prompt("Nom du projet:", path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "projet") ??
-      "projet";
+      window.prompt(
+        "Nom du projet:",
+        path
+          .replace(/[\\/]+$/, "")
+          .split(/[\\/]/)
+          .pop() ?? "projet",
+      ) ?? "projet";
     onAddProject(path, name);
   }
 
@@ -119,7 +124,12 @@ export function LeftPanel({
               <button
                 type="button"
                 className={`locaryn-tree-item${s.id === activeSession?.id ? " locaryn-active" : ""}`}
-                style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                style={{
+                  flex: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
                 onClick={() => {
                   onSelectProject(null);
                   onSelectSession(s);
@@ -152,7 +162,9 @@ export function LeftPanel({
           const isActive = p.id === activeProject?.id;
           return (
             <li key={p.id}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+              >
                 <button
                   type="button"
                   className={`locaryn-tree-item${isActive ? " locaryn-active" : ""}`}
@@ -162,7 +174,10 @@ export function LeftPanel({
                 >
                   <span className="locaryn-caret">{isActive ? "▾" : "▸"}</span> 📁 {p.name}
                 </button>
-                <div className="locaryn-proj-menu-wrap" ref={menuFor === p.id ? menuRef : undefined}>
+                <div
+                  className="locaryn-proj-menu-wrap"
+                  ref={menuFor === p.id ? menuRef : undefined}
+                >
                   <button
                     type="button"
                     className="locaryn-icon-btn"
@@ -181,18 +196,26 @@ export function LeftPanel({
                       role="menu"
                       style={{ top: menuPos.top, right: menuPos.right }}
                     >
-                      <div className="locaryn-proj-menu-head" title={p.path}>{p.path}</div>
+                      <div className="locaryn-proj-menu-head" title={p.path}>
+                        {p.path}
+                      </div>
                       <button
                         type="button"
                         role="menuitem"
-                        onClick={() => { setMenuFor(null); onNewSession(p); }}
+                        onClick={() => {
+                          setMenuFor(null);
+                          onNewSession(p);
+                        }}
                       >
                         💬 Nouvelle conversation
                       </button>
                       <button
                         type="button"
                         role="menuitem"
-                        onClick={() => { setMenuFor(null); core.openModelsFolder(p.path).catch(() => {}); }}
+                        onClick={() => {
+                          setMenuFor(null);
+                          core.openModelsFolder(p.path).catch(() => {});
+                        }}
                       >
                         📂 Ouvrir le dossier
                       </button>
@@ -210,7 +233,10 @@ export function LeftPanel({
                         <button
                           type="button"
                           role="menuitem"
-                          onClick={() => { setMenuFor(null); onOpenProjectSettings(p); }}
+                          onClick={() => {
+                            setMenuFor(null);
+                            onOpenProjectSettings(p);
+                          }}
                         >
                           ⚙️ Paramètres du projet
                         </button>
@@ -238,7 +264,12 @@ export function LeftPanel({
                         className={`locaryn-tree-item${
                           s.id === activeSession?.id ? " locaryn-active" : ""
                         }`}
-                        style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        style={{
+                          flex: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
                         onClick={() => onSelectSession(s)}
                       >
                         • {sessionLabel(s, i)}

@@ -17,11 +17,20 @@ type Props = {
 
 /** Languages we can actually execute on the user's machine. */
 const RUNNABLE: Record<string, string> = {
-  python: "Python", py: "Python",
-  bash: "Shell", sh: "Shell", shell: "Shell", powershell: "PowerShell", ps1: "PowerShell",
-  javascript: "Node", js: "Node", node: "Node",
+  python: "Python",
+  py: "Python",
+  bash: "Shell",
+  sh: "Shell",
+  shell: "Shell",
+  powershell: "PowerShell",
+  ps1: "PowerShell",
+  javascript: "Node",
+  js: "Node",
+  node: "Node",
   // Not executed on the machine: rendered live in the preview panel.
-  html: "Aperçu", htm: "Aperçu", svg: "Aperçu",
+  html: "Aperçu",
+  htm: "Aperçu",
+  svg: "Aperçu",
 };
 
 export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }: Props) {
@@ -82,7 +91,9 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
           }
         }
         copyBtn.textContent = ok ? "Copié ✓" : "Échec";
-        window.setTimeout(() => { copyBtn.textContent = "Copier"; }, 1500);
+        window.setTimeout(() => {
+          copyBtn.textContent = "Copier";
+        }, 1500);
       };
       bar.appendChild(copyBtn);
 

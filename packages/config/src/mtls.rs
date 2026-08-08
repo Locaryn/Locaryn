@@ -33,11 +33,20 @@ pub fn client_cert_path(data_dir: &Path, name: &str) -> PathBuf {
     // filesystem here.
     let safe: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     // Plain PEM, not PKCS#12: naming it .p12 would send people to an import
     // dialog that rejects it.
-    data_dir.join("tls").join("clients").join(format!("{safe}.pem"))
+    data_dir
+        .join("tls")
+        .join("clients")
+        .join(format!("{safe}.pem"))
 }
 
 /// Load the authority, creating it on first use.
@@ -49,15 +58,16 @@ pub fn authority(data_dir: &Path) -> anyhow::Result<Authority> {
     let (cert_path, key_path) = ca_paths(data_dir);
     if cert_path.is_file() && key_path.is_file() {
         return Ok(Authority {
-            cert_pem: std::fs::read_to_string(&cert_path).context("lecture du certificat d'autorité")?,
+            cert_pem: std::fs::read_to_string(&cert_path)
+                .context("lecture du certificat d'autorité")?,
             key_pem: std::fs::read_to_string(&key_path).context("lecture de la clé d'autorité")?,
         });
     }
 
     std::fs::create_dir_all(cert_path.parent().unwrap()).context("création du dossier tls")?;
 
-    let mut params = rcgen::CertificateParams::new(Vec::<String>::new())
-        .context("paramètres de l'autorité")?;
+    let mut params =
+        rcgen::CertificateParams::new(Vec::<String>::new()).context("paramètres de l'autorité")?;
     params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Constrained(0));
     params.distinguished_name = {
         let mut dn = rcgen::DistinguishedName::new();
@@ -72,7 +82,9 @@ pub fn authority(data_dir: &Path) -> anyhow::Result<Authority> {
     ];
 
     let key = rcgen::KeyPair::generate().context("clé de l'autorité")?;
-    let cert = params.self_signed(&key).context("auto-signature de l'autorité")?;
+    let cert = params
+        .self_signed(&key)
+        .context("auto-signature de l'autorité")?;
 
     let (cert_pem, key_pem) = (cert.pem(), key.serialize_pem());
     std::fs::write(&cert_path, &cert_pem).context("écriture du certificat d'autorité")?;
@@ -100,7 +112,9 @@ pub fn issue_client(data_dir: &Path, name: &str, days: u32) -> anyhow::Result<Cl
     let ca_key = rcgen::KeyPair::from_pem(&ca.key_pem).context("clé d'autorité illisible")?;
     let ca_params = rcgen::CertificateParams::from_ca_cert_pem(&ca.cert_pem)
         .context("certificat d'autorité illisible")?;
-    let ca_cert = ca_params.self_signed(&ca_key).context("reconstruction de l'autorité")?;
+    let ca_cert = ca_params
+        .self_signed(&ca_key)
+        .context("reconstruction de l'autorité")?;
 
     let mut params = rcgen::CertificateParams::new(Vec::<String>::new())
         .context("paramètres du certificat client")?;
@@ -176,7 +190,10 @@ mod tests {
 
         // Regenerating would invalidate every certificate already handed out.
         let b = authority(&dir).expect("réutilisation");
-        assert_eq!(a.cert_pem, b.cert_pem, "l'autorité ne doit pas être régénérée");
+        assert_eq!(
+            a.cert_pem, b.cert_pem,
+            "l'autorité ne doit pas être régénérée"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -214,7 +231,10 @@ mod tests {
         let dir = scratch("path");
         // A user name reaches the filesystem here.
         let p = client_cert_path(&dir, "../../etc/passwd");
-        assert!(p.starts_with(dir.join("tls").join("clients")), "échappement: {p:?}");
+        assert!(
+            p.starts_with(dir.join("tls").join("clients")),
+            "échappement: {p:?}"
+        );
         assert!(!p.to_string_lossy().contains(".."));
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -226,7 +246,6 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 }
-
 
 /// Issue the *server* certificate from the same authority.
 ///
@@ -240,7 +259,9 @@ pub fn issue_server(data_dir: &Path, names: Vec<String>) -> anyhow::Result<(Stri
     let ca_key = rcgen::KeyPair::from_pem(&ca.key_pem).context("clé d'autorité illisible")?;
     let ca_params = rcgen::CertificateParams::from_ca_cert_pem(&ca.cert_pem)
         .context("certificat d'autorité illisible")?;
-    let ca_cert = ca_params.self_signed(&ca_key).context("reconstruction de l'autorité")?;
+    let ca_cert = ca_params
+        .self_signed(&ca_key)
+        .context("reconstruction de l'autorité")?;
 
     let mut params =
         rcgen::CertificateParams::new(names).context("paramètres du certificat serveur")?;
@@ -267,7 +288,10 @@ pub fn server_cert_paths(data_dir: &Path) -> (PathBuf, PathBuf) {
 }
 
 /// Write — or reuse — a server certificate signed by the authority.
-pub fn ensure_server_cert(data_dir: &Path, names: Vec<String>) -> anyhow::Result<(PathBuf, PathBuf)> {
+pub fn ensure_server_cert(
+    data_dir: &Path,
+    names: Vec<String>,
+) -> anyhow::Result<(PathBuf, PathBuf)> {
     let (cert_path, key_path) = server_cert_paths(data_dir);
     if cert_path.is_file() && key_path.is_file() {
         return Ok((cert_path, key_path));

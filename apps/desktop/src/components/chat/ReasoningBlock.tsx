@@ -43,9 +43,7 @@ export function ReasoningBlock({ reasoning, inProgress }: Props) {
         <span className="locaryn-reason-caret" aria-hidden="true">
           {open ? "▾" : "▸"}
         </span>
-        <span className="locaryn-reason-label">
-          {inProgress ? "Réflexion…" : "Raisonnement"}
-        </span>
+        <span className="locaryn-reason-label">{inProgress ? "Réflexion…" : "Raisonnement"}</span>
         {!open && (
           <span className="locaryn-reason-peek">
             {inProgress ? peek : reasoningSummary(reasoning)}

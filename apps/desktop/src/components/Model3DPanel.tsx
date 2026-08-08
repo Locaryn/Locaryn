@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { core } from "../lib/core";
-import { startModel3DGeneration, type Model3DJobResult } from "../lib/model3dJobs";
-import { taskCenter } from "../lib/taskCenter";
+import { type Model3DJobResult, startModel3DGeneration } from "../lib/model3dJobs";
 import { dedupeModelsByDirectory } from "../lib/modelList";
 import { isModel3DGenModel } from "../lib/modelRegistry";
+import { taskCenter } from "../lib/taskCenter";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,9 @@ function first3DModel(models: string[]): string | undefined {
 export function Model3DPanel({ installedModels, onClose, inline }: Props) {
   // ── Core state
   const [prompt, setPrompt] = useState("");
-  const [selectedModel, setSelectedModel] = useState<string>(() => first3DModel(installedModels) ?? "");
+  const [selectedModel, setSelectedModel] = useState<string>(
+    () => first3DModel(installedModels) ?? "",
+  );
 
   // ── Generation parameters
   const [mode, setMode] = useState<"t2m" | "i2m">("t2m");
@@ -41,7 +43,11 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedResult, setGeneratedResult] = useState<Model3DJobResult | null>(null);
-  const [taskProgress, setTaskProgress] = useState<{ progress: number; detail?: string; status?: string } | null>(null);
+  const [taskProgress, setTaskProgress] = useState<{
+    progress: number;
+    detail?: string;
+    status?: string;
+  } | null>(null);
 
   // ── Refs
   const progressPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -67,7 +73,8 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
 
   // Auto-switch to i2m mode when model supports it
   useEffect(() => {
-    const hasI2M = selectedModel.toLowerCase().includes("tripo") || selectedModel.toLowerCase().includes("zero");
+    const hasI2M =
+      selectedModel.toLowerCase().includes("tripo") || selectedModel.toLowerCase().includes("zero");
     if (hasI2M && mode === "t2m") setMode("i2m");
   }, [selectedModel, mode]);
 
@@ -130,7 +137,7 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
     setTaskProgress(null);
 
     try {
-      const appInfo = await core.appInfo().catch(() => ({ data_dir: "/tmp" } as any));
+      const appInfo = await core.appInfo().catch(() => ({ data_dir: "/tmp" }) as any);
       const outputDir = `${appInfo.data_dir}/generated_3d`;
 
       const taskId = startModel3DGeneration({
@@ -166,7 +173,14 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
   return (
     <div className={inline ? "" : "locaryn-card"} style={containerStyle}>
       {/* ── Header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
         <div>
           <h3 style={{ margin: 0 }}>Génération 3D</h3>
           <p className="locaryn-field-hint" style={{ margin: "4px 0 0" }}>
@@ -174,7 +188,9 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
           </p>
         </div>
         {!inline && (
-          <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>
+          <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">
+            ✕
+          </button>
         )}
       </div>
 
@@ -200,16 +216,19 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
           </select>
         </div>
       ) : (
-        <div style={{
-          padding: 24,
-          borderRadius: 10,
-          border: "1px dashed var(--border)",
-          textAlign: "center",
-          color: "var(--text-faint)",
-          fontSize: 13,
-          marginBottom: 20,
-        }}>
-          Aucun modèle 3D installé. Allez dans le Marketplace pour installer Shape-E, Point-E, TripoSR ou Zero-1-to-3.
+        <div
+          style={{
+            padding: 24,
+            borderRadius: 10,
+            border: "1px dashed var(--border)",
+            textAlign: "center",
+            color: "var(--text-faint)",
+            fontSize: 13,
+            marginBottom: 20,
+          }}
+        >
+          Aucun modèle 3D installé. Allez dans le Marketplace pour installer Shape-E, Point-E,
+          TripoSR ou Zero-1-to-3.
         </div>
       )}
 
@@ -261,14 +280,33 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
       {mode === "i2m" && (
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
           <label className="locaryn-field-label">Image source</label>
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePickImage} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handlePickImage}
+          />
           {inputImage ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 12, color: "var(--text)" }}>🖼️ {inputImageName}</span>
-              <button type="button" className="locaryn-icon-btn" onClick={clearImage} aria-label="Supprimer">✕</button>
+              <button
+                type="button"
+                className="locaryn-icon-btn"
+                onClick={clearImage}
+                aria-label="Supprimer"
+              >
+                ✕
+              </button>
             </div>
           ) : (
-            <button type="button" className="locaryn-btn-ghost" onClick={() => fileInputRef.current?.click()} disabled={jobRunning} style={{ fontSize: 12 }}>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={jobRunning}
+              style={{ fontSize: 12 }}
+            >
               + Choisir une image
             </button>
           )}
@@ -279,7 +317,9 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
       <div className="locaryn-field" style={{ marginBottom: 16 }}>
         <label className="locaryn-field-label">
           Prompt
-          <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}>
+          <span
+            style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}
+          >
             Décrivez le modèle 3D à générer
           </span>
         </label>
@@ -295,10 +335,25 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Advanced controls ── */}
       <details style={{ marginBottom: 16 }}>
-        <summary style={{ fontSize: 12, fontWeight: 600, color: "var(--text-faint)", cursor: "pointer", userSelect: "none" }}>
+        <summary
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--text-faint)",
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
           Paramètres avancés
         </summary>
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 20px" }}>
+        <div
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "12px 20px",
+          }}
+        >
           {/* Steps */}
           <div>
             <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
@@ -335,7 +390,9 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Negative prompt */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Prompt négatif</label>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+              Prompt négatif
+            </label>
             <input
               type="text"
               className="locaryn-input"
@@ -349,7 +406,9 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Output format */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Format de sortie</label>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+              Format de sortie
+            </label>
             <select
               className="locaryn-input"
               value={outputFormat}
@@ -377,15 +436,17 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
       {generatedResult && (
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
           <label className="locaryn-field-label">Modèle 3D généré</label>
-          <div style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            padding: 16,
-            borderRadius: 10,
-            border: "1px solid var(--border)",
-            background: "var(--bg-alt)",
-          }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              padding: 16,
+              borderRadius: 10,
+              border: "1px solid var(--border)",
+              background: "var(--bg-alt)",
+            }}
+          >
             <span style={{ fontSize: 12, color: "var(--text-faint)" }}>
               📦 Fichier généré : {generatedResult.path.split("/").pop() || "modèle 3D"}
             </span>
@@ -408,14 +469,24 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
         {jobRunning && (
           <div style={{ flex: 1, marginRight: 12 }}>
             <div className="img-gen-progress-bar">
-              <div className="img-gen-progress-fill" style={{ width: `${taskProgress?.progress ?? 0}%` }} />
+              <div
+                className="img-gen-progress-fill"
+                style={{ width: `${taskProgress?.progress ?? 0}%` }}
+              />
             </div>
-            <span className="locaryn-field-hint">{taskProgress?.detail ?? "Génération en cours…"}</span>
+            <span className="locaryn-field-hint">
+              {taskProgress?.detail ?? "Génération en cours…"}
+            </span>
           </div>
         )}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           {!inline && (
-            <button type="button" className="locaryn-btn-ghost" onClick={onClose} disabled={isGenerating}>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={onClose}
+              disabled={isGenerating}
+            >
               Fermer
             </button>
           )}

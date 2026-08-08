@@ -91,7 +91,10 @@ impl LocarynClient {
     /// that spawned one would take it down on exit.
     pub async fn start_mcp(&self, name: &str) -> Result<serde_json::Value, SdkError> {
         let resp = self
-            .add_auth(self.http.post(self.url(&format!("/v1/mcp/servers/{name}/start"))))
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/mcp/servers/{name}/start"))),
+            )
             .send()
             .await?;
         if resp.status().is_success() {
@@ -103,7 +106,10 @@ impl LocarynClient {
 
     pub async fn stop_mcp(&self, name: &str) -> Result<serde_json::Value, SdkError> {
         let resp = self
-            .add_auth(self.http.post(self.url(&format!("/v1/mcp/servers/{name}/stop"))))
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/mcp/servers/{name}/stop"))),
+            )
             .send()
             .await?;
         if resp.status().is_success() {
@@ -116,8 +122,15 @@ impl LocarynClient {
     // ---- Travel mode ------------------------------------------------------
 
     pub async fn travel_status(&self) -> Result<serde_json::Value, SdkError> {
-        let resp = self.add_auth(self.http.get(self.url("/v1/travel"))).send().await?;
-        if resp.status().is_success() { Ok(resp.json().await?) } else { Err(Self::decode_error(resp).await) }
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/travel")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
     }
 
     /// `provider` of `None` switches travel mode off.
@@ -127,12 +140,23 @@ impl LocarynClient {
             .add_auth(self.http.post(self.url("/v1/travel")).json(&body))
             .send()
             .await?;
-        if resp.status().is_success() { Ok(resp.json().await?) } else { Err(Self::decode_error(resp).await) }
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
     }
 
     pub async fn travel_home(&self) -> Result<serde_json::Value, SdkError> {
-        let resp = self.add_auth(self.http.get(self.url("/v1/travel/home"))).send().await?;
-        if resp.status().is_success() { Ok(resp.json().await?) } else { Err(Self::decode_error(resp).await) }
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/travel/home")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
     }
 
     // ---- Health & info ----------------------------------------------------

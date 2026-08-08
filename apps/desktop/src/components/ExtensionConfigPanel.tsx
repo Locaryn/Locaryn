@@ -464,7 +464,10 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
               sont pas modifiables ici.
             </p>
             {mcpError && (
-              <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginBottom: 12 }}>
+              <p
+                className="locaryn-field-hint"
+                style={{ color: "var(--danger)", marginBottom: 12 }}
+              >
                 {mcpError}
               </p>
             )}
@@ -571,9 +574,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                   marginTop: 10,
                 }}
               >
-                <span className="locaryn-field-hint">
-                  {mcpSaved ? "Enregistré." : ""}
-                </span>
+                <span className="locaryn-field-hint">{mcpSaved ? "Enregistré." : ""}</span>
                 <button
                   type="button"
                   className="locaryn-btn-primary"

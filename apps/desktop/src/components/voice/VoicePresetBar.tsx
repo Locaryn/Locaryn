@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  core,
-  type EngineSupport,
-  type VoicePreset,
-  type VoiceSettings,
-} from "../../lib/core";
+import { type EngineSupport, type VoicePreset, type VoiceSettings, core } from "../../lib/core";
 
 type Props = {
   /** Model currently selected, to report what it honours. */
@@ -57,7 +52,10 @@ export function VoicePresetBar({
 
   useEffect(() => {
     if (!model) return;
-    core.voicePresetSupport(model).then(setSupport).catch(() => setSupport(null));
+    core
+      .voicePresetSupport(model)
+      .then(setSupport)
+      .catch(() => setSupport(null));
   }, [model]);
 
   async function handleSave() {
@@ -132,9 +130,9 @@ export function VoicePresetBar({
 
       {support && !support.cloning && (
         <p className="locaryn-vp-warn">
-          {support.engine} ne sait pas cloner depuis un enregistrement : les préréglages
-          ne s'appliqueront que partiellement. Choisissez un modèle de clonage
-          (Qwen3-TTS Base, XTTS ou F5-TTS) pour utiliser une voix enregistrée.
+          {support.engine} ne sait pas cloner depuis un enregistrement : les préréglages ne
+          s'appliqueront que partiellement. Choisissez un modèle de clonage (Qwen3-TTS Base, XTTS ou
+          F5-TTS) pour utiliser une voix enregistrée.
         </p>
       )}
       {support && support.cloning && ignored.length > 0 && (
@@ -159,8 +157,8 @@ export function VoicePresetBar({
             onChange={(e) => setNote(e.target.value)}
           />
           <p className="locaryn-vp-hint">
-            L'enregistrement de référence est copié dans le préréglage : il restera
-            utilisable même si vous déplacez ou supprimez le fichier d'origine.
+            L'enregistrement de référence est copié dans le préréglage : il restera utilisable même
+            si vous déplacez ou supprimez le fichier d'origine.
           </p>
           <button type="button" className="locaryn-btn-primary" onClick={handleSave}>
             Enregistrer
@@ -170,8 +168,8 @@ export function VoicePresetBar({
 
       {presets.length === 0 ? (
         <p className="locaryn-vp-empty">
-          Aucune voix enregistrée. Chargez un extrait, réglez la voix, puis enregistrez-la
-          pour la réutiliser d'un clic.
+          Aucune voix enregistrée. Chargez un extrait, réglez la voix, puis enregistrez-la pour la
+          réutiliser d'un clic.
         </p>
       ) : (
         <div className="locaryn-vp-list">

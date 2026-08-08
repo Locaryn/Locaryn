@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { core, TTS_SAMPLING_DEFAULTS, VOICE_SETTINGS_DEFAULTS, type VoicePreset } from "../lib/core";
+import { type AudioJobResult, startAudioGeneration, toAudioUrl } from "../lib/audioJobs";
+import {
+  TTS_SAMPLING_DEFAULTS,
+  VOICE_SETTINGS_DEFAULTS,
+  type VoicePreset,
+  core,
+} from "../lib/core";
 import { loadMediaObjectUrl } from "../lib/media";
-import { startAudioGeneration, toAudioUrl, type AudioJobResult } from "../lib/audioJobs";
-import { taskCenter } from "../lib/taskCenter";
-import { TTS_MODELS, getModelCapabilities } from "../lib/modelRegistry";
 import { dedupeModelsByDirectory, normalizeModelPath } from "../lib/modelList";
-import { VoiceCloneTab, VoiceDesignTab, VoiceCustomTab } from "./voice";
+import { TTS_MODELS, getModelCapabilities } from "../lib/modelRegistry";
+import { taskCenter } from "../lib/taskCenter";
+import { VoiceCloneTab, VoiceCustomTab, VoiceDesignTab } from "./voice";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +60,8 @@ function parseModelName(raw: string): TtsModelInfo {
   const repoName = normalized.split("/").pop() ?? normalized;
 
   for (const family of TTS_MODELS) {
-    const hitsFamily = lower.includes(family.id.toLowerCase()) || lower.includes(family.name.toLowerCase());
+    const hitsFamily =
+      lower.includes(family.id.toLowerCase()) || lower.includes(family.name.toLowerCase());
     const hitsVariant = family.variants.some((v) => lower.includes(v.tag.toLowerCase()));
     if (hitsFamily || hitsVariant) {
       const caps = getModelCapabilities(raw);
@@ -74,13 +80,25 @@ function parseModelName(raw: string): TtsModelInfo {
     const m = stripped.match(/^([a-z]+)_([A-Z]+)-(.+)-(low|medium|high)$/i);
     if (m) {
       const [, lang, region, voice, quality] = m;
-      return { id: raw, engine: "Piper", name: `${voice} (${region})`, lang: `${lang}_${region}`, quality };
+      return {
+        id: raw,
+        engine: "Piper",
+        name: `${voice} (${region})`,
+        lang: `${lang}_${region}`,
+        quality,
+      };
     }
     return { id: raw, engine: "Piper", name: stripped, lang: "-", quality: "-" };
   }
 
   if (lower.includes("coqui") || lower.includes("xtts")) {
-    return { id: raw, engine: "Coqui XTTS", name: raw.includes("v2") ? "XTTS v2" : "XTTS", lang: "Multilingue", quality: "Clonage" };
+    return {
+      id: raw,
+      engine: "Coqui XTTS",
+      name: raw.includes("v2") ? "XTTS v2" : "XTTS",
+      lang: "Multilingue",
+      quality: "Clonage",
+    };
   }
 
   if (lower.includes("qwen3")) {
@@ -92,20 +110,37 @@ function parseModelName(raw: string): TtsModelInfo {
       engine: "Qwen3-TTS",
       name: `Qwen3-TTS (${variant})`,
       lang: "Multilingue",
-      quality: variant === "CustomVoice" ? "Clonage" : variant === "VoiceDesign" ? "Voice Design" : "TTS",
+      quality:
+        variant === "CustomVoice" ? "Clonage" : variant === "VoiceDesign" ? "Voice Design" : "TTS",
     };
   }
 
-  if (lower.includes("kokoro")) return { id: raw, engine: "Kokoro", name: repoName, lang: "Multilingue", quality: "TTS" };
-  if (lower.includes("parler")) return { id: raw, engine: "Parler-TTS", name: repoName, lang: "Multilingue", quality: "Voice Design" };
-  if (lower.includes("melotts")) return { id: raw, engine: "MeloTTS", name: repoName, lang: "Multilingue", quality: "TTS" };
-  if (lower.includes("f5-tts") || lower.includes("f5tts") || lower.includes("f5_tts")) return { id: raw, engine: "F5-TTS", name: repoName, lang: "Multilingue", quality: "Clonage" };
-  if (lower.includes("chatterbox")) return { id: raw, engine: "Chatterbox", name: repoName, lang: "English", quality: "TTS" };
-  if (lower.includes("moss-tts") || lower.includes("mosstts")) return { id: raw, engine: "MOSS-TTS", name: repoName, lang: "Multilingue", quality: "TTS" };
-  if (lower.includes("higgs-tts") || lower.includes("higgstts")) return { id: raw, engine: "Higgs-TTS", name: repoName, lang: "Multilingue", quality: "TTS" };
-  if (lower.includes("vibevoice")) return { id: raw, engine: "VibeVoice", name: repoName, lang: "Multilingue", quality: "TTS" };
-  if (lower.includes("voxcpm2")) return { id: raw, engine: "VoxCPM2", name: repoName, lang: "Multilingue", quality: "TTS" };
-  if (lower.includes("omnivoice")) return { id: raw, engine: "OmniVoice", name: repoName, lang: "Multilingue", quality: "TTS" };
+  if (lower.includes("kokoro"))
+    return { id: raw, engine: "Kokoro", name: repoName, lang: "Multilingue", quality: "TTS" };
+  if (lower.includes("parler"))
+    return {
+      id: raw,
+      engine: "Parler-TTS",
+      name: repoName,
+      lang: "Multilingue",
+      quality: "Voice Design",
+    };
+  if (lower.includes("melotts"))
+    return { id: raw, engine: "MeloTTS", name: repoName, lang: "Multilingue", quality: "TTS" };
+  if (lower.includes("f5-tts") || lower.includes("f5tts") || lower.includes("f5_tts"))
+    return { id: raw, engine: "F5-TTS", name: repoName, lang: "Multilingue", quality: "Clonage" };
+  if (lower.includes("chatterbox"))
+    return { id: raw, engine: "Chatterbox", name: repoName, lang: "English", quality: "TTS" };
+  if (lower.includes("moss-tts") || lower.includes("mosstts"))
+    return { id: raw, engine: "MOSS-TTS", name: repoName, lang: "Multilingue", quality: "TTS" };
+  if (lower.includes("higgs-tts") || lower.includes("higgstts"))
+    return { id: raw, engine: "Higgs-TTS", name: repoName, lang: "Multilingue", quality: "TTS" };
+  if (lower.includes("vibevoice"))
+    return { id: raw, engine: "VibeVoice", name: repoName, lang: "Multilingue", quality: "TTS" };
+  if (lower.includes("voxcpm2"))
+    return { id: raw, engine: "VoxCPM2", name: repoName, lang: "Multilingue", quality: "TTS" };
+  if (lower.includes("omnivoice"))
+    return { id: raw, engine: "OmniVoice", name: repoName, lang: "Multilingue", quality: "TTS" };
 
   const clean = repoName.replace(/\.(onnx|pt|bin|pth|safetensors)$/i, "");
   return { id: raw, engine: "Local", name: clean, lang: "-", quality: "-" };
@@ -116,7 +151,8 @@ function isTtsModel(m: string): boolean {
   const ttsKeywords =
     /piper|xtts|coqui|melotts|kokoro|parler|chatterbox|voxcpm2|omnivoice|f5[-_.]?tts|qwen3[-_.]?tts|moss[-_.]?tts|higgs[-_.]?tts|vibevoice/;
   if (ttsKeywords.test(lower)) {
-    if (/tokenizer|config\.json|vocab\.json|merges\.txt|preprocessor_config/i.test(lower)) return false;
+    if (/tokenizer|config\.json|vocab\.json|merges\.txt|preprocessor_config/i.test(lower))
+      return false;
     return true;
   }
   return lower.endsWith(".onnx");
@@ -134,8 +170,37 @@ function detectLanguageFromText(textValue: string): string | null {
   const lower = textValue.trim().toLowerCase();
   if (!lower) return null;
   const markers: Record<string, string[]> = {
-    fr: [" le ", " la ", " et ", " un ", " une ", " est ", " je ", " de la ", " du ", " des ", " que ", " qui ", " dans ", " pour ", " les "],
-    en: [" the ", " is ", " a ", " and ", " to ", " of ", " in ", " you ", " that ", " it ", " for ", " on "],
+    fr: [
+      " le ",
+      " la ",
+      " et ",
+      " un ",
+      " une ",
+      " est ",
+      " je ",
+      " de la ",
+      " du ",
+      " des ",
+      " que ",
+      " qui ",
+      " dans ",
+      " pour ",
+      " les ",
+    ],
+    en: [
+      " the ",
+      " is ",
+      " a ",
+      " and ",
+      " to ",
+      " of ",
+      " in ",
+      " you ",
+      " that ",
+      " it ",
+      " for ",
+      " on ",
+    ],
     es: [" el ", " la ", " y ", " de ", " que ", " en ", " un ", " una ", " los ", " las "],
     de: [" der ", " die ", " und ", " das ", " zu ", " ein ", " eine ", " ist ", " von ", " mit "],
     it: [" il ", " la ", " e ", " di ", " che ", " un ", " una ", " in ", " per "],
@@ -161,7 +226,9 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
 
   // ── Core state
   const [text, setText] = useState("");
-  const [selectedModel, setSelectedModel] = useState<string>(() => firstTtsModel(installedModels) ?? "piper-voices/en_US-amy-medium.onnx");
+  const [selectedModel, setSelectedModel] = useState<string>(
+    () => firstTtsModel(installedModels) ?? "piper-voices/en_US-amy-medium.onnx",
+  );
   const [modelSearch, setModelSearch] = useState("");
   const [synthesisLang, setSynthesisLang] = useState<string>("auto");
 
@@ -199,7 +266,11 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedResult, setGeneratedResult] = useState<AudioJobResult | null>(null);
-  const [taskProgress, setTaskProgress] = useState<{ progress: number; detail?: string; status?: string } | null>(null);
+  const [taskProgress, setTaskProgress] = useState<{
+    progress: number;
+    detail?: string;
+    status?: string;
+  } | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
 
   // ── Refs
@@ -334,7 +405,11 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
       setVoiceFile(path);
       setVoiceName(path.split(/[/\\]/).pop() ?? path);
     } catch (e) {
-      setError(typeof e === "string" ? e : (e as Error)?.message || "Impossible de choisir le fichier vocal.");
+      setError(
+        typeof e === "string"
+          ? e
+          : (e as Error)?.message || "Impossible de choisir le fichier vocal.",
+      );
     }
   }
 
@@ -398,7 +473,11 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
         setTaskProgress({ progress: task.progress ?? 0, detail: task.detail, status: task.status });
         setStatusMessage(task.detail ?? "");
         if (task.status === "done" && task.resultAudioUrl) {
-          setGeneratedResult({ url: task.resultAudioUrl, path: task.resultAudioUrl, simulated: task.detail?.includes("simulé") ?? false });
+          setGeneratedResult({
+            url: task.resultAudioUrl,
+            path: task.resultAudioUrl,
+            simulated: task.detail?.includes("simulé") ?? false,
+          });
           setStatusMessage("Génération terminée ✓");
           clearInterval(interval);
           setIsGenerating(false);
@@ -469,7 +548,9 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
         if (styleInstruction.trim()) params.voiceDescription = styleInstruction.trim();
       }
 
-      const taskId = startAudioGeneration(params as unknown as Parameters<typeof startAudioGeneration>[0]);
+      const taskId = startAudioGeneration(
+        params as unknown as Parameters<typeof startAudioGeneration>[0],
+      );
       if (progressPollRef.current) clearInterval(progressPollRef.current);
       progressPollRef.current = pollTask(taskId);
     } catch (e) {
@@ -488,31 +569,57 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
   function generateButtonLabel(): string {
     if (jobRunning) return "Génération…";
     switch (activeTab) {
-      case "design": return "✨ Generate with Custom Voice";
-      case "clone": return "🧬 Clone & Generate";
-      case "tts": return "🗣️ Generate Speech";
+      case "design":
+        return "✨ Generate with Custom Voice";
+      case "clone":
+        return "🧬 Clone & Generate";
+      case "tts":
+        return "🗣️ Generate Speech";
     }
   }
 
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className={inline ? "" : "locaryn-card"} style={{ padding: inline ? 0 : 24, maxWidth: 1100, margin: "0 auto" }}>
+    <div
+      className={inline ? "" : "locaryn-card"}
+      style={{ padding: inline ? 0 : 24, maxWidth: 1100, margin: "0 auto" }}
+    >
       {/* ── Header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+        }}
+      >
         <div>
           <h3 style={{ margin: 0 }}>Synthèse vocale IA</h3>
-          <p className="locaryn-field-hint" style={{ margin: "4px 0 0" }}>Choisissez un modèle, un mode de génération, puis entrez votre texte.</p>
+          <p className="locaryn-field-hint" style={{ margin: "4px 0 0" }}>
+            Choisissez un modèle, un mode de génération, puis entrez votre texte.
+          </p>
         </div>
-        {!inline && <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>}
+        {!inline && (
+          <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">
+            ✕
+          </button>
+        )}
       </div>
 
       {/* ── Model picker ── */}
       {searchedModels.length === 0 ? (
-        <div style={{
-          padding: 24, borderRadius: 10, border: "1px dashed var(--border)",
-          textAlign: "center", color: "var(--text-faint)", fontSize: 13, marginBottom: 16,
-        }}>
+        <div
+          style={{
+            padding: 24,
+            borderRadius: 10,
+            border: "1px dashed var(--border)",
+            textAlign: "center",
+            color: "var(--text-faint)",
+            fontSize: 13,
+            marginBottom: 16,
+          }}
+        >
           {ttsModels.length === 0
             ? "Aucun modèle TTS installé. Allez dans le Marketplace pour en installer."
             : "Aucun modèle ne correspond à la recherche."}
@@ -549,41 +656,73 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
             ))}
           </select>
           {/* Selected model info badges */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-          }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
               {selectedInfo.engine} — {selectedInfo.name}
             </span>
             {selectedInfo.lang !== "-" && (
-              <span style={{
-                fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                background: "rgba(255,255,255,0.05)", color: "var(--text-faint)",
-                border: "1px solid var(--border)",
-              }}>{selectedInfo.lang}</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: "rgba(255,255,255,0.05)",
+                  color: "var(--text-faint)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {selectedInfo.lang}
+              </span>
             )}
             {selectedCaps.cloning && (
-              <span style={{
-                fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                background: "rgba(150, 100, 255, 0.15)", color: "var(--accent)",
-                border: "1px solid var(--border)",
-              }}>Clonage</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: "rgba(150, 100, 255, 0.15)",
+                  color: "var(--accent)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                Clonage
+              </span>
             )}
             {selectedCaps.voiceDesign && (
-              <span style={{
-                fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                background: "rgba(100, 200, 150, 0.12)", color: "var(--text-faint)",
-                border: "1px solid var(--border)",
-              }}>Voice Design</span>
+              <span
+                style={{
+                  fontSize: 10,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  background: "rgba(100, 200, 150, 0.12)",
+                  color: "var(--text-faint)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                Voice Design
+              </span>
             )}
           </div>
         </div>
       )}
 
       {/* ── Tabs ── */}
-      <div role="tablist" style={{
-        display: "flex", borderBottom: "2px solid var(--border)", marginBottom: 0, gap: 0,
-      }}>
+      <div
+        role="tablist"
+        style={{
+          display: "flex",
+          borderBottom: "2px solid var(--border)",
+          marginBottom: 0,
+          gap: 0,
+        }}
+      >
         {(Object.keys(TAB_LABELS) as StudioTab[]).map((tabId) => {
           const tab = TAB_LABELS[tabId];
           const active = activeTab === tabId;
@@ -615,21 +754,31 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
       </div>
 
       {/* ── Two-column layout ── */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 380px",
-        gap: 24,
-        marginTop: 20,
-        minHeight: 400,
-      }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 380px",
+          gap: 24,
+          marginTop: 20,
+          minHeight: 400,
+        }}
+      >
         {/* ── LEFT COLUMN: Controls ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Text to Synthesize */}
           <div>
-            <label style={{
-              display: "inline-block", fontSize: 12, fontWeight: 700, color: "#fff",
-              background: "var(--accent)", padding: "2px 8px", borderRadius: 3, marginBottom: 8,
-            }}>
+            <label
+              style={{
+                display: "inline-block",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#fff",
+                background: "var(--accent)",
+                padding: "2px 8px",
+                borderRadius: 3,
+                marginBottom: 8,
+              }}
+            >
               Text to Synthesize
             </label>
             <textarea
@@ -646,10 +795,18 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
           {/* Language selector — always visible */}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
             <div style={{ flex: 1, minWidth: 160 }}>
-              <label style={{
-                display: "inline-block", fontSize: 12, fontWeight: 700, color: "#fff",
-                background: "var(--accent)", padding: "2px 8px", borderRadius: 3, marginBottom: 8,
-              }}>
+              <label
+                style={{
+                  display: "inline-block",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#fff",
+                  background: "var(--accent)",
+                  padding: "2px 8px",
+                  borderRadius: 3,
+                  marginBottom: 8,
+                }}
+              >
                 Language
               </label>
               <select
@@ -660,7 +817,9 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
                 style={{ width: "100%", fontSize: 13 }}
               >
                 {LANGUAGE_OPTIONS.map((opt) => (
-                  <option key={opt.code} value={opt.code}>{opt.label}</option>
+                  <option key={opt.code} value={opt.code}>
+                    {opt.label}
+                  </option>
                 ))}
               </select>
               {synthesisLang === "auto" && (
@@ -741,8 +900,12 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
             onClick={handleGenerate}
             disabled={!text.trim() || jobRunning || isGenerating || !hasModels}
             style={{
-              width: "100%", padding: "14px 0", fontSize: 15, fontWeight: 700,
-              borderRadius: 8, marginTop: "auto",
+              width: "100%",
+              padding: "14px 0",
+              fontSize: 15,
+              fontWeight: 700,
+              borderRadius: 8,
+              marginTop: "auto",
             }}
           >
             {generateButtonLabel()}
@@ -752,14 +915,26 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
         {/* ── RIGHT COLUMN: Output ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Generated Audio */}
-          <div style={{
-            padding: 16, borderRadius: 8,
-            border: "1px solid var(--border)", background: "rgba(100, 150, 255, 0.04)",
-          }}>
-            <label style={{
-              display: "inline-block", fontSize: 12, fontWeight: 700, color: "#fff",
-              background: "var(--accent)", padding: "2px 8px", borderRadius: 3, marginBottom: 12,
-            }}>
+          <div
+            style={{
+              padding: 16,
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "rgba(100, 150, 255, 0.04)",
+            }}
+          >
+            <label
+              style={{
+                display: "inline-block",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#fff",
+                background: "var(--accent)",
+                padding: "2px 8px",
+                borderRadius: 3,
+                marginBottom: 12,
+              }}
+            >
               🎵 Generated Audio
             </label>
             {generatedResult ? (
@@ -771,30 +946,51 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
                 style={{ width: "100%", marginTop: 8 }}
               />
             ) : (
-              <div style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                padding: "40px 0", color: "var(--text-faint)", fontSize: 32,
-              }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "40px 0",
+                  color: "var(--text-faint)",
+                  fontSize: 32,
+                }}
+              >
                 🎵
               </div>
             )}
           </div>
 
           {/* Status */}
-          <div style={{
-            padding: 16, borderRadius: 8,
-            border: "1px solid var(--border)", background: "rgba(100, 150, 255, 0.04)",
-          }}>
-            <label style={{
-              display: "inline-block", fontSize: 12, fontWeight: 700, color: "#fff",
-              background: "var(--accent)", padding: "2px 8px", borderRadius: 3, marginBottom: 12,
-            }}>
+          <div
+            style={{
+              padding: 16,
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "rgba(100, 150, 255, 0.04)",
+            }}
+          >
+            <label
+              style={{
+                display: "inline-block",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#fff",
+                background: "var(--accent)",
+                padding: "2px 8px",
+                borderRadius: 3,
+                marginBottom: 12,
+              }}
+            >
               Status
             </label>
             {jobRunning && taskProgress && (
               <div style={{ marginTop: 8 }}>
                 <div className="img-gen-progress-bar">
-                  <div className="img-gen-progress-fill" style={{ width: `${taskProgress.progress ?? 0}%` }} />
+                  <div
+                    className="img-gen-progress-fill"
+                    style={{ width: `${taskProgress.progress ?? 0}%` }}
+                  />
                 </div>
               </div>
             )}

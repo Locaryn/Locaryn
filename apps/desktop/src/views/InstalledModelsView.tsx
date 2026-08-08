@@ -1,8 +1,8 @@
-import { useMemo, useState, useEffect} from "react";
+import { useEffect, useMemo, useState } from "react";
 import { core } from "../lib/core";
+import { dedupeModelsByDirectory } from "../lib/modelList";
 import { IMAGE_GEN_MODELS } from "../lib/modelRegistry";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
-import { dedupeModelsByDirectory } from "../lib/modelList";
 
 type Props = {
   installedModels: string[];
@@ -28,7 +28,8 @@ export function InstalledModelsView({
   // "Ouvrir le dossier" on any machine that is not the dev box.
   const [modelsDir, setModelsDir] = useState("");
   useEffect(() => {
-    core.appInfo()
+    core
+      .appInfo()
       .then((i) => setModelsDir(i.models_dir || `${i.data_dir}/models`))
       .catch(() => {});
   }, []);
@@ -60,7 +61,7 @@ export function InstalledModelsView({
           f.variants.some((v) => {
             const fileName = v.tag.split("/").pop()!.toLowerCase();
             return mLower.includes(fileName) || fileName.includes(mLower) || mLower.includes(f.id);
-          })
+          }),
         );
 
       const isGguf = m.toLowerCase().endsWith(".gguf");
@@ -128,7 +129,8 @@ export function InstalledModelsView({
           <div>
             <h2>💾 Mes Modèles Installés ({dedupedModels.length})</h2>
             <p className="locaryn-view-desc">
-              Gérez vos modèles d'IA stockés localement sur votre disque. Ouvrez leur emplacement ou sélectionnez-les directement pour vos chats et générations.
+              Gérez vos modèles d'IA stockés localement sur votre disque. Ouvrez leur emplacement ou
+              sélectionnez-les directement pour vos chats et générations.
             </p>
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
@@ -230,7 +232,9 @@ export function InstalledModelsView({
         >
           <span style={{ fontSize: "36px" }}>💾</span>
           <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
-            {installedModels.length === 0 ? "Aucun modèle installé localement" : "Aucun modèle ne correspond à votre recherche"}
+            {installedModels.length === 0
+              ? "Aucun modèle installé localement"
+              : "Aucun modèle ne correspond à votre recherche"}
           </div>
           <p style={{ fontSize: "13px", color: "var(--text-faint)", maxWidth: "420px", margin: 0 }}>
             {installedModels.length === 0
@@ -268,19 +272,38 @@ export function InstalledModelsView({
             }}
           >
             {/* Title & Engine tag */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-              <div style={{ minWidth: 0, flex: 1 }}>                <span className="locaryn-box-brand" style={{ fontSize: "10px" }}>
-                    {m.isImage ? "🎨 IMAGE MODEL" : "💬 TEXT LLM"} · {m.engine}
-                  </span>
-                  {(() => {
-                    const c = classifyModel(m.rawTag);
-                    if (c.risk === "safe") return null;
-                    return (
-                      <span className="locaryn-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)", fontSize: "10px", marginLeft: "6px" }} title={nsfwReason(m.rawTag) ?? c.label}>
-                        {c.icon} {c.label}
-                      </span>
-                    );
-                  })()}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "8px",
+              }}
+            >
+              <div style={{ minWidth: 0, flex: 1 }}>
+                {" "}
+                <span className="locaryn-box-brand" style={{ fontSize: "10px" }}>
+                  {m.isImage ? "🎨 IMAGE MODEL" : "💬 TEXT LLM"} · {m.engine}
+                </span>
+                {(() => {
+                  const c = classifyModel(m.rawTag);
+                  if (c.risk === "safe") return null;
+                  return (
+                    <span
+                      className="locaryn-tag"
+                      style={{
+                        background: "rgba(204,125,114,0.2)",
+                        color: "var(--danger)",
+                        border: "1px solid rgba(204,125,114,0.4)",
+                        fontSize: "10px",
+                        marginLeft: "6px",
+                      }}
+                      title={nsfwReason(m.rawTag) ?? c.label}
+                    >
+                      {c.icon} {c.label}
+                    </span>
+                  );
+                })()}
                 <h3
                   className="locaryn-box-name"
                   style={{
@@ -318,7 +341,15 @@ export function InstalledModelsView({
             </div>
 
             {/* Actions Bar */}
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "auto", paddingTop: "6px" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+                flexWrap: "wrap",
+                marginTop: "auto",
+                paddingTop: "6px",
+              }}
+            >
               {m.isImage ? (
                 <button
                   type="button"

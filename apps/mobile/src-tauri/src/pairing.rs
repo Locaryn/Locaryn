@@ -37,11 +37,7 @@ fn now() -> u64 {
 /// Split from the Tauri command so the decision can be tested without a
 /// running application — this is the security boundary of the whole feature.
 pub fn apply(uri: &str, store: &mut servers::Store, now: u64) -> Result<PairingResult, String> {
-    let known = |key_id: &str| {
-        store
-            .get(key_id)
-            .map(|s| s.authority_pem.clone())
-    };
+    let known = |key_id: &str| store.get(key_id).map(|s| s.authority_pem.clone());
 
     let link = locaryn_travel::verify(uri, &known, now).map_err(|e| e.to_string())?;
 
@@ -112,7 +108,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let ca = locaryn_config::mtls::authority(&dir).unwrap();
         let key_id = locaryn_travel::link::key_id(&ca.cert_pem).unwrap();
-        Fixture { dir, cert: ca.cert_pem, key: ca.key_pem, key_id }
+        Fixture {
+            dir,
+            cert: ca.cert_pem,
+            key: ca.key_pem,
+            key_id,
+        }
     }
 
     fn store_with(f: &Fixture) -> servers::Store {
@@ -135,16 +136,28 @@ mod tests {
         let f = fixture();
         let mut store = store_with(&f);
         let uri = locaryn_travel::sign(
-            &f.cert, &f.key, locaryn_travel::Mode::Travel,
-            "https://abc-123.trycloudflare.com", NOW, 600,
-        ).unwrap();
+            &f.cert,
+            &f.key,
+            locaryn_travel::Mode::Travel,
+            "https://abc-123.trycloudflare.com",
+            NOW,
+            600,
+        )
+        .unwrap();
 
         let r = apply(&uri, &mut store, NOW + 5).unwrap();
         assert!(r.travelling);
         assert_eq!(r.server_name, "Atelier Vasseur");
         // What the user is told must not contain a machine address.
-        assert!(!r.message.contains("http"), "adresse exposée : {}", r.message);
-        assert!(!r.message.contains('.') || !r.message.contains("192."), "IP exposée");
+        assert!(
+            !r.message.contains("http"),
+            "adresse exposée : {}",
+            r.message
+        );
+        assert!(
+            !r.message.contains('.') || !r.message.contains("192."),
+            "IP exposée"
+        );
 
         let s = store.get(&f.key_id).unwrap();
         assert_eq!(s.current_url, "https://abc-123.trycloudflare.com");
@@ -158,15 +171,25 @@ mod tests {
         let f = fixture();
         let mut store = store_with(&f);
         let travel = locaryn_travel::sign(
-            &f.cert, &f.key, locaryn_travel::Mode::Travel,
-            "https://abc-123.trycloudflare.com", NOW, 600,
-        ).unwrap();
+            &f.cert,
+            &f.key,
+            locaryn_travel::Mode::Travel,
+            "https://abc-123.trycloudflare.com",
+            NOW,
+            600,
+        )
+        .unwrap();
         apply(&travel, &mut store, NOW).unwrap();
 
         let home = locaryn_travel::sign(
-            &f.cert, &f.key, locaryn_travel::Mode::Home,
-            "https://192.168.1.10:7474", NOW, 600,
-        ).unwrap();
+            &f.cert,
+            &f.key,
+            locaryn_travel::Mode::Home,
+            "https://192.168.1.10:7474",
+            NOW,
+            600,
+        )
+        .unwrap();
         let r = apply(&home, &mut store, NOW).unwrap();
         assert!(!r.travelling);
         let s = store.get(&f.key_id).unwrap();
@@ -188,9 +211,14 @@ mod tests {
         // the key id is derived from the authority. So they use their own,
         // which my phone has never registered.
         let uri = locaryn_travel::sign(
-            &theirs.cert, &theirs.key, locaryn_travel::Mode::Travel,
-            "https://serveur-du-pirate.example", NOW, 600,
-        ).unwrap();
+            &theirs.cert,
+            &theirs.key,
+            locaryn_travel::Mode::Travel,
+            "https://serveur-du-pirate.example",
+            NOW,
+            600,
+        )
+        .unwrap();
 
         let err = apply(&uri, &mut store, NOW).unwrap_err();
         assert!(err.contains("aucun serveur enregistré"), "message : {err}");
@@ -206,9 +234,14 @@ mod tests {
         let f = fixture();
         let mut store = store_with(&f);
         let uri = locaryn_travel::sign(
-            &f.cert, &f.key, locaryn_travel::Mode::Travel,
-            "https://vrai.trycloudflare.com", NOW, 600,
-        ).unwrap();
+            &f.cert,
+            &f.key,
+            locaryn_travel::Mode::Travel,
+            "https://vrai.trycloudflare.com",
+            NOW,
+            600,
+        )
+        .unwrap();
 
         // Swap the encoded address for another one.
         let encoded = uri.split("&u=").nth(1).unwrap().split('&').next().unwrap();
@@ -229,9 +262,14 @@ mod tests {
         let f = fixture();
         let mut store = store_with(&f);
         let uri = locaryn_travel::sign(
-            &f.cert, &f.key, locaryn_travel::Mode::Travel,
-            "https://abc.trycloudflare.com", NOW, 600,
-        ).unwrap();
+            &f.cert,
+            &f.key,
+            locaryn_travel::Mode::Travel,
+            "https://abc.trycloudflare.com",
+            NOW,
+            600,
+        )
+        .unwrap();
         let err = apply(&uri, &mut store, NOW + 601).unwrap_err();
         assert!(err.contains("expiré"), "message : {err}");
         assert!(err.contains("nouveau"), "sans issue : {err}");
@@ -245,7 +283,10 @@ mod tests {
         let mut store = store_with(&f);
         for junk in ["https://exemple.com", "WIFI:S:maison;T:WPA;P:secret;;", ""] {
             let err = apply(junk, &mut store, NOW).unwrap_err();
-            assert!(err.contains("Locaryn"), "message peu clair pour {junk:?} : {err}");
+            assert!(
+                err.contains("Locaryn"),
+                "message peu clair pour {junk:?} : {err}"
+            );
         }
         std::fs::remove_dir_all(&f.dir).ok();
     }

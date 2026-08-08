@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ToolApprovalRequest, RiskLevel, RiskScope, ToolApprovalDecision } from "../lib/core";
+import type { RiskLevel, RiskScope, ToolApprovalDecision, ToolApprovalRequest } from "../lib/core";
 
 type Props = {
   /** When `null`, the modal is closed. */
@@ -218,15 +218,13 @@ export function ToolApprovalModal({
               <span className="locaryn-approval-label">Preview</span>
               <pre className="locaryn-approval-diff">{approval.diff}</pre>
             </div>
-          ) : (
-            isCritical ? null : (
-              <div className="locaryn-approval-row">
-                <span className="locaryn-approval-label">Preview</span>
-                <p className="locaryn-approval-reason" style={{ fontStyle: "italic" }}>
-                  This tool produces no previewable diff.
-                </p>
-              </div>
-            )
+          ) : isCritical ? null : (
+            <div className="locaryn-approval-row">
+              <span className="locaryn-approval-label">Preview</span>
+              <p className="locaryn-approval-reason" style={{ fontStyle: "italic" }}>
+                This tool produces no previewable diff.
+              </p>
+            </div>
           )}
 
           {/* Critical-only type-to-confirm + understand checkbox ──── */}
@@ -243,25 +241,28 @@ export function ToolApprovalModal({
                   <strong>{confirmTargetLabel ?? "the remote target"}</strong>.
                 </span>
               </label>
-          {targetNeedsTyping ? (
-            <div className="locaryn-approval-confirm-input">
-              <label className="locaryn-approval-confirm-input-label" htmlFor="locaryn-approval-confirm-phrase">
-                Type <code>{confirmTargetLabel}</code> to enable Allow:
-              </label>
-              <input
-                ref={confirmInputRef}
-                id="locaryn-approval-confirm-phrase"
-                className="locaryn-input"
-                type="text"
-                value={confirmText}
-                spellCheck={false}
-                autoComplete="off"
-                aria-required="true"
-                aria-invalid={confirmText.trim() !== confirmTargetLabel}
-                onChange={(e) => setConfirmText(e.target.value)}
-              />
-            </div>
-          ) : null}
+              {targetNeedsTyping ? (
+                <div className="locaryn-approval-confirm-input">
+                  <label
+                    className="locaryn-approval-confirm-input-label"
+                    htmlFor="locaryn-approval-confirm-phrase"
+                  >
+                    Type <code>{confirmTargetLabel}</code> to enable Allow:
+                  </label>
+                  <input
+                    ref={confirmInputRef}
+                    id="locaryn-approval-confirm-phrase"
+                    className="locaryn-input"
+                    type="text"
+                    value={confirmText}
+                    spellCheck={false}
+                    autoComplete="off"
+                    aria-required="true"
+                    aria-invalid={confirmText.trim() !== confirmTargetLabel}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -312,11 +313,7 @@ export function ToolApprovalModal({
             call {approval.call_id.slice(0, 8)}
           </span>
           <div className="locaryn-approval-actions">
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              onClick={handleDeny}
-            >
+            <button type="button" className="locaryn-btn-ghost" onClick={handleDeny}>
               Deny
             </button>
             <button

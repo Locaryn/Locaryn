@@ -125,7 +125,10 @@ impl Agent for OllamaAgent {
             let message_id = message_id.clone();
             let task_id = task_id.clone();
             async move {
-                StreamEvent::MessageStart { message_id, task_id }
+                StreamEvent::MessageStart {
+                    message_id,
+                    task_id,
+                }
             }
         })
         .chain(OllamaEventStream {
@@ -245,10 +248,7 @@ impl Stream for OllamaEventStream {
 
             match self.inner.as_mut().poll_next(cx) {
                 Poll::Ready(Some(Ok(chunk))) => {
-                    let done = chunk
-                        .get("done")
-                        .and_then(|d| d.as_bool())
-                        .unwrap_or(false);
+                    let done = chunk.get("done").and_then(|d| d.as_bool()).unwrap_or(false);
 
                     // Extract content delta from message.content
                     let delta = chunk

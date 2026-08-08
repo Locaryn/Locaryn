@@ -23,7 +23,9 @@
 //! for simplicity — we emit it as a single `Token` event. True token streaming
 //! for the final turn is a V1.1 enhancement.
 
-use crate::tools::{builtin_tools, dispatch_tool, ollama_tools_json, requires_approval, ToolContext, ToolSpec};
+use crate::tools::{
+    builtin_tools, dispatch_tool, ollama_tools_json, requires_approval, ToolContext, ToolSpec,
+};
 use crate::{AgentError, AgentInput, EventStream};
 use locaryn_events::{LogLevel, StreamEvent};
 use locaryn_shared_types::TrustLevel;
@@ -54,7 +56,10 @@ pub async fn run_tool_loop(
     project_path: std::path::PathBuf,
     trust: TrustLevel,
 ) -> Result<EventStream, AgentError> {
-    let model = input.model.clone().unwrap_or_else(|| "qwen2.5-coder:7b".into());
+    let model = input
+        .model
+        .clone()
+        .unwrap_or_else(|| "qwen2.5-coder:7b".into());
     let chat_url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
     let tools = builtin_tools();
     // Discover MCP tools and merge into the tool list.
@@ -130,10 +135,12 @@ pub async fn run_tool_loop(
     })?;
 
     // Emit MessageStart (before spawn — this is on the calling task).
-    let _ = tx.send(StreamEvent::MessageStart {
-        message_id: message_id.clone(),
-        task_id: task_id.clone(),
-    }).await;
+    let _ = tx
+        .send(StreamEvent::MessageStart {
+            message_id: message_id.clone(),
+            task_id: task_id.clone(),
+        })
+        .await;
 
     // Clone all borrowed data before spawning — tokio::spawn requires 'static.
     let input = input.clone();
@@ -171,7 +178,8 @@ pub async fn run_tool_loop(
             &mut total_tokens_in,
             &mut total_tokens_out,
             &mcp_state_for_dispatch,
-        ).await;
+        )
+        .await;
 
         for _round in 1..MAX_TOOL_ROUNDS {
             match outcome {
@@ -196,32 +204,38 @@ pub async fn run_tool_loop(
             let resp = match client.post(&chat_url_loop).json(&body).send().await {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = tx.send(StreamEvent::Log {
-                        level: LogLevel::Warn,
-                        msg: format!("ollama connection failed: {e}"),
-                        source: "tool_loop".into(),
-                    }).await;
+                    let _ = tx
+                        .send(StreamEvent::Log {
+                            level: LogLevel::Warn,
+                            msg: format!("ollama connection failed: {e}"),
+                            source: "tool_loop".into(),
+                        })
+                        .await;
                     break;
                 }
             };
 
             if !resp.status().is_success() {
-                let _ = tx.send(StreamEvent::Log {
-                    level: LogLevel::Warn,
-                    msg: format!("ollama returned {}", resp.status()),
-                    source: "tool_loop".into(),
-                }).await;
+                let _ = tx
+                    .send(StreamEvent::Log {
+                        level: LogLevel::Warn,
+                        msg: format!("ollama returned {}", resp.status()),
+                        source: "tool_loop".into(),
+                    })
+                    .await;
                 break;
             }
 
             let chunk: serde_json::Value = match resp.json().await {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = tx.send(StreamEvent::Log {
-                        level: LogLevel::Warn,
-                        msg: format!("failed to parse ollama response: {e}"),
-                        source: "tool_loop".into(),
-                    }).await;
+                    let _ = tx
+                        .send(StreamEvent::Log {
+                            level: LogLevel::Warn,
+                            msg: format!("failed to parse ollama response: {e}"),
+                            source: "tool_loop".into(),
+                        })
+                        .await;
                     break;
                 }
             };
@@ -236,28 +250,33 @@ pub async fn run_tool_loop(
                 &mut total_tokens_in,
                 &mut total_tokens_out,
                 &mcp_state_for_dispatch,
-            ).await;
+            )
+            .await;
         }
 
         // If we never got a final answer, log it. This can happen when the
         // model returns empty content or the loop hits an error before a
         // final answer.
         if final_text.is_empty() {
-            let _ = tx.send(StreamEvent::Log {
-                level: LogLevel::Warn,
-                msg: "tool loop finished without a final response".into(),
-                source: "tool_loop".into(),
-            }).await;
+            let _ = tx
+                .send(StreamEvent::Log {
+                    level: LogLevel::Warn,
+                    msg: "tool loop finished without a final response".into(),
+                    source: "tool_loop".into(),
+                })
+                .await;
         }
 
         // Emit MessageEnd.
         let duration_ms = start.elapsed().as_millis() as u64;
-        let _ = tx.send(StreamEvent::MessageEnd {
-            message_id: message_id_loop,
-            tokens_in: total_tokens_in,
-            tokens_out: total_tokens_out,
-            duration_ms,
-        }).await;
+        let _ = tx
+            .send(StreamEvent::MessageEnd {
+                message_id: message_id_loop,
+                tokens_in: total_tokens_in,
+                tokens_out: total_tokens_out,
+                duration_ms,
+            })
+            .await;
     });
 
     // Convert the mpsc receiver into a Stream.
@@ -325,11 +344,15 @@ async fn process_chunk(
                 let call_id = uuid::Uuid::new_v4().to_string();
 
                 // Emit ToolCall event.
-                if tx.send(StreamEvent::ToolCall {
-                    call_id: call_id.clone(),
-                    tool: tool_name.to_string(),
-                    args: args.clone(),
-                }).await.is_err() {
+                if tx
+                    .send(StreamEvent::ToolCall {
+                        call_id: call_id.clone(),
+                        tool: tool_name.to_string(),
+                        args: args.clone(),
+                    })
+                    .await
+                    .is_err()
+                {
                     return ChunkOutcome::Error; // consumer gone
                 }
 
@@ -352,8 +375,7 @@ async fn process_chunk(
                         TrustLevel::Untrusted => {
                             matches!(
                                 tool_spec.map(|s| s.risk),
-                                Some(crate::tools::Risk::Low)
-                                    | Some(crate::tools::Risk::Medium)
+                                Some(crate::tools::Risk::Low) | Some(crate::tools::Risk::Medium)
                             )
                         }
                         TrustLevel::Sandbox => false,
@@ -363,21 +385,27 @@ async fn process_chunk(
                 };
 
                 if !approved {
-                    let _ = tx.send(StreamEvent::ToolApproval {
-                        call_id: call_id.clone(),
-                        tool: tool_name.to_string(),
-                        args: args.clone(),
-                        risk: risk_to_event_risk(tool_spec.map(|s| s.risk)),
-                        // MVP auto-gate: no agent_reason, no diff, no remote.
-                        reason: String::new(),
-                        diff: None,
-                        is_remote: false,
-                    }).await;
-                    if tx.send(StreamEvent::ToolResult {
-                        call_id: call_id.clone(),
-                        ok: false,
-                        output: "tool call denied: approval required (MVP auto-gate)".into(),
-                    }).await.is_err() {
+                    let _ = tx
+                        .send(StreamEvent::ToolApproval {
+                            call_id: call_id.clone(),
+                            tool: tool_name.to_string(),
+                            args: args.clone(),
+                            risk: risk_to_event_risk(tool_spec.map(|s| s.risk)),
+                            // MVP auto-gate: no agent_reason, no diff, no remote.
+                            reason: String::new(),
+                            diff: None,
+                            is_remote: false,
+                        })
+                        .await;
+                    if tx
+                        .send(StreamEvent::ToolResult {
+                            call_id: call_id.clone(),
+                            ok: false,
+                            output: "tool call denied: approval required (MVP auto-gate)".into(),
+                        })
+                        .await
+                        .is_err()
+                    {
                         return ChunkOutcome::Error;
                     }
                     // Feed the denial back to the model.
@@ -405,11 +433,15 @@ async fn process_chunk(
                 };
 
                 // Emit ToolResult event.
-                if tx.send(StreamEvent::ToolResult {
-                    call_id: call_id.clone(),
-                    ok: result.ok,
-                    output: result.output.clone(),
-                }).await.is_err() {
+                if tx
+                    .send(StreamEvent::ToolResult {
+                        call_id: call_id.clone(),
+                        ok: result.ok,
+                        output: result.output.clone(),
+                    })
+                    .await
+                    .is_err()
+                {
                     return ChunkOutcome::Error;
                 }
 
@@ -433,9 +465,11 @@ async fn process_chunk(
 
     // No tool calls — this is the final text response.
     if !content.is_empty() {
-        let _ = tx.send(StreamEvent::Token {
-            text: content.to_string(),
-        }).await;
+        let _ = tx
+            .send(StreamEvent::Token {
+                text: content.to_string(),
+            })
+            .await;
         return ChunkOutcome::Final(content.to_string());
     }
 

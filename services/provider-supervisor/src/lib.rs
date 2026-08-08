@@ -164,10 +164,7 @@ impl Supervisor {
     /// and return.
     ///
     /// Returns the endpoint URL on success.
-    pub async fn ensure_running(
-        &self,
-        engine: ProviderEngine,
-    ) -> Result<String, SupervisorError> {
+    pub async fn ensure_running(&self, engine: ProviderEngine) -> Result<String, SupervisorError> {
         let endpoint = default_endpoint(engine).to_string();
 
         // Fast path: already healthy?
@@ -196,7 +193,7 @@ impl Supervisor {
         }
 
         tracing::info!(%endpoint, ?engine, "engine not running — auto-spawning llama-server");
-        
+
         let p = self.inner.storage.providers.active().await.unwrap_or(None);
         let active_model = p.and_then(|p| p.model);
 
@@ -478,12 +475,7 @@ impl Supervisor {
                     }
 
                     // Give it 5s to exit gracefully, then force-kill.
-                    match tokio::time::timeout(
-                        Duration::from_secs(5),
-                        child.wait(),
-                    )
-                    .await
-                    {
+                    match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
                         Ok(Ok(_status)) => {
                             tracing::info!(?engine, "runtime shut down gracefully");
                         }
@@ -624,23 +616,29 @@ async fn spawn_llama_server(
     let inference_cfg: serde_json::Value = std::fs::read_to_string(&inference_cfg_path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({
-            "profile": "balanced",
-            "gpu_layers": -1,
-            "kv_cache_type": "q8_0",
-            "context_length": 8192,
-            "flash_attention": true,
-            "cpu_threads": 0,
-            "batch_size": 512,
-            "use_mmap": true,
-            "parallel_slots": 1,
-            "draft_model_path": ""
-        }));
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "profile": "balanced",
+                "gpu_layers": -1,
+                "kv_cache_type": "q8_0",
+                "context_length": 8192,
+                "flash_attention": true,
+                "cpu_threads": 0,
+                "batch_size": 512,
+                "use_mmap": true,
+                "parallel_slots": 1,
+                "draft_model_path": ""
+            })
+        });
 
     // Binary resolution: prefer the managed runtime (data_dir/bin/llama —
     // installed/updated by the app, pinned modern build), then the legacy
     // flat bin dir, then PATH.
-    let exe_name = if cfg!(windows) { "llama-server.exe" } else { "llama-server" };
+    let exe_name = if cfg!(windows) {
+        "llama-server.exe"
+    } else {
+        "llama-server"
+    };
     let bin_root = locaryn_config::bin_dir();
     let managed = bin_root.join("llama").join(exe_name);
     let legacy = bin_root.join(exe_name);
@@ -723,7 +721,10 @@ async fn spawn_llama_server(
         "turbo3" | "turboquant" => "q4_0",
         other => other,
     };
-    if matches!(kv_type, "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl") {
+    if matches!(
+        kv_type,
+        "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl"
+    ) {
         cmd.arg("-ctk").arg(kv_type).arg("-ctv").arg(kv_type);
     }
 
@@ -734,7 +735,10 @@ async fn spawn_llama_server(
     // Flash attention takes a value (on|off|auto). If the user disabled it, pass
     // off. Otherwise, when the KV cache is quantized we force it on, because a
     // quantized V cache requires Flash Attention in llama.cpp; else leave auto.
-    let kv_is_quantized = matches!(kv_type, "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl");
+    let kv_is_quantized = matches!(
+        kv_type,
+        "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl"
+    );
     if !inference_cfg["flash_attention"].as_bool().unwrap_or(true) {
         cmd.arg("-fa").arg("off");
     } else if kv_is_quantized {

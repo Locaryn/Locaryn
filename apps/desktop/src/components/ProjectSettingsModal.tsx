@@ -60,7 +60,14 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "16px",
+          }}
+        >
           <div>
             <h3 style={{ margin: 0 }}>⚙️ Paramètres du Projet : {project.name}</h3>
             <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
@@ -80,15 +87,23 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
             value={trustLevel}
             onChange={(e) => setTrustLevel(e.target.value as TrustLevel)}
           >
-            <option value="untrusted">🛡️ Untrusted (Recommandé : Demander confirmation pour chaque écriture)</option>
-            <option value="trusted">⚡ Trusted (Auto-approbation des lectures et modifications de code)</option>
-            <option value="sandbox">🔒 Sandbox (Lecture seule stricte - aucun terminal ni modification)</option>
+            <option value="untrusted">
+              🛡️ Untrusted (Recommandé : Demander confirmation pour chaque écriture)
+            </option>
+            <option value="trusted">
+              ⚡ Trusted (Auto-approbation des lectures et modifications de code)
+            </option>
+            <option value="sandbox">
+              🔒 Sandbox (Lecture seule stricte - aucun terminal ni modification)
+            </option>
           </select>
         </div>
 
         {/* 2. Protected & Excluded Files */}
         <div className="locaryn-field" style={{ marginBottom: "20px" }}>
-          <label className="locaryn-field-label">🛡️ Fichiers Protégés & Interdits à l'IA (Patterns Glob)</label>
+          <label className="locaryn-field-label">
+            🛡️ Fichiers Protégés & Interdits à l'IA (Patterns Glob)
+          </label>
           <textarea
             className="locaryn-input"
             rows={4}
@@ -98,7 +113,8 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
             placeholder=".env&#10;*.pem&#10;secrets/*"
           />
           <p className="locaryn-field-hint">
-            L'agent IA aura une interdiction absolue d'accéder, de lire ou de modifier les fichiers correspondant à ces motifs.
+            L'agent IA aura une interdiction absolue d'accéder, de lire ou de modifier les fichiers
+            correspondant à ces motifs.
           </p>
         </div>
 
@@ -112,7 +128,10 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
                 checked={requireWriteApproval}
                 onChange={(e) => setRequireWriteApproval(e.target.checked)}
               />
-              <span>Toujours demander la confirmation de l'utilisateur avant d'écrire ou modifier un fichier</span>
+              <span>
+                Toujours demander la confirmation de l'utilisateur avant d'écrire ou modifier un
+                fichier
+              </span>
             </label>
             <label className="locaryn-checkbox-row">
               <input
@@ -120,20 +139,34 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
                 checked={requireShellApproval}
                 onChange={(e) => setRequireShellApproval(e.target.checked)}
               />
-              <span>Toujours demander la confirmation de l'utilisateur avant d'exécuter une commande terminal</span>
+              <span>
+                Toujours demander la confirmation de l'utilisateur avant d'exécuter une commande
+                terminal
+              </span>
             </label>
           </div>
         </div>
 
         {/* 4. Connectors Allowed for this Project */}
         <div className="locaryn-field">
-          <label className="locaryn-field-label">🔌 Extensions & Connecteurs Autorisés pour ce Projet</label>
+          <label className="locaryn-field-label">
+            🔌 Extensions & Connecteurs Autorisés pour ce Projet
+          </label>
           <p className="locaryn-field-hint" style={{ marginBottom: "8px" }}>
-            Cochez les connecteurs auxquels ce projet a le droit d'accéder durant les sessions de chat.
+            Cochez les connecteurs auxquels ce projet a le droit d'accéder durant les sessions de
+            chat.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <label className="locaryn-checkbox-row" style={{ background: "var(--bg)", padding: "8px 12px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border)" }}>
+            <label
+              className="locaryn-checkbox-row"
+              style={{
+                background: "var(--bg)",
+                padding: "8px 12px",
+                borderRadius: "var(--radius-xs)",
+                border: "1px solid var(--border)",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={allowedConnectors.ssh_server_1 ?? true}
@@ -141,13 +174,27 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
               />
               <div>
                 <span style={{ fontWeight: 700 }}>🖧 Serveur SSH Distant</span>
-                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)", display: "block" }}>
+                <span
+                  style={{
+                    fontSize: "var(--text-xs)",
+                    color: "var(--text-faint)",
+                    display: "block",
+                  }}
+                >
                   Permet à l'agent d'interagir avec votre serveur SSH lié.
                 </span>
               </div>
             </label>
 
-            <label className="locaryn-checkbox-row" style={{ background: "var(--bg)", padding: "8px 12px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border)" }}>
+            <label
+              className="locaryn-checkbox-row"
+              style={{
+                background: "var(--bg)",
+                padding: "8px 12px",
+                borderRadius: "var(--radius-xs)",
+                border: "1px solid var(--border)",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={allowedConnectors.brave_web_search ?? true}
@@ -155,13 +202,28 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
               />
               <div>
                 <span style={{ fontWeight: 700 }}>🔍 Recherche Web Brave & Scraper</span>
-                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)", display: "block" }}>
-                  Autorise l'agent à effectuer des recherches en ligne pour la documentation du projet.
+                <span
+                  style={{
+                    fontSize: "var(--text-xs)",
+                    color: "var(--text-faint)",
+                    display: "block",
+                  }}
+                >
+                  Autorise l'agent à effectuer des recherches en ligne pour la documentation du
+                  projet.
                 </span>
               </div>
             </label>
 
-            <label className="locaryn-checkbox-row" style={{ background: "var(--bg)", padding: "8px 12px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border)" }}>
+            <label
+              className="locaryn-checkbox-row"
+              style={{
+                background: "var(--bg)",
+                padding: "8px 12px",
+                borderRadius: "var(--radius-xs)",
+                border: "1px solid var(--border)",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={allowedConnectors.postgres_mcp ?? false}
@@ -169,13 +231,27 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
               />
               <div>
                 <span style={{ fontWeight: 700 }}>🐘 Base de Données PostgreSQL / MySQL</span>
-                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)", display: "block" }}>
+                <span
+                  style={{
+                    fontSize: "var(--text-xs)",
+                    color: "var(--text-faint)",
+                    display: "block",
+                  }}
+                >
                   Permet d'inspecter les tables et schémas SQL pour ce projet.
                 </span>
               </div>
             </label>
 
-            <label className="locaryn-checkbox-row" style={{ background: "var(--bg)", padding: "8px 12px", borderRadius: "var(--radius-xs)", border: "1px solid var(--border)" }}>
+            <label
+              className="locaryn-checkbox-row"
+              style={{
+                background: "var(--bg)",
+                padding: "8px 12px",
+                borderRadius: "var(--radius-xs)",
+                border: "1px solid var(--border)",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={allowedConnectors.lsp_plugin ?? true}
@@ -183,7 +259,13 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
               />
               <div>
                 <span style={{ fontWeight: 700 }}>⚡ Language Server Protocol (LSP)</span>
-                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)", display: "block" }}>
+                <span
+                  style={{
+                    fontSize: "var(--text-xs)",
+                    color: "var(--text-faint)",
+                    display: "block",
+                  }}
+                >
                   Analyse de type précise et autocomplétion pour le code du projet.
                 </span>
               </div>
@@ -191,7 +273,10 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
           </div>
         </div>
 
-        <div className="locaryn-field-actions" style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+        <div
+          className="locaryn-field-actions"
+          style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "8px" }}
+        >
           <button type="button" className="locaryn-btn-ghost" onClick={onClose}>
             Annuler
           </button>

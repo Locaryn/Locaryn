@@ -66,7 +66,9 @@ impl client::Handler for HostKeyHandler {
         &mut self,
         server_public_key: &russh::keys::PublicKey,
     ) -> Result<bool, Self::Error> {
-        let fp = server_public_key.fingerprint(Default::default()).to_string();
+        let fp = server_public_key
+            .fingerprint(Default::default())
+            .to_string();
         let algo = server_public_key.algorithm().to_string();
         *self.captured.lock().unwrap() = Some((algo, fp.clone()));
         match &self.pinned {
@@ -120,7 +122,9 @@ impl SshClient {
                     client::connect(config(), (target.host.as_str(), target.port), handler);
                 let handle = tokio::time::timeout(Duration::from_secs(15), connect)
                     .await
-                    .map_err(|_| anyhow!("connection to {}:{} timed out", target.host, target.port))?
+                    .map_err(|_| {
+                        anyhow!("connection to {}:{} timed out", target.host, target.port)
+                    })?
                     .with_context(|| format!("connecting to {}:{}", target.host, target.port))?;
                 (handle, None)
             }
@@ -186,10 +190,16 @@ impl SshClient {
                 r.os = Some(os);
             }
         }
-        if let Ok((o, _)) = self.run("sudo -n true 2>/dev/null && echo yes || echo no").await {
+        if let Ok((o, _)) = self
+            .run("sudo -n true 2>/dev/null && echo yes || echo no")
+            .await
+        {
             r.is_sudoer = o.trim() == "yes";
         }
-        if let Ok((o, _)) = self.run("ls -la \"$HOME\" >/dev/null 2>&1 && echo ok || echo no").await {
+        if let Ok((o, _)) = self
+            .run("ls -la \"$HOME\" >/dev/null 2>&1 && echo ok || echo no")
+            .await
+        {
             r.can_read = o.trim() == "ok";
         }
         // Write probe confined to $HOME, always cleans up after itself.

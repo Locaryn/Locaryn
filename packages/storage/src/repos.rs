@@ -989,14 +989,13 @@ impl TaskRepo {
 
     pub async fn set_error(&self, id: Uuid, error: &str) -> Result<(), StorageError> {
         let now = chrono::Utc::now().to_rfc3339();
-        let res = sqlx::query(
-            "UPDATE tasks SET status = 'failed', error = ?, ended_at = ? WHERE id = ?",
-        )
-        .bind(error)
-        .bind(&now)
-        .bind(id.to_string())
-        .execute(&self.pool)
-        .await?;
+        let res =
+            sqlx::query("UPDATE tasks SET status = 'failed', error = ?, ended_at = ? WHERE id = ?")
+                .bind(error)
+                .bind(&now)
+                .bind(id.to_string())
+                .execute(&self.pool)
+                .await?;
         if res.rows_affected() == 0 {
             return Err(StorageError::NotFound(format!("task {id}")));
         }
@@ -1190,9 +1189,27 @@ impl ProviderRepo {
             return false;
         }
         const NOT_CHAT: &[&str] = &[
-            "-tts", "_tts", "tts-", "xtts", "piper", "kokoro", "parler", "bark",
-            "musicgen", "audioldm", "whisper", "stable-diffusion", "sd_xl", "sdxl",
-            "z_image", "z-image", "flux", "clipseg", "segformer", "vae", "clip_l",
+            "-tts",
+            "_tts",
+            "tts-",
+            "xtts",
+            "piper",
+            "kokoro",
+            "parler",
+            "bark",
+            "musicgen",
+            "audioldm",
+            "whisper",
+            "stable-diffusion",
+            "sd_xl",
+            "sdxl",
+            "z_image",
+            "z-image",
+            "flux",
+            "clipseg",
+            "segformer",
+            "vae",
+            "clip_l",
             "t5xxl",
         ];
         !NOT_CHAT.iter().any(|p| n.contains(p))
@@ -1302,11 +1319,7 @@ impl ProviderRepo {
     }
 
     /// Update the health status of a provider by ID (called by healthcheck loops).
-    pub async fn set_status(
-        &self,
-        id: Uuid,
-        status: ProviderStatus,
-    ) -> Result<(), StorageError> {
+    pub async fn set_status(&self, id: Uuid, status: ProviderStatus) -> Result<(), StorageError> {
         let token = match status {
             ProviderStatus::Unknown => "unknown",
             ProviderStatus::Healthy => "healthy",
@@ -1363,23 +1376,20 @@ impl ProviderRepo {
         id: Uuid,
         config: serde_json::Value,
     ) -> Result<(), StorageError> {
-        let config_str = serde_json::to_string(&config)
-            .map_err(|e| StorageError::Decode(e.to_string()))?;
-        let res = sqlx::query(
-            "UPDATE providers SET config = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(config_str)
-        .bind(chrono::Utc::now().to_rfc3339())
-        .bind(id.to_string())
-        .execute(&self.pool)
-        .await?;
+        let config_str =
+            serde_json::to_string(&config).map_err(|e| StorageError::Decode(e.to_string()))?;
+        let res = sqlx::query("UPDATE providers SET config = ?, updated_at = ? WHERE id = ?")
+            .bind(config_str)
+            .bind(chrono::Utc::now().to_rfc3339())
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
         if res.rows_affected() == 0 {
             return Err(StorageError::NotFound(format!("provider {id}")));
         }
         Ok(())
     }
 }
-
 
 // ============================================================================
 // SSH servers (feature gate: `ssh-connector`)
@@ -1482,8 +1492,7 @@ impl SshServerRepo {
         let now = chrono::Utc::now().to_rfc3339();
         let jump_json = match &new.jump {
             Some(j) => Some(
-                serde_json::to_string(j)
-                    .map_err(|e| StorageError::Decode(format!("jump: {e}")))?,
+                serde_json::to_string(j).map_err(|e| StorageError::Decode(format!("jump: {e}")))?,
             ),
             None => None,
         };
@@ -1524,11 +1533,7 @@ impl SshServerRepo {
         SshServer::try_from(row)
     }
 
-    pub async fn update(
-        &self,
-        id: Uuid,
-        patch: SshServerPatch,
-    ) -> Result<SshServer, StorageError> {
+    pub async fn update(&self, id: Uuid, patch: SshServerPatch) -> Result<SshServer, StorageError> {
         let cur = self.get(id).await?;
         let name = patch.name.unwrap_or(cur.name);
         let description = patch.description.unwrap_or(cur.description);
@@ -1568,7 +1573,8 @@ impl SshServerRepo {
         id: Uuid,
         level: SshAiAccess,
     ) -> Result<SshServer, StorageError> {
-        self.simple_set(id, "ai_access = ?", ai_access_token(level)).await
+        self.simple_set(id, "ai_access = ?", ai_access_token(level))
+            .await
     }
 
     pub async fn set_status(&self, id: Uuid, status: SshStatus) -> Result<(), StorageError> {
@@ -1842,8 +1848,7 @@ impl ExtensionRepo {
         // Re-declare the requested set. Rows the manifest no longer asks for
         // are dropped; rows it still asks for keep their `granted` value, so an
         // update does not silently re-prompt for permissions already approved.
-        let requested: Vec<&'static str> =
-            new.requested.iter().map(permission_token).collect();
+        let requested: Vec<&'static str> = new.requested.iter().map(permission_token).collect();
         if requested.is_empty() {
             sqlx::query("DELETE FROM extension_permissions WHERE extension_id = ?")
                 .bind(id.to_string())
@@ -1908,11 +1913,7 @@ impl ExtensionRepo {
 
     /// Replace the granted set. Anything not listed is revoked, so the modal
     /// can send the user's full decision in one call.
-    pub async fn set_granted(
-        &self,
-        id: Uuid,
-        granted: &[Permission],
-    ) -> Result<(), StorageError> {
+    pub async fn set_granted(&self, id: Uuid, granted: &[Permission]) -> Result<(), StorageError> {
         let now = chrono::Utc::now().to_rfc3339();
         let mut tx = self.pool.begin().await?;
         sqlx::query(
@@ -2058,7 +2059,10 @@ mod ssh_tests {
             .unwrap();
         assert_eq!(updated.description, "Ubuntu 22.04, read+write, no sudo");
 
-        let widened = repo.set_ai_access(s.id, SshAiAccess::ReadOnly).await.unwrap();
+        let widened = repo
+            .set_ai_access(s.id, SshAiAccess::ReadOnly)
+            .await
+            .unwrap();
         assert_eq!(widened.ai_access, SshAiAccess::ReadOnly);
 
         // UNIQUE(name, scope) enforced.

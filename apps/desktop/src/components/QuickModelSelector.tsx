@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  looksLikeImageModel,
-  fetchFullRegistry,
-  IMAGE_GEN_MODELS,
-  SEED_CATALOG,
-  isChatModel,
-  classifyModel,
-  type ModelFamily,
-} from "../lib/modelRegistry";
 import { core } from "../lib/core";
 import { dedupeModelsByDirectory } from "../lib/modelList";
+import {
+  IMAGE_GEN_MODELS,
+  type ModelFamily,
+  SEED_CATALOG,
+  classifyModel,
+  fetchFullRegistry,
+  isChatModel,
+  looksLikeImageModel,
+} from "../lib/modelRegistry";
 
 type Props = {
   isOpen: boolean;
@@ -42,7 +42,9 @@ export function QuickModelSelector({
   onOpenMarketplace,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"all" | "text" | "code" | "reasoning" | "vision">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "text" | "code" | "reasoning" | "vision">(
+    "all",
+  );
   const [registry, setRegistry] = useState<ModelFamily[]>([...SEED_CATALOG, ...IMAGE_GEN_MODELS]);
 
   useEffect(() => {
@@ -53,74 +55,85 @@ export function QuickModelSelector({
   }, [isOpen]);
 
   const dedupedModels = useMemo(
-    () => dedupeModelsByDirectory(installedModels.length > 0 ? installedModels : [activeModel].filter(Boolean) as string[]),
-    [installedModels, activeModel]
+    () =>
+      dedupeModelsByDirectory(
+        installedModels.length > 0 ? installedModels : ([activeModel].filter(Boolean) as string[]),
+      ),
+    [installedModels, activeModel],
   );
 
   const options = useMemo<ModelOptionItem[]>(() => {
     const tagsToList = dedupedModels;
 
-    return tagsToList
-      .map((tag) => {
-      let match: { name: string; brand: string; size: string; family: ModelFamily } | null = null;
+    return (
+      tagsToList
+        .map((tag) => {
+          let match: { name: string; brand: string; size: string; family: ModelFamily } | null =
+            null;
 
-      for (const family of registry) {
-        for (const variant of family.variants) {
-          if (variant.tag === tag || `${variant.tag}:latest` === tag || variant.tag === `${tag}:latest`) {
-            match = {
-              name: `${family.name} (${variant.size})`,
-              brand: family.brand,
-              size: variant.size,
-              family,
-            };
-            break;
+          for (const family of registry) {
+            for (const variant of family.variants) {
+              if (
+                variant.tag === tag ||
+                `${variant.tag}:latest` === tag ||
+                variant.tag === `${tag}:latest`
+              ) {
+                match = {
+                  name: `${family.name} (${variant.size})`,
+                  brand: family.brand,
+                  size: variant.size,
+                  family,
+                };
+                break;
+              }
+            }
+            if (match) break;
           }
-        }
-        if (match) break;
-      }
 
-      // Use the canonical classifier (centralised in modelRegistry)
-      const { kind } = classifyModel(tag);
+          // Use the canonical classifier (centralised in modelRegistry)
+          const { kind } = classifyModel(tag);
 
-      let category: ModelOptionItem["category"] = "text";
-      let categoryLabel = "💬 Text to Text";
-      let icon = "💬";
+          let category: ModelOptionItem["category"] = "text";
+          let categoryLabel = "💬 Text to Text";
+          let icon = "💬";
 
-      if (kind === "image-gen") {
-        category = "image";
-        categoryLabel = "🎨 Text to Image";
-        icon = "🎨";
-      } else if (kind === "code") {
-        category = "code";
-        categoryLabel = "💻 Code & Dev";
-        icon = "💻";
-      } else if (kind === "reasoning") {
-        category = "reasoning";
-        categoryLabel = "🧠 Raisonnement";
-        icon = "🧠";
-      } else if (kind === "vision") {
-        category = "vision";
-        categoryLabel = "🖼️ Vision";
-        icon = "🖼️";
-      }
+          if (kind === "image-gen") {
+            category = "image";
+            categoryLabel = "🎨 Text to Image";
+            icon = "🎨";
+          } else if (kind === "code") {
+            category = "code";
+            categoryLabel = "💻 Code & Dev";
+            icon = "💻";
+          } else if (kind === "reasoning") {
+            category = "reasoning";
+            categoryLabel = "🧠 Raisonnement";
+            icon = "🧠";
+          } else if (kind === "vision") {
+            category = "vision";
+            categoryLabel = "🖼️ Vision";
+            icon = "🖼️";
+          }
 
-      const isRemoteTag = tag.includes("openrouter") || tag.includes("openai") || tag.includes("cloud");
-      const isLocal = isProviderLocal && !isRemoteTag;
+          const isRemoteTag =
+            tag.includes("openrouter") || tag.includes("openai") || tag.includes("cloud");
+          const isLocal = isProviderLocal && !isRemoteTag;
 
-      return {
-        tag,
-        name: match ? match.name : tag,
-        brand: match ? match.brand : "Modèle Local",
-        isLocal,
-        size: match ? match.size : "",
-        category,
-        categoryLabel,
-        icon,
-      };
-    })
-      // Only offer models suitable for chat (LLM / vision / code / reasoning).
-      // Exclude image-gen, TTS, music, video, 3D, etc.
-      .filter((o) => isChatModel(o.tag));
+          return {
+            tag,
+            name: match ? match.name : tag,
+            brand: match ? match.brand : "Modèle Local",
+            isLocal,
+            size: match ? match.size : "",
+            category,
+            categoryLabel,
+            icon,
+          };
+        })
+        // Only offer models suitable for chat (LLM / vision / code / reasoning).
+        // Exclude image-gen, TTS, music, video, 3D, etc.
+        .filter((o) => isChatModel(o.tag))
+    );
   }, [installedModels, activeModel, isProviderLocal, registry]);
 
   const filtered = useMemo(() => {
@@ -137,7 +150,7 @@ export function QuickModelSelector({
           o.tag.toLowerCase().includes(q) ||
           o.name.toLowerCase().includes(q) ||
           o.brand.toLowerCase().includes(q) ||
-          o.categoryLabel.toLowerCase().includes(q)
+          o.categoryLabel.toLowerCase().includes(q),
       );
     }
 
@@ -164,7 +177,15 @@ export function QuickModelSelector({
       >
         {/* Header */}
         <div className="locaryn-field-head" style={{ marginBottom: "10px" }}>
-          <h3 style={{ margin: 0, fontSize: "var(--text-md)", display: "flex", alignItems: "center", gap: "6px" }}>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "var(--text-md)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
             <span>⚡</span> Changer de Modèle Installé
           </h3>
           <button type="button" className="locaryn-icon-btn" onClick={onClose}>
@@ -225,7 +246,15 @@ export function QuickModelSelector({
         />
 
         {/* Models list */}
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+          }}
+        >
           {filtered.length === 0 ? (
             <div style={{ textAlign: "center", color: "var(--text-faint)", padding: "24px" }}>
               <p style={{ margin: "0 0 12px 0", fontSize: "13px" }}>
@@ -275,7 +304,9 @@ export function QuickModelSelector({
                       <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text)" }}>
                         {item.name}
                       </div>
-                      <div style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>
+                      <div
+                        style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}
+                      >
                         {item.brand} — <code style={{ fontSize: "10px" }}>{item.tag}</code>
                       </div>
                     </div>
@@ -298,7 +329,10 @@ export function QuickModelSelector({
                       {item.isLocal ? "LOCAL" : "CLOUD"}
                     </span>
                     {isActive && (
-                      <span className="locaryn-tag locaryn-tag-installed" style={{ fontSize: "10px" }}>
+                      <span
+                        className="locaryn-tag locaryn-tag-installed"
+                        style={{ fontSize: "10px" }}
+                      >
                         ACTIF ✓
                       </span>
                     )}

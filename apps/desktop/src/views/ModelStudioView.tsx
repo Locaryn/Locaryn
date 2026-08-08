@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { core, type InferenceConfig, type LoraAdapter, type RuntimeCapabilities } from "../lib/core";
+import {
+  type InferenceConfig,
+  type LoraAdapter,
+  type RuntimeCapabilities,
+  core,
+} from "../lib/core";
 
 type Props = {
   onOpenMarketplace?: () => void;
@@ -8,17 +13,46 @@ type Props = {
 
 /** What can genuinely be done to a model from this app, and what cannot. */
 const DOABLE = [
-  { icon: "🎯", label: "Adaptateurs LoRA", desc: "Charger des .gguf et régler leur intensité à chaud, sans redémarrage." },
-  { icon: "🗜️", label: "Quantization", desc: "Choisir la précision (Q4/Q5/Q6/Q8) au téléchargement dans le marketplace." },
-  { icon: "🧠", label: "Compression du cache KV", desc: "Cache 4/8-bit pour allonger le contexte à VRAM égale." },
-  { icon: "🧩", label: "Offload RAM / experts MoE", desc: "Exécuter des modèles plus gros que la VRAM disponible." },
-  { icon: "🔮", label: "Décodage spéculatif", desc: "Accélérer la génération avec un petit modèle draft." },
+  {
+    icon: "🎯",
+    label: "Adaptateurs LoRA",
+    desc: "Charger des .gguf et régler leur intensité à chaud, sans redémarrage.",
+  },
+  {
+    icon: "🗜️",
+    label: "Quantization",
+    desc: "Choisir la précision (Q4/Q5/Q6/Q8) au téléchargement dans le marketplace.",
+  },
+  {
+    icon: "🧠",
+    label: "Compression du cache KV",
+    desc: "Cache 4/8-bit pour allonger le contexte à VRAM égale.",
+  },
+  {
+    icon: "🧩",
+    label: "Offload RAM / experts MoE",
+    desc: "Exécuter des modèles plus gros que la VRAM disponible.",
+  },
+  {
+    icon: "🔮",
+    label: "Décodage spéculatif",
+    desc: "Accélérer la génération avec un petit modèle draft.",
+  },
 ];
 
 const NOT_DOABLE = [
-  { label: "Entraînement LoRA / QLoRA", why: "Rétropropagation — nécessite une pile Python (Unsloth, PEFT)." },
-  { label: "Distillation", why: "Entraîne un modèle élève depuis un professeur : pile d'entraînement Python." },
-  { label: "Abliteration (retrait des refus)", why: "Chirurgie des poids (RepE / transformer-lens), en Python." },
+  {
+    label: "Entraînement LoRA / QLoRA",
+    why: "Rétropropagation — nécessite une pile Python (Unsloth, PEFT).",
+  },
+  {
+    label: "Distillation",
+    why: "Entraîne un modèle élève depuis un professeur : pile d'entraînement Python.",
+  },
+  {
+    label: "Abliteration (retrait des refus)",
+    why: "Chirurgie des poids (RepE / transformer-lens), en Python.",
+  },
 ];
 
 /**
@@ -34,10 +68,27 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    core.runtimeCapabilities().then((c) => { if (!cancelled) setCaps(c); }).catch(() => {});
-    core.getInferenceConfig().then((c) => { if (!cancelled) setCfg(c); }).catch(() => {});
-    core.listLoraAdapters().then((l) => { if (!cancelled) setLora(l); }).catch(() => {});
-    return () => { cancelled = true; };
+    core
+      .runtimeCapabilities()
+      .then((c) => {
+        if (!cancelled) setCaps(c);
+      })
+      .catch(() => {});
+    core
+      .getInferenceConfig()
+      .then((c) => {
+        if (!cancelled) setCfg(c);
+      })
+      .catch(() => {});
+    core
+      .listLoraAdapters()
+      .then((l) => {
+        if (!cancelled) setLora(l);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -58,7 +109,9 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
               <span style={{ flex: "0 0 auto" }}>{d.icon}</span>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{d.label}</div>
-                <div className="locaryn-field-hint" style={{ margin: 0 }}>{d.desc}</div>
+                <div className="locaryn-field-hint" style={{ margin: 0 }}>
+                  {d.desc}
+                </div>
               </div>
             </div>
           ))}
@@ -70,7 +123,9 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
             <ul className="locaryn-lora-list">
               {cfg.lora_adapters.map((p) => (
                 <li key={p} className="locaryn-lora-row">
-                  <span className="locaryn-lora-path" title={p}>{p}</span>
+                  <span className="locaryn-lora-path" title={p}>
+                    {p}
+                  </span>
                   <span className="locaryn-lora-scale">
                     {lora?.find((a) => a.path === p)?.scale?.toFixed(2) ?? "—"}
                   </span>
@@ -95,8 +150,8 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
       <div className="locaryn-card" style={{ marginTop: 16 }}>
         <h3>Hors de portée de ce moteur</h3>
         <p className="locaryn-field-hint">
-          llama.cpp exécute des modèles, il ne les entraîne pas. Ces opérations demandent
-          PyTorch et un GPU adapté ; le résultat (GGUF) se charge ensuite ici.
+          llama.cpp exécute des modèles, il ne les entraîne pas. Ces opérations demandent PyTorch et
+          un GPU adapté ; le résultat (GGUF) se charge ensuite ici.
         </p>
         <ul className="locaryn-caps-unavailable" style={{ marginTop: 10 }}>
           {NOT_DOABLE.map((n) => (
@@ -120,7 +175,8 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
 
       {caps && (
         <p className="locaryn-field-hint" style={{ marginTop: 14 }}>
-          Runtime : {caps.runtime_installed ? `llama.cpp ${caps.runtime_version ?? ""}` : "non installé"} ·
+          Runtime :{" "}
+          {caps.runtime_installed ? `llama.cpp ${caps.runtime_version ?? ""}` : "non installé"} ·
           formats supportés : {caps.weight_formats.join(", ")}
         </p>
       )}

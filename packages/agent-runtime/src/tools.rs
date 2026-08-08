@@ -232,8 +232,7 @@ pub fn approval_decision(input: &ApprovalInput<'_>) -> ApprovalDecision {
             declared_risk: declared,
             escalated_to_critical: false,
             needs_user_consent: true,
-            reason: "Sandbox project: file writes and shell execution are disabled."
-                .to_string(),
+            reason: "Sandbox project: file writes and shell execution are disabled.".to_string(),
             diff: render_diff(spec, input.args, input.ctx),
             min_scope: RiskScope::Once,
             hard_blocked: true,
@@ -315,11 +314,7 @@ fn default_reason(spec: &ToolSpec, ctx: &ToolContext) -> String {
 /// Renders the preview/impact shown in the modal. Pure function — takes
 /// the spec + args + context, returns the string the modal displays.
 /// The runtime never executes anything here; the diff is purely textual.
-fn render_diff(
-    spec: &ToolSpec,
-    args: &serde_json::Value,
-    ctx: &ToolContext,
-) -> Option<String> {
+fn render_diff(spec: &ToolSpec, args: &serde_json::Value, ctx: &ToolContext) -> Option<String> {
     match spec.name.as_str() {
         "write_file" => {
             let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("?");
@@ -329,7 +324,14 @@ fn render_diff(
             // is computed by the agent runtime (V1.1) — for now we expose
             // enough that the user knows what is being overwritten.
             let head: String = new.chars().take(400).collect();
-            let tail: String = new.chars().rev().take(200).collect::<String>().chars().rev().collect();
+            let tail: String = new
+                .chars()
+                .rev()
+                .take(200)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             Some(format!(
                 "WRITE {}\n  size: {} bytes\n  --- head ---\n{}\n  --- tail ---\n{}\n",
                 path,
@@ -340,11 +342,7 @@ fn render_diff(
         }
         "run_command" => {
             let cmd = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-            Some(format!(
-                "EXEC in {}\n$ {}",
-                ctx.project_path.display(),
-                cmd
-            ))
+            Some(format!("EXEC in {}\n$ {}", ctx.project_path.display(), cmd))
         }
         "ssh_run_command" => {
             let cmd = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
@@ -356,8 +354,14 @@ fn render_diff(
             Some(format!("EXEC on ssh://{target}\n$ {cmd}"))
         }
         "update_server_description" => {
-            let id = args.get("server_id").and_then(|v| v.as_str()).unwrap_or("?");
-            let desc = args.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            let id = args
+                .get("server_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let desc = args
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             Some(format!("UPDATE server {id}\n  → {desc}"))
         }
         _ => None, // read-only tools show no diff
@@ -425,7 +429,10 @@ mod approval_tests {
         let s = spec("write_file", Risk::Medium);
         let ctx = ctx_with(TrustLevel::Sandbox, None);
         let d = approval_decision(&ApprovalInput {
-            spec: &s, args: &serde_json::Value::Null, ctx: &ctx, agent_reason: None,
+            spec: &s,
+            args: &serde_json::Value::Null,
+            ctx: &ctx,
+            agent_reason: None,
         });
         assert!(d.hard_blocked);
     }
@@ -443,7 +450,10 @@ mod approval_tests {
             }),
         );
         let d = approval_decision(&ApprovalInput {
-            spec: &s, args: &serde_json::json!({"command":"ls"}), ctx: &ctx, agent_reason: None,
+            spec: &s,
+            args: &serde_json::json!({"command":"ls"}),
+            ctx: &ctx,
+            agent_reason: None,
         });
         assert_eq!(d.effective_risk, Risk::Critical);
         assert!(d.escalated_to_critical || d.declared_risk == Risk::Critical);
@@ -536,7 +546,10 @@ async fn exec_read_file(args: &serde_json::Value, project_root: &Path) -> ToolRe
     };
     match resolve_path(project_root, path) {
         Ok(full) => match tokio::fs::read_to_string(&full).await {
-            Ok(content) => ToolResult { ok: true, output: content },
+            Ok(content) => ToolResult {
+                ok: true,
+                output: content,
+            },
             Err(e) => err(&format!("read_file error: {e}")),
         },
         Err(e) => err(&format!("read_file error: {e}")),
@@ -589,18 +602,33 @@ async fn exec_search(args: &serde_json::Value, project_root: &Path) -> ToolResul
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout).to_string();
             if stdout.is_empty() && !out.status.success() {
-                ToolResult { ok: false, output: "no matches found".into() }
+                ToolResult {
+                    ok: false,
+                    output: "no matches found".into(),
+                }
             } else {
-                ToolResult { ok: true, output: stdout }
+                ToolResult {
+                    ok: true,
+                    output: stdout,
+                }
             }
         }
         Err(_) => {
             // Fallback: grep -rn
             let mut gcmd = tokio::process::Command::new("grep");
-            gcmd.arg("-rn").arg("--max-count=50").arg(pattern).arg(".").current_dir(project_root);
+            gcmd.arg("-rn")
+                .arg("--max-count=50")
+                .arg(pattern)
+                .arg(".")
+                .current_dir(project_root);
             match gcmd.output().await {
-                Ok(go) => ToolResult { ok: true, output: String::from_utf8_lossy(&go.stdout).to_string() },
-                Err(e) => err(&format!("search error: ripgrep not found and grep failed: {e}")),
+                Ok(go) => ToolResult {
+                    ok: true,
+                    output: String::from_utf8_lossy(&go.stdout).to_string(),
+                },
+                Err(e) => err(&format!(
+                    "search error: ripgrep not found and grep failed: {e}"
+                )),
             }
         }
     }
@@ -642,7 +670,10 @@ async fn exec_run_command(args: &serde_json::Value, project_root: &Path) -> Tool
 }
 
 fn err(msg: &str) -> ToolResult {
-    ToolResult { ok: false, output: msg.to_string() }
+    ToolResult {
+        ok: false,
+        output: msg.to_string(),
+    }
 }
 
 /// Convert Locaryn's ToolSpec list to the Ollama tools JSON format.

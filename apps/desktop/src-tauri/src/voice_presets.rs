@@ -312,8 +312,12 @@ fn wav_duration_seconds(path: &Path) -> f32 {
     let mut byte_rate = 0u32;
     while pos + 8 <= bytes.len() {
         let id = &bytes[pos..pos + 4];
-        let size = u32::from_le_bytes([bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]])
-            as usize;
+        let size = u32::from_le_bytes([
+            bytes[pos + 4],
+            bytes[pos + 5],
+            bytes[pos + 6],
+            bytes[pos + 7],
+        ]) as usize;
         if id == b"fmt " && pos + 16 + 8 <= bytes.len() {
             byte_rate = u32::from_le_bytes([
                 bytes[pos + 16],
@@ -337,7 +341,10 @@ pub fn save_voice_preset(args: SavePresetArgs) -> Result<VoicePreset, String> {
     }
 
     let creating = args.id.is_none();
-    let id = args.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let id = args
+        .id
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let dir = preset_dir(&id);
     std::fs::create_dir_all(&dir).map_err(|e| format!("création du dossier: {e}"))?;
 
@@ -365,7 +372,8 @@ pub fn save_voice_preset(args: SavePresetArgs) -> Result<VoicePreset, String> {
                         let _ = std::fs::remove_file(p);
                     }
                 }
-                std::fs::copy(src_path, &dst).map_err(|e| format!("copie de l'enregistrement: {e}"))?;
+                std::fs::copy(src_path, &dst)
+                    .map_err(|e| format!("copie de l'enregistrement: {e}"))?;
             }
             dst.to_string_lossy().to_string()
         }
@@ -473,7 +481,10 @@ mod tests {
     fn engine_support_reports_what_each_model_really_honours() {
         let base = applies_to("Qwen__Qwen3-TTS-12Hz-0.6B-Base");
         assert!(base.cloning);
-        assert!(base.reference_text, "only the Base variant takes a transcript");
+        assert!(
+            base.reference_text,
+            "only the Base variant takes a transcript"
+        );
         assert!(base.temperature);
 
         // CustomVoice ships fixed speakers: it cannot clone from a recording.
@@ -562,7 +573,11 @@ mod roundtrip {
             reference_text: "et ca m'enerve genre pendant le chargement".into(),
             language: "fr".into(),
             engine: "Qwen3-TTS".into(),
-            settings: VoiceSettings { temperature: 0.95, pause_scale: 0.9, ..Default::default() },
+            settings: VoiceSettings {
+                temperature: 0.95,
+                pause_scale: 0.9,
+                ..Default::default()
+            },
         })
         .expect("l'enregistrement doit reussir");
 
@@ -582,7 +597,10 @@ mod roundtrip {
         assert_eq!(p.settings.temperature, 0.95);
         assert_eq!(p.settings.pause_scale, 0.9);
         assert!(p.settings.expressive);
-        assert_eq!(p.reference_text, "et ca m'enerve genre pendant le chargement");
+        assert_eq!(
+            p.reference_text,
+            "et ca m'enerve genre pendant le chargement"
+        );
 
         // Updating keeps the id, the creation date and the stored recording.
         let updated = save_voice_preset(SavePresetArgs {
@@ -593,14 +611,24 @@ mod roundtrip {
             reference_text: p.reference_text.clone(),
             language: "fr".into(),
             engine: "Qwen3-TTS".into(),
-            settings: VoiceSettings { temperature: 1.1, ..p.settings.clone() },
+            settings: VoiceSettings {
+                temperature: 1.1,
+                ..p.settings.clone()
+            },
         })
         .expect("la mise a jour doit reussir");
         assert_eq!(updated.id, saved.id);
         assert_eq!(updated.created_at, saved.created_at);
-        assert!(!updated.updated_at.is_empty(), "une mise a jour est horodatee");
+        assert!(
+            !updated.updated_at.is_empty(),
+            "une mise a jour est horodatee"
+        );
         assert_eq!(updated.reference_audio, saved.reference_audio);
-        assert_eq!(load_all().len(), 1, "une mise a jour ne cree pas de doublon");
+        assert_eq!(
+            load_all().len(),
+            1,
+            "une mise a jour ne cree pas de doublon"
+        );
 
         delete_voice_preset(saved.id.clone()).unwrap();
         assert!(load_all().is_empty());

@@ -14,9 +14,7 @@
   "PostToolUse": [
     {
       "matcher": "*",
-      "hooks": [
-        { "type": "command", "command": "echo [my-plugin] tool done" }
-      ]
+      "hooks": [{ "type": "command", "command": "echo [my-plugin] tool done" }]
     }
   ]
 }

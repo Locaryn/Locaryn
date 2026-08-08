@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import {
-  core,
-  formatBytes,
-  type MigrationProgress,
-  type StorageInfo,
-} from "../lib/core";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type MigrationProgress, type StorageInfo, core, formatBytes } from "../lib/core";
 import { pickFolder } from "../lib/dialog";
 
 type Props = {
@@ -105,9 +100,7 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
       const freed = await core.cleanTemp();
       if (!alive.current) return;
       setNotice(
-        freed > 0
-          ? `${formatBytes(freed)} libérés.`
-          : "Aucun fichier temporaire à supprimer.",
+        freed > 0 ? `${formatBytes(freed)} libérés.` : "Aucun fichier temporaire à supprimer.",
       );
       await refresh();
     } catch (e) {
@@ -126,8 +119,8 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
     <div className="locaryn-field">
       <label className="locaryn-field-label">Dossier de stockage</label>
       <p className="locaryn-field-hint">
-        Les poids de modèles, les moteurs et les fichiers temporaires vivent ici. Placez-le sur
-        un disque avec de l'espace : une seule famille de modèles dépasse souvent 20 Go.
+        Les poids de modèles, les moteurs et les fichiers temporaires vivent ici. Placez-le sur un
+        disque avec de l'espace : une seule famille de modèles dépasse souvent 20 Go.
       </p>
 
       <div className="locaryn-store-root">
@@ -167,8 +160,8 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
           <div className="locaryn-store-confirm-head">Déplacer vers</div>
           <code className="locaryn-store-path">{pendingRoot}</code>
           <p className="locaryn-field-hint" style={{ marginTop: 8 }}>
-            {info ? formatBytes(info.total_bytes) : "—"} à transférer. Sur le même disque
-            c'est instantané ; vers un autre disque, comptez plusieurs minutes.
+            {info ? formatBytes(info.total_bytes) : "—"} à transférer. Sur le même disque c'est
+            instantané ; vers un autre disque, comptez plusieurs minutes.
           </p>
           <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
             <button
@@ -227,7 +220,10 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
             <span className="locaryn-kv-key">
               {e.label}
               {e.outside_root && (
-                <span className="locaryn-store-flag" title={`Hors du dossier de stockage : ${e.path}`}>
+                <span
+                  className="locaryn-store-flag"
+                  title={`Hors du dossier de stockage : ${e.path}`}
+                >
                   hors dossier
                 </span>
               )}
@@ -250,9 +246,9 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
         </div>
       </div>
       <p className="locaryn-field-hint" style={{ marginTop: 8 }}>
-        La base ({info?.db_path ?? "—"}) ne suit pas le dossier de stockage : elle pèse
-        quelques mégaoctets et reste ouverte pendant que l'application tourne, la déplacer
-        à chaud risquerait de la corrompre.
+        La base ({info?.db_path ?? "—"}) ne suit pas le dossier de stockage : elle pèse quelques
+        mégaoctets et reste ouverte pendant que l'application tourne, la déplacer à chaud risquerait
+        de la corrompre.
       </p>
 
       <div className="locaryn-field-actions" style={{ marginTop: 12 }}>
@@ -280,9 +276,7 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
               <div className="locaryn-store-drive-head">
                 <span className="locaryn-kv-mono">{d.mount}</span>
                 {d.is_current && <span className="locaryn-store-tag">utilisé</span>}
-                <span
-                  className={`locaryn-store-drive-free${low ? " locaryn-store-low" : ""}`}
-                >
+                <span className={`locaryn-store-drive-free${low ? " locaryn-store-low" : ""}`}>
                   {formatBytes(d.free_bytes)} libres
                 </span>
               </div>

@@ -126,8 +126,14 @@ pub async fn travel_home_code() -> Result<TravelStatus, String> {
     Ok(TravelStatus {
         active: false,
         provider: None,
-        link: body.get("link").and_then(|v| v.as_str()).map(str::to_string),
-        qr_svg: body.get("qr_svg").and_then(|v| v.as_str()).map(str::to_string),
+        link: body
+            .get("link")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        qr_svg: body
+            .get("qr_svg")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
         blocker: None,
     })
 }
@@ -142,7 +148,11 @@ mod tests {
         assert_eq!(relays.len(), 3);
         // Exactly one requires nothing — that is the one to default to.
         let free: Vec<_> = relays.iter().filter(|r| !r.needs_account).collect();
-        assert_eq!(free.len(), 1, "un seul relais doit être utilisable sans compte");
+        assert_eq!(
+            free.len(),
+            1,
+            "un seul relais doit être utilisable sans compte"
+        );
         assert_eq!(free[0].id, "cloudflare");
         for r in &relays {
             assert!(!r.label.is_empty());

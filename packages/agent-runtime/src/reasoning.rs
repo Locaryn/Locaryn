@@ -115,7 +115,10 @@ mod tests {
         let s = split_reasoning("<think>Je réfléchis encore");
         assert_eq!(s.reasoning, "Je réfléchis encore");
         assert_eq!(s.answer, "");
-        assert!(s.in_progress, "an open block must not be treated as answer text");
+        assert!(
+            s.in_progress,
+            "an open block must not be treated as answer text"
+        );
     }
 
     #[test]
@@ -128,7 +131,14 @@ mod tests {
 
     #[test]
     fn every_tag_spelling_is_recognised_whatever_the_case() {
-        for tag in ["think", "THINK", "Thinking", "reasoning", "reflection", "scratchpad"] {
+        for tag in [
+            "think",
+            "THINK",
+            "Thinking",
+            "reasoning",
+            "reflection",
+            "scratchpad",
+        ] {
             let raw = format!("<{tag}>x</{tag}>ok");
             let s = split_reasoning(&raw);
             assert_eq!(s.reasoning, "x", "tag {tag}");

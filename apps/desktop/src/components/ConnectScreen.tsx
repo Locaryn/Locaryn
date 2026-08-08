@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { core, type CertificateStatus, type Provisioning } from "../lib/core";
+import { type CertificateStatus, type Provisioning, core } from "../lib/core";
 import { pickAnyFile } from "../lib/dialog";
 
 type Props = {
@@ -24,7 +24,10 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    core.clientCertificateStatus().then(setCert).catch(() => {});
+    core
+      .clientCertificateStatus()
+      .then(setCert)
+      .catch(() => {});
   }, []);
 
   async function installCertificate() {
@@ -37,9 +40,7 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
       const next = await core.installClientCertificate(picked);
       setCert(next);
       setNotice(
-        next.issued_to
-          ? `Certificat de « ${next.issued_to} » installé.`
-          : "Certificat installé.",
+        next.issued_to ? `Certificat de « ${next.issued_to} » installé.` : "Certificat installé.",
       );
     } catch (e) {
       setError(String(e));
@@ -70,9 +71,7 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
   return (
     <div className="locaryn-connect">
       <div className="locaryn-connect-card">
-        <h2 className="locaryn-connect-title">
-          {provisioning.organisation || "Connexion"}
-        </h2>
+        <h2 className="locaryn-connect-title">{provisioning.organisation || "Connexion"}</h2>
         <p className="locaryn-connect-server">{provisioning.serverUrl}</p>
 
         <label className="locaryn-field-label" style={{ marginTop: 20 }}>
@@ -153,9 +152,7 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
             : "Requis seulement si votre administrateur vous en a fourni un. Choisissez le fichier « .pem » qu'il vous a transmis."}
         </p>
 
-        {provisioning.note && (
-          <p className="locaryn-connect-note">{provisioning.note}</p>
-        )}
+        {provisioning.note && <p className="locaryn-connect-note">{provisioning.note}</p>}
 
         {error && <div className="locaryn-vp-error">{error}</div>}
         {notice && !error && <div className="locaryn-vp-notice">{notice}</div>}

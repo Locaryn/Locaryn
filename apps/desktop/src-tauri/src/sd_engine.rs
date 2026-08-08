@@ -22,12 +22,9 @@ use std::path::{Path, PathBuf};
 pub fn find_sd_binary() -> Option<PathBuf> {
     let exe = if cfg!(windows) { "sd.exe" } else { "sd" };
     let bin = locaryn_config::bin_dir();
-    for candidate in [bin.join("sd").join(exe), bin.join(exe)] {
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    None
+    [bin.join("sd").join(exe), bin.join(exe)]
+        .into_iter()
+        .find(|candidate| candidate.exists())
 }
 
 /// Which weights a model needs alongside it.
@@ -107,21 +104,21 @@ pub fn missing_companions(family: ModelFamily, c: &Companions) -> Vec<&'static s
     match family {
         ModelFamily::ZImage => {
             if c.vae.is_none() {
-                missing.push("un VAE (ae.safetensors)".into());
+                missing.push("un VAE (ae.safetensors)");
             }
             if c.llm.is_none() {
-                missing.push("un encodeur de texte Qwen3 (Qwen3-4B-*.gguf)".into());
+                missing.push("un encodeur de texte Qwen3 (Qwen3-4B-*.gguf)");
             }
         }
         ModelFamily::Flux => {
             if c.vae.is_none() {
-                missing.push("un VAE (ae.safetensors)".into());
+                missing.push("un VAE (ae.safetensors)");
             }
             if c.clip_l.is_none() {
-                missing.push("un encodeur CLIP-L".into());
+                missing.push("un encodeur CLIP-L");
             }
             if c.t5xxl.is_none() {
-                missing.push("un encodeur T5-XXL".into());
+                missing.push("un encodeur T5-XXL");
             }
         }
         ModelFamily::FullCheckpoint => {}
@@ -194,7 +191,10 @@ pub fn batch_output(out_file: &Path, batch_count: u32) -> (PathBuf, Vec<PathBuf>
         return (out_file.to_path_buf(), vec![out_file.to_path_buf()]);
     }
     let dir = out_file.parent().unwrap_or(Path::new("."));
-    let stem = out_file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let stem = out_file
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
     let ext = out_file
         .extension()
         .map(|s| s.to_string_lossy().to_string())
@@ -351,7 +351,10 @@ mod tests {
     #[test]
     fn z_image_is_recognised_as_diffusion_only() {
         assert_eq!(classify("z_image_turbo-Q8_0.gguf"), ModelFamily::ZImage);
-        assert_eq!(classify("Z-Image-AbliteratedV1.Q4_K_M.gguf"), ModelFamily::ZImage);
+        assert_eq!(
+            classify("Z-Image-AbliteratedV1.Q4_K_M.gguf"),
+            ModelFamily::ZImage
+        );
         assert_eq!(classify("flux1-schnell-Q4_0.gguf"), ModelFamily::Flux);
         assert_eq!(
             classify("stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf"),
@@ -397,7 +400,10 @@ mod tests {
         .expect("z-image with companions must build");
 
         assert!(args.contains(&"--diffusion-model".to_string()));
-        assert!(!args.contains(&"-m".to_string()), "-m fails on a metadata-less GGUF");
+        assert!(
+            !args.contains(&"-m".to_string()),
+            "-m fails on a metadata-less GGUF"
+        );
         assert!(args.contains(&"--vae".to_string()));
         assert!(args.contains(&"--llm".to_string()));
         std::fs::remove_dir_all(&dir).ok();
@@ -468,7 +474,10 @@ mod tests {
         // Tiny card: the 3 MB "weights" exceed 0.002 GiB, so streaming kicks in.
         let tight = build(0.002);
         assert!(tight.contains(&"--offload-to-cpu".to_string()));
-        assert!(tight.contains(&"te=cpu".to_string()), "text encoder belongs on CPU");
+        assert!(
+            tight.contains(&"te=cpu".to_string()),
+            "text encoder belongs on CPU"
+        );
         assert!(
             !tight.iter().any(|a| a.contains("vae=cpu")),
             "VAE on CPU turned a 3 s decode into 167 s"
@@ -595,15 +604,27 @@ mod real_machine {
         println!("\n  sd.exe {line}\n");
 
         for expected in [
-            "--diffusion-model", "--vae", "--llm", "-i", "--mask",
-            "--offload-to-cpu", "te=cpu", "--diffusion-fa",
+            "--diffusion-model",
+            "--vae",
+            "--llm",
+            "-i",
+            "--mask",
+            "--offload-to-cpu",
+            "te=cpu",
+            "--diffusion-fa",
         ] {
             assert!(line.contains(expected), "flag manquant: {expected}\n{line}");
         }
         assert!(line.contains("ae.safetensors"), "VAE non trouve\n{line}");
-        assert!(line.to_lowercase().contains("qwen3-4b"), "encodeur non trouve\n{line}");
+        assert!(
+            line.to_lowercase().contains("qwen3-4b"),
+            "encodeur non trouve\n{line}"
+        );
         // `-m` on a metadata-less GGUF is the exact failure we are fixing.
-        assert!(!args.iter().any(|a| a == "-m"), "-m ne doit pas etre utilise");
+        assert!(
+            !args.iter().any(|a| a == "-m"),
+            "-m ne doit pas etre utilise"
+        );
         // The VAE must stay on the GPU: on CPU its decode took 167 s of 310 s.
         assert!(!line.contains("vae=cpu"), "VAE renvoye sur CPU\n{line}");
     }
@@ -627,7 +648,10 @@ mod env_checks {
             let v = &env[key];
             assert!(!v.is_empty(), "{key} vide");
         }
-        assert_eq!(env["TRANSFORMERS_NO_TF"], "1", "TensorFlow doit rester non importe");
+        assert_eq!(
+            env["TRANSFORMERS_NO_TF"], "1",
+            "TensorFlow doit rester non importe"
+        );
     }
 }
 
@@ -647,7 +671,10 @@ mod batch_tests {
             .iter()
             .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
             .collect();
-        assert_eq!(names, ["img_1785_0.png", "img_1785_1.png", "img_1785_2.png"]);
+        assert_eq!(
+            names,
+            ["img_1785_0.png", "img_1785_1.png", "img_1785_2.png"]
+        );
     }
 
     #[test]

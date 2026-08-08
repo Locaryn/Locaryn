@@ -190,10 +190,7 @@ pub async fn unregister_server(
 }
 
 /// POST /v1/mcp/servers/{name}/start — start a server (build + store client).
-pub async fn start_server(
-    State(s): State<Arc<DaemonState>>,
-    Path(name): Path<String>,
-) -> Response {
+pub async fn start_server(State(s): State<Arc<DaemonState>>, Path(name): Path<String>) -> Response {
     let entry = {
         let cfg = s.mcp_state.config.lock().unwrap();
         cfg.mcp_servers.get(&name).cloned()
@@ -236,10 +233,7 @@ pub async fn start_server(
 }
 
 /// POST /v1/mcp/servers/{name}/stop — stop a running server.
-pub async fn stop_server(
-    State(s): State<Arc<DaemonState>>,
-    Path(name): Path<String>,
-) -> Response {
+pub async fn stop_server(State(s): State<Arc<DaemonState>>, Path(name): Path<String>) -> Response {
     // Remove and shut down client outside the lock.
     let client = {
         let mut running = s.mcp_state.running.write().await;
@@ -296,10 +290,7 @@ pub async fn discover_server(
 }
 
 /// Helper: auto-start a server, discover, then stop.
-async fn start_and_discover(
-    state: &McpState,
-    name: &str,
-) -> Response {
+async fn start_and_discover(state: &McpState, name: &str) -> Response {
     let entry = {
         let cfg = state.config.lock().unwrap();
         cfg.mcp_servers.get(name).cloned()
@@ -334,11 +325,7 @@ async fn start_and_discover(
     // Don't keep the client running after discover.
     let _ = client.shutdown().await;
 
-    (
-        StatusCode::OK,
-        Json(capabilities_to_json(&caps)),
-    )
-        .into_response()
+    (StatusCode::OK, Json(capabilities_to_json(&caps))).into_response()
 }
 
 /// POST /v1/mcp/servers/{name}/tools/{tool} — invoke a tool on a server.
@@ -378,4 +365,3 @@ pub async fn invoke_tool(
             .into_response(),
     }
 }
-

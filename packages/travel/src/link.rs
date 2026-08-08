@@ -14,8 +14,10 @@
 //! it: `m=travel` points the phone at the tunnel, `m=home` puts it back on the
 //! local address.
 
-use ring::signature::{EcdsaKeyPair, KeyPair, UnparsedPublicKey, ECDSA_P256_SHA256_ASN1,
-                      ECDSA_P256_SHA256_ASN1_SIGNING};
+use ring::signature::{
+    EcdsaKeyPair, KeyPair, UnparsedPublicKey, ECDSA_P256_SHA256_ASN1,
+    ECDSA_P256_SHA256_ASN1_SIGNING,
+};
 
 /// How long a code stays valid. Long enough to walk across a room, short
 /// enough that a photograph of the screen is not a lasting key.
@@ -81,7 +83,11 @@ fn b64(data: &[u8]) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::new();
     for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = u32::from_be_bytes([0, b[0], b[1], b[2]]);
         for i in 0..chunk.len() + 1 {
             out.push(T[((n >> (18 - 6 * i)) & 0x3f) as usize] as char);
@@ -115,7 +121,13 @@ pub fn key_id(ca_cert_pem: &str) -> Result<String, LinkError> {
 /// Built from the parsed fields in a fixed order on both sides, so shuffling
 /// the parameters in the URL cannot change what was actually attested.
 fn canonical(mode: Mode, url: &str, expires_at: u64, key_id: &str) -> String {
-    format!("locaryn-pair-v1|{}|{}|{}|{}", mode.id(), url, expires_at, key_id)
+    format!(
+        "locaryn-pair-v1|{}|{}|{}|{}",
+        mode.id(),
+        url,
+        expires_at,
+        key_id
+    )
 }
 
 /// Produce the signed link.
@@ -263,7 +275,15 @@ mod tests {
     #[test]
     fn a_link_from_our_own_server_is_accepted() {
         let (cert, key, dir) = authority();
-        let uri = sign(&cert, &key, Mode::Travel, "https://abc.trycloudflare.com", NOW, 600).unwrap();
+        let uri = sign(
+            &cert,
+            &key,
+            Mode::Travel,
+            "https://abc.trycloudflare.com",
+            NOW,
+            600,
+        )
+        .unwrap();
         let kid = key_id(&cert).unwrap();
 
         let link = verify(&uri, &|k| (k == kid).then(|| cert.clone()), NOW + 10).unwrap();
@@ -289,13 +309,19 @@ mod tests {
             kid,
             // Signature made with *their* key over the right message.
             {
-                let msg = canonical(Mode::Travel, "https://serveur-du-pirate.example", NOW + 600, &kid);
+                let msg = canonical(
+                    Mode::Travel,
+                    "https://serveur-du-pirate.example",
+                    NOW + 600,
+                    &kid,
+                );
                 let pkcs8 = locaryn_config::mtls::pem_blocks(&their_key, "PRIVATE KEY")
                     .into_iter()
                     .next()
                     .unwrap();
                 let rng = ring::rand::SystemRandom::new();
-                let p = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &pkcs8, &rng).unwrap();
+                let p = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &pkcs8, &rng)
+                    .unwrap();
                 b64(p.sign(&rng, msg.as_bytes()).unwrap().as_ref())
             }
         );
@@ -313,7 +339,15 @@ mod tests {
         // Rewriting the destination in a genuine link is the cheapest attack
         // there is; the signature covers the address itself.
         let (cert, key, dir) = authority();
-        let uri = sign(&cert, &key, Mode::Travel, "https://vrai.trycloudflare.com", NOW, 600).unwrap();
+        let uri = sign(
+            &cert,
+            &key,
+            Mode::Travel,
+            "https://vrai.trycloudflare.com",
+            NOW,
+            600,
+        )
+        .unwrap();
         let kid = key_id(&cert).unwrap();
         let tampered = uri.replace(
             &b64(b"https://vrai.trycloudflare.com"),
@@ -328,7 +362,15 @@ mod tests {
     #[test]
     fn an_unknown_server_is_refused_before_any_cryptography() {
         let (cert, key, dir) = authority();
-        let uri = sign(&cert, &key, Mode::Travel, "https://x.trycloudflare.com", NOW, 600).unwrap();
+        let uri = sign(
+            &cert,
+            &key,
+            Mode::Travel,
+            "https://x.trycloudflare.com",
+            NOW,
+            600,
+        )
+        .unwrap();
         let err = verify(&uri, &|_| None, NOW).unwrap_err();
         assert!(matches!(err, LinkError::UnknownServer), "obtenu {err:?}");
         std::fs::remove_dir_all(&dir).ok();
@@ -339,7 +381,15 @@ mod tests {
         // Distinguishable from a forgery: one means "ask for a new code", the
         // other means "something is wrong".
         let (cert, key, dir) = authority();
-        let uri = sign(&cert, &key, Mode::Travel, "https://x.trycloudflare.com", NOW, 600).unwrap();
+        let uri = sign(
+            &cert,
+            &key,
+            Mode::Travel,
+            "https://x.trycloudflare.com",
+            NOW,
+            600,
+        )
+        .unwrap();
         let kid = key_id(&cert).unwrap();
         let err = verify(&uri, &|k| (k == kid).then(|| cert.clone()), NOW + 601).unwrap_err();
         assert!(matches!(err, LinkError::Expired), "obtenu {err:?}");
@@ -350,7 +400,15 @@ mod tests {
     #[test]
     fn coming_home_uses_the_same_guarantee() {
         let (cert, key, dir) = authority();
-        let uri = sign(&cert, &key, Mode::Home, "https://192.168.1.10:7474", NOW, 600).unwrap();
+        let uri = sign(
+            &cert,
+            &key,
+            Mode::Home,
+            "https://192.168.1.10:7474",
+            NOW,
+            600,
+        )
+        .unwrap();
         let kid = key_id(&cert).unwrap();
         let link = verify(&uri, &|k| (k == kid).then(|| cert.clone()), NOW).unwrap();
         assert_eq!(link.mode, Mode::Home);
@@ -378,13 +436,26 @@ mod tests {
 
     #[test]
     fn the_encoding_survives_a_round_trip() {
-        for s in ["", "a", "ab", "abc", "https://a-b_c.trycloudflare.com/x?y=1"] {
-            assert_eq!(unb64(&b64(s.as_bytes())).unwrap(), s.as_bytes(), "échec sur {s:?}");
+        for s in [
+            "",
+            "a",
+            "ab",
+            "abc",
+            "https://a-b_c.trycloudflare.com/x?y=1",
+        ] {
+            assert_eq!(
+                unb64(&b64(s.as_bytes())).unwrap(),
+                s.as_bytes(),
+                "échec sur {s:?}"
+            );
         }
         // No padding and no characters a URL would mangle.
         let e = b64(b"\xff\xfe\xfd\xfc");
         assert!(!e.contains('='), "padding présent : {e}");
-        assert!(!e.contains('+') && !e.contains('/'), "alphabet non URL : {e}");
+        assert!(
+            !e.contains('+') && !e.contains('/'),
+            "alphabet non URL : {e}"
+        );
     }
 
     #[test]

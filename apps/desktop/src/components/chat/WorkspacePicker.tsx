@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { core, type Project, type SshServer } from "../../lib/core";
 import { FREE_CHAT_PATH } from "../../lib/constants";
+import { type Project, type SshServer, core } from "../../lib/core";
 
 export type WorkspaceKind = "cloud" | "local" | "ssh" | "temp";
 
@@ -30,7 +30,11 @@ const KIND_META: Record<WorkspaceKind, { icon: string; label: string; hint: stri
   cloud: { icon: "☁️", label: "Cloud", hint: "Aucun accès fichier — conversation seule" },
   local: { icon: "📁", label: "Local", hint: "Un dossier de votre machine" },
   ssh: { icon: "🖧", label: "SSH", hint: "Un serveur distant enregistré" },
-  temp: { icon: "🗂️", label: "Temporaire", hint: "Dossier temporaire créé automatiquement pour cette conversation" },
+  temp: {
+    icon: "🗂️",
+    label: "Temporaire",
+    hint: "Dossier temporaire créé automatiquement pour cette conversation",
+  },
 };
 
 /**
@@ -38,7 +42,14 @@ const KIND_META: Record<WorkspaceKind, { icon: string; label: string; hint: stri
  * server. Sits above the composer because it changes what every message can
  * touch — that context should be visible without opening settings.
  */
-export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeChat, cloudConnected }: Props) {
+export function WorkspacePicker({
+  value,
+  onChange,
+  onAddProject,
+  onAddSsh,
+  freeChat,
+  cloudConnected,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [servers, setServers] = useState<SshServer[]>([]);
@@ -46,10 +57,14 @@ export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeC
 
   useEffect(() => {
     if (!open) return;
-    core.listProjects()
+    core
+      .listProjects()
       .then((list) => setProjects(list.filter((p) => p.path !== FREE_CHAT_PATH)))
       .catch(() => {});
-    core.listSshServers().then(setServers).catch(() => setServers([]));
+    core
+      .listSshServers()
+      .then(setServers)
+      .catch(() => setServers([]));
     function onDown(e: MouseEvent) {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     }
@@ -112,14 +127,20 @@ export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeC
               onChange({ kind: "cloud", id: null, label: "Cloud" });
               setOpen(false);
             }}
-            title={cloudConnected ? KIND_META.cloud.hint : "Cloud indisponible — connectez l'app à un serveur Locaryn"}
+            title={
+              cloudConnected
+                ? KIND_META.cloud.hint
+                : "Cloud indisponible — connectez l'app à un serveur Locaryn"
+            }
             style={!cloudConnected ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
           >
             <span>☁️</span>
             <span className="locaryn-ws-item-text">
               <span>Cloud {cloudConnected ? "" : "(off)"}</span>
               <span className="locaryn-ws-item-hint">
-                {cloudConnected ? KIND_META.cloud.hint : "Connectez l'app à un serveur Locaryn pour activer"}
+                {cloudConnected
+                  ? KIND_META.cloud.hint
+                  : "Connectez l'app à un serveur Locaryn pour activer"}
               </span>
             </span>
           </button>
@@ -127,7 +148,15 @@ export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeC
           <div className="locaryn-ws-sep">
             <span>📁 Dossiers locaux</span>
             {onAddProject && (
-              <button type="button" className="locaryn-ws-add" onClick={() => { setOpen(false); onAddProject(); }} title="Ajouter un dossier">
+              <button
+                type="button"
+                className="locaryn-ws-add"
+                onClick={() => {
+                  setOpen(false);
+                  onAddProject();
+                }}
+                title="Ajouter un dossier"
+              >
                 +
               </button>
             )}
@@ -158,7 +187,15 @@ export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeC
           <div className="locaryn-ws-sep">
             <span>🖧 Serveurs SSH</span>
             {onAddSsh && (
-              <button type="button" className="locaryn-ws-add" onClick={() => { setOpen(false); onAddSsh(); }} title="Ajouter une connexion SSH">
+              <button
+                type="button"
+                className="locaryn-ws-add"
+                onClick={() => {
+                  setOpen(false);
+                  onAddSsh();
+                }}
+                title="Ajouter une connexion SSH"
+              >
                 +
               </button>
             )}
@@ -180,7 +217,9 @@ export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeC
                 <span>🖧</span>
                 <span className="locaryn-ws-item-text">
                   <span>{s.name}</span>
-                  <span className="locaryn-ws-item-hint">{s.username}@{s.host}</span>
+                  <span className="locaryn-ws-item-hint">
+                    {s.username}@{s.host}
+                  </span>
                 </span>
               </button>
             ))

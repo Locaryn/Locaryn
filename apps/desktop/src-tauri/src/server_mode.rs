@@ -35,14 +35,15 @@ pub struct ServerStatus {
 fn daemon_binary() -> Option<std::path::PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
-    let name = if cfg!(windows) { "locaryn-daemon.exe" } else { "locaryn-daemon" };
+    let name = if cfg!(windows) {
+        "locaryn-daemon.exe"
+    } else {
+        "locaryn-daemon"
+    };
     // Beside the app when installed; in the build output during development.
-    for candidate in [dir.join(name), dir.join("..").join(name)] {
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    None
+    [dir.join(name), dir.join("..").join(name)]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
 }
 
 /// Addresses this machine can be reached on, for the UI to display.
@@ -99,7 +100,9 @@ pub async fn server_status() -> Result<ServerStatus, String> {
     };
 
     let accounts = account_count().await;
-    let port = locaryn_config::load(None).map(|c| c.daemon.port).unwrap_or(7474);
+    let port = locaryn_config::load(None)
+        .map(|c| c.daemon.port)
+        .unwrap_or(7474);
     let ip = local_address();
 
     let blocker = if daemon_binary().is_none() {
@@ -122,7 +125,11 @@ pub async fn server_status() -> Result<ServerStatus, String> {
         running,
         bind: "0.0.0.0".to_string(),
         port,
-        url: if running { format!("https://{ip}:{port}") } else { String::new() },
+        url: if running {
+            format!("https://{ip}:{port}")
+        } else {
+            String::new()
+        },
         accounts,
         fingerprint: read_fingerprint(),
         blocker,
@@ -170,7 +177,9 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
         .env("LOCARYN_DAEMON_PORT", port.to_string())
         .env(
             "LOCARYN_DATA_DIR",
-            locaryn_config::default_data_dir().to_string_lossy().to_string(),
+            locaryn_config::default_data_dir()
+                .to_string_lossy()
+                .to_string(),
         )
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -201,7 +210,10 @@ mod tests {
         let ip = local_address();
         assert!(!ip.is_empty());
         // Must parse: it goes straight into a URL shown to the user.
-        assert!(ip.parse::<std::net::IpAddr>().is_ok(), "adresse invalide: {ip}");
+        assert!(
+            ip.parse::<std::net::IpAddr>().is_ok(),
+            "adresse invalide: {ip}"
+        );
     }
 
     #[tokio::test]
@@ -223,7 +235,10 @@ mod tests {
                 b.contains("compte") || b.contains("service"),
                 "le blocage doit nommer ce qui manque, or: {b}"
             );
-            assert!(b.len() > 20, "message trop court pour être actionnable: {b}");
+            assert!(
+                b.len() > 20,
+                "message trop court pour être actionnable: {b}"
+            );
         }
     }
 }

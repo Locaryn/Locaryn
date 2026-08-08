@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { core, type CertificateStatus, type ServerSession } from "../lib/core";
+import { type CertificateStatus, type ServerSession, core } from "../lib/core";
 import { pickAnyFile } from "../lib/dialog";
 
 /**
@@ -18,10 +18,7 @@ export function ConnectionSettings() {
   useEffect(() => {
     void (async () => {
       try {
-        const [s, c] = await Promise.all([
-          core.currentSession(),
-          core.clientCertificateStatus(),
-        ]);
+        const [s, c] = await Promise.all([core.currentSession(), core.clientCertificateStatus()]);
         setSession(s);
         setCert(c);
       } catch (e) {
@@ -48,8 +45,8 @@ export function ConnectionSettings() {
     <div className="locaryn-field" style={{ marginTop: 28 }}>
       <label className="locaryn-field-label">Se connecter à un serveur</label>
       <p className="locaryn-field-hint">
-        Quand les modèles tournent sur une autre machine. La connexion est établie
-        au démarrage ; ce qui suit permet de la changer.
+        Quand les modèles tournent sur une autre machine. La connexion est établie au démarrage ; ce
+        qui suit permet de la changer.
       </p>
 
       {session ? (
@@ -92,8 +89,8 @@ export function ConnectionSettings() {
         Certificat de connexion
       </label>
       <p className="locaryn-field-hint">
-        Certains serveurs n'acceptent que les postes qu'ils ont eux-mêmes autorisés.
-        Le fichier « .pem » transmis par votre administrateur s'installe ici.
+        Certains serveurs n'acceptent que les postes qu'ils ont eux-mêmes autorisés. Le fichier «
+        .pem » transmis par votre administrateur s'installe ici.
       </p>
       <div className="locaryn-connect-cert" style={{ marginTop: 10 }}>
         {cert?.installed ? (

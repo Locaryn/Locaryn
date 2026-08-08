@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { core } from "../lib/core";
-import { startMusicGeneration, type MusicJobResult } from "../lib/musicJobs";
-import { taskCenter } from "../lib/taskCenter";
+import { toMediaUrl } from "../lib/media";
 import { dedupeModelsByDirectory } from "../lib/modelList";
 import { isMusicGenModel } from "../lib/modelRegistry";
-import { toMediaUrl } from "../lib/media";
+import { type MusicJobResult, startMusicGeneration } from "../lib/musicJobs";
+import { taskCenter } from "../lib/taskCenter";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -23,12 +23,18 @@ const DURATION_PRESETS = [
 ];
 
 const STYLE_PRESETS = [
-  { label: "Classique", prompt: "Classical orchestral music, grand and majestic, cinematic orchestration" },
+  {
+    label: "Classique",
+    prompt: "Classical orchestral music, grand and majestic, cinematic orchestration",
+  },
   { label: "Électronique", prompt: "Electronic dance music with synth pads, heavy bass, 128 BPM" },
   { label: "Jazz", prompt: "Smooth jazz, saxophone and piano, warm and intimate, slow tempo" },
   { label: "Rock", prompt: "Rock music with electric guitar, drums, energetic, driving beat" },
   { label: "Ambient", prompt: "Ambient atmospheric soundscape, calm, meditative, ethereal pads" },
-  { label: "Lo-fi", prompt: "Lo-fi hip hop beat, relaxed, vinyl crackle, warm melody, study music" },
+  {
+    label: "Lo-fi",
+    prompt: "Lo-fi hip hop beat, relaxed, vinyl crackle, warm melody, study music",
+  },
   { label: "Cinématique", prompt: "Cinematic orchestral soundtrack, epic, emotional, film score" },
   { label: "Acoustique", prompt: "Acoustic folk guitar, fingerpicking, warm, natural, intimate" },
 ];
@@ -46,7 +52,9 @@ function firstMusicModel(models: string[]): string | undefined {
 export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
   // ── Core state
   const [prompt, setPrompt] = useState("");
-  const [selectedModel, setSelectedModel] = useState<string>(() => firstMusicModel(installedModels) ?? "");
+  const [selectedModel, setSelectedModel] = useState<string>(
+    () => firstMusicModel(installedModels) ?? "",
+  );
 
   // ── Generation parameters
   const [duration, setDuration] = useState(30);
@@ -61,7 +69,11 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedResult, setGeneratedResult] = useState<MusicJobResult | null>(null);
-  const [taskProgress, setTaskProgress] = useState<{ progress: number; detail?: string; status?: string } | null>(null);
+  const [taskProgress, setTaskProgress] = useState<{
+    progress: number;
+    detail?: string;
+    status?: string;
+  } | null>(null);
 
   // ── Refs
   const progressPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -95,7 +107,11 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
       setMelodyFile(path);
       setMelodyFileName(path.split(/[/\\]/).pop() ?? path);
     } catch (e) {
-      setError(typeof e === "string" ? e : (e as Error)?.message || "Impossible de choisir le fichier audio.");
+      setError(
+        typeof e === "string"
+          ? e
+          : (e as Error)?.message || "Impossible de choisir le fichier audio.",
+      );
     }
   }
 
@@ -107,7 +123,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
   function pollTask(
     taskId: string,
     setProgress: (p: { progress: number; detail?: string; status?: string } | null) => void,
-    setResult: (r: MusicJobResult | null) => void
+    setResult: (r: MusicJobResult | null) => void,
   ) {
     setProgress({ progress: 0, detail: "En attente…", status: "running" });
     const interval = setInterval(() => {
@@ -160,7 +176,9 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
       if (progressPollRef.current) clearInterval(progressPollRef.current);
       progressPollRef.current = pollTask(taskId, setTaskProgress, setGeneratedResult);
     } catch (e) {
-      setError(typeof e === "string" ? e : (e as Error)?.message || "Échec de la génération musicale.");
+      setError(
+        typeof e === "string" ? e : (e as Error)?.message || "Échec de la génération musicale.",
+      );
       setIsGenerating(false);
     }
   }
@@ -179,7 +197,14 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
   return (
     <div className={inline ? "" : "locaryn-card"} style={containerStyle}>
       {/* ── Header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+        }}
+      >
         <div>
           <h3 style={{ margin: 0 }}>Génération de musique</h3>
           <p className="locaryn-field-hint" style={{ margin: "4px 0 0" }}>
@@ -187,7 +212,9 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
           </p>
         </div>
         {!inline && (
-          <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">✕</button>
+          <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">
+            ✕
+          </button>
         )}
       </div>
 
@@ -213,16 +240,19 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
           </select>
         </div>
       ) : (
-        <div style={{
-          padding: 24,
-          borderRadius: 10,
-          border: "1px dashed var(--border)",
-          textAlign: "center",
-          color: "var(--text-faint)",
-          fontSize: 13,
-          marginBottom: 20,
-        }}>
-          Aucun modèle de musique installé. Allez dans le Marketplace pour installer MusicGen, AudioLDM ou stable-audio.
+        <div
+          style={{
+            padding: 24,
+            borderRadius: 10,
+            border: "1px dashed var(--border)",
+            textAlign: "center",
+            color: "var(--text-faint)",
+            fontSize: 13,
+            marginBottom: 20,
+          }}
+        >
+          Aucun modèle de musique installé. Allez dans le Marketplace pour installer MusicGen,
+          AudioLDM ou stable-audio.
         </div>
       )}
 
@@ -230,7 +260,9 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
       <div className="locaryn-field" style={{ marginBottom: 16 }}>
         <label className="locaryn-field-label">
           Prompt
-          <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}>
+          <span
+            style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}
+          >
             Décrivez la musique à générer
           </span>
         </label>
@@ -272,13 +304,30 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Advanced controls ── */}
       <details style={{ marginBottom: 16 }}>
-        <summary style={{ fontSize: 12, fontWeight: 600, color: "var(--text-faint)", cursor: "pointer", userSelect: "none" }}>
+        <summary
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--text-faint)",
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+        >
           Paramètres avancés
         </summary>
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 20px" }}>
+        <div
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "12px 20px",
+          }}
+        >
           {/* Duration */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Durée</label>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+              Durée
+            </label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {DURATION_PRESETS.map((d) => (
                 <button
@@ -331,7 +380,9 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Negative prompt */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>Prompt négatif</label>
+            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+              Prompt négatif
+            </label>
             <input
               type="text"
               className="locaryn-input"
@@ -350,16 +401,36 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
             Référence mélodique (optionnel)
           </label>
           {melodyFile ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text)" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: "var(--text)",
+              }}
+            >
               <span>🎵 {melodyFileName}</span>
-              <button type="button" className="locaryn-icon-btn" onClick={clearMelody} aria-label="Supprimer" style={{ fontSize: 14 }}>
+              <button
+                type="button"
+                className="locaryn-icon-btn"
+                onClick={clearMelody}
+                aria-label="Supprimer"
+                style={{ fontSize: 14 }}
+              >
                 ✕
               </button>
               {/* melodyFile is a disk path: a webview cannot load it directly. */}
               <audio src={toMediaUrl(melodyFile)} controls style={{ height: 28, flex: 1 }} />
             </div>
           ) : (
-            <button type="button" className="locaryn-btn-ghost" onClick={handlePickMelody} disabled={jobRunning} style={{ fontSize: 12 }}>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={handlePickMelody}
+              disabled={jobRunning}
+              style={{ fontSize: 12 }}
+            >
               + Importer un fichier audio
             </button>
           )}
@@ -387,14 +458,24 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
         {jobRunning && (
           <div style={{ flex: 1, marginRight: 12 }}>
             <div className="img-gen-progress-bar">
-              <div className="img-gen-progress-fill" style={{ width: `${taskProgress?.progress ?? 0}%` }} />
+              <div
+                className="img-gen-progress-fill"
+                style={{ width: `${taskProgress?.progress ?? 0}%` }}
+              />
             </div>
-            <span className="locaryn-field-hint">{taskProgress?.detail ?? "Génération en cours…"}</span>
+            <span className="locaryn-field-hint">
+              {taskProgress?.detail ?? "Génération en cours…"}
+            </span>
           </div>
         )}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           {!inline && (
-            <button type="button" className="locaryn-btn-ghost" onClick={onClose} disabled={isGenerating}>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={onClose}
+              disabled={isGenerating}
+            >
               Fermer
             </button>
           )}

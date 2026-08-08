@@ -41,7 +41,11 @@ pub fn resolve(
             // requested is how someone ends up believing they are encrypted.
             anyhow::ensure!(c.is_file(), "certificat TLS introuvable : {}", c.display());
             anyhow::ensure!(k.is_file(), "clé TLS introuvable : {}", k.display());
-            Ok(TlsFiles { cert: c, key: k, self_signed: false })
+            Ok(TlsFiles {
+                cert: c,
+                key: k,
+                self_signed: false,
+            })
         }
         (None, None) => generate(data_dir, host),
         _ => anyhow::bail!(
@@ -60,7 +64,11 @@ fn generate(data_dir: &Path, host: &str) -> anyhow::Result<TlsFiles> {
 
     if cert_path.is_file() && key_path.is_file() {
         tracing::info!(cert = %cert_path.display(), "certificat auto-signé réutilisé");
-        return Ok(TlsFiles { cert: cert_path, key: key_path, self_signed: true });
+        return Ok(TlsFiles {
+            cert: cert_path,
+            key: key_path,
+            self_signed: true,
+        });
     }
 
     // Names clients might use to reach this machine. A certificate valid only
@@ -93,7 +101,11 @@ fn generate(data_dir: &Path, host: &str) -> anyhow::Result<TlsFiles> {
         names.join(", "),
         fingerprint(generated.cert.der())
     );
-    Ok(TlsFiles { cert: cert_path, key: key_path, self_signed: true })
+    Ok(TlsFiles {
+        cert: cert_path,
+        key: key_path,
+        self_signed: true,
+    })
 }
 
 /// SHA-256 of the DER certificate, in the colon-separated form browsers show.
@@ -168,7 +180,9 @@ mod tests {
         );
         // Longer than one block, to exercise the multi-block path.
         assert_eq!(
-            hex(sha256(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")),
+            hex(sha256(
+                b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+            )),
             "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
         );
     }
@@ -185,9 +199,14 @@ mod tests {
     #[test]
     fn a_missing_certificate_file_is_an_error_not_a_downgrade() {
         let dir = std::env::temp_dir();
-        let err = resolve(&dir, Some("D:/nope/cert.pem"), Some("D:/nope/key.pem"), "127.0.0.1")
-            .unwrap_err()
-            .to_string();
+        let err = resolve(
+            &dir,
+            Some("D:/nope/cert.pem"),
+            Some("D:/nope/key.pem"),
+            "127.0.0.1",
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("introuvable"), "got: {err}");
     }
 

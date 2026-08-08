@@ -62,7 +62,10 @@ fn register_server(provisioning_json: String) -> Result<MobileStatus, String> {
                 .to_string()
         })?;
 
-    let authority = p.authority_pem.clone().filter(|a| a.contains("BEGIN CERTIFICATE"));
+    let authority = p
+        .authority_pem
+        .clone()
+        .filter(|a| a.contains("BEGIN CERTIFICATE"));
     let Some(authority) = authority else {
         return Err(
             "Cette configuration ne contient pas l'autorité du serveur, sans laquelle \
@@ -124,7 +127,10 @@ async fn sign_in(username: String, password: String) -> Result<MobileStatus, Str
         return Err("Identifiant ou mot de passe incorrect.".into());
     }
     if !resp.status().is_success() {
-        return Err(format!("Le serveur a refusé la connexion ({}).", resp.status()));
+        return Err(format!(
+            "Le serveur a refusé la connexion ({}).",
+            resp.status()
+        ));
     }
 
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
@@ -134,7 +140,11 @@ async fn sign_in(username: String, password: String) -> Result<MobileStatus, Str
         .ok_or("Le serveur n'a pas renvoyé de jeton.")?
         .to_string();
 
-    let session = Session { key_id: server.key_id, username, token };
+    let session = Session {
+        key_id: server.key_id,
+        username,
+        token,
+    };
     std::fs::create_dir_all(locaryn_config::default_data_dir()).map_err(|e| e.to_string())?;
     std::fs::write(
         session_path(),
@@ -194,11 +204,14 @@ async fn send_message(text: String) -> Result<String, String> {
         .clone();
     let raw = std::fs::read_to_string(session_path())
         .map_err(|_| "Vous n'êtes pas connecté.".to_string())?;
-    let session: Session =
-        serde_json::from_str(&raw).map_err(|_| "Session illisible ; reconnectez-vous.".to_string())?;
+    let session: Session = serde_json::from_str(&raw)
+        .map_err(|_| "Session illisible ; reconnectez-vous.".to_string())?;
 
     let resp = client_for(&server)?
-        .post(format!("{}/v1/chat", server.current_url.trim_end_matches('/')))
+        .post(format!(
+            "{}/v1/chat",
+            server.current_url.trim_end_matches('/')
+        ))
         .bearer_auth(&session.token)
         .json(&serde_json::json!({ "message": text }))
         .send()
@@ -209,7 +222,10 @@ async fn send_message(text: String) -> Result<String, String> {
         return Err("Votre session a expiré. Reconnectez-vous.".into());
     }
     if !resp.status().is_success() {
-        return Err(format!("Le serveur a refusé la demande ({}).", resp.status()));
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
     }
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     Ok(body

@@ -256,9 +256,7 @@ fn evaluate(model: &str, level: CautionLevel) -> ModelFit {
         (
             FitVerdict::Confortable,
             "gpu".to_string(),
-            format!(
-                "{size_gb:.1} Go sur le GPU, {free_vram:.1} Go libres. Vitesse maximale."
-            ),
+            format!("{size_gb:.1} Go sur le GPU, {free_vram:.1} Go libres. Vitesse maximale."),
         )
     } else if fits_ram {
         let on_gpu = free_vram > 1.0;

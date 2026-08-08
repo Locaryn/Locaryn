@@ -24,10 +24,7 @@ export async function pickImageFile(): Promise<string | null> {
 }
 
 /** Native picker restricted to given extensions. */
-export async function pickAnyFile(
-  label: string,
-  extensions: string[],
-): Promise<string | null> {
+export async function pickAnyFile(label: string, extensions: string[]): Promise<string | null> {
   try {
     const picked = await open({ multiple: false, filters: [{ name: label, extensions }] });
     return typeof picked === "string" ? picked : null;

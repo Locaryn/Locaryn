@@ -36,9 +36,9 @@ const STORAGE_KEY = "locaryn:theme";
 /** Convert a hex color (#RRGGBB) to "r,g,b". */
 function hexToRgb(hex: string): string {
   const m = hex.replace("#", "");
-  const r = parseInt(m.substring(0, 2), 16);
-  const g = parseInt(m.substring(2, 4), 16);
-  const b = parseInt(m.substring(4, 6), 16);
+  const r = Number.parseInt(m.substring(0, 2), 16);
+  const g = Number.parseInt(m.substring(2, 4), 16);
+  const b = Number.parseInt(m.substring(4, 6), 16);
   return `${r},${g},${b}`;
 }
 

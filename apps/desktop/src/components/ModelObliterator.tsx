@@ -14,11 +14,9 @@ export function ModelObliterator({
   installedModels = [],
   onModelAbliterated,
 }: Props) {
-  const [selectedModel, setSelectedModel] = useState<string>(
-    installedModels[0] ?? "llama3.1:8b"
-  );
+  const [selectedModel, setSelectedModel] = useState<string>(installedModels[0] ?? "llama3.1:8b");
   const [ablationMethod, setAblationMethod] = useState<"repe" | "orthogonal" | "norm_subtraction">(
-    "repe"
+    "repe",
   );
   const [intensity, setIntensity] = useState<number>(1.2);
   const [targetLayers, setTargetLayers] = useState<string>("10-28");
@@ -90,13 +88,21 @@ export function ModelObliterator({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "16px",
+          }}
+        >
           <div>
             <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
               🔓 Studio d'Oblitération de Modèle (RepE Refusal Ablation)
             </h3>
             <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
-              Neutralisez les filtres de refus de n'importe quel modèle local via représentation vectorielle (Open Source Script).
+              Neutralisez les filtres de refus de n'importe quel modèle local via représentation
+              vectorielle (Open Source Script).
             </span>
           </div>
           <button type="button" className="locaryn-icon-btn" onClick={onClose}>
@@ -118,7 +124,10 @@ export function ModelObliterator({
         >
           <strong style={{ color: "var(--danger)" }}>⚠️ AVIS DE RESPONSABILITÉ & SÉCURITÉ :</strong>
           <br />
-          Le script d'oblitération modifie directement les tenseurs d'activation du modèle pour supprimer le blocage des réponses. Cet outil est destiné **exclusivement à la recherche en cybersécurité, aux tests d'intrusion (pentesting encadré) et à l'audit de robustesse des LLM**.
+          Le script d'oblitération modifie directement les tenseurs d'activation du modèle pour
+          supprimer le blocage des réponses. Cet outil est destiné **exclusivement à la recherche en
+          cybersécurité, aux tests d'intrusion (pentesting encadré) et à l'audit de robustesse des
+          LLM**.
           <div style={{ marginTop: "8px" }}>
             <label className="locaryn-checkbox-row">
               <input
@@ -127,7 +136,8 @@ export function ModelObliterator({
                 onChange={(e) => setDisclaimerAccepted(e.target.checked)}
               />
               <span style={{ fontWeight: 700 }}>
-                Je certifie utiliser cette fonctionnalité dans un cadre légal de recherche ou de pentest autorisé.
+                Je certifie utiliser cette fonctionnalité dans un cadre légal de recherche ou de
+                pentest autorisé.
               </span>
             </label>
           </div>
@@ -151,7 +161,14 @@ export function ModelObliterator({
         </div>
 
         {/* Parameters Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+            marginBottom: "16px",
+          }}
+        >
           <div className="locaryn-field">
             <label className="locaryn-field-label">Méthode d'Ablation Vectorielle</label>
             <select
@@ -190,7 +207,7 @@ export function ModelObliterator({
             step="0.1"
             className="lmc-slider"
             value={intensity}
-            onChange={(e) => setIntensity(parseFloat(e.target.value))}
+            onChange={(e) => setIntensity(Number.parseFloat(e.target.value))}
             disabled={isProcessing}
           />
         </div>
@@ -198,12 +215,33 @@ export function ModelObliterator({
         {/* Progress Bar */}
         {isProcessing && (
           <div style={{ marginBottom: "16px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: "4px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "var(--text-xs)",
+                marginBottom: "4px",
+              }}
+            >
               <span>Oblitération des poids en cours...</span>
               <span>{progress}%</span>
             </div>
-            <div style={{ height: "6px", background: "var(--border)", borderRadius: "var(--radius-pill)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${progress}%`, background: "var(--danger)", transition: "width 0.3s ease" }} />
+            <div
+              style={{
+                height: "6px",
+                background: "var(--border)",
+                borderRadius: "var(--radius-pill)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${progress}%`,
+                  background: "var(--danger)",
+                  transition: "width 0.3s ease",
+                }}
+              />
             </div>
           </div>
         )}
@@ -213,10 +251,16 @@ export function ModelObliterator({
           <label className="locaryn-field-label">Console du Script d'Oblitération</label>
           <div className="locaryn-training-logs" style={{ height: "160px" }}>
             {logs.length === 0 ? (
-              <span className="locaryn-text-faint">Sélectionnez un modèle et cliquez sur "Lancer l'Oblitération".</span>
+              <span className="locaryn-text-faint">
+                Sélectionnez un modèle et cliquez sur "Lancer l'Oblitération".
+              </span>
             ) : (
               logs.map((l, i) => (
-                <div key={i} className="locaryn-log-line" style={{ color: l.includes("✅") ? "var(--accent)" : "var(--text)" }}>
+                <div
+                  key={i}
+                  className="locaryn-log-line"
+                  style={{ color: l.includes("✅") ? "var(--accent)" : "var(--text)" }}
+                >
                   {l}
                 </div>
               ))
@@ -224,14 +268,25 @@ export function ModelObliterator({
           </div>
         </div>
 
-        <div className="locaryn-field-actions" style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-          <button type="button" className="locaryn-btn-ghost" onClick={onClose} disabled={isProcessing}>
+        <div
+          className="locaryn-field-actions"
+          style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end", gap: "8px" }}
+        >
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={onClose}
+            disabled={isProcessing}
+          >
             Fermer
           </button>
           <button
             type="button"
             className="locaryn-btn-primary"
-            style={{ background: disclaimerAccepted ? "var(--danger)" : "var(--border)", color: "#fff" }}
+            style={{
+              background: disclaimerAccepted ? "var(--danger)" : "var(--border)",
+              color: "#fff",
+            }}
             disabled={!disclaimerAccepted || isProcessing}
             onClick={startObliteration}
           >

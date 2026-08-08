@@ -41,7 +41,9 @@ impl Provider {
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|p| p.id() == s.trim().to_ascii_lowercase())
+        Self::ALL
+            .into_iter()
+            .find(|p| p.id() == s.trim().to_ascii_lowercase())
     }
 
     pub fn label(&self) -> &'static str {
@@ -169,9 +171,7 @@ pub enum TunnelError {
     NotInstalled(&'static str, &'static str),
     #[error("Impossible de lancer {0} : {1}")]
     Spawn(&'static str, String),
-    #[error(
-        "{0} n'a pas fourni d'adresse au bout d'une minute. Dernières lignes :\n{1}"
-    )]
+    #[error("{0} n'a pas fourni d'adresse au bout d'une minute. Dernières lignes :\n{1}")]
     NoUrl(&'static str, String),
     #[error("{0} s'est arrêté avant d'ouvrir le tunnel :\n{1}")]
     Exited(&'static str, String),
@@ -204,13 +204,14 @@ pub async fn start(provider: Provider, port: u16) -> Result<Tunnel, TunnelError>
         ));
     }
 
-    let mut child = tokio::process::Command::new(locaryn_config::resolve_program(provider.binary()))
-        .args(provider.args(port))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .stdin(Stdio::null())
-        .spawn()
-        .map_err(|e| TunnelError::Spawn(provider.binary(), e.to_string()))?;
+    let mut child =
+        tokio::process::Command::new(locaryn_config::resolve_program(provider.binary()))
+            .args(provider.args(port))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .stdin(Stdio::null())
+            .spawn()
+            .map_err(|e| TunnelError::Spawn(provider.binary(), e.to_string()))?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -254,7 +255,11 @@ pub async fn start(provider: Provider, port: u16) -> Result<Tunnel, TunnelError>
             Ok(Some(line)) => {
                 if let Some(url) = extract_url(provider, &line) {
                     tracing::info!(provider = provider.id(), "tunnel ouvert");
-                    return Ok(Tunnel { provider, url, child });
+                    return Ok(Tunnel {
+                        provider,
+                        url,
+                        child,
+                    });
                 }
                 tail.push(line);
                 // Keep only what would fit in an error message.
@@ -283,7 +288,8 @@ mod tests {
     fn the_cloudflare_address_is_found_in_its_real_output() {
         // Copied from an actual run: the address arrives inside a box drawn
         // with plus signs and vertical bars.
-        let line = "2026-08-01T12:00:00Z INF |  https://petite-chose-abcd-1234.trycloudflare.com  |";
+        let line =
+            "2026-08-01T12:00:00Z INF |  https://petite-chose-abcd-1234.trycloudflare.com  |";
         assert_eq!(
             extract_url(Provider::Cloudflare, line).as_deref(),
             Some("https://petite-chose-abcd-1234.trycloudflare.com")
@@ -303,7 +309,10 @@ mod tests {
             assert_eq!(extract_url(Provider::Cloudflare, line), None, "faux positif : {line}");
         }
         assert_eq!(
-            extract_url(Provider::Ngrok, "Sign up at https://ngrok.com to get a token"),
+            extract_url(
+                Provider::Ngrok,
+                "Sign up at https://ngrok.com to get a token"
+            ),
             None
         );
     }
@@ -311,8 +320,14 @@ mod tests {
     #[test]
     fn the_bare_domain_alone_is_not_an_address() {
         // "https://trycloudflare.com" is the marketing site, not a tunnel.
-        assert_eq!(extract_url(Provider::Cloudflare, "see https://trycloudflare.com"), None);
-        assert_eq!(extract_url(Provider::DevTunnel, "https://devtunnels.ms"), None);
+        assert_eq!(
+            extract_url(Provider::Cloudflare, "see https://trycloudflare.com"),
+            None
+        );
+        assert_eq!(
+            extract_url(Provider::DevTunnel, "https://devtunnels.ms"),
+            None
+        );
     }
 
     #[test]

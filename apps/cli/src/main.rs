@@ -271,9 +271,7 @@ async fn main() -> anyhow::Result<()> {
                 | McpCmd::Discover { .. }
         })
     );
-    if needs_daemon
-        && client.health().await.is_err()
-    {
+    if needs_daemon && client.health().await.is_err() {
         anyhow::bail!(
             "Aucun service Locaryn n'écoute sur {base_url}.\n\
              Démarrez-le avec `locaryn daemon start`, ou lancez l'application Locaryn \
@@ -418,7 +416,12 @@ async fn main() -> anyhow::Result<()> {
             );
             Ok(())
         }
-        Cmd::Provision { url, org, note, out } => provision_cmd(url, org, note, out).await,
+        Cmd::Provision {
+            url,
+            org,
+            note,
+            out,
+        } => provision_cmd(url, org, note, out).await,
         Cmd::Users { action } => users_cmd(action).await,
         Cmd::Daemon { action } => match action {
             DaemonCmd::Start => {
@@ -477,8 +480,11 @@ async fn resolve_session(
             Some(p) => p.clone(),
             None => {
                 client
-                    .create_project(FREE, "Conversations libres",
-                                    locaryn_shared_types::TrustLevel::Sandbox)
+                    .create_project(
+                        FREE,
+                        "Conversations libres",
+                        locaryn_shared_types::TrustLevel::Sandbox,
+                    )
                     .await?
             }
         };
@@ -574,7 +580,11 @@ async fn converse(
                 show_reasoning = !show_reasoning;
                 println!(
                     "raisonnement : {}\n",
-                    if show_reasoning { "affiché" } else { "masqué" }
+                    if show_reasoning {
+                        "affiché"
+                    } else {
+                        "masqué"
+                    }
                 );
                 continue;
             }
@@ -746,7 +756,7 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
             }
             let mut names: Vec<_> = cfg.mcp_servers.keys().cloned().collect();
             names.sort();
-            println!("{:<20} {:<8} {}", "NOM", "AUTO", "CIBLE");
+            println!("{:<20} {:<8} CIBLE", "NOM", "AUTO");
             for n in names {
                 let e = &cfg.mcp_servers[&n];
                 let target = match e.transport {
@@ -757,7 +767,12 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
                     }
                     Transport::Http => e.url.clone().unwrap_or_default(),
                 };
-                println!("{:<20} {:<8} {}", n, if e.auto_start { "oui" } else { "non" }, target);
+                println!(
+                    "{:<20} {:<8} {}",
+                    n,
+                    if e.auto_start { "oui" } else { "non" },
+                    target
+                );
             }
             println!("\nFichier : {}", path.display());
             Ok(())
@@ -769,7 +784,10 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
                 "le nom préfixe les outils vus par le modèle : lettres, chiffres, « - » et « _ » uniquement"
             );
             let mut cfg = load();
-            anyhow::ensure!(!cfg.mcp_servers.contains_key(&name), "« {name} » existe déjà");
+            anyhow::ensure!(
+                !cfg.mcp_servers.contains_key(&name),
+                "« {name} » existe déjà"
+            );
 
             let entry = if target.starts_with("http://") || target.starts_with("https://") {
                 McpServerEntry {
@@ -811,7 +829,10 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
 
         McpCmd::Remove { name } => {
             let mut cfg = load();
-            anyhow::ensure!(cfg.mcp_servers.remove(&name).is_some(), "« {name} » n'est pas enregistré");
+            anyhow::ensure!(
+                cfg.mcp_servers.remove(&name).is_some(),
+                "« {name} » n'est pas enregistré"
+            );
             cfg.save(&path)?;
             println!("« {name} » retiré.");
             Ok(())
@@ -837,7 +858,13 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
                 for t in &caps.tools {
                     match &t.description {
                         Some(d) => {
-                            let line: String = d.lines().next().unwrap_or_default().chars().take(70).collect();
+                            let line: String = d
+                                .lines()
+                                .next()
+                                .unwrap_or_default()
+                                .chars()
+                                .take(70)
+                                .collect();
                             println!("  {:<28} {}", t.name, line);
                         }
                         None => println!("  {}", t.name),
@@ -851,10 +878,11 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
         }
 
         McpCmd::Start { name } => {
-            client
-                .start_mcp(&name)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}. Le serveur Locaryn doit tourner pour héberger un serveur MCP."))?;
+            client.start_mcp(&name).await.map_err(|e| {
+                anyhow::anyhow!(
+                    "{e}. Le serveur Locaryn doit tourner pour héberger un serveur MCP."
+                )
+            })?;
             println!("« {name} » démarré.");
             Ok(())
         }
@@ -874,8 +902,7 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
 async fn travel_cmd(action: Option<TravelCmd>, client: &LocarynClient) -> anyhow::Result<()> {
     /// Print the code full width, with what it is for above it.
     fn show(link: &str, title: &str, footer: &str) -> anyhow::Result<()> {
-        let code = locaryn_travel::qr::terminal(link)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let code = locaryn_travel::qr::terminal(link).map_err(|e| anyhow::anyhow!("{e}"))?;
         println!();
         println!("  {title}");
         println!();
@@ -958,12 +985,16 @@ async fn users_cmd(action: UsersCmd) -> anyhow::Result<()> {
                 println!("Aucun compte. Le daemon reste donc limité à un usage local.");
                 return Ok(());
             }
-            println!("{:<24} {:<8} {}", "NOM", "RÔLE", "ÉTAT");
+            println!("{:<24} {:<8} ÉTAT", "NOM", "RÔLE");
             for u in users {
                 println!(
                     "{:<24} {:<8} {}",
                     u.username,
-                    if u.role == Role::Admin { "admin" } else { "membre" },
+                    if u.role == Role::Admin {
+                        "admin"
+                    } else {
+                        "membre"
+                    },
                     if u.disabled { "désactivé" } else { "actif" }
                 );
             }

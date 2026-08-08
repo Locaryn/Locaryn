@@ -570,7 +570,11 @@ mod path_tests {
     /// would let cargo's parallel runner interleave the mutations.
     #[test]
     fn storage_root_drives_every_bulky_path() {
-        let fake = if cfg!(windows) { r"X:\locaryn-test" } else { "/tmp/locaryn-test" };
+        let fake = if cfg!(windows) {
+            r"X:\locaryn-test"
+        } else {
+            "/tmp/locaryn-test"
+        };
 
         // SAFETY: single-threaded within this test; no other test reads these.
         std::env::set_var("LOCARYN_STORAGE_ROOT", fake);
@@ -588,7 +592,11 @@ mod path_tests {
         assert!(!default_data_dir().starts_with(fake));
 
         // An explicit models override still wins over the root.
-        let models_override = if cfg!(windows) { r"Y:\weights" } else { "/mnt/weights" };
+        let models_override = if cfg!(windows) {
+            r"Y:\weights"
+        } else {
+            "/mnt/weights"
+        };
         std::env::set_var("LOCARYN_MODELS_DIR", models_override);
         assert_eq!(models_dir(), PathBuf::from(models_override));
 
@@ -661,9 +669,7 @@ pub fn program_exists(command: &str) -> bool {
     }
     // On Unix the resolver hands the name back unchanged; look it up here.
     std::env::var_os("PATH")
-        .map(|paths| {
-            std::env::split_paths(&paths).any(|d| d.join(command).is_file())
-        })
+        .map(|paths| std::env::split_paths(&paths).any(|d| d.join(command).is_file()))
         .unwrap_or(false)
 }
 
@@ -691,7 +697,10 @@ mod program_tests {
     fn an_explicit_path_is_left_untouched() {
         let p = "C:/Program Files/graphify/serve.exe";
         assert_eq!(resolve_program(p).to_string_lossy(), p);
-        assert_eq!(resolve_program("/usr/local/bin/serve").to_string_lossy(), "/usr/local/bin/serve");
+        assert_eq!(
+            resolve_program("/usr/local/bin/serve").to_string_lossy(),
+            "/usr/local/bin/serve"
+        );
     }
 
     #[test]

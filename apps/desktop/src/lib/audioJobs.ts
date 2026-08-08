@@ -1,4 +1,4 @@
-import { core, type TtsSampling } from "./core";
+import { type TtsSampling, core } from "./core";
 import { loadMediaObjectUrl, toMediaUrl } from "./media";
 import { taskCenter } from "./taskCenter";
 
@@ -60,7 +60,8 @@ export function startAudioGeneration(p: AudioGenParams): string {
     taskCenter.update(taskId, { detail: `${Math.round((Date.now() - t0) / 1000)}s` });
   }, 1000);
 
-  core.generateAudio(
+  core
+    .generateAudio(
       p.model,
       p.text,
       p.outputDir,
@@ -76,7 +77,7 @@ export function startAudioGeneration(p: AudioGenParams): string {
       p.sampling,
       (pct, detail) => {
         taskCenter.update(taskId, { progress: pct, detail: detail ?? `${pct}%` });
-      }
+      },
     )
     .then(async (res) => {
       window.clearInterval(timer);

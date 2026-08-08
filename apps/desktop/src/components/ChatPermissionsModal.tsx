@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { core, type SshAiAccess, type SshServer, type TrustLevel } from "../lib/core";
+import { type SshAiAccess, type SshServer, type TrustLevel, core } from "../lib/core";
 
 type Props = {
   isOpen: boolean;
@@ -18,7 +18,10 @@ export function ChatPermissionsModal({
 
   useEffect(() => {
     if (isOpen) {
-      core.listSshServers().then(setSshServers).catch(() => setSshServers([]));
+      core
+        .listSshServers()
+        .then(setSshServers)
+        .catch(() => setSshServers([]));
     }
   }, [isOpen]);
 
@@ -59,20 +62,28 @@ export function ChatPermissionsModal({
             value={trustLevel}
             onChange={(e) => onTrustLevelChange?.(e.target.value as TrustLevel)}
           >
-            <option value="untrusted">🛡️ Untrusted (Demander confirmation pour chaque écriture)</option>
-            <option value="trusted">⚡ Trusted (Auto-approbation des lectures et modifications)</option>
+            <option value="untrusted">
+              🛡️ Untrusted (Demander confirmation pour chaque écriture)
+            </option>
+            <option value="trusted">
+              ⚡ Trusted (Auto-approbation des lectures et modifications)
+            </option>
             <option value="sandbox">🔒 Sandbox (Lecture seule strict - aucun terminal)</option>
           </select>
           <p className="locaryn-field-hint">
-            Définit l'autonomie accordée à l'agent IA pour exécuter des commandes et modifier votre code.
+            Définit l'autonomie accordée à l'agent IA pour exécuter des commandes et modifier votre
+            code.
           </p>
         </div>
 
         {/* Section 2: Connector AI Access Gating */}
         <div className="locaryn-field">
-          <label className="locaryn-field-label">Autorisations des Connecteurs Actifs (SSH & Extensions)</label>
+          <label className="locaryn-field-label">
+            Autorisations des Connecteurs Actifs (SSH & Extensions)
+          </label>
           <p className="locaryn-field-hint">
-            Définissez si l'agent IA peut accéder à vos serveurs distants configurés et quel est son niveau d'autonomie.
+            Définissez si l'agent IA peut accéder à vos serveurs distants configurés et quel est son
+            niveau d'autonomie.
           </p>
 
           {sshServers.length === 0 ? (
@@ -80,19 +91,31 @@ export function ChatPermissionsModal({
               Aucun serveur SSH configuré dans le Store Connecteurs.
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}
+            >
               {sshServers.map((server) => (
                 <div key={server.id} className="locaryn-box-variant-row">
                   <div>
-                    <span style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}>{server.name}</span>
-                    <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)", marginLeft: "8px" }}>
+                    <span style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}>
+                      {server.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "var(--text-xs)",
+                        color: "var(--text-faint)",
+                        marginLeft: "8px",
+                      }}
+                    >
                       {server.username}@{server.host}
                     </span>
                   </div>
                   <select
                     className="locaryn-select locaryn-select-sm"
                     value={server.ai_access}
-                    onChange={(e) => handleSshAccessChange(server.id, e.target.value as SshAiAccess)}
+                    onChange={(e) =>
+                      handleSshAccessChange(server.id, e.target.value as SshAiAccess)
+                    }
                   >
                     <option value="none">Invisible</option>
                     <option value="read_only">Lecture seule</option>
@@ -105,7 +128,10 @@ export function ChatPermissionsModal({
           )}
         </div>
 
-        <div className="locaryn-field-actions" style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end" }}>
+        <div
+          className="locaryn-field-actions"
+          style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end" }}
+        >
           <button type="button" className="locaryn-btn-primary" onClick={onClose}>
             Fermer
           </button>

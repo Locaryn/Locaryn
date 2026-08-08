@@ -20,5 +20,9 @@ fn emit_a_code_for_a_real_reader() {
     }
     let path = std::env::var("LOCARYN_QR_OUT").expect("LOCARYN_QR_OUT");
     std::fs::write(&path, out).unwrap();
-    std::fs::write(format!("{path}.term"), locaryn_travel::qr::terminal(link).unwrap()).unwrap();
+    std::fs::write(
+        format!("{path}.term"),
+        locaryn_travel::qr::terminal(link).unwrap(),
+    )
+    .unwrap();
 }

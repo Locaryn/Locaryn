@@ -2,7 +2,12 @@
 
 use crate::travel::TravelStatus;
 use crate::DaemonState;
-use axum::{extract::State, http::StatusCode, response::{IntoResponse, Response}, Json};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use std::sync::Arc;
 
 fn data_dir(s: &DaemonState) -> std::path::PathBuf {
@@ -59,7 +64,9 @@ pub async fn set(State(s): State<Arc<DaemonState>>, Json(body): Json<SetBody>) -
 /// someone does after the tunnel has already been switched off.
 pub async fn home(State(s): State<Arc<DaemonState>>) -> Response {
     match crate::travel::TravelState::home_link(&data_dir(&s), &s.local_url) {
-        Ok((link, qr_svg)) => Json(serde_json::json!({ "link": link, "qr_svg": qr_svg })).into_response(),
+        Ok((link, qr_svg)) => {
+            Json(serde_json::json!({ "link": link, "qr_svg": qr_svg })).into_response()
+        }
         Err(message) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": { "code": "travel_home", "message": message } })),

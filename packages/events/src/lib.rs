@@ -3,8 +3,8 @@
 
 use bytes::Bytes;
 use futures::Stream;
-use locaryn_shared_types::{ArtifactKind, ProviderEngine, ProviderKind};
 pub use locaryn_shared_types::Risk;
+use locaryn_shared_types::{ArtifactKind, ProviderEngine, ProviderKind};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 

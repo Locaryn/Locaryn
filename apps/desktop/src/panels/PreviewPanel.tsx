@@ -16,8 +16,8 @@ export function PreviewPanel() {
           <div className="locaryn-preview-placeholder-mark" aria-hidden="true" />
           <div className="locaryn-preview-placeholder-title">No artifact yet</div>
           <div className="locaryn-preview-placeholder-sub">
-            When the agent generates HTML, Markdown or an image, it renders
-            here in a sandboxed frame.
+            When the agent generates HTML, Markdown or an image, it renders here in a sandboxed
+            frame.
           </div>
         </div>
       </div>

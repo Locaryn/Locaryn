@@ -427,7 +427,9 @@ pub async fn edit_region(
             init_image: Some(&crop_file),
             mask: Some(&crop_mask_file),
             strength: args.strength.unwrap_or(0.85),
-            vram_gb: crate::check_hardware().map(|h| h.total_vram_gb as f32).unwrap_or(0.0),
+            vram_gb: crate::check_hardware()
+                .map(|h| h.total_vram_gb as f32)
+                .unwrap_or(0.0),
             uncensored: false,
             batch_count: 1,
         })?;
@@ -571,7 +573,10 @@ async fn run_python(
         on_progress.send(v).ok();
     }
 
-    let status = child.wait().await.map_err(|e| format!("python wait: {e}"))?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("python wait: {e}"))?;
     let errs = err_task.await.unwrap_or_default();
     if !mask_only && !status.success() {
         return Err(format!(
@@ -591,7 +596,10 @@ mod tests {
         assert_eq!(parse_hex_colour("#633E26").unwrap(), (99, 62, 38));
         assert_eq!(parse_hex_colour("1C2A5C").unwrap(), (28, 42, 92));
         for bad in ["#12345", "oops", "#GGGGGG", ""] {
-            assert!(parse_hex_colour(bad).is_err(), "{bad} aurait dû être refusé");
+            assert!(
+                parse_hex_colour(bad).is_err(),
+                "{bad} aurait dû être refusé"
+            );
         }
     }
 
@@ -643,22 +651,49 @@ mod tests {
 
     #[test]
     fn the_generated_script_selects_the_right_stage() {
-        let recolour = build_script("i.png", "m.png", "the t-shirt", "recolour",
-                                    (99, 62, 38), "", "o.png", "", "");
+        let recolour = build_script(
+            "i.png",
+            "m.png",
+            "the t-shirt",
+            "recolour",
+            (99, 62, 38),
+            "",
+            "o.png",
+            "",
+            "",
+        );
         assert!(recolour.contains(r#"stage = "recolour""#));
         assert!(recolour.contains("(99, 62, 38)"));
         // The description must be JSON-quoted, not interpolated raw.
         assert!(recolour.contains(r#"target = "the t-shirt""#));
 
-        let replace = build_script("i.png", "m.png", "the shelf", "composite",
-                                   (0, 0, 0), "g.png", "o.png", "", "");
+        let replace = build_script(
+            "i.png",
+            "m.png",
+            "the shelf",
+            "composite",
+            (0, 0, 0),
+            "g.png",
+            "o.png",
+            "",
+            "",
+        );
         assert!(replace.contains(r#"stage = "composite""#));
     }
 
     #[test]
     fn a_quote_in_the_description_cannot_break_the_script() {
-        let s = build_script("i.png", "m.png", "the \"blue\" mug", "recolour",
-                             (1, 2, 3), "", "o.png", "", "");
+        let s = build_script(
+            "i.png",
+            "m.png",
+            "the \"blue\" mug",
+            "recolour",
+            (1, 2, 3),
+            "",
+            "o.png",
+            "",
+            "",
+        );
         assert!(s.contains(r#"target = "the \"blue\" mug""#), "{s}");
     }
 }

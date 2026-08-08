@@ -24,9 +24,7 @@ export function ImageIntentCard({ intent, model, onAccept, onRefuse, decided }: 
     <div className={`locaryn-intent${decided ? " locaryn-intent-decided" : ""}`}>
       <div className="locaryn-intent-head">
         <span className="locaryn-intent-icon">{intent.is_edit ? "🖼️" : "🎨"}</span>
-        <strong>
-          {intent.is_edit ? "Modifier une image ?" : "Générer une image ?"}
-        </strong>
+        <strong>{intent.is_edit ? "Modifier une image ?" : "Générer une image ?"}</strong>
         {decided && (
           <span className="locaryn-intent-badge">
             {decided === "accepted" ? "accepté" : "refusé"}
@@ -71,7 +69,11 @@ export function ImageIntentCard({ intent, model, onAccept, onRefuse, decided }: 
               </button>
             ))}
           </div>
-          <button type="button" className="locaryn-btn-primary" onClick={() => onAccept(quality.id)}>
+          <button
+            type="button"
+            className="locaryn-btn-primary"
+            onClick={() => onAccept(quality.id)}
+          >
             Générer
           </button>
         </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { core, type ServerStatus } from "../lib/core";
+import { type ServerStatus, core } from "../lib/core";
 
 /**
  * Share this machine's models with other people.
@@ -50,8 +50,8 @@ export function ServerSettings() {
     <div className="locaryn-field">
       <label className="locaryn-field-label">Partager cette machine</label>
       <p className="locaryn-field-hint">
-        Rend les modèles de cet ordinateur utilisables depuis d'autres postes et
-        depuis un téléphone. Utile quand une seule machine possède la carte graphique.
+        Rend les modèles de cet ordinateur utilisables depuis d'autres postes et depuis un
+        téléphone. Utile quand une seule machine possède la carte graphique.
       </p>
 
       <div className="locaryn-srv-row">
@@ -62,13 +62,7 @@ export function ServerSettings() {
             disabled={busy || (blocked && !status?.running)}
             onChange={(e) => toggle(e.target.checked)}
           />
-          <span>
-            {busy
-              ? "…"
-              : status?.running
-                ? "Serveur actif"
-                : "Serveur arrêté"}
-          </span>
+          <span>{busy ? "…" : status?.running ? "Serveur actif" : "Serveur arrêté"}</span>
         </label>
         {status?.running && <span className="locaryn-srv-live">en écoute</span>}
       </div>
@@ -122,20 +116,19 @@ export function ServerSettings() {
                 Empreinte du certificat
               </label>
               <p className="locaryn-field-hint">
-                Le certificat est généré par cette machine, donc les postes clients
-                afficheront un avertissement au premier contact. C'est attendu : cette
-                empreinte est ce qui permet de vérifier qu'ils parlent bien à
-                <em> cet</em> ordinateur et pas à un autre.
+                Le certificat est généré par cette machine, donc les postes clients afficheront un
+                avertissement au premier contact. C'est attendu : cette empreinte est ce qui permet
+                de vérifier qu'ils parlent bien à<em> cet</em> ordinateur et pas à un autre.
               </p>
               <div className="locaryn-srv-fingerprint">{status.fingerprint}</div>
             </>
           )}
 
           <p className="locaryn-field-hint" style={{ marginTop: 16 }}>
-            Pour éviter à vos collègues toute configuration, générez un fichier de
-            connexion depuis un terminal :{" "}
-            <code>locaryn provision {status.url.replace(/^https?:\/\//, "").split(":")[0]}</code>
-            . Il suffira ensuite de le déposer à côté de l'installeur.
+            Pour éviter à vos collègues toute configuration, générez un fichier de connexion depuis
+            un terminal :{" "}
+            <code>locaryn provision {status.url.replace(/^https?:\/\//, "").split(":")[0]}</code>.
+            Il suffira ensuite de le déposer à côté de l'installeur.
           </p>
         </>
       )}

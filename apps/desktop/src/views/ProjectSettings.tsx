@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { core, type Project, type RagStatus, type TrustLevel } from "../lib/core";
+import { type Project, type RagStatus, type TrustLevel, core } from "../lib/core";
 
 type Props = {
   projects: Project[];
@@ -43,10 +43,17 @@ export function ProjectSettings({ projects, onArchived }: Props) {
       return;
     }
     let cancelled = false;
-    core.ragStatus(selected.id)
-      .then((s) => { if (!cancelled) setRag(s); })
-      .catch(() => { if (!cancelled) setRag(null); });
-    return () => { cancelled = true; };
+    core
+      .ragStatus(selected.id)
+      .then((s) => {
+        if (!cancelled) setRag(s);
+      })
+      .catch(() => {
+        if (!cancelled) setRag(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selected]);
 
   async function archive() {
@@ -116,8 +123,8 @@ export function ProjectSettings({ projects, onArchived }: Props) {
               </span>
             </div>
             <p className="locaryn-field-hint" style={{ marginTop: 8, fontStyle: "italic" }}>
-              Le changement de niveau depuis l'interface arrive avec le journal d'approbations ;
-              les demandes d'outils restent confirmées au cas par cas d'ici là.
+              Le changement de niveau depuis l'interface arrive avec le journal d'approbations ; les
+              demandes d'outils restent confirmées au cas par cas d'ici là.
             </p>
           </div>
 
@@ -127,7 +134,9 @@ export function ProjectSettings({ projects, onArchived }: Props) {
               Documents indexés utilisés automatiquement dans les conversations de ce projet.
             </p>
             <div className="locaryn-conn" style={{ marginTop: 8 }}>
-              <span className={`locaryn-health-dot ${rag && rag.chunk_count > 0 ? "locaryn-health-ok" : "locaryn-health-off"}`} />
+              <span
+                className={`locaryn-health-dot ${rag && rag.chunk_count > 0 ? "locaryn-health-ok" : "locaryn-health-off"}`}
+              />
               <span>
                 {rag == null
                   ? "…"

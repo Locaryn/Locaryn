@@ -125,9 +125,7 @@ fn entry_to_json(e: &locaryn_extensions::ExtensionEntry) -> serde_json::Value {
 // ============================================================================
 
 /// GET /v1/extensions — list all installed extensions.
-pub async fn list_extensions(
-    State(s): State<Arc<DaemonState>>,
-) -> Response {
+pub async fn list_extensions(State(s): State<Arc<DaemonState>>) -> Response {
     let entries = s.extensions.list();
     let json: Vec<serde_json::Value> = entries.iter().map(entry_to_json).collect();
     (StatusCode::OK, Json(json)).into_response()

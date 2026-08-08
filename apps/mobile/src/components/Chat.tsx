@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type MobileStatus, type Message } from "../lib/core";
+import { type Message, type MobileStatus, api } from "../lib/core";
 
 type Props = {
   status: MobileStatus;

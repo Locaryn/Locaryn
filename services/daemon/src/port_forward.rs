@@ -175,16 +175,31 @@ mod tests {
             "attendu un refus, obtenu {err:?}"
         );
         let msg = err.to_string();
-        assert!(msg.contains("certificat client"), "message peu clair : {msg}");
+        assert!(
+            msg.contains("certificat client"),
+            "message peu clair : {msg}"
+        );
         // It must say what to do, not merely that it failed.
-        assert!(msg.contains("require_client_cert"), "message sans issue : {msg}");
+        assert!(
+            msg.contains("require_client_cert"),
+            "message sans issue : {msg}"
+        );
     }
 
+    // Ces deux assertions portent sur une constante, donc le compilateur les
+    // replie — clippy a raison sur le plan technique. Elles restent parce que
+    // leur objet n'est pas l'exécution mais la *prochaine modification* : si
+    // quelqu'un porte le bail à zéro ou à la journée, la compilation du test
+    // échoue et la question se pose avant la fusion, pas après.
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn the_lease_is_short_enough_to_expire_on_its_own() {
         // A permanent mapping left behind by an abandoned daemon is the whole
         // reason UPnP has a bad reputation.
-        assert!(LEASE_SECONDS > 0, "un bail nul est permanent chez certaines box");
+        assert!(
+            LEASE_SECONDS > 0,
+            "un bail nul est permanent chez certaines box"
+        );
         assert!(
             LEASE_SECONDS <= 7200,
             "bail trop long : une redirection oubliée reste ouverte des heures"

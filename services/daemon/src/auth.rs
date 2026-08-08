@@ -35,8 +35,14 @@ pub struct AuthState {
 
 /// Extract a bearer token from the `Authorization` header.
 fn bearer(req: &Request<Body>) -> Option<String> {
-    let raw = req.headers().get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
-    let rest = raw.strip_prefix("Bearer ").or_else(|| raw.strip_prefix("bearer "))?;
+    let raw = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
+    let rest = raw
+        .strip_prefix("Bearer ")
+        .or_else(|| raw.strip_prefix("bearer "))?;
     let t = rest.trim();
     (!t.is_empty()).then(|| t.to_string())
 }
@@ -96,7 +102,11 @@ pub struct LoginBody {
 /// The reply is identical for a wrong password and an unknown account: telling
 /// them apart would let someone enumerate who has an account here.
 pub async fn login(State(state): State<Arc<AuthState>>, Json(body): Json<LoginBody>) -> Response {
-    match state.users.authenticate(&body.username, &body.password).await {
+    match state
+        .users
+        .authenticate(&body.username, &body.password)
+        .await
+    {
         Ok(Some(user)) => match state
             .users
             .issue_token(user.id, body.label.as_deref(), 30)
@@ -193,9 +203,15 @@ mod tests {
         assert_eq!(bearer(&with("Bearer abc123")).as_deref(), Some("abc123"));
         // Some clients lowercase the scheme.
         assert_eq!(bearer(&with("bearer abc123")).as_deref(), Some("abc123"));
-        assert_eq!(bearer(&with("Bearer   spaced  ")).as_deref(), Some("spaced"));
+        assert_eq!(
+            bearer(&with("Bearer   spaced  ")).as_deref(),
+            Some("spaced")
+        );
 
-        assert!(bearer(&with("Bearer ")).is_none(), "un jeton vide n'est pas un jeton");
+        assert!(
+            bearer(&with("Bearer ")).is_none(),
+            "un jeton vide n'est pas un jeton"
+        );
         assert!(bearer(&with("Basic abc123")).is_none(), "mauvais schéma");
         assert!(bearer(&with("abc123")).is_none(), "sans schéma");
         assert!(bearer(&Request::new(Body::empty())).is_none());

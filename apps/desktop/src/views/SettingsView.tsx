@@ -1,24 +1,36 @@
 import { useEffect, useState } from "react";
+import { AboutSettings } from "../components/AboutSettings";
+import { CautionSettings } from "../components/CautionSettings";
+import { ConnectionSettings } from "../components/ConnectionSettings";
+import { ConnectorsSettings } from "../components/ConnectorsSettings";
+import { EngineSettings } from "../components/EngineSettings";
+import { ExtensionsSettings } from "../components/ExtensionsSettings";
+import { ImageSettings } from "../components/ImageSettings";
+import { PerformancePanel } from "../components/PerformancePanel";
+import { ServerSettings } from "../components/ServerSettings";
+import { SnapMcpTestBench } from "../components/SnapMcpTestBench";
+import { StorageSettings } from "../components/StorageSettings";
+import { TravelSettings } from "../components/TravelSettings";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import { ACCENT_PRESETS } from "../hooks/useTheme";
-import { core, type AppInfo, type Project } from "../lib/core";
-import { EngineSettings } from "../components/EngineSettings";
-import { AboutSettings } from "../components/AboutSettings";
-import { ConnectorsSettings } from "../components/ConnectorsSettings";
-import { ExtensionsSettings } from "../components/ExtensionsSettings";
-import { SnapMcpTestBench } from "../components/SnapMcpTestBench";
-import { PerformancePanel } from "../components/PerformancePanel";
-import { ProjectSettings } from "./ProjectSettings";
-import { ImageSettings } from "../components/ImageSettings";
-import { StorageSettings } from "../components/StorageSettings";
-import { CautionSettings } from "../components/CautionSettings";
-import { ServerSettings } from "../components/ServerSettings";
-import { ConnectionSettings } from "../components/ConnectionSettings";
-import { TravelSettings } from "../components/TravelSettings";
-import { LANGUAGES, useI18n, DO_NOT_TRANSLATE } from "../lib/i18n";
+import { type AppInfo, type Project, core } from "../lib/core";
 import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
+import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
+import { ProjectSettings } from "./ProjectSettings";
 
-type Section = "engine" | "performance" | "image" | "projects" | "extensions" | "connectors" | "snapmcp" | "appearance" | "language" | "server" | "storage" | "about";
+type Section =
+  | "engine"
+  | "performance"
+  | "image"
+  | "projects"
+  | "extensions"
+  | "connectors"
+  | "snapmcp"
+  | "appearance"
+  | "language"
+  | "server"
+  | "storage"
+  | "about";
 
 type Props = {
   theme: UseThemeReturn;
@@ -29,17 +41,57 @@ type Props = {
 };
 
 const SECTIONS: { id: Section; icon: string; label: string; desc: string }[] = [
-  { id: "engine", icon: "⚙", label: "Moteur IA", desc: "Runtime llama.cpp, capacités, adaptateurs LoRA" },
+  {
+    id: "engine",
+    icon: "⚙",
+    label: "Moteur IA",
+    desc: "Runtime llama.cpp, capacités, adaptateurs LoRA",
+  },
   { id: "performance", icon: "⚡", label: "Performance", desc: "GPU, cache KV, contexte, offload" },
-  { id: "image", icon: "🎨", label: "Image", desc: "Qualité et résolution par défaut des générations" },
-  { id: "projects", icon: "📁", label: "Projets", desc: "Autorisations, base de connaissances, archivage" },
-  { id: "extensions", icon: "🧩", label: "Extensions", desc: "Plugins Claude Code, Gemini CLI, OpenCode, MCP" },
-  { id: "connectors", icon: "🔌", label: "Connecteurs", desc: "Serveurs SSH et MCP ajoutés à la main" },
-  { id: "snapmcp", icon: "▣", label: "Banc SnapMCP", desc: "Tester textes, médias, vocaux, ADB, Web et Telegram" },
+  {
+    id: "image",
+    icon: "🎨",
+    label: "Image",
+    desc: "Qualité et résolution par défaut des générations",
+  },
+  {
+    id: "projects",
+    icon: "📁",
+    label: "Projets",
+    desc: "Autorisations, base de connaissances, archivage",
+  },
+  {
+    id: "extensions",
+    icon: "🧩",
+    label: "Extensions",
+    desc: "Plugins Claude Code, Gemini CLI, OpenCode, MCP",
+  },
+  {
+    id: "connectors",
+    icon: "🔌",
+    label: "Connecteurs",
+    desc: "Serveurs SSH et MCP ajoutés à la main",
+  },
+  {
+    id: "snapmcp",
+    icon: "▣",
+    label: "Banc SnapMCP",
+    desc: "Tester textes, médias, vocaux, ADB, Web et Telegram",
+  },
   { id: "appearance", icon: "🎨", label: "Apparence", desc: "Couleur d'accentuation, thème" },
   { id: "language", icon: "🌍", label: "Langue", desc: "Langue de l'interface" },
-  { id: "server", icon: "🌐", label: "Partage réseau", desc: "Rendre cette machine accessible aux autres postes" },
-  { id: "storage", icon: "💾", label: "Stockage", desc: "Emplacement des modèles, espace disque, nettoyage" },
+  {
+    id: "server",
+    icon: "🌐",
+    label: "Partage réseau",
+    desc: "Rendre cette machine accessible aux autres postes",
+  },
+  {
+    id: "storage",
+    icon: "💾",
+    label: "Stockage",
+    desc: "Emplacement des modèles, espace disque, nettoyage",
+  },
   { id: "about", icon: "ℹ", label: "À propos", desc: "Version, licences, système" },
 ];
 
@@ -57,8 +109,15 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
 
   useEffect(() => {
     let cancelled = false;
-    core.appInfo().then((i) => { if (!cancelled) setInfo(i); }).catch(() => {});
-    return () => { cancelled = true; };
+    core
+      .appInfo()
+      .then((i) => {
+        if (!cancelled) setInfo(i);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Un lien locaryn://install?src=… doit atterrir sur la section Extensions.
@@ -79,8 +138,8 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
       <div className="locaryn-view-header">
         <h2>Paramètres de l'application</h2>
         <p className="locaryn-view-desc">
-          Tous les réglages de Locaryn. Les options propres à une conversation restent
-          accessibles depuis le panneau du chat.
+          Tous les réglages de Locaryn. Les options propres à une conversation restent accessibles
+          depuis le panneau du chat.
         </p>
       </div>
 
@@ -139,7 +198,9 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
                     aria-label={`Accent ${p.name}`}
                     onClick={() => updateAccent(p.hex)}
                   >
-                    {settings.accentHex === p.hex && <span className="locaryn-swatch-check">✓</span>}
+                    {settings.accentHex === p.hex && (
+                      <span className="locaryn-swatch-check">✓</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -153,7 +214,12 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
                 />
                 <span className="locaryn-color-value">{settings.accentHex}</span>
               </div>
-              <button type="button" className="locaryn-settings-reset" style={{ marginTop: 16 }} onClick={resetTheme}>
+              <button
+                type="button"
+                className="locaryn-settings-reset"
+                style={{ marginTop: 16 }}
+                onClick={resetTheme}
+              >
                 Réinitialiser l'apparence
               </button>
             </div>
@@ -173,8 +239,8 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
             <div className="locaryn-field">
               <label className="locaryn-field-label">Langue de l'interface</label>
               <p className="locaryn-field-hint">
-                Change la langue des textes de l'application. Les noms de modèles, de marques
-                et les termes techniques restent inchangés.
+                Change la langue des textes de l'application. Les noms de modèles, de marques et les
+                termes techniques restent inchangés.
               </p>
               <div className="locaryn-lang-grid" style={{ marginTop: 12 }}>
                 {LANGUAGES.map((l) => (

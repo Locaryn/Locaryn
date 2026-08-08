@@ -253,7 +253,11 @@ fn preview_zip(path: &Path) -> Result<SourcePreview, SourceError> {
 }
 
 /// Aperçu depuis un manifeste Locaryn adapté (résultat de `adapt`).
-fn from_manifest(eco: &ExtensionEcosystem, m: &manifest::PluginManifest, file: &str) -> SourcePreview {
+fn from_manifest(
+    eco: &ExtensionEcosystem,
+    m: &manifest::PluginManifest,
+    file: &str,
+) -> SourcePreview {
     let requested = manifest::requested_permissions(m)
         .into_iter()
         .map(|(p, _)| permission_str(&p).to_string())
@@ -272,7 +276,11 @@ fn from_manifest(eco: &ExtensionEcosystem, m: &manifest::PluginManifest, file: &
 
 /// Aperçu depuis un manifeste brut (GitHub ou zip) : champs communs, tolérants
 /// aux formes des différents écosystèmes.
-fn preview_from_json(manifest_file: &str, v: &serde_json::Value, fallback_name: &str) -> SourcePreview {
+fn preview_from_json(
+    manifest_file: &str,
+    v: &serde_json::Value,
+    fallback_name: &str,
+) -> SourcePreview {
     let ecosystem = match manifest_file {
         ".claude-plugin/plugin.json" => "claude_code",
         "gemini-extension.json" => "gemini_cli",
@@ -420,7 +428,10 @@ fn extract_mcp_servers(v: &serde_json::Value) -> Vec<McpServerPreview> {
                 .get("command")
                 .and_then(|c| c.as_str())
                 .map(str::to_string),
-            url: entry.get("url").and_then(|c| c.as_str()).map(str::to_string),
+            url: entry
+                .get("url")
+                .and_then(|c| c.as_str())
+                .map(str::to_string),
         })
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -500,7 +511,10 @@ mod tests {
         .unwrap();
         let p = preview_from_json(".claude-plugin/plugin.json", &v, "fallback");
         assert_eq!(p.ecosystem, "claude_code");
-        assert_eq!(p.requested_permissions, vec!["Bash(npx foo)", "Edit", "Read"]);
+        assert_eq!(
+            p.requested_permissions,
+            vec!["Bash(npx foo)", "Edit", "Read"]
+        );
     }
 
     #[test]
@@ -537,7 +551,10 @@ mod tests {
         // Claude Code : `mcpServers` est un chemin, pas une liste.
         let cc: serde_json::Value =
             serde_json::from_str(r#"{"name":"cc","mcpServers":"servers/mcp.json"}"#).unwrap();
-        assert_eq!(declared_mcp_candidates(".claude-plugin/plugin.json", &cc)[0], "servers/mcp.json");
+        assert_eq!(
+            declared_mcp_candidates(".claude-plugin/plugin.json", &cc)[0],
+            "servers/mcp.json"
+        );
 
         // Extrait les serveurs depuis le fichier mcp référencé.
         let mcp: serde_json::Value = serde_json::from_str(
@@ -585,16 +602,18 @@ mod tests {
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
         let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        writer.start_file("repo-main/plugin.json", options).unwrap();
         writer
-            .start_file("repo-main/plugin.json", options)
-            .unwrap();
-        writer
-            .write_all(r#"{"name":"zipped","version":"0.9.0","permissions":{"network":true}}"#.as_bytes())
+            .write_all(
+                r#"{"name":"zipped","version":"0.9.0","permissions":{"network":true}}"#.as_bytes(),
+            )
             .unwrap();
         writer.finish().unwrap();
 
         let http = reqwest::Client::new();
-        let p = preview_source(&http, zip_path.to_str().unwrap()).await.unwrap();
+        let p = preview_source(&http, zip_path.to_str().unwrap())
+            .await
+            .unwrap();
         assert_eq!(p.name, "zipped");
         assert_eq!(p.version.as_deref(), Some("0.9.0"));
         assert_eq!(p.requested_permissions, vec!["network"]);
@@ -612,12 +631,7 @@ mod tests {
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
         let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
-        writer
-            .start_file(
-                "repo-main/plugin.json",
-                options,
-            )
-            .unwrap();
+        writer.start_file("repo-main/plugin.json", options).unwrap();
         writer
             .write_all(
                 r#"{"name":"snap-mcp","version":"0.3.0","components":{"mcp":"mcp/mcp.json"}}"#
@@ -633,7 +647,9 @@ mod tests {
         writer.finish().unwrap();
 
         let http = reqwest::Client::new();
-        let p = preview_source(&http, zip_path.to_str().unwrap()).await.unwrap();
+        let p = preview_source(&http, zip_path.to_str().unwrap())
+            .await
+            .unwrap();
         assert_eq!(p.name, "snap-mcp");
         assert_eq!(p.mcp_servers.len(), 1);
         assert_eq!(p.mcp_servers[0].name, "graphify");

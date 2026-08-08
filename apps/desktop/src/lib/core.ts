@@ -1507,8 +1507,7 @@ const tauriCore: CoreApi = {
   getExtensionConfig: (id) => invoke<ExtensionConfig>("get_extension_config", { id }),
   setExtensionConfig: (id, values) =>
     invoke<ExtensionConfig>("set_extension_config", { id, values }),
-  getExtensionMcpServers: (id) =>
-    invoke<ExtensionMcpServer[]>("get_extension_mcp_servers", { id }),
+  getExtensionMcpServers: (id) => invoke<ExtensionMcpServer[]>("get_extension_mcp_servers", { id }),
   setExtensionMcpServers: (id, servers) =>
     invoke<ExtensionMcpServer[]>("set_extension_mcp_servers", { id, servers }),
   listExtensionCommands: () => invoke<ExtensionCommand[]>("list_extension_commands"),
@@ -1546,8 +1545,7 @@ const tauriCore: CoreApi = {
   removeMcpServer: (name) => invoke<McpServerInfo[]>("remove_mcp_server", { name }),
   startMcpServer: (name) => invoke<string[]>("start_mcp_server", { name }),
   stopMcpServer: (name) => invoke<void>("stop_mcp_server", { name }),
-  invokeMcpTool: (name, tool, args) =>
-    invoke<unknown>("invoke_mcp_tool", { name, tool, args }),
+  invokeMcpTool: (name, tool, args) => invoke<unknown>("invoke_mcp_tool", { name, tool, args }),
   diagnoseSnapMcp: () => invoke<SnapMcpDiagnostics>("diagnose_snapmcp"),
   writeTestAudio: (audioBase64, mimeType) =>
     invoke<string>("write_test_audio", { audioBase64, mimeType }),
@@ -2452,7 +2450,7 @@ let demoCaution: CautionLevel = "equilibre";
 /** Taille déduite du nom du fichier, faute de disque à mesurer. */
 function demoModelSizeGb(model: string): number {
   const m = /(\d+(?:[.,]\d+)?)\s*b\b/i.exec(model);
-  const billions = m ? parseFloat(m[1].replace(",", ".")) : 7;
+  const billions = m ? Number.parseFloat(m[1].replace(",", ".")) : 7;
   // ~0,6 Go par milliard de paramètres en quantification 4 bits.
   return Math.max(0.3, billions * 0.6);
 }
@@ -2467,29 +2465,53 @@ function demoFit(model: string, level: CautionLevel): ModelFit {
 
   if (fitsVram)
     return {
-      model, verdict: "confortable", size_gb: size, required_gb: required,
-      free_ram_gb: demoMemory.freeRamGb, free_vram_gb: demoMemory.freeVramGb,
-      placement: "gpu", level, overridable: false,
+      model,
+      verdict: "confortable",
+      size_gb: size,
+      required_gb: required,
+      free_ram_gb: demoMemory.freeRamGb,
+      free_vram_gb: demoMemory.freeVramGb,
+      placement: "gpu",
+      level,
+      overridable: false,
       message: `${size.toFixed(1)} Go sur le GPU, ${demoMemory.freeVramGb.toFixed(1)} Go libres. Vitesse maximale.`,
     };
   if (fitsRam)
     return {
-      model, verdict: "juste", size_gb: size, required_gb: required,
-      free_ram_gb: demoMemory.freeRamGb, free_vram_gb: demoMemory.freeVramGb,
-      placement: "ram", level, overridable: false,
+      model,
+      verdict: "juste",
+      size_gb: size,
+      required_gb: required,
+      free_ram_gb: demoMemory.freeRamGb,
+      free_vram_gb: demoMemory.freeVramGb,
+      placement: "ram",
+      level,
+      overridable: false,
       message: `${size.toFixed(1)} Go à répartir : trop pour les ${demoMemory.freeVramGb.toFixed(1)} Go de VRAM libres, le reste ira en RAM. Plus lent qu'en tout-GPU.`,
     };
   if (level === "risque")
     return {
-      model, verdict: "risque", size_gb: size, required_gb: required,
-      free_ram_gb: demoMemory.freeRamGb, free_vram_gb: demoMemory.freeVramGb,
-      placement: "disque", level, overridable: false,
+      model,
+      verdict: "risque",
+      size_gb: size,
+      required_gb: required,
+      free_ram_gb: demoMemory.freeRamGb,
+      free_vram_gb: demoMemory.freeVramGb,
+      placement: "disque",
+      level,
+      overridable: false,
       message: `${size.toFixed(1)} Go demandés pour ${demoMemory.freeRamGb.toFixed(1)} Go libres. Le système va compenser sur le disque : ralentissement sévère, et l'application peut être tuée par manque de mémoire.`,
     };
   return {
-    model, verdict: "refuse", size_gb: size, required_gb: required,
-    free_ram_gb: demoMemory.freeRamGb, free_vram_gb: demoMemory.freeVramGb,
-    placement: "disque", level, overridable: true,
+    model,
+    verdict: "refuse",
+    size_gb: size,
+    required_gb: required,
+    free_ram_gb: demoMemory.freeRamGb,
+    free_vram_gb: demoMemory.freeVramGb,
+    placement: "disque",
+    level,
+    overridable: true,
     message: `${size.toFixed(1)} Go demandés, ${required.toFixed(1)} Go nécessaires avec la marge choisie, et seulement ${demoMemory.freeRamGb.toFixed(1)} Go libres. Fermez des applications, choisissez un modèle plus petit, ou passez le niveau de prudence sur « risqué » pour forcer.`,
   };
 }
@@ -3130,14 +3152,16 @@ const demoCore: CoreApi = {
   }),
   diagnoseSnapMcp: async () => ({
     checked_at: new Date().toISOString(),
-    checks: [{
-      id: "demo",
-      label: "Mode navigateur",
-      status: "warning",
-      detail: "Le diagnostic réel nécessite l'application Tauri.",
-      value: null,
-      fix: "Lancer Locaryn Desktop.",
-    }],
+    checks: [
+      {
+        id: "demo",
+        label: "Mode navigateur",
+        status: "warning",
+        detail: "Le diagnostic réel nécessite l'application Tauri.",
+        value: null,
+        fix: "Lancer Locaryn Desktop.",
+      },
+    ],
   }),
   writeTestAudio: async () => "demo://audio",
   removeTestAudio: async () => {},

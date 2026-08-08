@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { core } from "../lib/core";
 
 export interface ModelParams {
-  temperature: number;    // 0.0 – 2.0
-  top_p: number;         // 0.0 – 1.0
-  top_k: number;         // 0 – 100
-  ctx_size: number;      // tokens: 512 – 131072
-  max_tokens: number;    // 0 = unlimited
+  temperature: number; // 0.0 – 2.0
+  top_p: number; // 0.0 – 1.0
+  top_k: number; // 0 – 100
+  ctx_size: number; // tokens: 512 – 131072
+  max_tokens: number; // 0 = unlimited
   repeat_penalty: number; // 1.0 – 2.0
-  seed: number;          // -1 = random
+  seed: number; // -1 = random
 }
 
 export const DEFAULT_MODEL_PARAMS: ModelParams = {
@@ -37,7 +37,9 @@ function Slider({ label, id, value, min, max, step, format, onChange }: SliderPr
   return (
     <div className="lmc-field">
       <div className="lmc-field-head">
-        <label htmlFor={id} className="lmc-label">{label}</label>
+        <label htmlFor={id} className="lmc-label">
+          {label}
+        </label>
         <span className="lmc-value">{format ? format(value) : value}</span>
       </div>
       <div className="lmc-slider-wrap">
@@ -84,17 +86,23 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
         // Keep defaults silently.
       }
     })();
-    return () => { cancelled = true; void cancelled; };
+    return () => {
+      cancelled = true;
+      void cancelled;
+    };
   }, []);
 
-  const update = useCallback((key: keyof ModelParams, val: number) => {
-    setParams((prev) => {
-      const next = { ...prev, [key]: val };
-      onParamsChange?.(next);
-      return next;
-    });
-    setSaved(false);
-  }, [onParamsChange]);
+  const update = useCallback(
+    (key: keyof ModelParams, val: number) => {
+      setParams((prev) => {
+        const next = { ...prev, [key]: val };
+        onParamsChange?.(next);
+        return next;
+      });
+      setSaved(false);
+    },
+    [onParamsChange],
+  );
 
   async function save() {
     setSaving(true);
@@ -118,7 +126,10 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
 
   return (
     <aside className="lmc-panel">
-      <div className="lmc-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div
+        className="lmc-header"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+      >
         <span className="lmc-title">⚙️ Paramètres du Modèle</span>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           <button
@@ -196,7 +207,7 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
           min={512}
           max={131072}
           step={512}
-          format={(v) => v >= 1024 ? `${(v / 1024).toFixed(0)}k` : `${v}`}
+          format={(v) => (v >= 1024 ? `${(v / 1024).toFixed(0)}k` : `${v}`)}
           onChange={(v) => update("ctx_size", v)}
         />
 
@@ -207,7 +218,7 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
           min={0}
           max={16384}
           step={64}
-          format={(v) => v === 0 ? "∞" : `${v}`}
+          format={(v) => (v === 0 ? "∞" : `${v}`)}
           onChange={(v) => update("max_tokens", v)}
         />
 
@@ -215,7 +226,9 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
 
         <div className="lmc-field">
           <div className="lmc-field-head">
-            <label htmlFor="lmc-seed" className="lmc-label">Seed</label>
+            <label htmlFor="lmc-seed" className="lmc-label">
+              Seed
+            </label>
             <span className="lmc-value lmc-value-mono">
               {params.seed === -1 ? "random" : params.seed}
             </span>
@@ -252,12 +265,7 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
 
       <div className="lmc-footer">
         {error && <div className="lmc-error">{error}</div>}
-        <button
-          type="button"
-          className="lmc-save-btn"
-          onClick={save}
-          disabled={saving}
-        >
+        <button type="button" className="lmc-save-btn" onClick={save} disabled={saving}>
           {saving ? "Saving…" : saved ? "Saved ✓" : "Apply"}
         </button>
       </div>

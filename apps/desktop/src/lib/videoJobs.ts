@@ -1,6 +1,6 @@
+import { toAudioUrl } from "./audioJobs";
 import { core } from "./core";
 import { taskCenter } from "./taskCenter";
-import { toAudioUrl } from "./audioJobs";
 
 export interface VideoJobResult {
   url: string;
@@ -54,7 +54,7 @@ export function startVideoGeneration(p: VideoGenParams): string {
       p.height ?? null,
       (pct, detail) => {
         taskCenter.update(taskId, { progress: pct, detail: detail ?? `${pct}%` });
-      }
+      },
     )
     .then(async (res) => {
       window.clearInterval(timer);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useTasks, taskCenter, TASK_META, type AppTask } from "../lib/taskCenter";
+import { type AppTask, TASK_META, taskCenter, useTasks } from "../lib/taskCenter";
 
 type Props = {
   onOpenResult?: (t: AppTask) => void;
@@ -66,16 +66,32 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
 
       {/* Expandable notification panel (bottom-right) */}
       {open && (
-        <div ref={panelRef} className="locaryn-notif-panel" role="dialog" aria-label="Centre de notifications">
+        <div
+          ref={panelRef}
+          className="locaryn-notif-panel"
+          role="dialog"
+          aria-label="Centre de notifications"
+        >
           <div className="locaryn-notif-head">
             <strong>Centre de notifications</strong>
             <div style={{ display: "flex", gap: 8 }}>
               {tasks.some((t) => t.status !== "running") && (
-                <button type="button" className="locaryn-notif-clear" onClick={() => taskCenter.clearFinished()}>
+                <button
+                  type="button"
+                  className="locaryn-notif-clear"
+                  onClick={() => taskCenter.clearFinished()}
+                >
                   Effacer terminées
                 </button>
               )}
-              <button type="button" className="locaryn-icon-btn" onClick={() => setOpen(false)} aria-label="Fermer">✕</button>
+              <button
+                type="button"
+                className="locaryn-icon-btn"
+                onClick={() => setOpen(false)}
+                aria-label="Fermer"
+              >
+                ✕
+              </button>
             </div>
           </div>
 
@@ -91,7 +107,10 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                     className="locaryn-notif-item"
                     style={{
                       borderLeft: `3px solid ${m.color}`,
-                      cursor: t.type === "generation" || t.type === "edit" || t.resultImageUrl ? "pointer" : "default",
+                      cursor:
+                        t.type === "generation" || t.type === "edit" || t.resultImageUrl
+                          ? "pointer"
+                          : "default",
                     }}
                     onClick={() => {
                       if (t.type === "generation" || t.type === "edit") {
@@ -101,13 +120,22 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                         onOpenResult?.(t);
                       }
                     }}
-                    title={t.type === "generation" || t.type === "edit" ? "Rouvrir la génération d'images" : undefined}
+                    title={
+                      t.type === "generation" || t.type === "edit"
+                        ? "Rouvrir la génération d'images"
+                        : undefined
+                    }
                   >
                     <div className="locaryn-notif-item-head">
                       <span style={{ color: m.color }}>{m.icon}</span>
-                      <span className="locaryn-notif-item-label" title={t.label}>{t.label}</span>
+                      <span className="locaryn-notif-item-label" title={t.label}>
+                        {t.label}
+                      </span>
                       {t.type === "workflow" && (t.attempt ?? 1) > 1 && (
-                        <span className="locaryn-notif-attempt" title="Relancé après échec de la vérification">
+                        <span
+                          className="locaryn-notif-attempt"
+                          title="Relancé après échec de la vérification"
+                        >
                           essai {t.attempt}
                         </span>
                       )}
@@ -116,7 +144,9 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                           ? t.type === "workflow" && t.steps && t.steps.length
                             ? `${Math.min(t.stepIndex ?? 0, t.steps.length)}/${t.steps.length}`
                             : (t.detail ?? "en cours")
-                          : t.status === "done" ? "terminé" : "échec"}
+                          : t.status === "done"
+                            ? "terminé"
+                            : "échec"}
                       </span>
                     </div>
 
@@ -126,7 +156,10 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                         <div className="locaryn-notif-bar">
                           <div
                             className="locaryn-notif-bar-fill"
-                            style={{ width: `${Math.round(((t.stepIndex ?? 0) / t.steps.length) * 100)}%`, background: m.color }}
+                            style={{
+                              width: `${Math.round(((t.stepIndex ?? 0) / t.steps.length) * 100)}%`,
+                              background: m.color,
+                            }}
                           />
                         </div>
                         <ol className="locaryn-wf-steps">
@@ -134,8 +167,13 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                             const done = i < (t.stepIndex ?? 0);
                             const current = i === (t.stepIndex ?? 0) && t.status === "running";
                             return (
-                              <li key={i} className={`locaryn-wf-step${done ? " done" : ""}${current ? " current" : ""}`}>
-                                <span className="locaryn-wf-mark">{done ? "✓" : current ? "▸" : "·"}</span>
+                              <li
+                                key={i}
+                                className={`locaryn-wf-step${done ? " done" : ""}${current ? " current" : ""}`}
+                              >
+                                <span className="locaryn-wf-mark">
+                                  {done ? "✓" : current ? "▸" : "·"}
+                                </span>
                                 <span className="locaryn-wf-text">{s}</span>
                               </li>
                             );
@@ -143,9 +181,13 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                         </ol>
                       </>
                     ) : (
-                      t.status === "running" && typeof t.progress === "number" && (
+                      t.status === "running" &&
+                      typeof t.progress === "number" && (
                         <div className="locaryn-notif-bar">
-                          <div className="locaryn-notif-bar-fill" style={{ width: `${t.progress}%`, background: m.color }} />
+                          <div
+                            className="locaryn-notif-bar-fill"
+                            style={{ width: `${t.progress}%`, background: m.color }}
+                          />
                         </div>
                       )
                     )}

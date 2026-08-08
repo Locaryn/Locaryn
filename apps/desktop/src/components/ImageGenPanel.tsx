@@ -1,13 +1,13 @@
-import { useRef, useState, useEffect, useMemo } from "react";
-import { core, type VramMode } from "../lib/core";
-import { ResponsibilityGate } from "./ResponsibilityGate";
-import { startImageGeneration, getActiveImageJob } from "../lib/imageJobs";
-import { useTasks } from "../lib/taskCenter";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { type VramMode, core } from "../lib/core";
+import { estimateImageGenerationDuration, formatEstimatedDuration } from "../lib/durationEstimator";
+import { getActiveImageJob, startImageGeneration } from "../lib/imageJobs";
+import { dedupeModelsByDirectory } from "../lib/modelList";
 import { IMAGE_GEN_MODELS, findInstalledImageGenModel } from "../lib/modelRegistry";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { estimateImageGenerationDuration, formatEstimatedDuration } from "../lib/durationEstimator";
-import { dedupeModelsByDirectory } from "../lib/modelList";
+import { useTasks } from "../lib/taskCenter";
+import { ResponsibilityGate } from "./ResponsibilityGate";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,7 +59,10 @@ function StepDots({ elapsed }: { elapsed: number }) {
         const done = elapsed >= s.doneAt;
         const active = !done && elapsed >= (steps[steps.indexOf(s) - 1]?.doneAt ?? 0);
         return (
-          <div key={s.label} className={`img-gen-step${done ? " img-gen-step-done" : active ? " img-gen-step-active" : ""}`}>
+          <div
+            key={s.label}
+            className={`img-gen-step${done ? " img-gen-step-done" : active ? " img-gen-step-active" : ""}`}
+          >
             <span className="img-gen-step-dot">{done ? "✓" : active ? "◌" : "○"}</span>
             <span>{s.label}</span>
           </div>
@@ -79,7 +82,15 @@ function isUncensoredName(name: string): boolean {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onInstallRequested, sessionId, forcedSize, inline }: Props) {
+export function ImageGenPanel({
+  installedModels,
+  onClose,
+  onImageGenerated,
+  onInstallRequested,
+  sessionId,
+  forcedSize,
+  inline,
+}: Props) {
   // Reopening while a generation is RUNNING restores that job's context (prompt,
   // source image, mode) and shows its live progress. A finished job must NOT be
   // restored: it would prefill an old prompt and show its old image, making a
@@ -89,8 +100,12 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
   const [mode, setMode] = useState<"txt2img" | "img2img">(restored?.mode ?? "txt2img");
   const [prompt, setPrompt] = useState(restored?.params.prompt ?? "");
   const [negPrompt, setNegPrompt] = useState(restored?.params.negativePrompt ?? "");
-  const [sourceImagePath, setSourceImagePath] = useState<string | null>(restored?.params.inputImage ?? null);
-  const [sourceImagePreview, setSourceImagePreview] = useState<string | null>(restored?.params.inputImage ?? null);
+  const [sourceImagePath, setSourceImagePath] = useState<string | null>(
+    restored?.params.inputImage ?? null,
+  );
+  const [sourceImagePreview, setSourceImagePreview] = useState<string | null>(
+    restored?.params.inputImage ?? null,
+  );
   const [isGenerating, setIsGenerating] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [localInstalledModels, setLocalInstalledModels] = useState<string[]>(installedModels);
@@ -162,12 +177,14 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
     } else {
       if (elapsedRef.current) clearInterval(elapsedRef.current);
     }
-    return () => { if (elapsedRef.current) clearInterval(elapsedRef.current); };
+    return () => {
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
+    };
   }, [isGenerating]);
 
   const dedupedLocalInstalledModels = useMemo(
     () => dedupeModelsByDirectory(localInstalledModels),
-    [localInstalledModels]
+    [localInstalledModels],
   );
 
   const installedOptions = useMemo(() => {
@@ -226,11 +243,17 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
 
   const installedImageGenTag = findInstalledImageGenModel(dedupedLocalInstalledModels);
   const [selectedModel, setSelectedModel] = useState<string>(
-    restored?.params.model ?? installedOptions[0]?.value ?? (installedImageGenTag ?? (IMAGE_GEN_MODELS[0]?.variants[0]?.tag ?? ""))
+    restored?.params.model ??
+      installedOptions[0]?.value ??
+      installedImageGenTag ?? IMAGE_GEN_MODELS[0]?.variants[0]?.tag ??
+      "",
   );
 
   useEffect(() => {
-    if (installedOptions.length > 0 && !installedOptions.some((o: { label: string; value: string }) => o.value === selectedModel)) {
+    if (
+      installedOptions.length > 0 &&
+      !installedOptions.some((o: { label: string; value: string }) => o.value === selectedModel)
+    ) {
       setSelectedModel(installedOptions[0].value);
     }
   }, [installedOptions, selectedModel]);
@@ -249,10 +272,17 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
       setHereticBase(null);
       return;
     }
-    core.hasAbliteratedEncoder()
-      .then((has) => { if (!cancelled) setHereticBase(has ? zBase : null); })
-      .catch(() => { if (!cancelled) setHereticBase(null); });
-    return () => { cancelled = true; };
+    core
+      .hasAbliteratedEncoder()
+      .then((has) => {
+        if (!cancelled) setHereticBase(has ? zBase : null);
+      })
+      .catch(() => {
+        if (!cancelled) setHereticBase(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [installedOptions]);
 
   // Pick model-appropriate defaults:
@@ -272,7 +302,9 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
     }
   }, [selectedModel]);
 
-  const isSelectedInstalled = installedOptions.some((o: { label: string; value: string }) => o.value === selectedModel) || localInstalledModels.length > 0;
+  const isSelectedInstalled =
+    installedOptions.some((o: { label: string; value: string }) => o.value === selectedModel) ||
+    localInstalledModels.length > 0;
   const selectedNsfw = classifyModel(selectedModel).risk !== "safe";
 
   const estimatedDuration = useMemo(() => {
@@ -312,14 +344,17 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
       } else {
         const providers = await core.listProviders();
         const active = providers.find((p) => p.is_active) ?? providers[0];
-        if (active) await core.pullModel(active.endpoint, selectedModel, undefined, undefined, true);
+        if (active)
+          await core.pullModel(active.endpoint, selectedModel, undefined, undefined, true);
       }
       const fileName = selectedModel.startsWith("http")
         ? selectedModel.split("/").pop()!
         : selectedModel;
       setLocalInstalledModels((prev) => [...new Set([...prev, fileName, selectedModel])]);
     } catch (e) {
-      setError(typeof e === "string" ? e : (e as Error)?.message || "Échec du téléchargement du modèle.");
+      setError(
+        typeof e === "string" ? e : (e as Error)?.message || "Échec du téléchargement du modèle.",
+      );
     } finally {
       setIsInstalling(false);
     }
@@ -360,7 +395,6 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
 
   const panelContent = (
     <div className={inline ? "img-gen-inline" : "img-gen-modal"}>
-
       {/* ── Header ── */}
       <div className="img-gen-header">
         <div className="img-gen-title-wrap">
@@ -383,358 +417,445 @@ export function ImageGenPanel({ installedModels, onClose, onImageGenerated, onIn
         )}
       </div>
 
-        {/* ── Legal strip ── */}
-        <div className="img-gen-legal">
-          <span>⚖️</span>
-          <span>Les modèles s'exécutent localement. L'utilisateur est seul responsable des contenus générés.</span>
-        </div>
+      {/* ── Legal strip ── */}
+      <div className="img-gen-legal">
+        <span>⚖️</span>
+        <span>
+          Les modèles s'exécutent localement. L'utilisateur est seul responsable des contenus
+          générés.
+        </span>
+      </div>
 
-        {/* ── Mode tabs ── */}
-        <div className="img-gen-tabs">
-          <button
-            type="button"
-            className={`img-gen-tab${mode === "txt2img" ? " img-gen-tab-active" : ""}`}
-            onClick={() => setMode("txt2img")}
-            disabled={isGenerating}
-          >
-            ✨ Texte → Image
-          </button>
-          <button
-            type="button"
-            className={`img-gen-tab${mode === "img2img" ? " img-gen-tab-active" : ""}`}
-            onClick={() => setMode("img2img")}
-            disabled={isGenerating}
-          >
-            🖼️ Image → Image
-          </button>
-        </div>
-
-        {/* ── Model selector ── */}
-        <div className="img-gen-field">
-          <div className="img-gen-field-row">
-            <label className="img-gen-label">Modèle</label>
-            <span className="img-gen-model-count">
-              {installedOptions.length === 0 ? "Aucun installé" : `${installedOptions.length} disponible${installedOptions.length > 1 ? "s" : ""}`}
-            </span>
-          </div>
-          {selectedNsfw && (
-            <div className="img-gen-error" style={{ marginBottom: 8 }}>
-              <span>🔞</span>
-              <span>{nsfwReason(selectedModel)} — le mode responsabilité sera demandé avant génération.</span>
-            </div>
-          )}
-          {installedOptions.length === 0 ? (
-            <div className="img-gen-no-model">
-              <span>⚠️</span>
-              <span>Aucun modèle d'image installé. Allez dans le Marketplace pour en installer un.</span>
-              <button
-                type="button"
-                className="img-gen-install-btn"
-                onClick={() => handleInstall()}
-                disabled={isInstalling}
-              >
-                {isInstalling ? "Installation…" : "⬇ Installer"}
-              </button>
-            </div>
-          ) : (
-            <select
-              className="locaryn-select"
-              value={uncensored ? HERETIC_VALUE : selectedModel}
-              disabled={jobRunning || installedOptions.length === 0}
-              onChange={(e) => {
-                if (e.target.value === HERETIC_VALUE) {
-                  // Uncensored variant: same diffusion checkpoint, abliterated
-                  // text encoder — gated by the responsibility prompt.
-                  setGateOpen(true);
-                } else {
-                  setUncensored(false);
-                  setSelectedModel(e.target.value);
-                }
-              }}
-            >
-              {installedOptions.map((o: { label: string; value: string }) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-              {hereticBase && (
-                <option value={HERETIC_VALUE}>🔓 Z-Image Turbo — Sans limite (Heretic)</option>
-              )}
-            </select>
-          )}
-        </div>
-
-        {/* ── Source image (img2img) ── */}
-        {mode === "img2img" && (
-          <div className="img-gen-field">
-            <label className="img-gen-label">Image source à éditer</label>
-            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePickSourceImage} />
-            <div
-              className={`img-gen-dropzone${sourceImagePreview ? " img-gen-dropzone-filled" : ""}`}
-              onClick={() => !isGenerating && fileInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                // Accept drops from gallery: path in custom type, or URL fallback
-                const path = e.dataTransfer.getData("text/x-locaryn-image-path");
-                const url = e.dataTransfer.getData("text/plain");
-                if (path) {
-                  setSourceImagePath(path);
-                  setSourceImagePreview(url || path);
-                } else if (url && url.startsWith("data:")) {
-                  setSourceImagePath(url);
-                  setSourceImagePreview(url);
-                } else if (url) {
-                  // asset:// or http URL — use directly as preview
-                  setSourceImagePath(url);
-                  setSourceImagePreview(url);
-                }
-              }}
-            >
-              {sourceImagePreview ? (
-                <div className="img-gen-preview-wrap">
-                  <img src={sourceImagePreview} alt="Source" className="img-gen-preview-img" />
-                  <button
-                    type="button"
-                    className="img-gen-remove-btn"
-                    onClick={(e) => { e.stopPropagation(); setSourceImagePath(null); setSourceImagePreview(null); }}
-                  >✕</button>
-                </div>
-              ) : (
-                <>
-                  <span className="img-gen-drop-icon">🖼️</span>
-                  <span className="img-gen-drop-text">Cliquez pour choisir une image</span>
-                  <span className="img-gen-drop-hint">PNG, JPG, WEBP</span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Prompt ── */}
-        <div className="img-gen-field">
-          <label className="img-gen-label">
-            {mode === "img2img" ? "Instructions de modification" : "Description de l'image"}
-          </label>
-          <textarea
-            className="locaryn-input img-gen-textarea"
-            rows={3}
-            placeholder={
-              mode === "img2img"
-                ? "Ex: Transforme ce chat en guerrier cybernétique avec un casque néon..."
-                : "Ex: Une peinture à l'huile d'un chat cybernétique sous la pluie néon, 4K, détaillé..."
-            }
-            value={prompt}
-            disabled={isInstalling || isGenerating}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-        </div>
-
-        {/* ── Advanced options ── */}
+      {/* ── Mode tabs ── */}
+      <div className="img-gen-tabs">
         <button
           type="button"
-          className={`img-gen-advanced-toggle${showAdvanced ? " img-gen-advanced-open" : ""}`}
-          onClick={() => setShowAdvanced((v) => !v)}
+          className={`img-gen-tab${mode === "txt2img" ? " img-gen-tab-active" : ""}`}
+          onClick={() => setMode("txt2img")}
           disabled={isGenerating}
         >
-          {showAdvanced ? "▼" : "▶"} Options avancées
-          <span className="img-gen-advanced-summary">
-            {steps} steps · CFG {cfg_scale} · {width}×{height}
-          </span>
+          ✨ Texte → Image
         </button>
+        <button
+          type="button"
+          className={`img-gen-tab${mode === "img2img" ? " img-gen-tab-active" : ""}`}
+          onClick={() => setMode("img2img")}
+          disabled={isGenerating}
+        >
+          🖼️ Image → Image
+        </button>
+      </div>
 
-        {showAdvanced && (
-          <div className="img-gen-advanced-panel">
-            <div className="img-gen-adv-row">
-              <div className="img-gen-adv-item">
-                <label className="img-gen-label">Prompt négatif</label>
-                <input
-                  type="text"
-                  className="locaryn-input"
-                  placeholder="blurry, ugly, watermark..."
-                  value={negPrompt}
-                  onChange={(e) => setNegPrompt(e.target.value)}
-                  disabled={isGenerating}
-                />
-              </div>
-            </div>
-            <div className="img-gen-adv-row">
-              <div className="img-gen-adv-item">
-                <label className="img-gen-label">Steps <span className="img-gen-val">{steps}</span></label>
-                <input type="range" className="perf-slider" min={5} max={50} value={steps} onChange={(e) => setSteps(Number(e.target.value))} disabled={isGenerating} />
-              </div>
-              <div className="img-gen-adv-item">
-                <label className="img-gen-label">CFG Scale <span className="img-gen-val">{cfg_scale}</span></label>
-                <input type="range" className="perf-slider" min={1} max={20} value={cfg_scale} onChange={(e) => setCfgScale(Number(e.target.value))} disabled={isGenerating} />
-              </div>
-            </div>
-            <div className="img-gen-adv-row">
-              {([256, 512, 768, 1024] as const).map((s) => (
+      {/* ── Model selector ── */}
+      <div className="img-gen-field">
+        <div className="img-gen-field-row">
+          <label className="img-gen-label">Modèle</label>
+          <span className="img-gen-model-count">
+            {installedOptions.length === 0
+              ? "Aucun installé"
+              : `${installedOptions.length} disponible${installedOptions.length > 1 ? "s" : ""}`}
+          </span>
+        </div>
+        {selectedNsfw && (
+          <div className="img-gen-error" style={{ marginBottom: 8 }}>
+            <span>🔞</span>
+            <span>
+              {nsfwReason(selectedModel)} — le mode responsabilité sera demandé avant génération.
+            </span>
+          </div>
+        )}
+        {installedOptions.length === 0 ? (
+          <div className="img-gen-no-model">
+            <span>⚠️</span>
+            <span>
+              Aucun modèle d'image installé. Allez dans le Marketplace pour en installer un.
+            </span>
+            <button
+              type="button"
+              className="img-gen-install-btn"
+              onClick={() => handleInstall()}
+              disabled={isInstalling}
+            >
+              {isInstalling ? "Installation…" : "⬇ Installer"}
+            </button>
+          </div>
+        ) : (
+          <select
+            className="locaryn-select"
+            value={uncensored ? HERETIC_VALUE : selectedModel}
+            disabled={jobRunning || installedOptions.length === 0}
+            onChange={(e) => {
+              if (e.target.value === HERETIC_VALUE) {
+                // Uncensored variant: same diffusion checkpoint, abliterated
+                // text encoder — gated by the responsibility prompt.
+                setGateOpen(true);
+              } else {
+                setUncensored(false);
+                setSelectedModel(e.target.value);
+              }
+            }}
+          >
+            {installedOptions.map((o: { label: string; value: string }) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+            {hereticBase && (
+              <option value={HERETIC_VALUE}>🔓 Z-Image Turbo — Sans limite (Heretic)</option>
+            )}
+          </select>
+        )}
+      </div>
+
+      {/* ── Source image (img2img) ── */}
+      {mode === "img2img" && (
+        <div className="img-gen-field">
+          <label className="img-gen-label">Image source à éditer</label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handlePickSourceImage}
+          />
+          <div
+            className={`img-gen-dropzone${sourceImagePreview ? " img-gen-dropzone-filled" : ""}`}
+            onClick={() => !isGenerating && fileInputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // Accept drops from gallery: path in custom type, or URL fallback
+              const path = e.dataTransfer.getData("text/x-locaryn-image-path");
+              const url = e.dataTransfer.getData("text/plain");
+              if (path) {
+                setSourceImagePath(path);
+                setSourceImagePreview(url || path);
+              } else if (url && url.startsWith("data:")) {
+                setSourceImagePath(url);
+                setSourceImagePreview(url);
+              } else if (url) {
+                // asset:// or http URL — use directly as preview
+                setSourceImagePath(url);
+                setSourceImagePreview(url);
+              }
+            }}
+          >
+            {sourceImagePreview ? (
+              <div className="img-gen-preview-wrap">
+                <img src={sourceImagePreview} alt="Source" className="img-gen-preview-img" />
                 <button
-                  key={s}
                   type="button"
-                  className={`perf-ctx-btn${width === s && height === s ? " perf-ctx-btn-active" : ""}`}
-                  onClick={() => { setWidth(s); setHeight(s); }}
-                  disabled={isGenerating}
+                  className="img-gen-remove-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSourceImagePath(null);
+                    setSourceImagePreview(null);
+                  }}
                 >
-                  {s}×{s}
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <>
+                <span className="img-gen-drop-icon">🖼️</span>
+                <span className="img-gen-drop-text">Cliquez pour choisir une image</span>
+                <span className="img-gen-drop-hint">PNG, JPG, WEBP</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Prompt ── */}
+      <div className="img-gen-field">
+        <label className="img-gen-label">
+          {mode === "img2img" ? "Instructions de modification" : "Description de l'image"}
+        </label>
+        <textarea
+          className="locaryn-input img-gen-textarea"
+          rows={3}
+          placeholder={
+            mode === "img2img"
+              ? "Ex: Transforme ce chat en guerrier cybernétique avec un casque néon..."
+              : "Ex: Une peinture à l'huile d'un chat cybernétique sous la pluie néon, 4K, détaillé..."
+          }
+          value={prompt}
+          disabled={isInstalling || isGenerating}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
+      </div>
+
+      {/* ── Advanced options ── */}
+      <button
+        type="button"
+        className={`img-gen-advanced-toggle${showAdvanced ? " img-gen-advanced-open" : ""}`}
+        onClick={() => setShowAdvanced((v) => !v)}
+        disabled={isGenerating}
+      >
+        {showAdvanced ? "▼" : "▶"} Options avancées
+        <span className="img-gen-advanced-summary">
+          {steps} steps · CFG {cfg_scale} · {width}×{height}
+        </span>
+      </button>
+
+      {showAdvanced && (
+        <div className="img-gen-advanced-panel">
+          <div className="img-gen-adv-row">
+            <div className="img-gen-adv-item">
+              <label className="img-gen-label">Prompt négatif</label>
+              <input
+                type="text"
+                className="locaryn-input"
+                placeholder="blurry, ugly, watermark..."
+                value={negPrompt}
+                onChange={(e) => setNegPrompt(e.target.value)}
+                disabled={isGenerating}
+              />
+            </div>
+          </div>
+          <div className="img-gen-adv-row">
+            <div className="img-gen-adv-item">
+              <label className="img-gen-label">
+                Steps <span className="img-gen-val">{steps}</span>
+              </label>
+              <input
+                type="range"
+                className="perf-slider"
+                min={5}
+                max={50}
+                value={steps}
+                onChange={(e) => setSteps(Number(e.target.value))}
+                disabled={isGenerating}
+              />
+            </div>
+            <div className="img-gen-adv-item">
+              <label className="img-gen-label">
+                CFG Scale <span className="img-gen-val">{cfg_scale}</span>
+              </label>
+              <input
+                type="range"
+                className="perf-slider"
+                min={1}
+                max={20}
+                value={cfg_scale}
+                onChange={(e) => setCfgScale(Number(e.target.value))}
+                disabled={isGenerating}
+              />
+            </div>
+          </div>
+          <div className="img-gen-adv-row">
+            {([256, 512, 768, 1024] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`perf-ctx-btn${width === s && height === s ? " perf-ctx-btn-active" : ""}`}
+                onClick={() => {
+                  setWidth(s);
+                  setHeight(s);
+                }}
+                disabled={isGenerating}
+              >
+                {s}×{s}
+              </button>
+            ))}
+          </div>
+
+          {/* RAM/VRAM dispatch — run big diffusion models (Z-Image) on any PC */}
+          <div className="img-gen-adv-item" style={{ marginTop: 12 }}>
+            <label className="img-gen-label">Mémoire (dispatch RAM/VRAM)</label>
+            <div className="img-gen-adv-row" style={{ marginTop: 4 }}>
+              {(
+                [
+                  {
+                    id: "gpu",
+                    label: "GPU",
+                    hint: "Tout en VRAM — le plus rapide, exige assez de VRAM",
+                  },
+                  {
+                    id: "auto",
+                    label: "Auto",
+                    hint: "Place diffusion/encodeur/VAE selon la VRAM libre (recommandé)",
+                  },
+                  {
+                    id: "lowvram",
+                    label: "Low VRAM",
+                    hint: "Poids en RAM, streamés vers la VRAM — tourne sur petit GPU",
+                  },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`perf-ctx-btn${vramMode === m.id ? " perf-ctx-btn-active" : ""}`}
+                  onClick={() => setVramMode(m.id)}
+                  disabled={isGenerating}
+                  title={m.hint}
+                >
+                  {m.label}
                 </button>
               ))}
             </div>
-
-            {/* RAM/VRAM dispatch — run big diffusion models (Z-Image) on any PC */}
-            <div className="img-gen-adv-item" style={{ marginTop: 12 }}>
-              <label className="img-gen-label">Mémoire (dispatch RAM/VRAM)</label>
-              <div className="img-gen-adv-row" style={{ marginTop: 4 }}>
-                {([
-                  { id: "gpu", label: "GPU", hint: "Tout en VRAM — le plus rapide, exige assez de VRAM" },
-                  { id: "auto", label: "Auto", hint: "Place diffusion/encodeur/VAE selon la VRAM libre (recommandé)" },
-                  { id: "lowvram", label: "Low VRAM", hint: "Poids en RAM, streamés vers la VRAM — tourne sur petit GPU" },
-                ] as const).map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`perf-ctx-btn${vramMode === m.id ? " perf-ctx-btn-active" : ""}`}
-                    onClick={() => setVramMode(m.id)}
-                    disabled={isGenerating}
-                    title={m.hint}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-              <span className="img-gen-hint">
-                {vramMode === "gpu" && "Tout en VRAM — le plus rapide, mais peut saturer un petit GPU."}
-                {vramMode === "auto" && "sd.cpp répartit automatiquement selon la VRAM libre (recommandé)."}
-                {vramMode === "lowvram" && "Poids gardés en RAM et streamés vers la VRAM — fait tourner Z-Image sur un petit GPU."}
-              </span>
-            </div>
-
-            {/* Uncensored mode — uses an abliterated text encoder, gated by consent */}
-            <div className="img-gen-adv-item" style={{ marginTop: 12 }}>
-              <label className="locaryn-checkbox-row" style={{ cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={uncensored}
-                  disabled={isGenerating}
-                  onChange={(e) => {
-                    if (e.target.checked) setGateOpen(true);
-                    else setUncensored(false);
-                  }}
-                />
-                <span>🔓 Mode sans limite (encodeur abliteré)</span>
-              </label>
-              <span className="img-gen-hint">
-                {uncensored
-                  ? "Actif — utilise l'encodeur de texte abliteré s'il est installé. Vous êtes responsable du contenu généré."
-                  : "Retire les garde-fous du modèle. Nécessite un encodeur abliteré installé + acceptation de responsabilité."}
-              </span>
-            </div>
+            <span className="img-gen-hint">
+              {vramMode === "gpu" &&
+                "Tout en VRAM — le plus rapide, mais peut saturer un petit GPU."}
+              {vramMode === "auto" &&
+                "sd.cpp répartit automatiquement selon la VRAM libre (recommandé)."}
+              {vramMode === "lowvram" &&
+                "Poids gardés en RAM et streamés vers la VRAM — fait tourner Z-Image sur un petit GPU."}
+            </span>
           </div>
-        )}
 
-        <ResponsibilityGate
-          open={gateOpen}
-          what="la génération d'images sans garde-fous"
-          onAccept={() => {
-            // Full heretic setup: diffusion checkpoint + abliterated encoder.
-            if (hereticBase) setSelectedModel(hereticBase);
-            setUncensored(true);
-            setGateOpen(false);
-          }}
-          onCancel={() => { setUncensored(false); setGateOpen(false); }}
-        />
-
-        <ResponsibilityGate
-          open={nsfwGateOpen}
-          what="la génération avec un modèle classé NSFW / sans garde-fous"
-          onAccept={() => {
-            setNsfwAccepted(true);
-            setNsfwGateOpen(false);
-            if (nsfwInstallPending) {
-              setNsfwInstallPending(false);
-              handleInstall(true);
-            } else {
-              handleGenerate();
-            }
-          }}
-          onCancel={() => { setNsfwInstallPending(false); setNsfwGateOpen(false); }}
-        />
-
-        {/* ── Generation progress / result area ── */}
-        {/* Driven by the active background job so reopening shows live progress. */}
-        <div className="img-gen-output-area">
-          {jobRunning ? (
-            <div className="img-gen-generating-wrap">
-              <GeneratingPlaceholder mode={mode} />
-              <div className="img-gen-progress-bar-wrap">
-                <div className="img-gen-progress-bar">
-                  <div className="img-gen-progress-fill" style={{ width: `${activeTask?.progress ?? 0}%` }} />
-                </div>
-                <span className="img-gen-elapsed">{activeTask?.detail ?? "…"}</span>
-              </div>
-            </div>
-          ) : activeTask?.status === "done" && activeTask.resultImageUrl ? (
-            <div className="img-gen-result">
-              <div className="img-gen-result-label">✓ Image générée</div>
-              <img
-                src={activeTask.resultImageUrl}
-                alt="Résultat IA"
-                className="img-gen-result-img"
-                onError={(e) => { (e.target as HTMLElement).style.display = "none"; }}
+          {/* Uncensored mode — uses an abliterated text encoder, gated by consent */}
+          <div className="img-gen-adv-item" style={{ marginTop: 12 }}>
+            <label className="locaryn-checkbox-row" style={{ cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={uncensored}
+                disabled={isGenerating}
+                onChange={(e) => {
+                  if (e.target.checked) setGateOpen(true);
+                  else setUncensored(false);
+                }}
               />
-            </div>
-          ) : activeTask?.status === "error" ? (
-            <div className="img-gen-result-label" style={{ color: "var(--danger)" }}>
-              Échec : {activeTask.error}
-            </div>
-          ) : null}
-        </div>
-
-        {/* ── Error ── */}
-        {error && (
-          <div className="img-gen-error">
-            <span>⚠️</span>
-            <span>{error}</span>
+              <span>🔓 Mode sans limite (encodeur abliteré)</span>
+            </label>
+            <span className="img-gen-hint">
+              {uncensored
+                ? "Actif — utilise l'encodeur de texte abliteré s'il est installé. Vous êtes responsable du contenu généré."
+                : "Retire les garde-fous du modèle. Nécessite un encodeur abliteré installé + acceptation de responsabilité."}
+            </span>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ── Actions ── */}
-        <div className="img-gen-actions">
-          <span
-            className="img-gen-estimate"
-            style={{
-              fontSize: "12px",
-              color: "var(--text-faint)",
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-            }}
-            title="Estimation basée sur les durées de tes dernières générations avec ce modèle et ces paramètres"
-          >
-            ⏱️ Durée estimée : {formatEstimatedDuration(estimatedDuration)}
-          </span>
-          {!inline && (
-            <button type="button" className="locaryn-btn-ghost" onClick={onClose} disabled={isInstalling}>
-              Fermer
-            </button>
-          )}
+      <ResponsibilityGate
+        open={gateOpen}
+        what="la génération d'images sans garde-fous"
+        onAccept={() => {
+          // Full heretic setup: diffusion checkpoint + abliterated encoder.
+          if (hereticBase) setSelectedModel(hereticBase);
+          setUncensored(true);
+          setGateOpen(false);
+        }}
+        onCancel={() => {
+          setUncensored(false);
+          setGateOpen(false);
+        }}
+      />
+
+      <ResponsibilityGate
+        open={nsfwGateOpen}
+        what="la génération avec un modèle classé NSFW / sans garde-fous"
+        onAccept={() => {
+          setNsfwAccepted(true);
+          setNsfwGateOpen(false);
+          if (nsfwInstallPending) {
+            setNsfwInstallPending(false);
+            handleInstall(true);
+          } else {
+            handleGenerate();
+          }
+        }}
+        onCancel={() => {
+          setNsfwInstallPending(false);
+          setNsfwGateOpen(false);
+        }}
+      />
+
+      {/* ── Generation progress / result area ── */}
+      {/* Driven by the active background job so reopening shows live progress. */}
+      <div className="img-gen-output-area">
+        {jobRunning ? (
+          <div className="img-gen-generating-wrap">
+            <GeneratingPlaceholder mode={mode} />
+            <div className="img-gen-progress-bar-wrap">
+              <div className="img-gen-progress-bar">
+                <div
+                  className="img-gen-progress-fill"
+                  style={{ width: `${activeTask?.progress ?? 0}%` }}
+                />
+              </div>
+              <span className="img-gen-elapsed">{activeTask?.detail ?? "…"}</span>
+            </div>
+          </div>
+        ) : activeTask?.status === "done" && activeTask.resultImageUrl ? (
+          <div className="img-gen-result">
+            <div className="img-gen-result-label">✓ Image générée</div>
+            <img
+              src={activeTask.resultImageUrl}
+              alt="Résultat IA"
+              className="img-gen-result-img"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = "none";
+              }}
+            />
+          </div>
+        ) : activeTask?.status === "error" ? (
+          <div className="img-gen-result-label" style={{ color: "var(--danger)" }}>
+            Échec : {activeTask.error}
+          </div>
+        ) : null}
+      </div>
+
+      {/* ── Error ── */}
+      {error && (
+        <div className="img-gen-error">
+          <span>⚠️</span>
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* ── Actions ── */}
+      <div className="img-gen-actions">
+        <span
+          className="img-gen-estimate"
+          style={{
+            fontSize: "12px",
+            color: "var(--text-faint)",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+          }}
+          title="Estimation basée sur les durées de tes dernières générations avec ce modèle et ces paramètres"
+        >
+          ⏱️ Durée estimée : {formatEstimatedDuration(estimatedDuration)}
+        </span>
+        {!inline && (
           <button
             type="button"
-            className={`img-gen-generate-btn${jobRunning ? " img-gen-generate-btn-busy" : ""}`}
-            disabled={!prompt.trim() || jobRunning || isInstalling || !isSelectedInstalled || (mode === "img2img" && !sourceImagePath)}
-            onClick={handleGenerate}
+            className="locaryn-btn-ghost"
+            onClick={onClose}
+            disabled={isInstalling}
           >
-            {jobRunning ? (
-              <>
-                <span className="img-gen-spinner-inline">◌</span>
-                {mode === "img2img" ? "Transformation…" : "Génération…"}
-              </>
-            ) : (
-              <>{mode === "img2img" ? "🖼️ Transformer" : "🎨 Générer"}</>
-            )}
+            Fermer
           </button>
-        </div>
-
+        )}
+        <button
+          type="button"
+          className={`img-gen-generate-btn${jobRunning ? " img-gen-generate-btn-busy" : ""}`}
+          disabled={
+            !prompt.trim() ||
+            jobRunning ||
+            isInstalling ||
+            !isSelectedInstalled ||
+            (mode === "img2img" && !sourceImagePath)
+          }
+          onClick={handleGenerate}
+        >
+          {jobRunning ? (
+            <>
+              <span className="img-gen-spinner-inline">◌</span>
+              {mode === "img2img" ? "Transformation…" : "Génération…"}
+            </>
+          ) : (
+            <>{mode === "img2img" ? "🖼️ Transformer" : "🎨 Générer"}</>
+          )}
+        </button>
+      </div>
     </div>
   );
 

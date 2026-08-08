@@ -1,11 +1,45 @@
 import { useEffect, useRef, useState } from "react";
-import { core, type RagHit, type RagStatus } from "../lib/core";
+import { type RagHit, type RagStatus, core } from "../lib/core";
 
 /** Text-ish files we can index directly (a PDF/DOCX would need extraction). */
 const TEXT_EXT = [
-  "txt", "md", "markdown", "rst", "csv", "tsv", "json", "yaml", "yml", "toml", "ini", "cfg",
-  "log", "html", "htm", "xml", "js", "jsx", "ts", "tsx", "py", "rs", "go", "java", "c", "h",
-  "cpp", "hpp", "cs", "rb", "php", "sh", "sql", "css", "scss", "vue", "svelte",
+  "txt",
+  "md",
+  "markdown",
+  "rst",
+  "csv",
+  "tsv",
+  "json",
+  "yaml",
+  "yml",
+  "toml",
+  "ini",
+  "cfg",
+  "log",
+  "html",
+  "htm",
+  "xml",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "py",
+  "rs",
+  "go",
+  "java",
+  "c",
+  "h",
+  "cpp",
+  "hpp",
+  "cs",
+  "rb",
+  "php",
+  "sh",
+  "sql",
+  "css",
+  "scss",
+  "vue",
+  "svelte",
 ];
 
 function isTextFile(name: string): boolean {
@@ -71,8 +105,15 @@ export function RagPanel({ projectId, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    core.ragStatus(projectId).then((s) => { if (!cancelled) setStatus(s); }).catch(() => {});
-    return () => { cancelled = true; };
+    core
+      .ragStatus(projectId)
+      .then((s) => {
+        if (!cancelled) setStatus(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
   async function index() {
@@ -120,10 +161,22 @@ export function RagPanel({ projectId, onClose }: Props) {
   return (
     <>
       <div className="locaryn-settings-backdrop" onClick={onClose} />
-      <div className="locaryn-settings-modal" role="dialog" aria-modal="true" aria-label="Documents (RAG)">
+      <div
+        className="locaryn-settings-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Documents (RAG)"
+      >
         <div className="locaryn-settings-header">
           <span className="locaryn-settings-title">📚 Base de connaissances (RAG)</span>
-          <button type="button" className="locaryn-settings-close" onClick={onClose} aria-label="Fermer">✕</button>
+          <button
+            type="button"
+            className="locaryn-settings-close"
+            onClick={onClose}
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
         </div>
 
         <div className="locaryn-settings-pane" style={{ padding: 20, overflowY: "auto" }}>
@@ -134,17 +187,20 @@ export function RagPanel({ projectId, onClose }: Props) {
             <b> vos</b> infos, sans que vous ayez à les recoller à chaque fois.
           </p>
           <p className="locaryn-field-hint">
-            Tout reste en local (aucun envoi vers Internet). La première indexation démarre un
-            petit serveur d'embeddings : comptez quelques secondes.
+            Tout reste en local (aucun envoi vers Internet). La première indexation démarre un petit
+            serveur d'embeddings : comptez quelques secondes.
           </p>
           <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
-            ⓘ Par défaut, c'est votre <strong>modèle de chat actif</strong> qui produit les embeddings
-            (zéro configuration). Pour une récupération nettement plus fine, installez un vrai modèle
-            d'<em>embedding</em> (nomic-embed, bge, e5) — un modèle de chat sépare mal les sens.
+            ⓘ Par défaut, c'est votre <strong>modèle de chat actif</strong> qui produit les
+            embeddings (zéro configuration). Pour une récupération nettement plus fine, installez un
+            vrai modèle d'<em>embedding</em> (nomic-embed, bge, e5) — un modèle de chat sépare mal
+            les sens.
           </p>
 
           <div className="locaryn-conn" style={{ marginTop: 10 }}>
-            <span className={`locaryn-health-dot ${status && status.chunk_count > 0 ? "locaryn-health-ok" : "locaryn-health-off"}`} />
+            <span
+              className={`locaryn-health-dot ${status && status.chunk_count > 0 ? "locaryn-health-ok" : "locaryn-health-off"}`}
+            />
             <span>
               {status
                 ? status.chunk_count > 0
@@ -158,7 +214,9 @@ export function RagPanel({ projectId, onClose }: Props) {
             <ul className="locaryn-lora-list" style={{ marginTop: 10 }}>
               {status.sources.map((s) => (
                 <li key={s.source} className="locaryn-lora-row">
-                  <span className="locaryn-lora-path" title={s.source}>{s.source}</span>
+                  <span className="locaryn-lora-path" title={s.source}>
+                    {s.source}
+                  </span>
                   <span className="locaryn-lora-scale">{s.chunks}</span>
                 </li>
               ))}
@@ -182,7 +240,10 @@ export function RagPanel({ projectId, onClose }: Props) {
             <div
               className={`locaryn-dropzone${dragOver ? " over" : ""}`}
               onClick={() => !busy && fileRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
               onDragLeave={() => setDragOver(false)}
               onDrop={(e) => {
                 e.preventDefault();
@@ -193,10 +254,14 @@ export function RagPanel({ projectId, onClose }: Props) {
               tabIndex={0}
             >
               {importing ? (
-                <>⏳ Indexation de <b>{importing}</b>…</>
+                <>
+                  ⏳ Indexation de <b>{importing}</b>…
+                </>
               ) : (
                 <>
-                  <div className="locaryn-dropzone-main">📄 Glissez vos documents ici, ou cliquez pour choisir</div>
+                  <div className="locaryn-dropzone-main">
+                    📄 Glissez vos documents ici, ou cliquez pour choisir
+                  </div>
                   <div className="locaryn-dropzone-sub">
                     .txt .md .csv .json .html, code source… — plusieurs fichiers acceptés
                   </div>
@@ -220,14 +285,28 @@ export function RagPanel({ projectId, onClose }: Props) {
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={6}
-              style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)" }}
+              style={{
+                resize: "vertical",
+                fontFamily: "var(--font-mono)",
+                fontSize: "var(--text-xs)",
+              }}
             />
             <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
-              <button type="button" className="locaryn-btn-primary" onClick={index} disabled={busy || !text.trim()}>
+              <button
+                type="button"
+                className="locaryn-btn-primary"
+                onClick={index}
+                disabled={busy || !text.trim()}
+              >
                 {busy ? "Indexation…" : "Indexer"}
               </button>
               {status && status.chunk_count > 0 && (
-                <button type="button" className="locaryn-btn-ghost" onClick={clearAll} disabled={busy}>
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  onClick={clearAll}
+                  disabled={busy}
+                >
                   Tout effacer
                 </button>
               )}
@@ -242,20 +321,40 @@ export function RagPanel({ projectId, onClose }: Props) {
                 placeholder="Une question pour voir ce qui remonte…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") search(); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") search();
+                }}
               />
-              <button type="button" className="locaryn-btn-ghost" onClick={search} disabled={busy || !query.trim()}>
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                onClick={search}
+                disabled={busy || !query.trim()}
+              >
                 Chercher
               </button>
             </div>
-            {hits && (
-              hits.length === 0 ? (
-                <p className="locaryn-field-hint" style={{ marginTop: 8 }}>Aucun résultat.</p>
+            {hits &&
+              (hits.length === 0 ? (
+                <p className="locaryn-field-hint" style={{ marginTop: 8 }}>
+                  Aucun résultat.
+                </p>
               ) : (
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                   {hits.map((h, i) => (
-                    <div key={i} className="locaryn-lora-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", color: "var(--text-dim)" }}>
+                    <div
+                      key={i}
+                      className="locaryn-lora-row"
+                      style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: "var(--text-xs)",
+                          color: "var(--text-dim)",
+                        }}
+                      >
                         <span className="locaryn-kv-mono">{h.source}</span>
                         <span>{h.score.toFixed(3)}</span>
                       </div>
@@ -265,11 +364,14 @@ export function RagPanel({ projectId, onClose }: Props) {
                     </div>
                   ))}
                 </div>
-              )
-            )}
+              ))}
           </div>
 
-          {error && <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginTop: 8 }}>{error}</p>}
+          {error && (
+            <p className="locaryn-field-hint" style={{ color: "var(--danger)", marginTop: 8 }}>
+              {error}
+            </p>
+          )}
         </div>
       </div>
     </>

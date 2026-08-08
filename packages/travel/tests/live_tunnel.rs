@@ -16,7 +16,11 @@ use locaryn_travel::Provider;
 async fn a_real_relay_hands_back_a_usable_address() {
     let name = std::env::var("LOCARYN_TEST_RELAY").expect("LOCARYN_TEST_RELAY");
     let provider = Provider::parse(&name).expect("relais inconnu");
-    assert!(provider.is_available(), "{} n'est pas installé", provider.binary());
+    assert!(
+        provider.is_available(),
+        "{} n'est pas installé",
+        provider.binary()
+    );
 
     // A closed port: nothing of this machine is published.
     let tunnel = locaryn_travel::start(provider, 59_999)
@@ -50,7 +54,10 @@ async fn a_real_relay_hands_back_a_usable_address() {
         locaryn_travel::verify(&uri, &|k| (k == kid).then(|| ca.cert_pem.clone()), now).unwrap();
     assert_eq!(parsed.url, tunnel.url);
     println!("lien signé et vérifié, {} caractères", uri.len());
-    assert!(locaryn_travel::qr::svg(&uri).is_ok(), "lien trop long pour un QR");
+    assert!(
+        locaryn_travel::qr::svg(&uri).is_ok(),
+        "lien trop long pour un QR"
+    );
 
     tunnel.stop().await;
     std::fs::remove_dir_all(&dir).ok();

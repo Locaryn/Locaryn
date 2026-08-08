@@ -13,7 +13,11 @@
   "permissions": {
     "shell": { "reason": "Run migrations and linters", "scope": "project" },
     "files.read": { "reason": "Read source files for review", "scope": "project" },
-    "files.write": { "reason": "Apply suggested refactors", "scope": "project", "requireApproval": true },
+    "files.write": {
+      "reason": "Apply suggested refactors",
+      "scope": "project",
+      "requireApproval": true
+    },
     "network": false,
     "mcp": { "reason": "Expose a custom MCP server for schema introspection", "scope": "project" },
     "lsp": false,

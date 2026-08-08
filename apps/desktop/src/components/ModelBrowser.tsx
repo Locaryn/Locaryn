@@ -1,24 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
+import { core } from "../lib/core";
 import {
-  looksLikeImageModel,
   MODEL_CATEGORIES,
-  SIZE_BUCKETS,
-  fetchFullRegistry,
-  fetchHuggingFaceModels,
-  clearRegistryCache,
-  isCloudOnlyFamily,
   type ModelCategory,
   type ModelFamily,
+  SIZE_BUCKETS,
+  clearRegistryCache,
+  fetchFullRegistry,
+  fetchHuggingFaceModels,
+  isCloudOnlyFamily,
+  looksLikeImageModel,
 } from "../lib/modelRegistry";
-import { core } from "../lib/core";
-import { ModelObliterator } from "./ModelObliterator";
-import { HardwareBenchmarkModal } from "./HardwareBenchmarkModal";
-import { ResponsibilityGate } from "./ResponsibilityGate";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
+import { HardwareBenchmarkModal } from "./HardwareBenchmarkModal";
+import { ModelObliterator } from "./ModelObliterator";
+import { ResponsibilityGate } from "./ResponsibilityGate";
 
 type Props = {
   /** Download / Install model to local storage. */
-  onInstall: (tag: string, onProgress?: (pct: number) => void, heretic?: boolean, consent?: boolean) => Promise<void> | void;
+  onInstall: (
+    tag: string,
+    onProgress?: (pct: number) => void,
+    heretic?: boolean,
+    consent?: boolean,
+  ) => Promise<void> | void;
   /** Cancel an active model download in progress. */
   onCancelInstall?: () => Promise<void> | void;
   /** Delete an installed model locally. */
@@ -61,7 +66,9 @@ function getQuantTag(baseTag: string, quant: string): string {
   if (quant === "cloud") return baseTag;
 
   // Expand hf.co/ shorthand to a real URL so the backend can download it.
-  const tag = baseTag.startsWith("hf.co/") ? baseTag.replace("hf.co/", "https://huggingface.co/") : baseTag;
+  const tag = baseTag.startsWith("hf.co/")
+    ? baseTag.replace("hf.co/", "https://huggingface.co/")
+    : baseTag;
 
   if (tag.startsWith("http://") || tag.startsWith("https://")) {
     if (tag.match(/-(q[4568]_[a-z0-9_]+|f16|fp16)\.gguf$/i)) {
@@ -86,9 +93,9 @@ function getQuantStorageGb(baseStorageGb: number, quant: string): number {
   const q = quant.toLowerCase();
   if (q.includes("q4")) return Math.round(baseStorageGb * 10) / 10;
   if (q.includes("q5")) return Math.round(baseStorageGb * 1.15 * 10) / 10;
-  if (q.includes("q6")) return Math.round(baseStorageGb * 1.30 * 10) / 10;
-  if (q.includes("q8")) return Math.round(baseStorageGb * 1.60 * 10) / 10;
-  if (q.includes("fp16") || q.includes("f16")) return Math.round(baseStorageGb * 2.80 * 10) / 10;
+  if (q.includes("q6")) return Math.round(baseStorageGb * 1.3 * 10) / 10;
+  if (q.includes("q8")) return Math.round(baseStorageGb * 1.6 * 10) / 10;
+  if (q.includes("fp16") || q.includes("f16")) return Math.round(baseStorageGb * 2.8 * 10) / 10;
   return baseStorageGb;
 }
 
@@ -99,25 +106,61 @@ type HwSpec = { total_ram_gb: number; total_vram_gb: number };
 type CompatLevel = "cloud" | "gpu" | "offload" | "heavy" | "unknown";
 type Compat = { level: CompatLevel; label: string; short: string; color: string; icon: string };
 
-const COMPAT_RANK: Record<CompatLevel, number> = { cloud: 0, gpu: 1, offload: 2, heavy: 3, unknown: 4 };
+const COMPAT_RANK: Record<CompatLevel, number> = {
+  cloud: 0,
+  gpu: 1,
+  offload: 2,
+  heavy: 3,
+  unknown: 4,
+};
 
 function variantCompat(storageGb: number, hw: HwSpec | null): Compat {
   if (storageGb === 0) {
-    return { level: "cloud", label: "Modèle cloud — exécution distante, aucun stockage local requis", short: "Cloud", color: "#60a5fa", icon: "☁️" };
+    return {
+      level: "cloud",
+      label: "Modèle cloud — exécution distante, aucun stockage local requis",
+      short: "Cloud",
+      color: "#60a5fa",
+      icon: "☁️",
+    };
   }
   if (!hw) {
-    return { level: "unknown", label: "Analyse PC requise pour estimer", short: "?", color: "var(--text-faint)", icon: "•" };
+    return {
+      level: "unknown",
+      label: "Analyse PC requise pour estimer",
+      short: "?",
+      color: "var(--text-faint)",
+      icon: "•",
+    };
   }
   const vram = hw.total_vram_gb || 0;
   const ram = hw.total_ram_gb || 0;
   const need = storageGb * 1.15; // weights + ~15% for KV cache / overhead
   if (vram > 0 && need <= vram) {
-    return { level: "gpu", label: "Tient dans votre VRAM — fluide sur GPU", short: "Fluide GPU", color: "#5aa86a", icon: "🟢" };
+    return {
+      level: "gpu",
+      label: "Tient dans votre VRAM — fluide sur GPU",
+      short: "Fluide GPU",
+      color: "#5aa86a",
+      icon: "🟢",
+    };
   }
   if (need <= ram * 0.85) {
-    return { level: "offload", label: "Trop gros pour la VRAM, mais tourne via la RAM (offload CPU, plus lent)", short: "OK via RAM", color: "#d4a03a", icon: "🟡" };
+    return {
+      level: "offload",
+      label: "Trop gros pour la VRAM, mais tourne via la RAM (offload CPU, plus lent)",
+      short: "OK via RAM",
+      color: "#d4a03a",
+      icon: "🟡",
+    };
   }
-  return { level: "heavy", label: "Dépasse la mémoire de ce PC — non recommandé", short: "Trop lourd", color: "#cc7d72", icon: "🔴" };
+  return {
+    level: "heavy",
+    label: "Dépasse la mémoire de ce PC — non recommandé",
+    short: "Trop lourd",
+    color: "#cc7d72",
+    icon: "🔴",
+  };
 }
 
 function familyBestCompat(variants: { storageGb: number }[], hw: HwSpec | null): Compat {
@@ -152,7 +195,15 @@ function isVariantInstalled(tag: string, installedSet: Set<string>): boolean {
   return false;
 }
 
-export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTraining, onSelectModelForChat, onOpenImageGen, installed = [] }: Props) {
+export function ModelBrowser({
+  onInstall,
+  onCancelInstall,
+  onDelete,
+  onOpenTraining,
+  onSelectModelForChat,
+  onOpenImageGen,
+  installed = [],
+}: Props) {
   const [query, setQuery] = useState("");
   const [customTagInput, setCustomTagInput] = useState("");
   const [category, setCategory] = useState<ModelCategory>("all");
@@ -181,9 +232,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
 
   const [obliteratorOpen, setObliteratorOpen] = useState(false);
   const [hardwareModalOpen, setHardwareModalOpen] = useState(false);
-  const [hardwareSpec, setHardwareSpec] = useState<{total_ram_gb: number, total_vram_gb: number} | null>(null);
+  const [hardwareSpec, setHardwareSpec] = useState<{
+    total_ram_gb: number;
+    total_vram_gb: number;
+  } | null>(null);
   const [nsfwGateOpen, setNsfwGateOpen] = useState(false);
-  const [pendingNsfwInstall, setPendingNsfwInstall] = useState<{ tag: string; heretic: boolean } | null>(null);
+  const [pendingNsfwInstall, setPendingNsfwInstall] = useState<{
+    tag: string;
+    heretic: boolean;
+  } | null>(null);
 
   const installedSet = useMemo(() => new Set(installed), [installed]);
 
@@ -191,12 +248,16 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
   // having to open the hardware modal or toggle any filter.
   useEffect(() => {
     let active = true;
-    core.checkHardware()
+    core
+      .checkHardware()
       .then((hw) => {
-        if (active && hw) setHardwareSpec({ total_ram_gb: hw.total_ram_gb, total_vram_gb: hw.total_vram_gb });
+        if (active && hw)
+          setHardwareSpec({ total_ram_gb: hw.total_ram_gb, total_vram_gb: hw.total_vram_gb });
       })
       .catch(() => {});
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Load full registry dynamically on mount
@@ -273,7 +334,10 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           if (riskFilter === "uncensored" && risk !== "uncensored") return null;
           if (riskFilter === "nsfw" && risk !== "nsfw") return null;
         }
-        if (q && !(`${f.name} ${f.brand} ${f.description} ${f.releaseDate}`.toLowerCase().includes(q))) {
+        if (
+          q &&
+          !`${f.name} ${f.brand} ${f.description} ${f.releaseDate}`.toLowerCase().includes(q)
+        ) {
           return null;
         }
 
@@ -304,7 +368,21 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
         }
         return a.name.localeCompare(b.name);
       });
-  }, [query, category, brand, size, yearFilter, sortBy, onlyFinetunable, riskFilter, onlyRecommended, showCloud, registryModels, liveApiModels, hardwareSpec]);
+  }, [
+    query,
+    category,
+    brand,
+    size,
+    yearFilter,
+    sortBy,
+    onlyFinetunable,
+    riskFilter,
+    onlyRecommended,
+    showCloud,
+    registryModels,
+    liveApiModels,
+    hardwareSpec,
+  ]);
 
   function toggleCardExpand(id: string) {
     setExpandedCards((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -335,9 +413,14 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
   async function handleInstallModel(tag: string, heretic?: boolean, consent = false) {
     setInstallProgress((prev) => ({ ...prev, [tag]: 0 }));
     try {
-      await onInstall(tag, (pct) => {
-        setInstallProgress((prev) => ({ ...prev, [tag]: pct }));
-      }, heretic, consent);
+      await onInstall(
+        tag,
+        (pct) => {
+          setInstallProgress((prev) => ({ ...prev, [tag]: pct }));
+        },
+        heretic,
+        consent,
+      );
     } finally {
       setInstallProgress((prev) => {
         const copy = { ...prev };
@@ -369,7 +452,11 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
   }
 
   async function handleDeleteModel(tag: string) {
-    if (!window.confirm(`Voulez-vous vraiment supprimer le modèle local "${tag}" pour libérer de l'espace disque ?`)) {
+    if (
+      !window.confirm(
+        `Voulez-vous vraiment supprimer le modèle local "${tag}" pour libérer de l'espace disque ?`,
+      )
+    ) {
       return;
     }
     setDeletingTag(tag);
@@ -380,7 +467,8 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
     }
   }
 
-  const isFilterActive = size !== "all" || query !== "" || brand !== "all" || onlyRecommended || riskFilter !== "all";
+  const isFilterActive =
+    size !== "all" || query !== "" || brand !== "all" || onlyRecommended || riskFilter !== "all";
 
   return (
     <div className="locaryn-models">
@@ -488,7 +576,12 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
           <button
             type="button"
             className="locaryn-btn-ghost"
-            style={{ fontSize: "12px", border: "1px solid var(--accent)", color: "var(--accent)", whiteSpace: "nowrap" }}
+            style={{
+              fontSize: "12px",
+              border: "1px solid var(--accent)",
+              color: "var(--accent)",
+              whiteSpace: "nowrap",
+            }}
             onClick={handleFetchLiveApiModels}
             disabled={isFetchingLive}
             title="Interroger directement les API HuggingFace Hub pour découvrir les derniers modèles en temps réel"
@@ -520,7 +613,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             <button
               type="button"
               className={`locaryn-chip locaryn-chip-ft${onlyRecommended ? " locaryn-chip-on" : ""}`}
-              style={onlyRecommended ? { background: "rgba(100, 200, 120, 0.2)", borderColor: "#64c878", color: "#64c878" } : {}}
+              style={
+                onlyRecommended
+                  ? {
+                      background: "rgba(100, 200, 120, 0.2)",
+                      borderColor: "#64c878",
+                      color: "#64c878",
+                    }
+                  : {}
+              }
               onClick={() => setOnlyRecommended((prev) => !prev)}
               title="Filtrer uniquement les modèles adaptés aux composants de votre PC"
             >
@@ -548,7 +649,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             <button
               type="button"
               className={`locaryn-chip locaryn-chip-ft${riskFilter === "safe" ? " locaryn-chip-on" : ""}`}
-              style={riskFilter === "safe" ? { background: "rgba(90, 168, 106, 0.2)", borderColor: "#5aa86a", color: "#5aa86a" } : {}}
+              style={
+                riskFilter === "safe"
+                  ? {
+                      background: "rgba(90, 168, 106, 0.2)",
+                      borderColor: "#5aa86a",
+                      color: "#5aa86a",
+                    }
+                  : {}
+              }
               onClick={() => setRiskFilter((prev) => (prev === "safe" ? "all" : "safe"))}
               title="Afficher uniquement les modèles classiques avec garde-fous"
             >
@@ -557,8 +666,18 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             <button
               type="button"
               className={`locaryn-chip locaryn-chip-ft${riskFilter === "uncensored" ? " locaryn-chip-on" : ""}`}
-              style={riskFilter === "uncensored" ? { background: "rgba(204, 125, 114, 0.25)", borderColor: "var(--danger)", color: "var(--danger)" } : {}}
-              onClick={() => setRiskFilter((prev) => (prev === "uncensored" ? "all" : "uncensored"))}
+              style={
+                riskFilter === "uncensored"
+                  ? {
+                      background: "rgba(204, 125, 114, 0.25)",
+                      borderColor: "var(--danger)",
+                      color: "var(--danger)",
+                    }
+                  : {}
+              }
+              onClick={() =>
+                setRiskFilter((prev) => (prev === "uncensored" ? "all" : "uncensored"))
+              }
               title="Afficher uniquement les modèles sans garde-fous / oblitérés"
             >
               🔓 Sans limite
@@ -566,7 +685,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             <button
               type="button"
               className={`locaryn-chip locaryn-chip-ft${riskFilter === "nsfw" ? " locaryn-chip-on" : ""}`}
-              style={riskFilter === "nsfw" ? { background: "rgba(204, 125, 114, 0.25)", borderColor: "var(--danger)", color: "var(--danger)" } : {}}
+              style={
+                riskFilter === "nsfw"
+                  ? {
+                      background: "rgba(204, 125, 114, 0.25)",
+                      borderColor: "var(--danger)",
+                      color: "var(--danger)",
+                    }
+                  : {}
+              }
               onClick={() => setRiskFilter((prev) => (prev === "nsfw" ? "all" : "nsfw"))}
               title="Afficher uniquement les modèles NSFW / sans garde-fous connus"
             >
@@ -575,7 +702,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             <button
               type="button"
               className={`locaryn-chip locaryn-chip-ft${showCloud ? " locaryn-chip-on" : ""}`}
-              style={showCloud ? { background: "rgba(96, 165, 250, 0.2)", borderColor: "#60a5fa", color: "#60a5fa" } : {}}
+              style={
+                showCloud
+                  ? {
+                      background: "rgba(96, 165, 250, 0.2)",
+                      borderColor: "#60a5fa",
+                      color: "#60a5fa",
+                    }
+                  : {}
+              }
               onClick={() => setShowCloud((prev) => !prev)}
               title="Par défaut, les modèles cloud-only sont masqués pour privilégier les téléchargements locaux"
             >
@@ -587,7 +722,11 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             <button
               type="button"
               className="locaryn-btn-ghost"
-              style={{ fontSize: "12px", border: "1px solid var(--accent)", color: "var(--accent)" }}
+              style={{
+                fontSize: "12px",
+                border: "1px solid var(--accent)",
+                color: "var(--accent)",
+              }}
               onClick={() => setHardwareModalOpen(true)}
               title="Tester les composants de votre PC et analyser les performances d'inférence"
             >
@@ -597,7 +736,11 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
             <button
               type="button"
               className="locaryn-btn-ghost"
-              style={{ color: "var(--danger)", fontSize: "12px", border: "1px solid rgba(204, 125, 114, 0.3)" }}
+              style={{
+                color: "var(--danger)",
+                fontSize: "12px",
+                border: "1px solid rgba(204, 125, 114, 0.3)",
+              }}
               onClick={() => {
                 if (onOpenTraining) {
                   onOpenTraining();
@@ -618,7 +761,14 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                 onClick={() => setViewMode("grid")}
                 title="Affichage en Grille / Cartes"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <rect x="3" y="3" width="7" height="7" />
                   <rect x="14" y="3" width="7" height="7" />
                   <rect x="14" y="14" width="7" height="7" />
@@ -632,7 +782,14 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                 onClick={() => setViewMode("list")}
                 title="Affichage en Liste Détaillée"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <line x1="8" y1="6" x2="21" y2="6" />
                   <line x1="8" y1="12" x2="21" y2="12" />
                   <line x1="8" y1="18" x2="21" y2="18" />
@@ -648,29 +805,41 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
       </div>
 
       {/* Intuitive hardware compatibility banner — no filter needed */}
-      {hardwareSpec ? (() => {
-        const counts = families.reduce(
-          (acc, f) => { acc[familyBestCompat(f.variants, hardwareSpec).level]++; return acc; },
-          { cloud: 0, gpu: 0, offload: 0, heavy: 0, unknown: 0 } as Record<CompatLevel, number>,
-        );
-        return (
-          <div className="locaryn-hw-banner">
-            <span className="locaryn-hw-banner-pc">
-              🖥️ Votre PC&nbsp;: <b>{hardwareSpec.total_ram_gb} Go RAM</b>
-              {hardwareSpec.total_vram_gb > 0 && <> · <b>{hardwareSpec.total_vram_gb} Go VRAM</b></>}
-            </span>
-            <span className="locaryn-hw-banner-counts">
-              <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
-              <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
-              <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
-              <span style={{ color: "#cc7d72" }}>🔴 {counts.heavy} trop lourds</span>
-              <span className="locaryn-hw-banner-note">— triés du plus adapté au plus lourd</span>
-            </span>
-          </div>
-        );
-      })() : (
+      {hardwareSpec ? (
+        (() => {
+          const counts = families.reduce(
+            (acc, f) => {
+              acc[familyBestCompat(f.variants, hardwareSpec).level]++;
+              return acc;
+            },
+            { cloud: 0, gpu: 0, offload: 0, heavy: 0, unknown: 0 } as Record<CompatLevel, number>,
+          );
+          return (
+            <div className="locaryn-hw-banner">
+              <span className="locaryn-hw-banner-pc">
+                🖥️ Votre PC&nbsp;: <b>{hardwareSpec.total_ram_gb} Go RAM</b>
+                {hardwareSpec.total_vram_gb > 0 && (
+                  <>
+                    {" "}
+                    · <b>{hardwareSpec.total_vram_gb} Go VRAM</b>
+                  </>
+                )}
+              </span>
+              <span className="locaryn-hw-banner-counts">
+                <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
+                <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
+                <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
+                <span style={{ color: "#cc7d72" }}>🔴 {counts.heavy} trop lourds</span>
+                <span className="locaryn-hw-banner-note">— triés du plus adapté au plus lourd</span>
+              </span>
+            </div>
+          );
+        })()
+      ) : (
         <div className="locaryn-hw-banner locaryn-hw-banner-muted">
-          <span>🖥️ Analyse du PC en cours… la compatibilité de chaque modèle s'affichera automatiquement.</span>
+          <span>
+            🖥️ Analyse du PC en cours… la compatibilité de chaque modèle s'affichera automatiquement.
+          </span>
         </div>
       )}
 
@@ -704,28 +873,49 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                   <div className="locaryn-box-badges">
                     <span
                       className="locaryn-tag"
-                      style={{ background: `${compat.color}22`, color: compat.color, border: `1px solid ${compat.color}66` }}
+                      style={{
+                        background: `${compat.color}22`,
+                        color: compat.color,
+                        border: `1px solid ${compat.color}66`,
+                      }}
                       title={compat.label}
                     >
                       {compat.icon} {compat.short}
                     </span>
-                    <span className="locaryn-tag" style={{ background: "rgba(100, 150, 255, 0.15)", color: "var(--accent)" }}>
+                    <span
+                      className="locaryn-tag"
+                      style={{ background: "rgba(100, 150, 255, 0.15)", color: "var(--accent)" }}
+                    >
                       {cleanSizeRange}
                     </span>
-                    <span className="locaryn-tag locaryn-tag-soft" title="Date de sortie officielle">
+                    <span
+                      className="locaryn-tag locaryn-tag-soft"
+                      title="Date de sortie officielle"
+                    >
                       📅 {f.releaseDate}
                     </span>
                     {(() => {
                       const c = classifyModel(`${f.name} ${f.id}`, { uncensored: f.uncensored });
                       if (c.risk === "safe") return null;
                       return (
-                        <span className="locaryn-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)" }} title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}>
+                        <span
+                          className="locaryn-tag"
+                          style={{
+                            background: "rgba(204,125,114,0.2)",
+                            color: "var(--danger)",
+                            border: "1px solid rgba(204,125,114,0.4)",
+                          }}
+                          title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}
+                        >
                           {c.icon} {c.label}
                         </span>
                       );
                     })()}
                     {f.finetunable && (
-                      <span className="locaryn-tag locaryn-tag-ft" title="Modèle prêt pour le fine-tuning LoRA">
+                      <span
+                        className="locaryn-tag locaryn-tag-ft"
+                        title="Modèle prêt pour le fine-tuning LoRA"
+                      >
                         🎯 LoRA
                       </span>
                     )}
@@ -774,10 +964,15 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                     }}
                     onClick={() => toggleCardExpand(f.id)}
                   >
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
                       {expandLabel}
                     </span>
-                    <span className="locaryn-tag locaryn-tag-soft" style={{ flex: "none", marginLeft: "6px" }}>
+                    <span
+                      className="locaryn-tag locaryn-tag-soft"
+                      style={{ flex: "none", marginLeft: "6px" }}
+                    >
                       {f.variants.length} modèles
                     </span>
                   </button>
@@ -790,21 +985,46 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                       const activeQuant = selectedQuants[v.tag] || v.quants[0] || "q4_K_M";
                       const targetTag = getQuantTag(v.tag, activeQuant);
                       const targetStorageGb = getQuantStorageGb(v.storageGb, activeQuant);
-                      const isInstalled = isVariantInstalled(targetTag, installedSet) || isVariantInstalled(v.tag, installedSet);
+                      const isInstalled =
+                        isVariantInstalled(targetTag, installedSet) ||
+                        isVariantInstalled(v.tag, installedSet);
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
 
                       return (
-                        <div key={v.tag} className="locaryn-box-variant-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "6px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div
+                          key={v.tag}
+                          className="locaryn-box-variant-row"
+                          style={{ flexDirection: "column", alignItems: "stretch", gap: "6px" }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
                             <div className="locaryn-box-variant-info">
                               <span className="locaryn-variant-size">{v.size}</span>
                               <span className="locaryn-stat-vram">💾 ~{targetStorageGb} Go</span>
-                              {(() => { const c = variantCompat(targetStorageGb, hardwareSpec); return (
-                                <span className="locaryn-tag" style={{ background: `${c.color}22`, color: c.color }} title={c.label}>{c.icon} {c.short}</span>
-                              ); })()}
-                              {isInstalled && <span className="locaryn-tag locaryn-tag-installed">Installé ✓</span>}
+                              {(() => {
+                                const c = variantCompat(targetStorageGb, hardwareSpec);
+                                return (
+                                  <span
+                                    className="locaryn-tag"
+                                    style={{ background: `${c.color}22`, color: c.color }}
+                                    title={c.label}
+                                  >
+                                    {c.icon} {c.short}
+                                  </span>
+                                );
+                              })()}
+                              {isInstalled && (
+                                <span className="locaryn-tag locaryn-tag-installed">
+                                  Installé ✓
+                                </span>
+                              )}
                             </div>
 
                             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -834,7 +1054,11 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                   <button
                                     type="button"
                                     className="locaryn-btn-ghost"
-                                    style={{ color: "var(--danger)", padding: "3px 8px", fontSize: "11px" }}
+                                    style={{
+                                      color: "var(--danger)",
+                                      padding: "3px 8px",
+                                      fontSize: "11px",
+                                    }}
                                     onClick={() => handleDeleteModel(targetTag)}
                                     disabled={isDeleting}
                                     title="Supprimer ce modèle du disque dur local"
@@ -846,16 +1070,24 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                 <button
                                   type="button"
                                   className="locaryn-btn-ghost"
-                                  style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "3px 8px", fontSize: "11px" }}
+                                  style={{
+                                    color: "var(--danger)",
+                                    border: "1px solid var(--danger)",
+                                    padding: "3px 8px",
+                                    fontSize: "11px",
+                                  }}
                                   onClick={() => handleCancelInstall(targetTag)}
                                   title="Annuler le téléchargement en cours"
                                 >
                                   ⛔ Annuler ({progress}%)
                                 </button>
-                              ) : (                                  <button
+                              ) : (
+                                <button
                                   type="button"
                                   className="locaryn-btn-primary locaryn-variant-use"
-                                  onClick={() => requestInstall(targetTag, f.name, Boolean(f.uncensored))}
+                                  onClick={() =>
+                                    requestInstall(targetTag, f.name, Boolean(f.uncensored))
+                                  }
                                   title={`Installer la quantisation ${activeQuant}`}
                                 >
                                   Installer ({activeQuant})
@@ -864,8 +1096,18 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", marginTop: "2px" }}>
-                            <span style={{ fontSize: "10px", color: "var(--text-faint)" }}>quant:</span>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              flexWrap: "wrap",
+                              marginTop: "2px",
+                            }}
+                          >
+                            <span style={{ fontSize: "10px", color: "var(--text-faint)" }}>
+                              quant:
+                            </span>
                             {v.quants.map((q) => {
                               const isSelected = activeQuant === q;
                               return (
@@ -918,15 +1160,21 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                       const c = classifyModel(`${f.name} ${f.id}`, { uncensored: f.uncensored });
                       if (c.risk === "safe") return null;
                       return (
-                        <span className="locaryn-tag" style={{ background: "rgba(204,125,114,0.2)", color: "var(--danger)", border: "1px solid rgba(204,125,114,0.4)" }} title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}>
+                        <span
+                          className="locaryn-tag"
+                          style={{
+                            background: "rgba(204,125,114,0.2)",
+                            color: "var(--danger)",
+                            border: "1px solid rgba(204,125,114,0.4)",
+                          }}
+                          title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}
+                        >
                           {c.icon} {c.label}
                         </span>
                       );
                     })()}
                     {f.finetunable && (
-                      <span className="locaryn-tag locaryn-tag-ft">
-                        🎯 LoRA Ready
-                      </span>
+                      <span className="locaryn-tag locaryn-tag-ft">🎯 LoRA Ready</span>
                     )}
                     {capBadges(f).map((c) => (
                       <span key={c} className="locaryn-tag">
@@ -945,7 +1193,9 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                       const activeQuant = selectedQuants[v.tag] || v.quants[0] || "q4_K_M";
                       const targetTag = getQuantTag(v.tag, activeQuant);
                       const targetStorageGb = getQuantStorageGb(v.storageGb, activeQuant);
-                      const isInstalled = isVariantInstalled(targetTag, installedSet) || isVariantInstalled(v.tag, installedSet);
+                      const isInstalled =
+                        isVariantInstalled(targetTag, installedSet) ||
+                        isVariantInstalled(v.tag, installedSet);
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
@@ -954,10 +1204,21 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                         <div key={v.tag} className="locaryn-variant">
                           <div className="locaryn-variant-top">
                             <span className="locaryn-variant-size">{v.size}</span>
-                            <span className="locaryn-stat-vram">💾 ~{targetStorageGb} Go Stockage</span>
-                            {(() => { const c = variantCompat(targetStorageGb, hardwareSpec); return (
-                              <span className="locaryn-tag" style={{ background: `${c.color}22`, color: c.color }} title={c.label}>{c.icon} {c.short}</span>
-                            ); })()}
+                            <span className="locaryn-stat-vram">
+                              💾 ~{targetStorageGb} Go Stockage
+                            </span>
+                            {(() => {
+                              const c = variantCompat(targetStorageGb, hardwareSpec);
+                              return (
+                                <span
+                                  className="locaryn-tag"
+                                  style={{ background: `${c.color}22`, color: c.color }}
+                                  title={c.label}
+                                >
+                                  {c.icon} {c.short}
+                                </span>
+                              );
+                            })()}
                             {isInstalled && (
                               <span className="locaryn-tag locaryn-tag-installed">Installé ✓</span>
                             )}
@@ -990,7 +1251,11 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                   <button
                                     type="button"
                                     className="locaryn-btn-ghost"
-                                    style={{ color: "var(--danger)", padding: "3px 8px", fontSize: "11px" }}
+                                    style={{
+                                      color: "var(--danger)",
+                                      padding: "3px 8px",
+                                      fontSize: "11px",
+                                    }}
                                     onClick={() => handleDeleteModel(targetTag)}
                                     disabled={isDeleting}
                                     title="Supprimer ce modèle du disque dur local"
@@ -1002,16 +1267,24 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
                                 <button
                                   type="button"
                                   className="locaryn-btn-ghost"
-                                  style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "3px 8px", fontSize: "11px" }}
+                                  style={{
+                                    color: "var(--danger)",
+                                    border: "1px solid var(--danger)",
+                                    padding: "3px 8px",
+                                    fontSize: "11px",
+                                  }}
                                   onClick={() => handleCancelInstall(targetTag)}
                                   title="Annuler le téléchargement en cours"
                                 >
                                   ⛔ Annuler ({progress}%)
                                 </button>
-                              ) : (                                  <button
+                              ) : (
+                                <button
                                   type="button"
                                   className="locaryn-btn-primary locaryn-variant-use"
-                                  onClick={() => requestInstall(targetTag, f.name, Boolean(f.uncensored))}
+                                  onClick={() =>
+                                    requestInstall(targetTag, f.name, Boolean(f.uncensored))
+                                  }
                                   title={`Installer la quantisation ${activeQuant}`}
                                 >
                                   Installer ({activeQuant})
@@ -1065,7 +1338,10 @@ export function ModelBrowser({ onInstall, onCancelInstall, onDelete, onOpenTrain
         open={nsfwGateOpen}
         what="l'installation d'un modèle classé NSFW / sans garde-fous"
         onAccept={confirmNsfwInstall}
-        onCancel={() => { setNsfwGateOpen(false); setPendingNsfwInstall(null); }}
+        onCancel={() => {
+          setNsfwGateOpen(false);
+          setPendingNsfwInstall(null);
+        }}
       />
 
       {/* Obliterator Studio Modal */}

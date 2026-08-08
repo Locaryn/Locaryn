@@ -117,7 +117,11 @@ pub fn install_client_certificate(
     std::fs::write(cert_path(), &pem).map_err(|e| format!("copie : {e}"))?;
     restrict(&cert_path());
 
-    if let Some(auth) = authority.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(auth) = authority
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         let ap = Path::new(auth);
         if ap.is_file() {
             let ca = std::fs::read_to_string(ap).map_err(|e| format!("lecture autorité : {e}"))?;
@@ -282,7 +286,8 @@ pub async fn sign_in(
                 "Le certificat présenté ne correspond pas à l'empreinte fournie par votre \
                  administrateur. Ne saisissez pas votre mot de passe : signalez-le d'abord."
                     .to_string()
-            } else if chain.contains("certificate required") || chain.contains("CertificateRequired")
+            } else if chain.contains("certificate required")
+                || chain.contains("CertificateRequired")
             {
                 "Ce serveur exige un certificat client. Installez celui que votre \
                  administrateur vous a transmis, puis réessayez."
@@ -299,10 +304,16 @@ pub async fn sign_in(
         return Err("Identifiant ou mot de passe incorrect.".into());
     }
     if !resp.status().is_success() {
-        return Err(format!("Le serveur a refusé la connexion ({}).", resp.status()));
+        return Err(format!(
+            "Le serveur a refusé la connexion ({}).",
+            resp.status()
+        ));
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("réponse illisible : {e}"))?;
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("réponse illisible : {e}"))?;
     let token = body
         .get("token")
         .and_then(|t| t.as_str())
@@ -314,7 +325,8 @@ pub async fn sign_in(
         username,
         token,
     };
-    let json = serde_json::to_string_pretty(&session).map_err(|e| format!("sérialisation : {e}"))?;
+    let json =
+        serde_json::to_string_pretty(&session).map_err(|e| format!("sérialisation : {e}"))?;
     std::fs::create_dir_all(locaryn_config::default_data_dir())
         .map_err(|e| format!("dossier de données : {e}"))?;
     std::fs::write(token_path(), json).map_err(|e| format!("écriture du jeton : {e}"))?;

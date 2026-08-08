@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { core, IMAGE_QUALITIES, type ImageDefaults } from "../lib/core";
+import { IMAGE_QUALITIES, type ImageDefaults, core } from "../lib/core";
 
 const VRAM_MODES: { id: string; label: string; hint: string }[] = [
   { id: "gpu", label: "GPU", hint: "Tout en VRAM — le plus rapide" },
@@ -19,10 +19,15 @@ export function ImageSettings() {
 
   useEffect(() => {
     let cancelled = false;
-    core.getImageDefaults()
-      .then((c) => { if (!cancelled) setCfg(c); })
+    core
+      .getImageDefaults()
+      .then((c) => {
+        if (!cancelled) setCfg(c);
+      })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function patch(next: Partial<ImageDefaults>) {
@@ -52,7 +57,11 @@ export function ImageSettings() {
       <div className="locaryn-field">
         <label className="locaryn-field-label">
           Qualité par défaut
-          {saved && <span style={{ marginLeft: 8, color: "var(--accent)", fontSize: "var(--text-xs)" }}>enregistré ✓</span>}
+          {saved && (
+            <span style={{ marginLeft: 8, color: "var(--accent)", fontSize: "var(--text-xs)" }}>
+              enregistré ✓
+            </span>
+          )}
         </label>
         <p className="locaryn-field-hint">
           Appliquée à <code>/image</code> et au bouton Créer quand aucune valeur n'est précisée.
@@ -72,7 +81,10 @@ export function ImageSettings() {
           ))}
         </div>
         <p className="locaryn-field-hint" style={{ marginTop: 8 }}>
-          Résolution active : <strong>{cfg.width}×{cfg.height}</strong>
+          Résolution active :{" "}
+          <strong>
+            {cfg.width}×{cfg.height}
+          </strong>
           {cfg.quality === "custom" && " (personnalisée)"}
         </p>
       </div>
@@ -100,8 +112,8 @@ export function ImageSettings() {
       <div className="locaryn-field" style={{ marginTop: 20 }}>
         <label className="locaryn-field-label">Étapes (steps)</label>
         <p className="locaryn-field-hint">
-          0 = laisser le modèle décider. Les modèles turbo sont bornés automatiquement
-          (≈8 étapes) : monter plus haut les ralentit sans gain.
+          0 = laisser le modèle décider. Les modèles turbo sont bornés automatiquement (≈8 étapes) :
+          monter plus haut les ralentit sans gain.
         </p>
         <input
           type="number"
@@ -117,9 +129,9 @@ export function ImageSettings() {
       <div className="locaryn-field" style={{ marginTop: 20 }}>
         <label className="locaryn-field-label">Variantes par génération</label>
         <p className="locaryn-field-hint">
-          Produit plusieurs images d'un coup pour en choisir une. Le modèle n'est chargé
-          qu'une fois : chaque variante supplémentaire coûte nettement moins cher qu'une
-          génération séparée. Utile quand un prompt demande plusieurs essais.
+          Produit plusieurs images d'un coup pour en choisir une. Le modèle n'est chargé qu'une fois
+          : chaque variante supplémentaire coûte nettement moins cher qu'une génération séparée.
+          Utile quand un prompt demande plusieurs essais.
         </p>
         <div className="locaryn-imgset-row" style={{ marginTop: 8 }}>
           {[1, 2, 3, 4, 6, 8].map((n) => (
@@ -136,7 +148,7 @@ export function ImageSettings() {
         <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
           {cfg.variants > 1
             ? `≈ ${cfg.variants} images par demande — comptez environ ${Math.round(
-                (100 * (1 - (1 + (cfg.variants - 1) * 0.69) / cfg.variants)),
+                100 * (1 - (1 + (cfg.variants - 1) * 0.69) / cfg.variants),
               )} % de temps gagné par rapport à ${cfg.variants} générations séparées.`
             : "Une seule image par demande."}
         </p>

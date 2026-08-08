@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { core, type RelayChoice, type TravelStatus } from "../lib/core";
+import { type RelayChoice, type TravelStatus, core } from "../lib/core";
 
 /**
  * Travel mode.
@@ -26,13 +26,16 @@ export function TravelSettings() {
 
   useEffect(() => {
     void refresh();
-    core.travelRelays().then((r) => {
-      setRelays(r);
-      // Default to something that will actually work on this machine, and
-      // prefer the one needing no account.
-      const usable = r.find((x) => x.installed && !x.needs_account) ?? r.find((x) => x.installed);
-      if (usable) setChoice(usable.id);
-    }).catch(() => {});
+    core
+      .travelRelays()
+      .then((r) => {
+        setRelays(r);
+        // Default to something that will actually work on this machine, and
+        // prefer the one needing no account.
+        const usable = r.find((x) => x.installed && !x.needs_account) ?? r.find((x) => x.installed);
+        if (usable) setChoice(usable.id);
+      })
+      .catch(() => {});
   }, [refresh]);
 
   // While it is on, the link expires; asking again mints a fresh one, so a
@@ -66,8 +69,8 @@ export function TravelSettings() {
     <div className="locaryn-field" style={{ marginTop: 28 }}>
       <label className="locaryn-field-label">Mode voyage</label>
       <p className="locaryn-field-hint">
-        Utiliser cette machine depuis n'importe où, sans rien ouvrir sur la box.
-        L'ordinateur appelle un relais ; c'est le relais que le téléphone contacte.
+        Utiliser cette machine depuis n'importe où, sans rien ouvrir sur la box. L'ordinateur
+        appelle un relais ; c'est le relais que le téléphone contacte.
       </p>
 
       <div className="locaryn-srv-row">

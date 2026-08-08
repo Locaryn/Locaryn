@@ -1,6 +1,6 @@
+import { toAudioUrl } from "./audioJobs";
 import { core } from "./core";
 import { taskCenter } from "./taskCenter";
-import { toAudioUrl } from "./audioJobs";
 
 export interface MusicJobResult {
   url: string;
@@ -47,7 +47,7 @@ export function startMusicGeneration(p: MusicGenParams): string {
       p.cfgScale ?? null,
       (pct, detail) => {
         taskCenter.update(taskId, { progress: pct, detail: detail ?? `${pct}%` });
-      }
+      },
     )
     .then(async (res) => {
       window.clearInterval(timer);

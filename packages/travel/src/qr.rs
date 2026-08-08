@@ -26,7 +26,10 @@ pub fn matrix(data: &str) -> Result<(usize, Vec<bool>), QrError> {
     let code = encode(data)?;
     let colors = code.to_colors();
     let width = (colors.len() as f64).sqrt() as usize;
-    Ok((width, colors.iter().map(|c| *c == qrcode::Color::Dark).collect()))
+    Ok((
+        width,
+        colors.iter().map(|c| *c == qrcode::Color::Dark).collect(),
+    ))
 }
 
 /// An SVG square, sized by CSS rather than by pixels.
@@ -104,9 +107,18 @@ mod tests {
     fn the_svg_is_self_contained_and_square() {
         let s = svg(LINK).unwrap();
         assert!(s.starts_with("<svg"), "pas un SVG");
-        assert!(!s.contains("http://") || s.contains("www.w3.org"), "référence externe");
+        assert!(
+            !s.contains("http://") || s.contains("www.w3.org"),
+            "référence externe"
+        );
         // Same number twice in the viewBox: a rectangle would not scan.
-        let vb = s.split("viewBox=\"").nth(1).unwrap().split('"').next().unwrap();
+        let vb = s
+            .split("viewBox=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
         let n: Vec<&str> = vb.split(' ').collect();
         assert_eq!(n[2], n[3], "viewBox non carrée : {vb}");
         assert!(s.contains("fill=\"#000\""), "modules non dessinés");
@@ -143,7 +155,10 @@ mod tests {
             cols,
             lines.len()
         );
-        assert!(lines.iter().all(|l| l.chars().count() == cols), "lignes inégales");
+        assert!(
+            lines.iter().all(|l| l.chars().count() == cols),
+            "lignes inégales"
+        );
     }
 
     #[test]
@@ -162,7 +177,10 @@ mod tests {
             assert!(at(ox + 3, oy + 3), "cœur du repère ({ox},{oy})");
         }
         // The fourth corner must *not* have one; that is how orientation works.
-        assert!(!at(w - 1, w - 1) || !at(w - 4, w - 4), "quatrième repère : orientation perdue");
+        assert!(
+            !at(w - 1, w - 1) || !at(w - 4, w - 4),
+            "quatrième repère : orientation perdue"
+        );
     }
 
     #[test]

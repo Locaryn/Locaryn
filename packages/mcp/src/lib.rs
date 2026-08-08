@@ -195,7 +195,11 @@ struct StdioTransport {
 }
 
 impl StdioTransport {
-    async fn spawn(command: &str, args: &[String], env: &HashMap<String, String>) -> Result<Self, McpError> {
+    async fn spawn(
+        command: &str,
+        args: &[String],
+        env: &HashMap<String, String>,
+    ) -> Result<Self, McpError> {
         let mut cmd = tokio::process::Command::new(locaryn_config::resolve_program(command));
         cmd.args(args)
             .stdin(std::process::Stdio::piped())
@@ -213,9 +217,13 @@ impl StdioTransport {
             ))
         })?;
 
-        let stdin = child.stdin.take()
+        let stdin = child
+            .stdin
+            .take()
             .ok_or_else(|| McpError::Transport("stdin not available".into()))?;
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| McpError::Transport("stdout not available".into()))?;
 
         Ok(Self {
@@ -226,8 +234,14 @@ impl StdioTransport {
         })
     }
 
-    async fn call(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, McpError> {
-        let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    async fn call(
+        &mut self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, McpError> {
+        let id = self
+            .next_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let req = JsonRpcRequest {
             jsonrpc: "2.0",
             id,
@@ -240,13 +254,17 @@ impl StdioTransport {
         line.push('\n');
 
         use tokio::io::AsyncWriteExt;
-        self.stdin.write_all(line.as_bytes()).await
+        self.stdin
+            .write_all(line.as_bytes())
+            .await
             .map_err(|e| McpError::Transport(format!("write: {e}")))?;
 
         // Read response line(s). MCP returns one JSON-RPC response per request.
         use tokio::io::AsyncBufReadExt;
         let mut raw = String::new();
-        self.stdout.read_line(&mut raw).await
+        self.stdout
+            .read_line(&mut raw)
+            .await
             .map_err(|e| McpError::Transport(format!("read: {e}")))?;
 
         if raw.is_empty() {
@@ -257,10 +275,14 @@ impl StdioTransport {
             .map_err(|e| McpError::Protocol(format!("parse response: {e}")))?;
 
         if let Some(err) = resp.error {
-            return Err(McpError::JsonRpc { code: err.code, message: err.message });
+            return Err(McpError::JsonRpc {
+                code: err.code,
+                message: err.message,
+            });
         }
 
-        resp.result.ok_or_else(|| McpError::Protocol("no result in response".into()))
+        resp.result
+            .ok_or_else(|| McpError::Protocol("no result in response".into()))
     }
 }
 
@@ -288,8 +310,14 @@ impl HttpTransport {
         }
     }
 
-    async fn call(&self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, McpError> {
-        let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    async fn call(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, McpError> {
+        let id = self
+            .next_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -302,27 +330,34 @@ impl HttpTransport {
             req = req.header(k, v);
         }
 
-        let resp = req.send().await
+        let resp = req
+            .send()
+            .await
             .map_err(|e| McpError::Transport(format!("HTTP POST: {e}")))?;
 
         let status = resp.status();
-        let raw = resp.text().await
+        let raw = resp
+            .text()
+            .await
             .map_err(|e| McpError::Transport(format!("read body: {e}")))?;
 
         if !status.is_success() {
-            return Err(McpError::Transport(format!(
-                "HTTP {status}: {raw}"
-            )));
+            return Err(McpError::Transport(format!("HTTP {status}: {raw}")));
         }
 
-        let rpc_resp: JsonRpcResponse = serde_json::from_str(&raw)
-            .map_err(|e| McpError::Protocol(format!("parse: {e}")))?;
+        let rpc_resp: JsonRpcResponse =
+            serde_json::from_str(&raw).map_err(|e| McpError::Protocol(format!("parse: {e}")))?;
 
         if let Some(err) = rpc_resp.error {
-            return Err(McpError::JsonRpc { code: err.code, message: err.message });
+            return Err(McpError::JsonRpc {
+                code: err.code,
+                message: err.message,
+            });
         }
 
-        rpc_resp.result.ok_or_else(|| McpError::Protocol("no result".into()))
+        rpc_resp
+            .result
+            .ok_or_else(|| McpError::Protocol("no result".into()))
     }
 }
 
@@ -388,13 +423,17 @@ impl SseClient {
             req = req.header(k, v);
         }
 
-        let resp = req.send().await
+        let resp = req
+            .send()
+            .await
             .map_err(|e| McpError::Transport(format!("SSE connect: {e}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(McpError::Transport(format!("SSE connect HTTP {status}: {body}")));
+            return Err(McpError::Transport(format!(
+                "SSE connect HTTP {status}: {body}"
+            )));
         }
 
         // Read the byte stream for SSE parsing.
@@ -420,7 +459,11 @@ impl SseClient {
                     break resolved;
                 }
                 Ok(Some(_)) => continue, // skip non-endpoint events
-                Ok(None) => return Err(McpError::Transport("SSE connection closed without endpoint event".into())),
+                Ok(None) => {
+                    return Err(McpError::Transport(
+                        "SSE connection closed without endpoint event".into(),
+                    ))
+                }
                 Err(e) => return Err(e),
             }
         };
@@ -476,13 +519,19 @@ impl SseClient {
 
     /// Send a JSON-RPC request via POST and wait for the matching SSE response.
     /// Returns immediately with an error if the SSE background task has died.
-    async fn call_rpc(&self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, McpError> {
+    async fn call_rpc(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, McpError> {
         // Fast-fail if the SSE task died.
         if !self.alive.load(std::sync::atomic::Ordering::Acquire) {
             return Err(McpError::Transport("SSE connection already lost".into()));
         }
 
-        let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = self
+            .next_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let id_str = id.to_string();
 
         let body = serde_json::json!({
@@ -515,9 +564,7 @@ impl SseClient {
                 // Check for a JSON-RPC response before waiting on SSE.
                 let body_bytes = resp.bytes().await.unwrap_or_default();
                 if !body_bytes.is_empty() {
-                    if let Ok(rpc_resp) =
-                        serde_json::from_slice::<JsonRpcResponse>(&body_bytes)
-                    {
+                    if let Ok(rpc_resp) = serde_json::from_slice::<JsonRpcResponse>(&body_bytes) {
                         // Remove the pending entry before processing.
                         let mut map = self.pending.lock().await;
                         map.remove(&id_str);
@@ -532,18 +579,19 @@ impl SseClient {
                         if let Some(result) = rpc_resp.result {
                             return Ok(result);
                         }
-                        return Err(McpError::Protocol("no result in synchronous response".into()));
+                        return Err(McpError::Protocol(
+                            "no result in synchronous response".into(),
+                        ));
                     }
                 }
                 // No synchronous response — wait for SSE.
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(60),
-                    rx,
-                ).await {
+                match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
                     Ok(Ok(result)) => result,
                     Ok(Err(_)) => {
                         // The sender was dropped without sending — connection lost.
-                        Err(McpError::Transport("SSE connection lost before response".into()))
+                        Err(McpError::Transport(
+                            "SSE connection lost before response".into(),
+                        ))
                     }
                     Err(_) => {
                         // Timeout waiting for response.
@@ -573,7 +621,9 @@ impl SseClient {
     /// Parse a JSON-RPC response from an SSE `data` field and dispatch
     /// it to the matching pending request.
     async fn dispatch_response(
-        pending: &tokio::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<serde_json::Value, McpError>>>>,
+        pending: &tokio::sync::Mutex<
+            HashMap<String, tokio::sync::oneshot::Sender<Result<serde_json::Value, McpError>>>,
+        >,
         data: &str,
     ) {
         let val: serde_json::Value = match serde_json::from_str(data) {
@@ -596,12 +646,20 @@ impl SseClient {
         if let Some(tx) = map.remove(&id) {
             if let Some(err) = val.get("error") {
                 let code = err.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
-                let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
-                let _ = tx.send(Err(McpError::JsonRpc { code, message: msg.into() }));
+                let msg = err
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown error");
+                let _ = tx.send(Err(McpError::JsonRpc {
+                    code,
+                    message: msg.into(),
+                }));
             } else if let Some(result) = val.get("result") {
                 let _ = tx.send(Ok(result.clone()));
             } else {
-                let _ = tx.send(Err(McpError::Protocol("response missing result and error".into())));
+                let _ = tx.send(Err(McpError::Protocol(
+                    "response missing result and error".into(),
+                )));
             }
         }
         // If no pending request matches, the response is stale or a notification.
@@ -618,8 +676,13 @@ fn parse_tools_from_result(result: &serde_json::Value) -> ServerCapabilities {
                 .filter_map(|t| {
                     Some(ToolDescriptor {
                         name: t.get("name")?.as_str()?.to_string(),
-                        description: t.get("description").and_then(|d| d.as_str()).map(String::from),
-                        input_schema: t.get("inputSchema").cloned()
+                        description: t
+                            .get("description")
+                            .and_then(|d| d.as_str())
+                            .map(String::from),
+                        input_schema: t
+                            .get("inputSchema")
+                            .cloned()
                             .or_else(|| t.get("input_schema").cloned())
                             .unwrap_or(serde_json::json!({})),
                     })
@@ -668,8 +731,13 @@ impl McpClient for SseClient {
                     .filter_map(|t| {
                         Some(ToolDescriptor {
                             name: t.get("name")?.as_str()?.to_string(),
-                            description: t.get("description").and_then(|d| d.as_str()).map(String::from),
-                            input_schema: t.get("inputSchema").cloned()
+                            description: t
+                                .get("description")
+                                .and_then(|d| d.as_str())
+                                .map(String::from),
+                            input_schema: t
+                                .get("inputSchema")
+                                .cloned()
                                 .or_else(|| t.get("input_schema").cloned())
                                 .unwrap_or(serde_json::json!({})),
                         })
@@ -766,7 +834,10 @@ where
                     // Empty line = end of event. Dispatch if we have data.
                     if !self.current_data.is_empty() {
                         let event = SseEvent {
-                            event_type: self.current_event.take().unwrap_or_else(|| "message".into()),
+                            event_type: self
+                                .current_event
+                                .take()
+                                .unwrap_or_else(|| "message".into()),
                             data: std::mem::take(&mut self.current_data),
                         };
                         return Ok(Some(event));
@@ -797,7 +868,10 @@ where
                     // Stream ended. Flush any pending event.
                     if !self.current_data.is_empty() {
                         let event = SseEvent {
-                            event_type: self.current_event.take().unwrap_or_else(|| "message".into()),
+                            event_type: self
+                                .current_event
+                                .take()
+                                .unwrap_or_else(|| "message".into()),
                             data: std::mem::take(&mut self.current_data),
                         };
                         return Ok(Some(event));
@@ -819,7 +893,11 @@ pub struct StdioClient {
 }
 
 impl StdioClient {
-    pub async fn new(command: &str, args: &[String], env: &HashMap<String, String>) -> Result<Self, McpError> {
+    pub async fn new(
+        command: &str,
+        args: &[String],
+        env: &HashMap<String, String>,
+    ) -> Result<Self, McpError> {
         let transport = StdioTransport::spawn(command, args, env).await?;
         Ok(Self {
             transport: tokio::sync::Mutex::new(transport),
@@ -843,8 +921,13 @@ impl McpClient for StdioClient {
                     .filter_map(|t| {
                         Some(ToolDescriptor {
                             name: t.get("name")?.as_str()?.to_string(),
-                            description: t.get("description").and_then(|d| d.as_str()).map(String::from),
-                            input_schema: t.get("inputSchema").cloned()
+                            description: t
+                                .get("description")
+                                .and_then(|d| d.as_str())
+                                .map(String::from),
+                            input_schema: t
+                                .get("inputSchema")
+                                .cloned()
                                 .or_else(|| t.get("input_schema").cloned())
                                 .unwrap_or(serde_json::json!({})),
                         })
@@ -976,33 +1059,47 @@ impl McpClient for LazyStdio {
         if guard.is_none() {
             *guard = Some(StdioTransport::spawn(&self.command, &self.args, &self.env).await?);
         }
-        guard.as_mut().unwrap().call("tools/list", None).await.map(|result| {
-            let tools = result
-                .get("tools")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|t| {
-                            Some(ToolDescriptor {
-                                name: t.get("name")?.as_str()?.to_string(),
-                                description: t.get("description").and_then(|d| d.as_str()).map(String::from),
-                                input_schema: t.get("inputSchema").cloned()
-                                    .or_else(|| t.get("input_schema").cloned())
-                                    .unwrap_or(serde_json::json!({})),
+        guard
+            .as_mut()
+            .unwrap()
+            .call("tools/list", None)
+            .await
+            .map(|result| {
+                let tools = result
+                    .get("tools")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|t| {
+                                Some(ToolDescriptor {
+                                    name: t.get("name")?.as_str()?.to_string(),
+                                    description: t
+                                        .get("description")
+                                        .and_then(|d| d.as_str())
+                                        .map(String::from),
+                                    input_schema: t
+                                        .get("inputSchema")
+                                        .cloned()
+                                        .or_else(|| t.get("input_schema").cloned())
+                                        .unwrap_or(serde_json::json!({})),
+                                })
                             })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            ServerCapabilities {
-                tools,
-                resources: Vec::new(),
-                prompts: Vec::new(),
-            }
-        })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                ServerCapabilities {
+                    tools,
+                    resources: Vec::new(),
+                    prompts: Vec::new(),
+                }
+            })
     }
 
-    async fn invoke_tool(&self, name: &str, args: &serde_json::Value) -> Result<serde_json::Value, McpError> {
+    async fn invoke_tool(
+        &self,
+        name: &str,
+        args: &serde_json::Value,
+    ) -> Result<serde_json::Value, McpError> {
         let mut guard = self.spawned.lock().await;
         if guard.is_none() {
             *guard = Some(StdioTransport::spawn(&self.command, &self.args, &self.env).await?);
@@ -1011,7 +1108,11 @@ impl McpClient for LazyStdio {
             "name": name,
             "arguments": args,
         });
-        let result = guard.as_mut().unwrap().call("tools/call", Some(params)).await?;
+        let result = guard
+            .as_mut()
+            .unwrap()
+            .call("tools/call", Some(params))
+            .await?;
         let content = result
             .get("content")
             .and_then(|v| v.as_array())
@@ -1071,21 +1172,20 @@ impl McpClient for LazySseHttp {
         self.ensure_initialized(&mut guard).await;
 
         match guard.as_ref().unwrap() {
-            ClientOrFallback::Sse(client) => {
-                match client.discover().await {
-                    Ok(caps) => Ok(caps),
-                    Err(e @ McpError::Transport(_))
-                        if is_sse_dead(&e) =>
-                    {
-                        tracing::warn!("MCP: SSE lost, switching to HTTP POST");
-                        let fallback = HttpTransport::new(&self.sse_url, &self.headers);
-                        let r = fallback.call("tools/list", None).await?;
-                        *guard = Some(ClientOrFallback::Fallback(HttpTransport::new(&self.sse_url, &self.headers)));
-                        Ok(parse_tools_from_result(&r))
-                    }
-                    Err(e) => Err(e),
+            ClientOrFallback::Sse(client) => match client.discover().await {
+                Ok(caps) => Ok(caps),
+                Err(e @ McpError::Transport(_)) if is_sse_dead(&e) => {
+                    tracing::warn!("MCP: SSE lost, switching to HTTP POST");
+                    let fallback = HttpTransport::new(&self.sse_url, &self.headers);
+                    let r = fallback.call("tools/list", None).await?;
+                    *guard = Some(ClientOrFallback::Fallback(HttpTransport::new(
+                        &self.sse_url,
+                        &self.headers,
+                    )));
+                    Ok(parse_tools_from_result(&r))
                 }
-            }
+                Err(e) => Err(e),
+            },
             ClientOrFallback::Fallback(transport) => {
                 let result = transport.call("tools/list", None).await?;
                 Ok(parse_tools_from_result(&result))
@@ -1093,27 +1193,30 @@ impl McpClient for LazySseHttp {
         }
     }
 
-    async fn invoke_tool(&self, name: &str, args: &serde_json::Value) -> Result<serde_json::Value, McpError> {
+    async fn invoke_tool(
+        &self,
+        name: &str,
+        args: &serde_json::Value,
+    ) -> Result<serde_json::Value, McpError> {
         let mut guard = self.inner.lock().await;
         self.ensure_initialized(&mut guard).await;
 
         match guard.as_ref().unwrap() {
-            ClientOrFallback::Sse(client) => {
-                match client.invoke_tool(name, args).await {
-                    Ok(val) => Ok(val),
-                    Err(e @ McpError::Transport(_))
-                        if is_sse_dead(&e) =>
-                    {
-                        tracing::warn!("MCP: SSE lost, switching to HTTP POST");
-                        let fallback = HttpTransport::new(&self.sse_url, &self.headers);
-                        let params = serde_json::json!({ "name": name, "arguments": args });
-                        let r = fallback.call("tools/call", Some(params)).await?;
-                        *guard = Some(ClientOrFallback::Fallback(HttpTransport::new(&self.sse_url, &self.headers)));
-                        Ok(extract_text_content(&r))
-                    }
-                    Err(e) => Err(e),
+            ClientOrFallback::Sse(client) => match client.invoke_tool(name, args).await {
+                Ok(val) => Ok(val),
+                Err(e @ McpError::Transport(_)) if is_sse_dead(&e) => {
+                    tracing::warn!("MCP: SSE lost, switching to HTTP POST");
+                    let fallback = HttpTransport::new(&self.sse_url, &self.headers);
+                    let params = serde_json::json!({ "name": name, "arguments": args });
+                    let r = fallback.call("tools/call", Some(params)).await?;
+                    *guard = Some(ClientOrFallback::Fallback(HttpTransport::new(
+                        &self.sse_url,
+                        &self.headers,
+                    )));
+                    Ok(extract_text_content(&r))
                 }
-            }
+                Err(e) => Err(e),
+            },
             ClientOrFallback::Fallback(transport) => {
                 let params = serde_json::json!({ "name": name, "arguments": args });
                 let result = transport.call("tools/call", Some(params)).await?;

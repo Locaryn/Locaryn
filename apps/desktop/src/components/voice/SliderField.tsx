@@ -21,7 +21,11 @@ export function SliderField({
 }: SliderFieldProps) {
   return (
     <div>
-      <label style={{ fontSize: 10, color: "var(--text-faint)", display: "block", marginBottom: 2 }}>{label}</label>
+      <label
+        style={{ fontSize: 10, color: "var(--text-faint)", display: "block", marginBottom: 2 }}
+      >
+        {label}
+      </label>
       <input
         type="range"
         min={min}

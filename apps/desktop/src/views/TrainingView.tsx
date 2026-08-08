@@ -102,12 +102,16 @@ export function TrainingView({ onOpenModels }: Props) {
       <div className="locaryn-view-header">
         <h2>Entraînement & Modification de Modèles</h2>
         <p className="locaryn-view-desc">
-          Entraînez des adaptateurs LoRA ou neutralisez les filtres de refus sur vos modèles locaux installés.
+          Entraînez des adaptateurs LoRA ou neutralisez les filtres de refus sur vos modèles locaux
+          installés.
         </p>
       </div>
 
       {/* Tabs Switcher */}
-      <div className="locaryn-store-tabs" style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+      <div
+        className="locaryn-store-tabs"
+        style={{ display: "flex", gap: "10px", marginBottom: "20px" }}
+      >
         <button
           type="button"
           className={`locaryn-tab-btn${tab === "finetune" ? " locaryn-active" : ""}`}
@@ -118,7 +122,9 @@ export function TrainingView({ onOpenModels }: Props) {
         <button
           type="button"
           className={`locaryn-tab-btn${tab === "obliteration" ? " locaryn-active" : ""}`}
-          style={tab === "obliteration" ? { borderColor: "var(--danger)", color: "var(--danger)" } : {}}
+          style={
+            tab === "obliteration" ? { borderColor: "var(--danger)", color: "var(--danger)" } : {}
+          }
           onClick={() => setTab("obliteration")}
         >
           🔓 Studio d'Oblitération de Modèle (RepE Ablation)
@@ -172,7 +178,7 @@ export function TrainingView({ onOpenModels }: Props) {
                   step="0.00005"
                   className="locaryn-input"
                   value={lr}
-                  onChange={(e) => setLr(parseFloat(e.target.value))}
+                  onChange={(e) => setLr(Number.parseFloat(e.target.value))}
                 />
               </div>
               <div className="locaryn-field" style={{ flex: 1 }}>
@@ -181,7 +187,7 @@ export function TrainingView({ onOpenModels }: Props) {
                   type="number"
                   className="locaryn-input"
                   value={epochs}
-                  onChange={(e) => setEpochs(parseInt(e.target.value, 10))}
+                  onChange={(e) => setEpochs(Number.parseInt(e.target.value, 10))}
                 />
               </div>
             </div>
@@ -221,7 +227,8 @@ export function TrainingView({ onOpenModels }: Props) {
           <div className="locaryn-card">
             <h3>🔓 Paramètres de l'Oblitération (RepE Refusal Ablation)</h3>
             <p className="locaryn-field-hint" style={{ marginBottom: "16px" }}>
-              Calcule le vecteur de direction de refus d'un modèle **déjà installé** et applique une projection orthogonale pour neutraliser les filtres.
+              Calcule le vecteur de direction de refus d'un modèle **déjà installé** et applique une
+              projection orthogonale pour neutraliser les filtres.
             </p>
 
             {/* Warning if no models installed */}
@@ -236,9 +243,14 @@ export function TrainingView({ onOpenModels }: Props) {
                   lineHeight: 1.5,
                 }}
               >
-                <strong style={{ color: "var(--danger)" }}>⚠️ Aucun modèle local actuellement installé :</strong>
-                <p style={{ margin: "8px 0", fontSize: "var(--text-xs)", color: "var(--text-dim)" }}>
-                  Pour pouvoir appliquer le script d'oblitération, vous devez au préalable **télécharger et installer un modèle local** (depuis le Marketplace de Modèles).
+                <strong style={{ color: "var(--danger)" }}>
+                  ⚠️ Aucun modèle local actuellement installé :
+                </strong>
+                <p
+                  style={{ margin: "8px 0", fontSize: "var(--text-xs)", color: "var(--text-dim)" }}
+                >
+                  Pour pouvoir appliquer le script d'oblitération, vous devez au préalable
+                  **télécharger et installer un modèle local** (depuis le Marketplace de Modèles).
                 </p>
                 {onOpenModels && (
                   <button
@@ -265,9 +277,12 @@ export function TrainingView({ onOpenModels }: Props) {
                     lineHeight: 1.5,
                   }}
                 >
-                  <strong style={{ color: "var(--danger)" }}>⚠️ Avis de Responsabilité & Cadre Légal :</strong>
+                  <strong style={{ color: "var(--danger)" }}>
+                    ⚠️ Avis de Responsabilité & Cadre Légal :
+                  </strong>
                   <br />
-                  L'oblitération des contraintes de refus est dédiée **exclusivement au pentesting d'infrastructure encadré et à la recherche en cybersécurité**.
+                  L'oblitération des contraintes de refus est dédiée **exclusivement au pentesting
+                  d'infrastructure encadré et à la recherche en cybersécurité**.
                   <div style={{ marginTop: "8px" }}>
                     <label className="locaryn-checkbox-row">
                       <input
@@ -276,14 +291,17 @@ export function TrainingView({ onOpenModels }: Props) {
                         onChange={(e) => setDisclaimerAccepted(e.target.checked)}
                       />
                       <span style={{ fontWeight: 700 }}>
-                        J'accepte la décharge et confirme utiliser cette option pour la cybersécurité légale.
+                        J'accepte la décharge et confirme utiliser cette option pour la
+                        cybersécurité légale.
                       </span>
                     </label>
                   </div>
                 </div>
 
                 <div className="locaryn-field" style={{ marginBottom: "14px" }}>
-                  <label className="locaryn-field-label">Modèle local installé à oblitérer ({installedModels.length} disponibles)</label>
+                  <label className="locaryn-field-label">
+                    Modèle local installé à oblitérer ({installedModels.length} disponibles)
+                  </label>
                   <select
                     className="locaryn-select"
                     value={oblModel}
@@ -332,19 +350,40 @@ export function TrainingView({ onOpenModels }: Props) {
                     step="0.1"
                     className="lmc-slider"
                     value={intensity}
-                    onChange={(e) => setIntensity(parseFloat(e.target.value))}
+                    onChange={(e) => setIntensity(Number.parseFloat(e.target.value))}
                     disabled={isObliterating}
                   />
                 </div>
 
                 {isObliterating && (
                   <div style={{ marginTop: "16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", marginBottom: "4px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: "var(--text-xs)",
+                        marginBottom: "4px",
+                      }}
+                    >
                       <span>Calcul et soustraction du vecteur de refus...</span>
                       <span>{oblProgress}%</span>
                     </div>
-                    <div style={{ height: "6px", background: "var(--border)", borderRadius: "var(--radius-pill)", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${oblProgress}%`, background: "var(--danger)", transition: "width 0.3s ease" }} />
+                    <div
+                      style={{
+                        height: "6px",
+                        background: "var(--border)",
+                        borderRadius: "var(--radius-pill)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${oblProgress}%`,
+                          background: "var(--danger)",
+                          transition: "width 0.3s ease",
+                        }}
+                      />
                     </div>
                   </div>
                 )}
@@ -353,11 +392,16 @@ export function TrainingView({ onOpenModels }: Props) {
                   <button
                     type="button"
                     className="locaryn-btn-primary"
-                    style={{ background: disclaimerAccepted ? "var(--danger)" : "var(--border)", color: "#fff" }}
+                    style={{
+                      background: disclaimerAccepted ? "var(--danger)" : "var(--border)",
+                      color: "#fff",
+                    }}
                     disabled={!disclaimerAccepted || isObliterating}
                     onClick={startObliteration}
                   >
-                    {isObliterating ? "Oblitération en cours..." : "⚡ Lancer l'Oblitération de Modèle"}
+                    {isObliterating
+                      ? "Oblitération en cours..."
+                      : "⚡ Lancer l'Oblitération de Modèle"}
                   </button>
                 </div>
               </>
@@ -368,10 +412,16 @@ export function TrainingView({ onOpenModels }: Props) {
             <h3>Console du Script d'Oblitération</h3>
             <div className="locaryn-training-logs">
               {oblLogs.length === 0 ? (
-                <span className="locaryn-text-faint">Sélectionnez un modèle installé et validez la décharge pour démarrer...</span>
+                <span className="locaryn-text-faint">
+                  Sélectionnez un modèle installé et validez la décharge pour démarrer...
+                </span>
               ) : (
                 oblLogs.map((log, i) => (
-                  <div key={i} className="locaryn-log-line" style={{ color: log.includes("✅") ? "var(--accent)" : "var(--text)" }}>
+                  <div
+                    key={i}
+                    className="locaryn-log-line"
+                    style={{ color: log.includes("✅") ? "var(--accent)" : "var(--text)" }}
+                  >
                     {log}
                   </div>
                 ))

@@ -15,15 +15,16 @@
     {
       "matcher": "*",
       "hooks": [
-        { "type": "command", "command": "echo [locaryn] tool completed >> ${LOCARYN_PROJECT_ROOT}/.locaryn/tool.log" }
+        {
+          "type": "command",
+          "command": "echo [locaryn] tool completed >> ${LOCARYN_PROJECT_ROOT}/.locaryn/tool.log"
+        }
       ]
     }
   ],
   "Stop": [
     {
-      "hooks": [
-        { "type": "command", "command": "echo done" }
-      ]
+      "hooks": [{ "type": "command", "command": "echo done" }]
     }
   ]
 }

@@ -14,32 +14,31 @@
 
 :root {
   /* Warm-neutral scale — the entire UI is built from these. */
-  --bg: #17191a;          /* app background */
-  --surface: #1e2022;     /* raised elements: cards, composer, inputs */
+  --bg: #17191a; /* app background */
+  --surface: #1e2022; /* raised elements: cards, composer, inputs */
   --surface-hover: #24262a;
-  --border: #2c2f31;      /* hairline separators */
+  --border: #2c2f31; /* hairline separators */
   --border-strong: #3a3e41;
 
   /* Text — one family, three weights of presence. */
-  --text: #e7e6e2;        /* primary (warm off-white) */
-  --text-dim: #a2a49e;    /* secondary */
-  --text-faint: #6a6d68;  /* tertiary / hints */
+  --text: #e7e6e2; /* primary (warm off-white) */
+  --text-dim: #a2a49e; /* secondary */
+  --text-faint: #6a6d68; /* tertiary / hints */
 
   /* The single accent — muted, natural green. Overridden at
      runtime by useTheme (--accent-rgb kept in sync). */
   --accent: #6f9c7f;
   --accent-rgb: 111, 156, 127;
-  --accent-hex: #6f9c7f;  /* legacy alias for JS-injected value */
+  --accent-hex: #6f9c7f; /* legacy alias for JS-injected value */
 
   /* Feedback (used rarely, kept muted) */
   --danger: #cc7d72;
   --danger-rgb: 204, 125, 114;
 
   /* Fonts */
-  --font-sans: "Sen", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
-    monospace;
+  --font-sans: "Sen", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 
   /* Type scale */
   --text-xs: 11px;

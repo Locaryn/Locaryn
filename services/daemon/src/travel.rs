@@ -132,6 +132,12 @@ impl TravelState {
     ///
     /// Links expire on purpose, so the screen has to be able to mint another
     /// without tearing the tunnel down and handing out a new address.
+    ///
+    /// Aucun appelant pour l'instant : la route HTTP qui l'exposera n'est pas
+    /// écrite. La méthode reste parce que l'expiration des liens est déjà en
+    /// place — sans elle, la seule issue serait de couper le tunnel, ce qui
+    /// changerait l'adresse et casserait les appareils déjà appairés.
+    #[allow(dead_code)]
     pub async fn refresh_link(&self, data_dir: &std::path::Path) -> Result<TravelStatus, String> {
         let guard = self.inner.lock().await;
         let running = guard.as_ref().ok_or("Le mode voyage n'est pas actif.")?;
@@ -205,7 +211,10 @@ pub fn announce(uri: &str, provider: Provider) {
                 println!("  {line}");
             }
             println!();
-            println!("  Ce code expire dans {} minutes.", link::DEFAULT_TTL_SECONDS / 60);
+            println!(
+                "  Ce code expire dans {} minutes.",
+                link::DEFAULT_TTL_SECONDS / 60
+            );
             println!("  Pour en afficher un nouveau :  locaryn travel qr");
             println!();
         }
@@ -226,7 +235,10 @@ mod tests {
             .start(Provider::Cloudflare, 7474, std::path::Path::new("."), false)
             .await
             .unwrap_err();
-        assert!(err.contains("authentification"), "message peu clair : {err}");
+        assert!(
+            err.contains("authentification"),
+            "message peu clair : {err}"
+        );
         // And it must say what to do about it.
         assert!(err.contains("0.0.0.0"), "message sans issue : {err}");
         assert!(!state.status(std::path::Path::new(".")).await.active);
@@ -246,7 +258,8 @@ mod tests {
 
         let ca = locaryn_config::mtls::authority(&dir).unwrap();
         let kid = link::key_id(&ca.cert_pem).unwrap();
-        let parsed = link::verify(&uri, &|k| (k == kid).then(|| ca.cert_pem.clone()), now()).unwrap();
+        let parsed =
+            link::verify(&uri, &|k| (k == kid).then(|| ca.cert_pem.clone()), now()).unwrap();
         assert_eq!(parsed.mode, link::Mode::Home);
         assert_eq!(parsed.url, "https://192.168.1.10:7474");
         assert!(svg.starts_with("<svg"));
@@ -265,7 +278,10 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let (uri, svg) = TravelState::home_link(&dir, "https://192.168.1.10:7474").unwrap();
-        assert!(!uri.contains("192.168"), "adresse en clair dans le lien : {uri}");
+        assert!(
+            !uri.contains("192.168"),
+            "adresse en clair dans le lien : {uri}"
+        );
         assert!(!svg.contains("192.168"), "adresse en clair dans l'image");
         std::fs::remove_dir_all(&dir).ok();
     }

@@ -1,22 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import { core, reasoningPayload, IMAGE_QUALITIES, type ConnectionMode, type ImageIntent, type ReasoningLevel, type Session, type StreamEvent } from "../lib/core";
-import { MessageBubble } from "../components/chat/MessageBubble";
-import {
-  appendRunLine,
-  finishTerminalRun,
-  showWebRun,
-  startTerminalRun,
-} from "../lib/runPanel";
-import { ToolCard } from "../components/chat/ToolCard";
-import { QuickModelSelector } from "../components/QuickModelSelector";
 import { ImageGenPanel } from "../components/ImageGenPanel";
+import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
-import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { ImageIntentCard } from "../components/chat/ImageIntentCard";
+import { MessageBubble } from "../components/chat/MessageBubble";
+import { ReasoningPicker } from "../components/chat/ReasoningPicker";
+import { ToolCard } from "../components/chat/ToolCard";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
-import { setImageResultHandler, startImageGeneration, toImageUrl } from "../lib/imageJobs";
+import {
+  type ConnectionMode,
+  IMAGE_QUALITIES,
+  type ImageIntent,
+  type ReasoningLevel,
+  type Session,
+  type StreamEvent,
+  core,
+  reasoningPayload,
+} from "../lib/core";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
-import { matchSlashInput, argToSize, type SlashAction, type SlashSuggestion } from "../lib/slashCommands";
+import { setImageResultHandler, startImageGeneration, toImageUrl } from "../lib/imageJobs";
+import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
+import {
+  type SlashAction,
+  type SlashSuggestion,
+  argToSize,
+  matchSlashInput,
+} from "../lib/slashCommands";
 import { runWorkflow } from "../lib/workflow";
 import { DEFAULT_MODEL_PARAMS } from "./ModelConfigPanel";
 
@@ -111,7 +120,20 @@ function readFile(file: File): Promise<Attachment> {
   });
 }
 
-export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, forceOpenImageGen, onImageGenClosed, onCreateSessionForPrompt, onOpenSettings, onNewChat, onAddProject, onAddSsh, connectionMode }: Props) {
+export function ChatPanel({
+  sessionId,
+  projectId,
+  ctxSize,
+  onOpenMarketplace,
+  forceOpenImageGen,
+  onImageGenClosed,
+  onCreateSessionForPrompt,
+  onOpenSettings,
+  onNewChat,
+  onAddProject,
+  onAddSsh,
+  connectionMode,
+}: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -173,7 +195,8 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
         if (active.model) {
           setActiveModel(active.model);
         }
-        const isRemote = active.kind === "remote" || (active.model?.includes("openrouter") ?? false);
+        const isRemote =
+          active.kind === "remote" || (active.model?.includes("openrouter") ?? false);
         setIsLocalModel(!isRemote);
 
         try {
@@ -193,7 +216,8 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
 
   useEffect(() => {
     refreshActiveModel();
-    core.listImageModels()
+    core
+      .listImageModels()
       .then((l) => setActiveImageModel(l[0] ?? ""))
       .catch(() => {});
   }, []);
@@ -204,7 +228,8 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
       setWorkspace({ kind: "temp", id: null, label: "Temporaire" });
       return;
     }
-    core.listProjects()
+    core
+      .listProjects()
       .then((ps) => {
         const p = ps.find((x) => x.id === projectId);
         if (p) setWorkspace({ kind: "local", id: p.id, label: p.name });
@@ -219,7 +244,8 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
       setRunCwd(null);
       return;
     }
-    core.sessionWorkspace(sessionId)
+    core
+      .sessionWorkspace(sessionId)
       .then((p) => setRunCwd(p))
       .catch(() => setRunCwd(null));
   }, [sessionId]);
@@ -244,10 +270,15 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
       return;
     }
     let cancelled = false;
-    core.ragStatus(projectId)
-      .then((s) => { if (!cancelled) setRagCount(s.chunk_count); })
+    core
+      .ragStatus(projectId)
+      .then((s) => {
+        if (!cancelled) setRagCount(s.chunk_count);
+      })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [projectId, ragOpen]);
 
   // Background image generations deliver their finished image into the chat
@@ -295,7 +326,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             kind: "msg",
             role: m.role as "user" | "assistant",
             ...splitInlineImages(m.content),
-          }))
+          })),
         );
       } catch (e) {
         setItems([{ kind: "log", text: `(error loading session: ${e})` }]);
@@ -323,15 +354,9 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
       setItems((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.kind === "msg" && last.role === "assistant") {
-          return [
-            ...prev.slice(0, -1),
-            { ...last, text: last.text + ev.text },
-          ];
+          return [...prev.slice(0, -1), { ...last, text: last.text + ev.text }];
         }
-        return [
-          ...prev,
-          { kind: "msg", role: "assistant", text: ev.text },
-        ];
+        return [...prev, { kind: "msg", role: "assistant", text: ev.text }];
       });
     } else if (ev.type === "tool_call") {
       setItems((prev) => [
@@ -356,13 +381,10 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             };
           }
           return it;
-        })
+        }),
       );
     } else if (ev.type === "log") {
-      setItems((prev) => [
-        ...prev,
-        { kind: "log", text: `[Log: ${ev.msg}]` },
-      ]);
+      setItems((prev) => [...prev, { kind: "log", text: `[Log: ${ev.msg}]` }]);
     }
   }
 
@@ -423,11 +445,20 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
     // generator, not the chat model. The local pre-filter avoids a model call on
     // every message; the model then confirms and translates the prompt, and the
     // user always gets the final say.
-    if (!textOverride && text && !text.startsWith("/") && imgs.length === 0 && looksLikeImageRequest(text)) {
+    if (
+      !textOverride &&
+      text &&
+      !text.startsWith("/") &&
+      imgs.length === 0 &&
+      looksLikeImageRequest(text)
+    ) {
       try {
         const intent = await core.detectImageRequest(text);
         if (intent.is_image && intent.english_prompt) {
-          setItems((prev) => [...prev, { kind: "intent", intent, model: activeModel, original: text }]);
+          setItems((prev) => [
+            ...prev,
+            { kind: "intent", intent, model: activeModel, original: text },
+          ]);
           setStreaming(false);
           return;
         }
@@ -479,7 +510,9 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
         text,
         handleEvent,
         imgs.length ? imgs.map((a) => a.base64) : undefined,
-        jsonMode === "on" || (jsonMode === "auto" && wantsJson(text)) ? { type: "json_object" } : null,
+        jsonMode === "on" || (jsonMode === "auto" && wantsJson(text))
+          ? { type: "json_object" }
+          : null,
         reasoningPayload(reasoning),
       );
     } catch (e) {
@@ -548,12 +581,17 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
     }
 
     const runners: Record<string, (f: string) => string> = {
-      python: (f) => `python "${f}"`, py: (f) => `python "${f}"`,
-      javascript: (f) => `node "${f}"`, js: (f) => `node "${f}"`, node: (f) => `node "${f}"`,
-      powershell: (f) => `powershell -File "${f}"`, ps1: (f) => `powershell -File "${f}"`,
+      python: (f) => `python "${f}"`,
+      py: (f) => `python "${f}"`,
+      javascript: (f) => `node "${f}"`,
+      js: (f) => `node "${f}"`,
+      node: (f) => `node "${f}"`,
+      powershell: (f) => `powershell -File "${f}"`,
+      ps1: (f) => `powershell -File "${f}"`,
     };
     const preview = code.length > 400 ? `${code.slice(0, 400)}\u2026` : code;
-    if (!window.confirm(`Ex\u00e9cuter ce code (${lang}) sur votre machine ?\n\n${preview}`)) return;
+    if (!window.confirm(`Ex\u00e9cuter ce code (${lang}) sur votre machine ?\n\n${preview}`))
+      return;
 
     const cwd = await resolveRunCwd();
     // Shell snippets run as-is; other languages go through a temp file.
@@ -561,7 +599,11 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
     const cmd = isShell
       ? code
       : (() => {
-          const ext = lang.startsWith("py") ? "py" : lang === "powershell" || lang === "ps1" ? "ps1" : "js";
+          const ext = lang.startsWith("py")
+            ? "py"
+            : lang === "powershell" || lang === "ps1"
+              ? "ps1"
+              : "js";
           const file = `locaryn_snippet_${Date.now()}.${ext}`;
           const body = code.replace(/'/g, "''");
           const write = `@'\n${body}\n'@ | Set-Content -Encoding utf8 "$env:TEMP\\${file}"`;
@@ -590,17 +632,40 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
     setSlashSize(size ?? null);
     if (inputRef.current) inputRef.current.style.height = "auto";
     switch (action) {
-      case "image": setImageGenOpen(true); break;
-      case "edit-image": setImageGenOpen(true); break;
-      case "documents": if (projectId) setRagOpen(true); break;
-      case "json": setJsonMode((v) => (v === "auto" ? "on" : v === "on" ? "off" : "auto")); break;
-      case "reasoning-off": setReasoning("off"); break;
-      case "reasoning-high": setReasoning("high"); break;
-      case "model": setQuickModelOpen(true); break;
-      case "settings": onOpenSettings?.(); break;
-      case "new-chat": onNewChat?.(); break;
-      case "plan": setPlanNext(true); break;
-      case "clear": setItems([]); setFollowups([]); break;
+      case "image":
+        setImageGenOpen(true);
+        break;
+      case "edit-image":
+        setImageGenOpen(true);
+        break;
+      case "documents":
+        if (projectId) setRagOpen(true);
+        break;
+      case "json":
+        setJsonMode((v) => (v === "auto" ? "on" : v === "on" ? "off" : "auto"));
+        break;
+      case "reasoning-off":
+        setReasoning("off");
+        break;
+      case "reasoning-high":
+        setReasoning("high");
+        break;
+      case "model":
+        setQuickModelOpen(true);
+        break;
+      case "settings":
+        onOpenSettings?.();
+        break;
+      case "new-chat":
+        onNewChat?.();
+        break;
+      case "plan":
+        setPlanNext(true);
+        break;
+      case "clear":
+        setItems([]);
+        setFollowups([]);
+        break;
     }
   }
 
@@ -708,7 +773,8 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
           <div className="locaryn-empty">
             <div className="locaryn-empty-title">Assistant IA Locaryn</div>
             <div className="locaryn-empty-sub">
-              Locaryn peut lire, chercher, éditer et exécuter du code dans ce projet ou en chat libre.
+              Locaryn peut lire, chercher, éditer et exécuter du code dans ce projet ou en chat
+              libre.
             </div>
             <div className="locaryn-empty-suggestions">
               {SUGGESTIONS.map((s) => (
@@ -750,10 +816,14 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
                     onAccept={(quality) => {
                       const px = IMAGE_QUALITIES.find((q) => q.id === quality)?.px;
                       setItems((prev) =>
-                        prev.map((x, j) => (j === i && x.kind === "intent" ? { ...x, decided: "accepted" } : x)),
+                        prev.map((x, j) =>
+                          j === i && x.kind === "intent" ? { ...x, decided: "accepted" } : x,
+                        ),
                       );
                       void (async () => {
-                        const info = await core.appInfo().catch(() => ({ data_dir: "C:/Users/Public" }));
+                        const info = await core
+                          .appInfo()
+                          .catch(() => ({ data_dir: "C:/Users/Public" }));
                         startImageGeneration({
                           model: activeImageModel || it.model,
                           prompt: it.intent.english_prompt,
@@ -766,7 +836,9 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
                     }}
                     onRefuse={() => {
                       setItems((prev) =>
-                        prev.map((x, j) => (j === i && x.kind === "intent" ? { ...x, decided: "refused" } : x)),
+                        prev.map((x, j) =>
+                          j === i && x.kind === "intent" ? { ...x, decided: "refused" } : x,
+                        ),
                       );
                       // Answer the original message as a normal chat turn.
                       send(it.original);
@@ -883,7 +955,8 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
                       <span className="locaryn-slash-hint">{c.hint}</span>
                     </span>
                     <code className="locaryn-slash-cmd">
-                      /{c.name}{c.args && c.args.length ? " ..." : ""}
+                      /{c.name}
+                      {c.args && c.args.length ? " ..." : ""}
                     </code>
                   </button>
                 ))
@@ -929,9 +1002,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
                     type="button"
                     className="locaryn-attach-remove"
                     aria-label="Retirer l'image"
-                    onClick={() =>
-                      setAttachments((prev) => prev.filter((_, idx) => idx !== i))
-                    }
+                    onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
                   >
                     ✕
                   </button>
@@ -1012,7 +1083,16 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
           </div>
 
           {/* Context gauge & In-Chat Model Quick Switcher Bar */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: "4px", paddingRight: "4px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderTop: "1px solid var(--border)",
+              paddingTop: "4px",
+              paddingRight: "4px",
+            }}
+          >
             {/* Model Quick Picker pill */}
             <button
               type="button"
@@ -1040,7 +1120,10 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
             </button>
 
             {/* Context gauge */}
-            <div className="locaryn-ctx-gauge-wrap" title={`~${ctxFmt(usedTokens)} / ${ctxFmt(ctxWindow)} tokens utilisés`}>
+            <div
+              className="locaryn-ctx-gauge-wrap"
+              title={`~${ctxFmt(usedTokens)} / ${ctxFmt(ctxWindow)} tokens utilisés`}
+            >
               <div
                 className={`locaryn-ctx-gauge-bar locaryn-ctx-gauge-${ctxWarnLevel}`}
                 style={{ width: `${ctxPct * 100}%` }}
@@ -1062,7 +1145,11 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
           installedModels={installedModels}
           sessionId={sessionId}
           forcedSize={slashSize}
-          onClose={() => { setImageGenOpen(false); setSlashSize(null); onImageGenClosed?.(); }}
+          onClose={() => {
+            setImageGenOpen(false);
+            setSlashSize(null);
+            onImageGenClosed?.();
+          }}
           onImageGenerated={(path) => {
             const url = toImageUrl(path);
             setItems((prev) => [
@@ -1086,9 +1173,7 @@ export function ChatPanel({ sessionId, projectId, ctxSize, onOpenMarketplace, fo
         />
       )}
 
-      {ragOpen && projectId && (
-        <RagPanel projectId={projectId} onClose={() => setRagOpen(false)} />
-      )}
+      {ragOpen && projectId && <RagPanel projectId={projectId} onClose={() => setRagOpen(false)} />}
     </section>
   );
 }
