@@ -183,7 +183,7 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
 
           {section === "appearance" && (
             <div className="locaryn-field">
-              <label className="locaryn-field-label">Couleur d'accentuation</label>
+              <div className="locaryn-field-label">Couleur d'accentuation</div>
               <p className="locaryn-field-hint">
                 La teinte unique de l'interface. Sobre et naturelle par défaut.
               </p>
@@ -237,7 +237,7 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
 
           {section === "language" && (
             <div className="locaryn-field">
-              <label className="locaryn-field-label">Langue de l'interface</label>
+              <div className="locaryn-field-label">Langue de l'interface</div>
               <p className="locaryn-field-hint">
                 Change la langue des textes de l'application. Les noms de modèles, de marques et les
                 termes techniques restent inchangés.

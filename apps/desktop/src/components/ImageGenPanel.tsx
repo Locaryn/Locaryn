@@ -589,9 +589,9 @@ export function ImageGenPanel({
 
       {/* ── Prompt ── */}
       <div className="img-gen-field">
-        <label className="img-gen-label">
+        <div className="img-gen-label">
           {mode === "img2img" ? "Instructions de modification" : "Description de l'image"}
-        </label>
+        </div>
         <textarea
           className="locaryn-input img-gen-textarea"
           rows={3}
@@ -623,8 +623,11 @@ export function ImageGenPanel({
         <div className="img-gen-advanced-panel">
           <div className="img-gen-adv-row">
             <div className="img-gen-adv-item">
-              <label className="img-gen-label">Prompt négatif</label>
+              <label htmlFor="imggen-negative" className="img-gen-label">
+                Prompt négatif
+              </label>
               <input
+                id="imggen-negative"
                 type="text"
                 className="locaryn-input"
                 placeholder="blurry, ugly, watermark..."
@@ -636,10 +639,11 @@ export function ImageGenPanel({
           </div>
           <div className="img-gen-adv-row">
             <div className="img-gen-adv-item">
-              <label className="img-gen-label">
+              <label htmlFor="imggen-width" className="img-gen-label">
                 Steps <span className="img-gen-val">{steps}</span>
               </label>
               <input
+                id="imggen-width"
                 type="range"
                 className="perf-slider"
                 min={5}
@@ -650,10 +654,11 @@ export function ImageGenPanel({
               />
             </div>
             <div className="img-gen-adv-item">
-              <label className="img-gen-label">
+              <label htmlFor="imggen-height" className="img-gen-label">
                 CFG Scale <span className="img-gen-val">{cfg_scale}</span>
               </label>
               <input
+                id="imggen-height"
                 type="range"
                 className="perf-slider"
                 min={1}
@@ -683,7 +688,7 @@ export function ImageGenPanel({
 
           {/* RAM/VRAM dispatch — run big diffusion models (Z-Image) on any PC */}
           <div className="img-gen-adv-item" style={{ marginTop: 12 }}>
-            <label className="img-gen-label">Mémoire (dispatch RAM/VRAM)</label>
+            <div className="img-gen-label">Mémoire (dispatch RAM/VRAM)</div>
             <div className="img-gen-adv-row" style={{ marginTop: 4 }}>
               {(
                 [

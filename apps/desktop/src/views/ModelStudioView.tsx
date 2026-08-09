@@ -118,7 +118,7 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
         </div>
 
         <div className="locaryn-field" style={{ marginTop: 20 }}>
-          <label className="locaryn-field-label">Adaptateurs LoRA chargés</label>
+          <div className="locaryn-field-label">Adaptateurs LoRA chargés</div>
           {cfg && cfg.lora_adapters.length > 0 ? (
             <ul className="locaryn-lora-list">
               {cfg.lora_adapters.map((p) => (

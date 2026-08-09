@@ -48,7 +48,7 @@ export function ServerSettings() {
 
   return (
     <div className="locaryn-field">
-      <label className="locaryn-field-label">Partager cette machine</label>
+      <div className="locaryn-field-label">Partager cette machine</div>
       <p className="locaryn-field-hint">
         Rend les modèles de cet ordinateur utilisables depuis d'autres postes et depuis un
         téléphone. Utile quand une seule machine possède la carte graphique.
@@ -112,9 +112,9 @@ export function ServerSettings() {
 
           {status.fingerprint && (
             <>
-              <label className="locaryn-field-label" style={{ marginTop: 20 }}>
+              <div className="locaryn-field-label" style={{ marginTop: 20 }}>
                 Empreinte du certificat
-              </label>
+              </div>
               <p className="locaryn-field-hint">
                 Le certificat est généré par cette machine, donc les postes clients afficheront un
                 avertissement au premier contact. C'est attendu : cette empreinte est ce qui permet

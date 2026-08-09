@@ -67,7 +67,7 @@ export function TravelSettings() {
 
   return (
     <div className="locaryn-field" style={{ marginTop: 28 }}>
-      <label className="locaryn-field-label">Mode voyage</label>
+      <div className="locaryn-field-label">Mode voyage</div>
       <p className="locaryn-field-hint">
         Utiliser cette machine depuis n'importe où, sans rien ouvrir sur la box. L'ordinateur
         appelle un relais ; c'est le relais que le téléphone contacte.

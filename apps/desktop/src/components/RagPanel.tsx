@@ -323,9 +323,12 @@ export function RagPanel({ projectId, onClose }: Props) {
           </div>
 
           <div className="locaryn-field" style={{ marginTop: 20 }}>
-            <label className="locaryn-field-label">Tester la recherche</label>
+            <label htmlFor="rag-query" className="locaryn-field-label">
+              Tester la recherche
+            </label>
             <div className="locaryn-field-row">
               <input
+                id="rag-query"
                 className="locaryn-input"
                 placeholder="Une question pour voir ce qui remonte…"
                 value={query}

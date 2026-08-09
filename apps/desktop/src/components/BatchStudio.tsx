@@ -179,7 +179,7 @@ export function BatchStudio() {
         </div>
 
         <div style={{ marginBottom: "12px" }}>
-          <label
+          <div
             style={{
               fontSize: "11px",
               color: "var(--text-faint)",
@@ -188,7 +188,7 @@ export function BatchStudio() {
             }}
           >
             Fichier Batch au format JSONL (1 requête par ligne avec custom_id) :
-          </label>
+          </div>
           <textarea
             className="locaryn-input"
             rows={4}

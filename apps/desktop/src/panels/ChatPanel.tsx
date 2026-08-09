@@ -893,7 +893,7 @@ export function ChatPanel({
               if (it.kind === "msg") {
                 return (
                   <MessageBubble
-                    key={i}
+                    key={it.id}
                     role={it.role}
                     text={it.text}
                     images={it.images}
@@ -906,7 +906,7 @@ export function ChatPanel({
               if (it.kind === "intent") {
                 return (
                   <ImageIntentCard
-                    key={i}
+                    key={it.id}
                     intent={it.intent}
                     model={it.model}
                     decided={it.decided}
@@ -946,7 +946,7 @@ export function ChatPanel({
               if (it.kind === "tool") {
                 return (
                   <ToolCard
-                    key={i}
+                    key={it.id}
                     tool={it.tool}
                     args={it.args}
                     status={it.status}
@@ -955,7 +955,7 @@ export function ChatPanel({
                 );
               }
               return (
-                <div key={i} className="locaryn-chat-log">
+                <div key={it.id} className="locaryn-chat-log">
                   {it.text}
                 </div>
               );
@@ -1012,7 +1012,7 @@ export function ChatPanel({
           <div className="locaryn-queue-container">
             <div className="locaryn-queue-title">File d'attente ({messageQueue.length})</div>
             {messageQueue.map((qm, i) => (
-              <div key={i} className="locaryn-queue-item">
+              <div key={qm.id} className="locaryn-queue-item">
                 <span className="locaryn-queue-text">{qm.text || "(Image seule)"}</span>
                 <button
                   type="button"
@@ -1029,7 +1029,14 @@ export function ChatPanel({
 
         {/* Slash-command palette (type "/" in the composer) */}
         {slash && slash.items.length > 0 && (
-          <div className="locaryn-slash" role="listbox" aria-label="Commandes">
+          // Une palette de commandes n'a pas d'équivalent HTML natif : `select`
+          // n'accepte ni la saisie libre qui la filtre, ni le contenu riche de
+          // chaque ligne. Le motif listbox/option d'ARIA est la réponse prévue
+          // pour ce cas. `tabIndex={-1}` parce que le focus ne quitte jamais le
+          // champ de saisie — ce sont ses flèches qui déplacent la sélection,
+          // et un arrêt de tabulation ici piégerait l'utilisateur.
+          // biome-ignore lint/a11y/useSemanticElements: aucun élément natif ne couvre la liste filtrable d'une palette de commandes.
+          <div className="locaryn-slash" role="listbox" aria-label="Commandes" tabIndex={-1}>
             {slash.kind === "args" && (
               <div className="locaryn-slash-head">
                 {slash.command.icon} {slash.command.label} — choisissez la qualite
@@ -1040,6 +1047,7 @@ export function ChatPanel({
                   <button
                     key={c.name}
                     type="button"
+                    // biome-ignore lint/a11y/useSemanticElements: option d'un listbox ARIA ; un <option> natif ne peut pas porter ce contenu ni ce style.
                     role="option"
                     aria-selected={i === slashIndex}
                     className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
@@ -1061,6 +1069,7 @@ export function ChatPanel({
                   <button
                     key={a.value}
                     type="button"
+                    // biome-ignore lint/a11y/useSemanticElements: option d'un listbox ARIA ; un <option> natif ne peut pas porter ce contenu ni ce style.
                     role="option"
                     aria-selected={i === slashIndex}
                     className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
@@ -1093,7 +1102,7 @@ export function ChatPanel({
           {attachments.length > 0 && (
             <div className="locaryn-attach-strip">
               {attachments.map((a, i) => (
-                <div key={i} className="locaryn-attach-chip">
+                <div key={a.id} className="locaryn-attach-chip">
                   <img src={a.dataUrl} alt={a.name} />
                   <button
                     type="button"

@@ -387,10 +387,15 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
 
           {/* CFG Scale */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              htmlFor="m3d-prompt"
+              className="locaryn-field-label"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Guidance (CFG) : {cfgScale.toFixed(1)}
             </label>
             <input
+              id="m3d-prompt"
               type="range"
               min={1}
               max={20}
@@ -404,10 +409,15 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Negative prompt */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              htmlFor="m3d-negative"
+              className="locaryn-field-label"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Prompt négatif
             </label>
             <input
+              id="m3d-negative"
               type="text"
               className="locaryn-input"
               value={negativePrompt}
@@ -420,10 +430,15 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Output format */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              htmlFor="m3d-steps"
+              className="locaryn-field-label"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Format de sortie
             </label>
             <select
+              id="m3d-steps"
               className="locaryn-input"
               value={outputFormat}
               onChange={(e) => setOutputFormat(e.target.value)}
@@ -449,7 +464,7 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Result ── */}
       {generatedResult && (
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
-          <label className="locaryn-field-label">Modèle 3D généré</label>
+          <div className="locaryn-field-label">Modèle 3D généré</div>
           <div
             style={{
               display: "flex",
