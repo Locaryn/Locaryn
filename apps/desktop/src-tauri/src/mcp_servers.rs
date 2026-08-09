@@ -319,41 +319,22 @@ pub async fn start_automatic(state: &McpState) {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct SnapMcpCheck {
-    pub id: String,
-    pub label: String,
-    pub status: String,
+#[serde(rename_all = "camelCase")]
+pub struct AndroidVmStatus {
+    pub sdk_root: Option<String>,
+    pub sdkmanager: Option<String>,
+    pub avdmanager: Option<String>,
+    pub emulator: Option<String>,
+    pub avds: Vec<String>,
+    pub running_emulators: Vec<String>,
+    pub recommended_avd: String,
     pub detail: String,
-    pub value: Option<String>,
-    pub fix: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct SnapMcpDiagnostics {
-    pub checked_at: String,
-    pub checks: Vec<SnapMcpCheck>,
-}
-
-fn check(
-    checks: &mut Vec<SnapMcpCheck>,
-    id: impl Into<String>,
-    label: impl Into<String>,
-    status: &str,
-    detail: impl Into<String>,
-    value: Option<String>,
-    fix: Option<String>,
-) {
-    checks.push(SnapMcpCheck {
-        id: id.into(),
-        label: label.into(),
-        status: status.into(),
-        detail: detail.into(),
-        value,
-        fix,
-    });
-}
-
+/// Lance une commande courte et rend sa sortie. Utilisé par les sondes
+/// d'environnement : ce qui compte est ce que l'outil répond, pas son code
+/// de retour seul — certains écrivent leur diagnostic sur stderr en
+/// réussissant.
 fn probe_command(program: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(program)
         .args(args)
@@ -367,398 +348,18 @@ fn probe_command(program: &str, args: &[&str]) -> Result<String, String> {
     Ok(if stdout.is_empty() { stderr } else { stdout })
 }
 
-fn first_line(value: &str) -> String {
-    value.lines().next().unwrap_or_default().trim().to_string()
-}
-
-fn has_playwright_chromium(root: &Path) -> bool {
-    std::fs::read_dir(root)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .any(|entry| {
-            entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
-                && entry.file_name().to_string_lossy().starts_with("chromium-")
-        })
-}
-
-fn playwright_browser_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(path) = std::env::var_os("PLAYWRIGHT_BROWSERS_PATH") {
-        roots.push(PathBuf::from(path));
-    }
-    if let Some(path) = std::env::var_os("LOCALAPPDATA") {
-        roots.push(PathBuf::from(path).join("ms-playwright"));
-    }
-    if let Some(path) = std::env::var_os("USERPROFILE") {
-        roots.push(PathBuf::from(path).join("AppData/Local/ms-playwright"));
-    }
-    if let Some(path) = std::env::var_os("HOME") {
-        roots.push(PathBuf::from(path).join(".cache/ms-playwright"));
-    }
-    roots
-}
-
-fn extension_roots(records: &[locaryn_storage::repos::ExtensionRecord]) -> Vec<PathBuf> {
-    records
-        .iter()
-        .filter(|r| r.name.to_lowercase().contains("snap"))
-        .filter_map(|r| Path::new(&r.manifest_path).parent().map(PathBuf::from))
-        .collect()
-}
-
-fn configured_value(roots: &[PathBuf], key: &str) -> Option<String> {
-    for root in roots {
-        let path = root.join(".data/config.json");
-        let Ok(raw) = std::fs::read_to_string(path) else {
-            continue;
-        };
-        let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
-            continue;
-        };
-        let value = json.get(key).and_then(|value| {
-            value
-                .as_str()
-                .map(str::to_string)
-                .or_else(|| value.as_i64().map(|number| number.to_string()))
-        });
-        if let Some(value) = value.filter(|value| !value.trim().is_empty()) {
-            return Some(value.trim().to_string());
-        }
-    }
-    None
-}
-
-fn telegram_session_path(roots: &[PathBuf]) -> Option<PathBuf> {
-    let configured = std::env::var("TELEGRAM_SESSION_FILE")
-        .ok()
-        .or_else(|| std::env::var("SNAP_ASTREINTE_TELEGRAM_SESSION_FILE").ok())
-        .or_else(|| configured_value(roots, "transport.telegram_session_file"));
-    if let Some(value) = configured {
-        let path = PathBuf::from(value);
-        if path.is_absolute() {
-            Some(path)
-        } else {
-            Some(std::env::current_dir().unwrap_or_default().join(path))
-        }
-    } else {
-        let mut candidates = roots
-            .iter()
-            .map(|r| r.join(".telegram/session.txt"))
-            .collect::<Vec<_>>();
-        candidates.push(
-            std::env::current_dir()
-                .unwrap_or_default()
-                .join(".telegram/session.txt"),
-        );
-        candidates.into_iter().find(|p| p.is_file())
-    }
-}
-
-/// Check every local prerequisite without invoking a shell or changing files.
-/// MCP discovery is performed through the same client implementation used by
-/// the agent, so a green server check is meaningful rather than cosmetic.
-#[tauri::command]
-pub async fn diagnose_snapmcp(core: State<'_, Core>) -> Result<SnapMcpDiagnostics, String> {
-    let mut checks = Vec::new();
-    let records = core
-        .storage
-        .extensions
-        .list()
-        .await
-        .map_err(|e| e.to_string())?;
-    let roots = extension_roots(&records);
-
-    match probe_command("node", &["--version"]) {
-        Ok(version) => check(
-            &mut checks,
-            "node",
-            "Node.js",
-            "ok",
-            "Node.js est disponible.",
-            Some(first_line(&version)),
-            None,
-        ),
-        Err(error) => check(
-            &mut checks,
-            "node",
-            "Node.js",
-            "error",
-            format!("Node.js introuvable : {error}"),
-            None,
-            Some("Installer Node.js 20 ou plus récent.".into()),
-        ),
-    }
-    match probe_command("ffmpeg", &["-version"]) {
-        Ok(version) => check(
-            &mut checks,
-            "ffmpeg",
-            "ffmpeg",
-            "ok",
-            "Conversion audio disponible.",
-            Some(first_line(&version)),
-            None,
-        ),
-        Err(error) => check(
-            &mut checks,
-            "ffmpeg",
-            "ffmpeg",
-            "error",
-            format!("ffmpeg introuvable : {error}"),
-            None,
-            Some("Installer ffmpeg et l'ajouter au PATH.".into()),
-        ),
-    }
-
-    let adb_available = match probe_command("adb", &["version"]) {
-        Ok(version) => {
-            check(
-                &mut checks,
-                "adb",
-                "Android Debug Bridge",
-                "ok",
-                "adb est disponible.",
-                Some(first_line(&version)),
-                None,
-            );
-            true
-        }
-        Err(error) => {
-            check(
-                &mut checks,
-                "adb",
-                "Android Debug Bridge",
-                "error",
-                format!("adb introuvable : {error}"),
-                None,
-                Some("Installer Android Platform Tools.".into()),
-            );
-            false
-        }
-    };
-    if adb_available {
-        match probe_command("adb", &["devices"]) {
-            Ok(output) => {
-                let devices: Vec<&str> = output
-                    .lines()
-                    .skip(1)
-                    .filter(|line| !line.trim().is_empty())
-                    .collect();
-                let unauthorized = devices.iter().any(|line| line.contains("unauthorized"));
-                let online = devices
-                    .iter()
-                    .filter(|line| line.ends_with("device"))
-                    .count();
-                if unauthorized {
-                    check(
-                        &mut checks,
-                        "android_device",
-                        "Téléphone Android",
-                        "warning",
-                        "Téléphone détecté mais autorisation USB manquante.",
-                        None,
-                        Some("Déverrouiller le téléphone et accepter la clé RSA ADB.".into()),
-                    );
-                } else if online > 0 {
-                    check(
-                        &mut checks,
-                        "android_device",
-                        "Téléphone Android",
-                        "ok",
-                        format!("{online} téléphone(s) prêt(s)."),
-                        Some(devices.join(" | ")),
-                        None,
-                    );
-                } else {
-                    check(
-                        &mut checks,
-                        "android_device",
-                        "Téléphone Android",
-                        "warning",
-                        "Aucun téléphone Android prêt.",
-                        None,
-                        Some("Activer le débogage USB puis relancer adb devices.".into()),
-                    );
-                }
-            }
-            Err(error) => check(
-                &mut checks,
-                "android_device",
-                "Téléphone Android",
-                "error",
-                error,
-                None,
-                Some("Reconnecter le téléphone et relancer adb devices.".into()),
-            ),
-        }
-    }
-
-    let mut browser_roots = playwright_browser_roots();
-    for root in &roots {
-        browser_roots.push(root.join("node_modules/playwright-core/.local-browsers"));
-        browser_roots.push(root.join("node_modules/playwright/.local-browsers"));
-    }
-    let chromium_root = browser_roots
-        .into_iter()
-        .find(|root| has_playwright_chromium(root));
-    if let Some(root) = chromium_root {
-        check(
-            &mut checks,
-            "chromium",
-            "Chromium Playwright",
-            "ok",
-            "Chromium Playwright est installé.",
-            Some(root.display().to_string()),
-            None,
-        );
-    } else {
-        check(
-            &mut checks,
-            "chromium",
-            "Chromium Playwright",
-            "error",
-            "Chromium Playwright introuvable.",
-            None,
-            Some("Exécuter npx playwright install chromium dans l'extension.".into()),
-        );
-    }
-
-    let session = telegram_session_path(&roots);
-    let api_id = std::env::var("TELEGRAM_API_ID")
-        .ok()
-        .or_else(|| configured_value(&roots, "transport.telegram_api_id"));
-    let api_hash = std::env::var("TELEGRAM_API_HASH")
-        .ok()
-        .or_else(|| configured_value(&roots, "transport.telegram_api_hash"));
-    match session {
-        Some(path) => check(
-            &mut checks,
-            "telegram_session",
-            "Session Telegram",
-            "ok",
-            "Fichier de session Telegram trouvé.",
-            Some(path.display().to_string()),
-            None,
-        ),
-        None => check(
-            &mut checks,
-            "telegram_session",
-            "Session Telegram",
-            "error",
-            "Aucune session Telegram trouvée.",
-            None,
-            Some("Lancer npm run telegram:login après avoir configuré api_id et api_hash.".into()),
-        ),
-    }
-    if api_id.as_deref().is_some_and(|v| !v.trim().is_empty())
-        && api_hash.as_deref().is_some_and(|v| !v.trim().is_empty())
-    {
-        check(
-            &mut checks,
-            "telegram_credentials",
-            "Identifiants Telegram",
-            "ok",
-            "api_id et api_hash sont configurés.",
-            None,
-            None,
-        );
-    } else {
-        check(
-            &mut checks,
-            "telegram_credentials",
-            "Identifiants Telegram",
-            "warning",
-            "api_id ou api_hash manque.",
-            None,
-            Some("Les créer dans API development tools sur my.telegram.org.".into()),
-        );
-    }
-
-    let entries: Vec<(String, McpServerEntry)> = {
-        let cfg = core.mcp.config.lock().unwrap();
-        cfg.mcp_servers
-            .iter()
-            .map(|(name, entry)| (name.clone(), entry.clone()))
-            .collect()
-    };
-    if entries.is_empty() {
-        check(
-            &mut checks,
-            "mcp_servers",
-            "Serveurs MCP",
-            "warning",
-            "Aucun serveur MCP enregistré.",
-            None,
-            Some("Installer ou enregistrer l'extension SnapMCP.".into()),
-        );
-    } else {
-        for (name, entry) in entries {
-            let running = core.mcp.running.read().await.get(&name).cloned();
-            let (client, temporary) = match running {
-                Some(client) => (client, false),
-                None => (Arc::from(build_client(&entry)), true),
-            };
-            match client.discover().await {
-                Ok(caps) => check(
-                    &mut checks,
-                    format!("mcp:{name}"),
-                    format!("Serveur MCP {name}"),
-                    "ok",
-                    format!(
-                        "Serveur joignable, {} outil(s) découvert(s).",
-                        caps.tools.len()
-                    ),
-                    Some(entry_target(&entry)),
-                    None,
-                ),
-                Err(error) => check(
-                    &mut checks,
-                    format!("mcp:{name}"),
-                    format!("Serveur MCP {name}"),
-                    "error",
-                    format!("Serveur non joignable : {error}"),
-                    Some(entry_target(&entry)),
-                    Some("Vérifier la commande, l'URL et les permissions de l'extension.".into()),
-                ),
-            }
-            if temporary {
-                let _ = client.shutdown().await;
-            }
-        }
-    }
-
-    Ok(SnapMcpDiagnostics {
-        checked_at: chrono::Utc::now().to_rfc3339(),
-        checks,
-    })
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AndroidVmStatus {
-    pub sdk_root: Option<String>,
-    pub sdkmanager: Option<String>,
-    pub avdmanager: Option<String>,
-    pub emulator: Option<String>,
-    pub avds: Vec<String>,
-    pub running_emulators: Vec<String>,
-    pub recommended_avd: String,
-    pub detail: String,
-}
-
 fn android_sdk_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
-    for key in ["ANDROID_HOME", "ANDROID_SDK_ROOT", "SNAPMCP_ANDROID_SDK"] {
+    for key in ["ANDROID_HOME", "ANDROID_SDK_ROOT", "LOCARYN_ANDROID_SDK"] {
         if let Some(value) = std::env::var_os(key) {
             roots.push(PathBuf::from(value));
         }
     }
     if let Some(value) = std::env::var_os("USERPROFILE") {
-        roots.push(PathBuf::from(value).join(".snapmcp/android-sdk"));
+        roots.push(PathBuf::from(value).join(".locaryn/android-sdk"));
     }
     if let Some(value) = std::env::var_os("HOME") {
-        roots.push(PathBuf::from(value).join(".snapmcp/android-sdk"));
+        roots.push(PathBuf::from(value).join(".locaryn/android-sdk"));
     }
     if let Some(value) = std::env::var_os("LOCALAPPDATA") {
         roots.push(PathBuf::from(value).join("Android/Sdk"));
@@ -836,7 +437,7 @@ fn android_vm_status() -> AndroidVmStatus {
     let detail = if emulator.is_none() || sdkmanager.is_none() || avdmanager.is_none() {
         "Android SDK command-line tools incomplets.".to_string()
     } else if avds.is_empty() {
-        "Émulateur disponible, aucune AVD SnapMCP configurée.".to_string()
+        "Émulateur disponible, aucune AVD Locaryn configurée.".to_string()
     } else {
         format!("{} AVD disponible(s).", avds.len())
     };
@@ -847,7 +448,7 @@ fn android_vm_status() -> AndroidVmStatus {
         emulator: emulator.map(|path| path.display().to_string()),
         avds,
         running_emulators,
-        recommended_avd: "SnapMcpVM".into(),
+        recommended_avd: "LocarynVM".into(),
         detail,
     }
 }
@@ -901,7 +502,7 @@ pub fn setup_android_vm(args: AndroidVmSetupArgs) -> Result<AndroidVmStatus, Str
             );
         }
     }
-    let avd = args.avd_name.unwrap_or_else(|| "SnapMcpVM".into());
+    let avd = args.avd_name.unwrap_or_else(|| "LocarynVM".into());
     if !before.avds.iter().any(|name| name == &avd) {
         let mut child = Command::new(&avdmanager)
             .args(["create", "avd", "-n", &avd, "-k", &image, "-d", "pixel_2"])
@@ -945,7 +546,7 @@ pub fn start_android_vm(args: AndroidVmStartArgs) -> Result<AndroidVmStatus, Str
     if let Some(sdk_root) = status.sdk_root.as_deref() {
         command.env("ANDROID_HOME", sdk_root);
         command.env("ANDROID_SDK_ROOT", sdk_root);
-        command.env("SNAPMCP_ANDROID_SDK", sdk_root);
+        command.env("LOCARYN_ANDROID_SDK", sdk_root);
         let separator = if cfg!(windows) { ";" } else { ":" };
         let bin = [
             PathBuf::from(sdk_root).join("platform-tools"),

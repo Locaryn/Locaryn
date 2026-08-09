@@ -735,22 +735,6 @@ export interface AddMcpServerArgs {
   autoStart?: boolean;
 }
 
-export type SnapMcpCheckStatus = "ok" | "warning" | "error" | "unknown";
-
-export interface SnapMcpCheck {
-  id: string;
-  label: string;
-  status: SnapMcpCheckStatus;
-  detail: string;
-  value: string | null;
-  fix: string | null;
-}
-
-export interface SnapMcpDiagnostics {
-  checked_at: string;
-  checks: SnapMcpCheck[];
-}
-
 export interface AndroidVmStatus {
   sdkRoot: string | null;
   sdkmanager: string | null;
@@ -1277,8 +1261,6 @@ export interface CoreApi {
   stopMcpServer(name: string): Promise<void>;
   /** Invoke a tool through the same MCP client used by the agent runtime. */
   invokeMcpTool(name: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
-  /** Check local runtimes, devices, sessions and MCP servers without changing files. */
-  diagnoseSnapMcp(): Promise<SnapMcpDiagnostics>;
 
   /** Android SDK, AVDs et émulateurs présents sur cette machine. Lecture seule. */
   diagnoseAndroidVm(): Promise<AndroidVmStatus>;
@@ -1681,7 +1663,6 @@ const tauriCore: CoreApi = {
   startMcpServer: (name) => invoke<string[]>("start_mcp_server", { name }),
   stopMcpServer: (name) => invoke<void>("stop_mcp_server", { name }),
   invokeMcpTool: (name, tool, args) => invoke<unknown>("invoke_mcp_tool", { name, tool, args }),
-  diagnoseSnapMcp: () => invoke<SnapMcpDiagnostics>("diagnose_snapmcp"),
   diagnoseAndroidVm: () => invoke<AndroidVmStatus>("diagnose_android_vm"),
   setupAndroidVm: (args: AndroidVmSetupArgs) =>
     invoke<AndroidVmStatus>("setup_android_vm", { args }),
@@ -3367,19 +3348,6 @@ const demoCore: CoreApi = {
   androidScreenAction: async () => {
     throw new Error("Le contrôle écran Android exige l'application Locaryn, pas le navigateur.");
   },
-  diagnoseSnapMcp: async () => ({
-    checked_at: new Date().toISOString(),
-    checks: [
-      {
-        id: "demo",
-        label: "Mode navigateur",
-        status: "warning",
-        detail: "Le diagnostic réel nécessite l'application Tauri.",
-        value: null,
-        fix: "Lancer Locaryn Desktop.",
-      },
-    ],
-  }),
   writeTestAudio: async () => "demo://audio",
   removeTestAudio: async () => {},
   listSshServers: async () => demoSshServers,

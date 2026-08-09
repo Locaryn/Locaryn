@@ -9,7 +9,6 @@ import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
 import { ImageSettings } from "../components/ImageSettings";
 import { PerformancePanel } from "../components/PerformancePanel";
 import { ServerSettings } from "../components/ServerSettings";
-import { SnapMcpTestBench } from "../components/SnapMcpTestBench";
 import { StorageSettings } from "../components/StorageSettings";
 import { TravelSettings } from "../components/TravelSettings";
 import type { UseThemeReturn } from "../hooks/useTheme";
@@ -27,7 +26,6 @@ type Section =
   | "projects"
   | "extensions"
   | "connectors"
-  | "snapmcp"
   | "appearance"
   | "language"
   | "server"
@@ -79,12 +77,6 @@ const SECTIONS: { id: Section; icon: string; label: string; desc: string }[] = [
     icon: "🔌",
     label: "Connecteurs",
     desc: "Serveurs SSH et MCP ajoutés à la main",
-  },
-  {
-    id: "snapmcp",
-    icon: "▣",
-    label: "Banc SnapMCP",
-    desc: "Tester textes, médias, vocaux, ADB, Web et Telegram",
   },
   { id: "appearance", icon: "🎨", label: "Apparence", desc: "Couleur d'accentuation, thème" },
   { id: "language", icon: "🌍", label: "Langue", desc: "Langue de l'interface" },
@@ -188,7 +180,6 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
           )}
           {section === "extensions" && <ExtensionsSettings />}
           {section === "connectors" && <ConnectorsSettings />}
-          {section === "snapmcp" && <SnapMcpTestBench />}
 
           {section === "appearance" && (
             <div className="locaryn-field">

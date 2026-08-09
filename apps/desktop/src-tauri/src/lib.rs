@@ -388,7 +388,7 @@ fn write_test_audio(audio_base64: String, mime_type: String) -> Result<String, S
         "webm"
     };
     let path = locaryn_config::ensure_temp_dir().join(format!(
-        "snapmcp-test-{}.{}",
+        "locaryn-test-{}.{}",
         Uuid::new_v4(),
         extension
     ));
@@ -404,7 +404,7 @@ fn remove_test_audio(path: String) -> Result<(), String> {
     if candidate.parent() != Some(root.as_path())
         || !candidate
             .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with("snapmcp-test-"))
+            .is_some_and(|n| n.to_string_lossy().starts_with("locaryn-test-"))
     {
         return Err("chemin audio de test refusé".into());
     }
@@ -7602,7 +7602,6 @@ pub fn run() {
             mcp_servers::start_mcp_server,
             mcp_servers::stop_mcp_server,
             mcp_servers::invoke_mcp_tool,
-            mcp_servers::diagnose_snapmcp,
             mcp_servers::diagnose_android_vm,
             mcp_servers::setup_android_vm,
             mcp_servers::start_android_vm,
