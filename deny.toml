@@ -20,9 +20,15 @@ multiple-versions = "warn"
 wildcards = "deny"
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+# cargo-deny 0.18 a supprimé `vulnerability` — une vulnérabilité connue est
+# désormais toujours refusée, et seule une entrée explicite dans `ignore` peut
+# lever le blocage. Le laisser ici faisait échouer la CI sur la configuration
+# elle-même, pas sur une dépendance.
 yanked = "deny"
+# Portée du contrôle des paquets non maintenus : `workspace` ne signale que
+# nos dépendances directes. `all` remonterait des transitives sur lesquelles
+# nous n'avons aucune prise, ce qui bloquerait la CI sans recours.
+unmaintained = "workspace"
 ignore = []
 
 [sources]

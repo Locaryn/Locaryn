@@ -257,14 +257,27 @@ pub fn authority_public_key(ca_key_pem: &str) -> Result<Vec<u8>, LinkError> {
 mod tests {
     use super::*;
 
+    /// Une autorité jetable, dans un dossier qui n'appartient qu'à elle.
+    ///
+    /// Le nom combinait horodatage et rien d'autre. Les tests s'exécutent en
+    /// parallèle et l'horloge de Windows est bien plus grossière que celle de
+    /// Linux : deux appels tombaient dans le même tick, obtenaient le même
+    /// dossier, et le second heurtait les fichiers que le premier tenait
+    /// encore ouverts — « Access is denied (os error 5) », visible seulement
+    /// sur Windows. Un compteur atomique lève l'ambiguïté quelle que soit la
+    /// résolution de l'horloge.
     fn authority() -> (String, String, std::path::PathBuf) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SUITE: AtomicU64 = AtomicU64::new(0);
+
         let dir = std::env::temp_dir().join(format!(
-            "locaryn_link_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            "locaryn_link_{}_{}",
+            std::process::id(),
+            SUITE.fetch_add(1, Ordering::Relaxed)
         ));
+        // Repartir d'un dossier vide : un reliquat d'exécution précédente
+        // ferait échouer la génération de l'autorité.
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let a = locaryn_config::mtls::authority(&dir).unwrap();
         (a.cert_pem, a.key_pem, dir)

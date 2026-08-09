@@ -36,7 +36,11 @@ jobs:
       - name: cargo-deny
         if: runner.os == 'Linux'
         run: |
-          cargo install cargo-deny --locked
+          # Version majeure figée : cargo-deny change le schéma de deny.toml
+          # entre majeures, et une installation « dernière version » a déjà
+          # fait échouer la CI sur sa propre configuration, sans qu'aucune
+          # dépendance n'ait bougé.
+          cargo install cargo-deny --locked --version "^0.20"
           cargo deny check
 
   js:
