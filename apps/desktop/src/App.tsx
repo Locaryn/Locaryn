@@ -35,6 +35,23 @@ import { ModelStudioView } from "./views/ModelStudioView";
 import { SettingsView } from "./views/SettingsView";
 import { StudioView } from "./views/StudioView";
 
+/** Les trois séparations déplaçables de la fenêtre. */
+type PanelKey = "leftW" | "rightW" | "bottomH";
+
+/** Bornes de chaque panneau. Elles existent pour que la fenêtre reste
+ *  utilisable : sans minimum, une poignée tirée à fond fait disparaître le
+ *  panneau sans moyen de le rattraper ; sans maximum, elle écrase le chat. */
+const PANEL_LIMITS: Record<PanelKey, { min: number; max: number }> = {
+  leftW: { min: 160, max: 500 },
+  rightW: { min: 240, max: 640 },
+  bottomH: { min: 120, max: 520 },
+};
+
+function clampPanel(panel: PanelKey, value: number): number {
+  const { min, max } = PANEL_LIMITS[panel];
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
@@ -104,8 +121,10 @@ export function App() {
     };
   }, []);
 
-  // Resizable panel widths (in px or percentage)
+  // Tailles des panneaux redimensionnables, en pixels.
   const [leftW, setLeftW] = useState(260);
+  const [rightW, setRightW] = useState(340);
+  const [bottomH, setBottomH] = useState(220);
 
   // Resizing state
   const isDragging = useRef<string | null>(null);
@@ -427,20 +446,36 @@ export function App() {
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (!isDragging.current) return;
-    if (isDragging.current === "leftW") {
-      setLeftW(Math.max(160, Math.min(500, e.clientX)));
-    }
+    const panel = isDragging.current;
+    if (!panel) return;
+    // Les panneaux de droite et du bas se mesurent depuis le bord opposé :
+    // c'est la distance au bord, pas la position du curseur, qui donne leur
+    // taille.
+    if (panel === "leftW") setLeftW(clampPanel("leftW", e.clientX));
+    else if (panel === "rightW") setRightW(clampPanel("rightW", window.innerWidth - e.clientX));
+    else if (panel === "bottomH") setBottomH(clampPanel("bottomH", window.innerHeight - e.clientY));
   }
 
-  /** Déplacer la séparation au clavier. Une poignée qui n'obéit qu'à la souris
-   *  rend la largeur du panneau inatteignable sans elle. Maj = pas de 40 px. */
-  function nudgeLeftPanel(e: React.KeyboardEvent) {
-    const step = e.shiftKey ? 40 : 8;
-    const delta = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
-    if (delta === 0) return;
-    e.preventDefault();
-    setLeftW((w) => Math.max(160, Math.min(500, w + delta)));
+  /** Déplacer une séparation au clavier. Une poignée qui n'obéit qu'à la souris
+   *  rend la taille du panneau inatteignable sans elle. Maj = pas de 40 px.
+   *
+   *  Le sens suit le geste : pour le panneau de droite, la flèche gauche
+   *  pousse la séparation vers la gauche, donc l'agrandit. */
+  function nudgePanel(panel: PanelKey) {
+    return (e: React.KeyboardEvent) => {
+      const step = e.shiftKey ? 40 : 8;
+      const [less, more] =
+        panel === "bottomH"
+          ? (["ArrowDown", "ArrowUp"] as const)
+          : panel === "rightW"
+            ? (["ArrowRight", "ArrowLeft"] as const)
+            : (["ArrowLeft", "ArrowRight"] as const);
+      const delta = e.key === less ? -step : e.key === more ? step : 0;
+      if (delta === 0) return;
+      e.preventDefault();
+      const setter = panel === "leftW" ? setLeftW : panel === "rightW" ? setRightW : setBottomH;
+      setter((v) => clampPanel(panel, v + delta));
+    };
   }
 
   function onPointerUp(e: React.PointerEvent) {
@@ -569,7 +604,7 @@ export function App() {
             <div
               className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("leftW")}
-              onKeyDown={nudgeLeftPanel}
+              onKeyDown={nudgePanel("leftW")}
               role="separator"
               aria-orientation="vertical"
               aria-label="Largeur du panneau latéral"
@@ -734,42 +769,62 @@ export function App() {
         {/* Right side panels for Chat view */}
         {activeView === "chat" && showModelConfig && (
           <>
-            {/* Décoratif tant que `onPointerMove` ne traite que `leftW` : cette
-                poignée ne redimensionne rien. Annoncer `separator` promettait
-                à un lecteur d'écran une commande qui n'existe pas. */}
             <div
               className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("rightW")}
-              aria-hidden="true"
+              onKeyDown={nudgePanel("rightW")}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Largeur du panneau de droite"
+              aria-valuenow={rightW}
+              aria-valuemin={PANEL_LIMITS.rightW.min}
+              aria-valuemax={PANEL_LIMITS.rightW.max}
+              tabIndex={0}
             />
-            <ModelConfigPanel onClose={() => setShowModelConfig(false)} />
+            <div style={{ width: rightW, flex: "none", display: "flex", minWidth: 0 }}>
+              <ModelConfigPanel onClose={() => setShowModelConfig(false)} />
+            </div>
           </>
         )}
 
         {activeView === "chat" && showPreview && (
           <>
-            {/* Décoratif tant que `onPointerMove` ne traite que `leftW` : cette
-                poignée ne redimensionne rien. Annoncer `separator` promettait
-                à un lecteur d'écran une commande qui n'existe pas. */}
             <div
               className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("rightW")}
-              aria-hidden="true"
+              onKeyDown={nudgePanel("rightW")}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Largeur du panneau d'aperçu"
+              aria-valuenow={rightW}
+              aria-valuemin={PANEL_LIMITS.rightW.min}
+              aria-valuemax={PANEL_LIMITS.rightW.max}
+              tabIndex={0}
             />
-            <RunPanel />
+            <div style={{ width: rightW, flex: "none", display: "flex", minWidth: 0 }}>
+              <RunPanel />
+            </div>
           </>
         )}
       </div>
 
       {activeView === "chat" && showBottom && (
         <>
-          {/* Idem : sans logique de déplacement horizontale, c'est une bordure. */}
           <div
             className="locaryn-resizer locaryn-resizer-h"
             onPointerDown={startDrag("bottomH")}
-            aria-hidden="true"
+            onKeyDown={nudgePanel("bottomH")}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Hauteur du panneau du bas"
+            aria-valuenow={bottomH}
+            aria-valuemin={PANEL_LIMITS.bottomH.min}
+            aria-valuemax={PANEL_LIMITS.bottomH.max}
+            tabIndex={0}
           />
-          <BottomPanel cwd={activeProject?.path ?? null} sessionId={activeSession?.id ?? null} />
+          <div style={{ height: bottomH, flex: "none", display: "flex", minHeight: 0 }}>
+            <BottomPanel cwd={activeProject?.path ?? null} sessionId={activeSession?.id ?? null} />
+          </div>
         </>
       )}
 
