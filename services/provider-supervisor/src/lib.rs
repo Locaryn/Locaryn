@@ -48,6 +48,9 @@ pub struct SupervisorConfig {
     /// Optional override for the `ollama` binary path. If `None`, the
     /// supervisor searches `PATH` via `which`.
     pub ollama_bin: Option<PathBuf>,
+    /// Python interpreter used to run the AirLLM server. If `None`, the
+    /// supervisor searches `PATH` for `python`.
+    pub airllm_python: Option<PathBuf>,
 }
 
 impl Default for SupervisorConfig {
@@ -57,6 +60,7 @@ impl Default for SupervisorConfig {
             startup_timeout: Duration::from_secs(60),
             idle_timeout: Duration::from_secs(30 * 60), // 30 min
             ollama_bin: None,
+            airllm_python: None,
         }
     }
 }
@@ -179,8 +183,8 @@ impl Supervisor {
             return Ok(endpoint);
         }
 
-        // Not healthy — try to spawn it (only LlamaCpp is auto-spawned in V1).
-        if engine != ProviderEngine::LlamaCpp {
+        // Not healthy — try to spawn it (managed engines: LlamaCpp + AirLlm).
+        if !matches!(engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm) {
             // For non-managed engines, we don't auto-spawn — just report the
             // endpoint and let the caller decide.
             let _ = self
@@ -192,7 +196,7 @@ impl Supervisor {
             return Err(SupervisorError::NotRunning(engine));
         }
 
-        tracing::info!(%endpoint, ?engine, "engine not running — auto-spawning llama-server");
+        tracing::info!(%endpoint, ?engine, "engine not running — auto-spawning runtime");
 
         let p = self.inner.storage.providers.active().await.unwrap_or(None);
         let active_model = p.and_then(|p| p.model);
@@ -205,8 +209,13 @@ impl Supervisor {
             .set_status_by_engine(engine, ProviderStatus::Starting)
             .await;
 
-        // Spawn llama-server process.
-        let child = spawn_llama_server(&self.inner.cfg, active_model.as_deref()).await?;
+        // Spawn the runtime process (llama-server or the AirLLM Python server).
+        let child = match engine {
+            ProviderEngine::AirLlm => {
+                spawn_airllm_server(&self.inner.cfg, active_model.as_deref()).await?
+            }
+            _ => spawn_llama_server(&self.inner.cfg, active_model.as_deref()).await?,
+        };
 
         {
             let mut states = self.inner.states.lock().await;
@@ -225,8 +234,15 @@ impl Supervisor {
             );
         }
 
-        // Wait for it to become healthy (poll until startup_timeout).
-        let deadline = Instant::now() + self.inner.cfg.startup_timeout;
+        // Wait for it to become healthy (poll until startup_timeout). AirLLM's
+        // first load converts the layers and can take 10+ minutes, so it gets
+        // a much longer startup budget than llama-server.
+        let startup_budget = if engine == ProviderEngine::AirLlm {
+            Duration::from_secs(30 * 60)
+        } else {
+            self.inner.cfg.startup_timeout
+        };
+        let deadline = Instant::now() + startup_budget;
         loop {
             if healthcheck_engine(&self.inner.http, engine, &endpoint).await {
                 let _ = self
@@ -344,6 +360,7 @@ impl Supervisor {
             ProviderEngine::LlamaCpp,
             ProviderEngine::Lmstudio,
             ProviderEngine::Vllm,
+            ProviderEngine::AirLlm,
         ];
         let mut states = self.inner.states.lock().await;
         let mut out = Vec::with_capacity(engines.len());
@@ -517,6 +534,7 @@ pub fn default_endpoint(e: ProviderEngine) -> &'static str {
         ProviderEngine::Lmstudio => "http://127.0.0.1:1234",
         ProviderEngine::Vllm => "http://127.0.0.1:8000",
         ProviderEngine::OpenAiCompat => "http://127.0.0.1:8000",
+        ProviderEngine::AirLlm => "http://127.0.0.1:8090",
     }
 }
 
@@ -838,6 +856,221 @@ async fn spawn_llama_server(
 
     cmd.spawn()
         .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e.to_string()))
+}
+
+/// AirLLM OpenAI-compatible server (embedded Python). Speaks the
+/// `/v1/models` + `/v1/chat/completions` (SSE streaming) protocol so the
+/// existing agent client works unchanged. Runs huge models on small GPUs via
+/// AirLLM layer-by-layer offloading.
+const AIRLLM_SERVER_PY: &str = r#"#!/usr/bin/env python
+"""AirLLM OpenAI-compatible server - /v1/models + /v1/chat/completions (SSE)."""
+import argparse
+import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import threading
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--model", required=True)
+ap.add_argument("--port", type=int, default=8090)
+ap.add_argument("--max-tokens", type=int, default=2048)
+args = ap.parse_args()
+
+MODEL_ID = args.model
+MAX_NEW = args.max_tokens
+
+
+def log(*a):
+    print(*a, flush=True)
+
+
+log("[airllm] importing torch + AirLLM (first import can be slow)...")
+from airllm import AutoModel  # noqa: E402
+from transformers import AutoTokenizer  # noqa: E402
+
+log(f"[airllm] loading tokenizer {MODEL_ID}")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+
+log(f"[airllm] loading model {MODEL_ID} (first run converts layers, be patient)...")
+model = AutoModel.from_pretrained(MODEL_ID)
+log(f"[airllm] model ready - serving on port {args.port}")
+
+gen_lock = threading.Lock()
+
+
+def run_generate(messages, temperature, max_tokens):
+    prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tokenizer(prompt, return_tensors="pt")
+    n_new = max(1, min(max_tokens or MAX_NEW, MAX_NEW))
+    do_sample = temperature is not None and temperature > 0
+    temp = temperature if (temperature is not None and temperature > 0) else 1.0
+    with gen_lock:
+        out = model.generate(
+            inputs.input_ids,
+            max_new_tokens=n_new,
+            do_sample=do_sample,
+            temperature=temp,
+            top_p=0.9,
+            repetition_penalty=1.05,
+        )
+    new_ids = out[0][inputs.input_ids.shape[1]:]
+    return tokenizer.decode(new_ids, skip_special_tokens=True)
+
+
+def chunk_text(text, size=24):
+    for i in range(0, len(text), size):
+        yield text[i:i + size]
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def _send(self, code, ctype, body=None):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        if body is not None:
+            self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body is not None:
+            self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.end_headers()
+
+    def do_GET(self):
+        if self.path.rstrip("/") == "/v1/models":
+            payload = {
+                "object": "list",
+                "data": [{"id": MODEL_ID, "object": "model", "created": 0, "owned_by": "airllm"}],
+            }
+            self._send(200, "application/json", json.dumps(payload).encode())
+            return
+        self._send(404, "application/json", b'{"error":{"message":"not found"}}')
+
+    def do_POST(self):
+        if self.path.rstrip("/") != "/v1/chat/completions":
+            self._send(404, "application/json", b'{"error":{"message":"not found"}}')
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            req = json.loads(self.rfile.read(length) or b"{}")
+        except Exception as e:
+            self._send(400, "application/json", json.dumps({"error": {"message": str(e)}}).encode())
+            return
+        messages = req.get("messages") or []
+        temperature = req.get("temperature")
+        max_tokens = req.get("max_tokens")
+        stream = bool(req.get("stream", False))
+        try:
+            text = run_generate(messages, temperature, max_tokens)
+        except Exception as e:
+            self._send(500, "application/json", json.dumps({"error": {"message": str(e)}}).encode())
+            return
+        if not stream:
+            payload = {
+                "id": "chatcmpl-airllm",
+                "object": "chat.completion",
+                "created": 0,
+                "model": MODEL_ID,
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            }
+            self._send(200, "application/json", json.dumps(payload).encode())
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        try:
+            def ev(obj):
+                self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
+                self.wfile.flush()
+            ev({"id": "chatcmpl-airllm", "object": "chat.completion.chunk", "created": 0,
+                "model": MODEL_ID,
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}]})
+            for piece in chunk_text(text):
+                ev({"choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}]})
+            ev({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+log(f"[airllm] listening on http://127.0.0.1:{args.port}")
+srv.serve_forever()
+"#;
+
+/// Spawn the AirLLM Python server (OpenAI-compatible) for the active model.
+async fn spawn_airllm_server(
+    cfg: &SupervisorConfig,
+    active_model: Option<&str>,
+) -> Result<Child, SupervisorError> {
+    let model = active_model.unwrap_or("Qwen/Qwen2.5-3B-Instruct");
+    let data_dir = locaryn_config::default_data_dir();
+    let script_path = data_dir.join("airllm_server.py");
+    std::fs::write(&script_path, AIRLLM_SERVER_PY).map_err(|e| {
+        SupervisorError::SpawnFailed(ProviderEngine::AirLlm, format!("write server script: {e}"))
+    })?;
+
+    let python = cfg
+        .airllm_python
+        .clone()
+        .or_else(|| which("python"))
+        .ok_or_else(|| SupervisorError::BinaryNotFound("python".into()))?;
+
+    let hf = locaryn_config::hf_cache_dir();
+    let temp = locaryn_config::ensure_temp_dir();
+
+    tracing::info!(model = %model, python = %python.display(), "spawning AirLLM server");
+
+    let mut cmd = Command::new(&python);
+    cmd.arg(&script_path)
+        .arg("--model")
+        .arg(model)
+        .arg("--port")
+        .arg("8090")
+        .env("HF_HOME", &hf)
+        .env("TRANSFORMERS_NO_TF", "1")
+        .env("USE_TF", "0")
+        .env("TF_CPP_MIN_LOG_LEVEL", "3")
+        .env("TMPDIR", &temp)
+        .env("TEMP", &temp)
+        .env("TMP", &temp)
+        .stdin(Stdio::null());
+
+    let log_path = data_dir.join("airllm-server.log");
+    let log_file = std::fs::File::create(&log_path).ok();
+    match log_file {
+        Some(f) => {
+            let f2 = f.try_clone().ok();
+            cmd.stdout(Stdio::from(f));
+            match f2 {
+                Some(f2) => cmd.stderr(Stdio::from(f2)),
+                None => cmd.stderr(Stdio::null()),
+            };
+        }
+        None => {
+            cmd.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x08000008);
+    }
+
+    cmd.spawn()
+        .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::AirLlm, e.to_string()))
 }
 
 /// Find the multimodal projector that belongs to `model_path`, if any:

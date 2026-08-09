@@ -5,6 +5,7 @@ import { ConnectionSettings } from "../components/ConnectionSettings";
 import { ConnectorsSettings } from "../components/ConnectorsSettings";
 import { EngineSettings } from "../components/EngineSettings";
 import { ExtensionsSettings } from "../components/ExtensionsSettings";
+import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
 import { ImageSettings } from "../components/ImageSettings";
 import { PerformancePanel } from "../components/PerformancePanel";
 import { ServerSettings } from "../components/ServerSettings";
@@ -22,6 +23,7 @@ type Section =
   | "engine"
   | "performance"
   | "image"
+  | "huggingface"
   | "projects"
   | "extensions"
   | "connectors"
@@ -53,6 +55,12 @@ const SECTIONS: { id: Section; icon: string; label: string; desc: string }[] = [
     icon: "🎨",
     label: "Image",
     desc: "Qualité et résolution par défaut des générations",
+  },
+  {
+    id: "huggingface",
+    icon: "🤗",
+    label: "HuggingFace",
+    desc: "Token pour les dépôts restreints (modèles gated)",
   },
   {
     id: "projects",
@@ -174,6 +182,7 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
             </>
           )}
           {section === "image" && <ImageSettings />}
+          {section === "huggingface" && <HuggingFaceSettings />}
           {section === "projects" && (
             <ProjectSettings projects={projects} onArchived={onProjectArchived} />
           )}

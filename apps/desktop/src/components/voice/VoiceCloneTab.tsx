@@ -113,6 +113,18 @@ export function VoiceCloneTab({
     userSelect: "none",
   };
 
+  /** Même apparence que headerStyle, mais sur un vrai <button> : il faut donc
+   *  neutraliser le fond, la bordure et la police imposés par le navigateur. */
+  const toggleHeaderStyle: React.CSSProperties = {
+    ...headerStyle,
+    width: "100%",
+    padding: 0,
+    background: "none",
+    border: "none",
+    fontFamily: "inherit",
+    textAlign: "left",
+  };
+
   const textStyle: React.CSSProperties = {
     fontSize: "13px",
     color: "var(--text-secondary, #aaa)",
@@ -209,15 +221,25 @@ export function VoiceCloneTab({
       <div style={sectionStyle}>
         <div style={{ ...headerStyle, cursor: "default" }}>Audio de référence</div>
         <div style={buttonRowStyle}>
-          <button style={buttonStyle} onClick={onPickVoice} disabled={jobRunning || isRecording}>
+          <button
+            type="button"
+            style={buttonStyle}
+            onClick={onPickVoice}
+            disabled={jobRunning || isRecording}
+          >
             📁 Importer un fichier
           </button>
           {!isRecording ? (
-            <button style={buttonStyle} onClick={onStartRecording} disabled={jobRunning}>
+            <button
+              type="button"
+              style={buttonStyle}
+              onClick={onStartRecording}
+              disabled={jobRunning}
+            >
               🎤 Enregistrer
             </button>
           ) : (
-            <button style={recordingButtonStyle} onClick={onStopRecording}>
+            <button type="button" style={recordingButtonStyle} onClick={onStopRecording}>
               ⏹ Arrêter l'enregistrement ({formatTime(recordTime)})
             </button>
           )}
@@ -240,6 +262,7 @@ export function VoiceCloneTab({
                 {voiceName || "Audio sélectionné"}
               </div>
               {voiceFileUrl && (
+                // biome-ignore lint/a11y/useMediaCaption: échantillon vocal importé ou enregistré au micro par l'utilisateur, aucune piste de sous-titres n'existe pour ce fichier
                 <audio
                   src={voiceFileUrl}
                   controls
@@ -247,7 +270,12 @@ export function VoiceCloneTab({
                 />
               )}
             </div>
-            <button style={removeButtonStyle} onClick={onClearVoice} disabled={jobRunning}>
+            <button
+              type="button"
+              style={removeButtonStyle}
+              onClick={onClearVoice}
+              disabled={jobRunning}
+            >
               Retirer
             </button>
           </div>
@@ -268,10 +296,15 @@ export function VoiceCloneTab({
 
       {/* Instruct */}
       <div style={sectionStyle}>
-        <div style={headerStyle} onClick={() => setInstructOpen(!instructOpen)}>
+        <button
+          type="button"
+          style={toggleHeaderStyle}
+          aria-expanded={instructOpen}
+          onClick={() => setInstructOpen(!instructOpen)}
+        >
           <span>Instruction (optionnel)</span>
           <span>{instructOpen ? "▲" : "▼"}</span>
-        </div>
+        </button>
         {instructOpen && (
           <div style={{ marginTop: "12px" }}>
             <textarea
@@ -287,10 +320,15 @@ export function VoiceCloneTab({
 
       {/* Generation Settings */}
       <div style={sectionStyle}>
-        <div style={headerStyle} onClick={() => setSettingsOpen(!settingsOpen)}>
+        <button
+          type="button"
+          style={toggleHeaderStyle}
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen(!settingsOpen)}
+        >
           <span>Paramètres de génération (optionnel)</span>
           <span>{settingsOpen ? "▲" : "▼"}</span>
-        </div>
+        </button>
         {settingsOpen && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
             <label

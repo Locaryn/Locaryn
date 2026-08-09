@@ -136,7 +136,7 @@ function buildCaps(f: ModelFamily): TTSCapabilities {
   return {
     cloning: f.voiceCloning === true,
     voiceDesign:
-      f.voiceDesign === true || /voice.?design|text.?to.?voice/i.test(f.description + " " + f.name),
+      f.voiceDesign === true || /voice.?design|text.?to.?voice/i.test(`${f.description} ${f.name}`),
     expressiveness: /express|emotion|control|controllable/i.test(f.description),
     streaming: /stream|realtime|real.time/i.test(f.description),
     languages: /multilingue|multilingual|\d+ .*lang/i.test(f.description) ? ["all"] : [],
@@ -768,6 +768,30 @@ export const TTS_MODELS: ModelFamily[] = [
         tag: "https://huggingface.co/coqui/XTTS-v2",
         quants: ["repo"],
         storageGb: 1.87,
+      },
+    ],
+    source: "seed",
+  },
+  {
+    id: "pocket-tts",
+    name: "Pocket TTS (clonage de voix CPU)",
+    brand: "Kyutai",
+    description:
+      "TTS 100M parametres, le plus leger jamais sorti avec clonage de voix zero-shot (20s d'audio suffisent). Tourne en temps reel sur CPU (~200ms de latence), 8 voix incluses. Anglais uniquement. Depot gate sur HuggingFace (licence CC-BY-4.0 a accepter avant telechargement).",
+    license: "CC-BY-4.0",
+    contextWindow: "N/A",
+    releaseDate: "2025-09",
+    releaseYear: 2025,
+    audio: true,
+    tts: true,
+    voiceCloning: true,
+    variants: [
+      {
+        size: "100M (repo complet, ~225 Mo)",
+        params: 0.1,
+        tag: "https://huggingface.co/kyutai/pocket-tts",
+        quants: ["repo"],
+        storageGb: 0.23,
       },
     ],
     source: "seed",
@@ -2371,36 +2395,36 @@ function ollamaLibraryToFamilies(models: OllamaLibraryModel[]): ModelFamily[] {
     const tags = m.tags || [];
     if (tags.length === 0) continue;
 
-    const isVision = /vision|vl|multimodal/i.test(m.name + " " + m.description);
-    const isCode = /code|coder/i.test(m.name + " " + m.description);
-    const isReasoning = /reason|thinking|r1|qwq/i.test(m.name + " " + m.description);
+    const isVision = /vision|vl|multimodal/i.test(`${m.name} ${m.description}`);
+    const isCode = /code|coder/i.test(`${m.name} ${m.description}`);
+    const isReasoning = /reason|thinking|r1|qwq/i.test(`${m.name} ${m.description}`);
     const isTTS = /tts|text.to.speech|synthes|voice|speech|piper|xtts|melotts/i.test(
-      m.name + " " + m.description,
+      `${m.name} ${m.description}`,
     );
-    const isAudio = isTTS || /audio|voice|whisper|omni/i.test(m.name + " " + m.description);
+    const isAudio = isTTS || /audio|voice|whisper|omni/i.test(`${m.name} ${m.description}`);
     const isImageGen = /image.*gen|text.*to.*image|diffusion|flux|stable/i.test(
-      m.name + " " + m.description,
+      `${m.name} ${m.description}`,
     );
     const isVideoGen = /video.*gen|text.to.video|video.diffusion|wan2.1|sora|ltx/i.test(
-      m.name + " " + m.description,
+      `${m.name} ${m.description}`,
     );
     const isMusicGen = /music.*gen|audio.*gen|sound.gen|musicgen|audiogen/i.test(
-      m.name + " " + m.description,
+      `${m.name} ${m.description}`,
     );
-    const is3D = /3d.*model|mesh|shap|threestudio/i.test(m.name + " " + m.description);
-    const isTranslation = /translation|translate|nllb|m2m|opus/i.test(m.name + " " + m.description);
-    const isObjectDetection = /object.*detect|detection|yolo/i.test(m.name + " " + m.description);
+    const is3D = /3d.*model|mesh|shap|threestudio/i.test(`${m.name} ${m.description}`);
+    const isTranslation = /translation|translate|nllb|m2m|opus/i.test(`${m.name} ${m.description}`);
+    const isObjectDetection = /object.*detect|detection|yolo/i.test(`${m.name} ${m.description}`);
     const isTextAnalysis = /sentiment|classification|analysis|ner|embed|semantic/i.test(
-      m.name + " " + m.description,
+      `${m.name} ${m.description}`,
     );
     const isImageEditing = /image.*edit|inpaint|outpaint|upscale|restoration/i.test(
-      m.name + " " + m.description,
+      `${m.name} ${m.description}`,
     );
     const isQuestionAnswering = /question.*answer|qa|extractive.qa/i.test(
-      m.name + " " + m.description,
+      `${m.name} ${m.description}`,
     );
     const isInstruct =
-      /instruct|chat/i.test(m.name + " " + m.description) ||
+      /instruct|chat/i.test(`${m.name} ${m.description}`) ||
       (!isImageGen && !isTTS && !isVideoGen && !isMusicGen && !is3D);
 
     const variants: ModelVariant[] = tags
@@ -2501,7 +2525,7 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
 
     const familyMap: Record<string, ModelFamily> = {};
 
-    items.forEach((item) => {
+    for (const item of items) {
       const parts = item.id.split("/");
       const author = parts[0] || "HuggingFace";
       const repoName = parts[1] || item.id;
@@ -2551,9 +2575,116 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
           source: "huggingface",
         };
       }
-    });
+    }
 
     return Object.values(familyMap);
+  } catch {
+    return [];
+  }
+}
+
+// ── HuggingFace TTS auto-discovery ──────────────────────────────────────────
+// The GGUF fetch above only covers chat models. TTS/voice models ship as
+// safetensors repos, so they need their own query. This keeps the registry in
+// sync with HuggingFace without manual seed maintenance: new TTS models show
+// up automatically on the next refresh.
+
+const KNOWN_HF_REPOS = new Set(
+  [...TTS_MODELS, ...MUSIC_MODELS, ...VIDEO_MODELS, ...MODEL3D_MODELS, ...IMAGE_GEN_MODELS]
+    .flatMap((f) => f.variants.map((v) => v.tag))
+    .filter((t) => t.startsWith("https://huggingface.co/") && !t.includes("/resolve/"))
+    .map((t) => t.replace("https://huggingface.co/", "").replace(/\/+$/, "").toLowerCase()),
+);
+
+/** Does this HF repo id look like a text-to-speech / voice model (and not ASR)? */
+function isTtsRepoId(repoId: string): boolean {
+  if (
+    /speech.to.text|asr\b|recognition|whisper|transcri|stt\b|voice.?chat|chat.?voice|audio.?lm|speech.?lm|to.?text/i.test(
+      repoId,
+    )
+  ) {
+    return false;
+  }
+  return (
+    /tts|text.to.speech|text.?to.?speech|kokoro|xtts|parler|chatterbox|melotts|voxcpm|omnivoice|higgs.?tts|moss.?tts|pocket.?tts|piper|read.?aloud/i.test(
+      repoId,
+    ) ||
+    /voice.?clone|voice.?design|voice.?conversion|neural.?voice/i.test(repoId) ||
+    (/voice|speech|vits|bark/i.test(repoId) && !/recognition|to.?text/i.test(repoId))
+  );
+}
+
+/**
+ * Fetch live TTS/voice models from the HuggingFace Hub (safetensors repos).
+ * These ship as full repos rather than single GGUF files, so they need a
+ * separate query from fetchHuggingFaceModels(). No manual curation needed:
+ * anything that looks like a TTS repo and is not already seeded shows up here.
+ */
+export async function fetchHuggingFaceTTSModels(query = "tts"): Promise<ModelFamily[]> {
+  try {
+    const res = await fetch(
+      `https://huggingface.co/api/models?search=${encodeURIComponent(
+        query,
+      )}&filter=safetensors&sort=downloads&direction=-1&limit=25`,
+    );
+    if (!res.ok) return [];
+    const items: Array<{
+      id: string;
+      downloads?: number;
+      lastModified?: string;
+      gated?: string | boolean;
+    }> = await res.json();
+
+    const families: ModelFamily[] = [];
+
+    for (const item of items) {
+      const repoId = item.id.toLowerCase();
+      if (KNOWN_HF_REPOS.has(repoId)) continue; // already curated in the seed catalog
+      if (!isTtsRepoId(repoId)) continue; // not a voice model
+      if (item.gated === "true" || item.gated === true) continue; // hard-gated, not downloadable
+
+      const parts = item.id.split("/");
+      const author = parts[0] || "HuggingFace";
+      const repoName = parts[1] || item.id;
+
+      // Params: prefer explicit "100M" / "1.7B" style markers in the repo name.
+      let params = 0.5;
+      const mB = repoName.match(/(\d+(?:\.\d+)?)\s*[mM]\b/);
+      const bB = repoName.match(/(\d+(?:\.\d+)?)\s*[bB]\b/);
+      if (mB) params = Number.parseFloat(mB[1]) / 1000;
+      else if (bB) params = Number.parseFloat(bB[1]);
+
+      const yearMatch = item.lastModified ? new Date(item.lastModified).getFullYear() : 2026;
+      const dateStr = item.lastModified ? item.lastModified.slice(0, 7) : "2026-01";
+
+      families.push({
+        id: `hf-${author}-${repoName.toLowerCase()}`,
+        name: repoName.replace(/[-_]+/g, " "),
+        brand: author,
+        description: `Modèle TTS / voix découvert automatiquement sur HuggingFace Hub (${(item.downloads || 0).toLocaleString()} téléchargements).`,
+        license: "Voir la licence HuggingFace",
+        contextWindow: "N/A",
+        releaseDate: dateStr,
+        releaseYear: yearMatch,
+        audio: true,
+        tts: true,
+        voiceCloning: /clone|xtts|zero.?shot|voice|pocket|speaker/i.test(repoId),
+        voiceDesign: /voice.?design|description|prompt|parler/i.test(repoId),
+        finetunable: true,
+        variants: [
+          {
+            size: `${params}B (repo complet)`,
+            params,
+            tag: `https://huggingface.co/${item.id}`,
+            quants: ["repo"],
+            storageGb: Math.max(0.2, Math.round(params * 2 * 10) / 10),
+          },
+        ],
+        source: "huggingface",
+      });
+    }
+
+    return families;
   } catch {
     return [];
   }
@@ -2650,17 +2781,18 @@ export async function fetchFullRegistry(
   }
 
   // 2. Fetch in parallel
-  const [ollamaModels, hfModels] = await Promise.all([
+  const [ollamaModels, hfModels, hfTtsModels] = await Promise.all([
     searchOllamaLibrary
       ? searchOllamaLibrary("", undefined).catch(() => [] as OllamaLibraryModel[])
       : Promise.resolve([] as OllamaLibraryModel[]),
     fetchHuggingFaceModels("gguf").catch(() => [] as ModelFamily[]),
+    fetchHuggingFaceTTSModels("tts").catch(() => [] as ModelFamily[]),
   ]);
 
   // 3. Convert ollama library results
   const ollamaFamilies = ollamaLibraryToFamilies(ollamaModels);
 
-  // 4. Merge all sources: seed + image gen + tts + ollama + HF
+  // 4. Merge all sources: seed + image gen + tts + ollama + HF (GGUF + TTS)
   const allFamilies = mergeFamilies(
     SEED_CATALOG,
     LARGE_LOCAL_MODELS,
@@ -2668,6 +2800,7 @@ export async function fetchFullRegistry(
     TTS_MODELS,
     ollamaFamilies,
     hfModels,
+    hfTtsModels,
   );
 
   // 5. Cache

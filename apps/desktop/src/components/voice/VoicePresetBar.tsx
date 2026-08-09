@@ -135,7 +135,7 @@ export function VoicePresetBar({
           F5-TTS) pour utiliser une voix enregistrée.
         </p>
       )}
-      {support && support.cloning && ignored.length > 0 && (
+      {support?.cloning && ignored.length > 0 && (
         <p className="locaryn-vp-hint">
           {support.engine} ignore {ignored.join(", ")}. Le reste du préréglage s'applique.
         </p>
@@ -148,7 +148,6 @@ export function VoicePresetBar({
             placeholder="Nom — ex. « Ma petite sœur »"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            autoFocus
           />
           <input
             className="locaryn-input"

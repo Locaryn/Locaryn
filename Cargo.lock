@@ -3335,6 +3335,7 @@ dependencies = [
  "locaryn-config",
  "locaryn-events",
  "locaryn-extensions",
+ "locaryn-hook-runtime",
  "locaryn-mcp",
  "locaryn-preview",
  "locaryn-provider-supervisor",

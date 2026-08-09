@@ -70,7 +70,7 @@ export interface ActiveImageJob {
 let activeJob: ActiveImageJob | null = null;
 const activeListeners = new Set<() => void>();
 function emitActive() {
-  activeListeners.forEach((l) => l());
+  for (const l of activeListeners) l();
 }
 export function getActiveImageJob(): ActiveImageJob | null {
   return activeJob;
@@ -148,10 +148,7 @@ export function startImageGeneration(p: ImageJobParams): string {
       taskCenter.done(taskId, {
         resultImageUrl: displayUrl,
         resultPath: normalizedPath,
-        detail:
-          `${secs}s` +
-          (allUrls.length > 1 ? ` · ${allUrls.length} variantes` : "") +
-          (res.simulated ? " · simulé" : ""),
+        detail: `${secs}s${allUrls.length > 1 ? ` · ${allUrls.length} variantes` : ""}${res.simulated ? " · simulé" : ""}`,
       });
       if (activeJob?.taskId === taskId) {
         activeJob = { ...activeJob, running: false };

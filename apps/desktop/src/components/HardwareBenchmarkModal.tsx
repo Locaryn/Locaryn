@@ -64,20 +64,29 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
   let mediumCount = 0;
   let heavyCount = 0;
 
-  MODEL_CATALOG.forEach((f) => {
-    f.variants.forEach((v) => {
-      if (v.storageGb <= vramGb || (vramGb >= 4 && v.storageGb <= ramGb * 0.45)) {
+  for (const family of MODEL_CATALOG) {
+    for (const variant of family.variants) {
+      if (variant.storageGb <= vramGb || (vramGb >= 4 && variant.storageGb <= ramGb * 0.45)) {
         optimalCount++;
-      } else if (v.storageGb <= ramGb * 0.85) {
+      } else if (variant.storageGb <= ramGb * 0.85) {
         mediumCount++;
       } else {
         heavyCount++;
       }
-    });
-  });
+    }
+  }
 
   return (
-    <div className="locaryn-settings-backdrop" onClick={onClose}>
+    <div
+      className="locaryn-settings-backdrop"
+      onClick={(e) => {
+        // Seul un clic sur le fond ferme : un clic parti de la carte remonte jusqu'ici.
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+    >
       <div
         className="locaryn-card"
         style={{
@@ -88,7 +97,6 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
           border: "1px solid var(--border-strong)",
           boxShadow: "0 16px 40px rgba(0,0,0,0.85)",
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="locaryn-field-head" style={{ marginBottom: "16px" }}>
           <div>

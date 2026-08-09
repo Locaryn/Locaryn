@@ -6,7 +6,7 @@
 // Orchestration lives in the frontend on purpose: each step is a normal
 // streamed chat turn, so the user sees the work happen in the conversation.
 
-import { type StreamEvent, core } from "./core";
+import { type StreamEvent, type TaskPlan, core } from "./core";
 import { taskCenter } from "./taskCenter";
 
 export interface WorkflowHooks {
@@ -51,7 +51,7 @@ export async function runWorkflow(
   request: string,
   hooks: WorkflowHooks,
 ): Promise<boolean> {
-  let plan;
+  let plan: TaskPlan;
   try {
     plan = await core.planTask(request);
   } catch {

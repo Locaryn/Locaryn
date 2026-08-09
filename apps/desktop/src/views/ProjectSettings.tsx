@@ -103,12 +103,12 @@ export function ProjectSettings({ projects, onArchived }: Props) {
       {selected && (
         <div className="locaryn-projset-detail">
           <div className="locaryn-field">
-            <label className="locaryn-field-label">{selected.name}</label>
+            <div className="locaryn-field-label">{selected.name}</div>
             <p className="locaryn-field-hint locaryn-kv-mono">{selected.path}</p>
           </div>
 
           <div className="locaryn-field" style={{ marginTop: 18 }}>
-            <label className="locaryn-field-label">Autorisations des outils</label>
+            <div className="locaryn-field-label">Autorisations des outils</div>
             <p className="locaryn-field-hint">
               Détermine ce que l'agent peut faire seul dans ce projet (lire, écrire, exécuter).
             </p>
@@ -129,7 +129,7 @@ export function ProjectSettings({ projects, onArchived }: Props) {
           </div>
 
           <div className="locaryn-field" style={{ marginTop: 18 }}>
-            <label className="locaryn-field-label">Base de connaissances (RAG)</label>
+            <div className="locaryn-field-label">Base de connaissances (RAG)</div>
             <p className="locaryn-field-hint">
               Documents indexés utilisés automatiquement dans les conversations de ce projet.
             </p>
@@ -169,7 +169,7 @@ export function ProjectSettings({ projects, onArchived }: Props) {
           </div>
 
           <div className="locaryn-field" style={{ marginTop: 18 }}>
-            <label className="locaryn-field-label">Actions</label>
+            <div className="locaryn-field-label">Actions</div>
             <div className="locaryn-field-actions" style={{ marginTop: 8 }}>
               <button
                 type="button"

@@ -91,8 +91,7 @@ export function RagPanel({ projectId, onClose }: Props) {
       }
       if (skipped.length > 0) {
         setError(
-          `Ignoré (format non lisible en texte) : ${skipped.join(", ")}. ` +
-            "Copiez-collez leur contenu, ou convertissez-les en .txt/.md.",
+          `Ignoré (format non lisible en texte) : ${skipped.join(", ")}. Copiez-collez leur contenu, ou convertissez-les en .txt/.md.`,
         );
       }
     } catch (e) {
@@ -160,7 +159,14 @@ export function RagPanel({ projectId, onClose }: Props) {
 
   return (
     <>
-      <div className="locaryn-settings-backdrop" onClick={onClose} />
+      <div
+        className="locaryn-settings-backdrop"
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
+      />
+      {/* biome-ignore lint/a11y/useSemanticElements: <dialog> apporte le padding, la marge auto et le positionnement par défaut de l'agent utilisateur, que .locaryn-settings-modal (fixe, centré par transform, taille imposée) ne réinitialise pas ; la modale est montée/démontée par React, jamais par showModal(). */}
       <div
         className="locaryn-settings-modal"
         role="dialog"
@@ -225,7 +231,7 @@ export function RagPanel({ projectId, onClose }: Props) {
 
           {/* Drop zone — import files directly instead of pasting text. */}
           <div className="locaryn-field" style={{ marginTop: 20 }}>
-            <label className="locaryn-field-label">Importer des fichiers</label>
+            <div className="locaryn-field-label">Importer des fichiers</div>
             <input
               ref={fileRef}
               type="file"
@@ -237,8 +243,10 @@ export function RagPanel({ projectId, onClose }: Props) {
                 e.target.value = "";
               }}
             />
-            <div
+            <button
+              type="button"
               className={`locaryn-dropzone${dragOver ? " over" : ""}`}
+              style={{ width: "100%", font: "inherit", color: "inherit" }}
               onClick={() => !busy && fileRef.current?.click()}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -250,8 +258,6 @@ export function RagPanel({ projectId, onClose }: Props) {
                 setDragOver(false);
                 if (e.dataTransfer.files?.length) importFiles(e.dataTransfer.files);
               }}
-              role="button"
-              tabIndex={0}
             >
               {importing ? (
                 <>
@@ -259,21 +265,24 @@ export function RagPanel({ projectId, onClose }: Props) {
                 </>
               ) : (
                 <>
-                  <div className="locaryn-dropzone-main">
+                  {/* Des <span> et non des <div> : le contenu d'un <button> doit rester
+                      du contenu de phrasé, et la colonne flex les rend à l'identique. */}
+                  <span className="locaryn-dropzone-main">
                     📄 Glissez vos documents ici, ou cliquez pour choisir
-                  </div>
-                  <div className="locaryn-dropzone-sub">
+                  </span>
+                  <span className="locaryn-dropzone-sub">
                     .txt .md .csv .json .html, code source… — plusieurs fichiers acceptés
-                  </div>
+                  </span>
                 </>
               )}
-            </div>
+            </button>
           </div>
 
           <div className="locaryn-field" style={{ marginTop: 16 }}>
-            <label className="locaryn-field-label">Ou coller du texte</label>
+            <div className="locaryn-field-label">Ou coller du texte</div>
             <input
               className="locaryn-input"
+              aria-label="Nom de la source"
               placeholder="Nom de la source (ex: notes-archi.md)"
               value={source}
               onChange={(e) => setSource(e.target.value)}
@@ -359,7 +368,7 @@ export function RagPanel({ projectId, onClose }: Props) {
                         <span>{h.score.toFixed(3)}</span>
                       </div>
                       <div style={{ fontSize: "var(--text-xs)", lineHeight: 1.5 }}>
-                        {h.text.length > 240 ? h.text.slice(0, 240) + "…" : h.text}
+                        {h.text.length > 240 ? `${h.text.slice(0, 240)}…` : h.text}
                       </div>
                     </div>
                   ))}

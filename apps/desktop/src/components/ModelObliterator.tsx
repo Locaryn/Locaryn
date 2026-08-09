@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { MODEL_CATALOG, type ModelFamily } from "../lib/modelCatalog";
 
+type AblationMethod = "repe" | "orthogonal" | "norm_subtraction";
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -15,9 +17,7 @@ export function ModelObliterator({
   onModelAbliterated,
 }: Props) {
   const [selectedModel, setSelectedModel] = useState<string>(installedModels[0] ?? "llama3.1:8b");
-  const [ablationMethod, setAblationMethod] = useState<"repe" | "orthogonal" | "norm_subtraction">(
-    "repe",
-  );
+  const [ablationMethod, setAblationMethod] = useState<AblationMethod>("repe");
   const [intensity, setIntensity] = useState<number>(1.2);
   const [targetLayers, setTargetLayers] = useState<string>("10-28");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -75,7 +75,17 @@ export function ModelObliterator({
   }
 
   return (
-    <div className="locaryn-settings-backdrop" onClick={onClose}>
+    // Le fond ne ferme que si le clic l'atteint lui-même : cela évite d'accrocher
+    // un onClick d'arrêt de propagation sur la carte, qui n'est pas interactive.
+    <div
+      className="locaryn-settings-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+    >
       <div
         className="locaryn-card"
         style={{
@@ -86,7 +96,6 @@ export function ModelObliterator({
           border: "1px solid var(--border-strong)",
           boxShadow: "0 16px 40px rgba(0,0,0,0.8)",
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div
           style={{
@@ -145,8 +154,11 @@ export function ModelObliterator({
 
         {/* Model Selection */}
         <div className="locaryn-field" style={{ marginBottom: "16px" }}>
-          <label className="locaryn-field-label">Modèle Source à Oblitérer</label>
+          <label className="locaryn-field-label" htmlFor="obliterator-source-model">
+            Modèle Source à Oblitérer
+          </label>
           <select
+            id="obliterator-source-model"
             className="locaryn-select"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
@@ -170,11 +182,14 @@ export function ModelObliterator({
           }}
         >
           <div className="locaryn-field">
-            <label className="locaryn-field-label">Méthode d'Ablation Vectorielle</label>
+            <label className="locaryn-field-label" htmlFor="obliterator-method">
+              Méthode d'Ablation Vectorielle
+            </label>
             <select
+              id="obliterator-method"
               className="locaryn-select"
               value={ablationMethod}
-              onChange={(e) => setAblationMethod(e.target.value as any)}
+              onChange={(e) => setAblationMethod(e.target.value as AblationMethod)}
               disabled={isProcessing}
             >
               <option value="repe">Representation Engineering (RepE)</option>
@@ -184,8 +199,11 @@ export function ModelObliterator({
           </div>
 
           <div className="locaryn-field">
-            <label className="locaryn-field-label">Couches Cibles (Layer Range)</label>
+            <label className="locaryn-field-label" htmlFor="obliterator-layers">
+              Couches Cibles (Layer Range)
+            </label>
             <input
+              id="obliterator-layers"
               className="locaryn-input"
               value={targetLayers}
               onChange={(e) => setTargetLayers(e.target.value)}
@@ -197,10 +215,13 @@ export function ModelObliterator({
 
         <div className="locaryn-field" style={{ marginBottom: "20px" }}>
           <div className="lmc-field-head">
-            <label className="lmc-label">Intensité d'Ablation (Alpha : {intensity})</label>
+            <label className="lmc-label" htmlFor="obliterator-intensity">
+              Intensité d'Ablation (Alpha : {intensity})
+            </label>
             <span className="lmc-value">{intensity}</span>
           </div>
           <input
+            id="obliterator-intensity"
             type="range"
             min="0.5"
             max="2.5"
@@ -248,7 +269,8 @@ export function ModelObliterator({
 
         {/* Output Logs */}
         <div className="locaryn-field">
-          <label className="locaryn-field-label">Console du Script d'Oblitération</label>
+          {/* Titre d'une zone de logs, pas d'un champ : aucun contrôle à étiqueter. */}
+          <div className="locaryn-field-label">Console du Script d'Oblitération</div>
           <div className="locaryn-training-logs" style={{ height: "160px" }}>
             {logs.length === 0 ? (
               <span className="locaryn-text-faint">
@@ -257,6 +279,7 @@ export function ModelObliterator({
             ) : (
               logs.map((l, i) => (
                 <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: le journal n'est qu'ajouté en fin de liste ou vidé d'un bloc, jamais réordonné ni amputé, et les lignes ne portent aucun état.
                   key={i}
                   className="locaryn-log-line"
                   style={{ color: l.includes("✅") ? "var(--accent)" : "var(--text)" }}

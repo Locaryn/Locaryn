@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type AndroidScreenProbe,
   type InstalledExtension,
   type McpServerInfo,
   type SnapMcpDiagnostics,
@@ -7,7 +8,7 @@ import {
 } from "../lib/core";
 import { pickAnyFile } from "../lib/dialog";
 
-type Backend = "mock" | "web" | "adb" | "telegram";
+type Backend = "mock" | "web" | "adb" | "appium" | "telegram";
 type MediaVisibility = "saved" | "timed_10s" | "view_once" | "view_once_replay";
 
 type RunResult = {
@@ -19,7 +20,16 @@ const BACKENDS: { value: Backend; label: string; note: string }[] = [
   { value: "mock", label: "Simulation", note: "Aucun compte et aucun envoi réel." },
   { value: "telegram", label: "Telegram", note: "Compte personnel via MTProto." },
   { value: "web", label: "Snapchat Web", note: "Session Playwright sur web.snapchat.com." },
-  { value: "adb", label: "Snapchat Android", note: "Téléphone connecté avec ADB." },
+  {
+    value: "adb",
+    label: "Snapchat Android — ADB léger",
+    note: "Téléphone connecté avec le pilote minimal.",
+  },
+  {
+    value: "appium",
+    label: "Snapchat Android — Appium",
+    note: "Lecture UI sémantique via UiAutomator2.",
+  },
 ];
 
 type SetupStep = {
@@ -82,6 +92,12 @@ const SETUP_STEPS: SetupStep[] = [
     checks: ["android_device"],
   },
   {
+    id: "android-vm",
+    phase: "Android VM",
+    title: "Installer l’AVD SnapMCP",
+    detail: "Installer l’image Google APIs légère et créer SnapMcpVM depuis le bouton VM.",
+  },
+  {
     id: "snapchat-web",
     phase: "Snapchat",
     title: "Connecter Snapchat Web",
@@ -122,6 +138,14 @@ export function SnapMcpTestBench() {
   const [serverName, setServerName] = useState("");
   const [configuredBackend, setConfiguredBackend] = useState<Backend | null>(null);
   const [diagnostics, setDiagnostics] = useState<SnapMcpDiagnostics | null>(null);
+  const [vmStatus, setVmStatus] = useState<import("../lib/core").AndroidVmStatus | null>(null);
+  const [vmBusy, setVmBusy] = useState(false);
+  const [screenProbe, setScreenProbe] = useState<AndroidScreenProbe | null>(null);
+  const [screenBusy, setScreenBusy] = useState(false);
+  const [screenX, setScreenX] = useState("540");
+  const [screenY, setScreenY] = useState("900");
+  const [screenX2, setScreenX2] = useState("540");
+  const [screenY2, setScreenY2] = useState("500");
   const [setupChecked, setSetupChecked] = useState<Record<string, boolean>>({});
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -325,6 +349,106 @@ export function SnapMcpTestBench() {
       setError(String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function refreshVm() {
+    setVmBusy(true);
+    setError(null);
+    try {
+      setVmStatus(await core.diagnoseAndroidVm());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setVmBusy(false);
+    }
+  }
+
+  async function setupVm() {
+    setVmBusy(true);
+    setError(null);
+    try {
+      const status = await core.setupAndroidVm({
+        avdName: "SnapMcpVM",
+        apiLevel: 35,
+        installComponents: true,
+      });
+      setVmStatus(status);
+      setSetupChecked((current) => ({ ...current, "android-vm": true }));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setVmBusy(false);
+    }
+  }
+
+  async function startVm() {
+    setVmBusy(true);
+    setError(null);
+    try {
+      const avd = vmStatus?.avds[0] ?? vmStatus?.recommendedAvd ?? "SnapMcpVM";
+      setVmStatus(
+        await core.startAndroidVm({
+          avdName: avd,
+          memoryMb: 2048,
+          camera: "webcam0",
+          microphone: "system",
+        }),
+      );
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setVmBusy(false);
+    }
+  }
+
+  async function stopVm() {
+    setVmBusy(true);
+    setError(null);
+    try {
+      setVmStatus(await core.stopAndroidVm());
+      setScreenProbe(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setVmBusy(false);
+    }
+  }
+
+  async function probeScreen(withOcr = true) {
+    setScreenBusy(true);
+    setError(null);
+    try {
+      const serial = vmStatus?.runningEmulators[0];
+      setScreenProbe(await core.androidScreenProbe({ serial, ocr: withOcr }));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setScreenBusy(false);
+    }
+  }
+
+  async function screenAction(action: import("../lib/core").AndroidScreenActionArgs["action"]) {
+    setScreenBusy(true);
+    setError(null);
+    try {
+      const serial = screenProbe?.serial ?? vmStatus?.runningEmulators[0];
+      setScreenProbe(
+        await core.androidScreenAction({
+          serial,
+          action,
+          x: Number(screenX),
+          y: Number(screenY),
+          x2: Number(screenX2),
+          y2: Number(screenY2),
+          durationMs: 450,
+          ocr: false,
+        }),
+      );
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setScreenBusy(false);
     }
   }
 
@@ -647,6 +771,234 @@ export function SnapMcpTestBench() {
           >
             Configuration prête. Tu peux passer aux essais réels avec une conversation de test.
           </p>
+        )}
+      </div>
+
+      <div className="locaryn-box-card" style={{ maxWidth: 760, marginTop: 12 }}>
+        <div className="locaryn-box-head">
+          <div>
+            <h3 className="locaryn-box-name">VM Android légère</h3>
+            <span className="locaryn-box-brand">Installation et cycle de vie depuis Locaryn</span>
+          </div>
+          <span
+            className={`locaryn-tag${vmStatus?.runningEmulators.length ? " locaryn-tag-installed" : ""}`}
+          >
+            {vmStatus?.runningEmulators.length ? "en marche" : "non démarrée"}
+          </span>
+        </div>
+        <p className="locaryn-box-desc">
+          Android Emulator officiel, image Google APIs x86_64, 2 Go de RAM, démarrage sans animation
+          et caméra/micro configurables. Le bouton prépare l’SDK et l’AVD ; le contrôle du cycle de
+          vie passe par l’émulateur, séparé du téléphone ADB physique. L’automatisation de Snapchat
+          dans Android utilise toutefois le pont Android de l’émulateur : il n’existe pas de
+          contrôle UI universel via la seule console de l’émulateur.
+        </p>
+        <div className="locaryn-field-hint" style={{ marginBottom: 8 }}>
+          {vmStatus?.detail ?? "Clique sur Diagnostiquer pour vérifier le SDK Android."}
+        </div>
+        {vmStatus && (
+          <div className="locaryn-field-hint" style={{ marginBottom: 8 }}>
+            SDK : {vmStatus.sdkRoot ?? "introuvable"} · AVD : {vmStatus.avds.join(", ") || "aucune"}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void refreshVm()}
+            disabled={vmBusy}
+          >
+            Diagnostiquer la VM
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-primary"
+            onClick={() => void setupVm()}
+            disabled={vmBusy}
+          >
+            {vmBusy ? "Préparation…" : "Installer et configurer la VM"}
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void startVm()}
+            disabled={vmBusy || !vmStatus?.avds.length}
+          >
+            Démarrer la VM
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void stopVm()}
+            disabled={vmBusy || !vmStatus?.runningEmulators.length}
+          >
+            Arrêter la VM
+          </button>
+        </div>
+      </div>
+
+      <div className="locaryn-box-card" style={{ maxWidth: 760, marginTop: 12 }}>
+        <div className="locaryn-box-head">
+          <div>
+            <h3 className="locaryn-box-name">Laboratoire écran Android</h3>
+            <span className="locaryn-box-brand">
+              Pixels, arbre UI, OCR optionnel et contrôles bornés
+            </span>
+          </div>
+          <span
+            className={`locaryn-tag${screenProbe?.bootCompleted ? " locaryn-tag-installed" : ""}`}
+          >
+            {screenProbe
+              ? `${screenProbe.serial} · ${screenProbe.bootCompleted ? "Android prêt" : "boot en cours"}`
+              : "non testé"}
+          </span>
+        </div>
+        <p className="locaryn-box-desc">
+          Fonctionne sur une AVD vierge ou un téléphone ADB : aucun compte Google, Snapchat ou Play
+          Store nécessaire. L’analyse s’appuie d’abord sur l’arbre UI Android ; Tesseract est
+          utilisé seulement s’il est installé pour lire les pixels quand un élément n’est pas exposé
+          sémantiquement.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="locaryn-btn-primary"
+            onClick={() => void probeScreen(true)}
+            disabled={screenBusy}
+          >
+            {screenBusy ? "Analyse…" : "Capturer + analyser l’écran"}
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void probeScreen(false)}
+            disabled={screenBusy}
+          >
+            UI XML sans OCR
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void screenAction("back")}
+            disabled={screenBusy || !screenProbe}
+          >
+            Retour Android
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void screenAction("home")}
+            disabled={screenBusy || !screenProbe}
+          >
+            Accueil Android
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void screenAction("refresh")}
+            disabled={screenBusy || !screenProbe}
+          >
+            Actualiser
+          </button>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, minmax(70px, 1fr))",
+            gap: 8,
+            marginTop: 10,
+          }}
+        >
+          <input
+            className="locaryn-input"
+            inputMode="numeric"
+            value={screenX}
+            onChange={(e) => setScreenX(e.target.value)}
+            aria-label="X"
+            placeholder="X"
+          />
+          <input
+            className="locaryn-input"
+            inputMode="numeric"
+            value={screenY}
+            onChange={(e) => setScreenY(e.target.value)}
+            aria-label="Y"
+            placeholder="Y"
+          />
+          <input
+            className="locaryn-input"
+            inputMode="numeric"
+            value={screenX2}
+            onChange={(e) => setScreenX2(e.target.value)}
+            aria-label="X2"
+            placeholder="X2"
+          />
+          <input
+            className="locaryn-input"
+            inputMode="numeric"
+            value={screenY2}
+            onChange={(e) => setScreenY2(e.target.value)}
+            aria-label="Y2"
+            placeholder="Y2"
+          />
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void screenAction("tap")}
+            disabled={screenBusy || !screenProbe}
+          >
+            Tapper X/Y
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => void screenAction("swipe")}
+            disabled={screenBusy || !screenProbe}
+          >
+            Glisser X/Y → X2/Y2
+          </button>
+        </div>
+        {screenProbe && (
+          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+            {screenProbe.screenshotBase64 && (
+              <img
+                src={`data:image/png;base64,${screenProbe.screenshotBase64}`}
+                alt={`Capture écran ${screenProbe.serial}`}
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: 420,
+                  objectFit: "contain",
+                  background: "#090d10",
+                  borderRadius: 8,
+                }}
+              />
+            )}
+            <div className="locaryn-field-hint">
+              Résolution : {screenProbe.displaySize ?? "inconnue"} · OCR :{" "}
+              {screenProbe.ocrAvailable ? "disponible" : "non installé"}
+              <br />
+              {screenProbe.ocrDetail}
+            </div>
+            {screenProbe.ocrText && (
+              <pre style={{ whiteSpace: "pre-wrap", maxHeight: 180, overflow: "auto" }}>
+                {screenProbe.ocrText}
+              </pre>
+            )}
+            <details>
+              <summary>Textes UI détectés ({screenProbe.uiText.length})</summary>
+              <pre style={{ whiteSpace: "pre-wrap", maxHeight: 180, overflow: "auto" }}>
+                {screenProbe.uiText.join("\\n") || "Aucun texte sémantique."}
+              </pre>
+            </details>
+            <details>
+              <summary>Arbre UI XML brut</summary>
+              <pre style={{ whiteSpace: "pre-wrap", maxHeight: 220, overflow: "auto" }}>
+                {screenProbe.uiXml}
+              </pre>
+            </details>
+          </div>
         )}
       </div>
 

@@ -58,11 +58,13 @@ export function ReasoningPicker({ value, onChange, disabled }: Props) {
       </button>
 
       {open && (
-        <div className="locaryn-reason-menu" role="listbox">
+        // biome-ignore lint/a11y/useSemanticElements: un <select> natif ouvre le menu blanc de l'OS, illisible sur le thème sombre, et ne sait pas afficher les deux lignes (libellé + explication) de chaque niveau.
+        <div className="locaryn-reason-menu" role="listbox" tabIndex={-1}>
           {LEVELS.map((l) => (
             <button
               key={l.id}
               type="button"
+              // biome-ignore lint/a11y/useSemanticElements: une <option> ne peut contenir que du texte brut ; chaque niveau affiche une coche, un libellé et une explication.
               role="option"
               aria-selected={l.id === value}
               className={`locaryn-reason-opt${l.id === value ? " selected" : ""}`}

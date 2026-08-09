@@ -221,8 +221,11 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Model selector ── */}
       {hasModels ? (
         <div style={{ marginBottom: 20 }}>
-          <label className="locaryn-field-label">Modèle musical</label>
+          <label className="locaryn-field-label" htmlFor="music-model">
+            Modèle musical
+          </label>
           <select
+            id="music-model"
             className="locaryn-input"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
@@ -258,7 +261,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Prompt input ── */}
       <div className="locaryn-field" style={{ marginBottom: 16 }}>
-        <label className="locaryn-field-label">
+        <label className="locaryn-field-label" htmlFor="music-prompt">
           Prompt
           <span
             style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}
@@ -267,6 +270,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
           </span>
         </label>
         <textarea
+          id="music-prompt"
           className="locaryn-input"
           rows={3}
           placeholder="Ex: 'Lo-fi hip hop beat with warm piano and vinyl crackle, study music'"
@@ -280,9 +284,10 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
         />
 
         {/* ── Style presets ── */}
-        <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 6 }}>
+        {/* Intitulé de groupe : les styles sont des boutons, pas un champ à étiqueter. */}
+        <div className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 6 }}>
           Ou choisissez un style prédéfini
-        </label>
+        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {STYLE_PRESETS.map((s) => (
             <button
@@ -325,9 +330,10 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
         >
           {/* Duration */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            {/* Intitulé de groupe : les durées sont des boutons, pas un champ à étiqueter. */}
+            <div className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
               Durée
-            </label>
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {DURATION_PRESETS.map((d) => (
                 <button
@@ -346,10 +352,15 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Steps */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              className="locaryn-field-label"
+              htmlFor="music-steps"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Étapes : {steps}
             </label>
             <input
+              id="music-steps"
               type="range"
               min={10}
               max={200}
@@ -363,10 +374,15 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* CFG Scale */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              className="locaryn-field-label"
+              htmlFor="music-cfg"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Guidance (CFG) : {cfgScale.toFixed(1)}
             </label>
             <input
+              id="music-cfg"
               type="range"
               min={1}
               max={10}
@@ -380,10 +396,15 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Negative prompt */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              className="locaryn-field-label"
+              htmlFor="music-negative-prompt"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Prompt négatif
             </label>
             <input
+              id="music-negative-prompt"
               type="text"
               className="locaryn-input"
               value={negativePrompt}
@@ -397,9 +418,10 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
 
         {/* Melody reference (MusicGen Melody mode) */}
         <div style={{ marginTop: 12 }}>
-          <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+          {/* Intitulé de section : coiffe un bouton d'import, pas un champ de saisie. */}
+          <div className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
             Référence mélodique (optionnel)
-          </label>
+          </div>
           {melodyFile ? (
             <div
               style={{
@@ -421,6 +443,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
                 ✕
               </button>
               {/* melodyFile is a disk path: a webview cannot load it directly. */}
+              {/* biome-ignore lint/a11y/useMediaCaption: fichier audio choisi par l'utilisateur sur son disque, aucune piste de sous-titres n'existe */}
               <audio src={toMediaUrl(melodyFile)} controls style={{ height: 28, flex: 1 }} />
             </div>
           ) : (
@@ -448,7 +471,9 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Result ── */}
       {generatedResult && (
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
-          <label className="locaryn-field-label">Musique générée</label>
+          {/* Intitulé de section : coiffe un lecteur audio, qui n'est pas un champ à étiqueter. */}
+          <div className="locaryn-field-label">Musique générée</div>
+          {/* biome-ignore lint/a11y/useMediaCaption: musique générée localement à partir d'un prompt, il n'y a ni dialogue ni piste de sous-titres à fournir */}
           <audio src={generatedResult.url} controls style={{ width: "100%" }} />
         </div>
       )}

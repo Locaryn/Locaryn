@@ -28,6 +28,7 @@ locaryn-preview = { workspace = true }
 locaryn-events = { workspace = true }
 locaryn-storage = { workspace = true, features = ["ssh-connector"] }
 locaryn-config = { workspace = true }
+locaryn-hook-runtime = { workspace = true }
 locaryn-extensions = { workspace = true }
 locaryn-command-runtime = { workspace = true }
 locaryn-provider-supervisor = { workspace = true }

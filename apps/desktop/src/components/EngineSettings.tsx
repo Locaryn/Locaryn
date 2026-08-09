@@ -137,7 +137,7 @@ export function EngineSettings() {
   return (
     <div className="locaryn-engine-tab">
       <div className="locaryn-field">
-        <label className="locaryn-field-label">Runtime IA (llama.cpp)</label>
+        <div className="locaryn-field-label">Runtime IA (llama.cpp)</div>
         <p className="locaryn-field-hint">
           Le moteur unique qui exécute vos modèles GGUF en local. Locaryn le télécharge et le
           maintient à jour ({runtime?.pinned ?? "…"}, build Vulkan — GPU NVIDIA/AMD/Intel). Pas de
@@ -197,7 +197,7 @@ export function EngineSettings() {
       </div>
 
       <div className="locaryn-field" style={{ marginTop: 24 }}>
-        <label className="locaryn-field-label">Capacités du moteur</label>
+        <div className="locaryn-field-label">Capacités du moteur</div>
         <p className="locaryn-field-hint">
           Un seul moteur couvre toutes ces fonctions. Chaque capacité active dépend du runtime et
           des modèles installés.
@@ -242,7 +242,7 @@ export function EngineSettings() {
 
       {/* LoRA adapters — preload + live hot-swap */}
       <div className="locaryn-field" style={{ marginTop: 24 }}>
-        <label className="locaryn-field-label">Adaptateurs LoRA</label>
+        <div className="locaryn-field-label">Adaptateurs LoRA</div>
         <p className="locaryn-field-hint">
           Applique des adaptateurs LoRA (fichiers <code>.gguf</code>) sur le modèle. L'entraînement
           se fait en Python (Unsloth/PEFT) puis <code>convert_lora_to_gguf.py</code> ; ici on les{" "}

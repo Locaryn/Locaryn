@@ -117,7 +117,7 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
 
   return (
     <div className="locaryn-field">
-      <label className="locaryn-field-label">Dossier de stockage</label>
+      <div className="locaryn-field-label">Dossier de stockage</div>
       <p className="locaryn-field-hint">
         Les poids de modèles, les moteurs et les fichiers temporaires vivent ici. Placez-le sur un
         disque avec de l'espace : une seule famille de modèles dépasse souvent 20 Go.
@@ -211,9 +211,9 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
       {notice && !error && <div className="locaryn-store-notice">{notice}</div>}
 
       {/* ── What occupies the space ─────────────────────────────────── */}
-      <label className="locaryn-field-label" style={{ marginTop: 24 }}>
+      <div className="locaryn-field-label" style={{ marginTop: 24 }}>
         Occupation
-      </label>
+      </div>
       <div className="locaryn-kv-list" style={{ marginTop: 8 }}>
         {(info?.entries ?? []).map((e) => (
           <div className="locaryn-kv" key={e.key}>
@@ -263,9 +263,9 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
       </div>
 
       {/* ── Where there is room ─────────────────────────────────────── */}
-      <label className="locaryn-field-label" style={{ marginTop: 24 }}>
+      <div className="locaryn-field-label" style={{ marginTop: 24 }}>
         Disques
-      </label>
+      </div>
       <div className="locaryn-store-drives">
         {(info?.drives ?? []).map((d) => {
           const used = d.total_bytes - d.free_bytes;

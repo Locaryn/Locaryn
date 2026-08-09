@@ -59,6 +59,16 @@ function parseModelName(raw: string): TtsModelInfo {
   const lower = normalized.toLowerCase();
   const repoName = normalized.split("/").pop() ?? normalized;
 
+  if (lower.includes("pocket-tts") || lower.includes("pocket_tts") || lower.includes("pockettts")) {
+    return {
+      id: raw,
+      engine: "Pocket TTS (Kyutai)",
+      name: "Pocket TTS",
+      lang: "English",
+      quality: "Clonage",
+    };
+  }
+
   for (const family of TTS_MODELS) {
     const hitsFamily =
       lower.includes(family.id.toLowerCase()) || lower.includes(family.name.toLowerCase());
@@ -149,7 +159,7 @@ function parseModelName(raw: string): TtsModelInfo {
 function isTtsModel(m: string): boolean {
   const lower = m.toLowerCase();
   const ttsKeywords =
-    /piper|xtts|coqui|melotts|kokoro|parler|chatterbox|voxcpm2|omnivoice|f5[-_.]?tts|qwen3[-_.]?tts|moss[-_.]?tts|higgs[-_.]?tts|vibevoice/;
+    /piper|xtts|coqui|melotts|kokoro|parler|chatterbox|voxcpm2|omnivoice|f5[-_.]?tts|qwen3[-_.]?tts|moss[-_.]?tts|higgs[-_.]?tts|vibevoice|pocket[-_.]?tts/;
   if (ttsKeywords.test(lower)) {
     if (/tokenizer|config\.json|vocab\.json|merges\.txt|preprocessor_config/i.test(lower))
       return false;
@@ -307,11 +317,11 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
 
   const groupedSearchedModels = useMemo(() => {
     const groups: Record<string, string[]> = {};
-    searchedModels.forEach((m) => {
+    for (const m of searchedModels) {
       const info = parseModelName(m);
       if (!groups[info.engine]) groups[info.engine] = [];
       groups[info.engine].push(m);
-    });
+    }
     return groups;
   }, [searchedModels]);
 
@@ -328,6 +338,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
   const caps = useMemo(() => getModelCapabilities(selectedModel), [selectedModel]);
 
   // Auto-select the best tab based on model capabilities
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `activeTab` est volontairement absent — les onglets restent tous cliquables, donc réagir à chaque clic ramènerait aussitôt l'utilisateur sur un autre onglet dès que le modèle courant n'annonce pas la capacité correspondante. `caps` suit déjà `selectedModel` (useMemo), qui devient donc redondant.
   useEffect(() => {
     if (caps.voiceDesign && activeTab === "design") return;
     if (caps.cloning && activeTab === "clone") return;
@@ -336,7 +347,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
     if (caps.voiceDesign) setActiveTab("design");
     else if (caps.cloning) setActiveTab("clone");
     else setActiveTab("tts");
-  }, [selectedModel, caps]);
+  }, [caps]);
 
   // ── Voice file URL conversion for clone preview ──────────────────────
   useEffect(() => {
@@ -768,6 +779,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
           {/* Text to Synthesize */}
           <div>
             <label
+              htmlFor="audio-gen-text"
               style={{
                 display: "inline-block",
                 fontSize: 12,
@@ -782,6 +794,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
               Text to Synthesize
             </label>
             <textarea
+              id="audio-gen-text"
               className="locaryn-input"
               rows={4}
               placeholder="Saisissez le texte que vous souhaitez faire parler..."
@@ -796,6 +809,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
             <div style={{ flex: 1, minWidth: 160 }}>
               <label
+                htmlFor="audio-gen-language"
                 style={{
                   display: "inline-block",
                   fontSize: 12,
@@ -810,6 +824,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
                 Language
               </label>
               <select
+                id="audio-gen-language"
                 className="locaryn-input"
                 value={synthesisLang}
                 onChange={(e) => setSynthesisLang(e.target.value)}
@@ -923,7 +938,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
               background: "rgba(100, 150, 255, 0.04)",
             }}
           >
-            <label
+            <div
               style={{
                 display: "inline-block",
                 fontSize: 12,
@@ -936,8 +951,9 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
               }}
             >
               🎵 Generated Audio
-            </label>
+            </div>
             {generatedResult ? (
+              // biome-ignore lint/a11y/useMediaCaption: l'audio vient d'être synthétisé localement, il n'existe aucune piste de sous-titres à lui associer
               <audio
                 key={generatedResult.url}
                 src={generatedResult.url}
@@ -970,7 +986,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
               background: "rgba(100, 150, 255, 0.04)",
             }}
           >
-            <label
+            <div
               style={{
                 display: "inline-block",
                 fontSize: 12,
@@ -983,7 +999,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
               }}
             >
               Status
-            </label>
+            </div>
             {jobRunning && taskProgress && (
               <div style={{ marginTop: 8 }}>
                 <div className="img-gen-progress-bar">

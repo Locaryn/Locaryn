@@ -52,6 +52,7 @@ export function RegionEditPanel({ installedModels }: Props) {
   }, [imageModels, model]);
 
   // A new description invalidates the selection that was shown for the old one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: target et image ne sont pas lus ici, ils sont le déclencheur ; les retirer laisserait un aperçu périmé passer pour la sélection courante.
   useEffect(() => {
     setPreview(null);
   }, [target, image]);
@@ -99,7 +100,7 @@ export function RegionEditPanel({ installedModels }: Props) {
   return (
     <div className="locaryn-region">
       <div className="locaryn-region-col">
-        <label className="locaryn-field-label">Image</label>
+        <div className="locaryn-field-label">Image</div>
         <div className="locaryn-field-actions" style={{ marginTop: 8 }}>
           <button
             type="button"
@@ -118,7 +119,7 @@ export function RegionEditPanel({ installedModels }: Props) {
           {image && <span className="locaryn-region-path">{image.split(/[/\\]/).pop()}</span>}
         </div>
 
-        <label className="locaryn-field-label" style={{ marginTop: 20 }}>
+        <label className="locaryn-field-label" htmlFor="region-target" style={{ marginTop: 20 }}>
           Zone à modifier
         </label>
         <p className="locaryn-field-hint">
@@ -126,6 +127,7 @@ export function RegionEditPanel({ installedModels }: Props) {
           — une description qui en désigne plusieurs sélectionne mal.
         </p>
         <input
+          id="region-target"
           className="locaryn-input"
           style={{ marginTop: 8 }}
           placeholder="le t-shirt"
@@ -143,9 +145,9 @@ export function RegionEditPanel({ installedModels }: Props) {
           {busy === "preview" ? "Analyse…" : "Voir la sélection"}
         </button>
 
-        <label className="locaryn-field-label" style={{ marginTop: 24 }}>
+        <div className="locaryn-field-label" style={{ marginTop: 24 }}>
           Que faire de cette zone
-        </label>
+        </div>
         <div className="locaryn-imgset-row" style={{ marginTop: 8 }}>
           <button
             type="button"
@@ -238,7 +240,7 @@ export function RegionEditPanel({ installedModels }: Props) {
       <div className="locaryn-region-col">
         {preview && (
           <>
-            <label className="locaryn-field-label">Sélection</label>
+            <div className="locaryn-field-label">Sélection</div>
             <img className="locaryn-region-img" src={toImageUrl(preview.path)} alt="sélection" />
             <div className="locaryn-kv-list" style={{ marginTop: 8 }}>
               <div className="locaryn-kv">
@@ -267,9 +269,9 @@ export function RegionEditPanel({ installedModels }: Props) {
         )}
         {result && (
           <>
-            <label className="locaryn-field-label" style={{ marginTop: preview ? 20 : 0 }}>
+            <div className="locaryn-field-label" style={{ marginTop: preview ? 20 : 0 }}>
               Résultat
-            </label>
+            </div>
             <img className="locaryn-region-img" src={toImageUrl(result.path)} alt="résultat" />
             <p className="locaryn-field-hint">{result.path}</p>
           </>

@@ -53,7 +53,7 @@ let seq = 0;
 function emit() {
   // New array identity so useSyncExternalStore detects the change.
   tasks = [...tasks];
-  listeners.forEach((l) => l());
+  for (const l of listeners) l();
 }
 
 function now(): number {

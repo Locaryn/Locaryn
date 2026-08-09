@@ -297,7 +297,7 @@ export function StudioView({
   function renderPlaceholder(title: string, description: string) {
     return (
       <div className="locaryn-card" style={{ padding: 40, textAlign: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}></div>
+        <div style={{ fontSize: 48, marginBottom: 16 }} />
         <h3 style={{ marginBottom: 12 }}>{title}</h3>
         <p className="locaryn-field-hint" style={{ maxWidth: 520, margin: "0 auto" }}>
           {description}

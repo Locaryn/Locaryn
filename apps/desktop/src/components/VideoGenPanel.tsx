@@ -206,8 +206,11 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Model selector ── */}
       {hasModels ? (
         <div style={{ marginBottom: 20 }}>
-          <label className="locaryn-field-label">Modèle vidéo</label>
+          <label className="locaryn-field-label" htmlFor="video-model">
+            Modèle vidéo
+          </label>
           <select
+            id="video-model"
             className="locaryn-input"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
@@ -288,7 +291,8 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Image source (i2v) ── */}
       {mode === "i2v" && (
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
-          <label className="locaryn-field-label">Image source</label>
+          {/* Intitulé de section : le champ fichier est masqué et déclenché par le bouton ci-dessous. */}
+          <div className="locaryn-field-label">Image source</div>
           <input
             ref={fileInputRef}
             type="file"
@@ -324,7 +328,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Prompt input ── */}
       <div className="locaryn-field" style={{ marginBottom: 16 }}>
-        <label className="locaryn-field-label">
+        <label className="locaryn-field-label" htmlFor="video-prompt">
           Prompt
           <span
             style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}
@@ -333,6 +337,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
           </span>
         </label>
         <textarea
+          id="video-prompt"
           className="locaryn-input"
           rows={3}
           placeholder="Ex: 'A cinematic shot of a dolphin swimming through neon-lit cyberpunk canals, slow motion'"
@@ -365,9 +370,10 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
         >
           {/* Duration */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            {/* Intitulé de groupe : les durées sont des boutons, pas un champ à étiqueter. */}
+            <div className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
               Durée
-            </label>
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {DURATION_PRESETS.map((d) => (
                 <button
@@ -386,10 +392,15 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Steps */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              className="locaryn-field-label"
+              htmlFor="video-steps"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Étapes : {steps}
             </label>
             <input
+              id="video-steps"
               type="range"
               min={10}
               max={100}
@@ -403,10 +414,15 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* CFG Scale */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              className="locaryn-field-label"
+              htmlFor="video-cfg"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Guidance (CFG) : {cfgScale.toFixed(1)}
             </label>
             <input
+              id="video-cfg"
               type="range"
               min={1}
               max={20}
@@ -420,10 +436,15 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Negative prompt */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              className="locaryn-field-label"
+              htmlFor="video-negative-prompt"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Prompt négatif
             </label>
             <input
+              id="video-negative-prompt"
               type="text"
               className="locaryn-input"
               value={negativePrompt}
@@ -447,7 +468,9 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Result ── */}
       {generatedResult && (
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
-          <label className="locaryn-field-label">Vidéo générée</label>
+          {/* Intitulé de section : coiffe un lecteur vidéo, qui n'est pas un champ à étiqueter. */}
+          <div className="locaryn-field-label">Vidéo générée</div>
+          {/* biome-ignore lint/a11y/useMediaCaption: vidéo générée localement à partir d'un prompt, sans dialogue ni fichier de sous-titres associé */}
           <video
             src={generatedResult.url}
             controls

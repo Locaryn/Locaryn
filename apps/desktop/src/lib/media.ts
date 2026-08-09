@@ -46,7 +46,6 @@ export function mediaMimeType(path: string): string {
       return "audio/opus";
     case "webm":
       return "audio/webm";
-    case "wav":
     default:
       return "audio/wav";
   }

@@ -751,6 +751,50 @@ export interface SnapMcpDiagnostics {
   checks: SnapMcpCheck[];
 }
 
+export interface AndroidVmStatus {
+  sdkRoot: string | null;
+  sdkmanager: string | null;
+  avdmanager: string | null;
+  emulator: string | null;
+  avds: string[];
+  runningEmulators: string[];
+  recommendedAvd: string;
+  detail: string;
+}
+
+export interface AndroidVmSetupArgs {
+  avdName?: string;
+  apiLevel?: number;
+  installComponents?: boolean;
+}
+
+export interface AndroidScreenProbe {
+  serial: string;
+  state: string;
+  bootCompleted: boolean;
+  displaySize: string | null;
+  screenshotBase64: string;
+  uiXml: string;
+  uiText: string[];
+  ocrText: string | null;
+  ocrAvailable: boolean;
+  ocrDetail: string;
+}
+
+export interface AndroidScreenArgs {
+  serial?: string;
+  ocr?: boolean;
+}
+
+export interface AndroidScreenActionArgs extends AndroidScreenArgs {
+  action: "tap" | "swipe" | "back" | "home" | "refresh";
+  x?: number;
+  y?: number;
+  x2?: number;
+  y2?: number;
+  durationMs?: number;
+}
+
 /** The client certificate registered with this installation, if any. */
 export interface CertificateStatus {
   installed: boolean;
@@ -855,7 +899,6 @@ export function reasoningPayload(level: ReasoningLevel): Record<string, unknown>
       return { reasoning_budget: 8192, chat_template_kwargs: { enable_thinking: true } };
     case "extreme":
       return { reasoning_budget: -1, chat_template_kwargs: { enable_thinking: true } };
-    case "auto":
     default:
       return null;
   }
@@ -1113,6 +1156,23 @@ export interface CoreApi {
   listModels(endpoint: string): Promise<string[]>;
   appInfo(): Promise<AppInfo>;
 
+  // --- AirLLM (low-VRAM inference engine) --------------------------------
+  airllmStatus(): Promise<{
+    python: boolean;
+    pythonPath?: string | null;
+    torch: boolean;
+    airllmInstalled: boolean;
+    installed: { repo: string; installedAt: string }[];
+  }>;
+  airllmSetup(onLine?: (text: string) => void): Promise<void>;
+  airllmInstall(
+    repo: string,
+    onLine?: (text: string) => void,
+  ): Promise<{ repo: string; installedAt: string }>;
+  airllmInstalled(): Promise<{ repo: string; installedAt: string }[]>;
+  airllmUninstall(repo: string): Promise<void>;
+  configureAirllmProvider(repo: string): Promise<Provider>;
+
   listVoicePresets(): Promise<VoicePreset[]>;
   saveVoicePreset(args: SavePresetArgs): Promise<VoicePreset>;
   deleteVoicePreset(id: string): Promise<void>;
@@ -1219,6 +1279,23 @@ export interface CoreApi {
   invokeMcpTool(name: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
   /** Check local runtimes, devices, sessions and MCP servers without changing files. */
   diagnoseSnapMcp(): Promise<SnapMcpDiagnostics>;
+
+  /** Android SDK, AVDs et émulateurs présents sur cette machine. Lecture seule. */
+  diagnoseAndroidVm(): Promise<AndroidVmStatus>;
+  /** Installe les composants manquants et crée l'AVD demandé. */
+  setupAndroidVm(args: AndroidVmSetupArgs): Promise<AndroidVmStatus>;
+  /** Démarre un AVD existant. */
+  startAndroidVm(args: {
+    avdName: string;
+    memoryMb?: number;
+    camera?: string;
+    microphone?: string;
+  }): Promise<AndroidVmStatus>;
+  stopAndroidVm(args?: { consolePort?: number }): Promise<AndroidVmStatus>;
+  /** Capture screen pixels plus semantic UI tree; OCR is optional and never required. */
+  androidScreenProbe(args?: AndroidScreenArgs): Promise<AndroidScreenProbe>;
+  /** Send a bounded, explicit screen action, then return a fresh probe. */
+  androidScreenAction(args: AndroidScreenActionArgs): Promise<AndroidScreenProbe>;
   /** Save a browser-recorded audio blob for tools that require a local path. */
   writeTestAudio(audioBase64: string, mimeType: string): Promise<string>;
   removeTestAudio(path: string): Promise<void>;
@@ -1398,6 +1475,28 @@ export interface CoreApi {
 // Real implementation — Tauri IPC to the embedded Rust core
 // ============================================================================
 
+const HF_TOKEN_KEY = "locaryn_hf_token_v1";
+
+/** HuggingFace access token, for gated repos (e.g. kyutai/pocket-tts). */
+export function getHfToken(): string {
+  try {
+    return (typeof localStorage !== "undefined" && localStorage.getItem(HF_TOKEN_KEY)) || "";
+  } catch {
+    return "";
+  }
+}
+
+/** Persist (or clear, when empty) the HuggingFace access token. */
+export function setHfToken(token: string): void {
+  try {
+    const t = token.trim();
+    if (t) localStorage.setItem(HF_TOKEN_KEY, t);
+    else localStorage.removeItem(HF_TOKEN_KEY);
+  } catch {
+    // localStorage unavailable — the token just won't persist.
+  }
+}
+
 const tauriCore: CoreApi = {
   health: () => invoke<Health>("core_health"),
   bootstrap: () => invoke<Bootstrap>("bootstrap"),
@@ -1450,6 +1549,42 @@ const tauriCore: CoreApi = {
   setActiveProvider: (id) => invoke<Provider>("set_active_provider", { id }),
   configureProvider: (endpoint, model) =>
     invoke<Provider>("configure_provider", { endpoint, model }),
+
+  // ── AirLLM (low-VRAM inference engine) ────────────────────────────────
+  airllmStatus: () =>
+    invoke<{
+      python: boolean;
+      pythonPath?: string | null;
+      torch: boolean;
+      airllmInstalled: boolean;
+      installed: { repo: string; installedAt: string }[];
+    }>("airllm_status"),
+  airllmSetup: (onLine) => {
+    const chan = new Channel<
+      { type: "line"; text: string } | { type: "done" } | { type: "error"; text: string }
+    >();
+    if (onLine)
+      chan.onmessage = (m) => {
+        if (m.type === "line") onLine(m.text);
+      };
+    return invoke<void>("airllm_setup", { onEvent: chan });
+  },
+  airllmInstall: (repo, onLine) => {
+    const chan = new Channel<
+      { type: "line"; text: string } | { type: "done" } | { type: "error"; text: string }
+    >();
+    if (onLine)
+      chan.onmessage = (m) => {
+        if (m.type === "line") onLine(m.text);
+      };
+    return invoke<{ repo: string; installedAt: string }>("airllm_install", {
+      repo,
+      onEvent: chan,
+    });
+  },
+  airllmInstalled: () => invoke<{ repo: string; installedAt: string }[]>("airllm_installed"),
+  airllmUninstall: (repo) => invoke<void>("airllm_uninstall", { repo }),
+  configureAirllmProvider: (repo) => invoke<Provider>("configure_airllm_provider", { repo }),
   listModels: (endpoint) => invoke<string[]>("list_models", { endpoint }),
   appInfo: () => invoke<AppInfo>("app_info"),
 
@@ -1547,6 +1682,18 @@ const tauriCore: CoreApi = {
   stopMcpServer: (name) => invoke<void>("stop_mcp_server", { name }),
   invokeMcpTool: (name, tool, args) => invoke<unknown>("invoke_mcp_tool", { name, tool, args }),
   diagnoseSnapMcp: () => invoke<SnapMcpDiagnostics>("diagnose_snapmcp"),
+  diagnoseAndroidVm: () => invoke<AndroidVmStatus>("diagnose_android_vm"),
+  setupAndroidVm: (args: AndroidVmSetupArgs) =>
+    invoke<AndroidVmStatus>("setup_android_vm", { args }),
+  startAndroidVm: (args: {
+    avdName: string;
+    memoryMb?: number;
+    camera?: string;
+    microphone?: string;
+  }) => invoke<AndroidVmStatus>("start_android_vm", { args }),
+  stopAndroidVm: (args = {}) => invoke<AndroidVmStatus>("stop_android_vm", { args }),
+  androidScreenProbe: (args = {}) => invoke<AndroidScreenProbe>("android_screen_probe", { args }),
+  androidScreenAction: (args) => invoke<AndroidScreenProbe>("android_screen_action", { args }),
   writeTestAudio: (audioBase64, mimeType) =>
     invoke<string>("write_test_audio", { audioBase64, mimeType }),
   removeTestAudio: (path) => invoke<void>("remove_test_audio", { path }),
@@ -1578,11 +1725,15 @@ const tauriCore: CoreApi = {
         onProgress(Math.round(ev.percentage), ev.status);
       };
     }
+    // Gated HuggingFace repos (kyutai/pocket-tts, Qwen3-TTS, …) answer 401
+    // without an access token; the Rust side sends it only to huggingface.co.
+    const hfToken = getHfToken();
     return invoke("pull_model", {
       endpoint,
       model,
       heretic: heretic ?? null,
       consent: consent ?? null,
+      hfToken: hfToken || null,
       onEvent: chan,
     });
   },
@@ -2660,10 +2811,7 @@ const demoCore: CoreApi = {
       output: 'fn main() {\n    println!("hello locaryn");\n}\n',
     });
     await sleep(400);
-    const reply =
-      "Demo mode — no Rust core attached. You said:\n\n> " +
-      content +
-      "\n\nHere is a *markdown* sample with `inline code` and a block:\n\n```ts\nconst answer = 42;\nexport default answer;\n```\n\n1. First step\n2. Second step";
+    const reply = `Demo mode — no Rust core attached. You said:\n\n> ${content}\n\nHere is a *markdown* sample with \`inline code\` and a block:\n\n\`\`\`ts\nconst answer = 42;\nexport default answer;\n\`\`\`\n\n1. First step\n2. Second step`;
     for (const word of reply.split(/(?<=\s)/)) {
       onEvent({ type: "token", text: word });
       await sleep(18);
@@ -2712,6 +2860,46 @@ const demoCore: CoreApi = {
       throw new Error(`cannot reach ${endpoint}: demo only serves the default endpoint`);
     }
     return demoModels;
+  },
+  airllmStatus: async () => ({
+    python: true,
+    pythonPath: "demo-python",
+    torch: true,
+    airllmInstalled: true,
+    installed: [],
+  }),
+  airllmSetup: async (onLine) => {
+    await sleep(400);
+    onLine?.("[demo] environnement AirLLM prêt");
+  },
+  airllmInstall: async (repo, onLine) => {
+    await sleep(600);
+    onLine?.("[demo] poids AirLLM téléchargés");
+    return { repo, installedAt: new Date().toISOString() };
+  },
+  airllmInstalled: async () => [],
+  airllmUninstall: async () => {},
+  configureAirllmProvider: async (repo) => {
+    await sleep(200);
+    const p: Provider = {
+      ...demoProviders[0],
+      id: `airllm-${repo.replace(/[^a-z0-9]/gi, "-")}`,
+      engine: "airllm",
+      endpoint: "http://127.0.0.1:8337/v1",
+      model: repo,
+      is_active: true,
+      status: "healthy",
+      config: { repo },
+      updated_at: new Date().toISOString(),
+    };
+    demoProviders = [p];
+    demoHealth.active_provider = {
+      kind: "local",
+      engine: "airllm",
+      endpoint: p.endpoint,
+      model: repo,
+    };
+    return p;
   },
   pullModel: async (_endpoint, model, onProgress, _heretic, consent) => {
     if (
@@ -3150,6 +3338,35 @@ const demoCore: CoreApi = {
     arguments: args,
     message: `Outil ${tool} simulé en mode navigateur. Lancez Locaryn Tauri pour un compte réel.`,
   }),
+  // Aucun SDK Android n'est joignable depuis un navigateur : la démo le dit
+  // plutôt que d'inventer un émulateur qui n'existe pas.
+  diagnoseAndroidVm: async () => ({
+    sdkRoot: null,
+    sdkmanager: null,
+    avdmanager: null,
+    emulator: null,
+    avds: [],
+    runningEmulators: [],
+    recommendedAvd: "Locaryn_API34",
+    detail: "Le SDK Android n'est pas joignable en mode navigateur. Lancez l'application Locaryn.",
+  }),
+  setupAndroidVm: async () => {
+    throw new Error(
+      "L'installation du SDK Android exige l'application Locaryn, pas le navigateur.",
+    );
+  },
+  startAndroidVm: async () => {
+    throw new Error("Démarrer un émulateur exige l'application Locaryn, pas le navigateur.");
+  },
+  stopAndroidVm: async () => {
+    throw new Error("Arrêter un émulateur exige l'application Locaryn, pas le navigateur.");
+  },
+  androidScreenProbe: async () => {
+    throw new Error("La capture écran Android exige l'application Locaryn, pas le navigateur.");
+  },
+  androidScreenAction: async () => {
+    throw new Error("Le contrôle écran Android exige l'application Locaryn, pas le navigateur.");
+  },
   diagnoseSnapMcp: async () => ({
     checked_at: new Date().toISOString(),
     checks: [
@@ -3237,9 +3454,7 @@ const demoCore: CoreApi = {
     await sleep(150);
     if (typeof window !== "undefined") {
       // eslint-disable-next-line no-console
-      console.info(
-        "[demo approve] " + decision.decision + " " + decision.tool + " -> " + decision.scope,
-      );
+      console.info(`[demo approve] ${decision.decision} ${decision.tool} -> ${decision.scope}`);
     }
   },
 
@@ -3355,11 +3570,9 @@ const demoCore: CoreApi = {
     return {
       // Demo mode has no real file, so we keep an inline data URL in the path
       // field. The consumer treats data: URLs as already-displayable.
-      path:
-        "data:image/svg+xml;base64," +
-        btoa(
-          '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#1e2022"/><text x="50%" y="50%" fill="#6f9c7f" font-size="28" text-anchor="middle">demo</text></svg>',
-        ),
+      path: `data:image/svg+xml;base64,${btoa(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#1e2022"/><text x="50%" y="50%" fill="#6f9c7f" font-size="28" text-anchor="middle">demo</text></svg>',
+      )}`,
       simulated: true,
     };
   },

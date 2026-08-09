@@ -140,8 +140,15 @@ export function SshServerForm({ onClose, onSaved }: Props) {
 
   return (
     <>
-      <div className="locaryn-settings-backdrop" onClick={onClose} />
       <div
+        className="locaryn-settings-backdrop"
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
+      />
+      <div
+        // biome-ignore lint/a11y/useSemanticElements: <dialog> apporte le padding, la marge auto et le positionnement par défaut de l'agent utilisateur, que .locaryn-form-modal (fixe, centré par transform, sans padding) ne réinitialise pas ; la modale est montée et démontée par React, jamais par showModal().
         className="locaryn-form-modal"
         role="dialog"
         aria-modal="true"
@@ -161,8 +168,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
 
         <div className="locaryn-form-body">
           <div className="locaryn-field">
-            <label className="locaryn-field-label">Name</label>
+            <label className="locaryn-field-label" htmlFor="ssh-name">
+              Name
+            </label>
             <input
+              id="ssh-name"
               className="locaryn-input locaryn-input-text"
               value={name}
               placeholder="web-prod"
@@ -172,8 +182,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
 
           <div className="locaryn-field-grid">
             <div className="locaryn-field locaryn-field-grow">
-              <label className="locaryn-field-label">Host / IP</label>
+              <label className="locaryn-field-label" htmlFor="ssh-host">
+                Host / IP
+              </label>
               <input
+                id="ssh-host"
                 className="locaryn-input"
                 value={host}
                 placeholder="10.0.0.4"
@@ -185,8 +198,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
               />
             </div>
             <div className="locaryn-field locaryn-field-port">
-              <label className="locaryn-field-label">Port</label>
+              <label className="locaryn-field-label" htmlFor="ssh-port">
+                Port
+              </label>
               <input
+                id="ssh-port"
                 className="locaryn-input"
                 value={port}
                 onChange={(e) => {
@@ -198,8 +214,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           </div>
 
           <div className="locaryn-field">
-            <label className="locaryn-field-label">Username</label>
+            <label className="locaryn-field-label" htmlFor="ssh-username">
+              Username
+            </label>
             <input
+              id="ssh-username"
               className="locaryn-input"
               value={username}
               placeholder="deploy"
@@ -212,8 +231,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           </div>
 
           <div className="locaryn-field">
-            <label className="locaryn-field-label">Authentication</label>
+            <label className="locaryn-field-label" htmlFor="ssh-auth-method">
+              Authentication
+            </label>
             <select
+              id="ssh-auth-method"
               className="locaryn-select"
               value={authMethod}
               onChange={(e) => {
@@ -236,8 +258,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
 
           {authMethod === "key" && (
             <div className="locaryn-field">
-              <label className="locaryn-field-label">Private key path</label>
+              <label className="locaryn-field-label" htmlFor="ssh-key-path">
+                Private key path
+              </label>
               <input
+                id="ssh-key-path"
                 className="locaryn-input"
                 value={keyPath}
                 placeholder="~/.ssh/id_ed25519"
@@ -259,8 +284,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
 
           {authMethod === "password" && (
             <div className="locaryn-field">
-              <label className="locaryn-field-label">Password</label>
+              <label className="locaryn-field-label" htmlFor="ssh-password">
+                Password
+              </label>
               <input
+                id="ssh-password"
                 className="locaryn-input locaryn-input-text"
                 type="password"
                 value={password}
@@ -287,8 +315,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
             <div className="locaryn-jump-box">
               <div className="locaryn-field-grid">
                 <div className="locaryn-field locaryn-field-grow">
-                  <label className="locaryn-field-label">Jump host</label>
+                  <label className="locaryn-field-label" htmlFor="ssh-jump-host">
+                    Jump host
+                  </label>
                   <input
+                    id="ssh-jump-host"
                     className="locaryn-input"
                     value={jHost}
                     spellCheck={false}
@@ -299,8 +330,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                   />
                 </div>
                 <div className="locaryn-field locaryn-field-port">
-                  <label className="locaryn-field-label">Port</label>
+                  <label className="locaryn-field-label" htmlFor="ssh-jump-port">
+                    Port
+                  </label>
                   <input
+                    id="ssh-jump-port"
                     className="locaryn-input"
                     value={jPort}
                     onChange={(e) => {
@@ -311,8 +345,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                 </div>
               </div>
               <div className="locaryn-field">
-                <label className="locaryn-field-label">Jump username</label>
+                <label className="locaryn-field-label" htmlFor="ssh-jump-username">
+                  Jump username
+                </label>
                 <input
+                  id="ssh-jump-username"
                   className="locaryn-input"
                   value={jUser}
                   spellCheck={false}
@@ -323,8 +360,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                 />
               </div>
               <div className="locaryn-field">
-                <label className="locaryn-field-label">Jump auth</label>
+                <label className="locaryn-field-label" htmlFor="ssh-jump-auth">
+                  Jump auth
+                </label>
                 <select
+                  id="ssh-jump-auth"
                   className="locaryn-select"
                   value={jAuth}
                   onChange={(e) => {
@@ -338,8 +378,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
               </div>
               {jAuth === "key" && (
                 <div className="locaryn-field">
-                  <label className="locaryn-field-label">Jump key path</label>
+                  <label className="locaryn-field-label" htmlFor="ssh-jump-key-path">
+                    Jump key path
+                  </label>
                   <input
+                    id="ssh-jump-key-path"
                     className="locaryn-input"
                     value={jKeyPath}
                     spellCheck={false}
@@ -354,8 +397,11 @@ export function SshServerForm({ onClose, onSaved }: Props) {
           )}
 
           <div className="locaryn-field">
-            <label className="locaryn-field-label">Description</label>
+            <label className="locaryn-field-label" htmlFor="ssh-description">
+              Description
+            </label>
             <textarea
+              id="ssh-description"
               className="locaryn-textarea"
               value={description}
               rows={2}

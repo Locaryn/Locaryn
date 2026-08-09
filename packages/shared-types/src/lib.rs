@@ -163,6 +163,9 @@ pub enum ProviderEngine {
     Lmstudio,
     Vllm,
     OpenAiCompat,
+    /// AirLLM — low-VRAM inference engine (layer-by-layer offloading).
+    /// Runs an OpenAI-compatible Python server on loopback.
+    AirLlm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

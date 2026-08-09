@@ -74,23 +74,24 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
         <h2 className="locaryn-connect-title">{provisioning.organisation || "Connexion"}</h2>
         <p className="locaryn-connect-server">{provisioning.serverUrl}</p>
 
-        <label className="locaryn-field-label" style={{ marginTop: 20 }}>
+        <label htmlFor="connect-user" className="locaryn-field-label" style={{ marginTop: 20 }}>
           Identifiant
         </label>
         <input
+          id="connect-user"
           className="locaryn-input"
           style={{ marginTop: 6 }}
           value={username}
           disabled={busy}
-          autoFocus
           onChange={(e) => setUsername(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void connect()}
         />
 
-        <label className="locaryn-field-label" style={{ marginTop: 14 }}>
+        <label htmlFor="connect-pass" className="locaryn-field-label" style={{ marginTop: 14 }}>
           Mot de passe
         </label>
         <input
+          id="connect-pass"
           className="locaryn-input"
           style={{ marginTop: 6 }}
           type="password"

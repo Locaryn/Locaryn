@@ -43,7 +43,7 @@ export function ConnectionSettings() {
 
   return (
     <div className="locaryn-field" style={{ marginTop: 28 }}>
-      <label className="locaryn-field-label">Se connecter à un serveur</label>
+      <div className="locaryn-field-label">Se connecter à un serveur</div>
       <p className="locaryn-field-hint">
         Quand les modèles tournent sur une autre machine. La connexion est établie au démarrage ; ce
         qui suit permet de la changer.
@@ -85,9 +85,9 @@ export function ConnectionSettings() {
         </p>
       )}
 
-      <label className="locaryn-field-label" style={{ marginTop: 20 }}>
+      <div className="locaryn-field-label" style={{ marginTop: 20 }}>
         Certificat de connexion
-      </label>
+      </div>
       <p className="locaryn-field-hint">
         Certains serveurs n'acceptent que les postes qu'ils ont eux-mêmes autorisés. Le fichier «
         .pem » transmis par votre administrateur s'installe ici.

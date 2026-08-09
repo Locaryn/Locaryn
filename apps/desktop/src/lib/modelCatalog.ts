@@ -1095,7 +1095,7 @@ export async function fetchLiveHuggingFaceModels(query = "gguf"): Promise<ModelF
 
     const familyMap: Record<string, ModelFamily> = {};
 
-    items.forEach((item) => {
+    for (const item of items) {
       const parts = item.id.split("/");
       const author = parts[0] || "HuggingFace";
       const repoName = parts[1] || item.id;
@@ -1144,7 +1144,7 @@ export async function fetchLiveHuggingFaceModels(query = "gguf"): Promise<ModelF
           ],
         };
       }
-    });
+    }
 
     return Object.values(familyMap);
   } catch {

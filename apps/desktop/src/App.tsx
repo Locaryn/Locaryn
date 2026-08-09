@@ -159,7 +159,9 @@ export function App() {
       unlisteners.push(() => window.removeEventListener("hashchange", fromHash));
     }
 
-    return () => unlisteners.forEach((un) => un());
+    return () => {
+      for (const un of unlisteners) un();
+    };
   }, []);
 
   async function bootstrap() {
@@ -431,6 +433,16 @@ export function App() {
     }
   }
 
+  /** Déplacer la séparation au clavier. Une poignée qui n'obéit qu'à la souris
+   *  rend la largeur du panneau inatteignable sans elle. Maj = pas de 40 px. */
+  function nudgeLeftPanel(e: React.KeyboardEvent) {
+    const step = e.shiftKey ? 40 : 8;
+    const delta = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+    if (delta === 0) return;
+    e.preventDefault();
+    setLeftW((w) => Math.max(160, Math.min(500, w + delta)));
+  }
+
   function onPointerUp(e: React.PointerEvent) {
     if (isDragging.current) {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
@@ -557,8 +569,14 @@ export function App() {
             <div
               className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("leftW")}
+              onKeyDown={nudgeLeftPanel}
               role="separator"
               aria-orientation="vertical"
+              aria-label="Largeur du panneau latéral"
+              aria-valuenow={leftW}
+              aria-valuemin={160}
+              aria-valuemax={500}
+              tabIndex={0}
             />
           </>
         )}
@@ -622,6 +640,15 @@ export function App() {
                 // Le ChatPanel ouvrira le panneau image via son état interne
                 // On passe par le state global imageGenOpen
                 setTimeout(() => setShowImageGen(true), 50);
+              }}
+              onLaunchAirllm={async (repo) => {
+                try {
+                  await core.configureAirllmProvider(repo);
+                } catch (e) {
+                  console.warn("configureAirllmProvider failed, navigating anyway:", e);
+                }
+                setActiveView("chat");
+                refreshHealth();
               }}
             />
           </div>
@@ -707,11 +734,13 @@ export function App() {
         {/* Right side panels for Chat view */}
         {activeView === "chat" && showModelConfig && (
           <>
+            {/* Décoratif tant que `onPointerMove` ne traite que `leftW` : cette
+                poignée ne redimensionne rien. Annoncer `separator` promettait
+                à un lecteur d'écran une commande qui n'existe pas. */}
             <div
               className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("rightW")}
-              role="separator"
-              aria-orientation="vertical"
+              aria-hidden="true"
             />
             <ModelConfigPanel onClose={() => setShowModelConfig(false)} />
           </>
@@ -719,11 +748,13 @@ export function App() {
 
         {activeView === "chat" && showPreview && (
           <>
+            {/* Décoratif tant que `onPointerMove` ne traite que `leftW` : cette
+                poignée ne redimensionne rien. Annoncer `separator` promettait
+                à un lecteur d'écran une commande qui n'existe pas. */}
             <div
               className="locaryn-resizer locaryn-resizer-v"
               onPointerDown={startDrag("rightW")}
-              role="separator"
-              aria-orientation="vertical"
+              aria-hidden="true"
             />
             <RunPanel />
           </>
@@ -732,11 +763,11 @@ export function App() {
 
       {activeView === "chat" && showBottom && (
         <>
+          {/* Idem : sans logique de déplacement horizontale, c'est une bordure. */}
           <div
             className="locaryn-resizer locaryn-resizer-h"
             onPointerDown={startDrag("bottomH")}
-            role="separator"
-            aria-orientation="horizontal"
+            aria-hidden="true"
           />
           <BottomPanel cwd={activeProject?.path ?? null} sessionId={activeSession?.id ?? null} />
         </>

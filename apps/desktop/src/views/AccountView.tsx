@@ -19,8 +19,11 @@ export function AccountView() {
       <div className="locaryn-card" style={{ maxWidth: "600px" }}>
         <h3>Profil Utilisateur</h3>
         <div className="locaryn-field">
-          <label className="locaryn-field-label">Nom d'utilisateur / Alias</label>
+          <label className="locaryn-field-label" htmlFor="account-username">
+            Nom d'utilisateur / Alias
+          </label>
           <input
+            id="account-username"
             className="locaryn-input"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -29,8 +32,11 @@ export function AccountView() {
 
         <h3 style={{ marginTop: "24px" }}>Connexion Serveur Privé (Gateway)</h3>
         <div className="locaryn-field">
-          <label className="locaryn-field-label">URL du Serveur Privé</label>
+          <label className="locaryn-field-label" htmlFor="account-server-url">
+            URL du Serveur Privé
+          </label>
           <input
+            id="account-server-url"
             className="locaryn-input"
             placeholder="https://votre-serveur-locaryn.net"
             value={serverUrl}
@@ -39,8 +45,11 @@ export function AccountView() {
         </div>
 
         <div className="locaryn-field">
-          <label className="locaryn-field-label">Jeton d'accès (API Key / Token)</label>
+          <label className="locaryn-field-label" htmlFor="account-token">
+            Jeton d'accès (API Key / Token)
+          </label>
           <input
+            id="account-token"
             type="password"
             className="locaryn-input"
             placeholder="loch_sec_..."

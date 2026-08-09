@@ -1,4 +1,5 @@
 import type { ConnectionMode, ProviderSummary } from "../lib/core";
+import { ModalShell } from "./ModalShell";
 
 type Props = {
   isOpen: boolean;
@@ -64,71 +65,72 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
   if (!isOpen) return null;
 
   return (
-    <div className="locaryn-nav-drawer-overlay" onClick={onClose}>
-      <aside className="locaryn-nav-drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="locaryn-nav-drawer-head">
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span className="locaryn-logo-dot" />
-            <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>
-              Locaryn Navigation
-            </strong>
-          </div>
-          <button
-            type="button"
-            className="locaryn-icon-btn"
-            onClick={onClose}
-            title="Fermer le menu"
-            style={{ fontSize: "16px" }}
-          >
-            ✕
-          </button>
+    <ModalShell
+      onClose={onClose}
+      overlayClassName="locaryn-nav-drawer-overlay"
+      className="locaryn-nav-drawer"
+      label="Navigation"
+    >
+      <div className="locaryn-nav-drawer-head">
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span className="locaryn-logo-dot" />
+          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Locaryn Navigation</strong>
         </div>
+        <button
+          type="button"
+          className="locaryn-icon-btn"
+          onClick={onClose}
+          title="Fermer le menu"
+          style={{ fontSize: "16px" }}
+        >
+          ✕
+        </button>
+      </div>
 
-        <div className="locaryn-nav-drawer-body">
-          <span
-            className="locaryn-box-variants-title"
-            style={{ marginBottom: "8px", display: "block" }}
-          >
-            VUES PRINCIPALES
-          </span>
+      <div className="locaryn-nav-drawer-body">
+        <span
+          className="locaryn-box-variants-title"
+          style={{ marginBottom: "8px", display: "block" }}
+        >
+          VUES PRINCIPALES
+        </span>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            {NAV_ITEMS.map((item) => {
-              const isActive = activeView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`locaryn-nav-drawer-item${isActive ? " locaryn-active" : ""}`}
-                  onClick={() => {
-                    onSelectView(item.id);
-                    onClose();
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          {NAV_ITEMS.map((item) => {
+            const isActive = activeView === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`locaryn-nav-drawer-item${isActive ? " locaryn-active" : ""}`}
+                onClick={() => {
+                  onSelectView(item.id);
+                  onClose();
+                }}
+              >
+                <span className="locaryn-nav-drawer-icon">{item.icon}</span>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    textAlign: "left",
                   }}
                 >
-                  <span className="locaryn-nav-drawer-icon">{item.icon}</span>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-start",
-                      textAlign: "left",
-                    }}
-                  >
-                    <span className="locaryn-nav-drawer-label">{item.label}</span>
-                    <span className="locaryn-nav-drawer-desc">{item.desc}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  <span className="locaryn-nav-drawer-label">{item.label}</span>
+                  <span className="locaryn-nav-drawer-desc">{item.desc}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
+      </div>
 
-        <div className="locaryn-nav-drawer-foot">
-          <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-            Locaryn Agentic Platform v0.1.0
-          </span>
-        </div>
-      </aside>
-    </div>
+      <div className="locaryn-nav-drawer-foot">
+        <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
+          Locaryn Agentic Platform v0.1.0
+        </span>
+      </div>
+    </ModalShell>
   );
 }

@@ -70,39 +70,44 @@ export function ToolApprovalModal({
   const confirmInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  // Les effets ci-dessous ne dépendent que de ces deux valeurs primitives : se lier
+  // à `approval` les relancerait à chaque nouvel objet produit par le parent, ce qui
+  // effacerait la saisie en cours et volerait le focus sans qu'aucune demande n'ait changé.
+  const callId = approval?.call_id ?? null;
+  const risk = approval?.risk ?? null;
+
   // Reset state whenever a new approval arrives.
   useEffect(() => {
-    if (!approval) return;
-    setScope(minimumAllowedScope(approval.risk));
+    if (!callId || !risk) return;
+    setScope(minimumAllowedScope(risk));
     setUnderstand(false);
     setConfirmText("");
     setAuditNote("");
-  }, [approval?.call_id, approval?.risk]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [callId, risk]);
 
   // Move focus on open + restore on close.
   useEffect(() => {
-    if (!approval) return;
+    if (!callId) return;
     const previous = document.activeElement as HTMLElement | null;
     const target =
-      approval.risk === "critical" && confirmInputRef.current
+      risk === "critical" && confirmInputRef.current
         ? confirmInputRef.current
         : allowBtnRef.current;
     target?.focus();
     return () => previous?.focus();
-  }, [approval?.call_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [callId, risk]);
 
   // ESC = Deny for everything except Critical (which forces explicit click).
   useEffect(() => {
-    if (!approval) return;
+    if (!callId) return;
     function onKey(ev: KeyboardEvent) {
       if (ev.key !== "Escape") return;
       ev.preventDefault();
-      if (approval?.risk !== "critical") handleDeny();
+      if (risk !== "critical") handleDeny();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approval?.call_id, approval?.risk]);
+  }, [callId, risk]);
 
   if (!approval) return null;
 
@@ -146,6 +151,7 @@ export function ToolApprovalModal({
         if (e.target === e.currentTarget && !isCritical && onCancel) onCancel();
       }}
     >
+      {/* biome-ignore lint/a11y/useSemanticElements: un <dialog> n'est modal que via showModal(), ce qui le pousse dans la couche supérieure avec son propre ::backdrop et les styles par défaut du navigateur — le fond assombri et la boîte .locaryn-approval ci-dessus cesseraient de s'appliquer */}
       <div
         ref={dialogRef}
         className={`locaryn-approval locaryn-approval-${approval.risk}${isRemote ? " locaryn-approval-remote" : ""}`}
@@ -273,6 +279,7 @@ export function ToolApprovalModal({
               {scopeOptions.map((s) => {
                 const isDefault = s === minimumAllowedScope(approval.risk);
                 return (
+                  // biome-ignore lint/a11y/useSemanticElements: la pastille tire toute son apparence de .locaryn-approval-chip, défini pour un bouton dans la feuille de styles globale ; un <input type="radio"> dessinerait en plus le contrôle natif, et le masquer supprimerait l'anneau de focus dont dépend la navigation au clavier dans cette modale
                   <button
                     type="button"
                     key={s}

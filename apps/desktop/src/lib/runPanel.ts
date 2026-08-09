@@ -36,7 +36,7 @@ const listeners = new Set<() => void>();
 let reveal: (() => void) | null = null;
 
 function emit() {
-  listeners.forEach((l) => l());
+  for (const l of listeners) l();
 }
 
 export function subscribeRun(l: () => void): () => void {

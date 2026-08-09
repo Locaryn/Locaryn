@@ -134,7 +134,7 @@ export function setLang(l: Lang) {
     // Private mode / storage disabled — the choice just won't persist.
   }
   if (typeof document !== "undefined") document.documentElement.lang = l;
-  listeners.forEach((fn) => fn());
+  for (const fn of listeners) fn();
 }
 
 function subscribe(fn: () => void): () => void {

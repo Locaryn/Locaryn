@@ -207,7 +207,12 @@ pub fn hook_env(
     env
 }
 
-/// Run a hook action synchronously with a timeout. Returns stdout.
+/// Run a hook action, enforcing its declared timeout. Returns stdout.
+///
+/// The timeout is the point of the field: a hook is arbitrary user shell, and
+/// one that waits on input or hangs on a network call would otherwise stall the
+/// turn forever. On expiry the child is killed and `HookError::Timeout` is
+/// returned, so the caller can decide whether that blocks the action or not.
 pub fn run_hook(action: &HookAction, env: &HashMap<String, String>) -> Result<String, HookError> {
     use std::process::Command;
     let mut cmd = if cfg!(target_os = "windows") {
@@ -220,18 +225,38 @@ pub fn run_hook(action: &HookAction, env: &HashMap<String, String>) -> Result<St
         c
     };
     cmd.envs(env);
-    let child = cmd
+    let mut child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::null())
         .spawn()
         .map_err(|e| HookError::Spawn(e.to_string()))?;
-    let out = child
-        .wait_with_output()
-        .map_err(|e| HookError::Spawn(e.to_string()))?;
-    if !out.status.success() {
-        return Err(HookError::ExitCode(out.status.code().unwrap_or(-1)));
+
+    let deadline = std::time::Instant::now() + hook_timeout(action);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let out = child
+                    .wait_with_output()
+                    .map_err(|e| HookError::Spawn(e.to_string()))?;
+                if !status.success() {
+                    return Err(HookError::ExitCode(status.code().unwrap_or(-1)));
+                }
+                return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+            }
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    // Best-effort kill: the child may have exited between the
+                    // check and here, in which case killing is a harmless no-op.
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(HookError::Timeout);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(e) => return Err(HookError::Spawn(e.to_string())),
+        }
     }
-    Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
 /// Helper to compute a Duration from a hook's timeout seconds.
@@ -267,5 +292,63 @@ mod tests {
             }
         }
         h
+    }
+}
+
+#[cfg(test)]
+mod run_tests {
+    use super::*;
+
+    fn action(command: &str, timeout: u64) -> HookAction {
+        HookAction {
+            kind: "command".into(),
+            command: command.into(),
+            timeout,
+        }
+    }
+
+    #[test]
+    fn a_successful_hook_returns_its_stdout() {
+        let out = run_hook(&action("echo bonjour", 10), &HashMap::new()).unwrap();
+        assert!(out.contains("bonjour"), "stdout attendu, obtenu {out:?}");
+    }
+
+    #[test]
+    fn a_failing_hook_reports_its_exit_code() {
+        let err = run_hook(&action("exit 3", 10), &HashMap::new()).unwrap_err();
+        assert!(matches!(err, HookError::ExitCode(3)), "obtenu {err:?}");
+    }
+
+    #[test]
+    fn the_environment_reaches_the_hook() {
+        let mut env = HashMap::new();
+        env.insert("LOCARYN_SESSION_ID".to_string(), "abc123".to_string());
+        let cmd = if cfg!(target_os = "windows") {
+            "echo %LOCARYN_SESSION_ID%"
+        } else {
+            "echo $LOCARYN_SESSION_ID"
+        };
+        let out = run_hook(&action(cmd, 10), &env).unwrap();
+        assert!(out.contains("abc123"), "obtenu {out:?}");
+    }
+
+    #[test]
+    fn a_hanging_hook_is_killed_at_its_timeout() {
+        // Le point de la correction : sans application du délai, ce hook
+        // bloquerait le tour indéfiniment.
+        let cmd = if cfg!(target_os = "windows") {
+            "ping -n 30 127.0.0.1 >nul"
+        } else {
+            "sleep 30"
+        };
+        let started = std::time::Instant::now();
+        let err = run_hook(&action(cmd, 1), &HashMap::new()).unwrap_err();
+        let elapsed = started.elapsed();
+
+        assert!(matches!(err, HookError::Timeout), "obtenu {err:?}");
+        assert!(
+            elapsed < std::time::Duration::from_secs(10),
+            "le hook aurait dû être tué vers 1 s, il a duré {elapsed:?}"
+        );
     }
 }

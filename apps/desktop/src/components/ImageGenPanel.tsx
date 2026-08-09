@@ -141,6 +141,7 @@ export function ImageGenPanel({
   // The dropdown is fed by the dedicated diffusion-checkpoint list — NOT the
   // chat-model list. Aux files (VAE, text-encoder LLM, mmproj, test images)
   // never appear here; generate_image resolves those dependencies itself.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: installedModels n'est qu'un repli de secours ; l'ajouter relancerait la commande à chaque re-rendu du parent, la prop étant un tableau recréé.
   useEffect(() => {
     let cancelled = false;
     core
@@ -155,7 +156,6 @@ export function ImageGenPanel({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // A slash argument ("/image max") wins over the saved default.
@@ -245,7 +245,8 @@ export function ImageGenPanel({
   const [selectedModel, setSelectedModel] = useState<string>(
     restored?.params.model ??
       installedOptions[0]?.value ??
-      installedImageGenTag ?? IMAGE_GEN_MODELS[0]?.variants[0]?.tag ??
+      installedImageGenTag ??
+      IMAGE_GEN_MODELS[0]?.variants[0]?.tag ??
       "",
   );
 
@@ -259,6 +260,7 @@ export function ImageGenPanel({
   }, [installedOptions, selectedModel]);
 
   // Reset per-model NSFW consent when the selected checkpoint changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedModel n'est pas lu ici, il est le déclencheur ; le retirer ferait porter le consentement donné pour un modèle sur tous les suivants.
   useEffect(() => {
     setNsfwAccepted(false);
   }, [selectedModel]);
@@ -449,7 +451,9 @@ export function ImageGenPanel({
       {/* ── Model selector ── */}
       <div className="img-gen-field">
         <div className="img-gen-field-row">
-          <label className="img-gen-label">Modèle</label>
+          <label className="img-gen-label" htmlFor="img-gen-model">
+            Modèle
+          </label>
           <span className="img-gen-model-count">
             {installedOptions.length === 0
               ? "Aucun installé"
@@ -481,6 +485,7 @@ export function ImageGenPanel({
           </div>
         ) : (
           <select
+            id="img-gen-model"
             className="locaryn-select"
             value={uncensored ? HERETIC_VALUE : selectedModel}
             disabled={jobRunning || installedOptions.length === 0}
@@ -510,7 +515,7 @@ export function ImageGenPanel({
       {/* ── Source image (img2img) ── */}
       {mode === "img2img" && (
         <div className="img-gen-field">
-          <label className="img-gen-label">Image source à éditer</label>
+          <div className="img-gen-label">Image source à éditer</div>
           <input
             ref={fileInputRef}
             type="file"
@@ -518,9 +523,21 @@ export function ImageGenPanel({
             style={{ display: "none" }}
             onChange={handlePickSourceImage}
           />
+          {/* Une vraie <button> est exclue : la vignette contient déjà un bouton
+              « retirer », et imbriquer deux boutons est invalide. */}
+          {/* biome-ignore lint/a11y/useSemanticElements: bouton imbriqué dans la vignette, l'élément englobant ne peut pas être un <button> */}
           <div
             className={`img-gen-dropzone${sourceImagePreview ? " img-gen-dropzone-filled" : ""}`}
+            role="button"
+            tabIndex={0}
+            aria-label="Choisir une image source"
             onClick={() => !isGenerating && fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (!isGenerating) fileInputRef.current?.click();
+              }
+            }}
             onDragOver={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -534,7 +551,7 @@ export function ImageGenPanel({
               if (path) {
                 setSourceImagePath(path);
                 setSourceImagePreview(url || path);
-              } else if (url && url.startsWith("data:")) {
+              } else if (url?.startsWith("data:")) {
                 setSourceImagePath(url);
                 setSourceImagePreview(url);
               } else if (url) {

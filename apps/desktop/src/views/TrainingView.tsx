@@ -37,8 +37,10 @@ export function TrainingView({ onOpenModels }: Props) {
         if (active) {
           const list = await core.listModels(active.endpoint);
           setInstalledModels(list);
-          if (list.length > 0 && !oblModel) {
-            setOblModel(list[0]);
+          if (list.length > 0) {
+            // Forme fonctionnelle : ne pas écraser un modèle déjà choisi pendant le chargement,
+            // et ne pas dépendre de oblModel, ce qui relancerait la requête à chaque sélection.
+            setOblModel((current) => current || list[0]);
           }
         }
       } catch {
@@ -138,8 +140,11 @@ export function TrainingView({ onOpenModels }: Props) {
             <h3>Configuration du Fine-Tuning LoRA</h3>
 
             <div className="locaryn-field">
-              <label className="locaryn-field-label">Modèle de base</label>
+              <label className="locaryn-field-label" htmlFor="training-base-model">
+                Modèle de base
+              </label>
               <select
+                id="training-base-model"
                 className="locaryn-select"
                 value={baseModel}
                 onChange={(e) => setBaseModel(e.target.value)}
@@ -161,8 +166,11 @@ export function TrainingView({ onOpenModels }: Props) {
             </div>
 
             <div className="locaryn-field">
-              <label className="locaryn-field-label">Fichier Dataset (.jsonl / .txt)</label>
+              <label className="locaryn-field-label" htmlFor="training-dataset-path">
+                Fichier Dataset (.jsonl / .txt)
+              </label>
               <input
+                id="training-dataset-path"
                 className="locaryn-input"
                 placeholder="/chemin/vers/mon_dataset.jsonl"
                 value={datasetPath}
@@ -172,8 +180,11 @@ export function TrainingView({ onOpenModels }: Props) {
 
             <div className="locaryn-field-row" style={{ gap: "16px", marginTop: "12px" }}>
               <div className="locaryn-field" style={{ flex: 1 }}>
-                <label className="locaryn-field-label">Taux d'apprentissage (LR)</label>
+                <label className="locaryn-field-label" htmlFor="training-learning-rate">
+                  Taux d'apprentissage (LR)
+                </label>
                 <input
+                  id="training-learning-rate"
                   type="number"
                   step="0.00005"
                   className="locaryn-input"
@@ -182,8 +193,11 @@ export function TrainingView({ onOpenModels }: Props) {
                 />
               </div>
               <div className="locaryn-field" style={{ flex: 1 }}>
-                <label className="locaryn-field-label">Époques (Epochs)</label>
+                <label className="locaryn-field-label" htmlFor="training-epochs">
+                  Époques (Epochs)
+                </label>
                 <input
+                  id="training-epochs"
                   type="number"
                   className="locaryn-input"
                   value={epochs}
@@ -211,6 +225,7 @@ export function TrainingView({ onOpenModels }: Props) {
                 <span className="locaryn-text-faint">Aucun entraînement en cours...</span>
               ) : (
                 logs.map((log, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: journal en ajout seul, jamais réordonné ni filtré, et les lignes peuvent être identiques : l'index est le seul identifiant stable
                   <div key={i} className="locaryn-log-line">
                     {log}
                   </div>
@@ -299,10 +314,11 @@ export function TrainingView({ onOpenModels }: Props) {
                 </div>
 
                 <div className="locaryn-field" style={{ marginBottom: "14px" }}>
-                  <label className="locaryn-field-label">
+                  <label className="locaryn-field-label" htmlFor="obliteration-model">
                     Modèle local installé à oblitérer ({installedModels.length} disponibles)
                   </label>
                   <select
+                    id="obliteration-model"
                     className="locaryn-select"
                     value={oblModel}
                     onChange={(e) => setOblModel(e.target.value)}
@@ -318,8 +334,11 @@ export function TrainingView({ onOpenModels }: Props) {
 
                 <div className="locaryn-field-row" style={{ gap: "16px" }}>
                   <div className="locaryn-field" style={{ flex: 1 }}>
-                    <label className="locaryn-field-label">Méthode d'Ablation</label>
+                    <label className="locaryn-field-label" htmlFor="obliteration-method">
+                      Méthode d'Ablation
+                    </label>
                     <select
+                      id="obliteration-method"
                       className="locaryn-select"
                       value={ablationMethod}
                       onChange={(e) => setAblationMethod(e.target.value)}
@@ -331,8 +350,11 @@ export function TrainingView({ onOpenModels }: Props) {
                   </div>
 
                   <div className="locaryn-field" style={{ flex: 1 }}>
-                    <label className="locaryn-field-label">Couches cibles</label>
+                    <label className="locaryn-field-label" htmlFor="obliteration-target-layers">
+                      Couches cibles
+                    </label>
                     <input
+                      id="obliteration-target-layers"
                       className="locaryn-input"
                       value={targetLayers}
                       onChange={(e) => setTargetLayers(e.target.value)}
@@ -342,8 +364,11 @@ export function TrainingView({ onOpenModels }: Props) {
                 </div>
 
                 <div className="locaryn-field" style={{ marginTop: "14px" }}>
-                  <label className="locaryn-field-label">Intensité Alpha ({intensity})</label>
+                  <label className="locaryn-field-label" htmlFor="obliteration-intensity">
+                    Intensité Alpha ({intensity})
+                  </label>
                   <input
+                    id="obliteration-intensity"
                     type="range"
                     min="0.5"
                     max="2.5"
@@ -418,6 +443,7 @@ export function TrainingView({ onOpenModels }: Props) {
               ) : (
                 oblLogs.map((log, i) => (
                   <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: journal en ajout seul, jamais réordonné ni filtré, et les lignes peuvent être identiques : l'index est le seul identifiant stable
                     key={i}
                     className="locaryn-log-line"
                     style={{ color: log.includes("✅") ? "var(--accent)" : "var(--text)" }}

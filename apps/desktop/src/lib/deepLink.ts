@@ -18,7 +18,7 @@ let pending: InstallIntent | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
-  listeners.forEach((l) => l());
+  for (const l of listeners) l();
 }
 
 export function subscribeDeepLink(l: () => void): () => void {

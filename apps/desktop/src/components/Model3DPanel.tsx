@@ -137,8 +137,11 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
     setTaskProgress(null);
 
     try {
-      const appInfo = await core.appInfo().catch(() => ({ data_dir: "/tmp" }) as any);
-      const outputDir = `${appInfo.data_dir}/generated_3d`;
+      const dataDir = await core
+        .appInfo()
+        .then((info) => info.data_dir)
+        .catch(() => "/tmp");
+      const outputDir = `${dataDir}/generated_3d`;
 
       const taskId = startModel3DGeneration({
         model: selectedModel,
@@ -197,8 +200,11 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Model selector ── */}
       {hasModels ? (
         <div style={{ marginBottom: 20 }}>
-          <label className="locaryn-field-label">Modèle 3D</label>
+          <label className="locaryn-field-label" htmlFor="model3d-model">
+            Modèle 3D
+          </label>
           <select
+            id="model3d-model"
             className="locaryn-input"
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
@@ -279,7 +285,9 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Image source (i2m) ── */}
       {mode === "i2m" && (
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
-          <label className="locaryn-field-label">Image source</label>
+          {/* Le seul contrôle visible est le bouton ci-dessous ; étiqueter l'input
+              caché déclencherait le sélecteur de fichiers au clic sur le titre. */}
+          <div className="locaryn-field-label">Image source</div>
           <input
             ref={fileInputRef}
             type="file"
@@ -315,7 +323,7 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Prompt input ── */}
       <div className="locaryn-field" style={{ marginBottom: 16 }}>
-        <label className="locaryn-field-label">
+        <label className="locaryn-field-label" htmlFor="model3d-prompt">
           Prompt
           <span
             style={{ fontWeight: 400, fontSize: 11, color: "var(--text-faint)", marginLeft: 8 }}
@@ -324,6 +332,7 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
           </span>
         </label>
         <textarea
+          id="model3d-prompt"
           className="locaryn-input"
           rows={3}
           placeholder='Ex: "An ornate wooden chair with carved armrests, baroque style"'
@@ -356,10 +365,15 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
         >
           {/* Steps */}
           <div>
-            <label className="locaryn-field-label" style={{ fontSize: 11, marginBottom: 4 }}>
+            <label
+              className="locaryn-field-label"
+              htmlFor="model3d-steps"
+              style={{ fontSize: 11, marginBottom: 4 }}
+            >
               Étapes : {steps}
             </label>
             <input
+              id="model3d-steps"
               type="range"
               min={10}
               max={200}

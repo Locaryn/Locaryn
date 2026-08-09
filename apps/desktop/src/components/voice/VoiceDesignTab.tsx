@@ -24,6 +24,7 @@ export const VoiceDesignTab: React.FC<VoiceDesignTabProps> = ({
     <div style={{ display: "flex", flexDirection: "column", gap: "24px", padding: "16px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <label
+          htmlFor="voice-design-prompt"
           style={{
             fontSize: "14px",
             fontWeight: 600,
@@ -33,6 +34,7 @@ export const VoiceDesignTab: React.FC<VoiceDesignTabProps> = ({
           Description de la voix
         </label>
         <textarea
+          id="voice-design-prompt"
           value={designPrompt}
           onChange={(e) => onPromptChange(e.target.value)}
           disabled={jobRunning}
@@ -61,9 +63,10 @@ export const VoiceDesignTab: React.FC<VoiceDesignTabProps> = ({
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)" }}>Inspiration</span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-          {INSPIRATIONS.map((insp, idx) => (
+          {INSPIRATIONS.map((insp) => (
             <button
-              key={idx}
+              key={insp}
+              type="button"
               disabled={jobRunning}
               onClick={() => onPromptChange(insp)}
               style={{

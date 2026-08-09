@@ -92,10 +92,34 @@ fn same_volume(a: &Path, b: &Path) -> bool {
         // destination itself may not exist yet.
         prefix(a) == prefix(b)
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(unix)]
     {
-        // Without a stat-based device check, assume different volumes and take
-        // the safe (copy + verify) path.
+        use std::os::unix::fs::MetadataExt as _;
+
+        // Le chemin de destination n'existe pas forcément encore : on remonte
+        // jusqu'au premier ancêtre présent, puisque c'est le système de
+        // fichiers sur lequel il sera créé.
+        fn device_of(p: &Path) -> Option<u64> {
+            let mut cur = Some(p);
+            while let Some(c) = cur {
+                if let Ok(m) = std::fs::metadata(c) {
+                    return Some(m.dev());
+                }
+                cur = c.parent();
+            }
+            None
+        }
+
+        match (device_of(a), device_of(b)) {
+            (Some(x), Some(y)) => x == y,
+            // Ne rien savoir n'est pas « même volume » : un `rename` entre
+            // périphériques échoue, alors qu'une copie inutile ne coûte que
+            // du temps.
+            _ => false,
+        }
+    }
+    #[cfg(not(any(target_os = "windows", unix)))]
+    {
         let _ = (a, b);
         false
     }

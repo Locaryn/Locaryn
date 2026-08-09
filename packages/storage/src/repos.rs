@@ -410,6 +410,7 @@ impl FromToken for ProviderEngine {
             "lmstudio" => ProviderEngine::Lmstudio,
             "vllm" => ProviderEngine::Vllm,
             "open_ai_compat" => ProviderEngine::OpenAiCompat,
+            "airllm" => ProviderEngine::AirLlm,
             _ => ProviderEngine::Ollama,
         }
     }
@@ -1235,6 +1236,7 @@ impl ProviderRepo {
             ProviderEngine::Lmstudio => "lmstudio",
             ProviderEngine::Vllm => "vllm",
             ProviderEngine::OpenAiCompat => "open_ai_compat",
+            ProviderEngine::AirLlm => "airllm",
         };
         // Upsert by (kind='local', endpoint): if a local provider with the
         // same endpoint exists, activate it and update the model; otherwise
@@ -1352,6 +1354,7 @@ impl ProviderRepo {
             ProviderEngine::Lmstudio => "lmstudio",
             ProviderEngine::Vllm => "vllm",
             ProviderEngine::OpenAiCompat => "open_ai_compat",
+            ProviderEngine::AirLlm => "airllm",
         };
         let status_token = match status {
             ProviderStatus::Unknown => "unknown",

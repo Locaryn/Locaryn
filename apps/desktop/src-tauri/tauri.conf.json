@@ -24,9 +24,7 @@
       "csp": "default-src 'self' asset: http://asset.localhost https://asset.localhost; img-src 'self' data: asset: http://asset.localhost https://asset.localhost blob:; media-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost",
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "**"
-        ]
+        "scope": ["**"]
       }
     }
   },
@@ -46,9 +44,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "locaryn"
-        ]
+        "schemes": ["locaryn"]
       }
     }
   }

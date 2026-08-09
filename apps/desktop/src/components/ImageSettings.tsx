@@ -55,14 +55,15 @@ export function ImageSettings() {
   return (
     <div>
       <div className="locaryn-field">
-        <label className="locaryn-field-label">
+        {/* Intitulé d'un groupe de boutons, pas d'un champ de saisie : d'où le div. */}
+        <div className="locaryn-field-label">
           Qualité par défaut
           {saved && (
             <span style={{ marginLeft: 8, color: "var(--accent)", fontSize: "var(--text-xs)" }}>
               enregistré ✓
             </span>
           )}
-        </label>
+        </div>
         <p className="locaryn-field-hint">
           Appliquée à <code>/image</code> et au bouton Créer quand aucune valeur n'est précisée.
         </p>
@@ -90,7 +91,7 @@ export function ImageSettings() {
       </div>
 
       <div className="locaryn-field" style={{ marginTop: 20 }}>
-        <label className="locaryn-field-label">Mémoire (dispatch RAM/VRAM)</label>
+        <div className="locaryn-field-label">Mémoire (dispatch RAM/VRAM)</div>
         <div className="locaryn-imgset-row" style={{ marginTop: 8 }}>
           {VRAM_MODES.map((m) => (
             <button
@@ -110,12 +111,15 @@ export function ImageSettings() {
       </div>
 
       <div className="locaryn-field" style={{ marginTop: 20 }}>
-        <label className="locaryn-field-label">Étapes (steps)</label>
+        <label className="locaryn-field-label" htmlFor="imgset-steps">
+          Étapes (steps)
+        </label>
         <p className="locaryn-field-hint">
           0 = laisser le modèle décider. Les modèles turbo sont bornés automatiquement (≈8 étapes) :
           monter plus haut les ralentit sans gain.
         </p>
         <input
+          id="imgset-steps"
           type="number"
           min={0}
           max={50}
@@ -127,7 +131,7 @@ export function ImageSettings() {
       </div>
 
       <div className="locaryn-field" style={{ marginTop: 20 }}>
-        <label className="locaryn-field-label">Variantes par génération</label>
+        <div className="locaryn-field-label">Variantes par génération</div>
         <p className="locaryn-field-hint">
           Produit plusieurs images d'un coup pour en choisir une. Le modèle n'est chargé qu'une fois
           : chaque variante supplémentaire coûte nettement moins cher qu'une génération séparée.
@@ -155,9 +159,12 @@ export function ImageSettings() {
       </div>
 
       <div className="locaryn-field" style={{ marginTop: 20 }}>
-        <label className="locaryn-field-label">Prompt négatif par défaut</label>
+        <label className="locaryn-field-label" htmlFor="imgset-negative-prompt">
+          Prompt négatif par défaut
+        </label>
         <p className="locaryn-field-hint">Ce que les images doivent éviter (facultatif).</p>
         <input
+          id="imgset-negative-prompt"
           className="locaryn-input"
           style={{ marginTop: 8 }}
           placeholder="flou, filigrane, difforme…"

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageGenPanel } from "../components/ImageGenPanel";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
@@ -22,16 +22,19 @@ import { setImageResultHandler, startImageGeneration, toImageUrl } from "../lib/
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
   type SlashAction,
+  type SlashCommand,
   type SlashSuggestion,
   argToSize,
+  matchExtensionCommand,
   matchSlashInput,
 } from "../lib/slashCommands";
 import { runWorkflow } from "../lib/workflow";
 import { DEFAULT_MODEL_PARAMS } from "./ModelConfigPanel";
 
 type ChatItem =
-  | { kind: "msg"; role: "user" | "assistant"; text: string; images?: string[] }
+  | { id: string; kind: "msg"; role: "user" | "assistant"; text: string; images?: string[] }
   | {
+      id: string;
       kind: "tool";
       callId: string;
       tool: string;
@@ -39,8 +42,9 @@ type ChatItem =
       status: "running" | "ok" | "error";
       output: string;
     }
-  | { kind: "log"; text: string }
+  | { id: string; kind: "log"; text: string }
   | {
+      id: string;
       kind: "intent";
       intent: ImageIntent;
       model: string;
@@ -49,8 +53,18 @@ type ChatItem =
       decided?: "accepted" | "refused";
     };
 
-type Attachment = { dataUrl: string; base64: string; name: string };
-type QueuedMessage = { text: string; attachments: Attachment[] };
+type Attachment = { id: string; dataUrl: string; base64: string; name: string };
+type QueuedMessage = { id: string; text: string; attachments: Attachment[] };
+
+/** Identités locales pour les clés React. Rien de ce qui s'affiche dans le fil
+ *  n'a d'identifiant propre avant d'être écrit en base — jetons diffusés,
+ *  journaux, cartes d'intention — et une entrée peut être retirée du milieu
+ *  (reprise du dernier message), donc l'index ne tient pas. */
+let idSeq = 0;
+function nextId(prefix: string): string {
+  idSeq += 1;
+  return `${prefix}-${idSeq}`;
+}
 
 type Props = {
   sessionId: string | null;
@@ -113,7 +127,7 @@ function readFile(file: File): Promise<Attachment> {
     reader.onload = () => {
       const dataUrl = reader.result as string;
       const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
-      resolve({ dataUrl, base64, name: file.name });
+      resolve({ id: nextId("att"), dataUrl, base64, name: file.name });
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
@@ -168,6 +182,9 @@ export function ChatPanel({
   const [followupsLoading, setFollowupsLoading] = useState(false);
   /** Slash-command palette: matches for the current input, and the highlighted row. */
   const [slash, setSlash] = useState<SlashSuggestion | null>(null);
+  // Commandes apportees par les plugins actifs. Rechargees au montage :
+  // installer ou desactiver une extension change la palette sans redemarrage.
+  const [extCommands, setExtCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
   /** Resolution requested through a slash argument (e.g. "/image max"). */
   const [slashSize, setSlashSize] = useState<number | null>(null);
@@ -185,7 +202,9 @@ export function ChatPanel({
   /** Text of the answer being streamed — used to ask for follow-up suggestions. */
   const fullTextRef = useRef<string>("");
 
-  const refreshActiveModel = async () => {
+  // Mémorisée sans dépendance : elle ne referme que des setters d'état, donc
+  // l'effet de montage peut la citer sans se relancer à chaque rendu.
+  const refreshActiveModel = useCallback(async () => {
     try {
       const h = await core.health();
       const providers = await core.listProviders();
@@ -212,7 +231,7 @@ export function ChatPanel({
     } catch {
       // keep fallback
     }
-  };
+  }, []);
 
   useEffect(() => {
     refreshActiveModel();
@@ -220,7 +239,7 @@ export function ChatPanel({
       .listImageModels()
       .then((l) => setActiveImageModel(l[0] ?? ""))
       .catch(() => {});
-  }, []);
+  }, [refreshActiveModel]);
 
   // A chat inside a project works in that folder — reflect it in the picker.
   useEffect(() => {
@@ -264,6 +283,7 @@ export function ChatPanel({
   }
 
   // Keep the Documents chip count in sync (refreshes when the panel closes).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `ragOpen` n'est pas lu dans le corps, il sert de déclencheur — refermer le panneau Documents doit relancer le comptage pour que la pastille montre les fragments qui viennent d'être indexés.
   useEffect(() => {
     if (!projectId) {
       setRagCount(0);
@@ -290,6 +310,7 @@ export function ChatPanel({
       setItems((prev) => [
         ...prev,
         {
+          id: nextId("msg"),
           kind: "msg",
           role: "assistant",
           text: `🎨 ${r.simulated ? "(simulation) " : ""}Image générée — « ${r.prompt} »`,
@@ -323,17 +344,19 @@ export function ChatPanel({
         const msgs = await core.listMessages(sessionId);
         setItems(
           msgs.map((m) => ({
+            id: m.id,
             kind: "msg",
             role: m.role as "user" | "assistant",
             ...splitInlineImages(m.content),
           })),
         );
       } catch (e) {
-        setItems([{ kind: "log", text: `(error loading session: ${e})` }]);
+        setItems([{ id: nextId("log"), kind: "log", text: `(error loading session: ${e})` }]);
       }
     })();
   }, [sessionId]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `items` et `streaming` ne sont pas lus, ils datent le rendu — c'est justement leur changement qui doit faire redescendre le fil sur le dernier message.
   useEffect(() => {
     if (streamRef.current) {
       streamRef.current.scrollTop = streamRef.current.scrollHeight;
@@ -356,12 +379,13 @@ export function ChatPanel({
         if (last && last.kind === "msg" && last.role === "assistant") {
           return [...prev.slice(0, -1), { ...last, text: last.text + ev.text }];
         }
-        return [...prev, { kind: "msg", role: "assistant", text: ev.text }];
+        return [...prev, { id: nextId("msg"), kind: "msg", role: "assistant", text: ev.text }];
       });
     } else if (ev.type === "tool_call") {
       setItems((prev) => [
         ...prev,
         {
+          id: nextId("tool"),
           kind: "tool",
           callId: ev.call_id,
           tool: ev.tool,
@@ -384,7 +408,7 @@ export function ChatPanel({
         }),
       );
     } else if (ev.type === "log") {
-      setItems((prev) => [...prev, { kind: "log", text: `[Log: ${ev.msg}]` }]);
+      setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `[Log: ${ev.msg}]` }]);
     }
   }
 
@@ -397,6 +421,16 @@ export function ChatPanel({
   }
 
   async function send(textOverride?: string, attachOverride?: Attachment[]) {
+    // Une commande de plugin tapee en entier doit etre resolue, pas envoyee
+    // telle quelle. `textOverride` est ce que la resolution renvoie : le test
+    // ne s'applique qu'a la saisie directe, sinon la commande se rappellerait.
+    if (textOverride === undefined) {
+      const hit = matchExtensionCommand(input.trim(), extCommands);
+      if (hit) {
+        runSlash(hit);
+        return;
+      }
+    }
     const text = (textOverride ?? input).trim();
     const imgs = attachOverride ?? attachments;
 
@@ -416,7 +450,7 @@ export function ChatPanel({
 
     if (streaming) {
       if (!textOverride) {
-        setMessageQueue((prev) => [...prev, { text, attachments: [...imgs] }]);
+        setMessageQueue((prev) => [...prev, { id: nextId("q"), text, attachments: [...imgs] }]);
         setInput("");
         setAttachments([]);
         if (inputRef.current) inputRef.current.style.height = "auto";
@@ -438,7 +472,7 @@ export function ChatPanel({
     fullTextRef.current = "";
     setItems((prev) => [
       ...prev,
-      { kind: "msg", role: "user", text, images: imgs.map((a) => a.dataUrl) },
+      { id: nextId("msg"), kind: "msg", role: "user", text, images: imgs.map((a) => a.dataUrl) },
     ]);
 
     // A plain sentence like "je veux une image d'un chat" should reach the image
@@ -457,7 +491,7 @@ export function ChatPanel({
         if (intent.is_image && intent.english_prompt) {
           setItems((prev) => [
             ...prev,
-            { kind: "intent", intent, model: activeModel, original: text },
+            { id: nextId("intent"), kind: "intent", intent, model: activeModel, original: text },
           ]);
           setStreaming(false);
           return;
@@ -479,6 +513,7 @@ export function ChatPanel({
             setItems((prev) => [
               ...prev,
               {
+                id: nextId("log"),
                 kind: "log",
                 text: `\u{1f9e9} \u00c9tape ${i + 1}/${total}${attempt > 1 ? ` (essai ${attempt})` : ""} \u2014 ${step}`,
               },
@@ -487,6 +522,7 @@ export function ChatPanel({
             setItems((prev) => [
               ...prev,
               {
+                id: nextId("log"),
                 kind: "log",
                 text: ok
                   ? `\u2705 Plan termin\u00e9${attempts > 1 ? ` (essai ${attempts})` : ""}.`
@@ -516,7 +552,7 @@ export function ChatPanel({
         reasoningPayload(reasoning),
       );
     } catch (e) {
-      setItems((prev) => [...prev, { kind: "log", text: `send failed: ${e}` }]);
+      setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `send failed: ${e}` }]);
     } finally {
       setStreaming(false);
 
@@ -626,12 +662,39 @@ export function ChatPanel({
     }
   }
 
-  function runSlash(action: SlashAction, size?: number | null) {
+  useEffect(() => {
+    let cancelled = false;
+    core
+      .listExtensionCommands()
+      .then((cmds) => {
+        if (cancelled) return;
+        setExtCommands(
+          cmds.map((c) => ({
+            name: c.name,
+            aliases: [c.name.split(":").pop() ?? c.name],
+            icon: "\u{1F9E9}",
+            label: c.description ?? c.name,
+            hint: `Commande de ${c.plugin}`,
+            action: "extension" as const,
+            extension: c.name,
+          })),
+        );
+      })
+      .catch(() => setExtCommands([]));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function runSlash(cmd: SlashCommand, size?: number | null) {
+    // Capture avant vidage : une commande de plugin a besoin de ce qui a ete
+    // tape apres son nom pour resoudre ses arguments.
+    const raw = input.trim();
     setInput("");
     setSlash(null);
     setSlashSize(size ?? null);
     if (inputRef.current) inputRef.current.style.height = "auto";
-    switch (action) {
+    switch (cmd.action) {
       case "image":
         setImageGenOpen(true);
         break;
@@ -666,6 +729,40 @@ export function ChatPanel({
         setItems([]);
         setFollowups([]);
         break;
+      case "extension": {
+        const name = cmd.extension;
+        if (!name) break;
+        // Tout ce qui suit le nom de la commande devient ses arguments.
+        const typed = raw.startsWith("/") ? raw.slice(1) : raw;
+        const space = typed.indexOf(" ");
+        const args = space >= 0 ? typed.slice(space + 1).trim() : "";
+        core
+          .resolveExtensionCommand(name, args)
+          .then((prompt) => {
+            const body = prompt.trim();
+            if (body) {
+              send(body);
+            } else {
+              setItems((prev) => [
+                ...prev,
+                {
+                  id: nextId("log"),
+                  kind: "log",
+                  text: `La commande /${name} n'a produit aucun texte.`,
+                },
+              ]);
+            }
+          })
+          .catch((e) => {
+            // Une commande cassee doit se voir : echouer en silence laisserait
+            // croire que rien n'a ete tape.
+            setItems((prev) => [
+              ...prev,
+              { id: nextId("log"), kind: "log", text: `Commande /${name} : ${String(e)}` },
+            ]);
+          });
+        break;
+      }
     }
   }
 
@@ -691,15 +788,15 @@ export function ChatPanel({
           // A command that takes arguments: Tab completes to "/cmd " so its
           // values show up instead of running with an unknown quality.
           if (e.key === "Tab" && cmd.args && cmd.args.length) {
-            const next = "/" + cmd.name + " ";
+            const next = `/${cmd.name} `;
             setInput(next);
-            setSlash(matchSlashInput(next));
+            setSlash(matchSlashInput(next, extCommands));
             setSlashIndex(0);
             return;
           }
-          runSlash(cmd.action);
+          runSlash(cmd);
         } else {
-          runSlash(slash.command.action, argToSize(slash.items[idx].value));
+          runSlash(slash.command, argToSize(slash.items[idx].value));
         }
         return;
       }
@@ -886,13 +983,13 @@ export function ChatPanel({
                       // A suggestion may be a slash command (e.g. "/image brouillon"
                       // for a throwaway icon) — run it instead of sending it as text.
                       if (f.startsWith("/")) {
-                        const sug = matchSlashInput(f.trim().includes(" ") ? f.trim() : f.trim());
+                        const sug = matchSlashInput(f.trim(), extCommands);
                         if (sug?.kind === "args") {
-                          runSlash(sug.command.action, argToSize(sug.items[0].value));
+                          runSlash(sug.command, argToSize(sug.items[0].value));
                           return;
                         }
                         if (sug?.kind === "commands" && sug.items.length) {
-                          runSlash(sug.items[0].action);
+                          runSlash(sug.items[0]);
                           return;
                         }
                       }
@@ -947,7 +1044,7 @@ export function ChatPanel({
                     aria-selected={i === slashIndex}
                     className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
                     onMouseEnter={() => setSlashIndex(i)}
-                    onClick={() => runSlash(c.action)}
+                    onClick={() => runSlash(c)}
                   >
                     <span className="locaryn-slash-icon">{c.icon}</span>
                     <span className="locaryn-slash-text">
@@ -956,7 +1053,7 @@ export function ChatPanel({
                     </span>
                     <code className="locaryn-slash-cmd">
                       /{c.name}
-                      {c.args && c.args.length ? " ..." : ""}
+                      {c.args?.length ? " ..." : ""}
                     </code>
                   </button>
                 ))
@@ -968,7 +1065,7 @@ export function ChatPanel({
                     aria-selected={i === slashIndex}
                     className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
                     onMouseEnter={() => setSlashIndex(i)}
-                    onClick={() => runSlash(slash.command.action, argToSize(a.value))}
+                    onClick={() => runSlash(slash.command, argToSize(a.value))}
                   >
                     <span className="locaryn-slash-icon">&#128208;</span>
                     <span className="locaryn-slash-text">
@@ -1022,7 +1119,7 @@ export function ChatPanel({
             onChange={(e) => {
               setInput(e.target.value);
               autoGrow();
-              setSlash(matchSlashInput(e.target.value));
+              setSlash(matchSlashInput(e.target.value, extCommands));
               setSlashIndex(0);
             }}
             onKeyDown={handleComposerKeyDown}
@@ -1155,6 +1252,7 @@ export function ChatPanel({
             setItems((prev) => [
               ...prev,
               {
+                id: nextId("msg"),
                 kind: "msg",
                 role: "assistant",
                 text: `🎨 Image générée localement :\n\n![Image](${url})`,

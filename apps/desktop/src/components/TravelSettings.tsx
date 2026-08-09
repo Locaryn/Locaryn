@@ -109,7 +109,7 @@ export function TravelSettings() {
         <div className="locaryn-travel-code">
           <div
             className="locaryn-travel-qr"
-            /* The image comes from our own daemon and contains no script. */
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: le SVG est dessiné par notre propre démon à partir d'un lien qu'il vient de signer — il ne traverse jamais le réseau et ne contient pas de script.
             dangerouslySetInnerHTML={{ __html: code.qr_svg }}
           />
           <div className="locaryn-travel-say">

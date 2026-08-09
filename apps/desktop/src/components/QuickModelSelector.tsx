@@ -160,7 +160,16 @@ export function QuickModelSelector({
   if (!isOpen) return null;
 
   return (
-    <div className="locaryn-settings-backdrop" onClick={onClose}>
+    <div
+      className="locaryn-settings-backdrop"
+      onClick={(e) => {
+        // Seul un clic sur le fond ferme : un clic parti de la carte remonte jusqu'ici.
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+    >
       <div
         className="locaryn-card"
         style={{
@@ -241,7 +250,6 @@ export function QuickModelSelector({
           placeholder="🔍 Rechercher parmi vos modèles installés..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          autoFocus
           style={{ marginBottom: "10px" }}
         />
 

@@ -47,11 +47,12 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
   // The markdown renderer emits raw <pre class="md-code">; enhance each block
   // with a Copy (and, for runnable languages, an Exec) toolbar. Done on the DOM
   // because the HTML is injected, not composed from React children.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `answer` n'est pas lu ici mais commande le HTML réinjecté ; sans cette dépendance les blocs de code apparus pendant le streaming n'auraient jamais leur barre d'outils.
   useEffect(() => {
     const root = mdRef.current;
     if (!root) return;
-    root.querySelectorAll<HTMLPreElement>("pre.md-code").forEach((pre) => {
-      if (pre.dataset.enhanced === "1") return;
+    for (const pre of root.querySelectorAll<HTMLPreElement>("pre.md-code")) {
+      if (pre.dataset.enhanced === "1") continue;
       pre.dataset.enhanced = "1";
       const code = pre.querySelector("code")?.textContent ?? "";
       const lang = (pre.dataset.lang || "").toLowerCase();
@@ -107,7 +108,7 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
       }
 
       pre.prepend(bar);
-    });
+    }
   }, [answer, onRunCode]);
 
   async function copy() {
@@ -129,6 +130,7 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
           {images && images.length > 0 && (
             <div className="locaryn-msg-images">
               {images.map((src, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: les pièces jointes sont figées au moment de l'envoi, jamais réordonnées ni insérées ; la data-URL ne peut pas servir de clé car deux fois la même image donnerait deux clés identiques.
                 <img key={i} src={src} alt="attachment" className="locaryn-msg-image" />
               ))}
             </div>
@@ -162,13 +164,13 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
       <div
         ref={mdRef}
         className="locaryn-msg-md"
-        // Safe: renderMarkdown escapes all source HTML before injecting
-        // its own tags (see lib/markdown.ts safety model).
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown échappe tout le HTML source avant d'injecter ses propres balises (modèle de sûreté en tête de lib/markdown.ts). Rien de ce que produit le modèle n'atteint le DOM sous forme de balise.
         dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
       />
       {images && images.length > 0 && (
         <div className="locaryn-msg-images">
           {images.map((src, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: images d'un message déjà émis, liste immuable ; la data-URL ne peut pas servir de clé car deux générations identiques la partageraient.
             <img key={i} src={src} alt="génération" className="locaryn-msg-image" />
           ))}
         </div>

@@ -48,7 +48,14 @@ export function ChatPanel({
             }
           }}
         />
-        <button type="button" onClick={() => input.trim() && (onSend(input), setInput(""))}>
+        <button
+          type="button"
+          onClick={() => {
+            if (!input.trim()) return;
+            onSend(input);
+            setInput("");
+          }}
+        >
           Send
         </button>
       </div>

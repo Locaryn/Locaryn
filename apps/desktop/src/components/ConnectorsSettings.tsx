@@ -487,8 +487,11 @@ export function ConnectorsSettings() {
             <h3>Ajouter un serveur MCP</h3>
             {mcpError && <div className="locaryn-vp-error">{mcpError}</div>}
             <div className="locaryn-field">
-              <label className="locaryn-field-label">Nom du serveur MCP</label>
+              <label htmlFor="mcp-name" className="locaryn-field-label">
+                Nom du serveur MCP
+              </label>
               <input
+                id="mcp-name"
                 className="locaryn-input"
                 placeholder="graphify"
                 value={mcpName}
@@ -500,8 +503,11 @@ export function ConnectorsSettings() {
               </p>
             </div>
             <div className="locaryn-field">
-              <label className="locaryn-field-label">Protocole Transport</label>
+              <label htmlFor="mcp-transport" className="locaryn-field-label">
+                Protocole Transport
+              </label>
               <select
+                id="mcp-transport"
                 className="locaryn-select"
                 value={mcpType}
                 onChange={(e) => setMcpType(e.target.value as "stdio" | "http")}
@@ -511,10 +517,11 @@ export function ConnectorsSettings() {
               </select>
             </div>
             <div className="locaryn-field">
-              <label className="locaryn-field-label">
+              <label htmlFor="mcp-target" className="locaryn-field-label">
                 {mcpType === "stdio" ? "Commande à lancer" : "Adresse du serveur"}
               </label>
               <input
+                id="mcp-target"
                 className="locaryn-input"
                 placeholder={
                   mcpType === "stdio"

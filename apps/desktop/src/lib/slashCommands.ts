@@ -13,7 +13,9 @@ export type SlashAction =
   | "settings"
   | "new-chat"
   | "plan"
-  | "clear";
+  | "clear"
+  /** Commande apportee par un plugin : le corps est resolu par le backend. */
+  | "extension";
 
 /** Values a command accepts after a space (Tab/Enter completes them). */
 export interface SlashArg {
@@ -33,6 +35,11 @@ export interface SlashCommand {
   action: SlashAction;
   /** Optional arguments proposed once the user types a space. */
   args?: SlashArg[];
+  /**
+   * Present uniquement pour `action: "extension"`. Nom qualifie
+   * `<plugin>:<commande>` a passer a `resolve_extension_command`.
+   */
+  extension?: string;
 }
 
 /** Quality arguments shared by the image commands. */
@@ -166,7 +173,7 @@ export type SlashSuggestion =
   | { kind: "args"; command: SlashCommand; items: SlashArg[] };
 
 /** Parse the composer text into palette suggestions (null = not a slash query). */
-export function matchSlashInput(input: string): SlashSuggestion | null {
+export function matchSlashInput(input: string, extra: SlashCommand[] = []): SlashSuggestion | null {
   if (!input.startsWith("/")) return null;
   const rest = input.slice(1);
   const spaceAt = rest.indexOf(" ");
@@ -177,7 +184,8 @@ export function matchSlashInput(input: string): SlashSuggestion | null {
       .slice(spaceAt + 1)
       .trim()
       .toLowerCase();
-    const cmd = SLASH_COMMANDS.find((c) => c.name === name || c.aliases.includes(name));
+    const pool = extra.length ? [...SLASH_COMMANDS, ...extra] : SLASH_COMMANDS;
+    const cmd = pool.find((c) => c.name === name || c.aliases.includes(name));
     if (!cmd?.args) return null;
     const items = partial
       ? cmd.args.filter(
@@ -186,23 +194,47 @@ export function matchSlashInput(input: string): SlashSuggestion | null {
       : cmd.args;
     return items.length ? { kind: "args", command: cmd, items } : null;
   }
-  const items = matchSlash(input) ?? [];
+  const items = matchSlash(input, extra) ?? [];
   return items.length ? { kind: "commands", items } : null;
 }
 
-/** Text typed in the composer → matching commands, or null when not a slash query. */
-export function matchSlash(input: string): SlashCommand[] | null {
+/**
+ * Text typed in the composer → matching commands, or null when not a slash query.
+ *
+ * `extra` porte les commandes apportees par les plugins actifs. Elles sont
+ * fournies par l'appelant plutot que codees ici : la liste change a chaque
+ * installation, et ce module doit rester une fonction pure.
+ */
+export function matchSlash(input: string, extra: SlashCommand[] = []): SlashCommand[] | null {
   if (!input.startsWith("/")) return null;
   // Only a single leading token counts as a command query.
   const q = input.slice(1);
   if (/\s/.test(q)) return null;
-  const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const nq = norm(q);
-  if (!nq) return SLASH_COMMANDS;
-  return SLASH_COMMANDS.filter(
+  const all = extra.length ? [...SLASH_COMMANDS, ...extra] : SLASH_COMMANDS;
+  if (!nq) return all;
+  return all.filter(
     (c) =>
       norm(c.name).includes(nq) ||
       c.aliases.some((a) => norm(a).includes(nq)) ||
       norm(c.label).includes(nq),
   );
+}
+
+/**
+ * Le texte est-il une commande de plugin ecrite en entier, arguments compris ?
+ *
+ * Les commandes integrees se declenchent depuis la palette, qui reste ouverte
+ * parce qu'elles declarent leurs arguments. Une commande de plugin n'en declare
+ * aucun : la palette se ferme des le premier espace, et « /plugin:cmd chemin »
+ * partirait tel quel comme message. Ce test rattrape ce cas.
+ */
+export function matchExtensionCommand(input: string, extra: SlashCommand[]): SlashCommand | null {
+  if (!input.startsWith("/") || extra.length === 0) return null;
+  const rest = input.slice(1);
+  const space = rest.indexOf(" ");
+  const name = (space >= 0 ? rest.slice(0, space) : rest).trim();
+  if (!name) return null;
+  return extra.find((c) => c.name === name || c.aliases.includes(name)) ?? null;
 }

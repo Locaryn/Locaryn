@@ -8,8 +8,10 @@
 //! `locaryn_agent_runtime` exactly like the daemon does — no agent logic
 //! lives in the shell.
 
+mod airllm;
 mod client_cert;
 mod extensions;
+mod hooks;
 mod mcp_servers;
 mod model_residency;
 mod region_edit;
@@ -280,7 +282,13 @@ async fn init_core() -> anyhow::Result<Core> {
         }
     }
 
-    let supervisor = Supervisor::new(SupervisorConfig::default(), storage.clone());
+    let supervisor = Supervisor::new(
+        SupervisorConfig {
+            airllm_python: find_python().map(std::path::PathBuf::from),
+            ..SupervisorConfig::default()
+        },
+        storage.clone(),
+    );
     let _hc = supervisor.spawn_healthcheck_loop();
 
     tokio::spawn(async move {
@@ -638,11 +646,11 @@ async fn plan_task(core: State<'_, Core>, request: String) -> Result<TaskPlan, S
         .ok()
         .flatten()
         .ok_or("no active provider")?;
-    if provider.engine == ProviderEngine::LlamaCpp {
-        let _ = core
-            .supervisor
-            .ensure_running(ProviderEngine::LlamaCpp)
-            .await;
+    if matches!(
+        provider.engine,
+        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm
+    ) {
+        let _ = core.supervisor.ensure_running(provider.engine).await;
     }
     let url = format!(
         "{}/v1/chat/completions",
@@ -729,11 +737,11 @@ async fn detect_image_request(
         .ok()
         .flatten()
         .ok_or("no active provider")?;
-    if provider.engine == ProviderEngine::LlamaCpp {
-        let _ = core
-            .supervisor
-            .ensure_running(ProviderEngine::LlamaCpp)
-            .await;
+    if matches!(
+        provider.engine,
+        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm
+    ) {
+        let _ = core.supervisor.ensure_running(provider.engine).await;
     }
     let url = format!(
         "{}/v1/chat/completions",
@@ -892,11 +900,11 @@ async fn suggest_followups(core: State<'_, Core>, answer: String) -> Result<Vec<
         .ok()
         .flatten()
         .ok_or("no active provider")?;
-    if provider.engine == ProviderEngine::LlamaCpp {
-        let _ = core
-            .supervisor
-            .ensure_running(ProviderEngine::LlamaCpp)
-            .await;
+    if matches!(
+        provider.engine,
+        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm
+    ) {
+        let _ = core.supervisor.ensure_running(provider.engine).await;
     }
 
     // Keep the context small: only the tail of the answer matters for "what next".
@@ -977,6 +985,27 @@ async fn archive_project(core: State<'_, Core>, id: Uuid) -> Result<(), String> 
 
 #[tauri::command]
 async fn delete_session(core: State<'_, Core>, id: Uuid) -> Result<(), String> {
+    // Tiré avant la suppression : le hook peut encore lire la session.
+    let root = hooks::project_root_or_cwd(
+        match core.storage.sessions.get(id).await {
+            Ok(s) => core
+                .storage
+                .projects
+                .get(s.project_id)
+                .await
+                .ok()
+                .map(|p| p.path),
+            Err(_) => None,
+        }
+        .as_deref(),
+    );
+    hooks::fire(
+        core.inner(),
+        locaryn_hook_runtime::HookEvent::SessionEnd,
+        hooks::HookContext::new(id.to_string(), root),
+    )
+    .await;
+
     core.storage
         .sessions
         .delete(id)
@@ -1007,11 +1036,30 @@ async fn create_session(
             Some(t)
         }
     });
-    core.storage
+    let session = core
+        .storage
         .sessions
         .create(project_id, title)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let root = hooks::project_root_or_cwd(
+        core.storage
+            .projects
+            .get(project_id)
+            .await
+            .ok()
+            .map(|p| p.path)
+            .as_deref(),
+    );
+    hooks::fire(
+        core.inner(),
+        locaryn_hook_runtime::HookEvent::SessionStart,
+        hooks::HookContext::new(session.id.to_string(), root),
+    )
+    .await;
+
+    Ok(session)
 }
 
 /// Rename a session.
@@ -1055,11 +1103,11 @@ async fn generate_session_title(
 
     let active_provider = core.storage.providers.active().await.ok().flatten();
     let provider = active_provider.ok_or("no active provider")?;
-    if provider.engine == ProviderEngine::LlamaCpp {
-        let _ = core
-            .supervisor
-            .ensure_running(ProviderEngine::LlamaCpp)
-            .await;
+    if matches!(
+        provider.engine,
+        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm
+    ) {
+        let _ = core.supervisor.ensure_running(provider.engine).await;
     }
 
     let url = format!(
@@ -1212,6 +1260,31 @@ async fn send_message(
     reasoning: Option<serde_json::Value>,
     on_event: Channel<StreamEvent>,
 ) -> Result<(), String> {
+    // 0. Hooks : UserPromptSubmit peut refuser le tour. Tiré avant toute
+    //    persistance, sinon un message refusé resterait dans l'historique.
+    let hook_root = {
+        let path = match core.storage.sessions.get(session_id).await {
+            Ok(s) => core
+                .storage
+                .projects
+                .get(s.project_id)
+                .await
+                .ok()
+                .map(|p| p.path),
+            Err(_) => None,
+        };
+        hooks::project_root_or_cwd(path.as_deref())
+    };
+    let submit = hooks::fire(
+        core.inner(),
+        locaryn_hook_runtime::HookEvent::UserPromptSubmit,
+        hooks::HookContext::new(session_id.to_string(), hook_root.clone()),
+    )
+    .await;
+    if let Some(reason) = submit.blocked {
+        return Err(reason);
+    }
+
     // 1. Persist the user's message.
     if let Err(e) = core
         .storage
@@ -1258,19 +1331,13 @@ async fn send_message(
     // 3. Pick the agent based on the active provider.
     let active_provider = core.storage.providers.active().await.ok().flatten();
 
-    // Ensure the local llama-server is running.
+    // Ensure the local runtime is running (llama-server or the AirLLM server).
     if let Some(ref p) = active_provider {
-        if p.engine == ProviderEngine::LlamaCpp {
-            if let Err(e) = core
-                .supervisor
-                .ensure_running(ProviderEngine::LlamaCpp)
-                .await
-            {
-                tracing::warn!(error = %e, "supervisor could not ensure llama-server running");
+        if matches!(p.engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm) {
+            if let Err(e) = core.supervisor.ensure_running(p.engine).await {
+                tracing::warn!(error = %e, "supervisor could not ensure runtime running");
             } else {
-                core.supervisor
-                    .note_activity(ProviderEngine::LlamaCpp)
-                    .await;
+                core.supervisor.note_activity(p.engine).await;
             }
         }
     }
@@ -1464,6 +1531,15 @@ async fn send_message(
             tracing::warn!(error = %e, "failed to persist assistant message");
         }
     }
+
+    // 6. Hooks : le tour est fini. Un échec ici ne peut plus rien annuler, il
+    //    est seulement journalisé par le dispatcheur.
+    hooks::fire(
+        core.inner(),
+        locaryn_hook_runtime::HookEvent::Stop,
+        hooks::HookContext::new(session_id.to_string(), hook_root),
+    )
+    .await;
 
     Ok(())
 }
@@ -1849,6 +1925,7 @@ async fn pull_model(
     model: String,
     heretic: Option<bool>,
     consent: Option<bool>,
+    hf_token: Option<String>,
     on_event: Channel<PullProgressEvent>,
 ) -> Result<(), String> {
     let url = model.trim().to_string();
@@ -1857,6 +1934,7 @@ async fn pull_model(
     } else {
         url
     };
+    let hf_token = hf_token.unwrap_or_default();
     if !url.starts_with("http") {
         return Err(
             "Pour installer un modèle, utilisez une URL directe vers un fichier .gguf \
@@ -1875,7 +1953,7 @@ async fn pull_model(
         && !url.contains("/resolve/")
         && !url.contains("/blob/");
     if is_hf_repo {
-        return pull_hf_repo(&core, &url, &on_event).await;
+        return pull_hf_repo(&core, &url, &on_event, &hf_token).await;
     }
 
     // Refuse repository pages or directory URLs; we need a direct file link.
@@ -1920,6 +1998,7 @@ async fn pull_model(
         &part_path,
         &on_event,
         &cancel,
+        &hf_token,
     )
     .await;
     core.pull_cancels.lock().await.remove(&file_name);
@@ -1929,13 +2008,19 @@ async fn pull_model(
     // VAE and a text encoder; the uncensored ("heretic") setup additionally
     // needs the abliterated encoder. Fetch whatever is missing so installing one
     // entry from the marketplace yields a fully working model.
-    if let Err(e) =
-        install_image_companions(&core, &file_name, heretic.unwrap_or(false), &on_event).await
+    if let Err(e) = install_image_companions(
+        &core,
+        &file_name,
+        heretic.unwrap_or(false),
+        &on_event,
+        &hf_token,
+    )
+    .await
     {
         tracing::warn!(error = %e, "companion install failed (model itself is installed)");
     }
     // Auto-setup: Piper TTS voices ship a .json config file next to the .onnx.
-    if let Err(e) = install_audio_companions(&core, &url, &file_name, &on_event).await {
+    if let Err(e) = install_audio_companions(&core, &url, &file_name, &on_event, &hf_token).await {
         tracing::warn!(error = %e, "audio companion install failed (model itself is installed)");
     }
     Ok(())
@@ -1949,6 +2034,7 @@ async fn pull_hf_repo(
     core: &Core,
     url: &str,
     on_event: &Channel<PullProgressEvent>,
+    hf_token: &str,
 ) -> Result<(), String> {
     // HuggingFace does NOT support archive/main.zip for most repos (404).
     // Instead, we use the Tree API to list all files recursively, then download
@@ -1999,8 +2085,11 @@ async fn pull_hf_repo(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client
-        .get(&tree_url)
+    let mut req = client.get(&tree_url);
+    if !hf_token.is_empty() {
+        req = req.header("Authorization", format!("Bearer {hf_token}"));
+    }
+    let resp = req
         .send()
         .await
         .map_err(|e| format!("Tree API error: {e}"))?;
@@ -2079,6 +2168,7 @@ async fn pull_hf_repo(
             &part_path,
             on_event,
             &cancel,
+            hf_token,
         )
         .await?;
     }
@@ -2099,6 +2189,10 @@ async fn pull_hf_repo(
 /// Stream-download `url` to `final_path`, writing to `part_path` first and
 /// renaming on success. Reports progress via `on_event`. Resumable: if
 /// `part_path` exists, the download continues from the current byte offset.
+// Un téléchargement a légitimement beaucoup de paramètres (source, destination,
+// fichier partiel, progression, annulation, jeton). Les regrouper dans une
+// structure n'apporterait rien ici : ils n'ont pas de vie commune ailleurs.
+#[allow(clippy::too_many_arguments)]
 async fn do_pull(
     _core: &Core,
     url: &str,
@@ -2107,6 +2201,7 @@ async fn do_pull(
     part_path: &std::path::Path,
     on_event: &Channel<PullProgressEvent>,
     cancel: &tokio_util::sync::CancellationToken,
+    hf_token: &str,
 ) -> Result<(), String> {
     use futures::StreamExt;
 
@@ -2124,6 +2219,12 @@ async fn do_pull(
     let mut req = client.get(url);
     if offset > 0 {
         req = req.header("Range", format!("bytes={offset}-"));
+    }
+    // Gated HuggingFace repos (kyutai/pocket-tts, Qwen3-TTS, …) answer 401
+    // without an access token. Send it only to huggingface.co, never to any
+    // other host this function might be pointed at.
+    if !hf_token.is_empty() && url.starts_with("https://huggingface.co/") {
+        req = req.header("Authorization", format!("Bearer {hf_token}"));
     }
 
     let resp = req
@@ -2250,6 +2351,7 @@ async fn install_audio_companions(
     url: &str,
     installed_file: &str,
     on_event: &Channel<PullProgressEvent>,
+    hf_token: &str,
 ) -> Result<(), String> {
     let lower = installed_file.to_ascii_lowercase();
 
@@ -2261,7 +2363,7 @@ async fn install_audio_companions(
         // files named model_fp16.onnx (no "kokoro" in the filename).
         let url_lower = url.to_ascii_lowercase();
         if lower.contains("kokoro") || url_lower.contains("kokoro") {
-            return install_kokoro_companions(core, url, installed_file, on_event).await;
+            return install_kokoro_companions(core, url, installed_file, on_event, hf_token).await;
         }
         // Standard Piper .onnx → fetch the .onnx.json config sibling.
         let models_dir = locaryn_config::models_dir();
@@ -2280,7 +2382,10 @@ async fn install_audio_companions(
         });
         let part = models_dir.join(format!("{json_name}.part"));
         let cancel = tokio_util::sync::CancellationToken::new();
-        return do_pull(core, &json_url, &json_name, &dest, &part, on_event, &cancel).await;
+        return do_pull(
+            core, &json_url, &json_name, &dest, &part, on_event, &cancel, hf_token,
+        )
+        .await;
     }
 
     // ── Case 2: Kokoro PyTorch (.pth) downloaded as a direct file →
@@ -2291,7 +2396,7 @@ async fn install_audio_companions(
             // The .pth was downloaded as a direct file. For a fully working
             // Kokoro setup we need config.json + voices/ alongside it.
             // Reconstruct the repo URL and trigger a repo-level companion fetch.
-            return install_kokoro_companions(core, url, installed_file, on_event).await;
+            return install_kokoro_companions(core, url, installed_file, on_event, hf_token).await;
         }
     }
 
@@ -2319,6 +2424,7 @@ async fn install_kokoro_companions(
     url: &str,
     installed_file: &str,
     on_event: &Channel<PullProgressEvent>,
+    hf_token: &str,
 ) -> Result<(), String> {
     let models_dir = locaryn_config::models_dir();
 
@@ -2370,6 +2476,7 @@ async fn install_kokoro_companions(
             &part,
             on_event,
             &cancel,
+            hf_token,
         )
         .await;
     }
@@ -2396,6 +2503,7 @@ async fn install_kokoro_companions(
             &part,
             on_event,
             &cancel,
+            hf_token,
         )
         .await;
         // Clean up empty/failed download.
@@ -2417,7 +2525,11 @@ async fn install_kokoro_companions(
     // The Tree API call is non-fatal: if the network request fails or the
     // API returns a non-success status, we still attempt the voices-v1.0.bin
     // fallback below. config.json and tokenizer.json may already be installed.
-    let voices_downloaded = match client.get(&tree_url).send().await {
+    let mut req = client.get(&tree_url);
+    if !hf_token.is_empty() {
+        req = req.header("Authorization", format!("Bearer {hf_token}"));
+    }
+    let voices_downloaded = match req.send().await {
         Ok(resp) if resp.status().is_success() => {
             // Tree API returned a valid response — parse and download voices.
             match resp.json::<Vec<serde_json::Value>>().await {
@@ -2466,6 +2578,7 @@ async fn install_kokoro_companions(
                             &part,
                             on_event,
                             &cancel,
+                            hf_token,
                         )
                         .await;
                         count += 1;
@@ -2512,6 +2625,7 @@ async fn install_kokoro_companions(
                 &part,
                 on_event,
                 &cancel,
+                hf_token,
             )
             .await;
         }
@@ -2558,6 +2672,7 @@ async fn install_image_companions(
     installed_file: &str,
     heretic: bool,
     on_event: &Channel<PullProgressEvent>,
+    hf_token: &str,
 ) -> Result<(), String> {
     let lower = installed_file.to_ascii_lowercase();
     let is_z_image = lower.contains("z_image") || lower.contains("z-image");
@@ -2598,7 +2713,11 @@ async fn install_image_companions(
         });
         let part = models_dir.join(format!("{}.part", comp.file));
         let cancel = tokio_util::sync::CancellationToken::new();
-        if let Err(e) = do_pull(core, comp.url, comp.file, &dest, &part, on_event, &cancel).await {
+        if let Err(e) = do_pull(
+            core, comp.url, comp.file, &dest, &part, on_event, &cancel, hf_token,
+        )
+        .await
+        {
             tracing::warn!(error = %e, file = comp.file, "companion download failed");
         }
     }
@@ -7156,7 +7275,7 @@ async fn setup_llama_runtime(
     let _ = on_event.send(pull_event);
 
     do_pull(
-        &core, url, zip_name, &zip_path, &part_path, &on_event, &cancel,
+        &core, url, zip_name, &zip_path, &part_path, &on_event, &cancel, "",
     )
     .await?;
 
@@ -7386,6 +7505,12 @@ pub fn run() {
             list_providers,
             set_active_provider,
             configure_provider,
+            airllm::airllm_status,
+            airllm::airllm_setup,
+            airllm::airllm_install,
+            airllm::airllm_installed,
+            airllm::airllm_uninstall,
+            airllm::configure_airllm_provider,
             list_models,
             app_info,
             region_edit::edit_region,
@@ -7478,6 +7603,12 @@ pub fn run() {
             mcp_servers::stop_mcp_server,
             mcp_servers::invoke_mcp_tool,
             mcp_servers::diagnose_snapmcp,
+            mcp_servers::diagnose_android_vm,
+            mcp_servers::setup_android_vm,
+            mcp_servers::start_android_vm,
+            mcp_servers::stop_android_vm,
+            mcp_servers::android_screen_probe,
+            mcp_servers::android_screen_action,
             write_test_audio,
             remove_test_audio,
             list_ssh_servers,

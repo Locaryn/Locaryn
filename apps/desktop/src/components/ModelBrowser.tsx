@@ -8,6 +8,7 @@ import {
   clearRegistryCache,
   fetchFullRegistry,
   fetchHuggingFaceModels,
+  fetchHuggingFaceTTSModels,
   isCloudOnlyFamily,
   looksLikeImageModel,
 } from "../lib/modelRegistry";
@@ -36,6 +37,33 @@ type Props = {
   onSelectModelForChat?: (tag: string) => void;
   /** Open ImageGen modal. */
   onOpenImageGen?: () => void;
+  /** Launch an AirLLM model: activates the AirLlm provider and opens Chat. */
+  onLaunchAirllm?: (repo: string) => void;
+};
+
+/**
+ * Curated AirLLM-compatible models (HF repo + full-precision size). AirLLM
+ * loads one transformer layer at a time, so a 4 Go de VRAM suffit même pour
+ * des modèles de 70B+ ; les MoE (Kimi K3, Qwen3-235B) streament un expert à
+ * la fois (~3 Go de VRAM). Tous ces repos sont ouverts (pas de token gated) :
+ * si un repo devient gated, l'install échouera avec un message clair.
+ *
+ * `sizeGb` = poids fp16 bruts du dépôt. AirLLM convertit ensuite les couches
+ * en shards (≈2× l'espace pendant la première conversion, puis l'original
+ * peut être supprimé via `delete_original`).
+ */
+const AIRLLM_MODELS: Record<string, { repo: string; sizeGb: number }> = {
+  "kimi-k3": { repo: "moonshotai/Kimi-K3", sizeGb: 1450 }, // 2,8T MoE MXFP4, ~1,4 To — ~3 Go VRAM (expert streaming)
+  qwen3: { repo: "Qwen/Qwen3-235B-A22B-Instruct-2507", sizeGb: 470 }, // 235B MoE, ~3 Go VRAM
+  llama4: { repo: "meta-llama/Llama-4-Scout-17B-16E-Instruct", sizeGb: 34 }, // 109B MoE
+  "llama3.3": { repo: "meta-llama/Llama-3.3-70B-Instruct", sizeGb: 140 }, // gated Meta — token HF requis
+  "llama3.1": { repo: "meta-llama/Llama-3.1-70B-Instruct", sizeGb: 140 }, // gated Meta — token HF requis
+  "qwen2.5": { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
+  qwen2_5: { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
+  "deepseek-r1": { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
+  deepseek_r1: { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
+  "mistral-nemo": { repo: "mistralai/Mistral-Nemo-Instruct-2407", sizeGb: 27 },
+  mistral: { repo: "mistralai/Mistral-7B-Instruct-v0.3", sizeGb: 30 },
 };
 
 function capBadges(f: ModelFamily) {
@@ -103,18 +131,30 @@ function getQuantStorageGb(baseStorageGb: number, quant: string): number {
 // Turns a model's memory footprint + the detected PC into an intuitive verdict
 // so the user never has to fiddle with size filters to know what will run.
 type HwSpec = { total_ram_gb: number; total_vram_gb: number };
-type CompatLevel = "cloud" | "gpu" | "offload" | "heavy" | "unknown";
+type CompatLevel = "cloud" | "gpu" | "offload" | "airllm" | "heavy" | "unknown";
 type Compat = { level: CompatLevel; label: string; short: string; color: string; icon: string };
 
 const COMPAT_RANK: Record<CompatLevel, number> = {
   cloud: 0,
   gpu: 1,
   offload: 2,
-  heavy: 3,
-  unknown: 4,
+  airllm: 3,
+  heavy: 4,
+  unknown: 5,
 };
 
-function variantCompat(storageGb: number, hw: HwSpec | null): Compat {
+/** localStorage key for the user's favorite models (stable across refreshes). */
+const FAVORITES_KEY = "locaryn_model_favorites_v1";
+/** localStorage key for the AirLLM (low-VRAM inference engine) toggle. */
+const AIRLLM_KEY = "locaryn_model_airllm_v1";
+
+/**
+ * Hardware verdict for one variant.
+ * With `airllm` on, models that would not run on this PC (too heavy for its
+ * VRAM/RAM) are converted to AirLLM execution — the open-source engine that
+ * loads transformer layers one at a time so a 4 GB VRAM GPU can run 70B+.
+ */
+function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Compat {
   if (storageGb === 0) {
     return {
       level: "cloud",
@@ -154,6 +194,17 @@ function variantCompat(storageGb: number, hw: HwSpec | null): Compat {
       icon: "🟡",
     };
   }
+  if (airllm) {
+    return {
+      level: "airllm",
+      label:
+        "Trop lourd pour la VRAM/RAM de ce PC, mais exécutable localement via AirLLM " +
+        "(chargement des couches une par une — un GPU 4 Go de VRAM suffit)",
+      short: "AirLLM",
+      color: "#a78bfa",
+      icon: "🟣",
+    };
+  }
   return {
     level: "heavy",
     label: "Dépasse la mémoire de ce PC — non recommandé",
@@ -163,10 +214,53 @@ function variantCompat(storageGb: number, hw: HwSpec | null): Compat {
   };
 }
 
-function familyBestCompat(variants: { storageGb: number }[], hw: HwSpec | null): Compat {
-  if (variants.length === 0) return variantCompat(0, hw);
+function familyBestCompat(
+  variants: { storageGb: number }[],
+  hw: HwSpec | null,
+  airllm = false,
+): Compat {
+  if (variants.length === 0) return variantCompat(0, hw, airllm);
   const best = variants.reduce((a, b) => (a.storageGb <= b.storageGb ? a : b));
-  return variantCompat(best.storageGb, hw);
+  return variantCompat(best.storageGb, hw, airllm);
+}
+
+/**
+ * Rough AirLLM throughput estimate (tokens/s) for a converted (too heavy)
+ * variant on this PC. AirLLM loads transformer layers one at a time, so the
+ * dominant costs are layer reloads (VRAM residency, RAM cache, disk stream)
+ * plus GPU compute. MoE models only move their active experts per token.
+ */
+function estimateAirllmTokPerSec(
+  storageGb: number,
+  hw: HwSpec | null,
+  sizeLabel: string,
+  fallbackSizeGb?: number,
+): number | null {
+  if (!hw) return null;
+  const isMoe = /moe/i.test(sizeLabel);
+  const vram = Math.max(hw.total_vram_gb || 0, 1); // AirLLM still needs some GPU
+  const ram = Math.max(hw.total_ram_gb || 0, 1);
+  // Cloud-only variants (storageGb = 0) fall back to the curated repo size.
+  // Réaffecter le paramètre masquait la valeur reçue : la taille effective
+  // porte donc son propre nom.
+  const effectiveGb = storageGb <= 0 && fallbackSizeGb ? fallbackSizeGb : storageGb;
+  const modelGb = Math.max(effectiveGb, 0.5);
+  // Base curve (dense, mid GPU): ~21 tok/s for a 5 GB model, ~2.5 tok/s for 40 GB.
+  let tok = 90 / modelGb ** 0.9;
+  // More VRAM keeps more layers resident → fewer reloads per token.
+  tok *= Math.min(1.15, 0.65 + 0.09 * vram);
+  // RAM caches layers between passes; beyond RAM, layers stream from disk.
+  const cached = Math.min(1, (ram * 0.75) / modelGb);
+  tok *= 0.55 + 0.45 * cached;
+  // MoE only moves the active experts per token → much faster.
+  if (isMoe) tok *= 8;
+  // CPU-only: no GPU compute, noticeably slower.
+  if (!(hw.total_vram_gb > 0)) tok *= 0.5;
+  return Math.max(tok, 0.05);
+}
+
+function fmtTokPerSec(t: number): string {
+  return t >= 10 ? `${Math.round(t)} tok/s` : `${t.toFixed(1)} tok/s`;
 }
 
 function isVariantInstalled(tag: string, installedSet: Set<string>): boolean {
@@ -202,6 +296,7 @@ export function ModelBrowser({
   onOpenTraining,
   onSelectModelForChat,
   onOpenImageGen,
+  onLaunchAirllm,
   installed = [],
 }: Props) {
   const [query, setQuery] = useState("");
@@ -215,12 +310,64 @@ export function ModelBrowser({
   const [riskFilter, setRiskFilter] = useState<"all" | "safe" | "uncensored" | "nsfw">("all");
   const [onlyRecommended, setOnlyRecommended] = useState(false);
   const [showCloud, setShowCloud] = useState(false);
+  // AirLLM : basculer l'affichage pour que les modèles qui ne tourneraient pas
+  // sur ce PC (trop lourds) soient convertis en exécutables via le moteur
+  // AirLLM (inférence basse VRAM, chargement des couches une par une).
+  const [airllmEnabled, setAirllmEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(AIRLLM_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [airllmModalOpen, setAirllmModalOpen] = useState(false);
+  const [airllmInstalled, setAirllmInstalled] = useState<Set<string>>(new Set());
+  const [airllmBusy, setAirllmBusy] = useState<Record<string, boolean>>({});
+  const [airllmLog, setAirllmLog] = useState<string[]>([]);
+  const [airllmError, setAirllmError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
   const [selectedQuants, setSelectedQuants] = useState<Record<string, string>>({});
+
+  // Favorites — persisted in localStorage so they survive refreshes/restarts.
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(FAVORITES_KEY);
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favorites]));
+    } catch {
+      // localStorage unavailable — favorites just won't persist.
+    }
+  }, [favorites]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(AIRLLM_KEY, airllmEnabled ? "1" : "0");
+    } catch {
+      // localStorage unavailable — the toggle just won't persist.
+    }
+  }, [airllmEnabled]);
+
+  function toggleFavorite(id: string) {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   // Dynamic API Models & Registry
   const [registryModels, setRegistryModels] = useState<ModelFamily[]>([]);
   const [isLoadingRegistry, setIsLoadingRegistry] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [liveApiModels, setLiveApiModels] = useState<ModelFamily[]>([]);
   const [isFetchingLive, setIsFetchingLive] = useState(false);
 
@@ -243,6 +390,20 @@ export function ModelBrowser({
   } | null>(null);
 
   const installedSet = useMemo(() => new Set(installed), [installed]);
+
+  // Refresh the list of AirLLM-downloaded models on mount.
+  useEffect(() => {
+    let active = true;
+    core
+      .airllmInstalled()
+      .then((models) => {
+        if (active) setAirllmInstalled(new Set(models.map((m) => m.repo)));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Auto-detect the PC on mount so compatibility is shown without the user
   // having to open the hardware modal or toggle any filter.
@@ -268,6 +429,7 @@ export function ModelBrowser({
       .then((res) => {
         if (active) {
           setRegistryModels(res.families);
+          setLastUpdated(res.lastFetched ?? Date.now());
           setIsLoadingRegistry(false);
         }
       })
@@ -277,6 +439,27 @@ export function ModelBrowser({
     return () => {
       active = false;
     };
+  }, []);
+
+  // Background refresh: re-sync with Ollama and HuggingFace every hour even
+  // while this browser stays open (no remount needed). fetchFullRegistry only
+  // refetches when the 1h cache is stale, so a manual refresh mid-hour is
+  // never doubled — the tick just returns the fresh cache.
+  useEffect(() => {
+    const interval = setInterval(
+      () => {
+        fetchFullRegistry((q, cat) => core.searchOllamaLibrary(q, cat))
+          .then((res) => {
+            setRegistryModels(res.families);
+            setLastUpdated(res.lastFetched ?? Date.now());
+          })
+          .catch(() => {
+            // Silent: keep showing the last good list on network hiccups.
+          });
+      },
+      60 * 60 * 1000,
+    );
+    return () => clearInterval(interval);
   }, []);
 
   const allBrands = useMemo(() => {
@@ -301,8 +484,10 @@ export function ModelBrowser({
           if (bucket && !bucket.test(v.params)) return false;
           if (onlyRecommended) {
             const ram = hardwareSpec?.total_ram_gb || 16;
-            // A model is recommended if its storage requirement doesn't exceed 85% of total system RAM
-            if (v.storageGb > ram * 0.85) return false;
+            // A model is recommended if its storage requirement doesn't exceed 85% of total system RAM.
+            // With AirLLM enabled, heavy models still run locally (layer-by-layer
+            // offloading), so they pass too.
+            if (!airllmEnabled && v.storageGb > ram * 0.85) return false;
           }
           return true;
         });
@@ -341,7 +526,12 @@ export function ModelBrowser({
           return null;
         }
 
-        if (!showCloud && isCloudOnlyFamily(f)) {
+        // Cloud-only families stay hidden by default, unless AirLLM mode is on
+        // (then everything is presented as runnable) or the user toggled "cloud".
+        if (!airllmEnabled && !showCloud && isCloudOnlyFamily(f)) {
+          return null;
+        }
+        if (onlyFavorites && !favorites.has(f.id)) {
           return null;
         }
 
@@ -354,9 +544,10 @@ export function ModelBrowser({
       .sort((a, b) => {
         if (sortBy === "compat") {
           // Compatible-first: models that run on this PC float to the top,
-          // then newest within the same compatibility tier.
-          const ra = COMPAT_RANK[familyBestCompat(a.variants, hardwareSpec).level];
-          const rb = COMPAT_RANK[familyBestCompat(b.variants, hardwareSpec).level];
+          // then newest within the same compatibility tier. With AirLLM on,
+          // heavy models convert to AirLLM execution and move up.
+          const ra = COMPAT_RANK[familyBestCompat(a.variants, hardwareSpec, airllmEnabled).level];
+          const rb = COMPAT_RANK[familyBestCompat(b.variants, hardwareSpec, airllmEnabled).level];
           if (ra !== rb) return ra - rb;
           return b.releaseDate.localeCompare(a.releaseDate);
         }
@@ -379,9 +570,12 @@ export function ModelBrowser({
     riskFilter,
     onlyRecommended,
     showCloud,
+    onlyFavorites,
+    favorites,
     registryModels,
     liveApiModels,
     hardwareSpec,
+    airllmEnabled,
   ]);
 
   function toggleCardExpand(id: string) {
@@ -392,8 +586,13 @@ export function ModelBrowser({
     setIsFetchingLive(true);
     try {
       const q = query.trim() || "gguf";
-      const fetched = await fetchHuggingFaceModels(q);
-      setLiveApiModels(fetched);
+      // Fetch both GGUF chat models and safetensors TTS/voice repos so the
+      // live search also surfaces voice models (Pocket TTS, etc.).
+      const [gguf, tts] = await Promise.all([
+        fetchHuggingFaceModels(q),
+        fetchHuggingFaceTTSModels(q === "gguf" ? "tts" : q),
+      ]);
+      setLiveApiModels([...gguf, ...tts]);
     } finally {
       setIsFetchingLive(false);
     }
@@ -467,8 +666,55 @@ export function ModelBrowser({
     }
   }
 
+  /** Make sure the AirLLM Python runtime is installed (venv + package). */
+  async function ensureAirllmRuntime(onLine: (l: string) => void) {
+    const st = await core.airllmStatus();
+    if (!st.python) {
+      throw new Error("Python introuvable — installez Python 3.10+ (Paramètres → Système).");
+    }
+    if (!st.airllmInstalled || !st.torch) {
+      onLine("Installation du moteur AirLLM (pip install airllm)…");
+      await core.airllmSetup(onLine);
+    }
+  }
+
+  /** Install (if needed) then launch an AirLLM model. */
+  async function handleAirllmInstall(f: ModelFamily) {
+    const entry = AIRLLM_MODELS[f.id];
+    if (!entry) {
+      setAirllmModalOpen(true);
+      return;
+    }
+    const repo = entry.repo;
+    setAirllmError(null);
+    setAirllmLog([]);
+    setAirllmBusy((prev) => ({ ...prev, [repo]: true }));
+    const onLine = (l: string) => setAirllmLog((prev) => [...prev.slice(-40), l]);
+    try {
+      await ensureAirllmRuntime(onLine);
+      const installed = await core.airllmInstalled();
+      if (!installed.some((m) => m.repo === repo)) {
+        onLine(`Téléchargement des poids ${repo} (~${entry.sizeGb} Go fp16)…`);
+        await core.airllmInstall(repo, onLine);
+      }
+      const after = await core.airllmInstalled();
+      setAirllmInstalled(new Set(after.map((m) => m.repo)));
+      setAirllmLog((prev) => [...prev, `✅ ${repo} prêt — démarrage du moteur AirLLM…`]);
+      await onLaunchAirllm?.(repo);
+    } catch (e) {
+      setAirllmError(String(e));
+    } finally {
+      setAirllmBusy((prev) => ({ ...prev, [repo]: false }));
+    }
+  }
+
   const isFilterActive =
-    size !== "all" || query !== "" || brand !== "all" || onlyRecommended || riskFilter !== "all";
+    size !== "all" ||
+    query !== "" ||
+    brand !== "all" ||
+    onlyRecommended ||
+    riskFilter !== "all" ||
+    onlyFavorites;
 
   return (
     <div className="locaryn-models">
@@ -522,6 +768,51 @@ export function ModelBrowser({
           </select>
         </div>
 
+        {/* AirLLM toggle — converts too-heavy models into low-VRAM executable ones */}
+        <div className="locaryn-airllm-bar">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={airllmEnabled}
+            className={`locaryn-airllm-switch${airllmEnabled ? " locaryn-airllm-on" : ""}`}
+            onClick={() => setAirllmEnabled((prev) => !prev)}
+            title="Basculer le moteur AirLLM : les modèles trop lourds pour ce PC deviennent exécutables localement (chargement des couches une par une, un GPU 4 Go de VRAM suffit)"
+          >
+            <span className="locaryn-airllm-track">
+              <span className="locaryn-airllm-thumb" />
+            </span>
+            <span className="locaryn-airllm-label">🔮 AirLLM — Gros modèles sur petit GPU</span>
+          </button>
+          <span className="locaryn-airllm-hint">
+            {airllmEnabled
+              ? "Actif : tous les modèles deviennent exécutables — les modèles trop lourds pour ce PC tournent en local via AirLLM (chargement couche par couche, ex. Kimi K3 sur un GPU 4 Go de VRAM)."
+              : "Inactif : seuls les modèles tenant dans ce PC sont proposés en téléchargement local."}
+          </span>
+        </div>
+
+        {/* AirLLM install / runtime progress */}
+        {(airllmLog.length > 0 || airllmError) && (
+          <div
+            style={{
+              marginTop: "8px",
+              padding: "8px 12px",
+              borderRadius: "var(--radius-sm)",
+              border: airllmError
+                ? "1px solid var(--danger)"
+                : "1px solid rgba(167, 139, 250, 0.35)",
+              background: airllmError ? "rgba(204, 125, 114, 0.08)" : "rgba(167, 139, 250, 0.06)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+              color: airllmError ? "var(--danger)" : "var(--text-dim)",
+              maxHeight: "110px",
+              overflowY: "auto",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {airllmError ? `⚠️ ${airllmError}` : airllmLog.slice(-6).join("\n")}
+          </div>
+        )}
+
         {/* Category Filter Bar */}
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
           {MODEL_CATEGORIES.map((cat) => (
@@ -543,6 +834,7 @@ export function ModelBrowser({
               setIsLoadingRegistry(true);
               const res = await fetchFullRegistry((q, cat) => core.searchOllamaLibrary(q, cat));
               setRegistryModels(res.families);
+              setLastUpdated(res.lastFetched ?? Date.now());
               setIsLoadingRegistry(false);
             }}
             disabled={isLoadingRegistry}
@@ -550,6 +842,19 @@ export function ModelBrowser({
           >
             {isLoadingRegistry ? "🔄 Chargement..." : "⚡ Rafraîchir catalogue"}
           </button>
+          {lastUpdated && (
+            <span
+              style={{
+                fontSize: "11px",
+                color: "var(--text-faint)",
+                alignSelf: "center",
+                whiteSpace: "nowrap",
+              }}
+              title="Le catalogue se met à jour automatiquement toutes les heures"
+            >
+              🔄 MAJ {new Date(lastUpdated).toLocaleTimeString()}
+            </span>
+          )}
         </div>
 
         {/* Custom Model Tag & HuggingFace Pull Input + Live API Fetch Button */}
@@ -701,6 +1006,23 @@ export function ModelBrowser({
             </button>
             <button
               type="button"
+              className={`locaryn-chip locaryn-chip-ft${onlyFavorites ? " locaryn-chip-on" : ""}`}
+              style={
+                onlyFavorites
+                  ? {
+                      background: "rgba(255, 200, 87, 0.18)",
+                      borderColor: "#ffc857",
+                      color: "#ffc857",
+                    }
+                  : {}
+              }
+              onClick={() => setOnlyFavorites((prev) => !prev)}
+              title="Afficher uniquement les modèles marqués comme favoris"
+            >
+              ★ Favoris{favorites.size > 0 ? ` (${favorites.size})` : ""}
+            </button>
+            <button
+              type="button"
               className={`locaryn-chip locaryn-chip-ft${showCloud ? " locaryn-chip-on" : ""}`}
               style={
                 showCloud
@@ -762,6 +1084,7 @@ export function ModelBrowser({
                 title="Affichage en Grille / Cartes"
               >
                 <svg
+                  aria-hidden="true"
                   width="15"
                   height="15"
                   viewBox="0 0 24 24"
@@ -783,6 +1106,7 @@ export function ModelBrowser({
                 title="Affichage en Liste Détaillée"
               >
                 <svg
+                  aria-hidden="true"
                   width="15"
                   height="15"
                   viewBox="0 0 24 24"
@@ -809,10 +1133,13 @@ export function ModelBrowser({
         (() => {
           const counts = families.reduce(
             (acc, f) => {
-              acc[familyBestCompat(f.variants, hardwareSpec).level]++;
+              acc[familyBestCompat(f.variants, hardwareSpec, airllmEnabled).level]++;
               return acc;
             },
-            { cloud: 0, gpu: 0, offload: 0, heavy: 0, unknown: 0 } as Record<CompatLevel, number>,
+            { cloud: 0, gpu: 0, offload: 0, airllm: 0, heavy: 0, unknown: 0 } as Record<
+              CompatLevel,
+              number
+            >,
           );
           return (
             <div className="locaryn-hw-banner">
@@ -826,11 +1153,27 @@ export function ModelBrowser({
                 )}
               </span>
               <span className="locaryn-hw-banner-counts">
-                <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
-                <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
-                <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
-                <span style={{ color: "#cc7d72" }}>🔴 {counts.heavy} trop lourds</span>
-                <span className="locaryn-hw-banner-note">— triés du plus adapté au plus lourd</span>
+                {airllmEnabled ? (
+                  <>
+                    <span style={{ color: "#a78bfa" }}>🟣 {counts.airllm} via AirLLM</span>
+                    <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
+                    <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
+                    <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
+                    <span className="locaryn-hw-banner-note">
+                      — AirLLM actif : chaque modèle est exécutable (local ou cloud)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
+                    <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
+                    <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
+                    <span style={{ color: "#cc7d72" }}>🔴 {counts.heavy} trop lourds</span>
+                    <span className="locaryn-hw-banner-note">
+                      — triés du plus adapté au plus lourd
+                    </span>
+                  </>
+                )}
               </span>
             </div>
           );
@@ -861,7 +1204,20 @@ export function ModelBrowser({
             const expandLabel = isExpanded
               ? "▲ Masquer les variantes"
               : `▼ ${f.variants.length} variantes (${cleanSizeRange})`;
-            const compat = familyBestCompat(f.variants, hardwareSpec);
+            const compat = familyBestCompat(f.variants, hardwareSpec, airllmEnabled);
+            // Family-level AirLLM speed estimate: best case = smallest variant.
+            const bestVariant = f.variants.reduce((a, b) => (a.storageGb <= b.storageGb ? a : b));
+            const familyAirSpeed =
+              compat.level === "airllm"
+                ? estimateAirllmTokPerSec(
+                    bestVariant.storageGb,
+                    hardwareSpec,
+                    bestVariant.size,
+                    // Cloud-only families (storageGb = 0) fall back to the
+                    // curated AirLLM repo size (e.g. Kimi K3 ≈ 1,45 To).
+                    AIRLLM_MODELS[f.id]?.sizeGb,
+                  )
+                : null;
 
             return (
               <div key={f.id} className={`locaryn-box-card locaryn-compat-${compat.level}`}>
@@ -882,6 +1238,15 @@ export function ModelBrowser({
                     >
                       {compat.icon} {compat.short}
                     </span>
+                    {familyAirSpeed && (
+                      <span
+                        className="locaryn-tag"
+                        style={{ background: "rgba(167, 139, 250, 0.18)", color: "#a78bfa" }}
+                        title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
+                      >
+                        ⚡ ~{fmtTokPerSec(familyAirSpeed)}
+                      </span>
+                    )}
                     <span
                       className="locaryn-tag"
                       style={{ background: "rgba(100, 150, 255, 0.15)", color: "var(--accent)" }}
@@ -919,12 +1284,43 @@ export function ModelBrowser({
                         🎯 LoRA
                       </span>
                     )}
+                    {f.source === "huggingface" && (
+                      <span
+                        className="locaryn-tag"
+                        title="Découvert automatiquement sur le Hub HuggingFace"
+                        style={{
+                          background: "rgba(255, 200, 87, 0.14)",
+                          color: "#ffc857",
+                          border: "1px solid rgba(255, 200, 87, 0.35)",
+                        }}
+                      >
+                        🤗 HuggingFace
+                      </span>
+                    )}
                     {capBadges(f).map((c) => (
                       <span key={c} className="locaryn-tag">
                         {c}
                       </span>
                     ))}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(f.id)}
+                    aria-pressed={favorites.has(f.id)}
+                    title={favorites.has(f.id) ? "Retirer des favoris" : "Ajouter aux favoris"}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "15px",
+                      lineHeight: 1,
+                      padding: "2px 4px",
+                      color: favorites.has(f.id) ? "#ffc857" : "var(--text-faint)",
+                      flex: "none",
+                    }}
+                  >
+                    {favorites.has(f.id) ? "★" : "☆"}
+                  </button>
                 </div>
 
                 <p className="locaryn-box-desc">{f.description}</p>
@@ -991,6 +1387,7 @@ export function ModelBrowser({
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
+                      const compatV = variantCompat(targetStorageGb, hardwareSpec, airllmEnabled);
 
                       return (
                         <div
@@ -1008,18 +1405,32 @@ export function ModelBrowser({
                             <div className="locaryn-box-variant-info">
                               <span className="locaryn-variant-size">{v.size}</span>
                               <span className="locaryn-stat-vram">💾 ~{targetStorageGb} Go</span>
-                              {(() => {
-                                const c = variantCompat(targetStorageGb, hardwareSpec);
-                                return (
-                                  <span
-                                    className="locaryn-tag"
-                                    style={{ background: `${c.color}22`, color: c.color }}
-                                    title={c.label}
-                                  >
-                                    {c.icon} {c.short}
-                                  </span>
-                                );
-                              })()}
+                              <span
+                                className="locaryn-tag"
+                                style={{ background: `${compatV.color}22`, color: compatV.color }}
+                                title={compatV.label}
+                              >
+                                {compatV.icon} {compatV.short}
+                              </span>
+                              {compatV.level === "airllm" && (
+                                <span
+                                  className="locaryn-tag"
+                                  style={{
+                                    background: "rgba(167, 139, 250, 0.18)",
+                                    color: "#a78bfa",
+                                  }}
+                                  title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
+                                >
+                                  ⚡ ~
+                                  {fmtTokPerSec(
+                                    estimateAirllmTokPerSec(
+                                      targetStorageGb,
+                                      hardwareSpec,
+                                      v.size,
+                                    ) ?? 0,
+                                  )}
+                                </span>
+                              )}
                               {isInstalled && (
                                 <span className="locaryn-tag locaryn-tag-installed">
                                   Installé ✓
@@ -1081,6 +1492,52 @@ export function ModelBrowser({
                                 >
                                   ⛔ Annuler ({progress}%)
                                 </button>
+                              ) : compatV.level === "airllm" ? (
+                                (() => {
+                                  const entry = AIRLLM_MODELS[f.id];
+                                  const installed = entry ? airllmInstalled.has(entry.repo) : false;
+                                  const busy = entry ? airllmBusy[entry.repo] : false;
+                                  if (!entry) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="locaryn-btn-ghost"
+                                        style={{ border: "1px dashed #a78bfa", color: "#a78bfa" }}
+                                        onClick={() => setAirllmModalOpen(true)}
+                                        title="Cette architecture n'est pas encore supportée par AirLLM (Llama, Mistral, Qwen2…)"
+                                      >
+                                        🔮 Info AirLLM
+                                      </button>
+                                    );
+                                  }
+                                  if (installed) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="locaryn-btn-primary locaryn-variant-use"
+                                        style={{ background: "#a78bfa", color: "#111" }}
+                                        onClick={() => onLaunchAirllm?.(entry.repo)}
+                                        title={`Lancer ${entry.repo} via le moteur AirLLM`}
+                                      >
+                                        🚀 Lancer avec AirLLM
+                                      </button>
+                                    );
+                                  }
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="locaryn-btn-primary locaryn-variant-use"
+                                      style={{ background: "#a78bfa", color: "#111" }}
+                                      disabled={busy}
+                                      onClick={() => handleAirllmInstall(f)}
+                                      title={`Télécharger ${entry.repo} (~${entry.sizeGb} Go fp16) puis lancer via AirLLM`}
+                                    >
+                                      {busy
+                                        ? "⏳ AirLLM…"
+                                        : `🚀 Installer via AirLLM (~${entry.sizeGb} Go)`}
+                                    </button>
+                                  );
+                                })()
                               ) : (
                                 <button
                                   type="button"
@@ -1144,47 +1601,84 @@ export function ModelBrowser({
             const open = openId === f.id;
             return (
               <div key={f.id} className="locaryn-model-card">
-                <button
-                  type="button"
-                  className="locaryn-model-head"
-                  onClick={() => setOpenId(open ? null : f.id)}
-                  aria-expanded={open}
-                >
-                  <div className="locaryn-model-title">
-                    <span className="locaryn-model-name">{f.name}</span>
-                    <span className="locaryn-model-brand">{f.brand}</span>
+                <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+                  <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+                    <button
+                      type="button"
+                      className="locaryn-model-head"
+                      onClick={() => setOpenId(open ? null : f.id)}
+                      aria-expanded={open}
+                    >
+                      <div className="locaryn-model-title">
+                        <span className="locaryn-model-name">{f.name}</span>
+                        <span className="locaryn-model-brand">{f.brand}</span>
+                      </div>
+                      <div className="locaryn-model-badges">
+                        <span className="locaryn-tag locaryn-tag-soft">📅 {f.releaseDate}</span>
+                        {(() => {
+                          const c = classifyModel(`${f.name} ${f.id}`, {
+                            uncensored: f.uncensored,
+                          });
+                          if (c.risk === "safe") return null;
+                          return (
+                            <span
+                              className="locaryn-tag"
+                              style={{
+                                background: "rgba(204,125,114,0.2)",
+                                color: "var(--danger)",
+                                border: "1px solid rgba(204,125,114,0.4)",
+                              }}
+                              title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}
+                            >
+                              {c.icon} {c.label}
+                            </span>
+                          );
+                        })()}
+                        {f.finetunable && (
+                          <span className="locaryn-tag locaryn-tag-ft">🎯 LoRA Ready</span>
+                        )}
+                        {f.source === "huggingface" && (
+                          <span
+                            className="locaryn-tag"
+                            title="Découvert automatiquement sur le Hub HuggingFace"
+                            style={{
+                              background: "rgba(255, 200, 87, 0.14)",
+                              color: "#ffc857",
+                              border: "1px solid rgba(255, 200, 87, 0.35)",
+                            }}
+                          >
+                            🤗 HuggingFace
+                          </span>
+                        )}
+                        {capBadges(f).map((c) => (
+                          <span key={c} className="locaryn-tag">
+                            {c}
+                          </span>
+                        ))}
+                        <span className="locaryn-tag locaryn-tag-soft">{f.license}</span>
+                        <span className="locaryn-model-chevron">{open ? "▾" : "▸"}</span>
+                      </div>
+                    </button>
                   </div>
-                  <div className="locaryn-model-badges">
-                    <span className="locaryn-tag locaryn-tag-soft">📅 {f.releaseDate}</span>
-                    {(() => {
-                      const c = classifyModel(`${f.name} ${f.id}`, { uncensored: f.uncensored });
-                      if (c.risk === "safe") return null;
-                      return (
-                        <span
-                          className="locaryn-tag"
-                          style={{
-                            background: "rgba(204,125,114,0.2)",
-                            color: "var(--danger)",
-                            border: "1px solid rgba(204,125,114,0.4)",
-                          }}
-                          title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}
-                        >
-                          {c.icon} {c.label}
-                        </span>
-                      );
-                    })()}
-                    {f.finetunable && (
-                      <span className="locaryn-tag locaryn-tag-ft">🎯 LoRA Ready</span>
-                    )}
-                    {capBadges(f).map((c) => (
-                      <span key={c} className="locaryn-tag">
-                        {c}
-                      </span>
-                    ))}
-                    <span className="locaryn-tag locaryn-tag-soft">{f.license}</span>
-                    <span className="locaryn-model-chevron">{open ? "▾" : "▸"}</span>
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(f.id)}
+                    aria-pressed={favorites.has(f.id)}
+                    title={favorites.has(f.id) ? "Retirer des favoris" : "Ajouter aux favoris"}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "16px",
+                      lineHeight: 1,
+                      padding: "10px 14px",
+                      color: favorites.has(f.id) ? "#ffc857" : "var(--text-faint)",
+                      flex: "none",
+                    }}
+                  >
+                    {favorites.has(f.id) ? "★" : "☆"}
+                  </button>
+                </div>
 
                 {open && (
                   <div className="locaryn-model-body">
@@ -1199,6 +1693,7 @@ export function ModelBrowser({
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
+                      const compatV = variantCompat(targetStorageGb, hardwareSpec, airllmEnabled);
 
                       return (
                         <div key={v.tag} className="locaryn-variant">
@@ -1207,18 +1702,29 @@ export function ModelBrowser({
                             <span className="locaryn-stat-vram">
                               💾 ~{targetStorageGb} Go Stockage
                             </span>
-                            {(() => {
-                              const c = variantCompat(targetStorageGb, hardwareSpec);
-                              return (
-                                <span
-                                  className="locaryn-tag"
-                                  style={{ background: `${c.color}22`, color: c.color }}
-                                  title={c.label}
-                                >
-                                  {c.icon} {c.short}
-                                </span>
-                              );
-                            })()}
+                            <span
+                              className="locaryn-tag"
+                              style={{ background: `${compatV.color}22`, color: compatV.color }}
+                              title={compatV.label}
+                            >
+                              {compatV.icon} {compatV.short}
+                            </span>
+                            {compatV.level === "airllm" && (
+                              <span
+                                className="locaryn-tag"
+                                style={{
+                                  background: "rgba(167, 139, 250, 0.18)",
+                                  color: "#a78bfa",
+                                }}
+                                title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
+                              >
+                                ⚡ ~
+                                {fmtTokPerSec(
+                                  estimateAirllmTokPerSec(targetStorageGb, hardwareSpec, v.size) ??
+                                    0,
+                                )}
+                              </span>
+                            )}
                             {isInstalled && (
                               <span className="locaryn-tag locaryn-tag-installed">Installé ✓</span>
                             )}
@@ -1278,6 +1784,52 @@ export function ModelBrowser({
                                 >
                                   ⛔ Annuler ({progress}%)
                                 </button>
+                              ) : compatV.level === "airllm" ? (
+                                (() => {
+                                  const entry = AIRLLM_MODELS[f.id];
+                                  const installed = entry ? airllmInstalled.has(entry.repo) : false;
+                                  const busy = entry ? airllmBusy[entry.repo] : false;
+                                  if (!entry) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="locaryn-btn-ghost"
+                                        style={{ border: "1px dashed #a78bfa", color: "#a78bfa" }}
+                                        onClick={() => setAirllmModalOpen(true)}
+                                        title="Cette architecture n'est pas encore supportée par AirLLM (Llama, Mistral, Qwen2…)"
+                                      >
+                                        🔮 Info AirLLM
+                                      </button>
+                                    );
+                                  }
+                                  if (installed) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="locaryn-btn-primary locaryn-variant-use"
+                                        style={{ background: "#a78bfa", color: "#111" }}
+                                        onClick={() => onLaunchAirllm?.(entry.repo)}
+                                        title={`Lancer ${entry.repo} via le moteur AirLLM`}
+                                      >
+                                        🚀 Lancer avec AirLLM
+                                      </button>
+                                    );
+                                  }
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="locaryn-btn-primary locaryn-variant-use"
+                                      style={{ background: "#a78bfa", color: "#111" }}
+                                      disabled={busy}
+                                      onClick={() => handleAirllmInstall(f)}
+                                      title={`Télécharger ${entry.repo} (~${entry.sizeGb} Go fp16) puis lancer via AirLLM`}
+                                    >
+                                      {busy
+                                        ? "⏳ AirLLM…"
+                                        : `🚀 Installer via AirLLM (~${entry.sizeGb} Go)`}
+                                    </button>
+                                  );
+                                })()
                               ) : (
                                 <button
                                   type="button"
@@ -1320,6 +1872,83 @@ export function ModelBrowser({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* AirLLM info modal — low-VRAM inference engine */}
+      {airllmModalOpen && (
+        <div
+          className="locaryn-settings-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setAirllmModalOpen(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setAirllmModalOpen(false);
+          }}
+        >
+          <div
+            className="locaryn-card"
+            style={{
+              width: "560px",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              margin: "40px auto",
+              border: "1px solid var(--border-strong)",
+              boxShadow: "0 16px 40px rgba(0,0,0,0.85)",
+            }}
+          >
+            <div className="locaryn-field-head" style={{ marginBottom: "14px" }}>
+              <div>
+                <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                  🔮 AirLLM — Gros modèles sur petit GPU
+                </h3>
+                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
+                  Moteur d'inférence open-source : les gros modèles tournent sur un GPU 4 Go de VRAM
+                  en chargeant les couches une par une.
+                </span>
+              </div>
+              <button
+                type="button"
+                className="locaryn-icon-btn"
+                onClick={() => setAirllmModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.6, margin: "0 0 12px" }}>
+              Ce modèle est trop lourd pour les composants de ce PC (
+              {hardwareSpec?.total_ram_gb ?? "?"} Go RAM
+              {hardwareSpec?.total_vram_gb ? `, ${hardwareSpec.total_vram_gb} Go VRAM` : ""}). Avec
+              le moteur AirLLM activé, il s'exécute quand même en local : chaque couche du
+              transformer est chargée sur le GPU une par une (et chaque expert un par un pour les
+              MoE), le reste restant sur le disque — un GPU 4 Go de VRAM suffit pour des modèles de
+              70B et plus, comme Kimi K3.
+            </p>
+            <p
+              style={{
+                fontSize: "var(--text-sm)",
+                lineHeight: 1.6,
+                margin: "0 0 16px",
+                color: "var(--text-dim)",
+              }}
+            >
+              Architectures supportées par AirLLM : Llama 2/3/3.1, Mistral/Mixtral, Qwen/Qwen2. Les
+              familles affichant « Info AirLLM » (GLM, Nemotron, Kimi… ) ne sont pas encore
+              supportées par le moteur. Les modèles compatibles se téléchargent en pleine précision
+              fp16 (≈2× la taille GGUF indiquée) puis se lancent d'un clic — l'inférence passe par
+              le serveur AirLLM local (OpenAI-compatible) géré par Locaryn.
+            </p>
+            <div className="locaryn-field-actions" style={{ justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="locaryn-btn-primary"
+                style={{ background: "#a78bfa", color: "#111" }}
+                onClick={() => setAirllmModalOpen(false)}
+              >
+                Compris
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

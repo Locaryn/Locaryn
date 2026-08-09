@@ -661,9 +661,15 @@ mod batch_tests {
     use std::path::Path;
 
     /// Names asserted against a real 3-image run, which wrote batch_0/1/2.
+    ///
+    /// Le chemin est construit composant par composant : écrit en dur avec des
+    /// contre-obliques, `D:\out\img.png` n'est qu'un *nom de fichier* sous
+    /// Unix, et `file_name()` rendait la chaîne entière.
     #[test]
     fn batch_paths_are_zero_indexed_like_sd_cpp_writes_them() {
-        let out = Path::new(r"D:\out\img_1785.png");
+        let dir = std::path::PathBuf::from("out");
+        let out_buf = dir.join("img_1785.png");
+        let out = out_buf.as_path();
         let (pattern, files) = batch_output(out, 3);
 
         assert!(pattern.to_string_lossy().contains("img_1785_%d.png"));
