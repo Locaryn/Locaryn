@@ -1,5 +1,7 @@
 /** Tiny labelled slider for voice parameters. Shared across all voice tabs. */
 
+import { useId } from "react";
+
 export interface SliderFieldProps {
   label: string;
   min: number;
@@ -19,14 +21,20 @@ export function SliderField({
   disabled,
   onChange,
 }: SliderFieldProps) {
+  // Plusieurs curseurs coexistent sur le même écran : un identifiant fixe les
+  // ferait tous désigner le premier. `useId` en donne un par instance.
+  const fieldId = useId();
+
   return (
     <div>
       <label
+        htmlFor={fieldId}
         style={{ fontSize: 10, color: "var(--text-faint)", display: "block", marginBottom: 2 }}
       >
         {label}
       </label>
       <input
+        id={fieldId}
         type="range"
         min={min}
         max={max}

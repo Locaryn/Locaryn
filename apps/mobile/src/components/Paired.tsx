@@ -40,6 +40,7 @@ export function Paired({ result, onDone }: Props) {
         <div className="lo-confetti" aria-hidden="true">
           {BITS.map((b, i) => (
             <i
+              // biome-ignore lint/suspicious/noArrayIndexKey: BITS est une constante du module : la liste ne change jamais.
               key={i}
               style={
                 {

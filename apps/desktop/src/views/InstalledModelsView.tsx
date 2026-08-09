@@ -97,7 +97,10 @@ export function InstalledModelsView({
       }
       return true;
     });
-  }, [parsedModels, query, filterType]);
+    // `riskFilter` manquait : le mémo ne se recalculait pas quand on changeait
+    // le filtre de risque, donc la liste restait telle quelle sous les yeux de
+    // l'utilisateur — le filtre avait l'air cassé.
+  }, [parsedModels, query, filterType, riskFilter]);
 
   async function handleUseForChat(model: string) {
     setActivatingModel(model);

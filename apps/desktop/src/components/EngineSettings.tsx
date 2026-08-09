@@ -252,7 +252,7 @@ export function EngineSettings() {
         {(engineCfg?.lora_adapters?.length ?? 0) > 0 ? (
           <ul className="locaryn-lora-list">
             {engineCfg!.lora_adapters.map((p, i) => (
-              <li key={p + i} className="locaryn-lora-row">
+              <li key={p} className="locaryn-lora-row">
                 <span className="locaryn-kv-mono locaryn-lora-path" title={p}>
                   {p}
                 </span>

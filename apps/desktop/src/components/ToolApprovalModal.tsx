@@ -151,10 +151,10 @@ export function ToolApprovalModal({
         if (e.target === e.currentTarget && !isCritical && onCancel) onCancel();
       }}
     >
-      {/* biome-ignore lint/a11y/useSemanticElements: un <dialog> n'est modal que via showModal(), ce qui le pousse dans la couche supérieure avec son propre ::backdrop et les styles par défaut du navigateur — le fond assombri et la boîte .locaryn-approval ci-dessus cesseraient de s'appliquer */}
       <div
         ref={dialogRef}
         className={`locaryn-approval locaryn-approval-${approval.risk}${isRemote ? " locaryn-approval-remote" : ""}`}
+        // biome-ignore lint/a11y/useSemanticElements: un <dialog> n'est modal que via showModal(), ce qui le pousse dans la couche supérieure avec son propre ::backdrop et les styles par défaut du navigateur — le fond assombri et la boîte .locaryn-approval ci-dessus cesseraient de s'appliquer
         role="dialog"
         aria-modal="true"
         aria-labelledby="locaryn-approval-title"
@@ -279,10 +279,10 @@ export function ToolApprovalModal({
               {scopeOptions.map((s) => {
                 const isDefault = s === minimumAllowedScope(approval.risk);
                 return (
-                  // biome-ignore lint/a11y/useSemanticElements: la pastille tire toute son apparence de .locaryn-approval-chip, défini pour un bouton dans la feuille de styles globale ; un <input type="radio"> dessinerait en plus le contrôle natif, et le masquer supprimerait l'anneau de focus dont dépend la navigation au clavier dans cette modale
                   <button
                     type="button"
                     key={s}
+                    // biome-ignore lint/a11y/useSemanticElements: la pastille tire toute son apparence de .locaryn-approval-chip, défini pour un bouton dans la feuille de styles globale ; un <input type="radio"> dessinerait en plus le contrôle natif, et le masquer supprimerait l'anneau de focus dont dépend la navigation au clavier dans cette modale
                     role="radio"
                     aria-checked={scope === s}
                     className={`locaryn-approval-chip${scope === s ? " is-selected" : ""}${isDefault ? " is-default" : ""}`}

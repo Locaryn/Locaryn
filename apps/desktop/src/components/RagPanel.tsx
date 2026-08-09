@@ -166,9 +166,9 @@ export function RagPanel({ projectId, onClose }: Props) {
           if (e.key === "Escape") onClose();
         }}
       />
-      {/* biome-ignore lint/a11y/useSemanticElements: <dialog> apporte le padding, la marge auto et le positionnement par défaut de l'agent utilisateur, que .locaryn-settings-modal (fixe, centré par transform, taille imposée) ne réinitialise pas ; la modale est montée/démontée par React, jamais par showModal(). */}
       <div
         className="locaryn-settings-modal"
+        // biome-ignore lint/a11y/useSemanticElements: <dialog> apporte le padding, la marge auto et le positionnement par défaut de l'agent utilisateur, que .locaryn-settings-modal (fixe, centré par transform, taille imposée) ne réinitialise pas ; la modale est montée/démontée par React, jamais par showModal().
         role="dialog"
         aria-modal="true"
         aria-label="Documents (RAG)"
@@ -355,6 +355,7 @@ export function RagPanel({ projectId, onClose }: Props) {
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                   {hits.map((h, i) => (
                     <div
+                      // biome-ignore lint/suspicious/noArrayIndexKey: les résultats sont remplacés en bloc à chaque recherche, jamais réordonnés ni retirés ; deux extraits peuvent être identiques, donc le contenu ne fournit pas de clé.
                       key={i}
                       className="locaryn-lora-row"
                       style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}

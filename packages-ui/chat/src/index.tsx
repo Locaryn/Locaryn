@@ -18,6 +18,7 @@ export function ChatPanel({
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         {messages.map((m, i) => (
           <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: fil de démonstration en ajout seul ; ce composant d'exemple n'a pas de modèle de message identifié.
             key={i}
             style={{
               maxWidth: "80%",

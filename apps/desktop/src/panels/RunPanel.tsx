@@ -61,6 +61,7 @@ function TerminalView({ run }: { run: Extract<RunView, { kind: "terminal" }> }) 
 
   // Follow the tail, but only while the user is already at the bottom —
   // otherwise scrolling back to read an error fights the incoming output.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: les lignes ne sont pas lues ici, elles déclenchent : sans elles, la vue resterait immobile pendant que la sortie défile.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -74,6 +75,7 @@ function TerminalView({ run }: { run: Extract<RunView, { kind: "terminal" }> }) 
       <div className="locaryn-run-cwd">{run.cwd}</div>
       <div className="locaryn-run-cmd">$ {run.command}</div>
       {run.lines.map((l, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: sortie d'exécution en ajout seul ; deux lignes identiques sont courantes, l'index est le seul repère stable.
         <div className="locaryn-run-line" key={i}>
           {l}
         </div>

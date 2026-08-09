@@ -219,6 +219,7 @@ export function StudioView({
             >
               {/* Media preview */}
               {item.mediaKind === "audio" && (
+                // biome-ignore lint/a11y/useMediaCaption: média produit par le modèle sur cette machine ; aucune piste de sous-titres n'existe, et en fabriquer une vide n'aiderait personne.
                 <audio
                   src={item.url}
                   controls
@@ -227,6 +228,7 @@ export function StudioView({
                 />
               )}
               {item.mediaKind === "video" && (
+                // biome-ignore lint/a11y/useMediaCaption: média produit par le modèle sur cette machine ; aucune piste de sous-titres n'existe, et en fabriquer une vide n'aiderait personne.
                 <video
                   src={item.url}
                   controls

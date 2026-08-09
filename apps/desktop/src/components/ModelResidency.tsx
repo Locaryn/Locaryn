@@ -164,7 +164,7 @@ export function ModelResidency() {
       )}
 
       {open && (
-        <div className="locaryn-res-panel" role="dialog" aria-label="Charger un modèle">
+        <dialog open className="locaryn-res-panel" aria-label="Charger un modèle">
           <div className="locaryn-res-panel-head">Charger un modèle en mémoire</div>
 
           <div className="locaryn-res-list">
@@ -216,7 +216,7 @@ export function ModelResidency() {
           )}
 
           {error && <div className="locaryn-res-error">{error}</div>}
-        </div>
+        </dialog>
       )}
     </div>
   );

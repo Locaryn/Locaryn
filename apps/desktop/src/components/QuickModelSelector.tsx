@@ -62,6 +62,9 @@ export function QuickModelSelector({
     [installedModels, activeModel],
   );
 
+  // Les dépendances suivent ce que le mémo lit réellement : `dedupedModels`.
+  // Déclarer ses deux sources à la place le faisait recalculer sans raison, et
+  // manquait le cas où la déduplication change sans qu'elles bougent.
   const options = useMemo<ModelOptionItem[]>(() => {
     const tagsToList = dedupedModels;
 
@@ -134,7 +137,7 @@ export function QuickModelSelector({
         // Exclude image-gen, TTS, music, video, 3D, etc.
         .filter((o) => isChatModel(o.tag))
     );
-  }, [installedModels, activeModel, isProviderLocal, registry]);
+  }, [dedupedModels, isProviderLocal, registry]);
 
   const filtered = useMemo(() => {
     let result = options;

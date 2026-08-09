@@ -17,6 +17,7 @@ export function BottomPanel({ cwd, sessionId }: Props) {
   const [histIdx, setHistIdx] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `lines` n'est pas lu ici, il déclenche : c'est son changement qui signale qu'il y a du nouveau à suivre. Le retirer figerait le terminal sur sa première ligne.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -116,6 +117,7 @@ export function BottomPanel({ cwd, sessionId }: Props) {
           <div className="locaryn-terminal">
             <div className="locaryn-term-scroll" ref={scrollRef}>
               {lines.map((l, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: flux du terminal : les lignes ne sont qu'ajoutées en fin, jamais insérées ni supprimées, et deux lignes identiques sont courantes.
                 <div key={i} className={`locaryn-term-line locaryn-term-${l.stream}`}>
                   {l.text}
                 </div>

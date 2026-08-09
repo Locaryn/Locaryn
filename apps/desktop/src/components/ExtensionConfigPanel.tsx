@@ -28,6 +28,21 @@ function fieldLabel(key: string, field: ExtensionField): string {
   return field.title ?? key;
 }
 
+/** Une variable d'environnement en cours d'édition.
+ *
+ *  L'identité est portée par la ligne, pas par sa position : « Retirer »
+ *  supprime au milieu de la liste, et une clé fondée sur l'index faisait
+ *  réutiliser les champs de saisie de la mauvaise ligne — les valeurs
+ *  remontaient d'un cran sous les yeux de l'utilisateur. Le nom de la variable
+ *  ne peut pas servir de clé non plus : il est vide tant qu'on n'a rien tapé. */
+type EnvRow = { id: string; key: string; value: string };
+
+let envSeq = 0;
+function nextEnvId(): string {
+  envSeq += 1;
+  return `env-${envSeq}`;
+}
+
 export function ExtensionConfigPanel({ extension, onClose }: Props) {
   const [config, setConfig] = useState<ExtensionConfig | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
@@ -40,7 +55,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
   // du fichier du plugin et ne sont pas modifiables ici.
   const [mcpServers, setMcpServers] = useState<ExtensionMcpServer[] | null>(null);
   const [mcpDrafts, setMcpDrafts] = useState<
-    Record<string, { env: [string, string][]; auto_start: boolean }>
+    Record<string, { env: EnvRow[]; auto_start: boolean }>
   >({});
   const [mcpBusy, setMcpBusy] = useState(false);
   const [mcpError, setMcpError] = useState<string | null>(null);
@@ -61,7 +76,17 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
       setMcpServers(servers);
       setMcpDrafts(
         Object.fromEntries(
-          servers.map((s) => [s.name, { env: Object.entries(s.env), auto_start: s.auto_start }]),
+          servers.map((s) => [
+            s.name,
+            {
+              env: Object.entries(s.env).map(([key, value]) => ({
+                id: nextEnvId(),
+                key,
+                value,
+              })),
+              auto_start: s.auto_start,
+            },
+          ]),
         ),
       );
     } catch {
@@ -125,7 +150,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
   function setEnvRow(server: string, index: number, key: string, value: string) {
     setMcpDrafts((prev) => {
       const rows = [...(prev[server]?.env ?? [])];
-      rows[index] = [key, value];
+      rows[index] = { ...rows[index], key, value };
       return {
         ...prev,
         [server]: { env: rows, auto_start: prev[server]?.auto_start ?? false },
@@ -137,7 +162,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
     setMcpDrafts((prev) => ({
       ...prev,
       [server]: {
-        env: [...(prev[server]?.env ?? []), ["", ""]],
+        env: [...(prev[server]?.env ?? []), { id: nextEnvId(), key: "", value: "" }],
         auto_start: prev[server]?.auto_start ?? false,
       },
     }));
@@ -169,8 +194,8 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
       const servers: ExtensionMcpServer[] = mcpServers.map((s) => {
         const d = mcpDrafts[s.name] ?? { env: [], auto_start: s.auto_start };
         const env: Record<string, string> = {};
-        for (const [k, v] of d.env) {
-          if (k.trim()) env[k.trim()] = v;
+        for (const row of d.env) {
+          if (row.key.trim()) env[row.key.trim()] = row.value;
         }
         return {
           name: s.name,
@@ -184,7 +209,17 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
       setMcpServers(next);
       setMcpDrafts(
         Object.fromEntries(
-          next.map((s) => [s.name, { env: Object.entries(s.env), auto_start: s.auto_start }]),
+          next.map((s) => [
+            s.name,
+            {
+              env: Object.entries(s.env).map(([key, value]) => ({
+                id: nextEnvId(),
+                key,
+                value,
+              })),
+              auto_start: s.auto_start,
+            },
+          ]),
         ),
       );
       setMcpSaved(true);
@@ -524,20 +559,20 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                     </label>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {draft.env.map((row, i) => (
-                        <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <div key={row.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           <input
                             className="locaryn-input"
                             style={{ flex: "0 0 200px", fontFamily: "monospace" }}
                             placeholder="NOM_VARIABLE"
-                            value={row[0]}
-                            onChange={(e) => setEnvRow(s.name, i, e.target.value, row[1])}
+                            value={row.key}
+                            onChange={(e) => setEnvRow(s.name, i, e.target.value, row.value)}
                           />
                           <input
                             className="locaryn-input"
                             style={{ flex: 1, fontFamily: "monospace" }}
                             placeholder="valeur"
-                            value={row[1]}
-                            onChange={(e) => setEnvRow(s.name, i, row[0], e.target.value)}
+                            value={row.value}
+                            onChange={(e) => setEnvRow(s.name, i, row.key, e.target.value)}
                           />
                           <button
                             type="button"
