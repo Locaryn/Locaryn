@@ -150,8 +150,22 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
 
   return (
     <>
-      <div className="locaryn-settings-backdrop" onClick={() => setSettingsOpen(false)} />
-      <div className="locaryn-settings-modal" role="dialog" aria-modal="true" aria-label="Settings">
+      {/* Ce fond n'a aucun enfant : le panneau est positionné à part. Il ferme
+          au clic, et Échap ferme quel que soit l'élément qui a le focus. */}
+      <div
+        className="locaryn-settings-backdrop"
+        role="presentation"
+        onClick={() => setSettingsOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setSettingsOpen(false);
+        }}
+      />
+      <dialog
+        open
+        className="locaryn-settings-modal"
+        aria-modal="true"
+        aria-label="Paramètres du chat"
+      >
         <div className="locaryn-settings-header">
           <span className="locaryn-settings-title">Paramètres du chat</span>
           <button
@@ -306,7 +320,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
             )}
           </div>
         </div>
-      </div>
+      </dialog>
     </>
   );
 }

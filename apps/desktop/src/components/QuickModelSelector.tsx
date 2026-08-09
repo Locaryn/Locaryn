@@ -182,7 +182,6 @@ export function QuickModelSelector({
           border: "1px solid var(--border-strong)",
           boxShadow: "0 16px 40px rgba(0,0,0,0.7)",
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="locaryn-field-head" style={{ marginBottom: "10px" }}>

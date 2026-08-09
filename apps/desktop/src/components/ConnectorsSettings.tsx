@@ -7,6 +7,7 @@ import {
   core,
 } from "../lib/core";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
+import { ModalShell } from "./ModalShell";
 import { SshServerForm } from "./ssh/SshServerForm";
 
 const AI_ACCESS_OPTIONS: { value: SshAiAccess; label: string }[] = [
@@ -478,82 +479,80 @@ export function ConnectorsSettings() {
 
       {/* Form modal to add custom MCP server */}
       {mcpFormOpen && (
-        <div className="locaryn-settings-backdrop" onClick={() => setMcpFormOpen(false)}>
-          <div
-            className="locaryn-card"
-            style={{ width: "480px", margin: "100px auto" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3>Ajouter un serveur MCP</h3>
-            {mcpError && <div className="locaryn-vp-error">{mcpError}</div>}
-            <div className="locaryn-field">
-              <label htmlFor="mcp-name" className="locaryn-field-label">
-                Nom du serveur MCP
-              </label>
-              <input
-                id="mcp-name"
-                className="locaryn-input"
-                placeholder="graphify"
-                value={mcpName}
-                onChange={(e) => setMcpName(e.target.value)}
-              />
-              <p className="locaryn-field-hint">
-                Ce nom préfixe les outils vus par le modèle : lettres, chiffres, « - » et « _ »
-                uniquement.
-              </p>
-            </div>
-            <div className="locaryn-field">
-              <label htmlFor="mcp-transport" className="locaryn-field-label">
-                Protocole Transport
-              </label>
-              <select
-                id="mcp-transport"
-                className="locaryn-select"
-                value={mcpType}
-                onChange={(e) => setMcpType(e.target.value as "stdio" | "http")}
-              >
-                <option value="stdio">Commande locale (npx, uvx, python…)</option>
-                <option value="http">Adresse HTTP</option>
-              </select>
-            </div>
-            <div className="locaryn-field">
-              <label htmlFor="mcp-target" className="locaryn-field-label">
-                {mcpType === "stdio" ? "Commande à lancer" : "Adresse du serveur"}
-              </label>
-              <input
-                id="mcp-target"
-                className="locaryn-input"
-                placeholder={
-                  mcpType === "stdio"
-                    ? "npx -y @modelcontextprotocol/server-filesystem D:/Documents"
-                    : "https://exemple.com/mcp"
-                }
-                value={mcpCommand}
-                onChange={(e) => setMcpCommand(e.target.value)}
-              />
-            </div>
-            <div
-              className="locaryn-field-actions"
-              style={{ marginTop: "16px", display: "flex", gap: "8px", justifyContent: "flex-end" }}
-            >
-              <button
-                type="button"
-                className="locaryn-btn-ghost"
-                onClick={() => setMcpFormOpen(false)}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                className="locaryn-btn-primary"
-                disabled={mcpBusy === "__add__"}
-                onClick={saveCustomMcp}
-              >
-                {mcpBusy === "__add__" ? "Démarrage…" : "Enregistrer et démarrer"}
-              </button>
-            </div>
+        <ModalShell
+          onClose={() => setMcpFormOpen(false)}
+          label="Ajouter un serveur MCP"
+          style={{ width: "480px", margin: "100px auto" }}
+        >
+          <h3>Ajouter un serveur MCP</h3>
+          {mcpError && <div className="locaryn-vp-error">{mcpError}</div>}
+          <div className="locaryn-field">
+            <label htmlFor="mcp-name" className="locaryn-field-label">
+              Nom du serveur MCP
+            </label>
+            <input
+              id="mcp-name"
+              className="locaryn-input"
+              placeholder="graphify"
+              value={mcpName}
+              onChange={(e) => setMcpName(e.target.value)}
+            />
+            <p className="locaryn-field-hint">
+              Ce nom préfixe les outils vus par le modèle : lettres, chiffres, « - » et « _ »
+              uniquement.
+            </p>
           </div>
-        </div>
+          <div className="locaryn-field">
+            <label htmlFor="mcp-transport" className="locaryn-field-label">
+              Protocole Transport
+            </label>
+            <select
+              id="mcp-transport"
+              className="locaryn-select"
+              value={mcpType}
+              onChange={(e) => setMcpType(e.target.value as "stdio" | "http")}
+            >
+              <option value="stdio">Commande locale (npx, uvx, python…)</option>
+              <option value="http">Adresse HTTP</option>
+            </select>
+          </div>
+          <div className="locaryn-field">
+            <label htmlFor="mcp-target" className="locaryn-field-label">
+              {mcpType === "stdio" ? "Commande à lancer" : "Adresse du serveur"}
+            </label>
+            <input
+              id="mcp-target"
+              className="locaryn-input"
+              placeholder={
+                mcpType === "stdio"
+                  ? "npx -y @modelcontextprotocol/server-filesystem D:/Documents"
+                  : "https://exemple.com/mcp"
+              }
+              value={mcpCommand}
+              onChange={(e) => setMcpCommand(e.target.value)}
+            />
+          </div>
+          <div
+            className="locaryn-field-actions"
+            style={{ marginTop: "16px", display: "flex", gap: "8px", justifyContent: "flex-end" }}
+          >
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() => setMcpFormOpen(false)}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              className="locaryn-btn-primary"
+              disabled={mcpBusy === "__add__"}
+              onClick={saveCustomMcp}
+            >
+              {mcpBusy === "__add__" ? "Démarrage…" : "Enregistrer et démarrer"}
+            </button>
+          </div>
+        </ModalShell>
       )}
 
       {sshFormOpen && (

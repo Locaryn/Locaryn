@@ -210,7 +210,8 @@ export function PerformancePanel() {
           const isActive = cfg.profile === p.id;
           const isExpanded = expandedProfile === p.id;
           return (
-            <div
+            <button
+              type="button"
               key={p.id}
               className={`perf-card${isActive ? " perf-card-active" : ""}`}
               onClick={() => {
@@ -233,7 +234,7 @@ export function PerformancePanel() {
                   ))}
                 </ul>
               )}
-            </div>
+            </button>
           );
         })}
       </div>

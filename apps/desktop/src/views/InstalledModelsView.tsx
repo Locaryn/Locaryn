@@ -79,7 +79,10 @@ export function InstalledModelsView({
         engine: isImage ? "sd.exe" : "llama-server",
       };
     });
-  }, [dedupedModels]);
+    // modelsDir arrive de facon asynchrone : sans lui dans les dependances,
+    // fullPath resterait construit sur une chaine vide jusqu au prochain
+    // changement de la liste, et « Ouvrir le dossier » pointerait a cote.
+  }, [dedupedModels, modelsDir]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

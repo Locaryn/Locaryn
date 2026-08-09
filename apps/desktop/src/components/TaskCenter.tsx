@@ -17,7 +17,7 @@ type Props = {
 export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
   const tasks = useTasks();
   const [open, setOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDialogElement | null>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
 
   // Close the panel when clicking anywhere outside it (and outside the toggle).
@@ -66,10 +66,13 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
 
       {/* Expandable notification panel (bottom-right) */}
       {open && (
-        <div
+        // `dialog open` : l'élément natif porte la sémantique sans réclamer le
+        // fond modal — ce panneau est ancré en bas à droite et laisse le reste
+        // de l'application utilisable.
+        <dialog
+          open
           ref={panelRef}
           className="locaryn-notif-panel"
-          role="dialog"
           aria-label="Centre de notifications"
         >
           <div className="locaryn-notif-head">
@@ -101,25 +104,41 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
             ) : (
               tasks.map((t) => {
                 const m = TASK_META[t.type];
+                // Toutes les notifications ne mènent nulle part : un
+                // téléchargement n'a rien à rouvrir. Les attributs interactifs
+                // ne sont donc posés que sur celles qui agissent vraiment —
+                // annoncer un bouton qui ne fait rien est pire que se taire.
+                const actionable =
+                  t.type === "generation" || t.type === "edit" || Boolean(t.resultImageUrl);
+                const activate = () => {
+                  if (t.type === "generation" || t.type === "edit") {
+                    onReopenImageGen?.();
+                    setOpen(false);
+                  } else if (t.resultImageUrl) {
+                    onOpenResult?.(t);
+                  }
+                };
                 return (
                   <div
                     key={t.id}
                     className="locaryn-notif-item"
                     style={{
                       borderLeft: `3px solid ${m.color}`,
-                      cursor:
-                        t.type === "generation" || t.type === "edit" || t.resultImageUrl
-                          ? "pointer"
-                          : "default",
+                      cursor: actionable ? "pointer" : "default",
                     }}
-                    onClick={() => {
-                      if (t.type === "generation" || t.type === "edit") {
-                        onReopenImageGen?.();
-                        setOpen(false);
-                      } else if (t.resultImageUrl) {
-                        onOpenResult?.(t);
-                      }
-                    }}
+                    {...(actionable
+                      ? {
+                          role: "button",
+                          tabIndex: 0,
+                          onClick: activate,
+                          onKeyDown: (e: React.KeyboardEvent) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              activate();
+                            }
+                          },
+                        }
+                      : {})}
                     title={
                       t.type === "generation" || t.type === "edit"
                         ? "Rouvrir la génération d'images"
@@ -168,6 +187,7 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                             const current = i === (t.stepIndex ?? 0) && t.status === "running";
                             return (
                               <li
+                                // biome-ignore lint/suspicious/noArrayIndexKey: le plan est figé à la création de la tâche — jamais réordonné ni filtré — et deux étapes peuvent porter le même texte, donc le contenu ne fournit pas de clé.
                                 key={i}
                                 className={`locaryn-wf-step${done ? " done" : ""}${current ? " current" : ""}`}
                               >
@@ -208,6 +228,7 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                       />
                     )}
                     {t.resultAudioUrl && (
+                      // biome-ignore lint/a11y/useMediaCaption: audio produit par le modèle sur cette machine ; aucune piste de sous-titres n'existe et en inventer une vide n'aiderait personne.
                       <audio
                         className="locaryn-notif-audio"
                         src={t.resultAudioUrl}
@@ -221,7 +242,7 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
               })
             )}
           </div>
-        </div>
+        </dialog>
       )}
     </>
   );

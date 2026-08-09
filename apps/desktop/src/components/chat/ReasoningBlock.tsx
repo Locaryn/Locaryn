@@ -21,6 +21,7 @@ export function ReasoningBlock({ reasoning, inProgress }: Props) {
 
   // Follow the tail while it streams, but stop fighting the user once they
   // scroll up to read something earlier.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `reasoning` n'est pas lu ici, il déclenche — c'est son changement qui signale qu'il y a du nouveau à suivre. Le retirer figerait le défilement au premier jeton.
   useEffect(() => {
     if (!open || !inProgress) return;
     const el = bodyRef.current;
