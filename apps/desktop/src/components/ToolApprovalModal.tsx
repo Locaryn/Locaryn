@@ -23,10 +23,10 @@ type Props = {
 };
 
 const RISK_LABEL: Record<RiskLevel, string> = {
-  low: "Read-only",
-  medium: "Modifies the project",
-  high: "Executes a command",
-  critical: "Remote / Critical",
+  low: "Lecture seule",
+  medium: "Modifie le projet",
+  high: "Exécute une commande",
+  critical: "Distant / Critique",
 };
 
 const RISK_ICON: Record<RiskLevel, string> = {
@@ -37,17 +37,17 @@ const RISK_ICON: Record<RiskLevel, string> = {
 };
 
 const SCOPE_LABEL: Record<RiskScope, string> = {
-  once: "Once",
+  once: "Cette fois",
   session: "Session",
-  project: "Project",
-  always: "Always",
+  project: "Ce projet",
+  always: "Toujours",
 };
 
 const SCOPE_TOOLTIP: Record<RiskScope, string> = {
-  once: "Apply to this call only — you will be asked again next time.",
-  session: "Apply for any further call of this tool until you close Locaryn.",
-  project: "Persist: every call in this project will auto-run.",
-  always: "Whitelist globally. This is a strong commitment — use sparingly.",
+  once: "Pour cet appel seulement — la question reviendra la prochaine fois.",
+  session: "Pour tous les appels de cet outil, jusqu'à la fermeture de Locaryn.",
+  project: "Retenu : tout appel de cet outil dans ce projet passera sans question.",
+  always: "Partout, sans limite de durée. Engagement fort — à réserver aux outils sûrs.",
 };
 
 function minimumAllowedScope(risk: RiskLevel): RiskScope {
@@ -198,7 +198,7 @@ export function ToolApprovalModal({
             className="locaryn-approval-close"
             aria-label="Cancel (denied)"
             disabled={isCritical}
-            title={isCritical ? "Click Deny to close this dialog" : "Cancel"}
+            title={isCritical ? "Utilisez Refuser pour fermer cette fenêtre" : "Annuler"}
             onClick={onCancel}
           >
             ✕
@@ -243,7 +243,7 @@ export function ToolApprovalModal({
                   onChange={(e) => setUnderstand(e.target.checked)}
                 />
                 <span>
-                  I understand the action runs on{" "}
+                  Je comprends que l'action s'exécute sur{" "}
                   <strong>{confirmTargetLabel ?? "the remote target"}</strong>.
                 </span>
               </label>
@@ -308,7 +308,7 @@ export function ToolApprovalModal({
               type="text"
               value={auditNote}
               maxLength={160}
-              placeholder="Why is this OK?"
+              placeholder="Pourquoi est-ce acceptable ?"
               onChange={(e) => setAuditNote(e.target.value)}
             />
           </div>
@@ -321,7 +321,7 @@ export function ToolApprovalModal({
           </span>
           <div className="locaryn-approval-actions">
             <button type="button" className="locaryn-btn-ghost" onClick={handleDeny}>
-              Deny
+              Refuser
             </button>
             <button
               ref={allowBtnRef}
@@ -332,13 +332,13 @@ export function ToolApprovalModal({
               aria-disabled={allowDisabled}
               title={
                 isCritical && !understand
-                  ? "Check the 'I understand' box first"
+                  ? "Cochez d'abord la case de confirmation"
                   : isCritical && targetNeedsTyping && confirmText.trim() !== confirmTargetLabel
                     ? `Type "${confirmTargetLabel}" to confirm`
                     : ""
               }
             >
-              Allow ({SCOPE_LABEL[scope]})
+              Autoriser ({SCOPE_LABEL[scope]})
             </button>
           </div>
         </footer>

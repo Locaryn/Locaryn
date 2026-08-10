@@ -22,8 +22,10 @@ tauri-build = { version = "2.0", features = [] }
 tauri = { version = "2.1", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-shell = "2.0"
 tauri-plugin-deep-link = "2"
+tauri-plugin-updater = "2"
 locaryn-shared-types = { workspace = true }
 locaryn-agent-runtime = { workspace = true }
+async-trait = { workspace = true }
 locaryn-preview = { workspace = true }
 locaryn-events = { workspace = true }
 locaryn-storage = { workspace = true, features = ["ssh-connector"] }

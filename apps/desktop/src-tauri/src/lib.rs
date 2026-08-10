@@ -9,6 +9,7 @@
 //! lives in the shell.
 
 mod airllm;
+mod approval_gate;
 mod client_cert;
 mod extensions;
 mod hooks;
@@ -81,6 +82,9 @@ struct Core {
     /// Wire surface is in place; the agent-side resume lands in V1.1.
     #[allow(dead_code)]
     pending_approvals: Arc<tokio::sync::Mutex<HashMap<String, PendingApproval>>>,
+    /// La porte d'approbation : une seule pour toute l'application, sinon un
+    /// « toujours » ne vaudrait que pour la conversation en cours.
+    approval_gate: approval_gate::GateBureau,
 }
 
 /// One in-flight approval prompt, parked on the runtime until the user
@@ -321,6 +325,7 @@ async fn init_core() -> anyhow::Result<Core> {
         pull_cancels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         embed_server: Arc::new(tokio::sync::Mutex::new(None)),
         pending_approvals: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        approval_gate: approval_gate::GateBureau::new(),
     })
 }
 
@@ -1466,6 +1471,12 @@ async fn send_message(
             let rt = core.extensions.read().await;
             (!rt.system_prompt.trim().is_empty()).then(|| rt.system_prompt.clone())
         },
+        // Sans elle, tout appel exigeant un accord serait refusé faute
+        // d'interlocuteur — le comportement voulu pour un service sans
+        // interface, pas pour l'application de bureau.
+        approval: Some(locaryn_agent_runtime::approval::ApprovalHandle(Arc::new(
+            core.approval_gate.clone(),
+        ))),
     };
 
     let mut event_stream: EventStream = match &active_provider {
@@ -2741,42 +2752,43 @@ pub struct ApproveToolCallPayload {
     pub note: Option<String>,
 }
 
-/// Resolve a pending approval. For V0.1 the function is wired but
-/// unreferenced — the agent-side resume lands in V1.1.
-#[allow(dead_code)]
+/// Transmet le verdict de l'utilisateur à l'appel d'outil qui l'attend.
+///
+/// La boucle d'agent est garée sur un canal depuis qu'elle a émis
+/// `ToolApproval` ; c'est cette fonction qui la relance. Elle échoue quand
+/// plus rien n'attend — délai dépassé, ou verdict déjà transmis — plutôt que
+/// de faire croire à un effet.
 #[tauri::command]
 async fn approve_tool_call(
     core: State<'_, Core>,
     payload: ApproveToolCallPayload,
 ) -> Result<(), String> {
-    use locaryn_events::Risk;
-    let _risk: Risk = serde_json::from_value(serde_json::Value::String(payload.risk.clone()))
-        .map_err(|e| format!("invalid risk: {e}"))?;
+    let autorise = match payload.decision.as_str() {
+        "allow" => true,
+        "deny" => false,
+        autre => return Err(format!("décision inconnue : {autre}")),
+    };
 
-    let entry = core.pending_approvals.lock().await.remove(&payload.call_id);
-    match (entry, payload.decision.as_str()) {
-        (Some(_), "allow") => {
-            tracing::info!(
-                call_id = %payload.call_id,
-                tool = %payload.tool,
-                scope = %payload.scope,
-                "tool_call approved by user"
-            );
-            Ok(())
-        }
-        (Some(_), "deny") => {
-            tracing::info!(
-                call_id = %payload.call_id,
-                tool = %payload.tool,
-                "tool_call denied by user"
-            );
-            Ok(())
-        }
-        (None, _) => Err(format!(
-            "no pending approval for call_id {}",
-            payload.call_id
-        )),
-        _ => Err(format!("invalid decision: {}", payload.decision)),
+    let verdict = approval_gate::Verdict {
+        autorise,
+        portee: approval_gate::Portee::depuis(&payload.scope),
+    };
+
+    if core
+        .approval_gate
+        .repondre(&payload.call_id, &payload.tool, verdict)
+        .await
+    {
+        tracing::info!(
+            call_id = %payload.call_id,
+            tool = %payload.tool,
+            scope = %payload.scope,
+            autorise,
+            "verdict transmis à la boucle d'agent"
+        );
+        Ok(())
+    } else {
+        Err("cette demande n'attend plus de réponse : le délai est dépassé, ou elle a déjà été tranchée".to_string())
     }
 }
 
@@ -6968,6 +6980,11 @@ pub struct AppInfo {
     /// Where model weights live. Exposed because the UI used to hardcode an
     /// absolute path, which was wrong on any other machine.
     pub models_dir: String,
+    /// OS and CPU architecture of the running build. Lets the UI decide
+    /// whether the automatic updater applies (Windows/macOS) or whether it
+    /// must fall back to opening the GitHub releases page (Linux).
+    pub platform: String,
+    pub arch: String,
 }
 
 #[tauri::command]
@@ -6982,6 +6999,8 @@ fn app_info(core: State<'_, Core>) -> Result<AppInfo, String> {
             .to_string_lossy()
             .to_string(),
         models_dir: locaryn_config::models_dir().to_string_lossy().to_string(),
+        platform: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
     })
 }
 
@@ -7438,6 +7457,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let core = tauri::async_runtime::block_on(init_core())?;
             // Servers the user marked automatic come up in the background:

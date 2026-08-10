@@ -182,6 +182,7 @@ pub async fn run_openai_tool_loop(
     let message_id_loop = message_id.clone();
     let tools_for_dispatch = all_tools.clone();
     let mcp_state_for_dispatch = input.mcp_state.clone();
+    let approval = input.approval.clone();
 
     tokio::spawn(async move {
         let ctx = ToolContext {
@@ -312,15 +313,18 @@ pub async fn run_openai_tool_loop(
                     },
                 };
 
-                let result_content = if decision.needs_user_consent || decision.hard_blocked {
-                    let denial = if decision.hard_blocked {
-                        format!("Tool '{}' was blocked. {}.", call.name, decision.reason)
-                    } else {
-                        format!(
-                            "Tool '{}' requires your approval. {}.",
-                            call.name, decision.reason
-                        )
-                    };
+                // Un outil interdit ne se négocie pas : on ne pose pas la
+                // question, sinon un « Autoriser » laisserait croire qu'il
+                // suffit d'insister.
+                let verdict = if decision.hard_blocked {
+                    Some(format!(
+                        "Tool '{}' was blocked. {}.",
+                        call.name, decision.reason
+                    ))
+                } else if decision.needs_user_consent {
+                    // L'événement part d'abord : c'est lui qui fait apparaître
+                    // la fenêtre. L'attente vient ensuite, sinon on
+                    // demanderait à quelqu'un qui n'a encore rien vu.
                     let _ = tx
                         .send(StreamEvent::ToolApproval {
                             call_id: call.id.clone(),
@@ -332,6 +336,33 @@ pub async fn run_openai_tool_loop(
                             is_remote: ctx.remote_target.is_some(),
                         })
                         .await;
+
+                    let outcome = crate::approval::ask(
+                        approval.as_ref(),
+                        crate::approval::ApprovalRequest {
+                            call_id: call.id.clone(),
+                            tool: call.name.clone(),
+                            args: args.clone(),
+                            risk: decision.effective_risk,
+                            reason: decision.reason.clone(),
+                            diff: decision.diff.clone(),
+                            is_remote: ctx.remote_target.is_some(),
+                        },
+                    )
+                    .await;
+
+                    match outcome {
+                        crate::approval::ApprovalOutcome::Allow => None,
+                        crate::approval::ApprovalOutcome::Deny { reason } => Some(format!(
+                            "Tool '{}' was denied by the user. {}.",
+                            call.name, reason
+                        )),
+                    }
+                } else {
+                    None
+                };
+
+                let result_content = if let Some(denial) = verdict {
                     if tx
                         .send(StreamEvent::ToolResult {
                             call_id: call.id.clone(),

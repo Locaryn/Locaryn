@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageGenPanel } from "../components/ImageGenPanel";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
+import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import { ImageIntentCard } from "../components/chat/ImageIntentCard";
 import { MessageBubble } from "../components/chat/MessageBubble";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
@@ -14,6 +15,8 @@ import {
   type ReasoningLevel,
   type Session,
   type StreamEvent,
+  type ToolApprovalDecision,
+  type ToolApprovalRequest,
   core,
   reasoningPayload,
 } from "../lib/core";
@@ -182,6 +185,8 @@ export function ChatPanel({
   const [followupsLoading, setFollowupsLoading] = useState(false);
   /** Slash-command palette: matches for the current input, and the highlighted row. */
   const [slash, setSlash] = useState<SlashSuggestion | null>(null);
+  /** Demande d'approbation en cours. `null` = aucune fenêtre ouverte. */
+  const [approval, setApproval] = useState<ToolApprovalRequest | null>(null);
   // Commandes apportees par les plugins actifs. Rechargees au montage :
   // installer ou desactiver une extension change la palette sans redemarrage.
   const [extCommands, setExtCommands] = useState<SlashCommand[]>([]);
@@ -407,8 +412,38 @@ export function ChatPanel({
           return it;
         }),
       );
+    } else if (ev.type === "tool_approval") {
+      // La boucle d'agent est garée sur un canal en attendant ce verdict.
+      // Tant que rien n'est répondu, l'appel n'a pas eu lieu.
+      setApproval({
+        call_id: ev.call_id,
+        tool: ev.tool,
+        args: ev.args,
+        risk: ev.risk,
+        reason: ev.reason,
+        diff: ev.diff,
+        is_remote: ev.is_remote,
+      });
     } else if (ev.type === "log") {
       setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `[Log: ${ev.msg}]` }]);
+    }
+  }
+
+  /** Transmet la décision, puis referme. Le refus explicite passe par le même
+   *  chemin que l'autorisation : c'est la boucle d'agent qui en tire les
+   *  conséquences, pas l'interface. */
+  async function resolveApproval(decision: ToolApprovalDecision) {
+    setApproval(null);
+    try {
+      await core.approveToolCall(decision);
+    } catch (e) {
+      // Le délai a pu expirer pendant la lecture du diff : l'appel a alors
+      // déjà été refusé côté runtime. On le dit plutôt que de laisser croire
+      // que le clic a porté.
+      setItems((prev) => [
+        ...prev,
+        { id: nextId("log"), kind: "log", text: `[Approbation : ${e}]` },
+      ]);
     }
   }
 
@@ -1281,6 +1316,25 @@ export function ChatPanel({
       )}
 
       {ragOpen && projectId && <RagPanel projectId={projectId} onClose={() => setRagOpen(false)} />}
+
+      {/* Approbation d'un appel d'outil. La boucle d'agent attend ce verdict :
+          fermer sans répondre vaut refus, et le runtime finit par se lasser
+          de son côté plutôt que d'attendre indéfiniment. */}
+      <ToolApprovalModal
+        approval={approval}
+        onResolve={(decision) => void resolveApproval(decision)}
+        onCancel={() => {
+          if (!approval) return;
+          void resolveApproval({
+            call_id: approval.call_id,
+            tool: approval.tool,
+            risk: approval.risk,
+            decision: "deny",
+            scope: "once",
+            note: null,
+          });
+        }}
+      />
     </section>
   );
 }

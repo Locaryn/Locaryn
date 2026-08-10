@@ -81,6 +81,10 @@ export interface AppInfo {
   db_path: string;
   /** Real weights directory — never hardcode this in the UI. */
   models_dir: string;
+  /** OS of the running build: "windows", "macos" or "linux". */
+  platform: string;
+  /** CPU architecture, e.g. "x86_64", "aarch64", "x86". */
+  arch: string;
 }
 
 // ── Storage location ───────────────────────────────────────────────────
@@ -2791,6 +2795,26 @@ const demoCore: CoreApi = {
       ok: true,
       output: 'fn main() {\n    println!("hello locaryn");\n}\n',
     });
+    // Un appel qui exige un accord. Sans lui, la fenêtre d'approbation ne
+    // serait atteignable qu'avec un vrai modèle branché — c'est-à-dire
+    // jamais pendant le développement de l'interface.
+    await sleep(400);
+    onEvent({
+      type: "tool_approval",
+      call_id: "c2",
+      tool: "write_file",
+      args: { path: "src/main.rs", contents: "// modifié par la démo\n" },
+      risk: "high",
+      reason: "Cet outil écrit dans un fichier du projet",
+      diff: [
+        "--- a/src/main.rs",
+        "+++ b/src/main.rs",
+        "@@",
+        '-    println!("hello locaryn");',
+        '+    println!("bonjour locaryn");',
+      ].join("\n"),
+      is_remote: false,
+    });
     await sleep(400);
     const reply = `Demo mode — no Rust core attached. You said:\n\n> ${content}\n\nHere is a *markdown* sample with \`inline code\` and a block:\n\n\`\`\`ts\nconst answer = 42;\nexport default answer;\n\`\`\`\n\n1. First step\n2. Second step`;
     for (const word of reply.split(/(?<=\s)/)) {
@@ -2917,6 +2941,10 @@ const demoCore: CoreApi = {
     data_dir: "C:/Users/you/.locaryn/data",
     db_path: "C:/Users/you/.locaryn/data/locaryn.db",
     models_dir: "C:/Users/you/.locaryn/data/models",
+    // Le navigateur ne connaît pas la machine : on rend ce qu'il sait, plutôt
+    // qu'une valeur inventée qui masquerait un écran mal adapté.
+    platform: navigator.platform || "navigateur",
+    arch: "inconnue",
   }),
 
   listVoicePresets: async () => [

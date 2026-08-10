@@ -774,6 +774,10 @@ async fn send_message(
         mcp_state,
         // The daemon has no extension runtime yet; the desktop shell owns it.
         extra_system: None,
+        // Le démon tourne sans interface : personne ne peut arbitrer, donc
+        // tout appel exigeant un accord est refusé. C'est le comportement
+        // voulu pour un service, pas un oubli.
+        approval: None,
     };
 
     // 4. Run the agent: OpenAiCompatAgent (llama-server) if possible, otherwise StubAgent.

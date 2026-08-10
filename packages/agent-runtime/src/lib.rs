@@ -3,6 +3,7 @@
 //! tool dispatch, approval gating, and streaming. The skeleton defines the
 //! interfaces so other crates can compile against them.
 
+pub mod approval;
 pub mod reasoning;
 
 pub mod mcp_tools;
@@ -55,6 +56,11 @@ pub struct AgentInput {
     /// was before extensions existed.
     #[allow(clippy::doc_markdown)]
     pub extra_system: Option<String>,
+    /// Comment demander son accord à l'utilisateur avant un appel d'outil
+    /// sensible. `None` — le cas d'un hôte sans interface — vaut refus : un
+    /// service qui tourne sans personne devant ne doit pas s'autoriser une
+    /// opération que l'on aurait voulu arbitrer.
+    pub approval: Option<approval::ApprovalHandle>,
 }
 
 /// Append `extra` to a base system prompt, under a heading that tells the
