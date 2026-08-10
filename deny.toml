@@ -12,6 +12,12 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "BUSL-1.1",
+    # Licence historique de bzip2 : permissive, de type BSD. Arrive par
+    # libbz2-rs-sys, que la lecture d'archives ZIP entraîne.
+    "bzip2-1.0.6",
+    # Le paquet de certificats racines de Mozilla (webpki-roots). Le CDLA
+    # permissif autorise usage et redistribution sans contrepartie.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.93
 
@@ -25,11 +31,24 @@ wildcards = "deny"
 # lever le blocage. Le laisser ici faisait échouer la CI sur la configuration
 # elle-même, pas sur une dépendance.
 yanked = "deny"
+# RUSTSEC-2023-0071 — « Marvin Attack » : récupération de clé par canal
+# temporel dans `rsa`. L'avis dit lui-même « No safe upgrade is available ».
+#
+# Le paquet arrive par la fonctionnalité `rsa` de russh, et retirer cette
+# fonctionnalité le fait bien disparaître de l'arbre — au prix de
+# l'authentification par clé RSA. Les clés `id_rsa` restent très répandues, en
+# entreprise notamment : les couper silencieusement casserait des connexions
+# qui fonctionnent aujourd'hui.
+#
+# Risque résiduel assumé : l'attaque exige de mesurer un grand nombre
+# d'opérations privées chronométrées sur la machine de l'utilisateur. À
+# réexaminer dès qu'un correctif amont existe, ou le jour où abandonner RSA
+# devient acceptable pour les utilisateurs.
+ignore = ["RUSTSEC-2023-0071"]
 # Portée du contrôle des paquets non maintenus : `workspace` ne signale que
 # nos dépendances directes. `all` remonterait des transitives sur lesquelles
 # nous n'avons aucune prise, ce qui bloquerait la CI sans recours.
 unmaintained = "workspace"
-ignore = []
 
 [sources]
 unknown-registry = "deny"

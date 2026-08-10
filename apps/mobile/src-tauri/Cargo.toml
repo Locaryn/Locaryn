@@ -2,6 +2,7 @@
 name = "locaryn-mobile"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 
 [lib]
 # Android loads the application as a shared library, so the entry point lives
