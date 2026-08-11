@@ -116,6 +116,23 @@ jobs:
           }
           cargo wix --package locaryn-daemon --nocapture --output "dist/locaryn-$env:VER-server-windows-x64.msi"
 
+      # Installeur .exe (NSIS), en plus du .msi : certains postes verrouillés
+      # n'acceptent que les installeurs .exe, jamais un .msi. Le script est
+      # committé (services/daemon/windows/locaryn-server.nsi) ; les binaires
+      # sont copiés à côté de lui, et il les référence en chemins absolus.
+      - name: Installeur .exe (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $src = "services/daemon/windows"
+          Copy-Item "target/${{ matrix.target }}/release/locaryn-daemon.exe" $src
+          Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $src
+          Copy-Item "README.md","LICENSE","LICENSES.md" $src -EA SilentlyContinue
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & "C:\Program Files (x86)\NSIS\makensis.exe" "/DVERSION=$env:VER" "$src/locaryn-server.nsi"
+          Move-Item "$src/locaryn-$env:VER-server-windows-x64-setup.exe" dist/ -Force
+
       - name: Paquet .deb (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -329,6 +346,16 @@ jobs:
             | Linux x64 | `Locaryn_<version>_amd64.AppImage` | portable, sans installation |
             | Linux x64 | `locaryn-<version>-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
             | Android | `*.apk` | non signé, à installer manuellement |
+
+            **Serveur (sans interface)** : `locaryn-daemon` + CLI `locaryn`.
+
+            | Plateforme | Fichier à télécharger | Notes |
+            |---|---|---|
+            | Windows x64 | `locaryn-<version>-server-windows-x64-setup.exe` | installeur NSIS, ajoute la CLI au PATH |
+            | Windows x64 | `locaryn-<version>-server-windows-x64.msi` | installeur MSI |
+            | Linux x64 | `locaryn-<version>-server-linux-x64.deb` | pour Debian / Ubuntu |
+            | Windows x64 | `locaryn-<version>-server-windows-x64.zip` | portable |
+            | Linux x64 | `locaryn-<version>-server-linux-x64.tar.gz` | portable |
 
             Les noms Tauri (`Locaryn_0.1.0_x64_setup…`) sont la convention attendue par le
             système de mise à jour automatique : ne les renommez pas.
