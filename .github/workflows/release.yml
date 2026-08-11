@@ -111,21 +111,23 @@ jobs:
       - name: Installeur .msi (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        # Le link (light) résout `wix\License.rtf` (généré par init, référence
+        # WixUILicenseRtf + composant sidecar) relativement au CWD : on tourne
+        # depuis le package pour que le fichier soit trouvé.
+        working-directory: services/daemon
         run: |
           cargo install cargo-wix --locked
           # La définition WiX est initialisée au premier passage, puis
           # committée : la structure de l'installeur reste relisible plutôt
           # que régénérée à chaque build.
-          if (-not (Test-Path "services/daemon/wix/main.wxs")) {
+          if (-not (Test-Path "wix/main.wxs")) {
             cargo wix init --package locaryn-daemon --force
           }
-          # main.wxs généré référence `wix\License.rtf`, que cargo-wix ne
-          # crée jamais : light échouait avec LGHT0103. On retire la variable
-          # pour ne pas dépendre d'un fichier absent (l'installeur garde sa
-          # page par défaut, sans accord de licence dédié).
-          $wxs = "services/daemon/wix/main.wxs"
-          (Get-Content $wxs -Raw) -replace '(?m)^\s*<WixVariable Id="WixUILicenseRtf"[^\r\n]*\r?\n', '' | Set-Content $wxs -NoNewline
           cargo wix --package locaryn-daemon --nocapture --output "dist/locaryn-$env:VER-server-windows-x64.msi"
+          # L'upload d'artefacts se fait depuis la racine du dépôt : on
+          # ramène le .msi dans dist/ à la racine.
+          New-Item -ItemType Directory -Force ../../dist | Out-Null
+          Move-Item "dist/locaryn-$env:VER-server-windows-x64.msi" "../../dist/" -Force
 
       # Installeur .exe (NSIS), en plus du .msi : certains postes verrouillés
       # n'acceptent que les installeurs .exe, jamais un .msi. Le script est
