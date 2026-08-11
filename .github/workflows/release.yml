@@ -138,7 +138,11 @@ jobs:
         shell: pwsh
         run: |
           choco install nsis -y --no-progress
-          $src = "services/daemon/windows"
+          # Chemin ABSOLU vers le dossier du script : ${__FILEDIR__} dans le
+          # .nsi est relatif si on passe un chemin relatif à makensis, et le
+          # File "${APP_SRCDIR}\\locaryn-daemon.exe" était résolu en doublant
+          # le préfixe (services\daemon\windows\services\daemon\windows\...).
+          $src = (Resolve-Path "services/daemon/windows").Path
           Copy-Item "target/${{ matrix.target }}/release/locaryn-daemon.exe" $src
           Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $src
           Copy-Item "README.md","LICENSE","LICENSES.md" $src -EA SilentlyContinue

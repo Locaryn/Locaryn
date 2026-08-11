@@ -56,7 +56,7 @@ UninstPage instfiles
   ${If} $0 != ""
     Push "$0"
     Push ";$INSTDIR"
-    Call StrStr
+    Call un.StrStr
     Pop $1
     ${If} $1 != ""
       StrLen $2 ";$INSTDIR"
@@ -108,6 +108,8 @@ Section "Uninstall"
 SectionEnd
 
 ; ── StrStr : renvoie la sous-chaîne de $0 à partir de la 1re occurrence de $1 ──
+; Deux variantes : StrStr (section install) et un.StrStr (section uninstall,
+; les appels y exigent le préfixe "un.").
 Function StrStr
   Exch $1
   Exch
@@ -141,4 +143,39 @@ EndLoop:
   Pop $0
   Exch $4
 Done:
+FunctionEnd
+
+Function un.StrStr
+  Exch $1
+  Exch
+  Exch $0
+  Exch
+  Push $2
+  Push $3
+  Push $4
+  StrCpy $2 -1
+unLoop:
+  IntOp $2 $2 + 1
+  StrCpy $3 $0 $2
+  StrCmp $3 "" unEndLoop
+  StrCmp $3 $1 unFound
+  Goto unLoop
+unFound:
+  StrCpy $4 $0 "" $2
+  Exch
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+  Exch $4
+  Goto unDone
+unEndLoop:
+  StrCpy $4 ""
+  Exch
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+  Exch $4
+unDone:
 FunctionEnd
