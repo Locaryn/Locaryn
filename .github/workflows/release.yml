@@ -119,6 +119,12 @@ jobs:
           if (-not (Test-Path "services/daemon/wix/main.wxs")) {
             cargo wix init --package locaryn-daemon --force
           }
+          # main.wxs généré référence `wix\License.rtf`, que cargo-wix ne
+          # crée jamais : light échouait avec LGHT0103. On retire la variable
+          # pour ne pas dépendre d'un fichier absent (l'installeur garde sa
+          # page par défaut, sans accord de licence dédié).
+          $wxs = "services/daemon/wix/main.wxs"
+          (Get-Content $wxs -Raw) -replace '(?m)^\s*<WixVariable Id="WixUILicenseRtf"[^\r\n]*\r?\n', '' | Set-Content $wxs -NoNewline
           cargo wix --package locaryn-daemon --nocapture --output "dist/locaryn-$env:VER-server-windows-x64.msi"
 
       # Installeur .exe (NSIS), en plus du .msi : certains postes verrouillés
