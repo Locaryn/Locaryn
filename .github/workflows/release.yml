@@ -58,9 +58,14 @@ jobs:
             label: macos-x64
     steps:
       - uses: actions/checkout@v4
+      # Pas de `targets:` ici : le rust-toolchain.toml du dépôt écrase
+      # l'action (toolchain nommée d'après le host, ex. 1.88-aarch64 sur
+      # runner arm64) et le --target de l'action est perdu. On installe la
+      # cible explicitement sur la toolchain réellement active, comme le fait
+      # déjà le job bureau pour macOS.
       - uses: dtolnay/rust-toolchain@1.88
-        with:
-          targets: ${{ matrix.target }}
+      - name: Ajouter la cible de compilation
+        run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -271,14 +276,15 @@ jobs:
         run: |
           sdkmanager --install "ndk;26.3.11579264" "platform-tools" "platforms;android-34"
           echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> "$GITHUB_ENV"
+      # Même raison que le job serveur : le rust-toolchain.toml du dépôt
+      # écrase l'action (toolchain nommée d'après le host), donc les cibles
+      # Android sont installées explicitement sur la toolchain active.
       - uses: dtolnay/rust-toolchain@1.88
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - name: Ajouter les cibles Android
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
       - uses: Swatinem/rust-cache@v2
         with:
           key: android
-      # Pas de `version:` ici : `packageManager` dans package.json fait foi,
-      # et pnpm refuse de demarrer quand les deux se contredisent.
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
