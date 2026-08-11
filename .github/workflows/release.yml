@@ -292,6 +292,18 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      # La tâche Gradle du plugin Tauri invoque `cargo tauri android
+      # android-studio-script` : il lui faut un binaire `cargo-tauri` sur le
+      # PATH. On pointe vers le CLI déjà installé par pnpm (binaire
+      # précompilé, même version que le package.json) plutôt que de
+      # recompiler tauri-cli depuis les sources. Le wrapper passe par `node`
+      # pour que tauri.js garde son chemin d'invocation normal.
+      - name: Exposer le CLI Tauri comme sous-commande cargo
+        run: |
+          mkdir -p "$HOME/.cargo/bin"
+          printf '#!/bin/sh\nexec node "%s/apps/mobile/node_modules/@tauri-apps/cli/tauri.js" "$@"\n' "$GITHUB_WORKSPACE" > "$HOME/.cargo/bin/cargo-tauri"
+          chmod +x "$HOME/.cargo/bin/cargo-tauri"
+          "$HOME/.cargo/bin/cargo-tauri" --version
       - name: Construire l'APK
         run: pnpm --dir apps/mobile build:apk
 
