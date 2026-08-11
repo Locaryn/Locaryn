@@ -10,7 +10,7 @@
 ; répertoire courant de makensis n'a pas d'importance.
 
 Unicode true
-!include "LogicLib.nsi"
+!include "LogicLib.nsh"
 
 !ifndef VERSION
   !define VERSION "0.1.0"
