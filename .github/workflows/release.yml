@@ -13,8 +13,15 @@ name: Release
 #
 # Couverture assumée : Windows x64, Linux x64, macOS universel (Intel +
 # Apple Silicon), Android. Linux ARM64 et Windows ARM64 sont absents faute de
-# runners ARM sur un dépôt privé — mieux vaut ne pas les annoncer que livrer
-# des binaires jamais construits.
+# runners ARM — mieux vaut ne pas les annoncer que livrer des binaires jamais
+# construits.
+#
+# Mise à jour automatique : le bureau embarque le plugin updater Tauri, qui
+# interroge `https://api.github.com/repos/TeALO36/Locaryn/releases/latest`.
+# Pour que cela marche, la release doit être PUBLIÉE (pas un brouillon), les
+# installeurs doivent garder les noms Tauri (`Locaryn_<version>_<arch>.…`),
+# et chaque installeur doit être accompagné de son `.sig` — d'où la
+# signature obligatoire via le secret `TAURI_SIGNING_PRIVATE_KEY`.
 
 on:
   push:
@@ -51,12 +58,21 @@ jobs:
             label: macos-x64
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.83
+      - uses: dtolnay/rust-toolchain@1.88
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+
+      # Version lisible pour les noms de fichiers : la release porte le tag
+      # `v0.1.0`, les artefacts s'appellent `locaryn-0.1.0-…`.
+      - name: Déterminer la version
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          [ -n "$ver" ] || ver="0.1.0"
+          echo "VER=$ver" >> "$GITHUB_ENV"
 
       - name: Construire les binaires du serveur
         run: cargo build --release --target ${{ matrix.target }} -p locaryn-daemon -p locaryn-cli
@@ -71,7 +87,7 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/locaryn-daemon.exe" $out
           Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $out
           Copy-Item "README.md","LICENSE*" $out -EA SilentlyContinue
-          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-server-${{ matrix.label }}.zip" -Force
+          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-server-${{ matrix.label }}.zip" -Force
 
       - name: Archive portable (Unix)
         if: runner.os != 'Windows'
@@ -81,7 +97,7 @@ jobs:
           cp target/${{ matrix.target }}/release/locaryn-daemon "$out/"
           cp target/${{ matrix.target }}/release/locaryn "$out/"
           cp README.md LICENSE* "$out/" 2>/dev/null || true
-          tar -C "$out" -czf dist/locaryn-server-${{ matrix.label }}.tar.gz .
+          tar -C "$out" -czf "dist/locaryn-${VER}-server-${{ matrix.label }}.tar.gz" .
 
       # ── Installeurs ────────────────────────────────────────────────────
       # macOS n'en reçoit pas : signer et notariser exige un compte Apple
@@ -98,13 +114,13 @@ jobs:
           if (-not (Test-Path "services/daemon/wix/main.wxs")) {
             cargo wix init --package locaryn-daemon --force
           }
-          cargo wix --package locaryn-daemon --nocapture --output dist/locaryn-server-windows-x64.msi
+          cargo wix --package locaryn-daemon --nocapture --output "dist/locaryn-$env:VER-server-windows-x64.msi"
 
       - name: Paquet .deb (Linux)
         if: runner.os == 'Linux'
         run: |
           cargo install cargo-deb --locked
-          cargo deb -p locaryn-daemon --target ${{ matrix.target }} --output dist/locaryn-server-linux-x64.deb
+          cargo deb -p locaryn-daemon --target ${{ matrix.target }} --output "dist/locaryn-${VER}-server-linux-x64.deb"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -131,9 +147,14 @@ jobs:
           - os: macos-14
             label: macos-universal
             args: "--target universal-apple-darwin"
+    env:
+      # Clé de signature de l'updater. Sans elle, `tauri build` refuse de
+      # produire des installeurs non signés quand l'updater est activé.
+      # La clé privée vit dans un secret GitHub, jamais dans le dépôt.
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.83
+      - uses: dtolnay/rust-toolchain@1.88
       - name: Cibles macOS pour le binaire universel
         if: runner.os == 'macOS'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
@@ -154,6 +175,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 
+      - name: Déterminer la version
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          [ -n "$ver" ] || ver="0.1.0"
+          echo "VER=$ver" >> "$GITHUB_ENV"
+
       - run: pnpm install --frozen-lockfile
       - name: Construire l'application
         run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}
@@ -164,11 +192,14 @@ jobs:
           mkdir -p dist
           # La disposition de sortie de Tauri diffère par plateforme, et la
           # cible universelle range ailleurs : on ratisse les deux racines.
+          # Les `.sig` sont les signatures que l'updater télécharge à côté
+          # de l'installeur — sans elles, la mise à jour est refusée.
           for root in target/release/bundle target/universal-apple-darwin/release/bundle; do
             [ -d "$root" ] || continue
             find "$root" -type f \
               \( -name '*.msi' -o -name '*.exe' -o -name '*.deb' \
-                 -o -name '*.AppImage' -o -name '*.dmg' -o -name '*.app.tar.gz' \) \
+                 -o -name '*.AppImage' -o -name '*.dmg' -o -name '*.app.tar.gz' \
+                 -o -name '*.sig' \) \
               -exec cp {} dist/ \; 2>/dev/null || true
           done
           ls -la dist/
@@ -182,8 +213,13 @@ jobs:
         run: |
           $out = "dist/locaryn-portable"
           New-Item -ItemType Directory -Force $out | Out-Null
-          Copy-Item "target/release/Locaryn.exe" $out
-          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-desktop-windows-x64.zip" -Force
+          # Tauri renomme l'exécutable au nom du produit ; on tolère aussi le
+          # nom de la crate au cas où un build n'aurait pas fait le renommage.
+          $exe = "target/release/Locaryn.exe"
+          if (-not (Test-Path $exe)) { $exe = "target/release/locaryn-desktop.exe" }
+          if (-not (Test-Path $exe)) { throw "aucun exécutable de bureau trouvé dans target/release" }
+          Copy-Item $exe $out
+          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-desktop-windows-x64-portable.zip" -Force
 
       - name: Archive portable (Linux)
         if: runner.os == 'Linux'
@@ -191,7 +227,11 @@ jobs:
           out=dist/locaryn-portable
           mkdir -p "$out"
           cp target/release/locaryn-desktop "$out/" 2>/dev/null || cp target/release/Locaryn "$out/" 2>/dev/null || true
-          tar -C "$out" -czf dist/locaryn-desktop-linux-x64.tar.gz .
+          if [ -z "$(ls -A "$out" 2>/dev/null)" ]; then
+            echo "::error::aucun exécutable de bureau trouvé dans target/release"
+            exit 1
+          fi
+          tar -C "$out" -czf "dist/locaryn-${VER}-desktop-linux-x64-portable.tar.gz" .
 
       - uses: actions/upload-artifact@v4
         with:
@@ -214,7 +254,7 @@ jobs:
         run: |
           sdkmanager --install "ndk;26.3.11579264" "platform-tools" "platforms;android-34"
           echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> "$GITHUB_ENV"
-      - uses: dtolnay/rust-toolchain@1.83
+      - uses: dtolnay/rust-toolchain@1.88
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
       - uses: Swatinem/rust-cache@v2
@@ -249,9 +289,9 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # ── Brouillon de release ───────────────────────────────────────────────
+  # ── Release ────────────────────────────────────────────────────────────
   publish:
-    name: Brouillon de release
+    name: Publication de la release
     # L'Android est dans les dépendances : sans lui, la release partait
     # systématiquement sans le client mobile.
     needs: [server, desktop, android]
@@ -263,23 +303,39 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Brouillon, jamais publié automatiquement
-        uses: softprops/action-gh-release@v2
+      # Publiée, pas en brouillon : la mise à jour automatique du bureau et
+      # le téléchargement public passent par l'API « latest release » de
+      # GitHub, qui ignore les brouillons.
+      - uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: false
           files: artifacts/**/*
           generate_release_notes: true
           body: |
-            ### Installation
+            ### Comment choisir son fichier
 
-            | Plateforme | Fichier |
-            |---|---|
-            | Windows | `.msi` (installeur) ou `.zip` (portable) |
-            | macOS | `.dmg` — universel, Intel et Apple Silicon |
-            | Linux | `.deb`, `.AppImage`, ou `.tar.gz` (portable) |
-            | Android | `.apk` |
+            La règle est simple : prenez le fichier **de votre plateforme**, et de préférence
+            l'**installeur** (il s'occupe de tout, et il se met à jour tout seul ensuite).
+            L'archive portable se télécharge et se dézippe n'importe où, mais elle ne
+            reçoit pas les mises à jour automatiques.
 
-            L'APK et les binaires macOS ne sont **pas signés** : la clé de
-            signature détermine l'identité de l'application pour toutes ses
-            mises à jour, elle appartient au propriétaire du projet et non à
-            la chaîne de construction.
+            | Plateforme | Fichier à télécharger | Notes |
+            |---|---|---|
+            | Windows x64 | `Locaryn_<version>_x64-setup.exe` | installeur NSIS, recommandé |
+            | Windows x64 | `Locaryn_<version>_x64_en-US.msi` | installeur MSI, alternative |
+            | Windows x64 | `locaryn-<version>-desktop-windows-x64-portable.zip` | portable, sans auto-update |
+            | macOS | `Locaryn_<version>_universal.dmg` | universel, Intel et Apple Silicon |
+            | Linux x64 | `locaryn_<version>_amd64.deb` | pour Debian / Ubuntu |
+            | Linux x64 | `Locaryn_<version>_amd64.AppImage` | portable, sans installation |
+            | Linux x64 | `locaryn-<version>-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
+            | Android | `*.apk` | non signé, à installer manuellement |
+
+            Les noms Tauri (`Locaryn_0.1.0_x64_setup…`) sont la convention attendue par le
+            système de mise à jour automatique : ne les renommez pas.
+
+            ### Mises à jour
+
+            Windows et macOS se mettent à jour tout seuls (bouton « Vérifier les mises à jour »
+            dans Réglages → À propos). Sous Linux, téléchargez le nouveau `.deb` / `.AppImage`
+            depuis cette page. Les binaires macOS ne sont **pas notarisés** : la première
+            ouverture peut demander une confirmation manuelle (clic droit → Ouvrir).
