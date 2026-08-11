@@ -298,10 +298,15 @@ jobs:
       # précompilé, même version que le package.json) plutôt que de
       # recompiler tauri-cli depuis les sources. Le wrapper passe par `node`
       # pour que tauri.js garde son chemin d'invocation normal.
+      #
+      # Subtilité : cargo préfixe le nom de la sous-commande aux arguments
+      # (`cargo tauri x` exécute `cargo-tauri tauri x`), d'après le source
+      # de cargo (cli.rs, branche External). Le vrai cargo-tauri Rust le
+      # tolère ; le CLI JS non. On élague donc un premier argument `tauri`.
       - name: Exposer le CLI Tauri comme sous-commande cargo
         run: |
           mkdir -p "$HOME/.cargo/bin"
-          printf '#!/bin/sh\nexec node "%s/apps/mobile/node_modules/@tauri-apps/cli/tauri.js" "$@"\n' "$GITHUB_WORKSPACE" > "$HOME/.cargo/bin/cargo-tauri"
+          printf '#!/bin/sh\nif [ "$1" = "tauri" ]; then shift; fi\nexec node "%s/apps/mobile/node_modules/@tauri-apps/cli/tauri.js" "$@"\n' "$GITHUB_WORKSPACE" > "$HOME/.cargo/bin/cargo-tauri"
           chmod +x "$HOME/.cargo/bin/cargo-tauri"
           "$HOME/.cargo/bin/cargo-tauri" --version
       - name: Construire l'APK
