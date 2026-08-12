@@ -6848,8 +6848,7 @@ pub struct HardwareSpec {
 fn detect_gpu() -> (String, u32) {
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::Graphics::Dxgi::Common::DXGI_ADAPTER_DESC;
-        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory};
+        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory, DXGI_ADAPTER_DESC};
 
         let factory: Result<IDXGIFactory, windows::core::Error> = unsafe { CreateDXGIFactory1() };
         if let Ok(factory) = factory {
@@ -6864,7 +6863,10 @@ fn detect_gpu() -> (String, u32) {
                     Ok(a) => a,
                     Err(_) => break,
                 };
-                let desc: DXGI_ADAPTER_DESC = unsafe { adapter.GetDesc() }.unwrap_or_default();
+                let mut desc = DXGI_ADAPTER_DESC::default();
+                if unsafe { adapter.GetDesc(&mut desc) }.is_err() {
+                    continue;
+                }
                 let name = String::from_utf16_lossy(&desc.Description);
                 if name.contains("Basic Render") || name.contains("Remote Display") {
                     continue;
