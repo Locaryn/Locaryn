@@ -333,6 +333,13 @@ jobs:
       - name: Construire l'APK
         run: pnpm --dir apps/mobile build:apk
 
+      - name: Déterminer la version
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          [ -n "$ver" ] || ver="0.1.0"
+          echo "VER=$ver" >> "$GITHUB_ENV"
+
       # L'APK de diffusion sort **non signé**, délibérément : la clé décide de
       # l'identité de l'application pour toutes ses mises à jour à venir. Une
       # clé inventée par la CI et laissée dans le dépôt serait la mauvaise
@@ -340,9 +347,11 @@ jobs:
       - name: Rassembler l'APK
         run: |
           mkdir -p dist
-          find apps/mobile/src-tauri/gen/android -name '*.apk' -path '*release*' -exec cp {} dist/ \;
+          apk=$(find apps/mobile/src-tauri/gen/android -name '*.apk' -path '*release*' | head -1)
+          [ -n "$apk" ] || { echo "::error::aucun APK produit"; exit 1; }
+          # Nom aligné sur les autres artefacts : locaryn-<version>-<produit>-<plateforme>.
+          cp "$apk" "dist/locaryn-${VER}-android.apk"
           ls -la dist/
-          [ -n "$(ls -A dist/ 2>/dev/null)" ] || { echo "::error::aucun APK produit"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -364,45 +373,60 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Déterminer la version
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          [ -n "$ver" ] || ver="0.1.0"
+          echo "VER=$ver" >> "$GITHUB_ENV"
+
       # Publiée, pas en brouillon : la mise à jour automatique du bureau et
       # le téléchargement public passent par l'API « latest release » de
       # GitHub, qui ignore les brouillons.
       - uses: softprops/action-gh-release@v2
         with:
           draft: false
+          name: "Locaryn v${{ env.VER }}"
           files: artifacts/**/*
           generate_release_notes: true
           body: |
-            ### Comment choisir son fichier
+            ### Choisir son fichier
 
-            La règle est simple : prenez le fichier **de votre plateforme**, et de préférence
+            La règle est simple : prenez le fichier **de votre plateforme**, de préférence
             l'**installeur** (il s'occupe de tout, et il se met à jour tout seul ensuite).
             L'archive portable se télécharge et se dézippe n'importe où, mais elle ne
             reçoit pas les mises à jour automatiques.
 
-            | Plateforme | Fichier à télécharger | Notes |
+            #### Application de bureau (interface)
+
+            | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `Locaryn_<version>_x64-setup.exe` | installeur NSIS, recommandé |
-            | Windows x64 | `Locaryn_<version>_x64_en-US.msi` | installeur MSI, alternative |
-            | Windows x64 | `locaryn-<version>-desktop-windows-x64-portable.zip` | portable, sans auto-update |
-            | macOS | `Locaryn_<version>_universal.dmg` | universel, Intel et Apple Silicon |
-            | Linux x64 | `locaryn_<version>_amd64.deb` | pour Debian / Ubuntu |
-            | Linux x64 | `Locaryn_<version>_amd64.AppImage` | portable, sans installation |
-            | Linux x64 | `locaryn-<version>-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
-            | Android | `*.apk` | non signé, à installer manuellement |
+            | Windows x64 | `Locaryn_${{ env.VER }}_x64-setup.exe` | installeur NSIS — recommandé |
+            | Windows x64 | `Locaryn_${{ env.VER }}_x64_en-US.msi` | installeur MSI — alternative |
+            | Windows x64 | `locaryn-${{ env.VER }}-desktop-windows-x64-portable.zip` | portable, sans auto-update |
+            | macOS | `Locaryn_${{ env.VER }}_universal.dmg` | universel, Intel et Apple Silicon |
+            | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
+            | Linux x64 | `Locaryn_${{ env.VER }}_amd64.AppImage` | portable, sans installation |
+            | Linux x64 | `locaryn-${{ env.VER }}-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
+            | Android | `locaryn-${{ env.VER }}-android.apk` | non signé, à installer manuellement |
 
-            **Serveur (sans interface)** : `locaryn-daemon` + CLI `locaryn`.
+            #### Serveur (sans interface)
 
-            | Plateforme | Fichier à télécharger | Notes |
+            `locaryn-daemon` + CLI `locaryn` — pour une machine dédiée, sans session graphique.
+
+            | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `locaryn-<version>-server-windows-x64-setup.exe` | installeur NSIS, ajoute la CLI au PATH |
-            | Windows x64 | `locaryn-<version>-server-windows-x64.msi` | installeur MSI |
-            | Linux x64 | `locaryn-<version>-server-linux-x64.deb` | pour Debian / Ubuntu |
-            | Windows x64 | `locaryn-<version>-server-windows-x64.zip` | portable |
-            | Linux x64 | `locaryn-<version>-server-linux-x64.tar.gz` | portable |
+            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64-setup.exe` | installeur NSIS, ajoute la CLI au PATH |
+            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.msi` | installeur MSI |
+            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.zip` | portable, sans auto-update |
+            | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.deb` | Debian / Ubuntu |
+            | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.tar.gz` | portable, sans auto-update |
+            | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.tar.gz` | portable |
+            | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.tar.gz` | portable |
 
-            Les noms Tauri (`Locaryn_0.1.0_x64_setup…`) sont la convention attendue par le
-            système de mise à jour automatique : ne les renommez pas.
+            Les noms Tauri (`Locaryn_<version>_x64-setup.exe`, `Locaryn_<version>_x64_en-US.msi`, …)
+            sont la convention attendue par la mise à jour automatique : ne les renommez pas.
 
             ### Mises à jour
 
