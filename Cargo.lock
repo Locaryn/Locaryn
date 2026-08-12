@@ -1097,7 +1097,7 @@ dependencies = [
 
 [[package]]
 name = "cpubits"
-version = "0.1.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "15b85f9c39137c3a891689859392b1bd49812121d0d61c9caf00d46ed5ce06ae"
 
@@ -1307,7 +1307,7 @@ dependencies = [
 
 [[package]]
 name = "curve25519-dalek-derive"
-version = "0.1.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
 dependencies = [
@@ -3361,7 +3361,7 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
 name = "locaryn-agent-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3381,7 +3381,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-auth"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "argon2",
  "chrono",
@@ -3399,7 +3399,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3422,7 +3422,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-command-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3434,7 +3434,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-config"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
@@ -3448,7 +3448,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-daemon"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -3483,7 +3483,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3526,7 +3526,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-enterprise"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3539,7 +3539,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-events"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "futures",
@@ -3553,7 +3553,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-extensions"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "locaryn-command-runtime",
@@ -3578,7 +3578,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-hook-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3590,7 +3590,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-lsp-adapters"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "locaryn-shared-types",
@@ -3603,7 +3603,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-mcp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3621,7 +3621,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-mobile"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "locaryn-config",
  "locaryn-travel",
@@ -3638,7 +3638,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-plugin-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "locaryn-extensions",
@@ -3650,7 +3650,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-preview"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "locaryn-shared-types",
@@ -3662,7 +3662,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-provider-supervisor"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3685,7 +3685,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-remote-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -3713,7 +3713,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-rules-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "locaryn-config",
  "locaryn-shared-types",
@@ -3723,7 +3723,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "futures",
@@ -3739,7 +3739,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-shared-types"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "serde",
@@ -3749,7 +3749,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-skill-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3760,7 +3760,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-ssh"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "russh",
@@ -3771,7 +3771,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-storage"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "locaryn-auth",
@@ -3787,7 +3787,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-travel"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "locaryn-config",
  "qrcode",
@@ -4300,7 +4300,7 @@ checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
 
 [[package]]
 name = "objc2-exception-helper"
-version = "0.1.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7a1c5fbb72d7735b076bb47b578523aedc40f3c439bea6dfd595c089d79d98a"
 dependencies = [
@@ -4935,7 +4935,7 @@ dependencies = [
 
 [[package]]
 name = "precomputed-hash"
-version = "0.1.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
@@ -5691,7 +5691,7 @@ dependencies = [
 
 [[package]]
 name = "rustls-platform-verifier-android"
-version = "0.1.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
@@ -7285,7 +7285,7 @@ dependencies = [
 
 [[package]]
 name = "tinyvec_macros"
-version = "0.1.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
@@ -7803,7 +7803,7 @@ dependencies = [
 
 [[package]]
 name = "valuable"
-version = "0.1.1"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
