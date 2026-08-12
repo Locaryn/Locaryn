@@ -1185,17 +1185,18 @@ async fn list_messages(core: State<'_, Core>, session_id: Uuid) -> Result<Vec<Me
         .map_err(|e| e.to_string())
 }
 
-/// Result of `bootstrap`: the default project + a usable session, so the UI
-/// is functional immediately on first launch.
+/// Result of `bootstrap`: the most recently used project and its last open
+/// session, if any. Nothing is ever created implicitly — the user decides
+/// when to add a project or start a conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Bootstrap {
-    project: Project,
-    session: Session,
+    project: Option<Project>,
+    session: Option<Session>,
     health: Health,
 }
 
-/// Pick the most recently updated project (or create one for the launch
-/// directory on a fresh install) and the most recent open session in it.
+/// Pick the most recently updated project (if any) and the most recent open
+/// session in it. Fresh installs start empty.
 #[tauri::command]
 async fn bootstrap(core: State<'_, Core>) -> Result<Bootstrap, String> {
     let mut projects = core
@@ -1205,37 +1206,19 @@ async fn bootstrap(core: State<'_, Core>) -> Result<Bootstrap, String> {
         .await
         .map_err(|e| e.to_string())?;
     projects.sort_by_key(|p| p.updated_at);
-    let project = match projects.pop() {
-        Some(p) => p,
-        None => {
-            let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-            let cwd_str = cwd.to_string_lossy().to_string();
-            let name = cwd
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "workspace".into());
-            core.storage
-                .projects
-                .create(&cwd_str, &name, TrustLevel::default())
-                .await
-                .map_err(|e| e.to_string())?
-        }
-    };
+    let project = projects.pop();
 
-    let sessions = core
-        .storage
-        .sessions
-        .list_for_project(project.id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let session = match sessions.into_iter().find(|s| s.closed_at.is_none()) {
-        Some(s) => s,
-        None => core
-            .storage
-            .sessions
-            .create(project.id, None)
-            .await
-            .map_err(|e| e.to_string())?,
+    let session = match &project {
+        Some(p) => {
+            let sessions = core
+                .storage
+                .sessions
+                .list_for_project(p.id)
+                .await
+                .map_err(|e| e.to_string())?;
+            sessions.into_iter().find(|s| s.closed_at.is_none())
+        }
+        None => None,
     };
 
     let health = core_health(core).await?;

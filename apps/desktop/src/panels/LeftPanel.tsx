@@ -292,10 +292,11 @@ export function LeftPanel({
                   <li>
                     <button
                       type="button"
-                      className="locaryn-tree-item locaryn-tree-new"
+                      className="locaryn-new-session-btn"
                       onClick={() => onNewSession(p)}
+                      title="Ouvrir une nouvelle conversation dans ce projet"
                     >
-                      + session projet
+                      + Nouvelle conversation
                     </button>
                   </li>
                 </ul>

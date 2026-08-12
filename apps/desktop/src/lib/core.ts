@@ -496,8 +496,10 @@ export interface McpServerPreview {
 }
 
 export interface Bootstrap {
-  project: Project;
-  session: Session;
+  /** Most recently used project, if any. Nothing is created implicitly. */
+  project: Project | null;
+  /** Last open session in that project, if any. */
+  session: Session | null;
   health: Health;
 }
 
