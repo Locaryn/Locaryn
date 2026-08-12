@@ -1381,16 +1381,14 @@ export function ModelBrowser({
                       const compatV = variantCompat(targetStorageGb, hardwareSpec, airllmEnabled);
 
                       return (
-                        <div
-                          key={v.tag}
-                          className="locaryn-box-variant-row"
-                          style={{ flexDirection: "column", alignItems: "stretch", gap: "6px" }}
-                        >
+                        <div key={v.tag} className="locaryn-box-variant-row">
                           <div
                             style={{
                               display: "flex",
                               justifyContent: "space-between",
                               alignItems: "center",
+                              flexWrap: "wrap",
+                              gap: "6px",
                             }}
                           >
                             <div className="locaryn-box-variant-info">
