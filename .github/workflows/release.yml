@@ -20,7 +20,7 @@ name: Release
 # interroge `latest.json` publié sur chaque release (généré dans le job
 # « Publication de la release »). Pour que cela marche, la release doit être
 # PUBLIÉE (pas un brouillon), les installeurs consommés par l'updater doivent
-# garder les noms Tauri (`Locaryn_<version>_x64-setup.exe`, le .app.tar.gz
+# garder les noms Tauri (`Locaryn_<version>_x64.msi`, le .app.tar.gz
 # macOS, …), et chaque installeur doit être accompagné de son `.sig` — d'où
 # la signature obligatoire via le secret
 # `TAURI_SIGNING_PRIVATE_KEY` et `createUpdaterArtifacts` dans tauri.conf.json.
@@ -138,27 +138,6 @@ jobs:
           New-Item -ItemType Directory -Force ../../dist | Out-Null
           Move-Item "dist/locaryn-$env:VER-server-windows-x64.msi" "../../dist/" -Force
 
-      # Installeur .exe (NSIS), en plus du .msi : certains postes verrouillés
-      # n'acceptent que les installeurs .exe, jamais un .msi. Le script est
-      # committé (services/daemon/windows/locaryn-server.nsi) ; les binaires
-      # sont copiés à côté de lui, et il les référence en chemins absolus.
-      - name: Installeur .exe (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install nsis -y --no-progress
-          # Chemin ABSOLU vers le dossier du script : ${__FILEDIR__} dans le
-          # .nsi est relatif si on passe un chemin relatif à makensis, et le
-          # File "${APP_SRCDIR}\\locaryn-daemon.exe" était résolu en doublant
-          # le préfixe (services\daemon\windows\services\daemon\windows\...).
-          $src = (Resolve-Path "services/daemon/windows").Path
-          Copy-Item "target/${{ matrix.target }}/release/locaryn-daemon.exe" $src
-          Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $src
-          Copy-Item "README.md","LICENSE","LICENSES.md" $src -EA SilentlyContinue
-          New-Item -ItemType Directory -Force dist | Out-Null
-          & "C:\Program Files (x86)\NSIS\makensis.exe" "/DVERSION=$env:VER" "$src/locaryn-server.nsi"
-          Move-Item "$src/locaryn-$env:VER-server-windows-x64-setup.exe" dist/ -Force
-
       - name: Paquet .deb (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -247,15 +226,19 @@ jobs:
           done
           # Le .msi sort nommé par Tauri avec la culture WiX
           # (Locaryn_<ver>_x64_en-US.msi). Nom d'asset plus propre sans la
-          # langue : l'updater ne consomme que l'installeur NSIS (et le
-          # .app.tar.gz macOS), ce renommage est sans effet sur la mise à
-          # jour automatique. Le .sig qui l'accompagne est renommé avec lui.
+          # langue : le manifeste latest.json pointe vers le nom renommé, et
+          # la signature couvre le contenu, pas le nom. Le .sig qui
+          # l'accompagne est renommé avec lui.
           if [ -f "dist/Locaryn_${VER}_x64_en-US.msi" ]; then
             mv "dist/Locaryn_${VER}_x64_en-US.msi" "dist/Locaryn_${VER}_x64.msi"
             if [ -f "dist/Locaryn_${VER}_x64_en-US.msi.sig" ]; then
               mv "dist/Locaryn_${VER}_x64_en-US.msi.sig" "dist/Locaryn_${VER}_x64.msi.sig"
             fi
           fi
+          # Un seul installeur Windows : le .msi (qui sert aussi à
+          # l'auto-update, msiexec /i). L'installeur NSIS et sa signature ne
+          # sont plus publiés.
+          rm -f "dist/Locaryn_${VER}_x64-setup.exe" "dist/Locaryn_${VER}_x64-setup.exe.sig"
           ls -la dist/
           # Un job qui « réussit » sans rien produire est un piège : il fait
           # croire à une release complète.
@@ -419,11 +402,12 @@ jobs:
               with open(path, encoding="utf-8") as f:
                   return f.read().strip()
 
-          # Windows x64 — l'updater installe l'installeur NSIS, pas le .msi.
-          hit = glob.glob(f"artifacts/desktop-windows-x64/Locaryn_{ver}_x64-setup.exe.sig")
+          # Windows x64 — l'updater installe l'installeur MSI (le NSIS n'est
+          # plus publié).
+          hit = glob.glob(f"artifacts/desktop-windows-x64/Locaryn_{ver}_x64.msi.sig")
           if hit:
               platforms["windows-x86_64"] = {
-                  "url": f"{base}/Locaryn_{ver}_x64-setup.exe",
+                  "url": f"{base}/Locaryn_{ver}_x64.msi",
                   "signature": sig(hit[0]),
               }
 
@@ -472,8 +456,7 @@ jobs:
 
             | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `Locaryn_${{ env.VER }}_x64-setup.exe` | installeur NSIS — recommandé |
-            | Windows x64 | `Locaryn_${{ env.VER }}_x64.msi` | installeur MSI — alternative |
+            | Windows x64 | `Locaryn_${{ env.VER }}_x64.msi` | installeur MSI — recommandé |
             | Windows x64 | `locaryn-${{ env.VER }}-desktop-windows-x64-portable.zip` | portable, sans auto-update |
             | macOS | `Locaryn_${{ env.VER }}_universal.dmg` | universel, Intel et Apple Silicon |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
@@ -487,18 +470,15 @@ jobs:
 
             | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64-setup.exe` | installeur NSIS, ajoute la CLI au PATH |
-            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.msi` | installeur MSI |
+            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.msi` | installeur MSI, ajoute la CLI au PATH |
             | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.zip` | portable, sans auto-update |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.deb` | Debian / Ubuntu |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.tar.gz` | portable, sans auto-update |
             | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.tar.gz` | portable |
             | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.tar.gz` | portable |
 
-            Les fichiers consommés par la mise à jour automatique gardent leur nom Tauri
-            (`Locaryn_<version>_x64-setup.exe`, `Locaryn_<version>_universal.app.tar.gz`) : ne les
-            renommez pas. Le `.msi` du bureau est publié sans la culture WiX
-            (`Locaryn_<version>_x64.msi`).
+            Les installeurs Windows (`.msi`) et macOS (`.app.tar.gz`) publiés ici sont signés :
+            l'updater les télécharge et les installe tout seul.
 
             ### Mises à jour
 
