@@ -1,12 +1,24 @@
+import { check } from "@tauri-apps/plugin-updater";
+import type { DownloadEvent } from "@tauri-apps/plugin-updater";
 import { useEffect, useState } from "react";
 import { type AppInfo, type LlamaRuntimeStatus, type RuntimeCapabilities, core } from "../lib/core";
 import { CAPS } from "./EngineSettings";
+
+type UpdateState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "current" }
+  | { kind: "available"; version: string }
+  | { kind: "downloading"; progress: number }
+  | { kind: "installing" }
+  | { kind: "error"; message: string };
 
 /** About page: identity, live capabilities, system paths and licensing. */
 export function AboutSettings() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [caps, setCaps] = useState<RuntimeCapabilities | null>(null);
   const [runtime, setRuntime] = useState<LlamaRuntimeStatus | null>(null);
+  const [update, setUpdate] = useState<UpdateState>({ kind: "idle" });
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +45,52 @@ export function AboutSettings() {
     };
   }, []);
 
+  async function checkForUpdates() {
+    setUpdate({ kind: "checking" });
+    try {
+      const update = await check();
+      if (!update) {
+        setUpdate({ kind: "current" });
+        return;
+      }
+      setUpdate({ kind: "available", version: update.version });
+    } catch (err) {
+      setUpdate({ kind: "error", message: String(err) });
+    }
+  }
+
+  async function installUpdate() {
+    setUpdate({ kind: "installing" });
+    try {
+      const update = await check();
+      if (!update) {
+        setUpdate({ kind: "current" });
+        return;
+      }
+      let contentLength = 0;
+      await update.downloadAndInstall((ev: DownloadEvent) => {
+        if (ev.event === "Started" && ev.data.contentLength) {
+          contentLength = ev.data.contentLength;
+        } else if (ev.event === "Progress") {
+          if (contentLength > 0) {
+            setUpdate({
+              kind: "downloading",
+              progress: Math.min(1, ev.data.chunkLength / contentLength),
+            });
+          }
+        }
+      });
+      setUpdate({ kind: "installing" });
+      // L'installation est terminée : on invite au redémarrage.
+      setUpdate({ kind: "current" });
+    } catch (err) {
+      setUpdate({ kind: "error", message: String(err) });
+    }
+  }
+
+  const busy =
+    update.kind === "checking" || update.kind === "downloading" || update.kind === "installing";
+
   return (
     <div className="locaryn-about">
       <div className="locaryn-about-hero">
@@ -45,6 +103,53 @@ export function AboutSettings() {
           </div>
         </div>
         <span className="locaryn-about-version">v{info?.version ?? "0.1.0"}</span>
+      </div>
+
+      <div className="locaryn-kv-list" style={{ marginTop: 14 }}>
+        <div className="locaryn-kv">
+          <span className="locaryn-kv-key">Mises à jour</span>
+          <span className="locaryn-kv-val">
+            {update.kind === "checking" && "Vérification en cours…"}
+            {update.kind === "current" && "À jour"}
+            {update.kind === "available" &&
+              `Version ${update.version} disponible — cliquez pour installer`}
+            {update.kind === "downloading" &&
+              `Téléchargement… ${Math.round(update.progress * 100)} %`}
+            {update.kind === "installing" && "Installation… l'application va redémarrer"}
+            {update.kind === "error" && `Échec : ${update.message}`}
+            {update.kind === "idle" && "Vérification manuelle disponible ci-dessous"}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="locaryn-btn locaryn-btn-primary"
+          disabled={busy}
+          onClick={checkForUpdates}
+          title="Vérifier si une nouvelle version de Locaryn est disponible"
+        >
+          {update.kind === "available"
+            ? "Nouvelle version disponible"
+            : "Vérifier les mises à jour"}
+        </button>
+        {update.kind === "available" && (
+          <button
+            type="button"
+            className="locaryn-btn"
+            disabled={busy}
+            onClick={installUpdate}
+            title={`Installer Locaryn ${update.version} et redémarrer`}
+          >
+            Installer maintenant
+          </button>
+        )}
+        {update.kind === "current" && (
+          <button type="button" className="locaryn-btn" onClick={() => setUpdate({ kind: "idle" })}>
+            OK
+          </button>
+        )}
       </div>
 
       <p className="locaryn-field-hint">
