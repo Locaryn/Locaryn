@@ -6848,8 +6848,8 @@ pub struct HardwareSpec {
 fn detect_gpu() -> (String, u32) {
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory};
         use windows::Win32::Graphics::Dxgi::Common::DXGI_ADAPTER_DESC;
+        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory};
 
         let factory: Result<IDXGIFactory, windows::core::Error> = unsafe { CreateDXGIFactory1() };
         if let Ok(factory) = factory {
@@ -6962,7 +6962,6 @@ fn check_hardware() -> Result<HardwareSpec, String> {
         cpu_cores,
     })
 }
-
 
 // ============================================================================
 // Model management

@@ -1122,10 +1122,7 @@ export function ModelBrowser({
               acc[familyBestCompat(f.variants, hardwareSpec, airllmEnabled).level]++;
               return acc;
             },
-            { gpu: 0, offload: 0, airllm: 0, heavy: 0, unknown: 0 } as Record<
-              CompatLevel,
-              number
-            >,
+            { gpu: 0, offload: 0, airllm: 0, heavy: 0, unknown: 0 } as Record<CompatLevel, number>,
           );
           return (
             <div className="locaryn-hw-banner">
@@ -1138,7 +1135,11 @@ export function ModelBrowser({
                     {hardwareSpec.gpu_vendor && hardwareSpec.gpu_vendor !== "unknown" && (
                       <>
                         {" "}
-                        (<span style={{ textTransform: "capitalize" }}>{hardwareSpec.gpu_vendor}</span>)
+                        (
+                        <span style={{ textTransform: "capitalize" }}>
+                          {hardwareSpec.gpu_vendor}
+                        </span>
+                        )
                       </>
                     )}
                   </>
