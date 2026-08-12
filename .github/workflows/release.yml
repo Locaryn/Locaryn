@@ -93,6 +93,10 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $out
           Copy-Item "README.md","LICENSE*" $out -EA SilentlyContinue
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-server-${{ matrix.label }}.zip" -Force
+          # Le dossier portable est déjà archivé dans le .zip : on le retire,
+          # sinon ses binaires bruts (locaryn-daemon.exe, locaryn.exe) se
+          # retrouvent en doublon dans l'artefact puis dans la release.
+          Remove-Item $out -Recurse -Force
 
       - name: Archive portable (Unix)
         if: runner.os != 'Windows'
@@ -103,6 +107,9 @@ jobs:
           cp target/${{ matrix.target }}/release/locaryn "$out/"
           cp README.md LICENSE* "$out/" 2>/dev/null || true
           tar -C "$out" -czf "dist/locaryn-${VER}-server-${{ matrix.label }}.tar.gz" .
+          # Idem : retiré après archivage, sinon les binaires bruts (locaryn,
+          # locaryn-daemon) sont publiés en double dans la release.
+          rm -rf "$out"
 
       # ── Installeurs ────────────────────────────────────────────────────
       # macOS n'en reçoit pas : signer et notariser exige un compte Apple
@@ -254,6 +261,7 @@ jobs:
           if (-not (Test-Path $exe)) { throw "aucun exécutable de bureau trouvé dans target/release" }
           Copy-Item $exe $out
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-desktop-windows-x64-portable.zip" -Force
+          Remove-Item $out -Recurse -Force
 
       - name: Archive portable (Linux)
         if: runner.os == 'Linux'
@@ -266,6 +274,7 @@ jobs:
             exit 1
           fi
           tar -C "$out" -czf "dist/locaryn-${VER}-desktop-linux-x64-portable.tar.gz" .
+          rm -rf "$out"
 
       - uses: actions/upload-artifact@v4
         with:
