@@ -17,11 +17,12 @@ name: Release
 # construits.
 #
 # Mise à jour automatique : le bureau embarque le plugin updater Tauri, qui
-# interroge `https://api.github.com/repos/TeALO36/Locaryn/releases/latest`.
-# Pour que cela marche, la release doit être PUBLIÉE (pas un brouillon), les
-# installeurs doivent garder les noms Tauri (`Locaryn_<version>_<arch>.…`),
-# et chaque installeur doit être accompagné de son `.sig` — d'où la
-# signature obligatoire via le secret `TAURI_SIGNING_PRIVATE_KEY`.
+# interroge `latest.json` publié sur chaque release (généré dans le job
+# « Publication de la release »). Pour que cela marche, la release doit être
+# PUBLIÉE (pas un brouillon), les installeurs doivent garder les noms Tauri
+# (`Locaryn_<version>_<arch>.…`), et chaque installeur doit être accompagné
+# de son `.sig` — d'où la signature obligatoire via le secret
+# `TAURI_SIGNING_PRIVATE_KEY` et `createUpdaterArtifacts` dans tauri.conf.json.
 
 on:
   push:
@@ -380,6 +381,63 @@ jobs:
           ver="${GITHUB_REF_NAME#v}"
           [ -n "$ver" ] || ver="0.1.0"
           echo "VER=$ver" >> "$GITHUB_ENV"
+
+      # Manifeste de mise à jour du bureau. Le plugin updater v2 ne sait pas
+      # lire l'API des releases GitHub : il attend un JSON au format
+      # « static » (version + plateformes → url + signature). Il est généré à
+      # partir des .sig produits par tauri build (createUpdaterArtifacts) puis
+      # publié comme asset — l'endpoint configuré dans tauri.conf.json pointe
+      # dessus. Si un .sig manque, le build échoue au lieu de sortir une
+      # release dont l'auto-update est muette.
+      - name: Générer le manifeste de mise à jour (latest.json)
+        shell: bash
+        run: |
+          python3 - "$VER" <<'PY'
+          import glob
+          import json
+          import os
+          import sys
+          from datetime import datetime, timezone
+
+          ver = sys.argv[1]
+          base = f"https://github.com/TeALO36/Locaryn/releases/download/v{ver}"
+          platforms = {}
+
+          def sig(path):
+              with open(path, encoding="utf-8") as f:
+                  return f.read().strip()
+
+          # Windows x64 — l'updater installe l'installeur NSIS, pas le .msi.
+          hit = glob.glob(f"artifacts/desktop-windows-x64/Locaryn_{ver}_x64-setup.exe.sig")
+          if hit:
+              platforms["windows-x86_64"] = {
+                  "url": f"{base}/Locaryn_{ver}_x64-setup.exe",
+                  "signature": sig(hit[0]),
+              }
+
+          # macOS — un seul bundle universel (Intel + Apple Silicon), servi
+          # sous les deux architectures demandées par le client.
+          hit = glob.glob("artifacts/desktop-macos-universal/*.app.tar.gz.sig")
+          if hit:
+              asset = os.path.basename(hit[0])[:-4]  # retire le suffixe .sig
+              for arch in ("darwin-x86_64", "darwin-aarch64"):
+                  platforms[arch] = {
+                      "url": f"{base}/{asset}",
+                      "signature": sig(hit[0]),
+                  }
+
+          if not platforms:
+              raise SystemExit("::error::aucune signature .sig trouvée — createUpdaterArtifacts est-il activé ?")
+
+          manifest = {
+              "version": ver,
+              "pub_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
+          }
+          with open("artifacts/latest.json", "w", encoding="utf-8") as f:
+              json.dump(manifest, f, indent=2)
+          print(json.dumps(manifest, indent=2))
+          PY
 
       # Publiée, pas en brouillon : la mise à jour automatique du bureau et
       # le téléchargement public passent par l'API « latest release » de

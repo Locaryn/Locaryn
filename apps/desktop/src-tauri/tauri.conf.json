@@ -31,6 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -46,6 +47,10 @@
       "desktop": {
         "schemes": ["locaryn"]
       }
+    },
+    "updater": {
+      "endpoints": ["https://github.com/TeALO36/Locaryn/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU5QkMwNjMzNTNFMDJFODIKUldTQ0x1QlRNd2E4NlVCYmNTKzY0Q3A2YmFvL29pbHdXejlFVWI1M3VYcWZEdlJLcWIxUkt0TzMK"
     }
   }
 }
