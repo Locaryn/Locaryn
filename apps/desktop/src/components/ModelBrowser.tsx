@@ -309,7 +309,6 @@ export function ModelBrowser({
   const [onlyFinetunable, setOnlyFinetunable] = useState(false);
   const [riskFilter, setRiskFilter] = useState<"all" | "safe" | "uncensored" | "nsfw">("all");
   const [onlyRecommended, setOnlyRecommended] = useState(false);
-  const [showCloud, setShowCloud] = useState(false);
   // AirLLM : basculer l'affichage pour que les modèles qui ne tourneraient pas
   // sur ce PC (trop lourds) soient convertis en exécutables via le moteur
   // AirLLM (inférence basse VRAM, chargement des couches une par une).
@@ -382,6 +381,7 @@ export function ModelBrowser({
   const [hardwareSpec, setHardwareSpec] = useState<{
     total_ram_gb: number;
     total_vram_gb: number;
+    gpu_vendor?: string;
   } | null>(null);
   const [nsfwGateOpen, setNsfwGateOpen] = useState(false);
   const [pendingNsfwInstall, setPendingNsfwInstall] = useState<{
@@ -413,7 +413,11 @@ export function ModelBrowser({
       .checkHardware()
       .then((hw) => {
         if (active && hw)
-          setHardwareSpec({ total_ram_gb: hw.total_ram_gb, total_vram_gb: hw.total_vram_gb });
+          setHardwareSpec({
+            total_ram_gb: hw.total_ram_gb,
+            total_vram_gb: hw.total_vram_gb,
+            gpu_vendor: hw.gpu_vendor,
+          });
       })
       .catch(() => {});
     return () => {
@@ -526,9 +530,9 @@ export function ModelBrowser({
           return null;
         }
 
-        // Cloud-only families stay hidden by default, unless AirLLM mode is on
-        // (then everything is presented as runnable) or the user toggled "cloud".
-        if (!airllmEnabled && !showCloud && isCloudOnlyFamily(f)) {
+        // Cloud-only families are never shown : cette app est 100 % locale,
+        // aucun LLM distant n'est proposé.
+        if (isCloudOnlyFamily(f)) {
           return null;
         }
         if (onlyFavorites && !favorites.has(f.id)) {
@@ -569,7 +573,6 @@ export function ModelBrowser({
     onlyFinetunable,
     riskFilter,
     onlyRecommended,
-    showCloud,
     onlyFavorites,
     favorites,
     registryModels,
@@ -1021,23 +1024,6 @@ export function ModelBrowser({
             >
               ★ Favoris{favorites.size > 0 ? ` (${favorites.size})` : ""}
             </button>
-            <button
-              type="button"
-              className={`locaryn-chip locaryn-chip-ft${showCloud ? " locaryn-chip-on" : ""}`}
-              style={
-                showCloud
-                  ? {
-                      background: "rgba(96, 165, 250, 0.2)",
-                      borderColor: "#60a5fa",
-                      color: "#60a5fa",
-                    }
-                  : {}
-              }
-              onClick={() => setShowCloud((prev) => !prev)}
-              title="Par défaut, les modèles cloud-only sont masqués pour privilégier les téléchargements locaux"
-            >
-              {showCloud ? "☁️ Cloud affiché" : "☁️ Cloud masqué"}
-            </button>
           </div>
 
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -1136,7 +1122,7 @@ export function ModelBrowser({
               acc[familyBestCompat(f.variants, hardwareSpec, airllmEnabled).level]++;
               return acc;
             },
-            { cloud: 0, gpu: 0, offload: 0, airllm: 0, heavy: 0, unknown: 0 } as Record<
+            { gpu: 0, offload: 0, airllm: 0, heavy: 0, unknown: 0 } as Record<
               CompatLevel,
               number
             >,
@@ -1149,6 +1135,12 @@ export function ModelBrowser({
                   <>
                     {" "}
                     · <b>{hardwareSpec.total_vram_gb} Go VRAM</b>
+                    {hardwareSpec.gpu_vendor && hardwareSpec.gpu_vendor !== "unknown" && (
+                      <>
+                        {" "}
+                        (<span style={{ textTransform: "capitalize" }}>{hardwareSpec.gpu_vendor}</span>)
+                      </>
+                    )}
                   </>
                 )}
               </span>
@@ -1156,16 +1148,14 @@ export function ModelBrowser({
                 {airllmEnabled ? (
                   <>
                     <span style={{ color: "#a78bfa" }}>🟣 {counts.airllm} via AirLLM</span>
-                    <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
                     <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
                     <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
                     <span className="locaryn-hw-banner-note">
-                      — AirLLM actif : chaque modèle est exécutable (local ou cloud)
+                      — AirLLM actif : chaque modèle est exécutable localement
                     </span>
                   </>
                 ) : (
                   <>
-                    <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
                     <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
                     <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
                     <span style={{ color: "#cc7d72" }}>🔴 {counts.heavy} trop lourds</span>

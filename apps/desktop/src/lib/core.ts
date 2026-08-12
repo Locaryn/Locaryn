@@ -949,6 +949,8 @@ export type TerminalEvent =
 export interface HardwareSpec {
   total_ram_gb: number;
   total_vram_gb: number;
+  /** "nvidia" | "amd" | "intel" | "unknown" */
+  gpu_vendor?: string;
   recommended_size_label: string;
   cpu_cores?: number;
 }

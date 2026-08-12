@@ -6834,13 +6834,94 @@ fn update_provider_model_params(core: State<'_, Core>, params: ModelParams) -> R
 pub struct HardwareSpec {
     pub total_ram_gb: u32,
     pub total_vram_gb: u32,
+    /// "nvidia" | "amd" | "intel" | "unknown" — premier GPU de la machine.
+    pub gpu_vendor: String,
     pub recommended_size_label: String,
     pub cpu_cores: u32,
 }
 
+/// Premier GPU détecté, sous la forme (fabricant, vram_mb).
+/// NVIDIA, Intel et AMD sont couverts : sous Windows l'énumération se fait
+/// via DXGI (CreateDXGIFactory1 + EnumAdapters), qui voit toutes les cartes,
+/// quel que soit le vendeur. nvidia-smi sert de repli (pilotes NVIDIA sans
+/// description standard), et sur les autres plateformes.
+fn detect_gpu() -> (String, u32) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory};
+        use windows::Win32::Graphics::Dxgi::Common::DXGI_ADAPTER_DESC;
+
+        let factory: Result<IDXGIFactory, windows::core::Error> = unsafe { CreateDXGIFactory1() };
+        if let Ok(factory) = factory {
+            let mut found: Option<(String, u32)> = None;
+            let mut max_vram: u32 = 0;
+            // Première passe : la carte avec le plus de VRAM dédiée (le GPU
+            // principal pour l'inférence), en prenant garde aux adaptateurs
+            // « Microsoft Basic Render Driver » (aucun vrai GPU derrière).
+            for i in 0..8u32 {
+                let adapter = unsafe { factory.EnumAdapters(i) };
+                let adapter = match adapter {
+                    Ok(a) => a,
+                    Err(_) => break,
+                };
+                let desc: DXGI_ADAPTER_DESC = unsafe { adapter.GetDesc() }.unwrap_or_default();
+                let name = String::from_utf16_lossy(&desc.Description);
+                if name.contains("Basic Render") || name.contains("Remote Display") {
+                    continue;
+                }
+                let vram_mb = (desc.DedicatedVideoMemory / (1024 * 1024)) as u32;
+                if vram_mb > max_vram {
+                    max_vram = vram_mb;
+                    let vendor = if name.to_lowercase().contains("nvidia") {
+                        "nvidia"
+                    } else if name.to_lowercase().contains("amd") || name.contains("Radeon") {
+                        "amd"
+                    } else if name.to_lowercase().contains("intel") {
+                        "intel"
+                    } else {
+                        "unknown"
+                    };
+                    found = Some((vendor.to_string(), vram_mb));
+                }
+            }
+            if let Some((vendor, vram_mb)) = found {
+                return (vendor, vram_mb);
+            }
+        }
+        // Repli : nvidia-smi (pilotes NVIDIA sans description standard).
+        if let Ok(out) = std::process::Command::new("nvidia-smi")
+            .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
+            .output()
+        {
+            if let Ok(s) = String::from_utf8(out.stdout) {
+                if let Ok(mb) = s.trim().parse::<u32>() {
+                    return ("nvidia".to_string(), mb);
+                }
+            }
+        }
+        (String::from("unknown"), 0)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Repli multi-plateforme : nvidia-smi pour NVIDIA.
+        if let Ok(out) = std::process::Command::new("nvidia-smi")
+            .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
+            .output()
+        {
+            if let Ok(s) = String::from_utf8(out.stdout) {
+                if let Ok(mb) = s.trim().parse::<u32>() {
+                    return ("nvidia".to_string(), mb);
+                }
+            }
+        }
+        (String::from("unknown"), 0)
+    }
+}
+
 #[tauri::command]
 fn check_hardware() -> Result<HardwareSpec, String> {
-    // RAM: use sysinfo-like approach via system commands.
+    // RAM : TotalPhysicalMemory en octets, arrondi au Go entier le plus
+    // proche (la troncature affichait 15 Go pour 16 Go réels).
     let ram_gb = if cfg!(target_os = "windows") {
         std::process::Command::new("wmic")
             .args(["computersystem", "get", "TotalPhysicalMemory"])
@@ -6853,20 +6934,14 @@ fn check_hardware() -> Result<HardwareSpec, String> {
                     .find(|l| !l.trim().is_empty())
                     .and_then(|n| n.trim().parse::<u64>().ok())
             })
-            .map(|bytes| (bytes / (1024 * 1024 * 1024)) as u32)
+            .map(|bytes| ((bytes + 512 * 1024 * 1024) / (1024 * 1024 * 1024)) as u32)
             .unwrap_or(16)
     } else {
         16
     };
 
-    // VRAM: best-effort via nvidia-smi; fallback to 0.
-    let vram_gb = std::process::Command::new("nvidia-smi")
-        .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| s.trim().parse::<u32>().ok())
-        .unwrap_or(0);
+    let (gpu_vendor, vram_mb) = detect_gpu();
+    let vram_gb = (vram_mb + 512) / 1024;
 
     let cpu_cores = std::thread::available_parallelism()
         .map(|n| n.get() as u32)
@@ -6882,10 +6957,12 @@ fn check_hardware() -> Result<HardwareSpec, String> {
     Ok(HardwareSpec {
         total_ram_gb: ram_gb,
         total_vram_gb: vram_gb,
+        gpu_vendor,
         recommended_size_label: recommended.to_string(),
         cpu_cores,
     })
 }
+
 
 // ============================================================================
 // Model management

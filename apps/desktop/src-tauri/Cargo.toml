@@ -56,3 +56,6 @@ url = "2"
 base64 = "0.22"
 # Disk capacity reporting for the storage settings (free space per volume).
 sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
+# GPU enumeration on Windows (NVIDIA / Intel / AMD) for hardware detection.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.57", features = ["Win32_Graphics_Dxgi", "Win32_Foundation", "Win32_Graphics_Dxgi_Common"] }

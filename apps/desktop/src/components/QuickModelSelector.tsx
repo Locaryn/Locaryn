@@ -118,9 +118,7 @@ export function QuickModelSelector({
             icon = "🖼️";
           }
 
-          const isRemoteTag =
-            tag.includes("openrouter") || tag.includes("openai") || tag.includes("cloud");
-          const isLocal = isProviderLocal && !isRemoteTag;
+          const isLocal = isProviderLocal && !tag.includes("cloud");
 
           return {
             tag,
@@ -134,8 +132,10 @@ export function QuickModelSelector({
           };
         })
         // Only offer models suitable for chat (LLM / vision / code / reasoning).
-        // Exclude image-gen, TTS, music, video, 3D, etc.
+        // Exclude image-gen, TTS, music, video, 3D, etc., and anything remote
+        // (openrouter/openai/cloud) : cette app est 100 % locale.
         .filter((o) => isChatModel(o.tag))
+        .filter((o) => !(o.tag.includes("openrouter") || o.tag.includes("openai") || o.tag.includes("cloud")))
     );
   }, [dedupedModels, isProviderLocal, registry]);
 
