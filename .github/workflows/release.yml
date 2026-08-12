@@ -19,9 +19,10 @@ name: Release
 # Mise à jour automatique : le bureau embarque le plugin updater Tauri, qui
 # interroge `latest.json` publié sur chaque release (généré dans le job
 # « Publication de la release »). Pour que cela marche, la release doit être
-# PUBLIÉE (pas un brouillon), les installeurs doivent garder les noms Tauri
-# (`Locaryn_<version>_<arch>.…`), et chaque installeur doit être accompagné
-# de son `.sig` — d'où la signature obligatoire via le secret
+# PUBLIÉE (pas un brouillon), les installeurs consommés par l'updater doivent
+# garder les noms Tauri (`Locaryn_<version>_x64-setup.exe`, le .app.tar.gz
+# macOS, …), et chaque installeur doit être accompagné de son `.sig` — d'où
+# la signature obligatoire via le secret
 # `TAURI_SIGNING_PRIVATE_KEY` et `createUpdaterArtifacts` dans tauri.conf.json.
 
 on:
@@ -244,6 +245,17 @@ jobs:
                  -o -name '*.sig' \) \
               -exec cp {} dist/ \; 2>/dev/null || true
           done
+          # Le .msi sort nommé par Tauri avec la culture WiX
+          # (Locaryn_<ver>_x64_en-US.msi). Nom d'asset plus propre sans la
+          # langue : l'updater ne consomme que l'installeur NSIS (et le
+          # .app.tar.gz macOS), ce renommage est sans effet sur la mise à
+          # jour automatique. Le .sig qui l'accompagne est renommé avec lui.
+          if [ -f "dist/Locaryn_${VER}_x64_en-US.msi" ]; then
+            mv "dist/Locaryn_${VER}_x64_en-US.msi" "dist/Locaryn_${VER}_x64.msi"
+            if [ -f "dist/Locaryn_${VER}_x64_en-US.msi.sig" ]; then
+              mv "dist/Locaryn_${VER}_x64_en-US.msi.sig" "dist/Locaryn_${VER}_x64.msi.sig"
+            fi
+          fi
           ls -la dist/
           # Un job qui « réussit » sans rien produire est un piège : il fait
           # croire à une release complète.
@@ -461,7 +473,7 @@ jobs:
             | Plateforme | Fichier | Notes |
             |---|---|---|
             | Windows x64 | `Locaryn_${{ env.VER }}_x64-setup.exe` | installeur NSIS — recommandé |
-            | Windows x64 | `Locaryn_${{ env.VER }}_x64_en-US.msi` | installeur MSI — alternative |
+            | Windows x64 | `Locaryn_${{ env.VER }}_x64.msi` | installeur MSI — alternative |
             | Windows x64 | `locaryn-${{ env.VER }}-desktop-windows-x64-portable.zip` | portable, sans auto-update |
             | macOS | `Locaryn_${{ env.VER }}_universal.dmg` | universel, Intel et Apple Silicon |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
@@ -483,8 +495,10 @@ jobs:
             | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.tar.gz` | portable |
             | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.tar.gz` | portable |
 
-            Les noms Tauri (`Locaryn_<version>_x64-setup.exe`, `Locaryn_<version>_x64_en-US.msi`, …)
-            sont la convention attendue par la mise à jour automatique : ne les renommez pas.
+            Les fichiers consommés par la mise à jour automatique gardent leur nom Tauri
+            (`Locaryn_<version>_x64-setup.exe`, `Locaryn_<version>_universal.app.tar.gz`) : ne les
+            renommez pas. Le `.msi` du bureau est publié sans la culture WiX
+            (`Locaryn_<version>_x64.msi`).
 
             ### Mises à jour
 
