@@ -5155,8 +5155,15 @@ dialog.locaryn-res-panel[open] {
 
 dialog.locaryn-notif-panel[open] {
   position: fixed;
+  /* Anchored to the bottom-right, aligned with the footer button it came
+     from. `left: auto; margin: 0` is a belt-and-braces reset: some WebViews
+     center an open <dialog> horizontally, which would float the panel in the
+     middle of the window instead of hugging the right edge. */
+  top: auto;
+  left: auto;
   right: 12px;
   bottom: 42px;
+  margin: 0;
   width: 340px;
   /* Fixed height whether there is one notification, none, or a hundred: the
      panel always opens to its full size, so an empty center looks intentional
