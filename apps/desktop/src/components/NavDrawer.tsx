@@ -41,12 +41,6 @@ const NAV_ITEMS = [
     desc: "Découverte et installation de modèles locaux & HuggingFace",
   },
   {
-    id: "batch",
-    label: "Batch API (-50%)",
-    icon: "⚡",
-    desc: "Traitement par lots asynchrone à moitié prix",
-  },
-  {
     id: "training",
     label: "Entraînement & Oblitération",
     icon: "🔓",

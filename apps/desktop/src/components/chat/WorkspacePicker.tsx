@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FREE_CHAT_PATH } from "../../lib/constants";
 import { type Project, type SshServer, core } from "../../lib/core";
 
-export type WorkspaceKind = "cloud" | "local" | "ssh" | "temp";
+export type WorkspaceKind = "local" | "ssh" | "temp";
 
 export interface WorkspaceSelection {
   kind: WorkspaceKind;
@@ -21,13 +21,9 @@ type Props = {
   /** True when the current chat is a free conversation (no project).
    *  Free chats use an auto-created temp folder, so local/SSH options are hidden. */
   freeChat?: boolean;
-  /** Whether the app is currently connected to a Locaryn cloud server.
-   *  When false, the Cloud workspace is shown as disabled/off. */
-  cloudConnected?: boolean;
 };
 
 const KIND_META: Record<WorkspaceKind, { icon: string; label: string; hint: string }> = {
-  cloud: { icon: "☁️", label: "Cloud", hint: "Aucun accès fichier — conversation seule" },
   local: { icon: "📁", label: "Local", hint: "Un dossier de votre machine" },
   ssh: { icon: "🖧", label: "SSH", hint: "Un serveur distant enregistré" },
   temp: {
@@ -38,18 +34,11 @@ const KIND_META: Record<WorkspaceKind, { icon: string; label: string; hint: stri
 };
 
 /**
- * Where the agent works: nothing (cloud), a local folder, or a saved SSH
+ * Where the agent works: a local folder or a saved SSH server.
  * server. Sits above the composer because it changes what every message can
  * touch — that context should be visible without opening settings.
  */
-export function WorkspacePicker({
-  value,
-  onChange,
-  onAddProject,
-  onAddSsh,
-  freeChat,
-  cloudConnected,
-}: Props) {
+export function WorkspacePicker({ value, onChange, onAddProject, onAddSsh, freeChat }: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [servers, setServers] = useState<SshServer[]>([]);
@@ -121,33 +110,6 @@ export function WorkspacePicker({
 
       {open && (
         <div className="locaryn-ws-menu" role="menu">
-          <button
-            type="button"
-            className={`locaryn-ws-item${value.kind === "cloud" && cloudConnected ? " locaryn-active" : ""}`}
-            disabled={!cloudConnected}
-            onClick={() => {
-              if (!cloudConnected) return;
-              onChange({ kind: "cloud", id: null, label: "Cloud" });
-              setOpen(false);
-            }}
-            title={
-              cloudConnected
-                ? KIND_META.cloud.hint
-                : "Cloud indisponible — connectez l'app à un serveur Locaryn"
-            }
-            style={!cloudConnected ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-          >
-            <span>☁️</span>
-            <span className="locaryn-ws-item-text">
-              <span>Cloud {cloudConnected ? "" : "(off)"}</span>
-              <span className="locaryn-ws-item-hint">
-                {cloudConnected
-                  ? KIND_META.cloud.hint
-                  : "Connectez l'app à un serveur Locaryn pour activer"}
-              </span>
-            </span>
-          </button>
-
           <div className="locaryn-ws-sep">
             <span>📁 Dossiers locaux</span>
             {onAddProject && (

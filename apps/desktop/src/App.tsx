@@ -1,6 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
-import { BatchStudio } from "./components/BatchStudio";
 import { ChatPermissionsModal } from "./components/ChatPermissionsModal";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
@@ -623,7 +622,6 @@ export function App() {
           <ChatPanel
             sessionId={activeSession?.id ?? null}
             projectId={activeProject?.id ?? null}
-            connectionMode={health?.mode}
             onCreateSessionForPrompt={handleCreateSessionForPrompt}
             onOpenSettings={() => setActiveView("settings")}
             onNewChat={handleNewStandaloneChat}
@@ -716,8 +714,6 @@ export function App() {
             onOpenMarketplace={() => setActiveView("models")}
           />
         )}
-
-        {activeView === "batch" && <BatchStudio />}
 
         {activeView === "studio" && (
           <StudioView

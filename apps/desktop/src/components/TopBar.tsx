@@ -30,7 +30,6 @@ const MODE_LABEL: Record<ConnectionMode, string> = {
 const VIEW_TITLES: Record<string, string> = {
   models: "Marketplace Modèles",
   installed: "Mes Modèles Installés",
-  batch: "Batch API Studio (-50%)",
   training: "Entraînement & Oblitération",
   connectors: "Connecteurs & MCP",
   settings: "Paramètres Système",
@@ -62,7 +61,7 @@ export function TopBar({
         <button
           type="button"
           className="locaryn-icon-btn locaryn-menu-btn"
-          title="Ouvrir le menu de navigation (Marketplace, Batch API, Entraînement...)"
+          title="Ouvrir le menu de navigation (Marketplace, Studio, Entraînement...)"
           onClick={onToggleNavDrawer}
         >
           <svg

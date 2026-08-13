@@ -9,7 +9,6 @@ import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { ToolCard } from "../components/chat/ToolCard";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import {
-  type ConnectionMode,
   IMAGE_QUALITIES,
   type ImageIntent,
   type ReasoningLevel,
@@ -96,9 +95,6 @@ type Props = {
   onAddProject?: () => void;
   /** Workspace picker: register a new SSH connection. */
   onAddSsh?: () => void;
-  /** Connection mode from the Rust core. Cloud workspace is only enabled
-   *  when the app is connected to a remote Locaryn server (mode === "remote"). */
-  connectionMode?: ConnectionMode;
 };
 
 const SUGGESTIONS = [
@@ -159,7 +155,6 @@ export function ChatPanel({
   onNewChat,
   onAddProject,
   onAddSsh,
-  connectionMode,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -1148,7 +1143,6 @@ export function ChatPanel({
             onAddProject={onAddProject}
             onAddSsh={onAddSsh}
             freeChat={!projectId}
-            cloudConnected={connectionMode === "remote"}
           />
         </div>
 
