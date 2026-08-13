@@ -6,6 +6,7 @@
 // tested without the Rust shell. The active mode is exposed as `coreMode`.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { resolveSeedGguf } from "./modelRegistry";
 
 export type TrustLevel = "trusted" | "untrusted" | "sandbox";
 export type ConnectionMode = "auto" | "remote" | "local";
@@ -1703,6 +1704,9 @@ const tauriCore: CoreApi = {
   updateProviderModelParams: (params) => invoke("update_provider_model_params", { params }),
   getProviderModelParams: () => invoke<ModelParams>("get_provider_model_params"),
   pullModel: (endpoint, model, onProgress, heretic, consent) => {
+    // Tags du catalogue style Ollama (gemma2:2b…) → URL GGUF directe. Le
+    // backend local ne connaît pas Ollama et rejette les tags sans URL.
+    const modelUrl = resolveSeedGguf(model) ?? model;
     const chan = new Channel<{
       status: string;
       completed: number;
@@ -1719,7 +1723,7 @@ const tauriCore: CoreApi = {
     const hfToken = getHfToken();
     return invoke("pull_model", {
       endpoint,
-      model,
+      model: modelUrl,
       heretic: heretic ?? null,
       consent: consent ?? null,
       hfToken: hfToken || null,
@@ -2911,6 +2915,7 @@ const demoCore: CoreApi = {
     return p;
   },
   pullModel: async (_endpoint, model, onProgress, _heretic, consent) => {
+    const modelUrl = resolveSeedGguf(model) ?? model;
     if (
       /nsfw|uncensored|pony|urpm|realisticvision|abyssorangemix|counterfeit|flux.*uncensored|hunyuanvideo.*nsfw|wan2.*nsfw/i.test(
         model,
@@ -2923,10 +2928,10 @@ const demoCore: CoreApi = {
     }
     for (let i = 20; i <= 100; i += 20) {
       await sleep(200);
-      onProgress?.(i, `Téléchargement de ${model}... ${i}%`);
+      onProgress?.(i, `Téléchargement de ${modelUrl}... ${i}%`);
     }
-    if (!demoModels.includes(model)) {
-      demoModels.push(model);
+    if (!demoModels.includes(modelUrl)) {
+      demoModels.push(modelUrl);
     }
   },
   cancelPullModel: async () => {

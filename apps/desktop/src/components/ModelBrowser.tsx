@@ -11,6 +11,7 @@ import {
   fetchHuggingFaceTTSModels,
   isCloudOnlyFamily,
   looksLikeImageModel,
+  resolveSeedGguf,
 } from "../lib/modelRegistry";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { HardwareBenchmarkModal } from "./HardwareBenchmarkModal";
@@ -92,6 +93,13 @@ function capBadges(f: ModelFamily) {
 function getQuantTag(baseTag: string, quant: string): string {
   if (!quant || quant === "default") return baseTag;
   if (quant === "cloud") return baseTag;
+
+  // Tags du catalogue style Ollama (gemma2:2b, qwen3:8b…) → URL GGUF directe
+  // vérifiée. Le backend local ne connaît pas Ollama et refuse les tags sans
+  // URL ; sans cette résolution chaque installation échouait avec
+  // « utilisez une URL directe vers un fichier .gguf ».
+  const seedUrl = resolveSeedGguf(baseTag, quant);
+  if (seedUrl) return seedUrl;
 
   // Expand hf.co/ shorthand to a real URL so the backend can download it.
   const tag = baseTag.startsWith("hf.co/")
@@ -865,7 +873,7 @@ export function ModelBrowser({
           <input
             className="locaryn-input"
             style={{ flex: 1, fontSize: "12px" }}
-            placeholder="➕ Télécharger un modèle spécifique ou dépôt HuggingFace (ex: gemma4:2b, kimi-k3:8b, mimo:7b, glm5.2:9b, hf.co/user/repo)..."
+            placeholder="➕ Télécharger un modèle spécifique ou dépôt HuggingFace (ex: gemma4:e2b, qwen3:8b, ou une URL directe .gguf, ou hf.co/user/repo)..."
             value={customTagInput}
             onChange={(e) => setCustomTagInput(e.target.value)}
           />

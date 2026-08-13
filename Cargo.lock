@@ -3361,7 +3361,7 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
 name = "locaryn-agent-runtime"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3381,7 +3381,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-auth"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "argon2",
  "chrono",
@@ -3399,7 +3399,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-cli"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "clap",
@@ -3422,7 +3422,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-command-runtime"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3434,7 +3434,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-config"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
@@ -3448,7 +3448,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-daemon"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "axum",
@@ -3483,7 +3483,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-desktop"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3527,7 +3527,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-enterprise"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3540,7 +3540,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-events"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "bytes",
  "futures",
@@ -3554,7 +3554,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-extensions"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "chrono",
  "locaryn-command-runtime",
@@ -3579,7 +3579,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-hook-runtime"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3591,7 +3591,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-lsp-adapters"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "async-trait",
  "locaryn-shared-types",
@@ -3604,7 +3604,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-mcp"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3622,7 +3622,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-mobile"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "locaryn-config",
  "locaryn-travel",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-plugin-sdk"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "async-trait",
  "locaryn-extensions",
@@ -3651,7 +3651,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-preview"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "chrono",
  "locaryn-shared-types",
@@ -3663,7 +3663,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-provider-supervisor"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3686,7 +3686,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-remote-server"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "axum",
@@ -3714,7 +3714,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-rules-runtime"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "locaryn-config",
  "locaryn-shared-types",
@@ -3724,7 +3724,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-sdk"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "async-trait",
  "futures",
@@ -3740,7 +3740,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-shared-types"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "chrono",
  "serde",
@@ -3750,7 +3750,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-skill-runtime"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3761,7 +3761,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-ssh"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "russh",
@@ -3772,7 +3772,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-storage"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "chrono",
  "locaryn-auth",
@@ -3788,7 +3788,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-travel"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "locaryn-config",
  "qrcode",

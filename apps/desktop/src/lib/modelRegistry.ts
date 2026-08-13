@@ -389,6 +389,433 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const QUANTS_SMALL = ["q4_K_M", "q5_K_M", "q8_0", "fp16"];
 const QUANTS_BIG = ["q4_K_M", "q5_K_M", "q6_K", "q8_0"];
 
+/**
+ * Résolution des tags du catalogue style « Ollama » (`gemma2:2b`, `qwen3:8b`…)
+ * vers de vraies URLs de fichiers GGUF hébergés sur HuggingFace.
+ *
+ * L'app ne dépend PAS d'Ollama : le backend local (`pull_model`) refuse tout
+ * ce qui ne commence pas par `http`, donc un tag du catalogue sans URL
+ * déclenchait l'erreur « utilisez une URL directe vers un fichier .gguf ».
+ * Chaque URL ci-dessous a été vérifiée (HEAD 200) sur HuggingFace.
+ */
+export type SeedGgufMap = Record<string, { default: string; quants: Record<string, string> }>;
+
+export const SEED_GGUF_URLS: SeedGgufMap = {
+  "codestral:22b": {
+    default:
+      "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF/resolve/main/Codestral-22B-v0.1-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF/resolve/main/Codestral-22B-v0.1-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF/resolve/main/Codestral-22B-v0.1-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF/resolve/main/Codestral-22B-v0.1-Q6_K.gguf",
+      q8_0: "https://huggingface.co/bartowski/Codestral-22B-v0.1-GGUF/resolve/main/Codestral-22B-v0.1-Q8_0.gguf",
+    },
+  },
+  "deepseek-coder-v2:16b": {
+    default:
+      "https://huggingface.co/Guervency/deepseek-coder-v2-lite-16b-gguf/resolve/main/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/Guervency/deepseek-coder-v2-lite-16b-gguf/resolve/main/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+    },
+  },
+  "deepseek-r1:1.5b": {
+    default:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",
+    },
+  },
+  "deepseek-r1:14b": {
+    default:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q6_K.gguf",
+      q8_0: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q8_0.gguf",
+    },
+  },
+  "deepseek-r1:32b": {
+    default:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q6_K.gguf",
+      q8_0: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q8_0.gguf",
+    },
+  },
+  "deepseek-r1:70b": {
+    default:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+    },
+  },
+  "deepseek-r1:7b": {
+    default:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q8_0.gguf",
+    },
+  },
+  "deepseek-r1:8b": {
+    default:
+      "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q8_0.gguf",
+    },
+  },
+  "gemma2:27b": {
+    default:
+      "https://huggingface.co/bartowski/gemma-2-27b-it-GGUF/resolve/main/gemma-2-27b-it-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/gemma-2-27b-it-GGUF/resolve/main/gemma-2-27b-it-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/gemma-2-27b-it-GGUF/resolve/main/gemma-2-27b-it-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/bartowski/gemma-2-27b-it-GGUF/resolve/main/gemma-2-27b-it-Q6_K.gguf",
+      q8_0: "https://huggingface.co/bartowski/gemma-2-27b-it-GGUF/resolve/main/gemma-2-27b-it-Q8_0.gguf",
+    },
+  },
+  "gemma2:2b": {
+    default:
+      "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q8_0.gguf",
+    },
+  },
+  "gemma2:9b": {
+    default:
+      "https://huggingface.co/bartowski/gemma-2-9b-it-GGUF/resolve/main/gemma-2-9b-it-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/gemma-2-9b-it-GGUF/resolve/main/gemma-2-9b-it-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/gemma-2-9b-it-GGUF/resolve/main/gemma-2-9b-it-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/bartowski/gemma-2-9b-it-GGUF/resolve/main/gemma-2-9b-it-Q8_0.gguf",
+    },
+  },
+  "gemma4:12b": {
+    default:
+      "https://huggingface.co/unsloth/gemma-4-12B-it-GGUF/resolve/main/gemma-4-12b-it-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/unsloth/gemma-4-12B-it-GGUF/resolve/main/gemma-4-12b-it-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/unsloth/gemma-4-12B-it-GGUF/resolve/main/gemma-4-12b-it-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/unsloth/gemma-4-12B-it-GGUF/resolve/main/gemma-4-12b-it-Q6_K.gguf",
+      q8_0: "https://huggingface.co/unsloth/gemma-4-12B-it-GGUF/resolve/main/gemma-4-12b-it-Q8_0.gguf",
+    },
+  },
+  "gemma4:26b": {
+    default:
+      "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-Q6_K.gguf",
+    },
+  },
+  "gemma4:31b": {
+    default:
+      "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/resolve/main/gemma-4-31B-it-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/resolve/main/gemma-4-31B-it-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/resolve/main/gemma-4-31B-it-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/resolve/main/gemma-4-31B-it-Q6_K.gguf",
+      q8_0: "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/resolve/main/gemma-4-31B-it-Q8_0.gguf",
+    },
+  },
+  "gemma4:e2b": {
+    default:
+      "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q8_0.gguf",
+    },
+  },
+  "gemma4:e4b": {
+    default:
+      "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q8_0.gguf",
+    },
+  },
+  "glm4:9b": {
+    default:
+      "https://huggingface.co/mradermacher/glm-4-9b-chat-GGUF/resolve/main/glm-4-9b-chat.Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/mradermacher/glm-4-9b-chat-GGUF/resolve/main/glm-4-9b-chat.Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/mradermacher/glm-4-9b-chat-GGUF/resolve/main/glm-4-9b-chat.Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/mradermacher/glm-4-9b-chat-GGUF/resolve/main/glm-4-9b-chat.Q8_0.gguf",
+    },
+  },
+  "inkling:12b": {
+    default:
+      "https://huggingface.co/DevQuasar/thinkingmachines.Inkling-Small-GGUF/resolve/main/Q3_K_M/thinkingmachines.Inkling-Small.f16.gguf.Q3_K_M.gguf-00010-of-00010.gguf",
+    quants: {
+      Q3_K_M:
+        "https://huggingface.co/DevQuasar/thinkingmachines.Inkling-Small-GGUF/resolve/main/Q3_K_M/thinkingmachines.Inkling-Small.f16.gguf.Q3_K_M.gguf-00010-of-00010.gguf",
+    },
+  },
+  "llama3.2:1b": {
+    default:
+      "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q8_0.gguf",
+    },
+  },
+  "llama3.2:3b": {
+    default:
+      "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q8_0.gguf",
+    },
+  },
+  "llama4:scout": {
+    default:
+      "https://huggingface.co/unsloth/Llama-4-Scout-17B-16E-Instruct-GGUF/resolve/main/Llama-4-Scout-17B-16E-Instruct-Q3_K_S.gguf",
+    quants: {
+      Q3_K_S:
+        "https://huggingface.co/unsloth/Llama-4-Scout-17B-16E-Instruct-GGUF/resolve/main/Llama-4-Scout-17B-16E-Instruct-Q3_K_S.gguf",
+    },
+  },
+  "mimo-v2.5:12b": {
+    default: "https://huggingface.co/tnhnyzc/MiMO-V2.5-MTP-GGUF/resolve/main/MiMo-V2.5-IQ3_S.gguf",
+    quants: {
+      IQ3_S: "https://huggingface.co/tnhnyzc/MiMO-V2.5-MTP-GGUF/resolve/main/MiMo-V2.5-IQ3_S.gguf",
+    },
+  },
+  "mimo:7b": {
+    default: "https://huggingface.co/jedisct1/MiMo-7B-RL-GGUF/resolve/main/MiMo-7B-RL-Q4_K_M.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/jedisct1/MiMo-7B-RL-GGUF/resolve/main/MiMo-7B-RL-Q4_K_M.gguf",
+      q8_0: "https://huggingface.co/jedisct1/MiMo-7B-RL-GGUF/resolve/main/MiMo-7B-RL-Q8_0.gguf",
+    },
+  },
+  "mistral:7b": {
+    default:
+      "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q8_0.gguf",
+    },
+  },
+  "nemotron-nano": {
+    default:
+      "https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF/resolve/main/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-UD-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF/resolve/main/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-UD-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF/resolve/main/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-UD-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF/resolve/main/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-UD-Q6_K.gguf",
+    },
+  },
+  "phi4-mini": {
+    default:
+      "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q5_K_M.gguf",
+    },
+  },
+  "phi4:14b": {
+    default: "https://huggingface.co/bartowski/Phi-4-GGUF/resolve/main/phi-4-Q4_K_M.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/bartowski/Phi-4-GGUF/resolve/main/phi-4-Q4_K_M.gguf",
+      q5_K_M: "https://huggingface.co/bartowski/Phi-4-GGUF/resolve/main/phi-4-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/bartowski/Phi-4-GGUF/resolve/main/phi-4-Q6_K.gguf",
+      q8_0: "https://huggingface.co/bartowski/Phi-4-GGUF/resolve/main/phi-4-Q8_0.gguf",
+    },
+  },
+  "qwen2.5-coder:14b": {
+    default:
+      "https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-14B-Instruct-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-14B-Instruct-Q6_K.gguf",
+      q8_0: "https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-14B-Instruct-Q8_0.gguf",
+    },
+  },
+  "qwen2.5-coder:32b": {
+    default:
+      "https://huggingface.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-32B-Instruct-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-32B-Instruct-Q6_K.gguf",
+      q8_0: "https://huggingface.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-32B-Instruct-Q8_0.gguf",
+    },
+  },
+  "qwen2.5-coder:7b": {
+    default:
+      "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q8_0.gguf",
+    },
+  },
+  "qwen3-coder:30b": {
+    default:
+      "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf",
+      q8_0: "https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-Q8_0.gguf",
+    },
+  },
+  "qwen3:0.6b": {
+    default: "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf",
+      q5_K_M: "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf",
+    },
+  },
+  "qwen3:1.7b": {
+    default: "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
+      q5_K_M: "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf",
+    },
+  },
+  "qwen3:14b": {
+    default: "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
+      q5_K_M: "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q6_K.gguf",
+      q8_0: "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q8_0.gguf",
+    },
+  },
+  "qwen3:30b-a3b": {
+    default:
+      "https://huggingface.co/Qwen/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M:
+        "https://huggingface.co/Qwen/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q4_K_M.gguf",
+      q5_K_M:
+        "https://huggingface.co/Qwen/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/Qwen/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q6_K.gguf",
+      q8_0: "https://huggingface.co/Qwen/Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B-Q8_0.gguf",
+    },
+  },
+  "qwen3:32b": {
+    default: "https://huggingface.co/Qwen/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/Qwen/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q4_K_M.gguf",
+      q5_K_M: "https://huggingface.co/Qwen/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q5_K_M.gguf",
+      q6_K: "https://huggingface.co/Qwen/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q6_K.gguf",
+      q8_0: "https://huggingface.co/Qwen/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q8_0.gguf",
+    },
+  },
+  "qwen3:4b": {
+    default: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+      q5_K_M: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q8_0.gguf",
+    },
+  },
+  "qwen3:8b": {
+    default: "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
+      q5_K_M: "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q5_K_M.gguf",
+      q8_0: "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf",
+    },
+  },
+  "qwq:32b": {
+    default: "https://huggingface.co/Qwen/QwQ-32B-GGUF/resolve/main/qwq-32b-q4_k_m.gguf",
+    quants: {
+      q4_K_M: "https://huggingface.co/Qwen/QwQ-32B-GGUF/resolve/main/qwq-32b-q4_k_m.gguf",
+      q5_K_M: "https://huggingface.co/Qwen/QwQ-32B-GGUF/resolve/main/qwq-32b-q5_k_m.gguf",
+      q6_K: "https://huggingface.co/Qwen/QwQ-32B-GGUF/resolve/main/qwq-32b-q6_k.gguf",
+      q8_0: "https://huggingface.co/Qwen/QwQ-32B-GGUF/resolve/main/qwq-32b-q8_0.gguf",
+    },
+  },
+};
+
+/** Résout un tag du catalogue style Ollama vers une URL GGUF directe.
+ *  Retourne `null` si le tag n'est pas un tag seed connu (URL directe,
+ *  modèle tiers, etc.) — dans ce cas l'appelant garde son comportement. */
+export function resolveSeedGguf(tag: string, quant?: string): string | null {
+  const entry = SEED_GGUF_URLS[tag];
+  if (!entry) return null;
+  if (quant && quant !== "default" && quant !== "cloud") {
+    const url = entry.quants[quant];
+    if (url) return url;
+    // Quant non vérifié pour ce modèle : retomber sur le fichier par défaut
+    // plutôt que d'envoyer une URL inexistante au backend.
+    return entry.default;
+  }
+  return entry.default;
+}
+
 /** Does this tag/filename designate an IMAGE model (diffusion checkpoint)?
  *
  *  Mirrors `is_image_asset` in the Rust backend. Needed because the catalogue's
