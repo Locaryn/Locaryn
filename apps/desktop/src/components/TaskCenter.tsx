@@ -46,7 +46,7 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
       <button
         ref={btnRef}
         type="button"
-        className={`locaryn-footer${running.length > 0 ? " locaryn-footer-active" : ""}`}
+        className={`locaryn-footer${running.length > 0 ? " locaryn-footer-active" : ""}${open ? " locaryn-footer-open" : ""}`}
         onClick={() => setOpen((v) => !v)}
         title="Centre de notifications (téléchargements, générations, workflows)"
       >
@@ -100,7 +100,12 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
 
           <div className="locaryn-notif-list">
             {tasks.length === 0 ? (
-              <div className="locaryn-notif-empty">Rien pour l'instant.</div>
+              <div className="locaryn-notif-empty">
+                <span className="locaryn-notif-empty-icon" aria-hidden="true">
+                  🔔
+                </span>
+                Aucune notification
+              </div>
             ) : (
               tasks.map((t) => {
                 const m = TASK_META[t.type];

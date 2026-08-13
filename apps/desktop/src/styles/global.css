@@ -5086,6 +5086,7 @@ dialog.locaryn-res-panel[open] {
   cursor: pointer;
   color: var(--text-dim);
   font-size: 11px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, padding 0.2s ease;
 }
 .locaryn-footer:hover {
   color: var(--text);
@@ -5094,6 +5095,37 @@ dialog.locaryn-res-panel[open] {
 .locaryn-footer-active {
   border-color: var(--accent);
   color: var(--accent);
+}
+/* When the panel is open the footer collapses to a compact pill: the summary
+   text fades away (it is echoed by the panel itself) and only the dot + arrow
+   remain, turning with a gentle arrow flip. */
+.locaryn-footer-open {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 2px 8px;
+}
+.locaryn-footer-summary,
+.locaryn-footer-mini {
+  transition: opacity 0.18s ease, width 0.18s ease;
+  white-space: nowrap;
+}
+.locaryn-footer-open .locaryn-footer-summary {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+}
+.locaryn-footer-open .locaryn-footer-mini {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+}
+.locaryn-footer-chevron {
+  opacity: 0.6;
+  transition: transform 0.2s ease;
+}
+.locaryn-footer-open .locaryn-footer-chevron {
+  transform: rotate(180deg);
 }
 .locaryn-footer-dot {
   width: 7px;
@@ -5109,8 +5141,16 @@ dialog.locaryn-res-panel[open] {
   display: inline-flex;
   gap: 3px;
 }
-.locaryn-footer-chevron {
-  opacity: 0.6;
+
+@keyframes locaryn-notif-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 dialog.locaryn-notif-panel[open] {
@@ -5118,7 +5158,10 @@ dialog.locaryn-notif-panel[open] {
   right: 12px;
   bottom: 42px;
   width: 340px;
-  max-height: 60vh;
+  /* Fixed height whether there is one notification, none, or a hundred: the
+     panel always opens to its full size, so an empty center looks intentional
+     instead of collapsing into a sad little rectangle. */
+  height: min(62vh, 480px);
   display: flex;
   flex-direction: column;
   background: var(--panel, #161816);
@@ -5127,6 +5170,7 @@ dialog.locaryn-notif-panel[open] {
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.6);
   z-index: 900;
   overflow: hidden;
+  animation: locaryn-notif-rise 0.2s ease-out;
 }
 .locaryn-notif-head {
   display: flex;
@@ -5147,6 +5191,11 @@ dialog.locaryn-notif-panel[open] {
   color: var(--text);
 }
 .locaryn-notif-list {
+  /* flex: 1 + min-height: 0 is what actually makes the list scroll when it
+     overflows the fixed panel height — without it the flexbox column just
+     pushes the panel bigger and the scrollbar never appears. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 8px;
   display: flex;
@@ -5154,10 +5203,20 @@ dialog.locaryn-notif-panel[open] {
   gap: 6px;
 }
 .locaryn-notif-empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   color: var(--text-faint);
   font-size: var(--text-xs);
   text-align: center;
   padding: 20px;
+}
+.locaryn-notif-empty-icon {
+  font-size: 22px;
+  opacity: 0.5;
 }
 .locaryn-notif-item {
   background: var(--surface);
