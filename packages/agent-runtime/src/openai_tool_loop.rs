@@ -347,6 +347,7 @@ pub async fn run_openai_tool_loop(
                             reason: decision.reason.clone(),
                             diff: decision.diff.clone(),
                             is_remote: ctx.remote_target.is_some(),
+                            project_id: ctx.project_id,
                         },
                     )
                     .await;

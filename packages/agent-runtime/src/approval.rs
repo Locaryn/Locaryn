@@ -26,6 +26,11 @@ pub struct ApprovalRequest {
     pub diff: Option<String>,
     /// L'appel franchit la limite de la machine.
     pub is_remote: bool,
+    /// Le projet dans lequel l'appel a lieu. Sans lui, une décision « ce
+    /// projet » ne saurait pas de quel projet il s'agit et vaudrait
+    /// silencieusement « partout » — l'écart le plus dangereux entre ce que la
+    /// fenêtre promet et ce qu'elle fait.
+    pub project_id: uuid::Uuid,
 }
 
 /// La réponse. `Deny` porte le motif tel qu'il sera renvoyé au modèle : ce
@@ -115,6 +120,7 @@ mod tests {
             reason: "écrit un fichier".into(),
             diff: None,
             is_remote: false,
+            project_id: uuid::Uuid::nil(),
         }
     }
 

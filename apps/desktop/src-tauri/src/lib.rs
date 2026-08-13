@@ -314,6 +314,7 @@ async fn init_core() -> anyhow::Result<Core> {
         storage,
         supervisor,
         mode: cfg.connection.mode,
+        approval_gate: approval_gate::GateBureau::new(data_dir.clone()),
         data_dir,
         http,
         keychain,
@@ -325,7 +326,6 @@ async fn init_core() -> anyhow::Result<Core> {
         pull_cancels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         embed_server: Arc::new(tokio::sync::Mutex::new(None)),
         pending_approvals: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-        approval_gate: approval_gate::GateBureau::new(),
     })
 }
 
