@@ -59,6 +59,16 @@ type ChatItem =
 type Attachment = { id: string; dataUrl: string; base64: string; name: string };
 type QueuedMessage = { id: string; text: string; attachments: Attachment[] };
 
+/** Short readable name for a free-chat workspace folder. The real folder is
+ *  named after the session UUID; we surface a compact random-looking slice so
+ *  the picker shows something concrete ("espace-4f3a…") instead of a generic
+ *  "Temporaire". */
+function tempDirLabel(path: string): string {
+  const base = path.split(/[\/]/).pop() ?? "";
+  const short = base.replace(/-/g, "").slice(0, 8);
+  return short ? `espace-${short}` : "espace";
+}
+
 /** Identités locales pour les clés React. Rien de ce qui s'affiche dans le fil
  *  n'a d'identifiant propre avant d'être écrit en base — jetons diffusés,
  *  journaux, cartes d'intention — et une entrée peut être retirée du milieu
@@ -174,7 +184,9 @@ export function ChatPanel({
   const [workspace, setWorkspace] = useState<WorkspaceSelection>({
     kind: "temp",
     id: null,
-    label: "Temporaire",
+    // Empty label: no temp folder exists yet. The picker stays hidden until
+    // code/files actually need a directory (then the folder name shows up).
+    label: "",
   });
   /** Directory the code runner and terminal should use for this session. */
   const [runCwd, setRunCwd] = useState<string | null>(null);
@@ -247,7 +259,7 @@ export function ChatPanel({
   // A chat inside a project works in that folder — reflect it in the picker.
   useEffect(() => {
     if (!projectId) {
-      setWorkspace({ kind: "temp", id: null, label: "Temporaire" });
+      setWorkspace({ kind: "temp", id: null, label: "" });
       return;
     }
     core
@@ -259,27 +271,41 @@ export function ChatPanel({
       .catch(() => {});
   }, [projectId]);
 
-  // Resolve the real workspace directory for this session (project path or a
-  // per-session temp folder for free chats).
+  // Show the free-chat workspace folder name only if it already exists (a
+  // previous code run or a file write created it). A plain question never
+  // creates the folder, so the picker stays empty — no useless "Temporary"
+  // badge, no disk footprint.
   useEffect(() => {
-    if (!sessionId) {
-      setRunCwd(null);
-      return;
-    }
+    if (!sessionId || projectId) return;
+    let cancelled = false;
     core
-      .sessionWorkspace(sessionId)
-      .then((p) => setRunCwd(p))
-      .catch(() => setRunCwd(null));
-  }, [sessionId]);
+      .sessionWorkspace(sessionId, false)
+      .then(({ path, exists }) => {
+        if (!cancelled && exists) {
+          setWorkspace({ kind: "temp", id: null, label: tempDirLabel(path) });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, projectId]);
 
-  /** Ensure the code runner has a cwd before executing. */
+  /** Ensure the code runner has a cwd before executing (creates the temp
+   *  folder on first use, then surfaces its name in the picker). */
   async function resolveRunCwd(): Promise<string | null> {
     if (runCwd) return runCwd;
     if (!sessionId) return null;
     try {
-      const p = await core.sessionWorkspace(sessionId);
-      setRunCwd(p);
-      return p;
+      const ws = await core.sessionWorkspace(sessionId, true);
+      if (ws.exists) {
+        setRunCwd(ws.path);
+        if (!projectId) {
+          setWorkspace({ kind: "temp", id: null, label: tempDirLabel(ws.path) });
+        }
+        return ws.path;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -569,6 +595,20 @@ export function ChatPanel({
       setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `send failed: ${e}` }]);
     } finally {
       setStreaming(false);
+
+      // The agent may have written files (or run commands) during the answer —
+      // that created the free-chat workspace folder. Surface its name now so
+      // the picker reflects reality instead of staying empty.
+      if (!projectId && sid) {
+        core
+          .sessionWorkspace(sid, false)
+          .then(({ path, exists }) => {
+            if (exists) {
+              setWorkspace({ kind: "temp", id: null, label: tempDirLabel(path) });
+            }
+          })
+          .catch(() => {});
+      }
 
       // Update the duration estimator so it can learn how fast each model
       // produces answers on this machine.

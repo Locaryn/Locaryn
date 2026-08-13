@@ -527,6 +527,13 @@ pub async fn dispatch_tool(
     ctx: &ToolContext,
 ) -> ToolResult {
     let project_root = ctx.project_path.as_path();
+    // The free-chat workspace is created lazily — only when a file tool is
+    // actually used. A simple question never touches the disk.
+    if matches!(tool_name, "read_file" | "write_file" | "search" | "run_command") {
+        if let Err(e) = tokio::fs::create_dir_all(project_root).await {
+            return err(&format!("workspace error: {e}"));
+        }
+    }
     match tool_name {
         "read_file" => exec_read_file(args, project_root).await,
         "write_file" => exec_write_file(args, project_root).await,

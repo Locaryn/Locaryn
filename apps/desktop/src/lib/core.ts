@@ -1104,8 +1104,11 @@ export interface CoreApi {
   archiveProject(id: string): Promise<void>;
   /** Hidden project owning project-less ("free") chats. */
   freeChatProject(): Promise<Project>;
-  /** Workspace directory for a session (project path, or temp folder for free chats). */
-  sessionWorkspace(sessionId: string): Promise<string>;
+  /** Workspace directory for a session (project path, or temp folder for free
+   *  chats). The temp folder is created only when `ensure` is true — a plain
+   *  question must never leave a folder on disk. `exists` tells the caller
+   *  whether the folder is actually there (so the UI stays empty when it is). */
+  sessionWorkspace(sessionId: string, ensure?: boolean): Promise<{ path: string; exists: boolean }>;
   /** A plan the model produced for a substantial request. */
   planTask(request: string): Promise<TaskPlan>;
   /** Should this message be routed to the image generator? Prepares the
@@ -1498,7 +1501,11 @@ const tauriCore: CoreApi = {
     invoke<Project>("update_project", { id, name: name ?? null, trustLevel: trustLevel ?? null }),
   archiveProject: (id) => invoke<void>("archive_project", { id }),
   freeChatProject: () => invoke<Project>("free_chat_project"),
-  sessionWorkspace: (sessionId) => invoke<string>("session_workspace", { sessionId }),
+  sessionWorkspace: (sessionId, ensure) =>
+    invoke<{ path: string; exists: boolean }>("session_workspace", {
+      sessionId,
+      ensure: ensure ?? false,
+    }),
   suggestFollowups: (answer) => invoke<string[]>("suggest_followups", { answer }),
   planTask: (request) => invoke<TaskPlan>("plan_task", { request }),
   detectImageRequest: (message) => invoke<ImageIntent>("detect_image_request", { message }),
@@ -2701,7 +2708,10 @@ const demoCore: CoreApi = {
     path: "__locaryn_free_chats__",
     name: "Conversations libres",
   }),
-  sessionWorkspace: async () => "/tmp/locaryn-demo",
+  sessionWorkspace: async (_sessionId, ensure) => {
+    if (ensure) return { path: "/tmp/locaryn-demo", exists: true };
+    return { path: "/tmp/locaryn-demo", exists: false };
+  },
   appendAssistantMessage: async () => {},
   detectImageRequest: async (message) => {
     const m =

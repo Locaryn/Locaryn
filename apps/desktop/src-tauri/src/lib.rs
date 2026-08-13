@@ -495,10 +495,23 @@ async fn free_chat_project(core: State<'_, Core>) -> Result<Project, String> {
         .map_err(|e| e.to_string())
 }
 
+#[derive(serde::Serialize)]
+struct SessionWorkspace {
+    path: String,
+    exists: bool,
+}
+
 /// Return the workspace directory for a session: the project path for normal
-/// chats, or an auto-created temp folder for free chats.
+/// chats, or a per-session temp folder for free chats. The folder is created
+/// lazily — only when `ensure` is true (i.e. when code/files actually need a
+/// real directory). A plain question never touches the disk, so the UI can
+/// stay empty instead of advertising a "Temporary" folder that nothing uses.
 #[tauri::command]
-async fn session_workspace(core: State<'_, Core>, session_id: Uuid) -> Result<String, String> {
+async fn session_workspace(
+    core: State<'_, Core>,
+    session_id: Uuid,
+    ensure: Option<bool>,
+) -> Result<SessionWorkspace, String> {
     let session = core
         .storage
         .sessions
@@ -513,12 +526,22 @@ async fn session_workspace(core: State<'_, Core>, session_id: Uuid) -> Result<St
         .map_err(|e| e.to_string())?;
     if project.path == FREE_CHAT_PROJECT_PATH {
         let dir = free_session_dir(&core.data_dir, session_id);
-        if let Err(e) = tokio::fs::create_dir_all(&dir).await {
-            tracing::warn!(error = %e, "failed to create free session dir");
+        let mut exists = dir.is_dir();
+        if ensure.unwrap_or(false) && !exists {
+            match tokio::fs::create_dir_all(&dir).await {
+                Ok(()) => exists = true,
+                Err(e) => tracing::warn!(error = %e, "failed to create free session dir"),
+            }
         }
-        return Ok(dir.to_string_lossy().to_string());
+        return Ok(SessionWorkspace {
+            path: dir.to_string_lossy().to_string(),
+            exists,
+        });
     }
-    Ok(project.path)
+    Ok(SessionWorkspace {
+        path: project.path,
+        exists: true,
+    })
 }
 
 /// Persist an assistant message (e.g. a finished image generation) so it stays
@@ -1289,13 +1312,11 @@ async fn send_message(
             Ok(project) => {
                 // Free chats live in a hidden project, but each session gets its
                 // own temporary folder so tools have a real workspace without
-                // exposing a path to the user.
+                // exposing a path to the user. Created lazily: the folder only
+                // appears when a tool actually writes files or runs commands,
+                // so a simple question leaves no trace on disk.
                 let path = if project.path == FREE_CHAT_PROJECT_PATH {
-                    let dir = free_session_dir(&core.data_dir, session_id);
-                    if let Err(e) = tokio::fs::create_dir_all(&dir).await {
-                        tracing::warn!(error = %e, "failed to create free session dir");
-                    }
-                    dir
+                    free_session_dir(&core.data_dir, session_id)
                 } else {
                     std::path::PathBuf::from(&project.path)
                 };

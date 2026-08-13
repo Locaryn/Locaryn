@@ -23,29 +23,31 @@ export function BottomPanel({ cwd, sessionId }: Props) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines]);
 
-  // Resolve the real workspace for the active session. For free chats this
-  // returns the per-session temp folder created by the backend.
-  useEffect(() => {
-    if (!sessionId) {
-      setResolvedCwd(cwd ?? null);
-      return;
-    }
-    core
-      .sessionWorkspace(sessionId)
-      .then((p) => setResolvedCwd(p))
-      .catch(() => setResolvedCwd(cwd ?? null));
-  }, [sessionId, cwd]);
-
   async function run() {
     const command = cmd.trim();
     if (!command || running) return;
+    // Resolve the workspace lazily, at the moment a command actually runs.
+    // For a free chat this creates the per-session temp folder on first use —
+    // a terminal that is only opened never touches the disk.
+    let cwd = resolvedCwd;
+    if (!cwd && sessionId) {
+      try {
+        const ws = await core.sessionWorkspace(sessionId, true);
+        if (ws.exists) {
+          cwd = ws.path;
+          setResolvedCwd(cwd);
+        }
+      } catch {
+        // keep null → run wherever the shell starts
+      }
+    }
     setCmd("");
     setHistory((h) => [...h, command]);
     setHistIdx(-1);
     setRunning(true);
     setLines((prev) => [...prev, { stream: "cmd", text: `$ ${command}` }]);
     try {
-      await core.runTerminal(command, resolvedCwd, (ev) => {
+      await core.runTerminal(command, cwd, (ev) => {
         setLines((prev) => [
           ...prev,
           ev.type === "line"

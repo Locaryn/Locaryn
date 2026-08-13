@@ -32,8 +32,8 @@ const KIND_META: Record<WorkspaceKind, { icon: string; label: string; hint: stri
   ssh: { icon: "🖧", label: "SSH", hint: "Un serveur distant enregistré" },
   temp: {
     icon: "🗂️",
-    label: "Temporaire",
-    hint: "Dossier temporaire créé automatiquement pour cette conversation",
+    label: "Espace de travail",
+    hint: "Dossier de travail créé automatiquement dès que du code ou des fichiers sont utilisés",
   },
 };
 
@@ -81,9 +81,12 @@ export function WorkspacePicker({
 
   const meta = KIND_META[value.kind];
 
-  // Free conversations get an auto-created temp folder. The user doesn't need
-  // to pick or even see a path, so the picker is reduced to a read-only label.
+  // Free conversations get an auto-created temp folder — but only once code
+  // or files actually need a directory. Until then the label is empty and the
+  // picker is hidden entirely: a plain question must not clutter the composer
+  // with a useless "Temporary" badge (and must not create a folder on disk).
   if (freeChat) {
+    if (!value.label) return null;
     const meta = value.kind === "temp" ? KIND_META[value.kind] : KIND_META.temp;
     return (
       <div className="locaryn-ws">
@@ -95,7 +98,7 @@ export function WorkspacePicker({
           style={{ cursor: "default" }}
         >
           <span>{meta.icon}</span>
-          <span className="locaryn-ws-label">{meta.label}</span>
+          <span className="locaryn-ws-label">{value.label}</span>
         </button>
       </div>
     );
