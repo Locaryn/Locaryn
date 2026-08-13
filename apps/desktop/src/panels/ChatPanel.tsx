@@ -165,8 +165,6 @@ export function ChatPanel({
   const [quickModelOpen, setQuickModelOpen] = useState(false);
   const [imageGenOpen, setImageGenOpen] = useState(false);
   const [ragOpen, setRagOpen] = useState(false);
-  /** Indexed chunk count — shown on the Documents chip so the feature is discoverable. */
-  const [ragCount, setRagCount] = useState(0);
   const [isLocalModel, setIsLocalModel] = useState(true);
   /** First installed diffusion checkpoint — used when a chat message is
    *  routed to image generation. */
@@ -286,25 +284,6 @@ export function ChatPanel({
       return null;
     }
   }
-
-  // Keep the Documents chip count in sync (refreshes when the panel closes).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `ragOpen` n'est pas lu dans le corps, il sert de déclencheur — refermer le panneau Documents doit relancer le comptage pour que la pastille montre les fragments qui viennent d'être indexés.
-  useEffect(() => {
-    if (!projectId) {
-      setRagCount(0);
-      return;
-    }
-    let cancelled = false;
-    core
-      .ragStatus(projectId)
-      .then((s) => {
-        if (!cancelled) setRagCount(s.chunk_count);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, ragOpen]);
 
   // Background image generations deliver their finished image into the chat
   // they were requested from. It is also persisted (see imageJobs), so it is
@@ -1199,16 +1178,6 @@ export function ChatPanel({
 
             <ReasoningPicker value={reasoning} onChange={setReasoning} disabled={!canCompose} />
 
-            <button
-              type="button"
-              className={`locaryn-chip-btn${ragCount > 0 ? " locaryn-chip-on" : ""}`}
-              title="Base de connaissances : ajoutez des documents, le modèle s'en servira pour répondre"
-              disabled={!projectId}
-              onClick={() => setRagOpen(true)}
-            >
-              <span aria-hidden="true">📚</span> Documents
-              {ragCount > 0 && <span className="locaryn-chip-state">{ragCount}</span>}
-            </button>
             <span className="locaryn-composer-hint">
               Entrée pour envoyer · Shift+Entrée pour saut de ligne
             </span>
