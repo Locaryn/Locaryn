@@ -2002,8 +2002,7 @@ export function ModelBrowser({
             style={{ width: "100%", fontSize: "13px" }}
             placeholder="https://huggingface.co/.../resolve/main/model-Q4_K_M.gguf, hf.co/user/repo, ou gemma4:e2b..."
             value={customTagInput}
-            // biome-ignore lint/a11y/noAutofocus: le focus immédiat du champ est
-            // souhaitable — c'est la raison d'être de ce popup.
+            // biome-ignore lint/a11y/noAutofocus: focus du popup voulu.
             autoFocus
             onChange={(e) => setCustomTagInput(e.target.value)}
             onKeyDown={(e) => {
