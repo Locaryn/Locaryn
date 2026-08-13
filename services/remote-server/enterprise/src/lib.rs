@@ -16,6 +16,8 @@
 //! `locaryn-remote-server` is enabled. Without it, the remote-server runs
 //! fully under Apache-2.0 as the free tier.
 
+pub mod licence;
+
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

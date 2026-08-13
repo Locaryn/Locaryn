@@ -3,7 +3,9 @@ import { useState } from "react";
 export function AccountView() {
   const [serverUrl, setServerUrl] = useState("https://private.locaryn.internal");
   const [token, setToken] = useState("");
-  const [username, setUsername] = useState("Teano");
+  // Vide par défaut : un nom en dur devient le nom de tout le monde dans les
+  // captures d'écran, la doc et les rapports de bug.
+  const [username, setUsername] = useState("");
   const [isConnected, setIsConnected] = useState(true);
 
   return (

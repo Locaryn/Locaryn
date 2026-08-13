@@ -20,3 +20,9 @@ tokio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }
+base64 = "0.22"
+
+[build-dependencies]
+# Rien : la cle publique est injectee par variable d'environnement au build.
