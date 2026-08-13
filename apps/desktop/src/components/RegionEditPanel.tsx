@@ -4,7 +4,11 @@ import { pickImageFile } from "../lib/dialog";
 import { toImageUrl } from "../lib/imageJobs";
 import { looksLikeImageModel } from "../lib/modelRegistry";
 
-type Props = { installedModels: string[] };
+type Props = {
+  installedModels: string[];
+  /** Switch to the Marketplace (used when no model is installed). */
+  onOpenMarketplace?: () => void;
+};
 
 /** Colours offered as swatches; any hex can still be typed. */
 const SWATCHES = [
@@ -25,7 +29,7 @@ const SWATCHES = [
  * perfectly well to a human can still select the wrong thing — seeing the
  * selection tinted, before anything is modified, is the only reliable check.
  */
-export function RegionEditPanel({ installedModels }: Props) {
+export function RegionEditPanel({ installedModels, onOpenMarketplace }: Props) {
   const [image, setImage] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [mode, setMode] = useState<"recolor" | "replace">("recolor");
@@ -99,6 +103,22 @@ export function RegionEditPanel({ installedModels }: Props) {
 
   return (
     <div className="locaryn-region">
+      {imageModels.length === 0 && (
+        <div className="img-gen-no-model" style={{ marginBottom: 16, maxWidth: "100%" }}>
+          <span>⚠️</span>
+          <span>
+            Aucun modèle d'image installé. Allez dans le Marketplace pour en installer un.
+          </span>
+          <button
+            type="button"
+            className="img-gen-install-btn"
+            onClick={() => onOpenMarketplace?.()}
+            disabled={!onOpenMarketplace}
+          >
+            🛒 Aller au Marketplace
+          </button>
+        </div>
+      )}
       <div className="locaryn-region-col">
         <div className="locaryn-field-label">Image</div>
         <div className="locaryn-field-actions" style={{ marginTop: 8 }}>

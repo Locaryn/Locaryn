@@ -18,6 +18,8 @@ type Props = {
   installedModels: string[];
   onClose: () => void;
   inline?: boolean;
+  /** Switch to the Marketplace (used when no model is installed). */
+  onOpenMarketplace?: () => void;
 };
 
 type StudioTab = "design" | "clone" | "tts";
@@ -230,7 +232,7 @@ function detectLanguageFromText(textValue: string): string | null {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
+export function AudioGenPanel({ installedModels, onClose, inline, onOpenMarketplace }: Props) {
   // ── Tab state
   const [activeTab, setActiveTab] = useState<StudioTab>("design");
 
@@ -631,9 +633,29 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
             marginBottom: 16,
           }}
         >
-          {ttsModels.length === 0
-            ? "Aucun modèle TTS installé. Allez dans le Marketplace pour en installer."
-            : "Aucun modèle ne correspond à la recherche."}
+          {ttsModels.length === 0 ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <span>Aucun modèle TTS installé. Allez dans le Marketplace pour en installer.</span>
+              <button
+                type="button"
+                className="img-gen-install-btn"
+                onClick={() => onOpenMarketplace?.()}
+                disabled={!onOpenMarketplace}
+              >
+                🛒 Aller au Marketplace
+              </button>
+            </div>
+          ) : (
+            "Aucun modèle ne correspond à la recherche."
+          )}
         </div>
       ) : (
         <div style={{ marginBottom: 16 }}>

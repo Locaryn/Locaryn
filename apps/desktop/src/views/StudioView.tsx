@@ -38,6 +38,8 @@ type Props = {
   installedImageModels: string[];
   onOpenImageGen?: () => void;
   onCloseAudioGen?: () => void;
+  /** Switch to the Marketplace (used when no model is installed). */
+  onOpenMarketplace?: () => void;
   /** Send an image from the gallery to the active chat session. */
   onSendImageToChat?: (url: string, label: string) => void;
 };
@@ -52,6 +54,7 @@ export function StudioView({
   installedImageModels,
   onOpenImageGen,
   onCloseAudioGen,
+  onOpenMarketplace,
   onSendImageToChat,
 }: Props) {
   const [active, setActive] = useState<StudioTab>("image");
@@ -307,6 +310,15 @@ export function StudioView({
         <p className="locaryn-field-hint" style={{ marginTop: 20 }}>
           Les modèles correspondants sont listés dans le Marketplace avec le filtre approprié.
         </p>
+        <button
+          type="button"
+          className="img-gen-install-btn"
+          style={{ marginTop: 16 }}
+          onClick={() => onOpenMarketplace?.()}
+          disabled={!onOpenMarketplace}
+        >
+          🛒 Aller au Marketplace
+        </button>
       </div>
     );
   }
@@ -320,6 +332,7 @@ export function StudioView({
               installedModels={installedImageModels}
               inline
               onClose={() => {}}
+              onOpenMarketplace={onOpenMarketplace}
               onInstallRequested={async (tag, consent) => {
                 const providers = await core.listProviders();
                 const active = providers.find((p) => p.is_active) ?? providers[0];
@@ -446,6 +459,7 @@ export function StudioView({
               installedModels={installedModels}
               onClose={onCloseAudioGen ?? (() => {})}
               inline
+              onOpenMarketplace={onOpenMarketplace}
             />
             {renderGallery(audioItems, "🎙️", "Synthèses vocales")}
           </>
@@ -457,6 +471,7 @@ export function StudioView({
               installedModels={installedModels}
               onClose={onCloseAudioGen ?? (() => {})}
               inline
+              onOpenMarketplace={onOpenMarketplace}
             />
             {renderGallery(videoItems, "🎬", "Vidéos générées")}
           </>
@@ -468,6 +483,7 @@ export function StudioView({
               installedModels={installedModels}
               onClose={onCloseAudioGen ?? (() => {})}
               inline
+              onOpenMarketplace={onOpenMarketplace}
             />
             {renderGallery(musicItems, "🎵", "Musiques générées")}
           </>
@@ -479,12 +495,18 @@ export function StudioView({
               installedModels={installedModels}
               onClose={onCloseAudioGen ?? (() => {})}
               inline
+              onOpenMarketplace={onOpenMarketplace}
             />
             {renderGallery(model3dItems, "🧊", "Modèles 3D")}
           </>
         );
       case "image-editing":
-        return <RegionEditPanel installedModels={installedModels} />;
+        return (
+          <RegionEditPanel
+            installedModels={installedModels}
+            onOpenMarketplace={onOpenMarketplace}
+          />
+        );
       case "object-detection":
         return renderPlaceholder(
           "Détection d'objets",

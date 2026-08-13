@@ -16,6 +16,8 @@ type Props = {
   onClose: () => void;
   onImageGenerated?: (imagePath: string) => void;
   onInstallRequested?: (modelTag: string, consent?: boolean) => Promise<void>;
+  /** Switch to the Marketplace (used when no model is installed). */
+  onOpenMarketplace?: () => void;
   /** Chat that requested the generation, so the result lands in it. */
   sessionId?: string | null;
   /** Resolution requested through a slash argument (e.g. "/image max"). */
@@ -87,6 +89,7 @@ export function ImageGenPanel({
   onClose,
   onImageGenerated,
   onInstallRequested,
+  onOpenMarketplace,
   sessionId,
   forcedSize,
   inline,
@@ -477,10 +480,10 @@ export function ImageGenPanel({
             <button
               type="button"
               className="img-gen-install-btn"
-              onClick={() => handleInstall()}
-              disabled={isInstalling}
+              onClick={() => onOpenMarketplace?.()}
+              disabled={!onOpenMarketplace}
             >
-              {isInstalling ? "Installation…" : "⬇ Installer"}
+              🛒 Aller au Marketplace
             </button>
           </div>
         ) : (

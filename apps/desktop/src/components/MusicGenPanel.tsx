@@ -12,6 +12,8 @@ type Props = {
   installedModels: string[];
   onClose: () => void;
   inline?: boolean;
+  /** Switch to the Marketplace (used when no model is installed). */
+  onOpenMarketplace?: () => void;
 };
 
 const DURATION_PRESETS = [
@@ -49,7 +51,7 @@ function firstMusicModel(models: string[]): string | undefined {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
+export function MusicGenPanel({ installedModels, onClose, inline, onOpenMarketplace }: Props) {
   // ── Core state
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>(
@@ -254,8 +256,28 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
             marginBottom: 20,
           }}
         >
-          Aucun modèle de musique installé. Allez dans le Marketplace pour installer MusicGen,
-          AudioLDM ou stable-audio.
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <span>
+              Aucun modèle de musique installé. Allez dans le Marketplace pour installer MusicGen,
+              AudioLDM ou stable-audio.
+            </span>
+            <button
+              type="button"
+              className="img-gen-install-btn"
+              onClick={() => onOpenMarketplace?.()}
+              disabled={!onOpenMarketplace}
+            >
+              🛒 Aller au Marketplace
+            </button>
+          </div>
         </div>
       )}
 

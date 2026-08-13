@@ -11,6 +11,8 @@ type Props = {
   installedModels: string[];
   onClose: () => void;
   inline?: boolean;
+  /** Switch to the Marketplace (used when no model is installed). */
+  onOpenMarketplace?: () => void;
 };
 
 function get3DModels(models: string[]): string[] {
@@ -23,7 +25,7 @@ function first3DModel(models: string[]): string | undefined {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export function Model3DPanel({ installedModels, onClose, inline }: Props) {
+export function Model3DPanel({ installedModels, onClose, inline, onOpenMarketplace }: Props) {
   // ── Core state
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>(
@@ -233,8 +235,28 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
             marginBottom: 20,
           }}
         >
-          Aucun modèle 3D installé. Allez dans le Marketplace pour installer Shape-E, Point-E,
-          TripoSR ou Zero-1-to-3.
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <span>
+              Aucun modèle 3D installé. Allez dans le Marketplace pour installer Shape-E, Point-E,
+              TripoSR ou Zero-1-to-3.
+            </span>
+            <button
+              type="button"
+              className="img-gen-install-btn"
+              onClick={() => onOpenMarketplace?.()}
+              disabled={!onOpenMarketplace}
+            >
+              🛒 Aller au Marketplace
+            </button>
+          </div>
         </div>
       )}
 

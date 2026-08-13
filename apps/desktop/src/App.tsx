@@ -723,6 +723,7 @@ export function App() {
           <StudioView
             installedModels={installedModels}
             installedImageModels={installedModels}
+            onOpenMarketplace={() => setActiveView("models")}
             onOpenImageGen={() => {
               setActiveView("chat");
               setShowImageGen(true);
