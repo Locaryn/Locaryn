@@ -76,6 +76,8 @@ export function App() {
 
   // Toggleable panels & drawers
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
+  // Popup « installer un modèle spécifique » (bouton + du marketplace).
+  const [customInstallOpen, setCustomInstallOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
   const [showModelConfig, setShowModelConfig] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -510,6 +512,7 @@ export function App() {
         showBottom={showBottom}
         showModelConfig={showModelConfig}
         onToggleNavDrawer={() => setNavDrawerOpen(true)}
+        onOpenCustomInstall={() => setCustomInstallOpen(true)}
         onTogglePreview={() => setShowPreview(!showPreview)}
         onToggleBottom={() => setShowBottom(!showBottom)}
         onToggleModelConfig={() => setShowModelConfig(!showModelConfig)}
@@ -654,6 +657,8 @@ export function App() {
               </p>
             </div>
             <ModelBrowser
+              customInstallOpen={customInstallOpen}
+              onCloseCustomInstall={() => setCustomInstallOpen(false)}
               onInstall={handleInstallModel}
               onCancelInstall={handleCancelDownload}
               onDelete={handleDeleteModel}

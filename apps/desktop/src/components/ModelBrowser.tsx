@@ -15,6 +15,7 @@ import {
 } from "../lib/modelRegistry";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { HardwareBenchmarkModal } from "./HardwareBenchmarkModal";
+import { ModalShell } from "./ModalShell";
 import { ModelObliterator } from "./ModelObliterator";
 import { ResponsibilityGate } from "./ResponsibilityGate";
 
@@ -40,6 +41,9 @@ type Props = {
   onOpenImageGen?: () => void;
   /** Launch an AirLLM model: activates the AirLlm provider and opens Chat. */
   onLaunchAirllm?: (repo: string) => void;
+  /** Popup « installer un modèle spécifique » (bouton + de la barre du haut). */
+  customInstallOpen?: boolean;
+  onCloseCustomInstall?: () => void;
 };
 
 /**
@@ -306,6 +310,8 @@ export function ModelBrowser({
   onOpenImageGen,
   onLaunchAirllm,
   installed = [],
+  customInstallOpen = false,
+  onCloseCustomInstall,
 }: Props) {
   const [query, setQuery] = useState("");
   const [customTagInput, setCustomTagInput] = useState("");
@@ -839,7 +845,23 @@ export function ModelBrowser({
           <button
             type="button"
             className="locaryn-btn-ghost"
-            style={{ fontSize: "11px", marginLeft: "auto", padding: "2px 8px" }}
+            style={{
+              fontSize: "11px",
+              marginLeft: "auto",
+              padding: "2px 8px",
+              border: "1px solid var(--accent)",
+              color: "var(--accent)",
+            }}
+            onClick={handleFetchLiveApiModels}
+            disabled={isFetchingLive}
+            title="Interroger directement les API HuggingFace Hub pour découvrir les derniers modèles en temps réel"
+          >
+            {isFetchingLive ? "Recherche en direct..." : "🌐 Recherche API HuggingFace"}
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            style={{ fontSize: "11px", padding: "2px 8px" }}
             onClick={async () => {
               clearRegistryCache();
               setIsLoadingRegistry(true);
@@ -866,44 +888,6 @@ export function ModelBrowser({
               🔄 MAJ {new Date(lastUpdated).toLocaleTimeString()}
             </span>
           )}
-        </div>
-
-        {/* Custom Model Tag & HuggingFace Pull Input + Live API Fetch Button */}
-        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-          <input
-            className="locaryn-input"
-            style={{ flex: 1, fontSize: "12px" }}
-            placeholder="➕ Télécharger un modèle spécifique ou dépôt HuggingFace (ex: gemma4:e2b, qwen3:8b, ou une URL directe .gguf, ou hf.co/user/repo)..."
-            value={customTagInput}
-            onChange={(e) => setCustomTagInput(e.target.value)}
-          />
-          <button
-            type="button"
-            className="locaryn-btn-primary"
-            style={{ fontSize: "12px", whiteSpace: "nowrap" }}
-            disabled={!customTagInput.trim()}
-            onClick={() => {
-              requestInstall(customTagInput.trim(), customTagInput.trim(), false);
-              setCustomTagInput("");
-            }}
-          >
-            ⬇️ Télécharger ce modèle
-          </button>
-          <button
-            type="button"
-            className="locaryn-btn-ghost"
-            style={{
-              fontSize: "12px",
-              border: "1px solid var(--accent)",
-              color: "var(--accent)",
-              whiteSpace: "nowrap",
-            }}
-            onClick={handleFetchLiveApiModels}
-            disabled={isFetchingLive}
-            title="Interroger directement les API HuggingFace Hub pour découvrir les derniers modèles en temps réel"
-          >
-            {isFetchingLive ? "Recherche en direct..." : "🌐 Recherche API HuggingFace"}
-          </button>
         </div>
 
         <div className="locaryn-models-toolbar" style={{ marginTop: "8px" }}>
@@ -1979,6 +1963,82 @@ export function ModelBrowser({
           await onInstall(newTag);
         }}
       />
+
+      {/* Popup « installer un modèle spécifique » — ouverte par le bouton +
+          à droite du titre « Marketplace Modèles » dans la barre du haut. */}
+      {customInstallOpen && (
+        <ModalShell
+          onClose={() => onCloseCustomInstall?.()}
+          className="locaryn-custom-install-modal"
+          label="Installer un modèle spécifique"
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h3 style={{ margin: 0, fontSize: "15px" }}>➕ Installer un modèle spécifique</h3>
+            <button
+              type="button"
+              className="locaryn-icon-btn"
+              onClick={() => onCloseCustomInstall?.()}
+              title="Fermer"
+              style={{ fontSize: "16px" }}
+            >
+              ✕
+            </button>
+          </div>
+          <p
+            style={{
+              margin: "10px 0",
+              fontSize: "12px",
+              color: "var(--text-dim)",
+              lineHeight: 1.5,
+            }}
+          >
+            Collez une URL directe vers un fichier <code>.gguf</code>, un dépôt HuggingFace (
+            <code>hf.co/user/repo</code>), ou un tag du catalogue (<code>gemma4:e2b</code>,{" "}
+            <code>qwen3:8b</code>…). Le téléchargement se fait en local, directement depuis
+            HuggingFace.
+          </p>
+          <input
+            className="locaryn-input"
+            style={{ width: "100%", fontSize: "13px" }}
+            placeholder="https://huggingface.co/.../resolve/main/model-Q4_K_M.gguf, hf.co/user/repo, ou gemma4:e2b..."
+            value={customTagInput}
+            // biome-ignore lint/a11y/noAutofocus: le focus immédiat du champ est
+            // souhaitable — c'est la raison d'être de ce popup.
+            autoFocus
+            onChange={(e) => setCustomTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && customTagInput.trim()) {
+                requestInstall(customTagInput.trim(), customTagInput.trim(), false);
+                setCustomTagInput("");
+                onCloseCustomInstall?.();
+              }
+            }}
+          />
+          <div
+            style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}
+          >
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() => onCloseCustomInstall?.()}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              className="locaryn-btn-primary"
+              disabled={!customTagInput.trim()}
+              onClick={() => {
+                requestInstall(customTagInput.trim(), customTagInput.trim(), false);
+                setCustomTagInput("");
+                onCloseCustomInstall?.();
+              }}
+            >
+              ⬇️ Télécharger ce modèle
+            </button>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 }

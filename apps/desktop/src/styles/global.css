@@ -6758,3 +6758,39 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
     align-items: flex-start;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   POPUP « INSTALLER UN MODÈLE SPÉCIFIQUE » (marketplace)
+   ═══════════════════════════════════════════════════════════ */
+.locaryn-custom-install-btn {
+  color: var(--accent);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  background: rgba(167, 139, 250, 0.08);
+}
+
+.locaryn-custom-install-btn:hover {
+  background: rgba(167, 139, 250, 0.16);
+}
+
+dialog.locaryn-custom-install-modal[open] {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, calc(100vw - 48px));
+  z-index: 51;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  animation: modal-in var(--dur-med) var(--ease) both;
+}
+
+.locaryn-custom-install-modal code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 1px 5px;
+}

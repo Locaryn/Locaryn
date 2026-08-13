@@ -17,6 +17,8 @@ type Props = {
   onSettingsClick?: () => void;
   /** Chat-scoped settings popup (model, performance). */
   onChatSettingsClick?: () => void;
+  /** Ouvrir le popup « installer un modèle spécifique » (vue Marketplace). */
+  onOpenCustomInstall?: () => void;
 };
 
 const MODE_LABEL: Record<ConnectionMode, string> = {
@@ -50,6 +52,7 @@ export function TopBar({
   onToggleModelConfig,
   onSettingsClick,
   onChatSettingsClick,
+  onOpenCustomInstall,
 }: Props) {
   const isChatView = activeView === "chat";
 
@@ -87,6 +90,29 @@ export function TopBar({
         <span className="locaryn-project">
           {isChatView ? project : VIEW_TITLES[activeView] || "Navigation"}
         </span>
+        {activeView === "models" && (
+          <button
+            type="button"
+            className="locaryn-icon-btn locaryn-custom-install-btn"
+            title="Installer un modèle spécifique ou un dépôt HuggingFace"
+            aria-label="Installer un modèle spécifique"
+            onClick={onOpenCustomInstall}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        )}
         {demo && <span className="locaryn-demo-badge">demo</span>}
       </div>
 
