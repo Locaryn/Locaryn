@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import { type AppInfo, core } from "../lib/core";
 import { IMAGE_GEN_MODELS } from "../lib/modelRegistry";
+import { ModelConfigPanel } from "../panels/ModelConfigPanel";
 import { ModelBrowser } from "./ModelBrowser";
 import { PerformancePanel } from "./PerformancePanel";
 
@@ -13,7 +14,7 @@ type Props = {
   onOpenFullSettings?: () => void;
 };
 
-type Tab = "provider" | "performance";
+type Tab = "provider" | "model" | "performance";
 type Conn = "idle" | "testing" | "ok" | "error";
 
 /** Managed llama-server port. NOT 11434 — that is Ollama's, and saving it made
@@ -189,6 +190,13 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
             </button>
             <button
               type="button"
+              className={`locaryn-nav-item${tab === "model" ? " locaryn-active" : ""}`}
+              onClick={() => setTab("model")}
+            >
+              🎛️ Paramètres du modèle
+            </button>
+            <button
+              type="button"
               className={`locaryn-nav-item${tab === "performance" ? " locaryn-active" : ""}`}
               onClick={() => setTab("performance")}
             >
@@ -210,6 +218,8 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
           </nav>
 
           <div className="locaryn-settings-pane">
+            {tab === "model" && <ModelConfigPanel />}
+
             {tab === "performance" && <PerformancePanel />}
 
             {tab === "provider" && (
