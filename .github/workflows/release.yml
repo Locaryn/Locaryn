@@ -224,10 +224,17 @@ jobs:
               cp target/release/locaryn apps/desktop/src-tauri/binaries/locaryn-x86_64-unknown-linux-gnu
               ;;
             macos-universal)
+              # Tauri compile le bureau une fois par architecture avant de les
+              # fusionner : build.rs exige un sidecar au nom de CHAQUE cible,
+              # puis le paquet universel prend la version lipo (`universal`).
               cargo build --release --target aarch64-apple-darwin -p locaryn-daemon -p locaryn-cli
               cargo build --release --target x86_64-apple-darwin -p locaryn-daemon -p locaryn-cli
-              lipo -create -output apps/desktop/src-tauri/binaries/locaryn-daemon-universal-apple-darwin                 target/aarch64-apple-darwin/release/locaryn-daemon                 target/x86_64-apple-darwin/release/locaryn-daemon
-              lipo -create -output apps/desktop/src-tauri/binaries/locaryn-universal-apple-darwin                 target/aarch64-apple-darwin/release/locaryn                 target/x86_64-apple-darwin/release/locaryn
+              cp target/aarch64-apple-darwin/release/locaryn-daemon apps/desktop/src-tauri/binaries/locaryn-daemon-aarch64-apple-darwin
+              cp target/aarch64-apple-darwin/release/locaryn apps/desktop/src-tauri/binaries/locaryn-aarch64-apple-darwin
+              cp target/x86_64-apple-darwin/release/locaryn-daemon apps/desktop/src-tauri/binaries/locaryn-daemon-x86_64-apple-darwin
+              cp target/x86_64-apple-darwin/release/locaryn apps/desktop/src-tauri/binaries/locaryn-x86_64-apple-darwin
+              lipo -create -output apps/desktop/src-tauri/binaries/locaryn-daemon-universal-apple-darwin target/aarch64-apple-darwin/release/locaryn-daemon target/x86_64-apple-darwin/release/locaryn-daemon
+              lipo -create -output apps/desktop/src-tauri/binaries/locaryn-universal-apple-darwin target/aarch64-apple-darwin/release/locaryn target/x86_64-apple-darwin/release/locaryn
               ;;
           esac
 
