@@ -2035,26 +2035,49 @@ async fn pull_hf_repo(
     // each file individually via resolve/main/<path>. This works for all repos
     // including multi-file TTS models (XTTS, Kokoro, Qwen3-TTS, etc.).
 
-    // Normalize: strip trailing slashes, extract repo id (author/name)
+    // Normalize: strip trailing slashes, extract repo id (author/name) and an
+    // optional sub-path (e.g. a quantization folder like Q4_K_M). When a
+    // sub-path is given, only the files under that folder are downloaded —
+    // this keeps multi-quantization repos (Kimi, Gemma, ...) manageable
+    // instead of pulling the whole multi-terabyte tree.
     let clean = url.trim_end_matches('/');
-    let repo_id = clean
+    let without_prefix = clean
         .strip_prefix("https://huggingface.co/")
         .unwrap_or(clean);
     // Remove any trailing /tree/main or /blob/... suffix
-    let repo_id = repo_id
+    let without_prefix = without_prefix
         .split("/tree/")
         .next()
-        .unwrap_or(repo_id)
+        .unwrap_or(without_prefix)
         .split("/blob/")
         .next()
-        .unwrap_or(repo_id);
+        .unwrap_or(without_prefix);
+    let mut parts: Vec<&str> = without_prefix.split('/').collect();
+    let repo_id = if parts.len() >= 2 {
+        let repo = format!("{}/{}", parts[0], parts[1]);
+        parts.drain(..2);
+        repo
+    } else {
+        without_prefix.to_string()
+    };
+    // Remaining segments form the optional sub-path (e.g. "Q4_K_M").
+    let sub_path = if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("/"))
+    };
 
     let dir_name = repo_id.replace('/', "__");
     let models_dir = locaryn_config::models_dir();
     let dest_dir = models_dir.join(&dir_name);
 
-    // If the directory already exists, skip the download.
-    if dest_dir.exists() && dest_dir.is_dir() {
+    // If the directory (or the quantization sub-directory) already exists,
+    // skip the download.
+    let check_dir = match &sub_path {
+        Some(sp) => dest_dir.join(sp),
+        None => dest_dir.clone(),
+    };
+    if check_dir.exists() && check_dir.is_dir() {
         let _ = on_event.send(PullProgressEvent {
             status: format!("Le depot {repo_id} est deja installe."),
             completed: 0,
@@ -2065,7 +2088,13 @@ async fn pull_hf_repo(
     }
 
     // Step 1: List all files via the HuggingFace Tree API (recursive).
-    let tree_url = format!("https://huggingface.co/api/models/{repo_id}/tree/main?recursive=true");
+    // When a sub-path is requested, list only that folder.
+    let tree_url = match &sub_path {
+        Some(sp) => {
+            format!("https://huggingface.co/api/models/{repo_id}/tree/main/{sp}?recursive=true")
+        }
+        None => format!("https://huggingface.co/api/models/{repo_id}/tree/main?recursive=true"),
+    };
 
     let _ = on_event.send(PullProgressEvent {
         status: format!("Liste des fichiers du depot {repo_id}..."),

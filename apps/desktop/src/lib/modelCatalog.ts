@@ -33,6 +33,8 @@ export interface ModelFamily {
   instruct?: boolean;
   finetunable?: boolean;
   uncensored?: boolean;
+  /** Source: "seed" | "ollama" | "huggingface" */
+  source?: string;
   variants: ModelVariant[];
 }
 
@@ -1011,27 +1013,88 @@ export const MODEL_CATALOG: ModelFamily[] = [
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // MOONSHOT AI (KIMI)
+  // MOONSHOT AI (KIMI) — open-weights, exécution 100 % locale
+  // GGUF officiels quantisés (unsloth) : chaque variante pointe vers le
+  // sous-dossier de quant du dépôt, le backend ne télécharge que celui-ci.
   // ═══════════════════════════════════════════════════════════════════════════
   {
     id: "kimi-k2",
-    name: "Kimi K2",
+    name: "Kimi K2 Instruct",
     brand: "Moonshot AI",
     description:
-      "MoE 1T paramètres, architecture frontier pour orchestration multi-agents. Cloud uniquement via Ollama.",
+      "MoE 1T paramètres (32B actifs), architecture frontier pour orchestration multi-agents et code. Open-weights, GGUF local.",
     license: "Kimi License",
     contextWindow: "128k",
     releaseDate: "2025-07",
     releaseYear: 2025,
     reasoning: true,
     instruct: true,
+    code: true,
+    source: "huggingface",
     variants: [
       {
-        size: "1T MoE (Cloud)",
+        size: "1T MoE Q2_K",
         params: 1000,
-        tag: "kimi-k2:cloud",
-        quants: ["cloud"],
-        storageGb: 0,
+        tag: "hf.co/unsloth/Kimi-K2-Instruct-GGUF/Q2_K",
+        quants: ["Q2_K"],
+        storageGb: 373,
+        instruct: true,
+      },
+      {
+        size: "1T MoE Q4_K_M",
+        params: 1000,
+        tag: "hf.co/unsloth/Kimi-K2-Instruct-GGUF/Q4_K_M",
+        quants: ["Q4_K_M"],
+        storageGb: 621,
+        instruct: true,
+      },
+      {
+        size: "1T MoE Q8_0",
+        params: 1000,
+        tag: "hf.co/unsloth/Kimi-K2-Instruct-GGUF/Q8_0",
+        quants: ["Q8_0"],
+        storageGb: 1091,
+        instruct: true,
+      },
+    ],
+  },
+  {
+    id: "kimi-k26",
+    name: "Kimi K2.6",
+    brand: "Moonshot AI",
+    description:
+      "MoE agentique open-weights de nouvelle génération : codage long-horizon, exécution autonome et orchestration multi-agents. GGUF local.",
+    license: "Kimi License",
+    contextWindow: "256k",
+    releaseDate: "2026-05",
+    releaseYear: 2026,
+    reasoning: true,
+    instruct: true,
+    code: true,
+    source: "huggingface",
+    variants: [
+      {
+        size: "MoE UD-Q2_K_XL",
+        params: 1100,
+        tag: "hf.co/unsloth/Kimi-K2.6-GGUF/UD-Q2_K_XL",
+        quants: ["UD-Q2_K_XL"],
+        storageGb: 340,
+        instruct: true,
+      },
+      {
+        size: "MoE UD-Q4_K_XL",
+        params: 1100,
+        tag: "hf.co/unsloth/Kimi-K2.6-GGUF/UD-Q4_K_XL",
+        quants: ["UD-Q4_K_XL"],
+        storageGb: 584,
+        instruct: true,
+      },
+      {
+        size: "MoE UD-Q8_K_XL",
+        params: 1100,
+        tag: "hf.co/unsloth/Kimi-K2.6-GGUF/UD-Q8_K_XL",
+        quants: ["UD-Q8_K_XL"],
+        storageGb: 595,
         instruct: true,
       },
     ],
@@ -1041,7 +1104,7 @@ export const MODEL_CATALOG: ModelFamily[] = [
     name: "Kimi K3",
     brand: "Moonshot AI",
     description:
-      "MoE 2,8T paramètres, fenêtre de contexte 1M tokens, multimodal natif. Nécessite un compte Ollama cloud (Pro/Max).",
+      "MoE 2,8T paramètres, fenêtre de contexte 1M tokens, multimodal natif. Open-weights, GGUF local.",
     license: "Kimi License",
     contextWindow: "1M",
     releaseDate: "2026-07",
@@ -1050,13 +1113,30 @@ export const MODEL_CATALOG: ModelFamily[] = [
     vision: true,
     audio: true,
     instruct: true,
+    source: "huggingface",
     variants: [
       {
-        size: "2,8T MoE (Cloud)",
+        size: "2,8T MoE UD-Q2_K_XL",
         params: 2800,
-        tag: "kimi-k3:cloud",
-        quants: ["cloud"],
-        storageGb: 0,
+        tag: "hf.co/unsloth/Kimi-K3-GGUF/UD-Q2_K_XL",
+        quants: ["UD-Q2_K_XL"],
+        storageGb: 861,
+        instruct: true,
+      },
+      {
+        size: "2,8T MoE UD-Q4_K_XL",
+        params: 2800,
+        tag: "hf.co/unsloth/Kimi-K3-GGUF/UD-Q4_K_XL",
+        quants: ["UD-Q4_K_XL"],
+        storageGb: 1509,
+        instruct: true,
+      },
+      {
+        size: "2,8T MoE UD-Q8_K_XL",
+        params: 2800,
+        tag: "hf.co/unsloth/Kimi-K3-GGUF/UD-Q8_K_XL",
+        quants: ["UD-Q8_K_XL"],
+        storageGb: 1561,
         instruct: true,
       },
     ],

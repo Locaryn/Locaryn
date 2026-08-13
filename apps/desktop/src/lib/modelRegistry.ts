@@ -2181,14 +2181,15 @@ export const SEED_CATALOG: ModelFamily[] = [
       },
     ],
   },
-  // Moonshot AI — release dates sourced from Moonshot AI official announcements
-  // (K2.6: 2026-04, K2.7 Code: 2026-06, K3: 2026-07). These seed entries ensure
-  // Ollama-fetched Kimi families display accurate metadata instead of the default 2025-01.
+  // Moonshot AI — open-weights, exécution 100 % locale. Chaque variante
+  // pointe vers le sous-dossier de quant du dépôt GGUF unsloth ; le backend
+  // ne télécharge que ce sous-dossier (pas les ~16 To du repo entier).
   {
     id: "kimi-k2.6",
     name: "Kimi K2.6",
     brand: "Moonshot AI",
-    description: "MoE 1T paramètres sparse, 32B actifs, multimodal natif et contexte long 256k.",
+    description:
+      "MoE 1T paramètres sparse, 32B actifs, multimodal natif et contexte long 256k. Open-weights, GGUF local.",
     license: "Kimi License",
     contextWindow: "256k",
     releaseDate: "2026-04",
@@ -2197,14 +2198,30 @@ export const SEED_CATALOG: ModelFamily[] = [
     vision: true,
     audio: true,
     instruct: true,
-    source: "seed",
+    source: "huggingface",
     variants: [
       {
-        size: "1T MoE (Cloud)",
+        size: "1T MoE UD-Q2_K_XL",
         params: 1000,
-        tag: "kimi-k2.6:cloud",
-        quants: ["cloud"],
-        storageGb: 0,
+        tag: "hf.co/unsloth/Kimi-K2.6-GGUF/UD-Q2_K_XL",
+        quants: ["UD-Q2_K_XL"],
+        storageGb: 340,
+        instruct: true,
+      },
+      {
+        size: "1T MoE UD-Q4_K_XL",
+        params: 1000,
+        tag: "hf.co/unsloth/Kimi-K2.6-GGUF/UD-Q4_K_XL",
+        quants: ["UD-Q4_K_XL"],
+        storageGb: 584,
+        instruct: true,
+      },
+      {
+        size: "1T MoE UD-Q8_K_XL",
+        params: 1000,
+        tag: "hf.co/unsloth/Kimi-K2.6-GGUF/UD-Q8_K_XL",
+        quants: ["UD-Q8_K_XL"],
+        storageGb: 595,
         instruct: true,
       },
     ],
@@ -2214,7 +2231,7 @@ export const SEED_CATALOG: ModelFamily[] = [
     name: "Kimi K2.7 Code",
     brand: "Moonshot AI",
     description:
-      "Modèle agentic coding-focalisé construit sur Kimi K2.6, optimisé pour les tâches d'ingénierie long-horizon.",
+      "Modèle agentic coding-focalisé construit sur Kimi K2.6, optimisé pour les tâches d'ingénierie long-horizon. GGUF local.",
     license: "Kimi License",
     contextWindow: "256k",
     releaseDate: "2026-06",
@@ -2222,14 +2239,30 @@ export const SEED_CATALOG: ModelFamily[] = [
     code: true,
     reasoning: true,
     instruct: true,
-    source: "seed",
+    source: "huggingface",
     variants: [
       {
-        size: "1T MoE (Cloud)",
+        size: "1T MoE UD-Q2_K_XL",
         params: 1000,
-        tag: "kimi-k2.7-code:cloud",
-        quants: ["cloud"],
-        storageGb: 0,
+        tag: "hf.co/unsloth/Kimi-K2.7-Code-GGUF/UD-Q2_K_XL",
+        quants: ["UD-Q2_K_XL"],
+        storageGb: 339,
+        instruct: true,
+      },
+      {
+        size: "1T MoE UD-Q4_K_XL",
+        params: 1000,
+        tag: "hf.co/unsloth/Kimi-K2.7-Code-GGUF/UD-Q4_K_XL",
+        quants: ["UD-Q4_K_XL"],
+        storageGb: 584,
+        instruct: true,
+      },
+      {
+        size: "1T MoE UD-Q8_K_XL",
+        params: 1000,
+        tag: "hf.co/unsloth/Kimi-K2.7-Code-GGUF/UD-Q8_K_XL",
+        quants: ["UD-Q8_K_XL"],
+        storageGb: 595,
         instruct: true,
       },
     ],
@@ -2239,7 +2272,7 @@ export const SEED_CATALOG: ModelFamily[] = [
     name: "Kimi K3",
     brand: "Moonshot AI",
     description:
-      "MoE 2,8T paramètres, fenêtre de contexte 1M tokens, multimodal natif. Nécessite un compte Ollama cloud (Pro/Max).",
+      "MoE 2,8T paramètres, fenêtre de contexte 1M tokens, multimodal natif. Open-weights, GGUF local.",
     license: "Kimi License",
     contextWindow: "1M",
     releaseDate: "2026-07",
@@ -2248,14 +2281,30 @@ export const SEED_CATALOG: ModelFamily[] = [
     vision: true,
     audio: true,
     instruct: true,
-    source: "seed",
+    source: "huggingface",
     variants: [
       {
-        size: "2,8T MoE (Cloud)",
+        size: "2,8T MoE UD-Q2_K_XL",
         params: 2800,
-        tag: "kimi-k3:cloud",
-        quants: ["cloud"],
-        storageGb: 0,
+        tag: "hf.co/unsloth/Kimi-K3-GGUF/UD-Q2_K_XL",
+        quants: ["UD-Q2_K_XL"],
+        storageGb: 861,
+        instruct: true,
+      },
+      {
+        size: "2,8T MoE UD-Q4_K_XL",
+        params: 2800,
+        tag: "hf.co/unsloth/Kimi-K3-GGUF/UD-Q4_K_XL",
+        quants: ["UD-Q4_K_XL"],
+        storageGb: 1509,
+        instruct: true,
+      },
+      {
+        size: "2,8T MoE UD-Q8_K_XL",
+        params: 2800,
+        tag: "hf.co/unsloth/Kimi-K3-GGUF/UD-Q8_K_XL",
+        quants: ["UD-Q8_K_XL"],
+        storageGb: 1561,
         instruct: true,
       },
     ],
@@ -2700,11 +2749,17 @@ function mergeFamilies(...sources: ModelFamily[][]): ModelFamily[] {
       // Normalize IDs for dedup: remove "ollama-" prefix if seed already has it
       const normalId = f.id.replace(/^ollama-/, "");
 
+      // Cette app est 100 % locale : toute variante cloud (storageGb = 0,
+      // quant "cloud") venue d'un cache stale ou d'une API live est écartée
+      // ici pour ne jamais réapparaître dans le marketplace.
+      const localVariants = f.variants.filter((v) => !(v.quants ?? []).includes("cloud"));
+      if (localVariants.length === 0) continue;
+
       if (byId.has(normalId)) {
         // Merge variants from duplicate
         const existing = byId.get(normalId)!;
         const existingTags = new Set(existing.variants.map((v) => v.tag));
-        for (const v of f.variants) {
+        for (const v of localVariants) {
           if (!existingTags.has(v.tag)) {
             existing.variants.push(v);
           }
@@ -2724,7 +2779,7 @@ function mergeFamilies(...sources: ModelFamily[][]): ModelFamily[] {
           existing.description = f.description;
         }
       } else {
-        byId.set(normalId, { ...f, id: normalId });
+        byId.set(normalId, { ...f, id: normalId, variants: localVariants });
       }
     }
   }

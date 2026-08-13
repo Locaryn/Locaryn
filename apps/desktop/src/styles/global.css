@@ -1202,7 +1202,7 @@ dialog[open] {
   background: transparent;
   cursor: default;
 }
-.locaryn-settings-modal {
+dialog.locaryn-settings-modal[open] {
   position: fixed;
   top: 50%;
   left: 50%;
@@ -4269,7 +4269,7 @@ pre.md-code {
 }
 
 /* Le panneau s'ouvre vers le haut : la barre est collée en bas. */
-.locaryn-res-panel {
+dialog.locaryn-res-panel[open] {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
@@ -5073,7 +5073,7 @@ pre.md-code {
   opacity: 0.6;
 }
 
-.locaryn-notif-panel {
+dialog.locaryn-notif-panel[open] {
   position: fixed;
   right: 12px;
   bottom: 42px;
