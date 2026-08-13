@@ -67,17 +67,7 @@ export function ServerSettings() {
         {status?.running && <span className="locaryn-srv-live">en écoute</span>}
       </div>
 
-      {status?.blocker && !status.running && (
-        <p className="locaryn-vp-warn">
-          {status.blocker}
-          {status.accounts === 0 && (
-            <>
-              {" "}
-              Depuis un terminal : <code>locaryn users add nom --admin</code>
-            </>
-          )}
-        </p>
-      )}
+      {status?.blocker && !status.running && <p className="locaryn-vp-warn">{status.blocker}</p>}
 
       {status?.running && (
         <>

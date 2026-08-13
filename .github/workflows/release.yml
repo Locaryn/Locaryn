@@ -204,6 +204,33 @@ jobs:
           [ -n "$ver" ] || ver="0.1.0"
           echo "VER=$ver" >> "$GITHUB_ENV"
 
+      # Le bureau embarque son propre serveur : le démon (et la CLI qui sert à
+      # créer les comptes) sont construits puis mis dans `src-tauri/binaries/`
+      # où Tauri les copie à côté de l'exécutable (externalBin). Ainsi un seul
+      # installeur suffit — pas de paquet serveur séparé à installer.
+      - name: Construire le service (démon + CLI) pour le bureau
+        shell: bash
+        run: |
+          mkdir -p apps/desktop/src-tauri/binaries
+          case "${{ matrix.label }}" in
+            windows-x64)
+              cargo build --release -p locaryn-daemon -p locaryn-cli
+              cp target/release/locaryn-daemon.exe apps/desktop/src-tauri/binaries/locaryn-daemon-x86_64-pc-windows-msvc.exe
+              cp target/release/locaryn.exe apps/desktop/src-tauri/binaries/locaryn-x86_64-pc-windows-msvc.exe
+              ;;
+            linux-x64)
+              cargo build --release -p locaryn-daemon -p locaryn-cli
+              cp target/release/locaryn-daemon apps/desktop/src-tauri/binaries/locaryn-daemon-x86_64-unknown-linux-gnu
+              cp target/release/locaryn apps/desktop/src-tauri/binaries/locaryn-x86_64-unknown-linux-gnu
+              ;;
+            macos-universal)
+              cargo build --release --target aarch64-apple-darwin -p locaryn-daemon -p locaryn-cli
+              cargo build --release --target x86_64-apple-darwin -p locaryn-daemon -p locaryn-cli
+              lipo -create -output apps/desktop/src-tauri/binaries/locaryn-daemon-universal-apple-darwin                 target/aarch64-apple-darwin/release/locaryn-daemon                 target/x86_64-apple-darwin/release/locaryn-daemon
+              lipo -create -output apps/desktop/src-tauri/binaries/locaryn-universal-apple-darwin                 target/aarch64-apple-darwin/release/locaryn                 target/x86_64-apple-darwin/release/locaryn
+              ;;
+          esac
+
       - run: pnpm install --frozen-lockfile
       - name: Construire l'application
         run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}
@@ -256,6 +283,9 @@ jobs:
           if (-not (Test-Path $exe)) { $exe = "target/release/locaryn-desktop.exe" }
           if (-not (Test-Path $exe)) { throw "aucun exécutable de bureau trouvé dans target/release" }
           Copy-Item $exe $out
+          # Le serveur embarqué accompagne l'app même en portable.
+          Copy-Item "apps/desktop/src-tauri/binaries/locaryn-daemon-x86_64-pc-windows-msvc.exe" "$out/locaryn-daemon.exe"
+          Copy-Item "apps/desktop/src-tauri/binaries/locaryn-x86_64-pc-windows-msvc.exe" "$out/locaryn.exe"
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-desktop-windows-x64-portable.zip" -Force
           Remove-Item $out -Recurse -Force
 
@@ -269,6 +299,9 @@ jobs:
             echo "::error::aucun exécutable de bureau trouvé dans target/release"
             exit 1
           fi
+          # Le serveur embarqué accompagne l'app même en portable.
+          cp "apps/desktop/src-tauri/binaries/locaryn-daemon-x86_64-unknown-linux-gnu" "$out/locaryn-daemon"
+          cp "apps/desktop/src-tauri/binaries/locaryn-x86_64-unknown-linux-gnu" "$out/locaryn"
           tar -C "$out" -czf "dist/locaryn-${VER}-desktop-linux-x64-portable.tar.gz" .
           rm -rf "$out"
 
@@ -456,7 +489,7 @@ jobs:
 
             | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `Locaryn_${{ env.VER }}_x64.msi` | installeur MSI — recommandé |
+            | Windows x64 | `Locaryn_${{ env.VER }}_x64.msi` | installeur MSI — recommandé, **serveur embarqué** (Réglages → Partager cette machine) |
             | Windows x64 | `locaryn-${{ env.VER }}-desktop-windows-x64-portable.zip` | portable, sans auto-update |
             | macOS | `Locaryn_${{ env.VER }}_universal.dmg` | universel, Intel et Apple Silicon |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |

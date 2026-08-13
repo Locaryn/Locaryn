@@ -40,7 +40,7 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
-    "externalBin": []
+    "externalBin": ["binaries/locaryn-daemon", "binaries/locaryn"]
   },
   "plugins": {
     "deep-link": {

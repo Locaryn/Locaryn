@@ -46,6 +46,20 @@ fn daemon_binary() -> Option<std::path::PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+fn cli_binary() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let name = if cfg!(windows) {
+        "locaryn.exe"
+    } else {
+        "locaryn"
+    };
+    // Beside the app when installed; in the build output during development.
+    [dir.join(name), dir.join("..").join(name)]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
 /// Addresses this machine can be reached on, for the UI to display.
 pub fn local_address() -> String {
     // No packet is sent: connecting a UDP socket only asks the OS which
@@ -112,11 +126,17 @@ pub async fn server_status() -> Result<ServerStatus, String> {
                 .to_string(),
         )
     } else if accounts == 0 {
-        Some(
-            "Aucun compte n'existe. Un serveur accessible sans compte serait ouvert \
-             à tous : créez d'abord un administrateur."
-                .to_string(),
-        )
+        let create = match cli_binary() {
+            Some(bin) => format!(
+                "Aucun compte n'existe — un serveur accessible sans compte serait ouvert à tous. Créez un administrateur : \"{}\" users add nom --admin",
+                bin.to_string_lossy()
+            ),
+            None => {
+                "Aucun compte n'existe. Un serveur accessible sans compte serait ouvert à tous : créez d'abord un administrateur."
+                    .to_string()
+            }
+        };
+        Some(create)
     } else {
         None
     };
