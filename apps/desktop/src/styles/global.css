@@ -1009,7 +1009,8 @@ body.locaryn-resizing .locaryn-resizer::after {
    ═══════════════════════════════════════════════════════════ */
 .locaryn-bottom {
   flex: none;
-  height: var(--layout-bottom);
+  width: 100%;
+  height: 100%;
   background: var(--bg);
   border-top: 1px solid var(--border);
   display: flex;
