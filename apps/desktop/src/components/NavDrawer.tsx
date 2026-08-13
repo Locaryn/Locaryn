@@ -1,5 +1,10 @@
+import { useEffect, useRef, useState } from "react";
 import type { ConnectionMode, ProviderSummary } from "../lib/core";
 import { ModalShell } from "./ModalShell";
+
+// Durée de l'animation de fermeture (CSS : slideLeft 0.2s + fadeOut 0.15s) :
+// on garde le tiroir monté le temps qu'elle joue, puis on le démonte.
+const CLOSE_ANIM_MS = 240;
 
 type Props = {
   isOpen: boolean;
@@ -62,13 +67,33 @@ const NAV_ITEMS = [
 ];
 
 export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) {
-  if (!isOpen) return null;
+  const [isClosing, setIsClosing] = useState(false);
+  const wasOpen = useRef(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      wasOpen.current = true;
+      setIsClosing(false);
+      return;
+    }
+    // isOpen vient de passer à false : on joue l'animation inverse avant de
+    // démonter. `wasOpen` évite de la lancer au montage initial.
+    if (wasOpen.current) {
+      wasOpen.current = false;
+      setIsClosing(true);
+      const t = setTimeout(() => setIsClosing(false), CLOSE_ANIM_MS);
+      return () => clearTimeout(t);
+    }
+  }, [isOpen]);
+
+  if (!isOpen && !isClosing) return null;
+  const closingClass = !isOpen && isClosing ? " locaryn-nav-drawer-closing" : "";
 
   return (
     <ModalShell
       onClose={onClose}
-      overlayClassName="locaryn-nav-drawer-overlay"
-      className="locaryn-nav-drawer"
+      overlayClassName={`locaryn-nav-drawer-overlay${closingClass}`}
+      className={`locaryn-nav-drawer${closingClass}`}
       label="Navigation"
     >
       <div className="locaryn-nav-drawer-head">

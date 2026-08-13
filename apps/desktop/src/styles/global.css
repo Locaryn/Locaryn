@@ -4541,6 +4541,35 @@ dialog.locaryn-res-panel[open] {
   }
 }
 
+/* Fermeture : le miroir exact de l'ouverture, pour que la sortie ne soit pas
+   brutale. Le tiroir glisse vers la gauche, le voile s'estompe. `forwards`
+   garde l'état final le temps que React démonte le composant. */
+.locaryn-nav-drawer-overlay.locaryn-nav-drawer-closing {
+  animation: fadeOut 0.15s ease forwards;
+}
+
+.locaryn-nav-drawer.locaryn-nav-drawer-closing {
+  animation: slideLeft 0.2s cubic-bezier(0.4, 0, 0.84, 1) forwards;
+}
+
+@keyframes slideLeft {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .locaryn-nav-drawer-head {
   display: flex;
   align-items: center;
