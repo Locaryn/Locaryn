@@ -6880,7 +6880,19 @@ fn detect_gpu() -> (String, u32) {
                     continue;
                 }
                 let name = String::from_utf16_lossy(&desc.Description);
-                if name.contains("Basic Render") || name.contains("Remote Display") {
+                // Sauter les adaptateurs sans vrai GPU derrière : le pilote
+                // Microsoft de base, les écrans virtuels (Parsec, Sunshine,
+                // Moonlight, Spacedesk...) et les adaptateurs de streaming
+                // ne peuvent pas servir à l'inférence.
+                if name.contains("Basic Render")
+                    || name.contains("Remote Display")
+                    || name.contains("Parsec")
+                    || name.contains("Sunshine")
+                    || name.contains("Moonlight")
+                    || name.contains("Spacedesk")
+                    || name.contains("Virtual Display")
+                    || name.contains("Virtual Adapter")
+                {
                     continue;
                 }
                 let vram_mb = (desc.DedicatedVideoMemory / (1024 * 1024)) as u32;
@@ -7533,6 +7545,45 @@ async fn delete_ssh_server(core: State<'_, Core>, id: Uuid) -> Result<(), String
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Un panic ne doit jamais rester une boîte noire : écrire le message et le
+    // backtrace dans `crash.log` sous la racine de stockage avant que le
+    // processus n'abandonne. Si l'application plante encore, ce fichier donne
+    // l'endroit exact (fichier + ligne) à corriger.
+    std::panic::set_hook(Box::new(|info| {
+        use std::io::Write as _;
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<payload non texte>".to_string()
+        };
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "lieu inconnu".to_string());
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let entry = format!(
+            "
+=== Locaryn panic {} ===
+lieu: {location}
+message: {payload}
+{backtrace}
+",
+            chrono::Utc::now().to_rfc3339()
+        );
+        let root = locaryn_config::storage_root();
+        let _ = std::fs::create_dir_all(&root);
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(root.join("crash.log"))
+        {
+            let _ = writeln!(f, "{entry}");
+        }
+        eprintln!("{entry}");
+    }));
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
