@@ -224,19 +224,10 @@ jobs:
                  -o -name '*.sig' \) \
               -exec cp {} dist/ \; 2>/dev/null || true
           done
-          # Le .msi sort nommé par Tauri avec la culture WiX
-          # (Locaryn_<ver>_x64_en-US.msi). Nom d'asset plus propre sans la
-          # langue : le manifeste latest.json pointe vers le nom renommé, et
-          # la signature couvre le contenu, pas le nom. Le .sig qui
-          # l'accompagne est renommé avec lui.
-          if [ -f "dist/Locaryn_${VER}_x64_en-US.msi" ]; then
-            mv "dist/Locaryn_${VER}_x64_en-US.msi" "dist/Locaryn_${VER}_x64.msi"
-            if [ -f "dist/Locaryn_${VER}_x64_en-US.msi.sig" ]; then
-              mv "dist/Locaryn_${VER}_x64_en-US.msi.sig" "dist/Locaryn_${VER}_x64.msi.sig"
-            fi
-          fi
-          # Conserve les deux installeurs Windows : le .exe moderne (NSIS avec
-          # sous-dossier automatique, raccourcis et interface moderne) et le .msi.
+          # Nettoyage des doublons : pour Windows Bureau, seul l'installeur moderne NSIS
+          # (.exe-setup) est conservé. Le .msi bureau et les .rpm sont supprimés pour éviter
+          # toute confusion avec le .msi serveur.
+          rm -f dist/*_en-US.msi dist/*_en-US.msi.sig dist/*_x64.msi dist/*_x64.msi.sig dist/*.rpm dist/*.rpm.sig
           ls -la dist/
           # Un job qui « réussit » sans rien produire est un piège : il fait
           # croire à une release complète.
@@ -400,12 +391,12 @@ jobs:
               with open(path, encoding="utf-8") as f:
                   return f.read().strip()
 
-          # Windows x64 — l'updater installe l'installeur MSI (le NSIS n'est
-          # plus publié).
-          hit = glob.glob(f"artifacts/desktop-windows-x64/Locaryn_{ver}_x64.msi.sig")
+          # Windows x64 — l'updater pointe sur l'installeur moderne NSIS
+          hit = glob.glob(f"artifacts/desktop-windows-x64/Locaryn_{ver}_x64-setup.exe.sig") or glob.glob(f"artifacts/desktop-windows-x64/Locaryn_{ver}_x64.msi.sig")
           if hit:
+              asset = os.path.basename(hit[0])[:-4]
               platforms["windows-x86_64"] = {
-                  "url": f"{base}/Locaryn_{ver}_x64.msi",
+                  "url": f"{base}/{asset}",
                   "signature": sig(hit[0]),
               }
 
@@ -454,14 +445,13 @@ jobs:
 
             | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `Locaryn_${{ env.VER }}_x64-setup.exe` | installeur moderne NSIS (gestion de dossier automatique) — recommandé |
-            | Windows x64 | `Locaryn_${{ env.VER }}_x64.msi` | installeur MSI entreprise |
+            | Windows x64 | `Locaryn_${{ env.VER }}_x64-setup.exe` | installeur moderne NSIS (gestion automatique des dossiers) |
             | Windows x64 | `locaryn-${{ env.VER }}-desktop-windows-x64-portable.zip` | portable, sans auto-update |
             | macOS | `Locaryn_${{ env.VER }}_universal.dmg` | universel, Intel et Apple Silicon |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.AppImage` | portable, sans installation |
             | Linux x64 | `locaryn-${{ env.VER }}-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
-            | Android | `locaryn-${{ env.VER }}-android.apk` | non signé, à installer manuellement |
+            | Android | `locaryn-${{ env.VER }}-android.apk` | client mobile Android |
 
             #### Serveur (sans interface)
 
