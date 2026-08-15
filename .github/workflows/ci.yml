@@ -29,10 +29,15 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - name: fmt
         run: cargo fmt -- --check
+      # Les deux coques Tauri sont exclues ici : `tauri::generate_context!` lit
+      # le frontend compilé (`apps/*/dist`), que ce job ne construit pas — la
+      # macro panique alors avec un message qui ne parle pas de Rust. C'est le
+      # job JS, qui a déjà Node et pnpm, qui les compile après avoir bâti les
+      # interfaces.
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --exclude locaryn-desktop --exclude locaryn-mobile -- -D warnings
       - name: test
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude locaryn-desktop --exclude locaryn-mobile
       - name: cargo-deny
         if: runner.os == 'Linux'
         run: |
@@ -64,5 +69,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
-      - name: Tauri build check (dev)
-        run: cargo check -p locaryn-desktop
+      # Dans cet ordre : les coques Tauri intègrent le frontend au moment de la
+      # compilation. Compiler l'une sans avoir bâti l'autre échoue sur une
+      # panique de macro, pas sur une erreur Rust lisible.
+      - name: Construire les interfaces
+        run: |
+          pnpm --dir apps/desktop build
+          pnpm --dir apps/mobile build
+      - name: Compiler les coques Tauri
+        run: cargo check -p locaryn-desktop -p locaryn-mobile

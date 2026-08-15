@@ -76,6 +76,9 @@ lochor_tmp/
 release/
 clothes_test/
 voice_clone_test/
+# Compagnons de l'application de bureau (service + CLI) : recopiés depuis
+# target/ au moment de l'empaquetage, jamais versionnés.
+apps/desktop/src-tauri/binaries/
 # Sorties de mise au point déposées à la racine. Un `git add .` les a déjà
 # publiées une fois dans le dépôt public (redirections de commandes gh,
 # extraits de catalogue, un .wav de test de clonage vocal).
@@ -151,3 +154,6 @@ Lancer-SnapMCP.bat
 Lancer-Banc-SnapMCP.bat
 .snapmcp/
 .updater-keys/
+# Clé de signature Android : même statut que la clé de l'updater — elle vit sur
+# la machine du propriétaire et dans les secrets GitHub, jamais ici.
+.android-keys/

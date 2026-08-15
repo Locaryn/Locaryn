@@ -230,9 +230,16 @@ enum UsersCmd {
 
 #[derive(Subcommand)]
 enum DaemonCmd {
+    /// Start the local service in the background.
     Start,
+    /// Stop the service this machine started.
     Stop,
-    Logs,
+    /// Show what the service last wrote.
+    Logs {
+        /// How many lines to show.
+        #[arg(long, default_value_t = 40)]
+        lines: usize,
+    },
 }
 
 #[tokio::main]
@@ -424,20 +431,178 @@ async fn main() -> anyhow::Result<()> {
         } => provision_cmd(url, org, note, out).await,
         Cmd::Users { action } => users_cmd(action).await,
         Cmd::Daemon { action } => match action {
-            DaemonCmd::Start => {
-                println!("use `cargo run -p locaryn-daemon` to start the daemon in dev");
-                Ok(())
-            }
-            DaemonCmd::Stop => {
-                println!("(daemon stop — V1 wires signal to PID file)");
-                Ok(())
-            }
-            DaemonCmd::Logs => {
-                println!("(daemon logs — V1 wires log tail)");
-                Ok(())
-            }
+            DaemonCmd::Start => daemon_start(&client, &base_url).await,
+            DaemonCmd::Stop => daemon_stop(),
+            DaemonCmd::Logs { lines } => daemon_logs(lines),
         },
     }
+}
+
+/// Où trouver `locaryn-daemon`.
+///
+/// À côté de la CLI d'abord : c'est ainsi que les installeurs les posent — le
+/// paquet serveur met les deux dans le même `bin`, et l'application de bureau
+/// emporte le service à côté de son propre exécutable. Puis le dossier parent,
+/// pour un `cargo build` local, puis le PATH pour une installation manuelle.
+fn daemon_binary() -> Option<std::path::PathBuf> {
+    let name = if cfg!(windows) {
+        "locaryn-daemon.exe"
+    } else {
+        "locaryn-daemon"
+    };
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for candidate in [dir.join(name), dir.join("..").join(name)] {
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    if locaryn_config::program_exists(name) {
+        return Some(std::path::PathBuf::from(locaryn_config::resolve_program(
+            name,
+        )));
+    }
+    None
+}
+
+fn daemon_log_path() -> std::path::PathBuf {
+    locaryn_config::global_dir().join("logs").join("daemon.log")
+}
+
+fn daemon_pid_path() -> std::path::PathBuf {
+    locaryn_config::global_dir().join("daemon.pid")
+}
+
+/// Démarre le service en arrière-plan et n'annonce le succès qu'une fois qu'il
+/// répond vraiment.
+///
+/// Un `spawn` qui rend la main tout de suite dirait « démarré » alors que le
+/// processus peut mourir dans la seconde — port déjà pris, base illisible. On
+/// attend donc la première réponse de santé, et à défaut on montre ce que le
+/// service a écrit avant de s'arrêter.
+async fn daemon_start(client: &LocarynClient, base_url: &str) -> anyhow::Result<()> {
+    if client.health().await.is_ok() {
+        println!("Le service répond déjà sur {base_url}.");
+        return Ok(());
+    }
+
+    let Some(bin) = daemon_binary() else {
+        anyhow::bail!(
+            "`locaryn-daemon` est introuvable à côté de la CLI et dans le PATH.\n\
+             Installez le paquet serveur, ou lancez `cargo run -p locaryn-daemon` \
+             depuis les sources."
+        );
+    };
+
+    let log_path = daemon_log_path();
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let out = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)?;
+    let err = out.try_clone()?;
+
+    let mut command = std::process::Command::new(&bin);
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(out)
+        .stderr(err);
+    // Sans cela, Windows ouvre une fenêtre de console qui reste au premier plan
+    // le temps que le service vit.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let child = command
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("impossible de démarrer {} : {e}", bin.display()))?;
+    let pid = child.id();
+    let _ = std::fs::write(daemon_pid_path(), pid.to_string());
+
+    for _ in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        if client.health().await.is_ok() {
+            println!("Service démarré (pid {pid}) — {base_url}");
+            println!("Journal : {}", log_path.display());
+            return Ok(());
+        }
+    }
+
+    anyhow::bail!(
+        "Le service a été lancé (pid {pid}) mais n'a pas répondu sur {base_url} en dix secondes.\n\
+         Dernières lignes de {} :\n{}",
+        log_path.display(),
+        tail_of(&log_path, 15).unwrap_or_else(|| "(journal vide)".into())
+    );
+}
+
+/// Arrête le service démarré depuis cette machine.
+fn daemon_stop() -> anyhow::Result<()> {
+    let pid_path = daemon_pid_path();
+    let Ok(raw) = std::fs::read_to_string(&pid_path) else {
+        println!("Aucun service démarré par `locaryn daemon start` sur cette machine.");
+        return Ok(());
+    };
+    let pid: u32 = raw
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("{} ne contient pas un pid", pid_path.display()))?;
+
+    let stopped = if cfg!(windows) {
+        std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output()
+    } else {
+        std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .output()
+    }
+    .map_err(|e| anyhow::anyhow!("impossible d'arrêter le pid {pid} : {e}"))?;
+
+    let _ = std::fs::remove_file(&pid_path);
+    if stopped.status.success() {
+        println!("Service arrêté (pid {pid}).");
+    } else {
+        // Le cas courant : le service n'existe plus depuis un redémarrage. Le
+        // dire plutôt que d'afficher une erreur système que personne ne lira.
+        println!("Aucun processus {pid} en cours — le fichier de pid était périmé, il est retiré.");
+    }
+    Ok(())
+}
+
+/// Affiche la fin du journal du service.
+fn daemon_logs(lines: usize) -> anyhow::Result<()> {
+    let path = daemon_log_path();
+    match tail_of(&path, lines) {
+        Some(text) => {
+            println!("{}\n─── {}", text.trim_end(), path.display());
+            Ok(())
+        }
+        None => {
+            println!(
+                "Aucun journal à {}.\n\
+                 Le service n'écrit dans un fichier que lorsqu'il est démarré par \
+                 `locaryn daemon start` ; lancé à la main, il écrit dans son terminal.",
+                path.display()
+            );
+            Ok(())
+        }
+    }
+}
+
+fn tail_of(path: &std::path::Path, lines: usize) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    if text.trim().is_empty() {
+        return None;
+    }
+    let kept: Vec<&str> = text.lines().rev().take(lines).collect();
+    Some(kept.into_iter().rev().collect::<Vec<_>>().join("\n"))
 }
 
 async fn print_status(client: &LocarynClient) -> anyhow::Result<()> {

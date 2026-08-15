@@ -212,6 +212,43 @@ jobs:
           echo "VER=$ver" >> "$GITHUB_ENV"
 
       - run: pnpm install --frozen-lockfile
+
+      # L'application sait devenir un serveur partagé : la case à cocher
+      # démarre `locaryn-daemon` posé à côté de son exécutable (server_mode.rs).
+      # Encore faut-il qu'il y soit — aucun paquet bureau ne l'embarquait, et la
+      # fonction ne pouvait qu'afficher « service introuvable ». Les deux
+      # binaires voyagent donc avec l'application, ce qui donne du même coup la
+      # commande `locaryn` sur la machine.
+      - name: Embarquer le service et la CLI dans l'application
+        shell: bash
+        run: |
+          set -e
+          out=apps/desktop/src-tauri/binaries
+          mkdir -p "$out"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            # Le bundle est universel : ses compagnons doivent l'être aussi,
+            # sinon la moitié des Mac trouve un binaire qu'ils ne savent pas
+            # exécuter.
+            cargo build --release --target x86_64-apple-darwin -p locaryn-daemon -p locaryn-cli
+            cargo build --release --target aarch64-apple-darwin -p locaryn-daemon -p locaryn-cli
+            for bin in locaryn-daemon locaryn; do
+              lipo -create \
+                "target/x86_64-apple-darwin/release/$bin" \
+                "target/aarch64-apple-darwin/release/$bin" \
+                -output "$out/$bin-universal-apple-darwin"
+              chmod +x "$out/$bin-universal-apple-darwin"
+            done
+          else
+            cargo build --release -p locaryn-daemon -p locaryn-cli
+            triple=$(rustc -vV | sed -n 's/^host: //p')
+            ext=""
+            if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+            for bin in locaryn-daemon locaryn; do
+              cp "target/release/$bin$ext" "$out/$bin-$triple$ext"
+            done
+          fi
+          ls -la "$out"
+
       - name: Construire l'application
         run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}
 
@@ -252,12 +289,18 @@ jobs:
         run: |
           $out = "dist/locaryn-portable"
           New-Item -ItemType Directory -Force $out | Out-Null
-          # Tauri renomme l'exécutable au nom du produit ; on tolère aussi le
-          # nom de la crate au cas où un build n'aurait pas fait le renommage.
-          $exe = "target/release/Locaryn.exe"
-          if (-not (Test-Path $exe)) { $exe = "target/release/locaryn-desktop.exe" }
+          # Le nom de la crate, et lui seul : Tauri ne renomme au nom du produit
+          # que dans ses paquets. Chercher « Locaryn.exe » ici serait un piège
+          # sur Windows, où le système ne distingue pas les majuscules — le
+          # fichier trouvé serait la CLI (`locaryn.exe`), empaquetée sous le nom
+          # de l'application.
+          $exe = "target/release/locaryn-desktop.exe"
           if (-not (Test-Path $exe)) { throw "aucun exécutable de bureau trouvé dans target/release" }
           Copy-Item $exe $out
+          # Les mêmes compagnons que dans l'installeur : sans eux, le mode
+          # serveur de la version portable n'aurait rien à démarrer.
+          Copy-Item "apps/desktop/src-tauri/binaries/locaryn-daemon-x86_64-pc-windows-msvc.exe" "$out/locaryn-daemon.exe"
+          Copy-Item "apps/desktop/src-tauri/binaries/locaryn-x86_64-pc-windows-msvc.exe" "$out/locaryn.exe"
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-desktop-windows-x64-portable.zip" -Force
           Remove-Item $out -Recurse -Force
 
@@ -266,11 +309,15 @@ jobs:
         run: |
           out=dist/locaryn-portable
           mkdir -p "$out"
-          cp target/release/locaryn-desktop "$out/" 2>/dev/null || cp target/release/Locaryn "$out/" 2>/dev/null || true
-          if [ -z "$(ls -A "$out" 2>/dev/null)" ]; then
+          if [ ! -f target/release/locaryn-desktop ]; then
             echo "::error::aucun exécutable de bureau trouvé dans target/release"
             exit 1
           fi
+          cp target/release/locaryn-desktop "$out/"
+          # Mêmes compagnons que dans le .deb et l'AppImage.
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          cp "apps/desktop/src-tauri/binaries/locaryn-daemon-$triple" "$out/locaryn-daemon"
+          cp "apps/desktop/src-tauri/binaries/locaryn-$triple" "$out/locaryn"
           tar -C "$out" -czf "dist/locaryn-${VER}-desktop-linux-x64-portable.tar.gz" .
           rm -rf "$out"
 
@@ -533,9 +580,16 @@ jobs:
             | Linux x64 | `locaryn-${{ env.VER }}-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
             | Android | `${{ env.APK }}` | ${{ env.APK_NOTE }} |
 
+            L'application de bureau emporte le service Locaryn et la commande `locaryn` :
+            elle peut donc servir d'autres appareils du réseau local (Réglages → Serveur) et se
+            piloter depuis un terminal, sans rien installer d'autre. Sous Linux la commande est
+            posée dans `/usr/bin` ; ailleurs elle se trouve à côté de l'application.
+
             #### Serveur (sans interface)
 
             `locaryn-daemon` + CLI `locaryn` — pour une machine dédiée, sans session graphique.
+            Sur Debian/Ubuntu, ce paquet et celui de l'application de bureau ne s'installent pas
+            ensemble : le second contient déjà le premier.
 
             | Plateforme | Fichier | Notes |
             |---|---|---|

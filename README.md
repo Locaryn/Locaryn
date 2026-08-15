@@ -131,21 +131,42 @@ Les binaires sont publiés sur la page **Releases** de GitHub :
 
 ### Quel fichier télécharger ?
 
+Application de bureau — elle embarque le service Locaryn et la commande `locaryn`,
+donc elle sait aussi servir le réseau local et se piloter depuis un terminal :
+
 | Plateforme | Fichier | Remarque |
 | --- | --- | --- |
 | Windows x64 | `Locaryn_<version>_x64-setup.exe` | installeur NSIS — recommandé |
-| Windows x64 | `Locaryn_<version>_x64_en-US.msi` | installeur MSI — alternative |
 | Windows x64 | `locaryn-<version>-desktop-windows-x64-portable.zip` | portable, sans auto-update |
 | macOS | `Locaryn_<version>_universal.dmg` | universel — Intel et Apple Silicon |
-| Linux x64 | `locaryn_<version>_amd64.deb` | Debian / Ubuntu |
+| Linux x64 | `Locaryn_<version>_amd64.deb` | Debian / Ubuntu |
 | Linux x64 | `Locaryn_<version>_amd64.AppImage` | portable, sans installation |
 | Linux x64 | `locaryn-<version>-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
-| Android | `*.apk` | non signé, à installer manuellement |
+| Android | `locaryn-<version>-android.apk` | signé si le dépôt fournit un keystore ; sinon publié `-unsigned` et à signer soi-même (`scripts/android-keystore.ps1`) |
+
+Serveur seul, pour une machine sans session graphique — `locaryn-daemon` + la CLI :
+
+| Plateforme | Fichier | Remarque |
+| --- | --- | --- |
+| Windows x64 | `locaryn-<version>-server-windows-x64.msi` | installe le service et la CLI, les ajoute au PATH — à lancer en administrateur |
+| Windows x64 | `locaryn-<version>-server-windows-x64.zip` | portable |
+| Linux x64 | `locaryn-<version>-server-linux-x64.deb` | Debian / Ubuntu — incompatible avec le paquet de bureau, qui contient déjà le service |
+| Linux x64 · macOS | `locaryn-<version>-server-<plateforme>.tar.gz` | portable |
 
 Règle simple : prenez l'**installeur** de votre plateforme. L'installeur reçoit les
 **mises à jour automatiques** ; une archive portable doit être retéléchargée à la main.
 Les noms `Locaryn_<version>_<arch>…` sont la convention attendue par le système de mise
 à jour — ne les renommez pas.
+
+### Depuis un terminal
+
+```bash
+locaryn daemon start   # démarre le service en arrière-plan, attend qu'il réponde
+locaryn status         # mode, fournisseur actif, version
+locaryn                # l'agent, dans le dossier courant
+locaryn daemon logs    # ce que le service a écrit
+locaryn daemon stop
+```
 
 ### Mises à jour automatiques
 

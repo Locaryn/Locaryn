@@ -18,6 +18,10 @@ path = "src/main.rs"
 # cargo-deb réécrit lui-même `target/release/` en `target/<triple>/release/`
 # quand le build passe par `--target`, ce que fait la CI.
 [package.metadata.deb]
+# Le paquet bureau (« locaryn ») embarque désormais le même démon et la même
+# CLI aux mêmes chemins : les deux ne peuvent pas cohabiter. Le déclarer donne
+# à dpkg un refus clair au lieu d'une collision de fichiers à l'installation.
+conflicts = "locaryn"
 assets = [
     ["target/release/locaryn-daemon", "usr/bin/", "755"],
     ["target/release/locaryn", "usr/bin/", "755"],

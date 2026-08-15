@@ -46,6 +46,22 @@ fn daemon_binary() -> Option<std::path::PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// Le journal du service, partagé avec `locaryn daemon logs`.
+///
+/// La sortie était jetée : quand le service refusait de démarrer — port déjà
+/// pris, base illisible — l'écran affichait « arrêté » sans jamais dire
+/// pourquoi, et il ne restait rien à lire pour le comprendre.
+fn daemon_log() -> Option<std::process::Stdio> {
+    let path = locaryn_config::global_dir().join("logs").join("daemon.log");
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .ok()?;
+    Some(std::process::Stdio::from(file))
+}
+
 /// Addresses this machine can be reached on, for the UI to display.
 pub fn local_address() -> String {
     // No packet is sent: connecting a UDP socket only asks the OS which
@@ -181,8 +197,8 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
                 .to_string_lossy()
                 .to_string(),
         )
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdout(daemon_log().unwrap_or_else(std::process::Stdio::null))
+        .stderr(daemon_log().unwrap_or_else(std::process::Stdio::null))
         .spawn()
         .map_err(|e| format!("démarrage du service : {e}"))?;
 
