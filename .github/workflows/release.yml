@@ -235,10 +235,8 @@ jobs:
               mv "dist/Locaryn_${VER}_x64_en-US.msi.sig" "dist/Locaryn_${VER}_x64.msi.sig"
             fi
           fi
-          # Un seul installeur Windows : le .msi (qui sert aussi à
-          # l'auto-update, msiexec /i). L'installeur NSIS et sa signature ne
-          # sont plus publiés.
-          rm -f "dist/Locaryn_${VER}_x64-setup.exe" "dist/Locaryn_${VER}_x64-setup.exe.sig"
+          # Conserve les deux installeurs Windows : le .exe moderne (NSIS avec
+          # sous-dossier automatique, raccourcis et interface moderne) et le .msi.
           ls -la dist/
           # Un job qui « réussit » sans rien produire est un piège : il fait
           # croire à une release complète.
@@ -456,7 +454,8 @@ jobs:
 
             | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `Locaryn_${{ env.VER }}_x64.msi` | installeur MSI — recommandé |
+            | Windows x64 | `Locaryn_${{ env.VER }}_x64-setup.exe` | installeur moderne NSIS (gestion de dossier automatique) — recommandé |
+            | Windows x64 | `Locaryn_${{ env.VER }}_x64.msi` | installeur MSI entreprise |
             | Windows x64 | `locaryn-${{ env.VER }}-desktop-windows-x64-portable.zip` | portable, sans auto-update |
             | macOS | `Locaryn_${{ env.VER }}_universal.dmg` | universel, Intel et Apple Silicon |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
