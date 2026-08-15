@@ -221,33 +221,9 @@ jobs:
       # commande `locaryn` sur la machine.
       - name: Embarquer le service et la CLI dans l'application
         shell: bash
-        run: |
-          set -e
-          out=apps/desktop/src-tauri/binaries
-          mkdir -p "$out"
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            # Le bundle est universel : ses compagnons doivent l'être aussi,
-            # sinon la moitié des Mac trouve un binaire qu'ils ne savent pas
-            # exécuter.
-            cargo build --release --target x86_64-apple-darwin -p locaryn-daemon -p locaryn-cli
-            cargo build --release --target aarch64-apple-darwin -p locaryn-daemon -p locaryn-cli
-            for bin in locaryn-daemon locaryn; do
-              lipo -create \
-                "target/x86_64-apple-darwin/release/$bin" \
-                "target/aarch64-apple-darwin/release/$bin" \
-                -output "$out/$bin-universal-apple-darwin"
-              chmod +x "$out/$bin-universal-apple-darwin"
-            done
-          else
-            cargo build --release -p locaryn-daemon -p locaryn-cli
-            triple=$(rustc -vV | sed -n 's/^host: //p')
-            ext=""
-            if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
-            for bin in locaryn-daemon locaryn; do
-              cp "target/release/$bin$ext" "$out/$bin-$triple$ext"
-            done
-          fi
-          ls -la "$out"
+        env:
+          UNIVERSAL: ${{ runner.os == 'macOS' && '1' || '0' }}
+        run: bash scripts/stage-desktop-sidecars.sh
 
       - name: Construire l'application
         run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}

@@ -76,5 +76,13 @@ jobs:
         run: |
           pnpm --dir apps/desktop build
           pnpm --dir apps/mobile build
+      # L'application embarque le service et la CLI : Tauri vérifie leur
+      # présence dès la compilation. Le même script qu'à la release, en debug —
+      # il s'agit ici de constater que l'ensemble tient debout, pas de produire
+      # un paquet.
+      - name: Préparer les compagnons de l'application
+        env:
+          PROFILE: debug
+        run: bash scripts/stage-desktop-sidecars.sh
       - name: Compiler les coques Tauri
         run: cargo check -p locaryn-desktop -p locaryn-mobile
