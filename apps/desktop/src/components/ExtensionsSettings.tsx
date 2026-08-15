@@ -28,6 +28,7 @@ import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
 
 const ECOSYSTEM_FILTERS: { id: ExtensionEcosystem | "all"; label: string }[] = [
   { id: "all", label: "Tous" },
+  { id: "locaryn", label: "Officiel Locaryn (Certifié)" },
   { id: "claude_code", label: ECOSYSTEM_LABELS.claude_code },
   { id: "gemini_cli", label: ECOSYSTEM_LABELS.gemini_cli },
   { id: "opencode", label: ECOSYSTEM_LABELS.opencode },

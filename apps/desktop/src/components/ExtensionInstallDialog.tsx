@@ -204,64 +204,100 @@ export function ExtensionInstallDialog({
               }}
             />
             {kind === "extension" && (
-              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="locaryn-btn-ghost"
-                  style={{ fontSize: 12 }}
-                  onClick={async () => {
-                    if (!navigator.clipboard?.readText) {
-                      setDialogError(
-                        "Presse-papiers inaccessible — collez le lien à la main (Ctrl+V).",
-                      );
-                      return;
-                    }
-                    try {
-                      const text = await navigator.clipboard.readText();
-                      if (text.trim()) {
-                        setSpec(text.trim());
-                        setDialogError(null);
+              <>
+                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost"
+                    style={{ fontSize: 12 }}
+                    onClick={async () => {
+                      if (!navigator.clipboard?.readText) {
+                        setDialogError(
+                          "Presse-papiers inaccessible — collez le lien à la main (Ctrl+V).",
+                        );
+                        return;
+                      }
+                      try {
+                        const text = await navigator.clipboard.readText();
+                        if (text.trim()) {
+                          setSpec(text.trim());
+                          setDialogError(null);
+                          inputRef.current?.focus();
+                        }
+                      } catch {
+                        setDialogError(
+                          "Presse-papiers illisible (permission refusée) — collez le lien à la main (Ctrl+V).",
+                        );
+                      }
+                    }}
+                  >
+                    Coller
+                  </button>
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost"
+                    style={{ fontSize: 12 }}
+                    onClick={async () => {
+                      const p = await pickFolder();
+                      if (p) {
+                        setSpec(p);
                         inputRef.current?.focus();
                       }
-                    } catch {
-                      setDialogError(
-                        "Presse-papiers illisible (permission refusée) — collez le lien à la main (Ctrl+V).",
-                      );
-                    }
-                  }}
-                >
-                  Coller
-                </button>
-                <button
-                  type="button"
-                  className="locaryn-btn-ghost"
-                  style={{ fontSize: 12 }}
-                  onClick={async () => {
-                    const p = await pickFolder();
-                    if (p) {
-                      setSpec(p);
-                      inputRef.current?.focus();
-                    }
-                  }}
-                >
-                  Choisir un dossier…
-                </button>
-                <button
-                  type="button"
-                  className="locaryn-btn-ghost"
-                  style={{ fontSize: 12 }}
-                  onClick={async () => {
-                    const p = await pickAnyFile("Archive ZIP", ["zip"]);
-                    if (p) {
-                      setSpec(p);
-                      inputRef.current?.focus();
-                    }
-                  }}
-                >
-                  {" "}
-                  Choisir une archive ZIP…
-                </button>
-              </div>
+                    }}
+                  >
+                    Choisir un dossier…
+                  </button>
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost"
+                    style={{ fontSize: 12 }}
+                    onClick={async () => {
+                      const p = await pickAnyFile("Archive ZIP", ["zip"]);
+                      if (p) {
+                        setSpec(p);
+                        inputRef.current?.focus();
+                      }
+                    }}
+                  >
+                    Choisir une archive ZIP…
+                  </button>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <p className="locaryn-field-hint" style={{ marginBottom: 6 }}>
+                    Suggestions certifiées Locaryn & populaires :
+                  </p>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {[
+                      { label: "🖼️ Image Gen", repo: "Locaryn/plugin-image-gen" },
+                      { label: "🎨 Image Editor", repo: "Locaryn/plugin-image-editor" },
+                      { label: "🎬 Video Gen", repo: "Locaryn/plugin-video-gen" },
+                      { label: "🧊 3D Gen", repo: "Locaryn/plugin-3d-gen" },
+                      { label: "🎙️ Voice TTS", repo: "Locaryn/plugin-voice-tts" },
+                      { label: "🎵 Musique", repo: "Locaryn/plugin-music-gen" },
+                      { label: "👁️ Vision & OCR", repo: "Locaryn/plugin-vision-ocr" },
+                      { label: "📚 RAG & Docs", repo: "Locaryn/plugin-rag-qa" },
+                      { label: "🌐 Traduction", repo: "Locaryn/plugin-translation" },
+                      { label: "📊 Analyse Texte", repo: "Locaryn/plugin-text-analysis" },
+                      { label: "🔒 SSH Connect", repo: "Locaryn/plugin-ssh" },
+                      { label: "✈️ Mode Voyage", repo: "Locaryn/plugin-travel-tunnel" },
+                      { label: "🧪 LoRA Workbench", repo: "Locaryn/plugin-model-training" },
+                    ].map((preset) => (
+                      <button
+                        key={preset.repo}
+                        type="button"
+                        className="locaryn-chip"
+                        style={{ fontSize: 11, padding: "2px 8px" }}
+                        onClick={() => {
+                          setSpec(preset.repo);
+                          inputRef.current?.focus();
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
           </div>
           {(preview || previewing || previewError) && kind === "extension" && (
