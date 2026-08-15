@@ -309,8 +309,6 @@ except ImportError:
         pth = pth_path.display(),
         voice_pt = voice_pt.display(),
         out = out_file.display(),
-        speed = speed,
-        voice_name = voice_name,
     );
 
     progress(10, "Kokoro : initialisation");
@@ -409,10 +407,6 @@ import soundfile as sf
 sf.write(out_path, wav, sr)
 report(100, "Qwen3-TTS : terminé")
 "#,
-        repo_json = repo_json,
-        out_json = out_json,
-        lang_json = lang_json,
-        speed = speed,
     );
 
     progress(5, "Qwen3-TTS : initialisation");

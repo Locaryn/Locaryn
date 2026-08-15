@@ -229,9 +229,15 @@ impl CatalogClient {
             if !name.starts_with("plugin-") {
                 continue;
             }
-            let description = r.get("description").and_then(|d| d.as_str()).map(str::to_string);
+            let description = r
+                .get("description")
+                .and_then(|d| d.as_str())
+                .map(str::to_string);
             let full_name = r.get("full_name").and_then(|f| f.as_str()).unwrap_or(name);
-            let homepage = r.get("html_url").and_then(|h| h.as_str()).map(str::to_string);
+            let homepage = r
+                .get("html_url")
+                .and_then(|h| h.as_str())
+                .map(str::to_string);
 
             out.push(CatalogEntry {
                 id: format!("locaryn:{name}"),

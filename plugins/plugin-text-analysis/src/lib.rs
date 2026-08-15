@@ -16,6 +16,11 @@ pub struct SentimentResult {
 }
 
 pub async fn analyze_sentiment(req: SentimentRequest) -> Result<SentimentResult, String> {
+    // Placeholder d'analyse : le refus du texte vide est la seule chose que
+    // cette version sait dire honnêtement de son entrée.
+    if req.text.trim().is_empty() {
+        return Err("texte vide : rien à analyser".to_string());
+    }
     Ok(SentimentResult {
         sentiment: "positive".to_string(),
         score: 0.95,

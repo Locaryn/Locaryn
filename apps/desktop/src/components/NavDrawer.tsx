@@ -112,9 +112,7 @@ export function NavDrawer({
       <div className="locaryn-nav-drawer-head">
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span className="locaryn-logo-dot" />
-          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>
-            Locaryn Navigation
-          </strong>
+          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Locaryn Navigation</strong>
         </div>
         <button
           type="button"

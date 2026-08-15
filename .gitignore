@@ -76,6 +76,17 @@ lochor_tmp/
 release/
 clothes_test/
 voice_clone_test/
+# Sorties de mise au point déposées à la racine. Un `git add .` les a déjà
+# publiées une fois dans le dépôt public (redirections de commandes gh,
+# extraits de catalogue, un .wav de test de clonage vocal).
+/tmp_*.txt
+/out.txt
+/gh_status.txt
+/help_clone.txt
+/remotes.txt
+/check_repos.txt
+/repo_create.txt
+/*.wav
 
 # ─────────────────────────────────────────────────────────────────────────
 # Assistants de code / IA

@@ -11,6 +11,19 @@ description = "Locaryn local daemon — loopback HTTP/SSE API, sessions, project
 name = "locaryn-daemon"
 path = "src/main.rs"
 
+# Le paquet Debian « serveur » livre le couple annoncé dans la note de
+# release : le démon *et* la CLI qui le pilote. Sans liste explicite,
+# cargo-deb n'embarque que le binaire du paquet courant, et `locaryn` était
+# absent de l'installation alors que la documentation l'y promettait.
+# cargo-deb réécrit lui-même `target/release/` en `target/<triple>/release/`
+# quand le build passe par `--target`, ce que fait la CI.
+[package.metadata.deb]
+assets = [
+    ["target/release/locaryn-daemon", "usr/bin/", "755"],
+    ["target/release/locaryn", "usr/bin/", "755"],
+    ["../../README.md", "usr/share/doc/locaryn-daemon/README.md", "644"],
+]
+
 [dependencies]
 locaryn-shared-types = { workspace = true }
 locaryn-sdk = { workspace = true }

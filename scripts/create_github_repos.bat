@@ -5,8 +5,15 @@ echo ===================================================
 echo 1. Pushing main core repository (Locaryn/locaryn)...
 echo ===================================================
 git remote set-url origin https://github.com/Locaryn/locaryn.git
-git add .
-git commit -m "refactor: modularize official extensions and dynamic UI gating"
+REM Pas de `git add .` ici : ce script sert à créer et amorcer les dépôts,
+REM pas à décider de ce qui entre dans un commit. Un `add .` à la racine avait
+REM publié des fichiers temporaires dans le dépôt public.
+git diff --quiet && git diff --cached --quiet
+if errorlevel 1 (
+    echo ERREUR : commitez vos modifications avant de lancer ce script.
+    git status --short
+    exit /b 1
+)
 git push -u origin main
 
 echo.

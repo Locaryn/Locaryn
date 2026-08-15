@@ -132,6 +132,13 @@ jobs:
           if (-not (Test-Path "wix/main.wxs")) {
             cargo wix init --package locaryn-daemon --force
           }
+          # cargo-wix recompile pour la cible par défaut : ses fichiers
+          # atterrissent dans `target\release`, pas dans le dossier de la
+          # cible explicite utilisée par l'étape de compilation. La CLI, elle,
+          # n'est pas reconstruite par cargo-wix — on la dépose donc là où le
+          # main.wxs la cherche, sinon `light` échoue avec un fichier absent.
+          New-Item -ItemType Directory -Force ../../target/release | Out-Null
+          Copy-Item "../../target/${{ matrix.target }}/release/locaryn.exe" "../../target/release/" -Force
           cargo wix --package locaryn-daemon --nocapture --output "dist/locaryn-$env:VER-server-windows-x64.msi"
           # L'upload d'artefacts se fait depuis la racine du dépôt : on
           # ramène le .msi dans dist/ à la racine.
@@ -228,6 +235,12 @@ jobs:
           # (.exe-setup) est conservé. Le .msi bureau et les .rpm sont supprimés pour éviter
           # toute confusion avec le .msi serveur.
           rm -f dist/*_en-US.msi dist/*_en-US.msi.sig dist/*_x64.msi dist/*_x64.msi.sig dist/*.rpm dist/*.rpm.sig
+          # Les signatures Linux ne servent à personne : l'écran « À propos »
+          # désactive l'updater sur Linux (AboutSettings.tsx), et le manifeste
+          # ne déclare donc aucune plateforme linux-*. Publier ces .sig laissait
+          # croire à une mise à jour automatique qui n'existe pas. Retirer cette
+          # ligne le jour où l'updater couvrira l'AppImage.
+          rm -f dist/*.deb.sig dist/*.AppImage.sig
           ls -la dist/
           # Un job qui « réussit » sans rien produire est un piège : il fait
           # croire à une release complète.
@@ -325,17 +338,44 @@ jobs:
           [ -n "$ver" ] || ver="0.1.0"
           echo "VER=$ver" >> "$GITHUB_ENV"
 
-      # L'APK de diffusion sort **non signé**, délibérément : la clé décide de
-      # l'identité de l'application pour toutes ses mises à jour à venir. Une
-      # clé inventée par la CI et laissée dans le dépôt serait la mauvaise
-      # réponse à une question qui appartient au propriétaire du projet.
+      # La clé de signature décide de l'identité de l'application pour toutes
+      # ses mises à jour à venir : elle appartient au propriétaire du projet,
+      # pas à la CI. On signe donc si — et seulement si — le dépôt fournit un
+      # keystore en secret. Sinon l'APK sort non signé, et son nom le dit :
+      # Android refuse d'installer un paquet sans signature, un fichier appelé
+      # « locaryn-x.y.z-android.apk » laissait croire le contraire.
+      #
+      # Pour activer la signature, définir les secrets ANDROID_KEYSTORE_BASE64
+      # (base64 d'un .jks), ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS et
+      # ANDROID_KEY_PASSWORD.
       - name: Rassembler l'APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           mkdir -p dist
           apk=$(find apps/mobile/src-tauri/gen/android -name '*.apk' -path '*release*' | head -1)
           [ -n "$apk" ] || { echo "::error::aucun APK produit"; exit 1; }
           # Nom aligné sur les autres artefacts : locaryn-<version>-<produit>-<plateforme>.
-          cp "$apk" "dist/locaryn-${VER}-android.apk"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            tools=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore.jks"
+            "$tools/zipalign" -p -f 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+            "$tools/apksigner" sign \
+              --ks "$RUNNER_TEMP/keystore.jks" \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --key-pass env:ANDROID_KEY_PASSWORD \
+              --out "dist/locaryn-${VER}-android.apk" \
+              "$RUNNER_TEMP/aligned.apk"
+            "$tools/apksigner" verify --print-certs "dist/locaryn-${VER}-android.apk"
+            rm -f "$RUNNER_TEMP/keystore.jks" "$RUNNER_TEMP/aligned.apk"
+          else
+            echo "::warning::aucun keystore configuré — l'APK est publié non signé et ne pourra pas être installé tel quel"
+            cp "$apk" "dist/locaryn-${VER}-android-unsigned.apk"
+          fi
           ls -la dist/
 
       - uses: actions/upload-artifact@v4
@@ -365,6 +405,46 @@ jobs:
           ver="${GITHUB_REF_NAME#v}"
           [ -n "$ver" ] || ver="0.1.0"
           echo "VER=$ver" >> "$GITHUB_ENV"
+
+      # Un tag reposé après correction relance ce workflow sur une release qui
+      # existe déjà. L'action de publication remplace les fichiers de même nom
+      # mais laisse les autres : la v0.2.0 s'est ainsi retrouvée avec le .msi
+      # d'un build et le setup.exe d'un autre — deux compilations différentes
+      # de la même version — plus un .rpm.sig sans .rpm. On repart d'une
+      # release vide pour que la liste publiée soit exactement celle produite
+      # par cette exécution.
+      - name: Retirer les assets d'une publication précédente
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          anciens=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name' 2>/dev/null || true)
+          [ -n "$anciens" ] || { echo "aucune publication précédente pour $GITHUB_REF_NAME"; exit 0; }
+          while IFS= read -r asset; do
+            [ -n "$asset" ] || continue
+            echo "suppression de l'asset obsolète : $asset"
+            gh release delete-asset "$GITHUB_REF_NAME" "$asset" \
+              --repo "$GITHUB_REPOSITORY" --yes
+          done <<< "$anciens"
+
+      # Nom réel de l'APK : il dépend de la présence d'un keystore (voir le job
+      # Android). Le tableau de la note de release doit désigner le fichier
+      # effectivement publié, et dire quand il n'est pas installable.
+      - name: Repérer l'APK publié
+        shell: bash
+        run: |
+          apk=$(find artifacts -name 'locaryn-*-android*.apk' -printf '%f\n' | head -1)
+          if [ -z "$apk" ]; then
+            echo "::error::aucun APK dans les artefacts"; exit 1
+          fi
+          echo "APK=$apk" >> "$GITHUB_ENV"
+          case "$apk" in
+            *-unsigned.apk)
+              echo "APK_NOTE=**non signé** : Android refusera de l'installer tel quel (voir plus bas)" >> "$GITHUB_ENV" ;;
+            *)
+              echo "APK_NOTE=client mobile Android" >> "$GITHUB_ENV" ;;
+          esac
 
       # Manifeste de mise à jour du bureau. Le plugin updater v2 ne sait pas
       # lire l'API des releases GitHub : il attend un JSON au format
@@ -451,7 +531,7 @@ jobs:
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.AppImage` | portable, sans installation |
             | Linux x64 | `locaryn-${{ env.VER }}-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
-            | Android | `locaryn-${{ env.VER }}-android.apk` | client mobile Android |
+            | Android | `${{ env.APK }}` | ${{ env.APK_NOTE }} |
 
             #### Serveur (sans interface)
 
@@ -459,19 +539,30 @@ jobs:
 
             | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.msi` | installeur MSI, ajoute la CLI au PATH |
+            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.msi` | installe le démon **et** la CLI, et les ajoute au PATH — installation pour tous les utilisateurs, donc à lancer en administrateur |
             | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.zip` | portable, sans auto-update |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.deb` | Debian / Ubuntu |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.tar.gz` | portable, sans auto-update |
             | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.tar.gz` | portable |
             | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.tar.gz` | portable |
 
-            Les installeurs Windows (`.msi`) et macOS (`.app.tar.gz`) publiés ici sont signés :
-            l'updater les télécharge et les installe tout seul.
-
             ### Mises à jour
 
             Windows et macOS se mettent à jour tout seuls (bouton « Vérifier les mises à jour »
-            dans Réglages → À propos). Sous Linux, téléchargez le nouveau `.deb` / `.AppImage`
-            depuis cette page. Les binaires macOS ne sont **pas notarisés** : la première
-            ouverture peut demander une confirmation manuelle (clic droit → Ouvrir).
+            dans Réglages → À propos) : l'updater télécharge `Locaryn_${{ env.VER }}_x64-setup.exe`
+            ou `Locaryn.app.tar.gz` et vérifie leur signature avant de les installer. Sous Linux,
+            l'auto-update est désactivée — téléchargez le nouveau `.deb` / `.AppImage` depuis
+            cette page.
+
+            Cette signature est celle de l'updater, pas une signature d'éditeur : les binaires
+            Windows ne sont **pas signés Authenticode** (SmartScreen affichera un avertissement)
+            et les binaires macOS ne sont **pas notarisés** (première ouverture : clic droit →
+            Ouvrir).
+
+            ### Android
+
+            L'APK n'est signé que si le dépôt fournit un keystore. Publié `-unsigned`, il ne
+            s'installe pas tel quel : signez-le avec votre propre clé
+            (`apksigner sign --ks votre.jks --out locaryn.apk locaryn-…-android-unsigned.apk`)
+            avant de l'installer. La clé de signature fixe l'identité de l'application pour
+            toutes ses mises à jour : elle appartient au propriétaire du projet, pas à la CI.

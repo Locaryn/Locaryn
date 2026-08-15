@@ -3,7 +3,7 @@
 //! Provides text-to-image capabilities using stable-diffusion.cpp (sd.exe),
 //! Flux, SDXL, and Z-Image diffusion models.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// Image generation parameters.

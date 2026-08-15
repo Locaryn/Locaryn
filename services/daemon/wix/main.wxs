@@ -121,6 +121,21 @@
                                 Source='$(var.CargoTargetBinDir)\locaryn-daemon.exe'
                                 KeyPath='yes'/>
                         </Component>
+                        <!--
+                          La CLI voyage avec le démon : c'est elle qui pilote
+                          l'installation (locaryn status, daemon, users…), et
+                          la note de release promet « ajoute la CLI au PATH ».
+                          Sans ce composant, le dossier ajouté au PATH ne
+                          contenait que le démon.
+                        -->
+                        <Component Id='binary1' Guid='*'>
+                            <File
+                                Id='exe1'
+                                Name='locaryn.exe'
+                                DiskId='1'
+                                Source='$(var.CargoTargetBinDir)\locaryn.exe'
+                                KeyPath='yes'/>
+                        </Component>
                     </Directory>
                 </Directory>
             </Directory>
@@ -140,8 +155,9 @@
               the license sidecar file from the installer.
             -->
             <ComponentRef Id='License'/>
-            
+
             <ComponentRef Id='binary0'/>
+            <ComponentRef Id='binary1'/>
 
             <Feature
                 Id='Environment'

@@ -81,8 +81,51 @@ fn local_ip_string() -> String {
         .unwrap_or_else(|_| "127.0.0.1".to_string())
 }
 
+/// Réponse aux deux drapeaux qu'on attend d'un binaire de service avant de
+/// l'installer : dire sa version et dire à quoi il sert.
+///
+/// Sans cela, `locaryn-daemon --version` démarrait le serveur : la base
+/// s'ouvrait, le port se réservait, et la commande ne rendait jamais la main.
+/// C'est le premier geste d'un paquet, d'un script de service ou d'un humain
+/// qui vérifie une installation — il ne doit rien démarrer.
+///
+/// Renvoie `true` quand la demande a été traitée et qu'il n'y a rien à lancer.
+fn handled_informational_flag() -> bool {
+    let arg = match std::env::args().nth(1) {
+        Some(a) => a,
+        None => return false,
+    };
+    match arg.as_str() {
+        "-V" | "--version" => {
+            println!("locaryn-daemon {}", env!("CARGO_PKG_VERSION"));
+            true
+        }
+        "-h" | "--help" => {
+            println!(
+                "locaryn-daemon {} — {}\n\n\
+                 Usage: locaryn-daemon [-h | -V]\n\n\
+                 Le démon n'a pas d'options de ligne de commande : il lit sa\n\
+                 configuration (adresse d'écoute, port, dossier de données) dans\n\
+                 le fichier de configuration Locaryn. Utilisez la CLI `locaryn`\n\
+                 pour le piloter (`locaryn daemon --help`).\n\n\
+                 Options:\n  \
+                 -h, --help     Affiche cette aide\n  \
+                 -V, --version  Affiche la version",
+                env!("CARGO_PKG_VERSION"),
+                env!("CARGO_PKG_DESCRIPTION"),
+            );
+            true
+        }
+        _ => false,
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if handled_informational_flag() {
+        return Ok(());
+    }
+
     let cfg = locaryn_config::load(None)?;
     init_tracing(&cfg);
 

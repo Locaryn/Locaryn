@@ -13,3 +13,8 @@ tokio = { version = "1.38", features = ["full"] }
 tracing = "0.1"
 thiserror = "1.0"
 async-trait = "0.1"
+
+# Crate autonome : publiée dans son propre dépôt, et compilable
+# telle quelle depuis le monorepo (sinon cargo la croit membre du
+# workspace racine et refuse de la construire).
+[workspace]

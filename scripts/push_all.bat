@@ -1,41 +1,61 @@
 @echo off
 setlocal enabledelayedexpansion
 
-echo ========================================================
-echo Pushing Locaryn Core and all 13 Official Plugins
-echo ========================================================
+REM Publie le cœur Locaryn puis les 13 extensions officielles.
+REM
+REM Deux garde-fous par rapport à la première version de ce script :
+REM   - plus de `git add .` à la racine : il avait publié dans le dépôt public
+REM     des sorties de commandes, des fichiers temporaires et un .wav de test,
+REM     et il aurait fini par y publier la clé privée de l'updater. Ce script
+REM     pousse ce qui est *déjà* commité et s'arrête si l'arbre est sale.
+REM   - plus de `push --force` : écraser l'historique distant de 13 dépôts
+REM     n'est pas une opération de routine.
 
-cd d:\Documents\Syncho
-git remote set-url origin https://github.com/Locaryn/locaryn.git
-git add .
-git commit -m "refactor: modularize official extensions, dynamic UI filtering and CI releases"
-git push -u origin main
+cd /d "%~dp0.."
+
+echo ========================================================
+echo Verification de l'arbre de travail
+echo ========================================================
+git diff --quiet && git diff --cached --quiet
+if errorlevel 1 (
+    echo.
+    echo ERREUR : des modifications ne sont pas commitees. Commitez-les
+    echo          d'abord, puis relancez ce script.
+    git status --short
+    exit /b 1
+)
+
+echo.
+echo ========================================================
+echo Poussee du depot principal
+echo ========================================================
+git push origin main
+if errorlevel 1 exit /b 1
 
 set PLUGINS=plugin-image-gen plugin-image-editor plugin-video-gen plugin-3d-gen plugin-voice-tts plugin-music-gen plugin-vision-ocr plugin-rag-qa plugin-translation plugin-text-analysis plugin-ssh plugin-travel-tunnel plugin-model-training
 
 for %%P in (%PLUGINS%) do (
     echo.
     echo ========================================================
-    echo Pushing %%P to https://github.com/Locaryn/%%P.git
+    echo %%P  ^>  https://github.com/Locaryn/%%P.git
     echo ========================================================
-    cd d:\Documents\Syncho\plugins\%%P
+    pushd "%~dp0..\plugins\%%P"
     if exist .git (
-        git add .
-        git commit -m "release: initial official plugin release"
-        git branch -M main
+        git add -A
+        git diff --cached --quiet || git commit -m "release: mise a jour de l'extension"
         git remote set-url origin https://github.com/Locaryn/%%P.git
-        git push -u origin main --force
+        git push -u origin main
     ) else (
         git init -b main
-        git add .
-        git commit -m "release: initial official plugin release"
+        git add -A
+        git commit -m "release: initial plugin codebase"
         git remote add origin https://github.com/Locaryn/%%P.git
-        git push -u origin main --force
+        git push -u origin main
     )
+    popd
 )
 
-cd d:\Documents\Syncho
 echo.
 echo ========================================================
-echo Done! All repositories are published on GitHub.
+echo Termine.
 echo ========================================================
