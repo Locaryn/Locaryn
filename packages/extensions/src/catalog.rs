@@ -25,6 +25,14 @@ use std::path::PathBuf;
 pub fn builtin_sources() -> Vec<CatalogSource> {
     vec![
         CatalogSource {
+            id: "locaryn:official".into(),
+            label: "Locaryn Official".into(),
+            ecosystem: ExtensionEcosystem::Locaryn,
+            url: "https://api.github.com/orgs/Locaryn/repos?per_page=100".into(),
+            builtin: true,
+            enabled: true,
+        },
+        CatalogSource {
             id: "claude-code:anthropics/claude-code".into(),
             label: "anthropics/claude-code".into(),
             ecosystem: ExtensionEcosystem::ClaudeCode,
@@ -175,6 +183,7 @@ impl CatalogClient {
 
     async fn fetch_source(&self, source: &CatalogSource) -> Result<Vec<CatalogEntry>, String> {
         match source.ecosystem {
+            ExtensionEcosystem::Locaryn => self.fetch_locaryn_registry(source).await,
             ExtensionEcosystem::ClaudeCode => self.fetch_claude_marketplace(source).await,
             ExtensionEcosystem::GeminiCli => self.fetch_gemini_registry(source).await,
             ExtensionEcosystem::Mcp => self.fetch_mcp_registry(source).await,
@@ -188,6 +197,7 @@ impl CatalogClient {
             .http
             .get(url)
             .header("Accept", "application/json")
+            .header("User-Agent", "Locaryn-Extension-Catalog/1.0")
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -197,6 +207,51 @@ impl CatalogClient {
         resp.json::<serde_json::Value>()
             .await
             .map_err(|e| e.to_string())
+    }
+
+    // --- Locaryn Official Registry ------------------------------------------
+
+    async fn fetch_locaryn_registry(
+        &self,
+        source: &CatalogSource,
+    ) -> Result<Vec<CatalogEntry>, String> {
+        let v = self.get_json(&source.url).await?;
+        let repos = v
+            .as_array()
+            .ok_or_else(|| "GitHub API response n'est pas un tableau".to_string())?;
+
+        let mut out = Vec::new();
+        for r in repos {
+            let Some(name) = r.get("name").and_then(|n| n.as_str()) else {
+                continue;
+            };
+            // Only include extension repos (plugin-*)
+            if !name.starts_with("plugin-") {
+                continue;
+            }
+            let description = r.get("description").and_then(|d| d.as_str()).map(str::to_string);
+            let full_name = r.get("full_name").and_then(|f| f.as_str()).unwrap_or(name);
+            let homepage = r.get("html_url").and_then(|h| h.as_str()).map(str::to_string);
+
+            out.push(CatalogEntry {
+                id: format!("locaryn:{name}"),
+                name: name.to_string(),
+                display_name: name.replace("plugin-", "").replace('-', " "),
+                description,
+                author: Some("Locaryn".to_string()),
+                version: Some("1.0.0".to_string()),
+                homepage,
+                ecosystem: ExtensionEcosystem::Locaryn,
+                catalog_id: source.id.clone(),
+                catalog_label: source.label.clone(),
+                install_source: full_name.to_string(),
+                keywords: vec!["official".to_string(), "plugin".to_string()],
+                advertised: vec!["official extension".to_string()],
+                compat: CatalogCompat::Native,
+                installed: false,
+            });
+        }
+        Ok(out)
     }
 
     // --- Claude Code marketplaces -------------------------------------------
