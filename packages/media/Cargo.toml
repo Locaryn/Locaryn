@@ -1,0 +1,15 @@
+[package]
+name = "locaryn-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Generation of media (images via stable-diffusion.cpp, speech via TTS) on the machine that owns the models."
+
+[dependencies]
+locaryn-config = { workspace = true }
+tokio = { workspace = true, features = ["process", "io-util", "sync", "time"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }

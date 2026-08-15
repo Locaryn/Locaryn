@@ -1,0 +1,38 @@
+{
+  "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "plugin-text-analysis",
+  "version": "1.0.0",
+  "description": "Text analysis, sentiment classification, NER and batch processing extension.",
+  "author": "Locaryn Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Locaryn/plugin-text-analysis",
+  "repository": "https://github.com/Locaryn/plugin-text-analysis",
+  "keywords": ["text-analysis", "sentiment", "ner", "batch-processing"],
+  "permissions": {
+    "files_read": true,
+    "files_write": true
+  },
+  "capabilities": ["text-analysis"],
+  "ui_contributions": {
+    "nav_items": [
+      {
+        "id": "studio",
+        "label": "Studio de génération",
+        "icon": "🎨"
+      },
+      {
+        "id": "batch",
+        "label": "Batch API (-50%)",
+        "icon": "⚡"
+      }
+    ],
+    "studio_tabs": [
+      {
+        "id": "text-analysis",
+        "label": "Analyse texte",
+        "icon": "📊"
+      }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "plugin-3d-gen",
+  "version": "1.0.0",
+  "description": "3D asset and mesh generation extension (InstantMesh, Tripo3D, Gaussian Splatting).",
+  "author": "Locaryn Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Locaryn/plugin-3d-gen",
+  "repository": "https://github.com/Locaryn/plugin-3d-gen",
+  "keywords": ["3d-generation", "mesh", "gltf", "obj", "3d-asset"],
+  "permissions": {
+    "files_read": true,
+    "files_write": true
+  },
+  "capabilities": ["3d-gen"],
+  "ui_contributions": {
+    "nav_items": [
+      {
+        "id": "studio",
+        "label": "Studio de génération",
+        "icon": "🎨"
+      }
+    ],
+    "studio_tabs": [
+      {
+        "id": "3d",
+        "label": "3D",
+        "icon": "🧩"
+      }
+    ]
+  }
+}

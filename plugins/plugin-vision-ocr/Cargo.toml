@@ -1,0 +1,14 @@
+[package]
+name = "locaryn-plugin-vision-ocr"
+version = "1.0.0"
+edition = "2021"
+description = "Official Locaryn Extension: Vision, OCR & Object Detection (Florence-2, GOT-OCR2, YOLO)"
+license = "Apache-2.0"
+authors = ["Locaryn Team"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.38", features = ["full"] }
+tracing = "0.1"
+thiserror = "1.0"

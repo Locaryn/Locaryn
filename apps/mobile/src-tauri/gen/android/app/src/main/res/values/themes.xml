@@ -1,6 +1,11 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
+    <!-- Base application theme. L'app est sombre par design : le fond de
+         fenêtre suit le fond de l'interface (17191a) pour que la bande
+         derrière la barre de statut ne jure jamais avec l'application, quel
+         que soit le thème système. -->
     <style name="Theme.locaryn_mobile" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <item name="android:windowBackground">#17191a</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

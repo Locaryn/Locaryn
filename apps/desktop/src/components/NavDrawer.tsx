@@ -8,20 +8,43 @@ type Props = {
   onSelectView: (view: string) => void;
   mode?: ConnectionMode;
   provider?: ProviderSummary | null;
+  /** Active extension capabilities currently installed/enabled. */
+  activeCapabilities?: string[];
 };
 
-const NAV_ITEMS = [
+type NavItem = {
+  id: string;
+  label: string;
+  icon: string;
+  desc: string;
+  /** If set, item is only rendered when at least one required capability is present. */
+  requiredCapabilities?: string[];
+};
+
+const BASE_NAV_ITEMS: NavItem[] = [
   {
     id: "chat",
     label: "Chat & Assistant Agent",
     icon: "💬",
-    desc: "Environnement de chat principal, execution de code et prompts",
+    desc: "Environnement de chat principal, exécution de code et prompts",
   },
   {
     id: "studio",
     label: "Studio de génération",
     icon: "🎨",
     desc: "Image, vidéo, audio, musique, 3D et édition multimodale",
+    requiredCapabilities: [
+      "image-gen",
+      "image-editor",
+      "video-gen",
+      "3d-gen",
+      "voice-tts",
+      "music-gen",
+      "vision-ocr",
+      "rag-qa",
+      "translation",
+      "text-analysis",
+    ],
   },
   {
     id: "installed",
@@ -40,18 +63,20 @@ const NAV_ITEMS = [
     label: "Batch API (-50%)",
     icon: "⚡",
     desc: "Traitement par lots asynchrone à moitié prix",
+    requiredCapabilities: ["text-analysis", "batch-api"],
   },
   {
     id: "training",
     label: "Entraînement & Oblitération",
     icon: "🔓",
     desc: "Studio d'entraînement LoRA et oblitération de modèles RepE",
+    requiredCapabilities: ["model-training"],
   },
   {
     id: "connectors",
-    label: "Connecteurs & MCP",
+    label: "Extensions & MCP",
     icon: "🔌",
-    desc: "Integrations serveur distant SSH, plugins et extensions",
+    desc: "Intégrations serveurs distants, plugins et extensions",
   },
   {
     id: "settings",
@@ -61,8 +86,21 @@ const NAV_ITEMS = [
   },
 ];
 
-export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) {
+export function NavDrawer({
+  isOpen,
+  onClose,
+  activeView,
+  onSelectView,
+  activeCapabilities = [],
+}: Props) {
   if (!isOpen) return null;
+
+  const visibleItems = BASE_NAV_ITEMS.filter((item) => {
+    if (!item.requiredCapabilities || item.requiredCapabilities.length === 0) {
+      return true;
+    }
+    return item.requiredCapabilities.some((cap) => activeCapabilities.includes(cap));
+  });
 
   return (
     <ModalShell
@@ -74,7 +112,9 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
       <div className="locaryn-nav-drawer-head">
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span className="locaryn-logo-dot" />
-          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Locaryn Navigation</strong>
+          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>
+            Locaryn Navigation
+          </strong>
         </div>
         <button
           type="button"
@@ -96,7 +136,7 @@ export function NavDrawer({ isOpen, onClose, activeView, onSelectView }: Props) 
         </span>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const isActive = activeView === item.id;
             return (
               <button

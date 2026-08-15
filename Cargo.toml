@@ -11,6 +11,7 @@ members = [
     "packages/sdk",
     "packages/auth",
     "packages/config",
+    "packages/media",
     "packages/storage",
     "packages/events",
     "packages/preview",
@@ -32,7 +33,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
-repository = "https://github.com/locaryn/locaryn"
+repository = "https://github.com/TeALO36/Locaryn"
 homepage = "https://locaryn.dev"
 authors = ["Locaryn Contributors"]
 
@@ -42,6 +43,7 @@ locaryn-shared-types      = { path = "packages/shared-types", version = "0.1.0" 
 locaryn-sdk               = { path = "packages/sdk", version = "0.1.0" }
 locaryn-auth              = { path = "packages/auth", version = "0.1.0" }
 locaryn-config            = { path = "packages/config", version = "0.1.0" }
+locaryn-media             = { path = "packages/media", version = "0.1.0" }
 locaryn-storage           = { path = "packages/storage", version = "0.1.0" }
 locaryn-events            = { path = "packages/events", version = "0.1.0" }
 locaryn-preview           = { path = "packages/preview", version = "0.1.0" }

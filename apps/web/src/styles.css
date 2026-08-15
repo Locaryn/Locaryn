@@ -1,0 +1,405 @@
+@import "../../../packages-ui/tokens/tokens.css";
+
+/* ── Sen, la même police que le desktop et le mobile (embarquée en local) ── */
+@font-face {
+  font-family: "Sen";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Sen";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Sen";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Sen";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/latin-800-normal.woff2") format("woff2");
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Locaryn — web.
+
+   Same tokens and same language as the phone and the desktop:
+   one warm-neutral scale, one muted green, flat surfaces,
+   hairline borders. The phone's layout, sized for a thumb, is
+   also right for a browser window on a phone.
+   ═══════════════════════════════════════════════════════════ */
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--font-sans);
+  overscroll-behavior: none;
+}
+
+body {
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A browser already handles its own bars; the safe-area padding stays as a
+   no-op for browsers that report it (installed PWA in standalone mode). */
+.lo-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+.lo-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-5);
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.lo-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800; /* le même poids que les titres du desktop */
+  color: var(--text);
+}
+
+.lo-sub {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.lo-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* 48px minimum: below that a thumb misses. */
+.lo-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  font-size: 16px; /* under 16px, iOS zooms on focus */
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+.lo-input:focus {
+  border-color: var(--accent);
+}
+
+.lo-btn {
+  width: 100%;
+  min-height: 50px;
+  font-size: 15px;
+  font-family: inherit;
+  font-weight: 600;
+  color: #12140f;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.lo-btn:disabled {
+  opacity: 0.5;
+}
+.lo-btn-ghost {
+  width: 100%;
+  min-height: 46px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.lo-error {
+  margin: 0;
+  padding: var(--space-3);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--danger);
+  background: rgba(var(--danger-rgb), 0.08);
+  border: 1px solid rgba(var(--danger-rgb), 0.25);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Bandeau serveur — même langue que la topbar du desktop ── */
+.lo-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 46px;
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.lo-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+.lo-bar-away {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  background: none;
+  font-family: inherit;
+}
+
+/* ── Conversation ────────────────────────────────────────── */
+.lo-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+.lo-msg {
+  max-width: 86%;
+  padding: 10px 13px;
+  border-radius: var(--radius);
+  font-size: 15px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lo-msg-me {
+  align-self: flex-end;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.lo-msg-ai {
+  align-self: flex-start;
+  color: var(--text);
+}
+.lo-compose {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--border);
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+.lo-compose .lo-input {
+  flex: 1;
+}
+.lo-send {
+  flex: 0 0 auto;
+  width: 48px;
+  min-height: 48px;
+  font-size: 17px;
+  color: #12140f;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+}
+.lo-send:disabled {
+  opacity: 0.4;
+}
+
+/* ── Studio de création ───────────────────────────────────── */
+.lo-back {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.lo-tabs {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) 0;
+  border-bottom: 1px solid var(--border);
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+.lo-tab {
+  flex: 1;
+  min-height: 44px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.lo-tab-on {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+.lo-studio {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+.lo-textarea {
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.lo-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.lo-chip {
+  flex: 1;
+  min-height: 40px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.lo-chip-on {
+  color: #12140f;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.lo-result {
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* ── Prompt d'installation PWA ───────────────────────────────
+   A quiet bottom sheet, once per visitor: the answer is remembered in
+   localStorage, so it never comes back after a dismiss or an install. */
+.pwa-backdrop[open] {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: var(--space-4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  border: 0;
+  animation: pwa-in 0.18s var(--ease) both;
+}
+.pwa-banner {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+.pwa-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 800;
+  color: var(--text);
+}
+.pwa-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.pwa-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.pwa-actions .lo-btn,
+.pwa-actions .lo-btn-ghost {
+  min-height: 44px;
+}
+@keyframes pwa-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pwa-backdrop {
+    animation: none;
+  }
+}
+
+/* Wide screens: the interface was made for a phone, so cap the reading
+   width instead of stretching it across a desktop monitor. */
+@media (min-width: 900px) {
+  .lo-center {
+    max-width: 520px;
+  }
+}

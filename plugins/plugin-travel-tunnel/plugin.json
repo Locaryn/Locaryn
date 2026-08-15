@@ -1,0 +1,25 @@
+{
+  "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "plugin-travel-tunnel",
+  "version": "1.0.0",
+  "description": "Travel mode & encrypted outbound tunnels (Cloudflare, ngrok, devtunnel) with QR pairing.",
+  "author": "Locaryn Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Locaryn/plugin-travel-tunnel",
+  "repository": "https://github.com/Locaryn/plugin-travel-tunnel",
+  "keywords": ["travel-mode", "tunnels", "cloudflare", "ngrok", "qr-pairing"],
+  "permissions": {
+    "network": true
+  },
+  "capabilities": ["travel-tunnel"],
+  "ui_contributions": {
+    "settings_tabs": [
+      {
+        "id": "travel-settings",
+        "label": "Mode Voyage & Tunnels",
+        "icon": "✈️"
+      }
+    ]
+  }
+}

@@ -76,7 +76,31 @@ lochor_tmp/
 release/
 clothes_test/
 voice_clone_test/
+
+# ─────────────────────────────────────────────────────────────────────────
+# Assistants de code / IA
+#
+# Dossiers locaux créés par les assistants de code : réglages machine,
+# historiques, caches et bases locales n'ont rien à faire dans la forge.
+# Les instructions partagées (CLAUDE.md, AGENTS.md) restent suivies — seul
+# le local est ignoré. Comme pour .vscode, un lanceur délibérément partagé
+# (.claude/launch.json) garde une exception.
+# ─────────────────────────────────────────────────────────────────────────
+.claude/
+!.claude/launch.json
 .freebuff/
+.cursor/
+.cursorignore
+.codex/
+.codebuff/
+.windsurf/
+.cline/
+.roo/
+.continue/
+.aider*
+.gemini/
+.qwen/
+.kiro/
 
 # ─────────────────────────────────────────────────────────────────────────
 # IDE
@@ -115,3 +139,4 @@ coverage/
 Lancer-SnapMCP.bat
 Lancer-Banc-SnapMCP.bat
 .snapmcp/
+.updater-keys/

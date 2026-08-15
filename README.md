@@ -124,6 +124,40 @@ file holds no secret and can be distributed freely.
 Full details, and the reasoning behind each choice, in
 [docs/architecture/12-server-and-deployment.md](docs/architecture/12-server-and-deployment.md).
 
+## Installation et mises à jour
+
+Les binaires sont publiés sur la page **Releases** de GitHub :
+<https://github.com/Locaryn/locaryn/releases>.
+
+### Quel fichier télécharger ?
+
+| Plateforme | Fichier | Remarque |
+| --- | --- | --- |
+| Windows x64 | `Locaryn_<version>_x64-setup.exe` | installeur NSIS — recommandé |
+| Windows x64 | `Locaryn_<version>_x64_en-US.msi` | installeur MSI — alternative |
+| Windows x64 | `locaryn-<version>-desktop-windows-x64-portable.zip` | portable, sans auto-update |
+| macOS | `Locaryn_<version>_universal.dmg` | universel — Intel et Apple Silicon |
+| Linux x64 | `locaryn_<version>_amd64.deb` | Debian / Ubuntu |
+| Linux x64 | `Locaryn_<version>_amd64.AppImage` | portable, sans installation |
+| Linux x64 | `locaryn-<version>-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
+| Android | `*.apk` | non signé, à installer manuellement |
+
+Règle simple : prenez l'**installeur** de votre plateforme. L'installeur reçoit les
+**mises à jour automatiques** ; une archive portable doit être retéléchargée à la main.
+Les noms `Locaryn_<version>_<arch>…` sont la convention attendue par le système de mise
+à jour — ne les renommez pas.
+
+### Mises à jour automatiques
+
+Windows et macOS embarquent un client de mise à jour qui interroge la release la plus
+récente sur GitHub (`Réglages → À propos → Vérifier les mises à jour`). La vérification
+se fait aussi au démarrage. Sous Linux, l'updater Tauri n'est pas supporté : il faut
+télécharger le nouveau paquet depuis la page Releases.
+
+Pour que ce mécanisme fonctionne, le dépôt doit être **public** (c'est le cas) et les
+releases doivent être **publiées** avec leurs installeurs signés. Les artefacts macOS ne
+sont pas notarisés : la première ouverture peut demander une confirmation manuelle.
+
 ## Status
 
 MVP target: 6–8 weeks. See [docs/architecture/10-roadmap.md](docs/architecture/10-roadmap.md).

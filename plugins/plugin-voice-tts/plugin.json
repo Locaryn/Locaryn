@@ -1,0 +1,34 @@
+{
+  "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "plugin-voice-tts",
+  "version": "1.0.0",
+  "description": "Voice synthesis & voice cloning extension (Kokoro-82M, Qwen3-TTS, Piper ONNX).",
+  "author": "Locaryn Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Locaryn/plugin-voice-tts",
+  "repository": "https://github.com/Locaryn/plugin-voice-tts",
+  "keywords": ["voice-tts", "text-to-speech", "voice-cloning", "kokoro", "qwen3-tts"],
+  "permissions": {
+    "files_read": true,
+    "files_write": true,
+    "shell": false
+  },
+  "capabilities": ["voice-tts", "voice-cloning"],
+  "ui_contributions": {
+    "nav_items": [
+      {
+        "id": "studio",
+        "label": "Studio de génération",
+        "icon": "🎨"
+      }
+    ],
+    "studio_tabs": [
+      {
+        "id": "audio",
+        "label": "Synthèse vocale",
+        "icon": "🎙️"
+      }
+    ]
+  }
+}

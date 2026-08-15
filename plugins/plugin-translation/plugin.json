@@ -1,0 +1,33 @@
+{
+  "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "plugin-translation",
+  "version": "1.0.0",
+  "description": "Multilingual machine translation extension (NLLB-200, MarianMT, Opus-MT).",
+  "author": "Locaryn Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Locaryn/plugin-translation",
+  "repository": "https://github.com/Locaryn/plugin-translation",
+  "keywords": ["translation", "multilingual", "nllb", "opus-mt"],
+  "permissions": {
+    "files_read": true,
+    "files_write": true
+  },
+  "capabilities": ["translation"],
+  "ui_contributions": {
+    "nav_items": [
+      {
+        "id": "studio",
+        "label": "Studio de génération",
+        "icon": "🎨"
+      }
+    ],
+    "studio_tabs": [
+      {
+        "id": "translation",
+        "label": "Traduction",
+        "icon": "🌐"
+      }
+    ]
+  }
+}

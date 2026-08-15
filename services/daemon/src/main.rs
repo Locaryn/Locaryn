@@ -28,6 +28,7 @@ mod routes;
 
 use std::collections::HashMap;
 mod auth;
+mod media;
 mod mtls;
 mod port_forward;
 mod tls;
@@ -38,6 +39,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
+use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -108,6 +110,10 @@ async fn main() -> anyhow::Result<()> {
         .clone()
         .unwrap_or_else(locaryn_config::default_data_dir);
     let data_dir_for_tls = data_dir.clone();
+    // The self-hosted web client lives under {data_dir}/web; the daemon serves
+    // it on the same origin as the API (no CORS, no mixed content). When the
+    // folder is absent the fallback still 404s cleanly.
+    let web_dir = data_dir.join("web");
     let db_path = data_dir.join("locaryn.db");
     tracing::info!(?db_path, "opening storage");
     let pool = locaryn_storage::open(&db_path).await?;
@@ -241,6 +247,11 @@ async fn main() -> anyhow::Result<()> {
             "/v1/mcp/servers/:name/tools/:tool",
             post(routes::mcp::invoke_tool),
         )
+        // Media generation — exposed so thin clients (the phone) can use the
+        // engines that only run where the models live.
+        .route("/v1/media/models", get(media::list_models))
+        .route("/v1/media/image", post(media::generate_image))
+        .route("/v1/media/audio", post(media::generate_audio))
         .route("/v1/providers", get(list_providers))
         .route("/v1/supervisor/status", get(supervisor_status))
         .route("/v1/supervisor/start", post(supervisor_start))
@@ -258,7 +269,17 @@ async fn main() -> anyhow::Result<()> {
         .layer(axum::middleware::from_fn_with_state(
             auth_state.clone(),
             auth::require_token,
-        ));
+        ))
+        // Unknown API paths keep answering JSON — never the SPA — while every
+        // other path falls back to the web client (single-page application:
+        // an unknown route serves index.html, and the page decides).
+        .route("/v1/*rest", get(api_not_found))
+        // `fallback` (not `not_found_service`, which would force a 404) serves
+        // index.html with its own 200 status: that is what makes the single-
+        // page app work on any route.
+        .fallback_service(
+            ServeDir::new(&web_dir).fallback(ServeFile::new(web_dir.join("index.html"))),
+        );
 
     // Loopback stays plain HTTP: the traffic never leaves the machine, and a
     // certificate there would only add a warning for no gain. Exposed, the
@@ -409,6 +430,16 @@ async fn seed_default_provider(storage: &Storage) {
     }
 }
 
+/// JSON 404 for unknown `/v1/*` paths, so an API consumer never receives the
+/// web client's `index.html` as a reply to a typo.
+async fn api_not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "route inconnue" })),
+    )
+        .into_response()
+}
+
 async fn health(State(s): State<Arc<DaemonState>>) -> Json<Health> {
     let active = s.storage.providers.active().await.ok().flatten();
     let provider_summary = active.as_ref().map(|p| ProviderSummary {
@@ -429,7 +460,7 @@ async fn info(State(_s): State<Arc<DaemonState>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "name": "locaryn-daemon",
         "version": env!("CARGO_PKG_VERSION"),
-        "capabilities": ["sessions", "projects", "tasks", "artifacts", "extensions", "mcp"],
+        "capabilities": ["sessions", "projects", "tasks", "artifacts", "extensions", "mcp", "media"],
     }))
 }
 
@@ -1357,7 +1388,7 @@ async fn get_artifact_raw(State(s): State<Arc<DaemonState>>, Path(id): Path<Stri
 
 /// Simple base64 encoding helper. Uses the `base64` crate if available,
 /// otherwise falls back to a minimal implementation.
-fn base64_encode(bytes: &[u8]) -> String {
+pub(crate) fn base64_encode(bytes: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut result = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {

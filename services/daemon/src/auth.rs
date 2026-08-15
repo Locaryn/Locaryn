@@ -22,8 +22,19 @@ use std::sync::Arc;
 ///
 /// Health is needed for discovery and reveals nothing; login is how a caller
 /// obtains a token in the first place.
+/// Paths a browser may reach without a token. The web client itself (served
+/// by the daemon) holds no secret: it is static assets plus a login form, so
+/// it must stay reachable before authentication on an exposed server.
 fn is_public(path: &str) -> bool {
-    path == "/health" || path == "/v1/auth/login"
+    path == "/health"
+        || path == "/v1/auth/login"
+        || path == "/"
+        || path == "/index.html"
+        || path == "/manifest.webmanifest"
+        || path == "/sw.js"
+        || path.starts_with("/assets/")
+        || path.starts_with("/icons/")
+        || path.starts_with("/fonts/")
 }
 
 #[derive(Clone)]

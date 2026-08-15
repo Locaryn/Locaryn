@@ -1,0 +1,34 @@
+{
+  "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "plugin-image-gen",
+  "version": "1.0.0",
+  "description": "Image generation extension (Stable Diffusion, Flux, Z-Image, Krea).",
+  "author": "Locaryn Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Locaryn/plugin-image-gen",
+  "repository": "https://github.com/Locaryn/plugin-image-gen",
+  "keywords": ["image-generation", "stable-diffusion", "flux", "text-to-image"],
+  "permissions": {
+    "files_read": true,
+    "files_write": true,
+    "shell": false
+  },
+  "capabilities": ["image-gen"],
+  "ui_contributions": {
+    "nav_items": [
+      {
+        "id": "studio",
+        "label": "Studio de génération",
+        "icon": "🎨"
+      }
+    ],
+    "studio_tabs": [
+      {
+        "id": "image",
+        "label": "Génération Image",
+        "icon": "🎨"
+      }
+    ]
+  }
+}

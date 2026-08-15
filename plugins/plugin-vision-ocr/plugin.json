@@ -1,0 +1,33 @@
+{
+  "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "plugin-vision-ocr",
+  "version": "1.0.0",
+  "description": "Vision, OCR and object detection extension (Florence-2, GOT-OCR2, YOLO, Qwen2-VL).",
+  "author": "Locaryn Team",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Locaryn/plugin-vision-ocr",
+  "repository": "https://github.com/Locaryn/plugin-vision-ocr",
+  "keywords": ["vision", "ocr", "object-detection", "segmentation"],
+  "permissions": {
+    "files_read": true,
+    "files_write": true
+  },
+  "capabilities": ["vision-ocr"],
+  "ui_contributions": {
+    "nav_items": [
+      {
+        "id": "studio",
+        "label": "Studio de génération",
+        "icon": "🎨"
+      }
+    ],
+    "studio_tabs": [
+      {
+        "id": "object-detection",
+        "label": "Détection & OCR",
+        "icon": "🎯"
+      }
+    ]
+  }
+}

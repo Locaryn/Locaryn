@@ -17,13 +17,15 @@
   --bg: #17191a; /* app background */
   --surface: #1e2022; /* raised elements: cards, composer, inputs */
   --surface-hover: #24262a;
-  --border: #2c2f31; /* hairline separators */
-  --border-strong: #3a3e41;
+  --border: #35393b; /* hairline separators — visible without shouting */
+  --border-strong: #484d50;
 
-  /* Text — one family, three weights of presence. */
-  --text: #e7e6e2; /* primary (warm off-white) */
-  --text-dim: #a2a49e; /* secondary */
-  --text-faint: #6a6d68; /* tertiary / hints */
+  /* Text — one family, three weights of presence. Each step stays
+     above 4.5:1 on the background: readable on a phone held at arm's
+     length and on a desk monitor alike. */
+  --text: #ecebe7; /* primary (warm off-white) */
+  --text-dim: #b0b3ac; /* secondary */
+  --text-faint: #8e918b; /* tertiary / hints */
 
   /* The single accent — muted, natural green. Overridden at
      runtime by useTheme (--accent-rgb kept in sync). */

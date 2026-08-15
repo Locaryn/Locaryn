@@ -19,6 +19,14 @@ export interface Message {
   content: string;
 }
 
+/** A file generated on the machine at the other end, ready to show. */
+export interface MediaResult {
+  name: string;
+  mime: string;
+  /** Base64 payload; the webview has no access to the server's disk. */
+  data_base64: string;
+}
+
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -41,6 +49,21 @@ export const core = {
   /** Verify a scanned code and apply it. Throws with a phrased message. */
   applyPairingLink: (uri: string) => invoke<PairingResult>("apply_pairing_link", { uri }),
   send: (text: string) => invoke<string>("send_message", { text }),
+  /** Models the machine can generate with: kind = "image" | "audio". */
+  listMediaModels: (kind: "image" | "audio") => invoke<string[]>("list_media_models", { kind }),
+  generateImage: (args: {
+    model: string;
+    prompt: string;
+    negativePrompt?: string;
+    width?: number;
+    height?: number;
+  }) => invoke<MediaResult>("generate_image", args),
+  generateAudio: (args: {
+    model: string;
+    text: string;
+    speed?: number;
+    language?: string;
+  }) => invoke<MediaResult>("generate_audio", args),
 };
 
 /** "tauri" on a phone, "demo" in a browser during development. */
@@ -83,6 +106,17 @@ export const demoCore: typeof core = {
     message: "Connecté à Atelier Vasseur depuis l'extérieur.",
   }),
   send: async (t) => `Réponse de démonstration à « ${t} ».`,
+  listMediaModels: async () => ["flux1-schnell-Q4_0.gguf", "hexgrad__Kokoro-82M"],
+  generateImage: async () => ({
+    name: "demo.png",
+    mime: "image/png",
+    data_base64: "",
+  }),
+  generateAudio: async () => ({
+    name: "demo.wav",
+    mime: "audio/wav",
+    data_base64: "",
+  }),
 };
 
 export const api = isTauri ? core : demoCore;

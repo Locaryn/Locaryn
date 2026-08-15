@@ -66,23 +66,23 @@ const AIRLLM_MODELS: Record<string, { repo: string; sizeGb: number }> = {
   mistral: { repo: "mistralai/Mistral-7B-Instruct-v0.3", sizeGb: 30 },
 };
 
-function capBadges(f: ModelFamily) {
+function capBadges(f: ModelFamily, activeCapabilities: string[] = []) {
   const caps: string[] = [];
   const isCloud = f.variants.length > 0 && f.variants.every((v) => v.quants.includes("cloud"));
   if (isCloud) caps.push("☁️ Cloud");
-  if (f.imageGen) caps.push("🎨 Image Gen");
-  if (f.tts) caps.push("🎙️ TTS");
-  if (f.voiceCloning) caps.push("🎭 Clonage");
-  if (f.videoGen) caps.push("🎬 Vidéo");
-  if (f.musicGen) caps.push("🎵 Musique");
-  if (f.model3d) caps.push("🧩 3D");
-  if (f.translation) caps.push("🌐 Traduction");
-  if (f.objectDetection) caps.push("🎯 Détection");
-  if (f.textAnalysis) caps.push("📊 Texte");
-  if (f.imageEditing) caps.push("✏️ Édition");
-  if (f.questionAnswering) caps.push("❓ Q&R");
-  if (f.vision) caps.push("🖼️ Vision");
-  if (f.audio) caps.push("🔊 Audio");
+  if (f.imageGen && activeCapabilities.includes("image-gen")) caps.push("🎨 Image Gen");
+  if (f.tts && activeCapabilities.includes("voice-tts")) caps.push("🎙️ TTS");
+  if (f.voiceCloning && activeCapabilities.includes("voice-cloning")) caps.push("🎭 Clonage");
+  if (f.videoGen && activeCapabilities.includes("video-gen")) caps.push("🎬 Vidéo");
+  if (f.musicGen && activeCapabilities.includes("music-gen")) caps.push("🎵 Musique");
+  if (f.model3d && activeCapabilities.includes("3d-gen")) caps.push("🧩 3D");
+  if (f.translation && activeCapabilities.includes("translation")) caps.push("🌐 Traduction");
+  if (f.objectDetection && activeCapabilities.includes("vision-ocr")) caps.push("🎯 Détection");
+  if (f.textAnalysis && activeCapabilities.includes("text-analysis")) caps.push("📊 Texte");
+  if (f.imageEditing && activeCapabilities.includes("image-editor")) caps.push("✏️ Édition");
+  if (f.questionAnswering && activeCapabilities.includes("rag-qa")) caps.push("❓ Q&R");
+  if (f.vision && activeCapabilities.includes("vision-ocr")) caps.push("🖼️ Vision");
+  if (f.audio && activeCapabilities.includes("voice-tts")) caps.push("🔊 Audio");
   if (f.code) caps.push("💻 Code");
   if (f.reasoning) caps.push("🧠 Raisonnement");
   if (f.instruct) caps.push(" Instruct");

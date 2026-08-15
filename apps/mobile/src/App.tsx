@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
 import { Paired } from "./components/Paired";
 import { SignIn } from "./components/SignIn";
+import { Studio } from "./components/Studio";
 import { type MobileStatus, type PairingResult, api, coreMode } from "./lib/core";
 import { isScannerAvailable, scan } from "./lib/scanner";
 
-type Screen = "loading" | "signin" | "chat";
+type Screen = "loading" | "signin" | "chat" | "studio";
 
 export function App() {
   const [status, setStatus] = useState<MobileStatus | null>(null);
@@ -90,7 +91,9 @@ export function App() {
   return (
     <>
       {screen === "chat" ? (
-        <Chat status={status} onScan={openScanner} />
+        <Chat status={status} onScan={openScanner} onStudio={() => setScreen("studio")} />
+      ) : screen === "studio" ? (
+        <Studio onBack={() => setScreen("chat")} />
       ) : (
         <SignIn
           status={status}

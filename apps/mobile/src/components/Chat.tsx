@@ -4,6 +4,7 @@ import { type Message, type MobileStatus, api } from "../lib/core";
 type Props = {
   status: MobileStatus;
   onScan: () => void;
+  onStudio: () => void;
 };
 
 /**
@@ -14,7 +15,7 @@ type Props = {
  * away from it — the only two things about the connection worth a person's
  * attention.
  */
-export function Chat({ status, onScan }: Props) {
+export function Chat({ status, onScan, onStudio }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,6 +60,14 @@ export function Chat({ status, onScan }: Props) {
           onClick={onScan}
         >
           Scanner
+        </button>
+        <button
+          type="button"
+          className="lo-bar-away"
+          style={{ cursor: "pointer" }}
+          onClick={onStudio}
+        >
+          Créer
         </button>
       </div>
 

@@ -1,5 +1,35 @@
 @import "../../../packages-ui/tokens/tokens.css";
 
+/* ── Sen, la même police que le desktop (embarquée en local) ── */
+@font-face {
+  font-family: "Sen";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Sen";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Sen";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Sen";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/latin-800-normal.woff2") format("woff2");
+}
+
 /* ═══════════════════════════════════════════════════════════
    Locaryn — téléphone.
 
@@ -56,7 +86,7 @@ body {
 .lo-title {
   margin: 0;
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 800; /* le même poids que les titres du desktop */
   color: var(--text);
 }
 
@@ -129,14 +159,18 @@ body {
   border-radius: var(--radius-sm);
 }
 
-/* ── Bandeau serveur ─────────────────────────────────────── */
+/* ── Bandeau serveur — même langue que la topbar du desktop :
+   même hauteur, même graisse, mêmes boutons fantômes. ── */
 .lo-bar {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
+  min-height: 46px;
+  padding: var(--space-2) var(--space-5);
   border-bottom: 1px solid var(--border);
-  font-size: 13px;
+  font-size: var(--text-base);
+  font-weight: 700;
   color: var(--text-dim);
 }
 .lo-dot {
@@ -148,11 +182,12 @@ body {
 }
 .lo-bar-away {
   margin-left: auto;
-  font-size: 11px;
-  color: var(--text-faint);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  padding: 1px 9px;
+  padding: 3px 10px;
 }
 
 /* ── Conversation ────────────────────────────────────────── */
@@ -285,6 +320,82 @@ body {
     animation: none;
     stroke-dashoffset: 0;
   }
+}
+
+/* ── Studio de création ─────────────────────────────────────
+   Image and voice, made on the machine at the other end.
+   The form is one thumb's reach wide; the result opens full. */
+.lo-back {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.lo-tabs {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) 0;
+  border-bottom: 1px solid var(--border);
+}
+.lo-tab {
+  flex: 1;
+  min-height: 44px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.lo-tab-on {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+.lo-studio {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.lo-textarea {
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.lo-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.lo-chip {
+  flex: 1;
+  min-height: 40px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.lo-chip-on {
+  color: #12140f;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.lo-result {
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 /* ── Scanner ─────────────────────────────────────────────────
