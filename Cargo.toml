@@ -33,7 +33,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
-repository = "https://github.com/TeALO36/Locaryn"
+repository = "https://github.com/Locaryn/locaryn"
 homepage = "https://locaryn.dev"
 authors = ["Locaryn Contributors"]
 

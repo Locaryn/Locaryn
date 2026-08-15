@@ -5,7 +5,7 @@ import { type AppInfo, type LlamaRuntimeStatus, type RuntimeCapabilities, core }
 import { CAPS } from "./EngineSettings";
 
 /** Page GitHub des versions — la référence pour l'installation manuelle. */
-const RELEASES_URL = "https://github.com/TeALO36/Locaryn/releases/latest";
+const RELEASES_URL = "https://github.com/Locaryn/locaryn/releases/latest";
 
 type UpdateState =
   | { kind: "idle" }
