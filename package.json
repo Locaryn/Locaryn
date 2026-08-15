@@ -1,6 +1,6 @@
 {
   "name": "locaryn-workspace",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Open-core agentic coding platform — desktop + CLI + secured remote server, sharing one Rust core.",
   "license": "Apache-2.0",
