@@ -37,6 +37,45 @@ struct Session {
     token: String,
 }
 
+/// Ce que les extensions actives du serveur apportent.
+///
+/// Le téléphone n'héberge rien : c'est le serveur qui dit ce qu'il sait faire.
+/// Installer la génération d'images là-bas fait apparaître le Studio ici, la
+/// retirer le fait disparaître.
+#[tauri::command]
+async fn server_capabilities() -> Vec<String> {
+    let store = servers::load();
+    let Some(server) = store.active_server() else {
+        return Vec::new();
+    };
+    // `current_url` suit le mode voyage : c'est l'adresse par laquelle le
+    // téléphone joint effectivement le serveur en ce moment.
+    let url = format!("{}/v1/extensions", server.current_url.trim_end_matches('/'));
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .danger_accept_invalid_certs(true)
+        .build()
+    else {
+        return Vec::new();
+    };
+    let Ok(resp) = client.get(url).send().await else {
+        return Vec::new();
+    };
+    let Ok(list) = resp.json::<Vec<serde_json::Value>>().await else {
+        return Vec::new();
+    };
+    let mut caps: Vec<String> = list
+        .iter()
+        .filter(|e| e["enabled"] == true)
+        .filter_map(|e| e["capabilities"].as_array())
+        .flatten()
+        .filter_map(|c| c.as_str().map(str::to_string))
+        .collect();
+    caps.sort();
+    caps.dedup();
+    caps
+}
+
 #[tauri::command]
 fn status() -> MobileStatus {
     let store = servers::load();
@@ -491,6 +530,7 @@ pub fn run() {
             generate_image,
             generate_audio,
             pairing::apply_pairing_link,
+            server_capabilities,
             update::check_update,
             update::open_update,
         ])

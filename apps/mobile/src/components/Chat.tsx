@@ -18,10 +18,26 @@ type Props = {
  */
 export function Chat({ status, onScan, onStudio }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
+  /**
+   * Le Studio n'existe que si le serveur a une extension qui apporte de quoi
+   * générer. C'est la même liste que lit l'application de bureau : ajouter la
+   * génération d'images sur le serveur la fait apparaître ici aussi.
+   */
+  const [canCreate, setCanCreate] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.serverCapabilities().then((caps) => {
+      if (!cancelled) setCanCreate(caps.length > 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: ni `messages` ni `busy` ne sont lus ici — ils déclenchent. Les retirer immobiliserait la vue au premier message au lieu de suivre la conversation.
   useEffect(() => {
@@ -62,14 +78,16 @@ export function Chat({ status, onScan, onStudio }: Props) {
         >
           Scanner
         </button>
-        <button
-          type="button"
-          className="lo-bar-away"
-          style={{ cursor: "pointer" }}
-          onClick={onStudio}
-        >
-          Créer
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            className="lo-bar-away"
+            style={{ cursor: "pointer" }}
+            onClick={onStudio}
+          >
+            Créer
+          </button>
+        )}
         <UpdateButton />
       </div>
 

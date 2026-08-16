@@ -102,6 +102,27 @@ async function http<T>(
 const SERVER_NAME = "Locaryn";
 
 export const api = {
+  /**
+   * Ce que les extensions actives du serveur apportent.
+   *
+   * Décide de la présence du Studio : installer la génération d'images sur le
+   * serveur la fait apparaître ici, la retirer la fait disparaître — sur le
+   * téléphone comme sur le bureau, puisque tous lisent la même liste.
+   */
+  async serverCapabilities(): Promise<string[]> {
+    try {
+      const exts = await http<{ enabled: boolean; capabilities?: string[] }[]>("/v1/extensions");
+      const caps = new Set<string>();
+      for (const e of exts) {
+        if (!e.enabled) continue;
+        for (const c of e.capabilities ?? []) caps.add(c);
+      }
+      return [...caps];
+    } catch {
+      return [];
+    }
+  },
+
   /** Le service exige-t-il un compte ? Faux quand il n'écoute que la machine. */
   async authRequired(): Promise<boolean> {
     try {

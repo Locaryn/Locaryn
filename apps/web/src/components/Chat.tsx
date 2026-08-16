@@ -13,10 +13,26 @@ type Props = {
  */
 export function Chat({ status, onStudio, onSignOut }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
+  /**
+   * Le Studio n'existe que si une extension du serveur apporte de quoi
+   * générer. Retirer l'extension retire le bouton — la même règle que sur
+   * l'application de bureau, lue à la même source.
+   */
+  const [canCreate, setCanCreate] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.serverCapabilities().then((caps) => {
+      if (!cancelled) setCanCreate(caps.length > 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: ni `messages` ni `busy` ne sont lus ici — ils déclenchent. Les retirer immobiliserait la vue au premier message au lieu de suivre la conversation.
   useEffect(() => {
@@ -49,14 +65,16 @@ export function Chat({ status, onStudio, onSignOut }: Props) {
         <span className="lo-dot" />
         <span>{status.server_name ?? "Locaryn"}</span>
         {status.username && <span className="lo-bar-away">{status.username}</span>}
-        <button
-          type="button"
-          className="lo-bar-away"
-          style={{ cursor: "pointer" }}
-          onClick={onStudio}
-        >
-          Créer
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            className="lo-bar-away"
+            style={{ cursor: "pointer" }}
+            onClick={onStudio}
+          >
+            Créer
+          </button>
+        )}
         <button
           type="button"
           className="lo-bar-away"

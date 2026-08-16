@@ -50,6 +50,8 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
  */
 export const core = {
   status: () => invoke<MobileStatus>("status"),
+  /** Ce que les extensions actives du serveur apportent. */
+  serverCapabilities: () => invoke<string[]>("server_capabilities"),
   /** Y a-t-il une version plus récente publiée ? */
   checkUpdate: () => invoke<UpdateStatus>("check_update"),
   /** Passe la main au système pour installer la nouvelle version. */
@@ -95,6 +97,9 @@ export const demoCore: typeof core = {
     signed_in: true,
     servers: 1,
   }),
+  // Sans serveur enregistré, le navigateur montre le Studio : c'est
+  // l'interface qu'on met au point, pas une machine réelle.
+  serverCapabilities: async () => ["image-gen"],
   // Dans un navigateur il n'y a pas d'APK à remplacer : la vérification dit
   // simplement qu'il n'y a rien à faire, et le bouton ne s'affiche pas.
   checkUpdate: async () => ({

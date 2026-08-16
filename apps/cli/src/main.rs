@@ -333,16 +333,36 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         },
-        Cmd::Sessions { action } => match action {
-            SessionsCmd::List => {
-                println!("(sessions list — V1 wires project selection)");
-                Ok(())
+        // Les sessions appartiennent à un projet ; sans `--project`, c'est
+        // celui du dossier courant, comme pour le reste de la CLI. Ces deux
+        // commandes se contentaient d'annoncer qu'elles restaient à écrire.
+        Cmd::Sessions { action } => {
+            let project = project_for_cwd(&client).await?;
+            match action {
+                SessionsCmd::List => {
+                    let sessions = client.list_sessions(&project.id.to_string()).await?;
+                    if sessions.is_empty() {
+                        println!("Aucune session dans {}.", project.name);
+                        return Ok(());
+                    }
+                    println!("{:<38} {:<20} TITRE", "ID", "CRÉÉE LE");
+                    for s in sessions {
+                        println!(
+                            "{:<38} {:<20} {}",
+                            s.id,
+                            s.created_at.format("%d/%m/%Y %H:%M"),
+                            s.title.as_deref().unwrap_or("—")
+                        );
+                    }
+                    Ok(())
+                }
+                SessionsCmd::New => {
+                    let s = client.create_session(&project.id.to_string()).await?;
+                    println!("session créée dans {} : {}", project.name, s.id);
+                    Ok(())
+                }
             }
-            SessionsCmd::New => {
-                println!("(new session — V1 wires project selection)");
-                Ok(())
-            }
-        },
+        }
         Cmd::Chat { resume, agent } => converse(&client, resume, agent, false).await,
         Cmd::Provider { action } => match action {
             ProviderCmd::List => {
@@ -730,6 +750,33 @@ async fn print_status(client: &LocarynClient) -> anyhow::Result<()> {
 ///
 /// The previous version posted to an all-zero session id, so nothing was ever
 /// stored and the agent had no project context to work from.
+/// Le projet qui couvre le dossier courant, créé au besoin.
+///
+/// Le plus long chemin l'emporte : un projet imbriqué prime sur son parent.
+async fn project_for_cwd(client: &LocarynClient) -> anyhow::Result<locaryn_shared_types::Project> {
+    let cwd = std::env::current_dir()?;
+    let cwd_str = cwd.to_string_lossy().replace('\\', "/");
+    let projects = client.list_projects().await?;
+    if let Some(p) = projects
+        .iter()
+        .filter(|p| {
+            let root = p.path.replace('\\', "/");
+            cwd_str == root || cwd_str.starts_with(&format!("{root}/"))
+        })
+        .max_by_key(|p| p.path.len())
+        .cloned()
+    {
+        return Ok(p);
+    }
+    let name = cwd
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "projet".into());
+    Ok(client
+        .create_project(&cwd_str, &name, locaryn_shared_types::TrustLevel::Untrusted)
+        .await?)
+}
+
 async fn resolve_session(
     client: &LocarynClient,
     resume: Option<String>,
