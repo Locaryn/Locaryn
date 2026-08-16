@@ -356,6 +356,25 @@ export interface MemoryEntry {
   updated_at: string;
 }
 
+/**
+ * Vitesse mesurée d'un modèle, sur cette machine.
+ *
+ * Les chiffres d'un catalogue viennent du matériel de celui qui les a publiés.
+ * Ceux-ci viennent des générations réellement faites ici : c'est ce qui permet
+ * de comparer deux modèles sur ce qu'ils donneront, pas sur ce qu'ils
+ * promettent.
+ */
+export interface ModelMetric {
+  model: string;
+  /** `chat`, `image` ou `audio`. */
+  kind: string;
+  /** Nombre de générations derrière la moyenne. */
+  samples: number;
+  avg_tokens_per_second: number | null;
+  avg_duration_ms: number | null;
+  last_measured_at: string;
+}
+
 export interface InstalledExtension {
   id: string;
   name: string;
@@ -1232,6 +1251,7 @@ export interface CoreApi {
   listConnectorTypes(): Promise<ConnectorType[]>;
 
   // --- Extensions ---------------------------------------------------------
+  listModelMetrics(): Promise<ModelMetric[]>;
   listMemory(): Promise<MemoryEntry[]>;
   remember(category: string, content: string): Promise<MemoryEntry>;
   editMemory(id: string, category: string, content: string): Promise<MemoryEntry>;
@@ -1647,6 +1667,7 @@ const tauriCore: CoreApi = {
 
   listConnectorTypes: () => invoke<ConnectorType[]>("list_connector_types"),
 
+  listModelMetrics: () => invoke<ModelMetric[]>("list_model_metrics"),
   listMemory: () => invoke<MemoryEntry[]>("list_memory"),
   remember: (category, content) => invoke<MemoryEntry>("remember", { category, content }),
   editMemory: (id, category, content) =>
@@ -3173,6 +3194,16 @@ const demoCore: CoreApi = {
 
   // Mémoire de démonstration : de vraies entrées, pour que l'écran se
   // travaille dans un navigateur sans base derrière.
+  listModelMetrics: async () => [
+    {
+      model: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      kind: "chat",
+      samples: 12,
+      avg_tokens_per_second: 35.1,
+      avg_duration_ms: null,
+      last_measured_at: new Date().toISOString(),
+    },
+  ],
   listMemory: async () => demoUserMemory,
   remember: async (category, content) => {
     const entry: MemoryEntry = {

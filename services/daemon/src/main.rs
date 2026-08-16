@@ -297,6 +297,8 @@ async fn main() -> anyhow::Result<()> {
         )
         // Media generation — exposed so thin clients (the phone) can use the
         // engines that only run where the models live.
+        // Vitesses mesurées : ce que chaque modèle donne sur cette machine.
+        .route("/v1/metrics/models", get(list_model_metrics))
         .route("/v1/media/models", get(media::list_models))
         .route("/v1/media/image", post(media::generate_image))
         .route("/v1/media/audio", post(media::generate_audio))
@@ -936,6 +938,13 @@ async fn send_message(
     let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamEvent>(128);
     let storage_bg = s.storage.clone();
     let cancel_map_bg = s.cancel_map.clone();
+    // Le nom du modèle et l'instant de départ, pour mesurer la vitesse au bout.
+    // Un chemin complet est illisible dans une liste : on garde le nom de
+    // fichier, celui qui s'affiche partout ailleurs.
+    let model_for_metrics = model
+        .as_deref()
+        .map(|m| m.rsplit(['/', '\\']).next().unwrap_or(m).to_string());
+    let started_at = std::time::Instant::now();
     tokio::spawn(async move {
         let mut full_text = String::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
@@ -997,6 +1006,20 @@ async fn send_message(
                     }
                 }
                 _ => {}
+            }
+        }
+
+        // Vitesse réellement obtenue sur cette machine, pour ce modèle. Les
+        // chiffres d'un catalogue valent pour le matériel de celui qui les a
+        // publiés ; ceux-ci valent pour celui qui va s'en servir.
+        if let Some(model_name) = model_for_metrics.as_deref() {
+            let elapsed = started_at.elapsed().as_millis() as u64;
+            if let Err(e) = storage_bg
+                .metrics
+                .record_chat(model_name, tokens_out, elapsed)
+                .await
+            {
+                tracing::warn!(error = %e, "vitesse non enregistrée");
             }
         }
 
@@ -1106,6 +1129,20 @@ fn no_model_stream(reason: &str) -> EventStream {
             duration_ms: 0,
         },
     ]))
+}
+
+/// GET /v1/metrics/models — vitesses mesurées, par modèle.
+async fn list_model_metrics(State(s): State<Arc<DaemonState>>) -> Response {
+    match s.storage.metrics.list().await {
+        Ok(m) => (StatusCode::OK, Json(m)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": { "code": "storage_error", "message": e.to_string() }
+            })),
+        )
+            .into_response(),
+    }
 }
 
 async fn list_providers(State(s): State<Arc<DaemonState>>) -> Response {

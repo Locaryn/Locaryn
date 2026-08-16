@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { core } from "../lib/core";
+import { type ModelMetric, core } from "../lib/core";
 import {
   MODEL_CATEGORIES,
   type ModelCategory,
@@ -16,6 +16,7 @@ import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { HardwareBenchmarkModal } from "./HardwareBenchmarkModal";
 import { ModelObliterator } from "./ModelObliterator";
 import { ResponsibilityGate } from "./ResponsibilityGate";
+import { SpeedBadge, findMetric } from "./SpeedBadge";
 
 type Props = {
   /** Download / Install model to local storage. */
@@ -300,6 +301,17 @@ export function ModelBrowser({
   installed = [],
 }: Props) {
   const [query, setQuery] = useState("");
+  /**
+   * Vitesses relevées sur cette machine. Un modèle jamais lancé ici n'en a
+   * pas : la carte reste muette plutôt que d'afficher une estimation.
+   */
+  const [metrics, setMetrics] = useState<ModelMetric[]>([]);
+  useEffect(() => {
+    void core
+      .listModelMetrics()
+      .then(setMetrics)
+      .catch(() => setMetrics([]));
+  }, []);
   const [customTagInput, setCustomTagInput] = useState("");
   const [category, setCategory] = useState<ModelCategory>("all");
   const [brand, setBrand] = useState("all");
@@ -1302,6 +1314,7 @@ export function ModelBrowser({
                         {c}
                       </span>
                     ))}
+                    <SpeedBadge metric={findMetric(metrics, f.id)} />
                   </div>
                   <button
                     type="button"

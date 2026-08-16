@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { core } from "../lib/core";
+import { SpeedBadge, findMetric } from "../components/SpeedBadge";
+import { type ModelMetric, core } from "../lib/core";
 import { dedupeModelsByDirectory } from "../lib/modelList";
 import { IMAGE_GEN_MODELS } from "../lib/modelRegistry";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
@@ -35,6 +36,18 @@ export function InstalledModelsView({
   }, []);
 
   const dedupedModels = useMemo(() => dedupeModelsByDirectory(installedModels), [installedModels]);
+
+  /**
+   * Vitesses mesurées ici. Chargées une fois : elles bougent au rythme des
+   * générations, pas à celui du défilement.
+   */
+  const [metrics, setMetrics] = useState<ModelMetric[]>([]);
+  useEffect(() => {
+    void core
+      .listModelMetrics()
+      .then(setMetrics)
+      .catch(() => setMetrics([]));
+  }, []);
 
   const parsedModels = useMemo(() => {
     return dedupedModels.map((m) => {
@@ -291,6 +304,7 @@ export function InstalledModelsView({
                 <span className="locaryn-box-brand" style={{ fontSize: "10px" }}>
                   {m.isImage ? "🎨 IMAGE MODEL" : "💬 TEXT LLM"} · {m.engine}
                 </span>
+                <SpeedBadge metric={findMetric(metrics, m.rawTag, m.isImage ? "image" : "chat")} />
                 {(() => {
                   const c = classifyModel(m.rawTag);
                   if (c.risk === "safe") return null;

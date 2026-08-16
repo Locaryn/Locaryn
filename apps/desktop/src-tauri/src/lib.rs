@@ -7598,6 +7598,7 @@ pub fn run() {
             travel_mode::set_travel_mode,
             travel_mode::travel_home_code,
             memory::list_memory,
+            memory::list_model_metrics,
             memory::remember,
             memory::edit_memory,
             memory::forget_memory,

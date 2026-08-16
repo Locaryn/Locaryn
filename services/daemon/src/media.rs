@@ -61,8 +61,15 @@ pub async fn generate_image(
         tracing::info!(progress = pct, detail, "image generation");
     };
 
+    // Chronométré pour de vrai : c'est ce temps-là, sur cette machine, qui
+    // permettra de comparer deux modèles dans le catalogue.
+    let model_name = req.model.clone();
+    let started = std::time::Instant::now();
     match locaryn_media::image::generate_image(req, &progress).await {
-        Ok(file) => respond_file(file.path, "image/png", "png"),
+        Ok(file) => {
+            record_speed(&s, &model_name, "image", started).await;
+            respond_file(file.path, "image/png", "png")
+        }
         Err(e) => err_response(StatusCode::INTERNAL_SERVER_ERROR, "generation_failed", &e),
     }
 }
@@ -83,9 +90,25 @@ pub async fn generate_audio(
         tracing::info!(progress = pct, detail, "audio generation");
     };
 
+    let model_name = req.model.clone();
+    let started = std::time::Instant::now();
     match locaryn_media::audio::generate_tts(req, &progress).await {
-        Ok(file) => respond_file(file.path, "audio/wav", "wav"),
+        Ok(file) => {
+            record_speed(&s, &model_name, "audio", started).await;
+            respond_file(file.path, "audio/wav", "wav")
+        }
         Err(e) => err_response(StatusCode::INTERNAL_SERVER_ERROR, "generation_failed", &e),
+    }
+}
+
+/// Enregistre la durée d'une génération réussie.
+///
+/// Seules les réussites comptent : une génération qui échoue au bout de deux
+/// secondes ferait passer un modèle pour rapide.
+async fn record_speed(s: &Arc<DaemonState>, model: &str, kind: &str, started: std::time::Instant) {
+    let ms = started.elapsed().as_millis() as u64;
+    if let Err(e) = s.storage.metrics.record_generation(model, kind, ms).await {
+        tracing::warn!(model, error = %e, "vitesse de génération non enregistrée");
     }
 }
 

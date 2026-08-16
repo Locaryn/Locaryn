@@ -2148,6 +2148,21 @@ dialog[open] {
   border-color: var(--border);
 }
 
+/* Vitesse mesurée sur cette machine. Chiffres alignés — dans une liste de
+   modèles, on compare des nombres, et des chiffres de largeurs inégales se
+   comparent mal. Ton neutre : c'est une mesure, pas une distinction. */
+.locaryn-badge-speed {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* ═══════════════════════════════════════════════════════════
    NEW CHAT buttons + connectors-in-settings
    ═══════════════════════════════════════════════════════════ */

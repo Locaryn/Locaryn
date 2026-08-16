@@ -64,3 +64,19 @@ pub async fn forget_all_memory(core: State<'_, Core>) -> Result<u64, String> {
         .await
         .map_err(|e| e.to_string())
 }
+
+// ============================================================================
+// Vitesses mesurées
+// ============================================================================
+
+/// Ce que chaque modèle donne sur cette machine.
+///
+/// Rangé ici plutôt que dans un module à part : c'est la même base, et les
+/// deux répondent à la même idée — ce que le produit sait de vous et de votre
+/// matériel doit être lisible.
+#[tauri::command]
+pub async fn list_model_metrics(
+    core: State<'_, Core>,
+) -> Result<Vec<locaryn_storage::metrics::ModelMetric>, String> {
+    core.storage.metrics.list().await.map_err(|e| e.to_string())
+}

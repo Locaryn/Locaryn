@@ -12,6 +12,7 @@ use std::str::FromStr;
 
 pub mod error;
 pub mod memory;
+pub mod metrics;
 pub mod repos;
 pub mod users;
 

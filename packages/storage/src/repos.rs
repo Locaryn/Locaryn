@@ -2001,6 +2001,8 @@ pub struct Storage {
     pub extensions: ExtensionRepo,
     /// Ce que Locaryn retient de la personne, d'une conversation à l'autre.
     pub memory: crate::memory::MemoryRepo,
+    /// Vitesses mesurées des modèles sur cette machine.
+    pub metrics: crate::metrics::MetricsRepo,
     #[cfg(feature = "ssh-connector")]
     pub ssh_servers: SshServerRepo,
 }
@@ -2016,6 +2018,7 @@ impl Storage {
             providers: ProviderRepo::new(pool.clone()),
             extensions: ExtensionRepo::new(pool.clone()),
             memory: crate::memory::MemoryRepo::new(pool.clone()),
+            metrics: crate::metrics::MetricsRepo::new(pool.clone()),
             #[cfg(feature = "ssh-connector")]
             ssh_servers: SshServerRepo::new(pool),
         }
