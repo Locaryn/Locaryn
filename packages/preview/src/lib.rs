@@ -111,7 +111,12 @@ pub fn resolve_render(req: PreviewRequest, origin: PreviewOrigin) -> PreviewRend
     };
     match req.kind {
         // HTML & Plotly go into a sandboxed iframe.
-        ArtifactKind::Html | ArtifactKind::PlotlyHtml | ArtifactKind::ImagePng => PreviewRender {
+        // Le son se sert comme une image : par son adresse, le client décide
+        // comment le rendre.
+        ArtifactKind::Html
+        | ArtifactKind::PlotlyHtml
+        | ArtifactKind::ImagePng
+        | ArtifactKind::AudioWav => PreviewRender {
             artifact_id: req.artifact_id.clone(),
             url: origin.url_for(&req.artifact_id),
             iframe_sandbox: PREVIEW_IFRAME_SANDBOX.to_string(),

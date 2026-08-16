@@ -392,6 +392,7 @@ impl FromToken for ArtifactKind {
             "python_text" => ArtifactKind::PythonText,
             "image_png" => ArtifactKind::ImagePng,
             "plotly_html" => ArtifactKind::PlotlyHtml,
+            "audio_wav" => ArtifactKind::AudioWav,
             _ => ArtifactKind::Html,
         }
     }
@@ -1212,6 +1213,7 @@ impl ArtifactRepo {
             ArtifactKind::PythonText => "python_text",
             ArtifactKind::ImagePng => "image_png",
             ArtifactKind::PlotlyHtml => "plotly_html",
+            ArtifactKind::AudioWav => "audio_wav",
         };
         let row = sqlx::query_as::<_, ArtifactRow>(
             "INSERT INTO artifacts (id, session_id, kind, path, title, created_at) \

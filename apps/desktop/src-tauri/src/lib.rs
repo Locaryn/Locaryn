@@ -1005,7 +1005,10 @@ async fn archive_session(core: State<'_, Core>, id: Uuid, archived: bool) -> Res
 
 /// Les conversations rangées d'un projet.
 #[tauri::command]
-async fn archived_sessions(core: State<'_, Core>, project_id: Uuid) -> Result<Vec<Session>, String> {
+async fn archived_sessions(
+    core: State<'_, Core>,
+    project_id: Uuid,
+) -> Result<Vec<Session>, String> {
     core.storage
         .sessions
         .list_archived(project_id)

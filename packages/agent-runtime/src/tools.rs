@@ -210,6 +210,38 @@ pub fn capability_tools(capabilities: &[String]) -> Vec<ToolSpec> {
             required_permissions: Vec::new(),
         });
     }
+
+    if capabilities.iter().any(|c| c == "voice-tts") {
+        out.push(ToolSpec {
+            name: "generate_speech".into(),
+            description:
+                "Read a text out loud with a synthetic voice, on this machine. Use it whenever the                  user asks to hear something, wants an audio version, or asks you to record a                  message. Keep `text` in the language the user wants to hear."
+                    .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "What the voice should say."
+                    },
+                    "speed": {
+                        "type": "number",
+                        "description": "1.0 is normal, 0.8 slower, 1.2 faster."
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Voice model. Leave empty for the first installed one."
+                    }
+                },
+                "required": ["text"]
+            }),
+            risk: Risk::Low,
+            // Comme l'image : le fichier va dans le dossier de données, pas
+            // dans le projet de quelqu'un. Rien à arbitrer.
+            required_permissions: Vec::new(),
+        });
+    }
+
     out
 }
 
@@ -625,6 +657,7 @@ pub async fn dispatch_tool(
         "search" => exec_search(args, project_root).await,
         "run_command" => exec_run_command(args, project_root).await,
         "generate_image" => exec_generate_image(args).await,
+        "generate_speech" => exec_generate_speech(args).await,
         _ => ToolResult {
             ok: false,
             output: format!("unknown tool: {tool_name}"),
@@ -724,6 +757,60 @@ async fn exec_generate_image(args: &serde_json::Value) -> ToolResult {
         }
     }
     err(&format!("génération impossible — {last_error}"))
+}
+
+/// Faire lire un texte à voix haute, et rendre le fichier produit.
+async fn exec_generate_speech(args: &serde_json::Value) -> ToolResult {
+    let Some(text) = args.get("text").and_then(|v| v.as_str()) else {
+        return err("il manque le texte à dire");
+    };
+    if text.trim().is_empty() {
+        return err("il n'y a rien à lire");
+    }
+
+    // Aucun modèle demandé : le premier installé. Sans modèle du tout, le dire
+    // plutôt que d'échouer sur un nom vide.
+    let model = match args.get("model").and_then(|v| v.as_str()) {
+        Some(m) if !m.is_empty() => m.to_string(),
+        _ => match locaryn_media::audio::list_tts_models().into_iter().next() {
+            Some(m) => m,
+            None => {
+                return err(
+                    "aucune voix n'est installée sur cette machine —                      ajoutez un modèle de synthèse vocale",
+                )
+            }
+        },
+    };
+
+    let req = locaryn_media::audio::TtsRequest {
+        model: model.clone(),
+        text: text.to_string(),
+        speed: args
+            .get("speed")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0)
+            .clamp(0.5, 2.0) as f32,
+        language: args
+            .get("language")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        output_dir: locaryn_config::generated_audio_dir(),
+    };
+    match locaryn_media::audio::generate_tts(req, &|_, _| {}).await {
+        Ok(file) => ToolResult {
+            ok: true,
+            output: format!(
+                "Voix générée avec {model} : {}
+                 Dis en une phrase ce qui a été enregistré.",
+                file.path.display()
+            ),
+            artifact: Some(ToolArtifact {
+                kind: locaryn_shared_types::ArtifactKind::AudioWav,
+                path: file.path.display().to_string(),
+            }),
+        },
+        Err(e) => err(&format!("synthèse impossible — {e}")),
+    }
 }
 
 async fn exec_read_file(args: &serde_json::Value, project_root: &Path) -> ToolResult {
@@ -942,5 +1029,39 @@ mod artefact_tests {
             serde_json::to_value(a.kind).unwrap(),
             serde_json::json!("image_png")
         );
+    }
+}
+
+#[cfg(test)]
+mod capacites_tests {
+    use super::capability_tools;
+
+    fn noms(caps: &[&str]) -> Vec<String> {
+        capability_tools(&caps.iter().map(|c| c.to_string()).collect::<Vec<_>>())
+            .into_iter()
+            .map(|t| t.name)
+            .collect()
+    }
+
+    /// Une capacité déclarée par une extension doit se traduire par un outil
+    /// que le modèle peut appeler. Sans cela, installer l'extension change une
+    /// ligne dans une liste et rien d'autre : le modèle continue de répondre
+    /// qu'il ne sait pas faire.
+    #[test]
+    fn chaque_capacite_branchee_donne_un_outil() {
+        assert_eq!(noms(&["image-gen"]), vec!["generate_image"]);
+        assert_eq!(noms(&["voice-tts"]), vec!["generate_speech"]);
+        assert_eq!(
+            noms(&["image-gen", "voice-tts"]),
+            vec!["generate_image", "generate_speech"]
+        );
+    }
+
+    #[test]
+    fn une_capacite_sans_moteur_ne_promet_rien() {
+        // Mieux vaut aucun outil qu'un outil qui échouera à l'exécution :
+        // le modèle dira honnêtement qu'il ne sait pas plutôt que d'essayer.
+        assert!(noms(&["video-gen", "3d-gen", "model-training"]).is_empty());
+        assert!(noms(&[]).is_empty());
     }
 }

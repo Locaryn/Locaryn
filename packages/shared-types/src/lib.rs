@@ -135,6 +135,8 @@ pub enum ArtifactKind {
     PythonText,
     ImagePng,
     PlotlyHtml,
+    /// Un son produit par une voix de synthèse.
+    AudioWav,
 }
 
 // ============================================================================

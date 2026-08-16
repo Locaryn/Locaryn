@@ -1557,6 +1557,7 @@ async fn get_artifact_raw(State(s): State<Arc<DaemonState>>, Path(id): Path<Stri
                 ArtifactKind::PythonText => "text/plain; charset=utf-8",
                 ArtifactKind::ImagePng => "image/png",
                 ArtifactKind::PlotlyHtml => "text/html; charset=utf-8",
+                ArtifactKind::AudioWav => "audio/wav",
             };
             Response::builder()
                 .header("Content-Type", mime)
