@@ -8,6 +8,7 @@ import { ExtensionsSettings } from "../components/ExtensionsSettings";
 import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
 import { ImageSettings } from "../components/ImageSettings";
 import { MemorySettings } from "../components/MemorySettings";
+import { MicroModelSetting } from "../components/MicroModelSetting";
 import { PairingCodes } from "../components/PairingCodes";
 import { PerformancePanel } from "../components/PerformancePanel";
 import { ServerSettings } from "../components/ServerSettings";
@@ -237,6 +238,7 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
           {section === "server" && (
             <>
               <ServerSettings />
+              <MicroModelSetting />
               <PairingCodes />
               <TravelSettings />
               <ConnectionSettings />

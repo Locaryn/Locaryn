@@ -138,6 +138,42 @@ pub async fn travel_home_code() -> Result<TravelStatus, String> {
     })
 }
 
+/// Le modèle des micro-tâches, et ce qu'on peut choisir.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MicroModel {
+    /// `None` : aucun. Les micro-tâches ne tournent pas.
+    pub model: Option<String>,
+    pub available: Vec<String>,
+}
+
+/// Quel modèle nomme les conversations, et lesquels sont installés.
+#[tauri::command]
+pub async fn micro_model() -> Result<MicroModel, String> {
+    let req = daemon("/v1/assistance/micro-model").await?;
+    let resp = req.send().await.map_err(|_| not_running())?;
+    resp.json::<MicroModel>().await.map_err(|e| e.to_string())
+}
+
+/// Choisir le modèle des micro-tâches, ou n'en choisir aucun.
+#[tauri::command]
+pub async fn set_micro_model(model: Option<String>) -> Result<MicroModel, String> {
+    let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
+    let port = cfg.daemon.port;
+    let client = crate::secure_client::build(None, None, None, std::time::Duration::from_secs(30))?;
+    let resp = client
+        .post(format!(
+            "https://127.0.0.1:{port}/v1/assistance/micro-model"
+        ))
+        .json(&serde_json::json!({ "model": model }))
+        .send()
+        .await
+        .map_err(|_| not_running())?;
+    if !resp.status().is_success() {
+        return Err(format!("Le service a refusé ({}).", resp.status()));
+    }
+    micro_model().await
+}
+
 /// Un code d'appairage, avec l'adresse qu'il porte.
 ///
 /// L'adresse apparaît ici, contrairement au mode voyage : il s'agit d'un

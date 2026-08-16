@@ -235,6 +235,10 @@ async fn main() -> anyhow::Result<()> {
         // Renommer à la main : le titre devient définitif, aucun modèle n'y
         // touche plus.
         .route("/v1/sessions/:id/title", post(rename_session))
+        // Archiver, sortir des archives, ranger dans un projet.
+        .route("/v1/sessions/:id/archive", post(archive_session))
+        .route("/v1/sessions/:id/project", post(move_session))
+        .route("/v1/projects/:pid/archived", get(list_archived_sessions))
         // Le modèle des micro-tâches : lequel, et lesquels sont disponibles.
         .route(
             "/v1/assistance/micro-model",
@@ -615,7 +619,20 @@ async fn list_sessions(State(s): State<Arc<DaemonState>>, Path(pid): Path<String
     }
 }
 
-async fn create_session(State(s): State<Arc<DaemonState>>, Path(pid): Path<String>) -> Response {
+#[derive(serde::Deserialize, Default)]
+struct CreateSessionBody {
+    /// Une conversation éphémère ne laisse rien : ni titre, ni trace dans les
+    /// listes. Le corps est optionnel — sans lui, la conversation est normale.
+    #[serde(default)]
+    ephemeral: bool,
+}
+
+async fn create_session(
+    State(s): State<Arc<DaemonState>>,
+    Path(pid): Path<String>,
+    body: Option<Json<CreateSessionBody>>,
+) -> Response {
+    let ephemeral = body.map(|Json(b)| b.ephemeral).unwrap_or(false);
     let project_id = match Uuid::parse_str(&pid) {
         Ok(u) => u,
         Err(_) => {
@@ -639,7 +656,12 @@ async fn create_session(State(s): State<Arc<DaemonState>>, Path(pid): Path<Strin
             .into_response();
     }
     let title = None;
-    match s.storage.sessions.create(project_id, title).await {
+    match s
+        .storage
+        .sessions
+        .create_with(project_id, title, ephemeral)
+        .await
+    {
         Ok(session) => (StatusCode::CREATED, Json(session)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1629,6 +1651,100 @@ async fn set_micro_model(Json(body): Json<MicroModelBody>) -> Response {
 }
 
 #[derive(serde::Deserialize)]
+struct ArchiveBody {
+    /// Faux pour ressortir une conversation des archives.
+    #[serde(default = "vrai")]
+    archived: bool,
+}
+
+fn vrai() -> bool {
+    true
+}
+
+/// POST /v1/sessions/{id}/archive — ranger, ou sortir des archives.
+async fn archive_session(
+    State(s): State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+    Json(body): Json<ArchiveBody>,
+) -> Response {
+    let Ok(session_id) = Uuid::parse_str(&id) else {
+        return mauvaise_requete("identifiant de session invalide");
+    };
+    match s
+        .storage
+        .sessions
+        .set_archived(session_id, body.archived)
+        .await
+    {
+        Ok(()) => Json(serde_json::json!({ "id": id, "archived": body.archived })).into_response(),
+        Err(e) => introuvable(&e.to_string()),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct MoveBody {
+    project_id: String,
+}
+
+/// POST /v1/sessions/{id}/project — ranger une conversation dans un projet.
+async fn move_session(
+    State(s): State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+    Json(body): Json<MoveBody>,
+) -> Response {
+    let (Ok(session_id), Ok(project_id)) =
+        (Uuid::parse_str(&id), Uuid::parse_str(&body.project_id))
+    else {
+        return mauvaise_requete("identifiant invalide");
+    };
+    match s
+        .storage
+        .sessions
+        .move_to_project(session_id, project_id)
+        .await
+    {
+        Ok(()) => {
+            Json(serde_json::json!({ "id": id, "project_id": body.project_id })).into_response()
+        }
+        Err(e) => introuvable(&e.to_string()),
+    }
+}
+
+/// GET /v1/projects/{pid}/archived — ce qui a été rangé.
+async fn list_archived_sessions(
+    State(s): State<Arc<DaemonState>>,
+    Path(pid): Path<String>,
+) -> Response {
+    let Ok(project_id) = Uuid::parse_str(&pid) else {
+        return mauvaise_requete("identifiant de projet invalide");
+    };
+    match s.storage.sessions.list_archived(project_id).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => introuvable(&e.to_string()),
+    }
+}
+
+fn mauvaise_requete(message: &str) -> Response {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "error": { "code": "bad_request", "message": message }
+        })),
+    )
+        .into_response()
+}
+
+fn introuvable(message: &str) -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({
+            "error": { "code": "not_found", "message": message }
+        })),
+    )
+        .into_response()
+}
+
+#[derive(serde::Deserialize)]
 struct RenameBody {
     title: String,
 }
@@ -1681,6 +1797,13 @@ async fn rename_session(
 /// mieux qu'une conversation qui attend son nom.
 fn spawn_titre_du_modele(s: Arc<DaemonState>, session_id: Uuid, premiere_demande: String) {
     tokio::spawn(async move {
+        // Une conversation éphémère ne porte pas de nom : la nommer, ce serait
+        // en garder quelque chose.
+        match s.storage.sessions.get(session_id).await {
+            Ok(sess) if !sess.ephemeral => {}
+            _ => return,
+        }
+
         // Un titre ne se redemande pas à chaque message : seule la première
         // demande le déclenche. À cet instant, elle est le seul message de la
         // conversation.

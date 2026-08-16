@@ -760,6 +760,18 @@ export interface Provisioning {
  */
 export type PairingMode = "local" | "tunnel" | "public";
 
+/**
+ * Le modèle des micro-tâches.
+ *
+ * Nommer une conversation, ranger, résumer : des travaux courts qui n'ont pas
+ * besoin du gros modèle. Aucun n'est choisi par défaut — tant qu'il n'y en a
+ * pas, ces services ne tournent pas.
+ */
+export interface MicroModel {
+  model: string | null;
+  available: string[];
+}
+
 /** Un code d'appairage et l'adresse qu'il porte. */
 export interface PairingCode {
   mode: string;
@@ -1331,6 +1343,9 @@ export interface CoreApi {
   travelHomeCode(): Promise<TravelStatus>;
   /** Le code d'appairage d'un téléphone : `local`, `public` ou `tunnel`. */
   pairingCode(mode: PairingMode, url?: string): Promise<PairingCode>;
+  /** Le modèle qui nomme les conversations. `null` : aucun, rien ne tourne. */
+  microModel(): Promise<MicroModel>;
+  setMicroModel(model: string | null): Promise<MicroModel>;
 
   /** MCP servers — shared with the daemon through `mcp.json`. */
   listMcpServers(): Promise<McpServerInfo[]>;
@@ -1735,6 +1750,8 @@ const tauriCore: CoreApi = {
   setTravelMode: (provider) => invoke<TravelStatus>("set_travel_mode", { args: { provider } }),
   travelHomeCode: () => invoke<TravelStatus>("travel_home_code"),
   pairingCode: (mode, url) => invoke<PairingCode>("pairing_code", { mode, url }),
+  microModel: () => invoke<MicroModel>("micro_model"),
+  setMicroModel: (model) => invoke<MicroModel>("set_micro_model", { model }),
 
   listMcpServers: () => invoke<McpServerInfo[]>("list_mcp_servers"),
   addMcpServer: (args) =>
@@ -3471,6 +3488,8 @@ const demoCore: CoreApi = {
     url: mode === "local" ? "http://192.168.1.20:7474" : "https://exemple.invalide:7474",
     qr_svg: "",
   }),
+  microModel: async () => ({ model: null, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
+  setMicroModel: async (model) => ({ model, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
 
   listMcpServers: async () => [],
   addMcpServer: async () => [],

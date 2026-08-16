@@ -48,6 +48,13 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
     pub last_message_at: Option<DateTime<Utc>>,
     pub closed_at: Option<DateTime<Utc>>,
+    /// Rangée aux archives. Elle ne s'affiche plus dans la liste courante,
+    /// mais elle existe : la suppression est un geste séparé.
+    #[serde(default)]
+    pub archived_at: Option<DateTime<Utc>>,
+    /// Éphémère : rien de ce qui s'y dit ne doit rester.
+    #[serde(default)]
+    pub ephemeral: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

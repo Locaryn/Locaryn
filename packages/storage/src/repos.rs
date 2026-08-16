@@ -49,6 +49,8 @@ struct SessionRow {
     created_at: String,
     last_message_at: Option<String>,
     closed_at: Option<String>,
+    archived_at: Option<String>,
+    ephemeral: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -211,6 +213,8 @@ impl TryFrom<SessionRow> for Session {
             created_at: dt(&r.created_at)?,
             last_message_at: opt_dt(r.last_message_at.as_deref())?,
             closed_at: opt_dt(r.closed_at.as_deref())?,
+            archived_at: opt_dt(r.archived_at.as_deref())?,
+            ephemeral: r.ephemeral != 0,
         })
     }
 }
@@ -738,8 +742,10 @@ impl SessionRepo {
 
     pub async fn list_for_project(&self, project_id: Uuid) -> Result<Vec<Session>, StorageError> {
         let rows = sqlx::query_as::<_, SessionRow>(
-            "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, closed_at \
-             FROM sessions WHERE project_id = ? AND closed_at IS NULL \
+            "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
+             closed_at, archived_at, ephemeral \
+             FROM sessions \
+             WHERE project_id = ? AND closed_at IS NULL AND archived_at IS NULL \
              ORDER BY COALESCE(last_message_at, created_at) DESC",
         )
         .bind(project_id.to_string())
@@ -753,25 +759,86 @@ impl SessionRepo {
         project_id: Uuid,
         title: Option<String>,
     ) -> Result<Session, StorageError> {
+        self.create_with(project_id, title, false).await
+    }
+
+    /// Créer une conversation, éphémère ou non.
+    ///
+    /// Une conversation éphémère est marquée dès sa naissance : c'est ce qui
+    /// permet ensuite de refuser de la nommer, de la lister, ou d'en garder
+    /// quoi que ce soit.
+    pub async fn create_with(
+        &self,
+        project_id: Uuid,
+        title: Option<String>,
+        ephemeral: bool,
+    ) -> Result<Session, StorageError> {
         let id = Uuid::new_v4();
         let now = chrono::Utc::now().to_rfc3339();
         let row = sqlx::query_as::<_, SessionRow>(
-            "INSERT INTO sessions (id, project_id, title, provider_id, model, created_at, last_message_at, closed_at) \
-             VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL) \
-             RETURNING id, project_id, title, provider_id, model, created_at, last_message_at, closed_at",
+            "INSERT INTO sessions (id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral) \
+             VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, ?) \
+             RETURNING id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral",
         )
         .bind(id.to_string())
         .bind(project_id.to_string())
         .bind(title.as_deref())
         .bind(&now)
+        .bind(i64::from(ephemeral))
         .fetch_one(&self.pool)
         .await?;
         row.try_into()
     }
 
+    /// Ranger une conversation aux archives, ou l'en sortir.
+    ///
+    /// Rien n'est effacé : c'est le geste courant, et il doit rester sans
+    /// conséquence. La suppression existe toujours, depuis les archives, et
+    /// demande une décision de plus.
+    pub async fn set_archived(&self, id: Uuid, archived: bool) -> Result<(), StorageError> {
+        let valeur = archived.then(|| chrono::Utc::now().to_rfc3339());
+        let res = sqlx::query("UPDATE sessions SET archived_at = ? WHERE id = ?")
+            .bind(valeur)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        if res.rows_affected() == 0 {
+            return Err(StorageError::NotFound(format!("session {id}")));
+        }
+        Ok(())
+    }
+
+    /// Les conversations rangées, la plus récemment rangée d'abord.
+    pub async fn list_archived(&self, project_id: Uuid) -> Result<Vec<Session>, StorageError> {
+        let rows = sqlx::query_as::<_, SessionRow>(
+            "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
+             closed_at, archived_at, ephemeral \
+             FROM sessions WHERE project_id = ? AND archived_at IS NOT NULL \
+             ORDER BY archived_at DESC",
+        )
+        .bind(project_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(Session::try_from).collect()
+    }
+
+    /// Déplacer une conversation dans un autre projet.
+    pub async fn move_to_project(&self, id: Uuid, project_id: Uuid) -> Result<(), StorageError> {
+        let res = sqlx::query("UPDATE sessions SET project_id = ? WHERE id = ?")
+            .bind(project_id.to_string())
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        if res.rows_affected() == 0 {
+            return Err(StorageError::NotFound(format!("session {id}")));
+        }
+        Ok(())
+    }
+
     pub async fn get(&self, id: Uuid) -> Result<Session, StorageError> {
         let row = sqlx::query_as::<_, SessionRow>(
-            "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, closed_at \
+            "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
+             closed_at, archived_at, ephemeral \
              FROM sessions WHERE id = ?",
         )
         .bind(id.to_string())
@@ -803,6 +870,12 @@ impl SessionRepo {
     pub async fn title_if_unset(&self, id: Uuid, titre: &str) -> Result<(), StorageError> {
         let titre = resumer_pour_titre(titre);
         if titre.is_empty() {
+            return Ok(());
+        }
+        // Une conversation éphémère n'a pas de nom : lui en donner un
+        // reviendrait à en garder une trace, ce qu'elle promet justement de ne
+        // pas faire.
+        if self.get(id).await.map(|s| s.ephemeral).unwrap_or(false) {
             return Ok(());
         }
         sqlx::query("UPDATE sessions SET title = ? WHERE id = ? AND (title IS NULL OR title = '')")
