@@ -84,5 +84,9 @@ jobs:
         env:
           PROFILE: debug
         run: bash scripts/stage-desktop-sidecars.sh
-      - name: Compiler les coques Tauri
-        run: cargo check -p locaryn-desktop -p locaryn-mobile
+      # `cargo test` plutôt que `cargo check` : les deux coques sont exclues du
+      # travail Rust (elles ont besoin des interfaces compilées), donc leurs
+      # tests ne tournaient nulle part. C'est ici, et seulement ici, que le
+      # garde-fou « la configuration déclare une fenêtre » peut s'exécuter.
+      - name: Compiler et tester les coques Tauri
+        run: cargo test -p locaryn-desktop -p locaryn-mobile

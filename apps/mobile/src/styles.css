@@ -74,6 +74,26 @@ body {
   padding: var(--space-5);
 }
 
+/* Une précision utile, jamais indispensable : plus petite et plus discrète
+   que le texte courant, sans descendre sous le seuil de lisibilité. */
+.lo-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* Un message qui doit se voir quel que soit l'écran en dessous. */
+.lo-toast {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  padding: var(--space-5);
+  padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
+}
+
 .lo-center {
   flex: 1;
   display: flex;

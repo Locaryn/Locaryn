@@ -4,21 +4,38 @@ import { type MobileStatus, api } from "../lib/core";
 type Props = {
   status: MobileStatus;
   onSignedIn: (s: MobileStatus) => void;
+  /** Un serveur vient d'être ajouté : l'écran doit repasser aux identifiants. */
+  onRegistered: (s: MobileStatus) => void;
   onScan: () => void;
 };
 
 /**
  * Signing in on a phone.
  *
- * Two fields. The server was registered once from the file an administrator
- * produced, and after that the address follows whatever code gets scanned —
- * so there is nothing here about networks.
+ * Deux écrans en un. Tant qu'aucun serveur n'est connu, il n'y a rien à quoi
+ * s'identifier : on demande l'adresse, ou le code qui la porte. Une fois le
+ * serveur enregistré, l'adresse redevient un détail — elle suit les codes
+ * scannés — et il ne reste que l'identifiant et le mot de passe.
  */
-export function SignIn({ status, onSignedIn, onScan }: Props) {
+export function SignIn({ status, onSignedIn, onRegistered, onScan }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** Enregistre le serveur depuis l'adresse tapée, puis passe à la connexion. */
+  async function addByAddress() {
+    setBusy(true);
+    setError(null);
+    try {
+      onRegistered(await api.registerAddress(address));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     if (!username.trim() || !password) {
@@ -36,6 +53,54 @@ export function SignIn({ status, onSignedIn, onScan }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Première ouverture : aucun serveur n'est connu, donc aucun identifiant ne
+  // peut fonctionner. Proposer les deux champs quand même ne mènerait qu'à un
+  // échec incompréhensible ; on demande d'abord où joindre le serveur.
+  if (status.servers === 0) {
+    return (
+      <div className="lo-screen">
+        <div className="lo-center">
+          <h1 className="lo-title">Locaryn</h1>
+          <p className="lo-sub">Indiquez où joindre votre serveur.</p>
+
+          <div>
+            <label className="lo-label" htmlFor="a">
+              Adresse du serveur
+            </label>
+            <input
+              id="a"
+              className="lo-input"
+              autoCapitalize="none"
+              autoCorrect="off"
+              inputMode="url"
+              placeholder="192.168.1.20"
+              value={address}
+              disabled={busy}
+              onChange={(e) => setAddress(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void addByAddress()}
+            />
+          </div>
+
+          <button type="button" className="lo-btn" disabled={busy} onClick={addByAddress}>
+            {busy ? "Connexion…" : "Continuer"}
+          </button>
+
+          {error && <p className="lo-error">{error}</p>}
+
+          <p className="lo-hint">
+            Le code affiché par l'application de bureau (Réglages → Appareils) fait la même chose en
+            une fois, et porte en plus le certificat du serveur — nécessaire pour s'y connecter
+            depuis l'extérieur du réseau local.
+          </p>
+
+          <button type="button" className="lo-btn-ghost" onClick={onScan}>
+            Scanner un code
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

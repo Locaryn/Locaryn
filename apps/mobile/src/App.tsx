@@ -88,8 +88,14 @@ export function App() {
       setScanError("La caméra n'est pas disponible sur cet appareil.");
       return;
     }
-    const text = await scan();
-    if (text) await applyLink(text);
+    // Sans ce `catch`, un refus de l'appareil photo n'était qu'une promesse
+    // rejetée : le bouton ne faisait visiblement rien.
+    try {
+      const text = await scan();
+      if (text) await applyLink(text);
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   if (paired) {
@@ -132,11 +138,17 @@ export function App() {
             setStatus(s);
             setScreen("chat");
           }}
+          onRegistered={setStatus}
           onScan={openScanner}
         />
       )}
+      {/*
+        Posé par-dessus l'écran, pas à la suite : les écrans font toute la
+        hauteur, donc un message placé après eux tombait sous le pli d'une page
+        qui ne défile pas — un code refusé ne disait rien du tout.
+      */}
       {scanError && (
-        <div className="lo-pad">
+        <div className="lo-toast">
           <p className="lo-error">{scanError}</p>
         </div>
       )}

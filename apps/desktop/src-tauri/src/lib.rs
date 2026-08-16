@@ -7663,6 +7663,22 @@ mod tests {
     use super::summarise_python_error;
     use std::process::Command;
 
+    /// Une configuration sans `app.windows` compile, se lance, et n'affiche
+    /// rien — c'est exactement ce qui est arrivé à l'application mobile en
+    /// v0.3.1. Même garde-fou ici, la panne serait identique.
+    #[test]
+    fn la_configuration_declare_une_fenetre() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+        let fenetres = conf["app"]["windows"]
+            .as_array()
+            .expect("app.windows doit exister");
+        assert!(
+            !fenetres.is_empty(),
+            "app.windows est vide : l'application s'ouvrirait sur un écran noir"
+        );
+    }
+
     /// Real sd.cpp output: the bar redraws with carriage returns, so a whole
     /// render can arrive as a single line holding every step.
     #[test]

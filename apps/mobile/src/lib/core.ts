@@ -58,6 +58,8 @@ export const core = {
   openUpdate: (url: string) => invoke<void>("open_update", { url }),
   registerServer: (provisioningJson: string) =>
     invoke<MobileStatus>("register_server", { provisioningJson }),
+  /** Enregistre un serveur depuis son adresse, sans code à scanner. */
+  registerAddress: (address: string) => invoke<MobileStatus>("register_address", { address }),
   signIn: (username: string, password: string) =>
     invoke<MobileStatus>("sign_in", { username, password }),
   signOut: () => invoke<MobileStatus>("sign_out"),
@@ -112,6 +114,12 @@ export const demoCore: typeof core = {
   openUpdate: async () => {},
   registerServer: async () => ({
     server_name: "Atelier Vasseur",
+    travelling: false,
+    signed_in: false,
+    servers: 1,
+  }),
+  registerAddress: async (address: string) => ({
+    server_name: address,
     travelling: false,
     signed_in: false,
     servers: 1,

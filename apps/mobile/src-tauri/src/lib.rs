@@ -133,6 +133,97 @@ fn register_server(provisioning_json: String) -> Result<MobileStatus, String> {
     Ok(status())
 }
 
+/// Ce que l'utilisateur a tapé, ramené à une URL utilisable.
+///
+/// On accepte ce qu'une personne écrit vraiment : « 192.168.1.20 »,
+/// « 192.168.1.20:7474 », « http://serveur.local », « locaryn.maison:7474/ ».
+/// Le port par défaut est celui du service ; le schéma par défaut est `http`,
+/// parce qu'une adresse tapée à la main désigne presque toujours une machine du
+/// réseau local qui n'a pas de certificat.
+pub fn normalise_address(raw: &str) -> Result<String, String> {
+    let raw = raw.trim().trim_end_matches('/');
+    if raw.is_empty() {
+        return Err("Entrez l'adresse du serveur.".into());
+    }
+    let (scheme, rest) = match raw.split_once("://") {
+        Some(("http", r)) => ("http", r),
+        Some(("https", r)) => ("https", r),
+        Some((other, _)) => return Err(format!("Adresse inattendue : « {other}:// ».")),
+        None => ("http", raw),
+    };
+    let rest = rest.trim_end_matches('/');
+    if rest.is_empty() || rest.contains(' ') {
+        return Err("Cette adresse n'est pas valide.".into());
+    }
+    // Un port déjà écrit est gardé tel quel ; sinon on ajoute celui du service.
+    // Le test cherche un « : » suivi de chiffres pour ne pas confondre avec le
+    // séparateur d'une adresse IPv6 entre crochets.
+    let has_port = rest
+        .rsplit_once(':')
+        .is_some_and(|(_, p)| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
+    if has_port {
+        Ok(format!("{scheme}://{rest}"))
+    } else {
+        Ok(format!("{scheme}://{rest}:7474"))
+    }
+}
+
+/// Enregistrer un serveur à partir de son adresse, sans code à scanner.
+///
+/// C'est le chemin pour un téléphone sans appareil photo, ou pour un serveur
+/// personnel sur le réseau local. Ce qu'on perd par rapport au code scanné est
+/// réel et l'interface le dit : le code, lui, porte le certificat de
+/// l'autorité, et c'est ce certificat qui permet ensuite de vérifier un lien de
+/// mode voyage et de chiffrer la liaison hors du réseau local.
+///
+/// L'adresse n'est pas enregistrée sur parole : on demande d'abord au serveur
+/// de se présenter.
+#[tauri::command]
+async fn register_address(address: String) -> Result<MobileStatus, String> {
+    let url = normalise_address(&address)?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get(format!("{url}/v1/info"))
+        .send()
+        .await
+        .map_err(|_| format!("Aucune réponse de {url}. Vérifiez l'adresse et le réseau."))?;
+    if !resp.status().is_success() {
+        return Err(format!("{url} a répondu {}.", resp.status()));
+    }
+    let info: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|_| format!("{url} répond, mais ce n'est pas un serveur Locaryn."))?;
+    if info["name"].as_str() != Some("locaryn-daemon") {
+        return Err(format!(
+            "{url} répond, mais ce n'est pas un serveur Locaryn."
+        ));
+    }
+
+    let mut store = servers::load();
+    store.upsert(servers::KnownServer {
+        // Pas d'autorité, donc pas d'empreinte d'autorité : l'adresse elle-même
+        // identifie ce serveur. Le préfixe évite toute collision avec les
+        // identifiants dérivés d'un certificat.
+        key_id: format!("adresse:{url}"),
+        name: url
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .to_string(),
+        home_url: url.clone(),
+        current_url: url,
+        authority_pem: String::new(),
+        travelling: false,
+    });
+    servers::save(&store)?;
+    Ok(status())
+}
+
 /// Sign in against whichever address is currently in force.
 #[tauri::command]
 async fn sign_in(username: String, password: String) -> Result<MobileStatus, String> {
@@ -142,19 +233,7 @@ async fn sign_in(username: String, password: String) -> Result<MobileStatus, Str
         .ok_or("Aucun serveur enregistré sur cet appareil.")?
         .clone();
 
-    let client = reqwest::Client::builder()
-        // The deployment's certificate is issued by its own authority, which
-        // no phone trusts by default. The authority we stored is the anchor.
-        .add_root_certificate(
-            reqwest::Certificate::from_pem(server.authority_pem.as_bytes())
-                .map_err(|e| format!("autorité illisible : {e}"))?,
-        )
-        // Servers reached through a relay answer on a hostname their own
-        // certificate does not name; the authority still vouches for them.
-        .danger_accept_invalid_hostnames(true)
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = client_for_with(&server, std::time::Duration::from_secs(20))?;
 
     let resp = client
         .post(format!("{}/v1/auth/login", server.current_url.trim_end_matches('/')))
@@ -205,7 +284,26 @@ fn sign_out() -> MobileStatus {
 /// Shared by sign-in and by messaging so both trust exactly the same thing —
 /// two anchors would eventually disagree, and the lenient one would win.
 fn client_for(server: &servers::KnownServer) -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
+    // Media generation (image, TTS) can run for a minute or two on the machine
+    // at the other end; a chat-friendly timeout would cut it.
+    client_for_with(server, std::time::Duration::from_secs(180))
+}
+
+fn client_for_with(
+    server: &servers::KnownServer,
+    timeout: std::time::Duration,
+) -> Result<reqwest::Client, String> {
+    let builder = reqwest::Client::builder().timeout(timeout);
+
+    // Une adresse tapée à la main n'apporte aucune autorité : c'est un serveur
+    // joint en clair sur le réseau local, ou en HTTPS avec un certificat que le
+    // téléphone sait déjà vérifier. Rien à ancrer, donc rien à ajouter — et
+    // surtout pas une exception de vérification qu'on n'aurait pas demandée.
+    if server.authority_pem.trim().is_empty() {
+        return builder.build().map_err(|e| e.to_string());
+    }
+
+    builder
         // The certificate is issued by the deployment's authority, which no
         // phone trusts by default. That authority is the anchor.
         .add_root_certificate(
@@ -215,9 +313,6 @@ fn client_for(server: &servers::KnownServer) -> Result<reqwest::Client, String> 
         // Reached through a relay, the server answers on a hostname its own
         // certificate does not name. The authority still vouches for it.
         .danger_accept_invalid_hostnames(true)
-        // Media generation (image, TTS) can run for a minute or two on the
-        // machine at the other end; a chat-friendly timeout would cut it.
-        .timeout(std::time::Duration::from_secs(180))
         .build()
         .map_err(|e| e.to_string())
 }
@@ -523,6 +618,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             status,
             register_server,
+            register_address,
             sign_in,
             sign_out,
             send_message,
@@ -558,4 +654,70 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("erreur au démarrage de Locaryn");
+}
+
+#[cfg(test)]
+mod adresse_tests {
+    use super::normalise_address;
+
+    #[test]
+    fn une_ip_seule_recoit_schema_et_port() {
+        assert_eq!(
+            normalise_address("192.168.1.20").unwrap(),
+            "http://192.168.1.20:7474"
+        );
+    }
+
+    #[test]
+    fn le_port_ecrit_est_respecte() {
+        assert_eq!(
+            normalise_address(" 192.168.1.20:9000 ").unwrap(),
+            "http://192.168.1.20:9000"
+        );
+    }
+
+    #[test]
+    fn https_et_barre_finale() {
+        assert_eq!(
+            normalise_address("https://maison.local/").unwrap(),
+            "https://maison.local:7474"
+        );
+    }
+
+    #[test]
+    fn un_nom_dhote_sans_port_reste_un_nom_dhote() {
+        // Le « : » d'un IPv6 entre crochets ne doit pas passer pour un port.
+        assert_eq!(
+            normalise_address("[fe80::1]").unwrap(),
+            "http://[fe80::1]:7474"
+        );
+    }
+
+    #[test]
+    fn refus_du_vide_et_des_schemas_inconnus() {
+        assert!(normalise_address("   ").is_err());
+        assert!(normalise_address("ftp://serveur").is_err());
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    /// Sans `app.windows`, Tauri démarre sans créer la moindre fenêtre : sur
+    /// Android l'activité s'ouvre, le thème peint le fond, et l'utilisateur
+    /// regarde un écran vide. Aucun plantage, aucune trace — c'est le bogue le
+    /// plus silencieux du projet, et il a été livré. Ce test relit le fichier
+    /// de configuration réel pour qu'il ne puisse plus repartir vide.
+    #[test]
+    fn la_configuration_declare_une_fenetre() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+        let fenetres = conf["app"]["windows"]
+            .as_array()
+            .expect("app.windows doit exister");
+        assert!(
+            !fenetres.is_empty(),
+            "app.windows est vide : l'application s'ouvrirait sur un écran noir"
+        );
+        assert_eq!(fenetres[0]["url"], "index.html");
+    }
 }
