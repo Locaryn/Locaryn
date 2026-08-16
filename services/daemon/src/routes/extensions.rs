@@ -304,16 +304,31 @@ pub async fn install_extension(
         }
     };
 
-    let dir = std::path::Path::new(&body.source);
-    if !dir.is_dir() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": { "code": "bad_request", "message": "source path does not exist or is not a directory" }
-            })),
-        )
-            .into_response();
-    }
+    // Un dossier du serveur, ou un dépôt du catalogue. Le second cas est le
+    // seul possible depuis un téléphone, qui ne connaît aucun chemin de la
+    // machine d'en face — et c'est aussi ce que la CLI annonçait déjà sans que
+    // le service sache le faire.
+    let local;
+    let dir = if std::path::Path::new(&body.source).is_dir() {
+        std::path::PathBuf::from(&body.source)
+    } else {
+        match fetch_from_catalogue(&body.source).await {
+            Ok(p) => {
+                local = p;
+                local.clone()
+            }
+            Err(msg) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": { "code": "bad_request", "message": msg }
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    };
+    let dir = dir.as_path();
 
     match s.extensions.install_from_dir(dir, scope) {
         Ok(entry) => {
@@ -322,6 +337,129 @@ pub async fn install_extension(
         }
         Err(e) => registry_error_response(e).into_response(),
     }
+}
+
+/// Ramener `owner/repo` à ce qu'il désigne vraiment.
+///
+/// On accepte ce qu'une personne écrit : `Locaryn/locaryn-image-gen`,
+/// l'adresse complète du dépôt, ou la forme `github:owner/repo`. Tout le
+/// reste est refusé — une source arbitraire téléchargée et exécutée par le
+/// service serait une porte d'entrée, pas une commodité.
+fn parse_repo(source: &str) -> Result<(String, String), String> {
+    let s = source
+        .trim()
+        .trim_end_matches('/')
+        .trim_start_matches("github:")
+        .trim_start_matches("https://github.com/")
+        .trim_start_matches("http://github.com/")
+        .trim_end_matches(".git");
+    let mut parts = s.split('/');
+    let (Some(owner), Some(repo), None) = (parts.next(), parts.next(), parts.next()) else {
+        return Err(format!(
+            "« {source} » n'est ni un dossier du serveur, ni un dépôt « propriétaire/nom »."
+        ));
+    };
+    let valide = |x: &str| {
+        !x.is_empty()
+            && x.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    };
+    if !valide(owner) || !valide(repo) {
+        return Err(format!("Nom de dépôt inattendu : « {source} »."));
+    }
+    Ok((owner.to_string(), repo.to_string()))
+}
+
+/// Trouver, dans une archive dépliée, le dossier qui porte le manifeste.
+///
+/// GitHub emballe tout dans un dossier `repo-main/`, et une extension peut y
+/// être rangée dans un sous-dossier. On cherche donc `plugin.json` sur deux
+/// niveaux plutôt que de supposer une disposition.
+fn find_manifest_dir(root: &std::path::Path) -> Option<std::path::PathBuf> {
+    if root.join("plugin.json").is_file() {
+        return Some(root.to_path_buf());
+    }
+    let entries = std::fs::read_dir(root).ok()?;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            if p.join("plugin.json").is_file() {
+                return Some(p);
+            }
+            if let Ok(sous) = std::fs::read_dir(&p) {
+                for s in sous.flatten() {
+                    let sp = s.path();
+                    if sp.is_dir() && sp.join("plugin.json").is_file() {
+                        return Some(sp);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Télécharger un dépôt du catalogue et rendre le dossier à installer.
+async fn fetch_from_catalogue(source: &str) -> Result<std::path::PathBuf, String> {
+    let (owner, repo) = parse_repo(source)?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .user_agent("locaryn-daemon")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // `main` d'abord, `master` ensuite : les deux existent dans la nature.
+    let mut derniere = String::new();
+    let mut octets = None;
+    for branche in ["main", "master"] {
+        let url = format!("https://github.com/{owner}/{repo}/archive/refs/heads/{branche}.zip");
+        match client.get(&url).send().await {
+            Ok(r) if r.status().is_success() => {
+                octets = Some(r.bytes().await.map_err(|e| e.to_string())?);
+                break;
+            }
+            Ok(r) => derniere = format!("{} a répondu {}", url, r.status()),
+            Err(e) => derniere = format!("{url} : {e}"),
+        }
+    }
+    let Some(octets) = octets else {
+        return Err(format!(
+            "Impossible de récupérer {owner}/{repo} ({derniere})."
+        ));
+    };
+
+    let cible = locaryn_config::default_data_dir()
+        .join("extensions-telechargees")
+        .join(format!("{owner}-{repo}"));
+    let _ = std::fs::remove_dir_all(&cible);
+    std::fs::create_dir_all(&cible).map_err(|e| format!("dossier : {e}"))?;
+
+    let curseur = std::io::Cursor::new(octets);
+    let mut archive =
+        zip::ZipArchive::new(curseur).map_err(|e| format!("archive illisible : {e}"))?;
+    for i in 0..archive.len() {
+        let mut entree = archive
+            .by_index(i)
+            .map_err(|e| format!("entrée illisible : {e}"))?;
+        // `enclosed_name` refuse les chemins qui sortent du dossier cible.
+        let Some(rel) = entree.enclosed_name() else {
+            continue;
+        };
+        let out = cible.join(rel);
+        if entree.is_dir() {
+            std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut fichier = std::fs::File::create(&out).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entree, &mut fichier).map_err(|e| e.to_string())?;
+    }
+
+    find_manifest_dir(&cible).ok_or_else(|| {
+        format!("{owner}/{repo} ne contient pas de plugin.json : ce n'est pas une extension.")
+    })
 }
 
 /// POST /v1/extensions/{name}/enable — enable an extension by name.
@@ -500,5 +638,43 @@ pub async fn reload_extensions(
             Json(serde_json::json!({ "status": "completed", "results": results })),
         )
             .into_response()
+    }
+}
+
+#[cfg(test)]
+mod catalogue_tests {
+    use super::parse_repo;
+
+    #[test]
+    fn les_formes_courantes_donnent_le_meme_depot() {
+        for source in [
+            "Locaryn/locaryn-image-gen",
+            "github:Locaryn/locaryn-image-gen",
+            "https://github.com/Locaryn/locaryn-image-gen",
+            "https://github.com/Locaryn/locaryn-image-gen.git",
+            "https://github.com/Locaryn/locaryn-image-gen/",
+        ] {
+            assert_eq!(
+                parse_repo(source).unwrap(),
+                ("Locaryn".to_string(), "locaryn-image-gen".to_string()),
+                "source : {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn tout_le_reste_est_refuse() {
+        // Une source arbitraire téléchargée par le service serait une porte
+        // d'entrée : rien qui ne ressemble pas à un dépôt ne passe.
+        for source in [
+            "",
+            "juste-un-mot",
+            "trop/de/segments",
+            "https://exemple.invalide/paquet.zip",
+            "../../etc",
+            "Locaryn/nom avec espace",
+        ] {
+            assert!(parse_repo(source).is_err(), "aurait dû refuser : {source}");
+        }
     }
 }

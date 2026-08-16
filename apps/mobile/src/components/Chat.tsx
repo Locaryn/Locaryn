@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { type Message, type MobileStatus, api } from "../lib/core";
+import { type MediaResult, type Message, type MobileStatus, api } from "../lib/core";
 import { UpdateButton } from "./UpdateButton";
 
 type Props = {
   status: MobileStatus;
   onScan: () => void;
   onStudio: () => void;
+  onSettings: () => void;
 };
 
 /**
@@ -16,7 +17,7 @@ type Props = {
  * away from it — the only two things about the connection worth a person's
  * attention.
  */
-export function Chat({ status, onScan, onStudio }: Props) {
+export function Chat({ status, onScan, onStudio, onSettings }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   /**
    * Le Studio n'existe que si le serveur a une extension qui apporte de quoi
@@ -27,7 +28,17 @@ export function Chat({ status, onScan, onStudio }: Props) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Confirmation brève : copie faite, image enregistrée. */
+  const [notice, setNotice] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // Une confirmation qui reste à l'écran devient du décor. Trois secondes, le
+  // temps de la lire.
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 3000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +55,39 @@ export function Chat({ status, onScan, onStudio }: Props) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
+  /**
+   * Copier un message.
+   *
+   * `navigator.clipboard` exige un contexte sûr ; la vue web d'Android en est
+   * un (`http://tauri.localhost`), mais le repli couvre le cas contraire
+   * plutôt que d'échouer sans rien dire.
+   */
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const zone = document.createElement("textarea");
+      zone.value = text;
+      zone.style.position = "fixed";
+      zone.style.opacity = "0";
+      document.body.appendChild(zone);
+      zone.select();
+      document.execCommand("copy");
+      zone.remove();
+    }
+    setNotice("Message copié.");
+  }
+
+  /** Écrire l'image sur l'appareil et dire où elle est allée. */
+  async function keepImage(img: MediaResult) {
+    try {
+      const nom = await api.saveImage(img);
+      setNotice(`${nom} enregistrée. Android propose de la ranger ou de l’envoyer.`);
+    } catch (e) {
+      setNotice(String(e));
+    }
+  }
+
   async function send() {
     const text = draft.trim();
     if (!text || busy) return;
@@ -53,7 +97,10 @@ export function Chat({ status, onScan, onStudio }: Props) {
     setBusy(true);
     try {
       const reply = await api.send(text);
-      setMessages((m) => [...m, { id: `a${m.length}`, role: "assistant", content: reply }]);
+      setMessages((m) => [
+        ...m,
+        { id: `a${m.length}`, role: "assistant", content: reply.text, images: reply.images },
+      ]);
     } catch (e) {
       setError(String(e));
       // Put the text back rather than losing it to a failed send.
@@ -66,28 +113,22 @@ export function Chat({ status, onScan, onStudio }: Props) {
 
   return (
     <div className="lo-screen">
+      {/* Le nom du serveur à gauche, deux actions à droite. « Scanner » a
+          rejoint les réglages : c'est une décision de connexion, pas un geste
+          de conversation, et la barre en portait quatre. */}
       <div className="lo-bar">
         <span className="lo-dot" />
         <span>{status.server_name ?? "Locaryn"}</span>
         {status.travelling && <span className="lo-bar-away">à distance</span>}
-        <button
-          type="button"
-          className="lo-bar-away"
-          style={{ marginLeft: status.travelling ? 8 : "auto", cursor: "pointer" }}
-          onClick={onScan}
-        >
-          Scanner
-        </button>
+        <span className="lo-bar-spacer" />
         {canCreate && (
-          <button
-            type="button"
-            className="lo-bar-away"
-            style={{ cursor: "pointer" }}
-            onClick={onStudio}
-          >
+          <button type="button" className="lo-bar-action" onClick={onStudio}>
             Créer
           </button>
         )}
+        <button type="button" className="lo-bar-action" onClick={onSettings}>
+          Réglages
+        </button>
         <UpdateButton />
       </div>
 
@@ -98,8 +139,34 @@ export function Chat({ status, onScan, onStudio }: Props) {
           </p>
         )}
         {messages.map((m) => (
-          <div key={m.id} className={`lo-msg ${m.role === "user" ? "lo-msg-me" : "lo-msg-ai"}`}>
-            {m.content}
+          <div key={m.id} className={`lo-msg-group${m.role === "user" ? " lo-msg-group-me" : ""}`}>
+            <div className={`lo-msg ${m.role === "user" ? "lo-msg-me" : "lo-msg-ai"}`}>
+              {m.content}
+            </div>
+            {m.images?.map((img) => (
+              <button
+                key={img.name}
+                type="button"
+                className="lo-msg-image"
+                onClick={() => void keepImage(img)}
+                title="Enregistrer l'image"
+              >
+                <img
+                  src={`data:${img.mime};base64,${img.data_base64}`}
+                  alt={m.content}
+                  // Une image générée pèse un mégaoctet et demi : la décoder
+                  // sur le fil principal fige l'application le temps de
+                  // l'afficher, et Android finit par proposer de la fermer.
+                  decoding="async"
+                  loading="lazy"
+                />
+              </button>
+            ))}
+            {m.content.trim() !== "" && (
+              <button type="button" className="lo-msg-copy" onClick={() => void copy(m.content)}>
+                Copier
+              </button>
+            )}
           </div>
         ))}
         {busy && (
@@ -110,6 +177,12 @@ export function Chat({ status, onScan, onStudio }: Props) {
         {error && <p className="lo-error">{error}</p>}
         <div ref={endRef} />
       </div>
+
+      {notice && (
+        <div className="lo-toast">
+          <p className="lo-notice">{notice}</p>
+        </div>
+      )}
 
       <div className="lo-compose">
         <input

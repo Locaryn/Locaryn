@@ -12,6 +12,7 @@ mod pairing;
 mod servers;
 mod update;
 
+use locaryn_shared_types::base64_encode;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
@@ -415,7 +416,7 @@ async fn ensure_free_chat_project(
 /// from a finished one. The reply is the concatenation of the `token` events
 /// of the daemon's SSE stream.
 #[tauri::command]
-async fn send_message(text: String) -> Result<String, String> {
+async fn send_message(text: String) -> Result<ChatReply, String> {
     let (client, server, session) = authenticated()?;
     let base = server.current_url.trim_end_matches('/').to_string();
 
@@ -459,10 +460,14 @@ async fn send_message(text: String) -> Result<String, String> {
     }
 
     // The daemon answers with a server-sent-events stream; keep the `token`
-    // events, which carry the assistant's words as they are produced.
+    // events, which carry the assistant's words as they are produced — et les
+    // `artifact`, qui disent qu'un outil a produit un fichier. Sans eux, une
+    // image demandée dans le chat n'arrivait jamais jusqu'au téléphone : le
+    // modèle répondait « voilà l'image » et il n'y avait rien à voir.
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&bytes);
     let mut reply = String::new();
+    let mut artifact_ids: Vec<String> = Vec::new();
     for block in text.split("\n\n") {
         let Some(data) = block
             .lines()
@@ -474,13 +479,78 @@ async fn send_message(text: String) -> Result<String, String> {
             Ok(v) => v,
             Err(_) => continue,
         };
-        if ev.get("type").and_then(|t| t.as_str()) == Some("token") {
-            if let Some(t) = ev.get("text").and_then(|t| t.as_str()) {
-                reply.push_str(t);
+        match ev.get("type").and_then(|t| t.as_str()) {
+            Some("token") => {
+                if let Some(t) = ev.get("text").and_then(|t| t.as_str()) {
+                    reply.push_str(t);
+                }
             }
+            Some("artifact") => {
+                let kind = ev.get("kind").and_then(|k| k.as_str()).unwrap_or_default();
+                // `image_png` aujourd'hui ; le préfixe couvre les formats que
+                // le service pourra produire plus tard sans casser ici.
+                if kind.starts_with("image") {
+                    if let Some(id) = ev.get("artifact_id").and_then(|i| i.as_str()) {
+                        artifact_ids.push(id.to_string());
+                    }
+                }
+            }
+            _ => {}
         }
     }
-    Ok(reply)
+
+    // Les octets ne voyagent pas dans le flux : on va les chercher un par un.
+    // Un artefact qu'on n'arrive pas à récupérer n'est pas une raison de
+    // perdre la réponse écrite, donc on le passe.
+    let mut images = Vec::new();
+    for id in artifact_ids {
+        if let Ok(media) = fetch_artifact(&client, &base, &session.token, &id).await {
+            images.push(media);
+        }
+    }
+
+    Ok(ChatReply {
+        text: reply,
+        images,
+    })
+}
+
+/// Ce qu'un tour de conversation rapporte : les mots, et ce que les outils ont
+/// produit en chemin.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChatReply {
+    pub text: String,
+    pub images: Vec<MediaResult>,
+}
+
+/// Télécharger un artefact et le rendre affichable par la vue web.
+async fn fetch_artifact(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    id: &str,
+) -> Result<MediaResult, String> {
+    let resp = client
+        .get(format!("{base}/v1/artifacts/{id}/raw"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("artefact {id} : {}", resp.status()));
+    }
+    let mime = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/png")
+        .to_string();
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    Ok(MediaResult {
+        name: format!("{id}.png"),
+        mime,
+        data_base64: base64_encode(&bytes),
+    })
 }
 
 // ============================================================================
@@ -529,9 +599,314 @@ async fn fetch_media(route: &str, body: serde_json::Value) -> Result<MediaResult
     resp.json::<MediaResult>().await.map_err(|e| e.to_string())
 }
 
-/// Which models the machine can generate with. `kind` is "image" or "audio".
+// ============================================================================
+// Extensions — installées sur le serveur, pilotées d'ici. Ce qu'une extension
+// apporte apparaît ensuite dans le Studio, sur le téléphone comme ailleurs.
+// ============================================================================
+
+/// Une extension du serveur, réduite à ce que le téléphone en montre.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PhoneExtension {
+    pub name: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+}
+
 #[tauri::command]
-async fn list_media_models(kind: String) -> Result<Vec<String>, String> {
+async fn list_extensions() -> Result<Vec<PhoneExtension>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/extensions"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    resp.json::<Vec<PhoneExtension>>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Installer une extension du catalogue. `source` est un `propriétaire/dépôt`.
+#[tauri::command]
+async fn install_extension(source: String) -> Result<PhoneExtension, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/extensions/install"))
+        .bearer_auth(&session.token)
+        // Le téléchargement se fait sur le serveur ; il peut prendre du temps.
+        .timeout(std::time::Duration::from_secs(180))
+        .json(&serde_json::json!({ "source": source, "scope": "user" }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let corps = resp.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&corps)
+            .ok()
+            .and_then(|v| {
+                v.pointer("/error/message")
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| format!("Le serveur a refusé l'installation ({status})."));
+        return Err(message);
+    }
+    resp.json::<PhoneExtension>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_extension_enabled(name: String, enabled: bool) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let verbe = if enabled { "enable" } else { "disable" };
+    let resp = client
+        .post(format!("{base}/v1/extensions/{name}/{verbe}"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a refusé ({}).", resp.status()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn remove_extension(name: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .delete(format!("{base}/v1/extensions/{name}"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a refusé ({}).", resp.status()));
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Mémoire de l'utilisateur — elle vit sur le serveur, parce que c'est là que
+// le modèle la lit. Le téléphone ne fait que la montrer et la corriger.
+// ============================================================================
+
+/// Une chose retenue, telle que le serveur la renvoie.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemoryEntry {
+    pub id: String,
+    pub category: String,
+    pub content: String,
+    #[serde(default)]
+    pub source: String,
+}
+
+#[tauri::command]
+async fn list_memory() -> Result<Vec<MemoryEntry>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/memory"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err("Ce serveur est trop ancien pour tenir une mémoire.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    // Le service répond `{ "entries": [...] }` ; un tableau nu est accepté
+    // aussi, pour ne pas casser sur une variante de forme.
+    let brut = body.get("entries").cloned().unwrap_or(body);
+    serde_json::from_value(brut).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn remember(category: String, content: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/memory"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "category": category, "content": content }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a refusé ({}).", resp.status()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn forget(id: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .delete(format!("{base}/v1/memory/{id}"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a refusé ({}).", resp.status()));
+    }
+    Ok(())
+}
+
+/// Où déposer une image que l'utilisateur veut garder.
+///
+/// Sur Android, le dossier public « Pictures » n'est pas accessible en
+/// écriture sans une permission de stockage que l'application ne demande pas.
+/// Le dossier externe propre à l'application, lui, l'est toujours, et un
+/// gestionnaire de fichiers ou un branchement USB y accède. On rend le chemin
+/// pour pouvoir le dire à l'utilisateur : une image « enregistrée » quelque
+/// part d'introuvable ne serait pas enregistrée.
+fn pictures_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
+    use tauri::Manager as _;
+    // Le dossier de cache est celui que le fournisseur de fichiers déclare :
+    // c'est de là qu'Android accepte de passer l'image à une autre
+    // application. Le stockage public, lui, est fermé depuis Android 10 sans
+    // passer par la médiathèque du système ; un fichier écrit ailleurs serait
+    // enregistré nulle part d'utile.
+    if let Ok(cache) = app.path().app_cache_dir() {
+        let dir = cache.join("images");
+        if std::fs::create_dir_all(&dir).is_ok() {
+            return dir;
+        }
+    }
+    let repli = locaryn_config::default_data_dir().join("images");
+    let _ = std::fs::create_dir_all(&repli);
+    repli
+}
+
+/// Décoder du base64 standard. L'inverse de ce que le serveur a encodé.
+fn base64_decode(texte: &str) -> Result<Vec<u8>, String> {
+    fn valeur(c: u8) -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some((c - b'A') as u32),
+            b'a'..=b'z' => Some((c - b'a') as u32 + 26),
+            b'0'..=b'9' => Some((c - b'0') as u32 + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let filtre: Vec<u8> = texte
+        .bytes()
+        .filter(|c| !c.is_ascii_whitespace() && *c != b'=')
+        .collect();
+    let mut sortie = Vec::with_capacity(filtre.len() / 4 * 3);
+    for morceau in filtre.chunks(4) {
+        let mut accumulateur = 0u32;
+        for (i, c) in morceau.iter().enumerate() {
+            let v = valeur(*c).ok_or("données illisibles")?;
+            accumulateur |= v << (18 - 6 * i as u32);
+        }
+        sortie.push((accumulateur >> 16) as u8);
+        if morceau.len() > 2 {
+            sortie.push((accumulateur >> 8) as u8);
+        }
+        if morceau.len() > 3 {
+            sortie.push(accumulateur as u8);
+        }
+    }
+    Ok(sortie)
+}
+
+/// Enregistrer une image reçue, et dire où elle est allée.
+#[tauri::command]
+fn save_image(app: tauri::AppHandle, name: String, data_base64: String) -> Result<String, String> {
+    let octets = base64_decode(&data_base64)?;
+    // Un nom venu du serveur ne décide pas d'un chemin : on ne garde que le
+    // dernier segment, jamais un « ../ ».
+    let feuille = std::path::Path::new(&name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("locaryn.png");
+    let mut chemin = pictures_dir(&app).join(feuille);
+    // Ne jamais écraser : on numérote.
+    let mut n = 1;
+    while chemin.exists() {
+        let tige = std::path::Path::new(feuille)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("locaryn");
+        let ext = std::path::Path::new(feuille)
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("png");
+        chemin = pictures_dir(&app).join(format!("{tige}-{n}.{ext}"));
+        n += 1;
+    }
+    std::fs::write(&chemin, octets).map_err(|e| format!("écriture impossible : {e}"))?;
+
+    // Le fichier est écrit, puis confié au système : c'est là que la personne
+    // choisit ce qu'elle en fait — la ranger dans la galerie, l'envoyer, la
+    // garder. Un fichier déposé dans un dossier d'application et jamais
+    // proposé serait un enregistrement pour personne.
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_opener::OpenerExt as _;
+        if let Err(e) = app
+            .opener()
+            .open_path(chemin.to_string_lossy(), None::<&str>)
+        {
+            tracing::warn!(error = %e, "image enregistrée mais non proposée au système");
+        }
+    }
+
+    Ok(chemin
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| chemin.to_string_lossy().to_string()))
+}
+
+/// Un modèle proposé au téléphone, et s'il peut réellement produire.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MediaModel {
+    pub name: String,
+    pub ready: bool,
+    /// Ce qui manque, dit à l'utilisateur. Vide quand `ready`.
+    #[serde(default)]
+    pub missing: Vec<String>,
+}
+
+/// Which models the machine can generate with. `kind` is "image" or "audio".
+///
+/// Le serveur détaille les modèles d'image : certains sont des poids de
+/// diffusion seuls et ne produiront rien sans leurs encodeurs. Un serveur plus
+/// ancien ne renvoie que des noms — on les considère alors utilisables, faute
+/// de mieux, plutôt que de vider la liste.
+#[tauri::command]
+async fn list_media_models(kind: String) -> Result<Vec<MediaModel>, String> {
     let (client, server, session) = authenticated()?;
     let base = server.current_url.trim_end_matches('/');
     let resp = client
@@ -550,12 +925,22 @@ async fn list_media_models(kind: String) -> Result<Vec<String>, String> {
         ));
     }
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    if let Some(details) = body.get("details") {
+        if let Ok(models) = serde_json::from_value::<Vec<MediaModel>>(details.clone()) {
+            return Ok(models);
+        }
+    }
     Ok(body
         .get("models")
         .and_then(|m| m.as_array())
         .map(|a| {
             a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
+                .filter_map(|v| v.as_str())
+                .map(|name| MediaModel {
+                    name: name.to_string(),
+                    ready: true,
+                    missing: Vec::new(),
+                })
                 .collect()
         })
         .unwrap_or_default())
@@ -623,6 +1008,14 @@ pub fn run() {
             sign_out,
             send_message,
             list_media_models,
+            list_memory,
+            remember,
+            forget,
+            list_extensions,
+            install_extension,
+            set_extension_enabled,
+            remove_extension,
+            save_image,
             generate_image,
             generate_audio,
             pairing::apply_pairing_link,
@@ -654,6 +1047,31 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("erreur au démarrage de Locaryn");
+}
+
+#[cfg(test)]
+mod base64_aller_retour {
+    use super::base64_decode;
+    use locaryn_shared_types::base64_encode;
+
+    #[test]
+    fn ce_qui_est_encode_se_decode() {
+        for cas in [
+            &b""[..],
+            b"f",
+            b"fo",
+            b"foo",
+            b"foobar",
+            &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+        ] {
+            assert_eq!(base64_decode(&base64_encode(cas)).unwrap(), cas);
+        }
+    }
+
+    #[test]
+    fn les_caracteres_invalides_sont_refuses() {
+        assert!(base64_decode("!!!!").is_err());
+    }
 }
 
 #[cfg(test)]

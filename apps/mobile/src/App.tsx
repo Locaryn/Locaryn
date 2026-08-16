@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
 import { Paired } from "./components/Paired";
+import { Settings } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
 import { type MobileStatus, type PairingResult, api, coreMode } from "./lib/core";
 import { isScannerAvailable, scan } from "./lib/scanner";
 
-type Screen = "loading" | "signin" | "chat" | "studio";
+type Screen = "loading" | "signin" | "chat" | "studio" | "settings";
 
 export function App() {
   const [status, setStatus] = useState<MobileStatus | null>(null);
@@ -14,6 +15,8 @@ export function App() {
   const [paired, setPaired] = useState<PairingResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [startupError, setStartupError] = useState<string | null>(null);
+  /** Change quand les extensions bougent : force la relecture des capacités. */
+  const [capabilitiesKey, setCapabilitiesKey] = useState(0);
 
   const refresh = useCallback(async () => {
     // Cet appel est le tout premier que fait l'application. S'il échoue sans
@@ -48,6 +51,16 @@ export function App() {
     async (uri: string) => {
       setScanError(null);
       try {
+        // Deux sortes de codes se photographient de la même façon. Celui d'un
+        // premier appairage porte la configuration du serveur — adresse et
+        // certificat — et se reconnaît à ce qu'il commence par une accolade.
+        // Celui du mode voyage est un lien signé, et sa vérification est
+        // entièrement en Rust.
+        if (uri.trimStart().startsWith("{")) {
+          setStatus(await api.registerServer(uri));
+          await refresh();
+          return;
+        }
         const result = await api.applyPairingLink(uri);
         setPaired(result);
         await refresh();
@@ -128,9 +141,28 @@ export function App() {
   return (
     <>
       {screen === "chat" ? (
-        <Chat status={status} onScan={openScanner} onStudio={() => setScreen("studio")} />
+        <Chat
+          key={capabilitiesKey}
+          status={status}
+          onScan={openScanner}
+          onStudio={() => setScreen("studio")}
+          onSettings={() => setScreen("settings")}
+        />
       ) : screen === "studio" ? (
-        <Studio onBack={() => setScreen("chat")} />
+        <Studio key={capabilitiesKey} onBack={() => setScreen("chat")} />
+      ) : screen === "settings" ? (
+        <Settings
+          status={status}
+          onBack={() => setScreen("chat")}
+          onSignedOut={(s) => {
+            setStatus(s);
+            setScreen("signin");
+          }}
+          // Remonter le compteur reconstruit le chat et le Studio : une
+          // extension retirée doit faire disparaître ce qu'elle apportait,
+          // pas rester à l'écran jusqu'au prochain démarrage.
+          onExtensionsChanged={() => setCapabilitiesKey((n) => n + 1)}
+        />
       ) : (
         <SignIn
           status={status}

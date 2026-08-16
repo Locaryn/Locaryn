@@ -21,8 +21,20 @@ pub async fn list_models(
     axum::extract::Query(params): axum::extract::Query<ModelQuery>,
 ) -> Response {
     let kind = params.kind.as_deref().unwrap_or("image");
+    // Les images se disent en détail : un modèle de diffusion seul apparaît
+    // dans la liste mais annonce ce qui lui manque, pour que le client ne le
+    // propose pas comme s'il pouvait produire quelque chose.
+    if kind == "image" {
+        let details = locaryn_media::image::list_image_models_detailed();
+        let names: Vec<&str> = details.iter().map(|d| d.name.as_str()).collect();
+        return Json(serde_json::json!({
+            "kind": kind,
+            "models": names,
+            "details": details,
+        }))
+        .into_response();
+    }
     let models = match kind {
-        "image" => locaryn_media::image::list_image_models(),
         "audio" => locaryn_media::audio::list_tts_models(),
         other => {
             return (
@@ -55,7 +67,9 @@ pub async fn generate_image(
         steps: body.steps,
         cfg_scale: body.cfg_scale,
         variants,
-        output_dir: s.data_dir.join("generated_images"),
+        // Volumineux et refabricable : suit la racine de stockage, pas le
+        // disque système.
+        output_dir: locaryn_config::generated_images_dir(),
     };
     let progress = |pct: u32, detail: &str| {
         tracing::info!(progress = pct, detail, "image generation");
@@ -84,7 +98,9 @@ pub async fn generate_audio(
         text: body.text,
         speed: body.speed.unwrap_or(1.0),
         language: body.language,
-        output_dir: s.data_dir.join("generated_audio"),
+        // Même raison que les images : gros, refabricable, donc sur le
+        // volume de données.
+        output_dir: locaryn_config::generated_audio_dir(),
     };
     let progress = |pct: u32, detail: &str| {
         tracing::info!(progress = pct, detail, "audio generation");

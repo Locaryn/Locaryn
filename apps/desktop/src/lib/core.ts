@@ -750,6 +750,23 @@ export interface Provisioning {
   note: string;
 }
 
+/**
+ * Par où un téléphone joint cette machine.
+ *
+ * `local` : le réseau de la maison ou du bureau — rien à ouvrir, rien à
+ * traverser. `tunnel` : la machine appelle un relais, donc rien n'est ouvert
+ * sur la box non plus. `public` : un port a été redirigé, ou la machine a une
+ * adresse fixe — c'est le seul cas où quelque chose est exposé.
+ */
+export type PairingMode = "local" | "tunnel" | "public";
+
+/** Un code d'appairage et l'adresse qu'il porte. */
+export interface PairingCode {
+  mode: string;
+  url: string;
+  qr_svg: string;
+}
+
 /** Travel mode: this machine reachable from elsewhere, through a relay. */
 export interface TravelStatus {
   active: boolean;
@@ -1312,6 +1329,8 @@ export interface CoreApi {
   setTravelMode(provider: string | null): Promise<TravelStatus>;
   /** The code that puts a phone back on the local network. */
   travelHomeCode(): Promise<TravelStatus>;
+  /** Le code d'appairage d'un téléphone : `local`, `public` ou `tunnel`. */
+  pairingCode(mode: PairingMode, url?: string): Promise<PairingCode>;
 
   /** MCP servers — shared with the daemon through `mcp.json`. */
   listMcpServers(): Promise<McpServerInfo[]>;
@@ -1715,6 +1734,7 @@ const tauriCore: CoreApi = {
   travelRelays: () => invoke<RelayChoice[]>("travel_relays"),
   setTravelMode: (provider) => invoke<TravelStatus>("set_travel_mode", { args: { provider } }),
   travelHomeCode: () => invoke<TravelStatus>("travel_home_code"),
+  pairingCode: (mode, url) => invoke<PairingCode>("pairing_code", { mode, url }),
 
   listMcpServers: () => invoke<McpServerInfo[]>("list_mcp_servers"),
   addMcpServer: (args) =>
@@ -3445,6 +3465,11 @@ const demoCore: CoreApi = {
     link: null,
     qr_svg: null,
     blocker: null,
+  }),
+  pairingCode: async (mode) => ({
+    mode,
+    url: mode === "local" ? "http://192.168.1.20:7474" : "https://exemple.invalide:7474",
+    qr_svg: "",
   }),
 
   listMcpServers: async () => [],

@@ -302,6 +302,21 @@ pub fn temp_dir() -> PathBuf {
     heavy_data_root().join("locaryn_tmp")
 }
 
+/// Où vont les images produites par les modèles.
+///
+/// Elles sont grosses et refabricables — un mégaoctet et demi la pièce, et
+/// rien n'oblige à les garder. Elles atterrissaient dans le dossier de données
+/// du système : quelques dizaines d'images suffisaient à ronger le disque C:
+/// d'une machine dont tous les poids étaient pourtant sur un autre volume.
+pub fn generated_images_dir() -> PathBuf {
+    heavy_data_root().join("generated_images")
+}
+
+/// Où vont les voix produites. Même raisonnement que les images.
+pub fn generated_audio_dir() -> PathBuf {
+    heavy_data_root().join("generated_audio")
+}
+
 /// Where HuggingFace downloads land. A single inpainting pipeline is ~2 GB and
 /// a diffusion checkpoint several more, so this must not default to `~/.cache`.
 pub fn hf_cache_dir() -> PathBuf {

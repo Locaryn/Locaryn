@@ -137,6 +137,45 @@ pub fn list_image_models() -> Vec<String> {
     names
 }
 
+/// Un modèle d'image et ce qui lui manque, s'il lui manque quelque chose.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ImageModelInfo {
+    pub name: String,
+    /// Faux si des fichiers compagnons manquent : le proposer mènerait à un
+    /// échec au moment de générer.
+    pub ready: bool,
+    /// Ce qui manque, nommé comme l'utilisateur le voit. Vide si `ready`.
+    pub missing: Vec<String>,
+}
+
+/// La même liste, mais en disant lesquels peuvent réellement produire une
+/// image.
+///
+/// Un dossier de modèles contient couramment des poids de diffusion seuls —
+/// Flux, Z-Image — qui exigent un VAE et un ou deux encodeurs de texte. Les
+/// lister comme les autres, c'est proposer un choix qui échouera : c'est
+/// exactement ce qu'a vu l'utilisateur, un modèle offert en premier dans la
+/// liste du téléphone et un message d'erreur au moment de générer.
+pub fn list_image_models_detailed() -> Vec<ImageModelInfo> {
+    let models_dir = locaryn_config::models_dir();
+    list_image_models()
+        .into_iter()
+        .map(|name| {
+            let family = classify(&name);
+            let companions = discover_companions(&models_dir, family);
+            let missing: Vec<String> = missing_companions(family, &companions)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
+            ImageModelInfo {
+                name,
+                ready: missing.is_empty(),
+                missing,
+            }
+        })
+        .collect()
+}
+
 /// Find a companion weight file in `dir` whose name matches any pattern and
 /// none of the exclusions. Returns the largest match, since the useful file
 /// (a 2.3 GB encoder) sits beside smaller decoys with similar names.

@@ -84,6 +84,7 @@ pub async fn dispatch_mcp_tool(
             return ToolResult {
                 ok: false,
                 output: format!("not an MCP tool: {prefixed_name}"),
+                artifact: None,
             };
         }
     };
@@ -100,6 +101,7 @@ pub async fn dispatch_mcp_tool(
             return ToolResult {
                 ok: false,
                 output: format!("MCP server '{server_name}' is not running. Call /v1/mcp/servers/{server_name}/start first."),
+                artifact: None,
             };
         }
     };
@@ -108,11 +110,16 @@ pub async fn dispatch_mcp_tool(
         Ok(val) => {
             // Convert the JSON-RPC result to a display string.
             let output = serde_json::to_string_pretty(&val).unwrap_or_else(|_| val.to_string());
-            ToolResult { ok: true, output }
+            ToolResult {
+                ok: true,
+                output,
+                artifact: None,
+            }
         }
         Err(e) => ToolResult {
             ok: false,
             output: format!("MCP tool '{tool_name}' on '{server_name}' failed: {e}"),
+            artifact: None,
         },
     }
 }

@@ -739,3 +739,60 @@ pub struct ApiErrorBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }
+
+// ============================================================================
+// Encodage base64
+// ============================================================================
+
+/// Encoder des octets en base64 standard, avec remplissage.
+///
+/// Vit ici parce que trois programmes en ont besoin pour la même raison : une
+/// vue web ne peut pas lire le disque du serveur, donc une image générée
+/// voyage dans le JSON. Le service l'utilisait déjà, le téléphone en a besoin
+/// pour les artefacts d'un outil, et une deuxième implémentation finirait par
+/// diverger de la première.
+pub fn base64_encode(bytes: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+        result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
+        result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
+        if chunk.len() > 1 {
+            result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(CHARS[(triple & 0x3F) as usize] as char);
+        } else {
+            result.push('=');
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod base64_tests {
+    use super::base64_encode;
+
+    #[test]
+    fn vecteurs_de_la_rfc_4648() {
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn les_octets_non_ascii_passent_entiers() {
+        // L'en-tête PNG : c'est ce qui traverse réellement.
+        assert_eq!(base64_encode(&[0x89, 0x50, 0x4E, 0x47]), "iVBORw==");
+    }
+}

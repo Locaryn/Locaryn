@@ -3541,6 +3541,7 @@ dependencies = [
  "locaryn-storage",
  "locaryn-travel",
  "rcgen",
+ "reqwest 0.12.28",
  "rustls",
  "serde",
  "serde_json",
@@ -3550,6 +3551,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -3709,6 +3711,7 @@ name = "locaryn-mobile"
 version = "0.3.1"
 dependencies = [
  "locaryn-config",
+ "locaryn-shared-types",
  "locaryn-travel",
  "reqwest 0.12.28",
  "serde",

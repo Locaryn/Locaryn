@@ -167,6 +167,20 @@ impl TravelState {
         Ok((uri, svg))
     }
 
+    /// L'adresse du tunnel en cours, s'il y en a un.
+    ///
+    /// Elle n'apparaît pas dans `TravelStatus` : afficher l'adresse serait
+    /// afficher la configuration qu'on cherche justement à ne montrer à
+    /// personne. Un code d'appairage, lui, doit bien la contenir — c'est par
+    /// elle que le téléphone joindra la machine.
+    pub async fn tunnel_url(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .await
+            .as_ref()
+            .map(|r| r.tunnel.url.clone())
+    }
+
     pub async fn stop(&self) {
         if let Some(r) = self.inner.lock().await.take() {
             r.tunnel.stop().await;

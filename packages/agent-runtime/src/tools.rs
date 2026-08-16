@@ -74,6 +74,21 @@ pub struct RemoteTarget {
 pub struct ToolResult {
     pub ok: bool,
     pub output: String,
+    /// Un fichier produit par l'outil.
+    ///
+    /// Sans cela, une image fabriquée par un outil restait un chemin dans une
+    /// phrase : le fichier existait sur le serveur, et aucun client ne pouvait
+    /// le montrer. C'est ce que voyait le téléphone — « voici l'image », et
+    /// rien à voir.
+    #[serde(default)]
+    pub artifact: Option<ToolArtifact>,
+}
+
+/// Ce qu'un outil a déposé sur le disque, et de quelle nature.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolArtifact {
+    pub kind: locaryn_shared_types::ArtifactKind,
+    pub path: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -613,6 +628,7 @@ pub async fn dispatch_tool(
         _ => ToolResult {
             ok: false,
             output: format!("unknown tool: {tool_name}"),
+            artifact: None,
         },
     }
 }
@@ -682,7 +698,7 @@ async fn exec_generate_image(args: &serde_json::Value) -> ToolResult {
             steps: None,
             cfg_scale: None,
             variants: 1,
-            output_dir: locaryn_config::default_data_dir().join("generated_images"),
+            output_dir: locaryn_config::generated_images_dir(),
         };
         match locaryn_media::image::generate_image(req, &|_, _| {}).await {
             Ok(file) => {
@@ -690,10 +706,16 @@ async fn exec_generate_image(args: &serde_json::Value) -> ToolResult {
                     ok: true,
                     output: format!(
                         "Image générée avec {model} : {}\n\
-                         Montre-la à la personne et décris-la en une phrase.",
+                         Décris-la en une phrase — la personne la voit déjà.",
                         file.path.display()
                     ),
-                }
+                    // Le fichier est déclaré, pas seulement mentionné dans une
+                    // phrase : c'est ce qui permet à un client de l'afficher.
+                    artifact: Some(ToolArtifact {
+                        kind: locaryn_shared_types::ArtifactKind::ImagePng,
+                        path: file.path.display().to_string(),
+                    }),
+                };
             }
             Err(e) => {
                 tracing::warn!(model, error = %e, "génération d'image échouée");
@@ -714,6 +736,7 @@ async fn exec_read_file(args: &serde_json::Value, project_root: &Path) -> ToolRe
             Ok(content) => ToolResult {
                 ok: true,
                 output: content,
+                artifact: None,
             },
             Err(e) => err(&format!("read_file error: {e}")),
         },
@@ -741,6 +764,7 @@ async fn exec_write_file(args: &serde_json::Value, project_root: &Path) -> ToolR
                 Ok(()) => ToolResult {
                     ok: true,
                     output: format!("wrote {} bytes to {}", content.len(), path),
+                    artifact: None,
                 },
                 Err(e) => err(&format!("write_file error: {e}")),
             }
@@ -770,11 +794,13 @@ async fn exec_search(args: &serde_json::Value, project_root: &Path) -> ToolResul
                 ToolResult {
                     ok: false,
                     output: "no matches found".into(),
+                    artifact: None,
                 }
             } else {
                 ToolResult {
                     ok: true,
                     output: stdout,
+                    artifact: None,
                 }
             }
         }
@@ -790,6 +816,7 @@ async fn exec_search(args: &serde_json::Value, project_root: &Path) -> ToolResul
                 Ok(go) => ToolResult {
                     ok: true,
                     output: String::from_utf8_lossy(&go.stdout).to_string(),
+                    artifact: None,
                 },
                 Err(e) => err(&format!(
                     "search error: ripgrep not found and grep failed: {e}"
@@ -827,6 +854,7 @@ async fn exec_run_command(args: &serde_json::Value, project_root: &Path) -> Tool
                 } else {
                     format!("[exit {exit_code}]\n{stdout}\n--- stderr ---\n{stderr}")
                 },
+                artifact: None,
             }
         }
         Ok(Err(e)) => err(&format!("run_command error: {e}")),
@@ -838,6 +866,7 @@ fn err(msg: &str) -> ToolResult {
     ToolResult {
         ok: false,
         output: msg.to_string(),
+        artifact: None,
     }
 }
 
@@ -876,5 +905,42 @@ mod tests {
     fn resolve_accepts_nested() {
         let root = Path::new("/home/user/project");
         assert!(resolve_path(root, "src/../src/main.rs").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod artefact_tests {
+    use super::*;
+
+    /// Un outil qui fabrique un fichier doit le déclarer, pas seulement en
+    /// parler. Tant que `generate_image` se contentait de mettre le chemin dans
+    /// sa phrase, le fichier existait sur le serveur et aucun client ne pouvait
+    /// l'afficher : le téléphone recevait « voici l'image » et montrait du
+    /// texte.
+    #[test]
+    fn un_resultat_sans_fichier_ne_declare_rien() {
+        let r = err("quelque chose a échoué");
+        assert!(!r.ok);
+        assert!(r.artifact.is_none());
+    }
+
+    #[test]
+    fn un_artefact_declare_porte_son_type_et_son_chemin() {
+        let r = ToolResult {
+            ok: true,
+            output: "Image générée".into(),
+            artifact: Some(ToolArtifact {
+                kind: locaryn_shared_types::ArtifactKind::ImagePng,
+                path: "/donnees/generated_images/img_1.png".into(),
+            }),
+        };
+        let a = r.artifact.expect("l'artefact doit être présent");
+        assert_eq!(a.kind, locaryn_shared_types::ArtifactKind::ImagePng);
+        assert!(a.path.ends_with(".png"));
+        // Le nom sérialisé est celui que les clients filtrent.
+        assert_eq!(
+            serde_json::to_value(a.kind).unwrap(),
+            serde_json::json!("image_png")
+        );
     }
 }

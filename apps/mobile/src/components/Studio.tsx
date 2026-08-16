@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type MediaResult, api } from "../lib/core";
+import { type MediaModel, type MediaResult, api } from "../lib/core";
 
 type Props = {
   onBack: () => void;
@@ -46,7 +46,7 @@ export function Studio({ onBack }: Props) {
 }
 
 function ImageGen() {
-  const [models, setModels] = useState<string[] | null>(null);
+  const [models, setModels] = useState<MediaModel[] | null>(null);
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState<"512" | "1024">("1024");
@@ -61,13 +61,18 @@ function ImageGen() {
       .then((m) => {
         if (cancelled) return;
         setModels(m);
-        if (m.length && !model) setModel(m[0]);
+        // Choisir d'office un modèle capable de produire. Le premier par ordre
+        // alphabétique est souvent un poids de diffusion seul : le proposer
+        // ne mène qu'à un échec au moment de générer.
+        if (!model) setModel((m.find((x) => x.ready) ?? m[0])?.name ?? "");
       })
       .catch((e) => !cancelled && setError(String(e)));
     return () => {
       cancelled = true;
     };
   }, [model]);
+
+  const chosen = models?.find((m) => m.name === model);
 
   async function generate() {
     if (!prompt.trim() || busy) return;
@@ -103,11 +108,19 @@ function ImageGen() {
         disabled={busy}
       >
         {models?.map((m) => (
-          <option key={m} value={m}>
-            {m}
+          <option key={m.name} value={m.name}>
+            {m.ready ? m.name : `${m.name} — incomplet`}
           </option>
         ))}
       </select>
+
+      {chosen && !chosen.ready && (
+        <p className="lo-error">
+          Ce modèle ne peut pas produire d'image en l'état : il lui faut{" "}
+          {chosen.missing.join(" et ")}. Choisissez-en un autre, ou ajoutez ces fichiers sur le
+          serveur.
+        </p>
+      )}
 
       <label className="lo-label" htmlFor="img-prompt">
         Description
@@ -134,7 +147,12 @@ function ImageGen() {
         ))}
       </div>
 
-      <button type="button" className="lo-btn" disabled={busy || !prompt.trim()} onClick={generate}>
+      <button
+        type="button"
+        className="lo-btn"
+        disabled={busy || !prompt.trim() || chosen?.ready === false}
+        onClick={generate}
+      >
         {busy ? "Génération…" : "Générer l'image"}
       </button>
 
@@ -149,6 +167,7 @@ function ImageGen() {
           className="lo-result"
           src={`data:${result.mime};base64,${result.data_base64}`}
           alt={prompt}
+          decoding="async"
         />
       )}
     </>
@@ -156,7 +175,7 @@ function ImageGen() {
 }
 
 function AudioGen() {
-  const [models, setModels] = useState<string[] | null>(null);
+  const [models, setModels] = useState<MediaModel[] | null>(null);
   const [model, setModel] = useState("");
   const [text, setText] = useState("");
   const [speed, setSpeed] = useState("1.0");
@@ -171,7 +190,7 @@ function AudioGen() {
       .then((m) => {
         if (cancelled) return;
         setModels(m);
-        if (m.length && !model) setModel(m[0]);
+        if (!model) setModel((m.find((x) => x.ready) ?? m[0])?.name ?? "");
       })
       .catch((e) => !cancelled && setError(String(e)));
     return () => {
@@ -211,8 +230,8 @@ function AudioGen() {
         disabled={busy}
       >
         {models?.map((m) => (
-          <option key={m} value={m}>
-            {m}
+          <option key={m.name} value={m.name}>
+            {m.name}
           </option>
         ))}
       </select>

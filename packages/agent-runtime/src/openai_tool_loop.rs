@@ -406,11 +406,29 @@ pub async fn run_openai_tool_loop(
                             crate::tools::ToolResult {
                                 ok: false,
                                 output: "MCP state not available".into(),
+                                artifact: None,
                             }
                         }
                     } else {
                         dispatch_tool(&call.name, &args, &ctx).await
                     };
+                    // Un outil qui produit un fichier le fait savoir ici. Sans
+                    // cet événement, une image générée restait un chemin dans
+                    // une phrase : le fichier existait sur le serveur, et aucun
+                    // client ne pouvait le montrer.
+                    if let Some(art) = &result.artifact {
+                        if tx
+                            .send(StreamEvent::Artifact {
+                                artifact_id: uuid::Uuid::new_v4().to_string(),
+                                kind: art.kind,
+                                path: art.path.clone(),
+                            })
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
                     if tx
                         .send(StreamEvent::ToolResult {
                             call_id: call.id.clone(),

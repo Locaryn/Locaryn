@@ -138,6 +138,79 @@ pub async fn travel_home_code() -> Result<TravelStatus, String> {
     })
 }
 
+/// Un code d'appairage, avec l'adresse qu'il porte.
+///
+/// L'adresse apparaît ici, contrairement au mode voyage : il s'agit d'un
+/// premier appairage, et la personne doit pouvoir vérifier qu'elle donne bien
+/// l'adresse qu'elle croit — surtout celle d'un port ouvert sur l'extérieur.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PairingCode {
+    pub mode: String,
+    pub url: String,
+    pub qr_svg: String,
+}
+
+/// Le code à photographier pour un premier appairage.
+///
+/// `mode` vaut `local`, `public` ou `tunnel` ; `url` n'est lu que pour
+/// `public`, où c'est l'utilisateur qui sait par quelle adresse on le joint.
+#[tauri::command]
+pub async fn pairing_code(mode: String, url: Option<String>) -> Result<PairingCode, String> {
+    let mut route = format!("/v1/pairing?mode={mode}");
+    if let Some(u) = url.as_deref().filter(|u| !u.trim().is_empty()) {
+        route.push_str("&url=");
+        route.push_str(&urlencode(u.trim()));
+    }
+    let req = daemon(&route).await?;
+    let resp = req.send().await.map_err(|_| not_running())?;
+    let status = resp.status();
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(body
+            .pointer("/error/message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("Le service a refusé de produire un code.")
+            .to_string());
+    }
+    Ok(PairingCode {
+        mode: body["mode"].as_str().unwrap_or(&mode).to_string(),
+        url: body["url"].as_str().unwrap_or_default().to_string(),
+        qr_svg: body["qr_svg"].as_str().unwrap_or_default().to_string(),
+    })
+}
+
+/// Échapper ce qui doit l'être dans un paramètre d'URL.
+///
+/// Une adresse contient `:` et `/` ; les laisser passer tels quels casserait
+/// la requête. Pas de dépendance pour six caractères.
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 3);
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod pairing_tests {
+    use super::urlencode;
+
+    #[test]
+    fn une_adresse_traverse_un_parametre_sans_se_casser() {
+        assert_eq!(
+            urlencode("https://maison.exemple:7474"),
+            "https%3A%2F%2Fmaison.exemple%3A7474"
+        );
+        assert_eq!(urlencode("192.168.1.20"), "192.168.1.20");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -426,6 +426,7 @@ async fn process_chunk(
                         crate::tools::ToolResult {
                             ok: false,
                             output: "MCP state not available".into(),
+                            artifact: None,
                         }
                     }
                 } else {

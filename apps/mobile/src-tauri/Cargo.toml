@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 locaryn-config = { workspace = true }
 locaryn-travel = { workspace = true }
+locaryn-shared-types = { workspace = true }
 # `custom-protocol` est requis pour embarquer le frontend (frontendDist) dans
 # le binaire : sans lui, `tauri-codegen` passe en mode dev, n'embarque rien et
 # l'application ne charge que le devUrl — écran blanc sur un vrai appareil.

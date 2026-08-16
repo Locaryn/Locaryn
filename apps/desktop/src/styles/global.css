@@ -6835,3 +6835,37 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: var(--text-sm);
   color: var(--text-faint);
 }
+
+/* ---------------------------------------------------------------------------
+   Sélecteur à plusieurs positions.
+
+   Trois choix qui s'excluent, tenus dans une seule commande : plus lisible que
+   trois cases à cocher, et le choix actif se voit d'un coup d'œil.
+   --------------------------------------------------------------------------- */
+.locaryn-segmented {
+  display: inline-flex;
+  margin: 10px 0 4px;
+  padding: 2px;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.locaryn-segment {
+  padding: 5px 14px;
+  font-size: var(--text-sm);
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.locaryn-segment:hover {
+  color: var(--text);
+}
+.locaryn-segment-on {
+  color: #12140f;
+  background: var(--accent);
+}

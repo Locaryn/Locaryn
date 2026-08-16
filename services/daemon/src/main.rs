@@ -274,6 +274,8 @@ async fn main() -> anyhow::Result<()> {
             get(routes::travel::status).post(routes::travel::set),
         )
         .route("/v1/travel/home", get(routes::travel::home))
+        // Le code d'appairage : local, port ouvert, ou tunnel.
+        .route("/v1/pairing", get(routes::pairing::qr))
         .route(
             "/v1/mcp/servers",
             get(routes::mcp::list_servers).post(routes::mcp::register_server),
@@ -1529,29 +1531,9 @@ async fn get_artifact_raw(State(s): State<Arc<DaemonState>>, Path(id): Path<Stri
 
 /// Simple base64 encoding helper. Uses the `base64` crate if available,
 /// otherwise falls back to a minimal implementation.
-pub(crate) fn base64_encode(bytes: &[u8]) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
-        let triple = (b0 << 16) | (b1 << 8) | b2;
-        result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
-        result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
-        if chunk.len() > 1 {
-            result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-        if chunk.len() > 2 {
-            result.push(CHARS[(triple & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-    }
-    result
-}
+// L'encodage vit dans `locaryn-shared-types` : le téléphone en a besoin pour
+// les mêmes raisons, et deux copies auraient fini par diverger.
+pub(crate) use locaryn_shared_types::base64_encode;
 
 // ============================================================================
 // Supervisor endpoints

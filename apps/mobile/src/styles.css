@@ -201,13 +201,33 @@ body {
   flex: 0 0 auto;
 }
 .lo-bar-away {
-  margin-left: auto;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   padding: 3px 10px;
+}
+
+/* Pousse les actions à droite ; l'ancienne marge automatique sur la première
+   pastille décidait de la mise en page depuis un élément qui n'aurait pas dû
+   en décider — et disparaissait avec lui. */
+.lo-bar-spacer {
+  flex: 1;
+}
+.lo-bar-action {
+  flex: none;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.lo-bar-action:active {
+  color: var(--text);
 }
 
 /* ── Conversation ────────────────────────────────────────── */
@@ -228,10 +248,63 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* Un message et ce qui l'accompagne — image produite, bouton de copie —
+   tenus ensemble et du bon côté du fil. */
+.lo-msg-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.lo-msg-group-me {
+  align-items: flex-end;
+}
 .lo-msg-me {
   align-self: flex-end;
   background: var(--surface);
   border: 1px solid var(--border);
+}
+
+/* L'image est un bouton : la toucher l'enregistre. Le cadre reste discret
+   pour ne pas déguiser une photo en formulaire. */
+.lo-msg-image {
+  max-width: 86%;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: none;
+  overflow: hidden;
+  cursor: pointer;
+}
+.lo-msg-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.lo-msg-copy {
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-faint);
+  font-size: 12px;
+  cursor: pointer;
+}
+.lo-msg-copy:active {
+  color: var(--text-muted);
+}
+
+/* La confirmation d'une copie ou d'un enregistrement. */
+.lo-notice {
+  margin: 0;
+  padding: var(--space-3);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 .lo-msg-ai {
   align-self: flex-start;
@@ -454,4 +527,62 @@ body.lo-scanning .lo-screen {
   font-size: 15px;
   text-align: center;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------------------------------------------------------------------------
+   Réglages : des sections empilées, chacune avec un titre et sa liste.
+   --------------------------------------------------------------------------- */
+
+.lo-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+.lo-section:last-child {
+  border-bottom: none;
+}
+.lo-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.lo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lo-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.lo-list-item:last-child {
+  border-bottom: none;
+}
+/* Le texte prend la place restante ; les actions gardent la leur. */
+.lo-list-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* La catégorie d'un souvenir : une étiquette, pas un titre. */
+.lo-tag {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  color: var(--text-faint);
 }
