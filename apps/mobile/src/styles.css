@@ -586,3 +586,116 @@ body.lo-scanning .lo-screen {
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* ---------------------------------------------------------------------------
+   Tiroir de navigation.
+
+   Même organisation que sur l'ordinateur : les conversations d'abord, ce qu'on
+   peut ouvrir en bas. Décalé hors de l'écran plutôt que démonté, pour que
+   l'ouverture n'ait rien à recharger.
+   --------------------------------------------------------------------------- */
+
+.lo-bar-menu {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.lo-bar-menu:active {
+  color: var(--text);
+}
+
+.lo-drawer-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  cursor: pointer;
+}
+
+.lo-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  width: min(82vw, 320px);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  transform: translateX(-100%);
+  transition: transform 180ms ease;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.lo-drawer-open {
+  transform: translateX(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-drawer {
+    transition: none;
+  }
+}
+
+.lo-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 46px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.lo-drawer-title {
+  flex: 1;
+  font-size: var(--text-base);
+  font-weight: 800;
+  color: var(--text);
+}
+
+.lo-drawer-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-2);
+}
+
+.lo-drawer-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+/* 44px minimum sous le pouce, et le texte coupé plutôt qu'enroulé : une liste
+   de conversations reste lisible en diagonale. */
+.lo-drawer-item {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.lo-drawer-item:active {
+  background: var(--bg);
+}
+.lo-drawer-item-on {
+  color: var(--text);
+  background: var(--bg);
+}

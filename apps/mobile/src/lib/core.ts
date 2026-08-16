@@ -78,6 +78,22 @@ export interface Message {
 export interface ChatReply {
   text: string;
   images: MediaResult[];
+  /** La conversation où ce tour a eu lieu, à garder pour la suivante. */
+  conversation_id: string;
+}
+
+/** Une conversation du serveur, partagée avec l'ordinateur. */
+export interface Conversation {
+  id: string;
+  title: string;
+  last_message_at: string | null;
+}
+
+/** Un tour déjà écrit, relu depuis le serveur. */
+export interface ChatTurn {
+  id: string;
+  role: string;
+  content: string;
 }
 
 /** Ce que le téléphone sait de sa propre mise à jour. */
@@ -126,7 +142,11 @@ export const core = {
   signOut: () => invoke<MobileStatus>("sign_out"),
   /** Verify a scanned code and apply it. Throws with a phrased message. */
   applyPairingLink: (uri: string) => invoke<PairingResult>("apply_pairing_link", { uri }),
-  send: (text: string) => invoke<ChatReply>("send_message", { text }),
+  send: (text: string, conversationId: string | null) =>
+    invoke<ChatReply>("send_message", { text, conversationId }),
+  /** Les conversations du serveur — les mêmes que sur l'ordinateur. */
+  listConversations: () => invoke<Conversation[]>("list_conversations"),
+  loadConversation: (id: string) => invoke<ChatTurn[]>("load_conversation", { id }),
   /** Models the machine can generate with: kind = "image" | "audio". */
   listMediaModels: (kind: "image" | "audio") => invoke<MediaModel[]>("list_media_models", { kind }),
   /** Les extensions installées sur le serveur, et leur pilotage. */
@@ -215,7 +235,15 @@ export const demoCore: typeof core = {
     travelling: true,
     message: "Connecté à Atelier Vasseur depuis l'extérieur.",
   }),
-  send: async (t) => ({ text: `Réponse de démonstration à « ${t} ».`, images: [] }),
+  send: async (t) => ({
+    text: `Réponse de démonstration à « ${t} ».`,
+    images: [],
+    conversation_id: "demo",
+  }),
+  listConversations: async () => [
+    { id: "demo", title: "Conversation de démonstration", last_message_at: null },
+  ],
+  loadConversation: async () => [],
   listMediaModels: async () => [
     { name: "sd_xl_turbo_1.0.q8_0.gguf", ready: true, missing: [] },
     {

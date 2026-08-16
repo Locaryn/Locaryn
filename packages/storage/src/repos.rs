@@ -794,6 +794,64 @@ impl SessionRepo {
         Ok(())
     }
 
+    /// Donner un titre à une conversation qui n'en a pas encore.
+    ///
+    /// Une liste où tout s'appelle « Conversation » ne se lit pas. Le titre
+    /// vient de la première phrase écrite, et n'est posé qu'une fois : ce que
+    /// la personne a dit en premier reste le meilleur résumé, et le renommer à
+    /// chaque message ferait bouger la liste sous ses yeux.
+    pub async fn title_if_unset(&self, id: Uuid, titre: &str) -> Result<(), StorageError> {
+        let titre = resumer_pour_titre(titre);
+        if titre.is_empty() {
+            return Ok(());
+        }
+        sqlx::query("UPDATE sessions SET title = ? WHERE id = ? AND (title IS NULL OR title = '')")
+            .bind(&titre)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Remplacer le titre d'une conversation.
+    ///
+    /// Sert au titre écrit par le modèle, qui arrive après coup et remplace
+    /// celui posé à la va-vite depuis la première phrase.
+    pub async fn retitle(&self, id: Uuid, titre: &str) -> Result<(), StorageError> {
+        let titre = titre.trim();
+        if titre.is_empty() {
+            return Ok(());
+        }
+        // `title_locked` protège un nom choisi à la main. Sans ce garde-fou,
+        // une conversation renommée par son auteur se retrouverait renommée
+        // par un modèle, et la personne chercherait dans sa propre liste un
+        // titre qu'elle avait pourtant écrit.
+        sqlx::query("UPDATE sessions SET title = ? WHERE id = ? AND title_locked = 0")
+            .bind(titre)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Renommer à la main. Le titre devient définitif : plus aucun modèle n'y
+    /// touche.
+    pub async fn rename_by_user(&self, id: Uuid, titre: &str) -> Result<(), StorageError> {
+        let titre = titre.trim();
+        if titre.is_empty() {
+            return Err(StorageError::NotFound("titre vide".into()));
+        }
+        let res = sqlx::query("UPDATE sessions SET title = ?, title_locked = 1 WHERE id = ?")
+            .bind(titre)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        if res.rows_affected() == 0 {
+            return Err(StorageError::NotFound(format!("session {id}")));
+        }
+        Ok(())
+    }
+
     /// Hard-delete a session and its messages.
     pub async fn delete(&self, id: Uuid) -> Result<(), StorageError> {
         let res = sqlx::query("DELETE FROM sessions WHERE id = ?")
@@ -2232,5 +2290,71 @@ mod chat_model_guard {
                 "{good} devrait être accepté"
             );
         }
+    }
+}
+
+/// La première phrase d'une conversation, ramenée à un titre de liste.
+///
+/// On coupe sur un mot entier : une phrase tronquée au milieu d'un mot se lit
+/// comme une erreur d'affichage.
+pub fn resumer_pour_titre(texte: &str) -> String {
+    const MAX: usize = 60;
+    let une_ligne = texte.split_whitespace().collect::<Vec<_>>().join(" ");
+    if une_ligne.chars().count() <= MAX {
+        return une_ligne;
+    }
+    let mut sortie = String::new();
+    for mot in une_ligne.split(' ') {
+        if sortie.chars().count() + mot.chars().count() + 1 > MAX {
+            break;
+        }
+        if !sortie.is_empty() {
+            sortie.push(' ');
+        }
+        sortie.push_str(mot);
+    }
+    if sortie.is_empty() {
+        sortie = une_ligne.chars().take(MAX).collect();
+    }
+    format!("{sortie}…")
+}
+
+#[cfg(test)]
+mod titre_tests {
+    use super::resumer_pour_titre;
+
+    #[test]
+    fn une_phrase_courte_passe_telle_quelle() {
+        assert_eq!(
+            resumer_pour_titre("Bonjour, qui es-tu ?"),
+            "Bonjour, qui es-tu ?"
+        );
+    }
+
+    #[test]
+    fn les_retours_a_la_ligne_disparaissent() {
+        assert_eq!(
+            resumer_pour_titre(
+                "  deux
+  lignes  "
+            ),
+            "deux lignes"
+        );
+    }
+
+    #[test]
+    fn une_phrase_longue_est_coupee_sur_un_mot() {
+        let t = resumer_pour_titre(
+            "Explique-moi comment fonctionne la génération d'images par diffusion latente, en détail",
+        );
+        assert!(t.ends_with('…'), "{t}");
+        assert!(t.chars().count() <= 61, "{t}");
+        assert!(!t.contains("diffusio…"), "coupé au milieu d'un mot : {t}");
+    }
+
+    #[test]
+    fn un_mot_unique_plus_long_que_la_limite_est_coupe_quand_meme() {
+        let t = resumer_pour_titre(&"a".repeat(200));
+        assert!(t.chars().count() <= 61);
     }
 }

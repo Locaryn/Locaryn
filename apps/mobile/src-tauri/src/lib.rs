@@ -416,30 +416,39 @@ async fn ensure_free_chat_project(
 /// from a finished one. The reply is the concatenation of the `token` events
 /// of the daemon's SSE stream.
 #[tauri::command]
-async fn send_message(text: String) -> Result<ChatReply, String> {
+async fn send_message(text: String, conversation_id: Option<String>) -> Result<ChatReply, String> {
     let (client, server, session) = authenticated()?;
     let base = server.current_url.trim_end_matches('/').to_string();
 
-    let project_id = ensure_free_chat_project(&client, &server, &session.token).await?;
-
-    let session_resp = client
-        .post(format!("{base}/v1/projects/{project_id}/sessions"))
-        .bearer_auth(&session.token)
-        .send()
-        .await
-        .map_err(|_| unreachable(&server))?;
-    if !session_resp.status().is_success() {
-        return Err(format!(
-            "Le serveur a refusé la demande ({}).",
-            session_resp.status()
-        ));
-    }
-    let session_body: serde_json::Value = session_resp.json().await.map_err(|e| e.to_string())?;
-    let session_id = session_body
-        .get("id")
-        .and_then(|x| x.as_str())
-        .ok_or("Le serveur a renvoyé une session sans identifiant.")?
-        .to_string();
+    // Une conversation existante est reprise ; sinon on en ouvre une.
+    //
+    // Le téléphone en créait une neuve à *chaque* message : le modèle
+    // repartait de zéro à chaque phrase, et rien de ce qui était dit ici
+    // n'apparaissait sur l'ordinateur. C'est la même conversation, sur le même
+    // serveur, quel que soit l'appareil qui la continue.
+    let session_id = match conversation_id {
+        Some(id) if !id.trim().is_empty() => id,
+        _ => {
+            let project_id = ensure_free_chat_project(&client, &server, &session.token).await?;
+            let session_resp = client
+                .post(format!("{base}/v1/projects/{project_id}/sessions"))
+                .bearer_auth(&session.token)
+                .send()
+                .await
+                .map_err(|_| unreachable(&server))?;
+            if !session_resp.status().is_success() {
+                return Err(format!(
+                    "Le serveur a refusé la demande ({}).",
+                    session_resp.status()
+                ));
+            }
+            let body: serde_json::Value = session_resp.json().await.map_err(|e| e.to_string())?;
+            body.get("id")
+                .and_then(|x| x.as_str())
+                .ok_or("Le serveur a renvoyé une session sans identifiant.")?
+                .to_string()
+        }
+    };
 
     let resp = client
         .post(format!("{base}/v1/sessions/{session_id}/messages"))
@@ -512,7 +521,115 @@ async fn send_message(text: String) -> Result<ChatReply, String> {
     Ok(ChatReply {
         text: reply,
         images,
+        conversation_id: session_id,
     })
+}
+
+/// Une conversation du serveur, telle que le téléphone la liste.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Conversation {
+    pub id: String,
+    /// Le titre donné par le serveur, ou les premiers mots échangés.
+    pub title: String,
+    pub last_message_at: Option<String>,
+}
+
+/// Les conversations libres du serveur, la plus récente d'abord.
+///
+/// Elles viennent du serveur et pas d'une copie locale : c'est ce qui permet
+/// de commencer une conversation sur l'ordinateur et de la continuer sur le
+/// téléphone, ou l'inverse.
+#[tauri::command]
+async fn list_conversations() -> Result<Vec<Conversation>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/').to_string();
+    let project_id = ensure_free_chat_project(&client, &server, &session.token).await?;
+
+    let resp = client
+        .get(format!("{base}/v1/projects/{project_id}/sessions"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    let brut: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+
+    let mut out: Vec<Conversation> = brut
+        .iter()
+        .filter_map(|v| {
+            let id = v.get("id")?.as_str()?.to_string();
+            let title = v
+                .get("title")
+                .and_then(|t| t.as_str())
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or("Conversation")
+                .to_string();
+            Some(Conversation {
+                id,
+                title,
+                last_message_at: v
+                    .get("last_message_at")
+                    .and_then(|t| t.as_str())
+                    .map(str::to_string),
+            })
+        })
+        .collect();
+    // La plus récente en tête : c'est celle qu'on reprend neuf fois sur dix.
+    out.sort_by(|a, b| b.last_message_at.cmp(&a.last_message_at));
+    Ok(out)
+}
+
+/// Le contenu d'une conversation, pour la reprendre là où elle en était.
+#[tauri::command]
+async fn load_conversation(id: String) -> Result<Vec<ChatTurn>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/').to_string();
+    let resp = client
+        .get(format!("{base}/v1/sessions/{id}/messages"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    let brut: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(brut
+        .iter()
+        .filter_map(|m| {
+            let role = m.get("role")?.as_str()?;
+            // Les tours d'outil ne se lisent pas : ils font partie du travail,
+            // pas de la conversation.
+            if role != "user" && role != "assistant" {
+                return None;
+            }
+            let content = m.get("content")?.as_str()?.trim().to_string();
+            if content.is_empty() {
+                return None;
+            }
+            Some(ChatTurn {
+                id: m.get("id")?.as_str()?.to_string(),
+                role: role.to_string(),
+                content,
+            })
+        })
+        .collect())
+}
+
+/// Un tour déjà écrit, relu depuis le serveur.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChatTurn {
+    pub id: String,
+    pub role: String,
+    pub content: String,
 }
 
 /// Ce qu'un tour de conversation rapporte : les mots, et ce que les outils ont
@@ -521,6 +638,9 @@ async fn send_message(text: String) -> Result<ChatReply, String> {
 pub struct ChatReply {
     pub text: String,
     pub images: Vec<MediaResult>,
+    /// La conversation dans laquelle ce tour a eu lieu. Le téléphone la garde
+    /// pour continuer au lieu d'en ouvrir une autre au message suivant.
+    pub conversation_id: String,
 }
 
 /// Télécharger un artefact et le rendre affichable par la vue web.
@@ -1008,6 +1128,8 @@ pub fn run() {
             sign_out,
             send_message,
             list_media_models,
+            list_conversations,
+            load_conversation,
             list_memory,
             remember,
             forget,

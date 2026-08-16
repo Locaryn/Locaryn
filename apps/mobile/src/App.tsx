@@ -144,7 +144,6 @@ export function App() {
         <Chat
           key={capabilitiesKey}
           status={status}
-          onScan={openScanner}
           onStudio={() => setScreen("studio")}
           onSettings={() => setScreen("settings")}
         />

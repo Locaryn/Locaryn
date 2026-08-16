@@ -1,10 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import { type MediaResult, type Message, type MobileStatus, api } from "../lib/core";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type Conversation,
+  type MediaResult,
+  type Message,
+  type MobileStatus,
+  api,
+} from "../lib/core";
+import { Drawer } from "./Drawer";
 import { UpdateButton } from "./UpdateButton";
 
 type Props = {
   status: MobileStatus;
-  onScan: () => void;
   onStudio: () => void;
   onSettings: () => void;
 };
@@ -13,12 +19,15 @@ type Props = {
  * The conversation.
  *
  * Everything heavy runs on the machine at the other end; this is a thread and
- * a text field. The bar at the top says which server and whether the phone is
- * away from it — the only two things about the connection worth a person's
- * attention.
+ * a text field. Le tiroir de gauche tient les conversations — celles du
+ * serveur, donc celles de l'ordinateur : une phrase écrite ici se lit là-bas,
+ * et une conversation commencée là-bas se continue ici.
  */
-export function Chat({ status, onScan, onStudio, onSettings }: Props) {
+export function Chat({ status, onStudio, onSettings }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<Conversation[] | null>(null);
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   /**
    * Le Studio n'existe que si le serveur a une extension qui apporte de quoi
    * générer. C'est la même liste que lit l'application de bureau : ajouter la
@@ -50,10 +59,47 @@ export function Chat({ status, onScan, onStudio, onSettings }: Props) {
     };
   }, []);
 
+  const refreshList = useCallback(async () => {
+    try {
+      setConversations(await api.listConversations());
+    } catch {
+      // Une liste indisponible ne doit pas empêcher d'écrire : le tiroir dira
+      // simplement qu'il n'a rien à montrer.
+      setConversations([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshList();
+  }, [refreshList]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: ni `messages` ni `busy` ne sont lus ici — ils déclenchent. Les retirer immobiliserait la vue au premier message au lieu de suivre la conversation.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
+
+  /** Reprendre une conversation, d'où qu'elle vienne. */
+  async function open(id: string) {
+    setDrawerOpen(false);
+    setError(null);
+    setCurrentId(id);
+    setMessages([]);
+    try {
+      const turns = await api.loadConversation(id);
+      setMessages(
+        turns.map((t) => ({ id: t.id, role: t.role as Message["role"], content: t.content })),
+      );
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  function startNew() {
+    setDrawerOpen(false);
+    setCurrentId(null);
+    setMessages([]);
+    setError(null);
+  }
 
   /**
    * Copier un message.
@@ -78,11 +124,11 @@ export function Chat({ status, onScan, onStudio, onSettings }: Props) {
     setNotice("Message copié.");
   }
 
-  /** Écrire l'image sur l'appareil et dire où elle est allée. */
+  /** Écrire l'image sur l'appareil et la confier au système. */
   async function keepImage(img: MediaResult) {
     try {
       const nom = await api.saveImage(img);
-      setNotice(`${nom} enregistrée. Android propose de la ranger ou de l’envoyer.`);
+      setNotice(`${nom} enregistrée. Android propose de la ranger ou de l'envoyer.`);
     } catch (e) {
       setNotice(String(e));
     }
@@ -96,11 +142,14 @@ export function Chat({ status, onScan, onStudio, onSettings }: Props) {
     setMessages((m) => [...m, { id: `u${m.length}`, role: "user", content: text }]);
     setBusy(true);
     try {
-      const reply = await api.send(text);
+      const reply = await api.send(text, currentId);
+      setCurrentId(reply.conversation_id);
       setMessages((m) => [
         ...m,
         { id: `a${m.length}`, role: "assistant", content: reply.text, images: reply.images },
       ]);
+      // La liste bouge : titre nouvellement donné, ou conversation qui remonte.
+      void refreshList();
     } catch (e) {
       setError(String(e));
       // Put the text back rather than losing it to a failed send.
@@ -113,24 +162,32 @@ export function Chat({ status, onScan, onStudio, onSettings }: Props) {
 
   return (
     <div className="lo-screen">
-      {/* Le nom du serveur à gauche, deux actions à droite. « Scanner » a
-          rejoint les réglages : c'est une décision de connexion, pas un geste
-          de conversation, et la barre en portait quatre. */}
       <div className="lo-bar">
+        <button
+          type="button"
+          className="lo-bar-menu"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Ouvrir le menu"
+        >
+          ☰
+        </button>
         <span className="lo-dot" />
         <span>{status.server_name ?? "Locaryn"}</span>
         {status.travelling && <span className="lo-bar-away">à distance</span>}
         <span className="lo-bar-spacer" />
-        {canCreate && (
-          <button type="button" className="lo-bar-action" onClick={onStudio}>
-            Créer
-          </button>
-        )}
-        <button type="button" className="lo-bar-action" onClick={onSettings}>
-          Réglages
-        </button>
         <UpdateButton />
       </div>
+
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        conversations={conversations}
+        currentId={currentId}
+        onPick={(id) => void open(id)}
+        onNew={startNew}
+        onStudio={canCreate ? onStudio : null}
+        onSettings={onSettings}
+      />
 
       <div className="lo-thread">
         {messages.length === 0 && (

@@ -24,6 +24,22 @@ pub struct Config {
     pub remote: Option<RemoteConfig>,
     #[serde(default)]
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub assistance: AssistanceConfig,
+}
+
+/// Les petits services rendus par un modèle, en marge des conversations.
+///
+/// Nommer une conversation, ranger, résumer : ce sont des tâches courtes qui
+/// n'ont pas besoin du gros modèle et ne doivent pas lui prendre son tour. Rien
+/// n'est choisi par défaut — tant qu'aucun modèle n'est désigné, ces services
+/// ne tournent pas, et une conversation garde le titre tiré de sa première
+/// phrase.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AssistanceConfig {
+    /// Le modèle des micro-tâches. `None` : aucun, donc rien ne tourne.
+    #[serde(default)]
+    pub micro_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -396,6 +412,33 @@ pub enum ConfigError {
     Io(#[from] std::io::Error),
     #[error("config parse error: {0}")]
     Parse(String),
+}
+
+/// Écrire un réglage global, sans écraser ce qu'on ne touche pas.
+///
+/// La configuration est fusionnée depuis plusieurs portées à la lecture ;
+/// réécrire l'objet entier reviendrait à figer dans le fichier global des
+/// valeurs qui venaient d'ailleurs. On relit donc le fichier global tel quel,
+/// on modifie la branche demandée, et on réécrit.
+pub fn set_global(branche: &str, valeur: serde_json::Value) -> Result<(), ConfigError> {
+    let chemin = global_config_path();
+    let mut racine: serde_json::Value = if chemin.exists() {
+        let brut = std::fs::read_to_string(&chemin)?;
+        serde_json::from_str(&brut).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if !racine.is_object() {
+        racine = serde_json::json!({});
+    }
+    racine[branche] = valeur;
+    if let Some(parent) = chemin.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let joli =
+        serde_json::to_string_pretty(&racine).map_err(|e| ConfigError::Parse(e.to_string()))?;
+    std::fs::write(&chemin, joli)?;
+    Ok(())
 }
 
 /// Load and merge configuration across all scopes, then apply env overrides.

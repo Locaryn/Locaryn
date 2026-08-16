@@ -232,6 +232,14 @@ async fn main() -> anyhow::Result<()> {
             get(list_messages).post(send_message),
         )
         .route("/v1/sessions/:id/cancel", post(cancel_session))
+        // Renommer à la main : le titre devient définitif, aucun modèle n'y
+        // touche plus.
+        .route("/v1/sessions/:id/title", post(rename_session))
+        // Le modèle des micro-tâches : lequel, et lesquels sont disponibles.
+        .route(
+            "/v1/assistance/micro-model",
+            get(get_micro_model).post(set_micro_model),
+        )
         .route(
             "/v1/sessions/:id/artifacts",
             get(list_artifacts).post(create_artifact),
@@ -784,6 +792,23 @@ async fn send_message(
     {
         tracing::warn!(error = %e, "failed to persist user message");
     }
+
+    // Le titre de la conversation.
+    //
+    // Deux temps, parce que les deux comptent : la première phrase donne tout
+    // de suite un titre lisible — la liste ne doit pas afficher « Conversation »
+    // même une seconde — puis le modèle en écrit un vrai, à partir du sujet et
+    // du projet ouvert, et le remplace. La demande au modèle part en tâche de
+    // fond : personne n'attend son titre pour lire sa réponse.
+    if let Err(e) = s
+        .storage
+        .sessions
+        .title_if_unset(session_uuid, &body.content)
+        .await
+    {
+        tracing::warn!(error = %e, "titre de conversation non posé");
+    }
+    spawn_titre_du_modele(s.clone(), session_uuid, body.content.clone());
 
     // 2. Look up the session → project to get trust level and project path.
     let (project_id, project_path, trust) = match s.storage.sessions.get(session_uuid).await {
@@ -1527,6 +1552,198 @@ async fn get_artifact_raw(State(s): State<Arc<DaemonState>>, Path(id): Path<Stri
                 .into_response()
         }
     }
+}
+
+/// GET /v1/assistance/micro-model — le modèle des micro-tâches, et le choix.
+async fn get_micro_model(State(s): State<Arc<DaemonState>>) -> Response {
+    let choisi = locaryn_config::load(None)
+        .ok()
+        .and_then(|c| c.assistance.micro_model);
+    // Les modèles de conversation installés : ce sont eux qu'on peut désigner.
+    let disponibles: Vec<String> = match s.storage.providers.list().await {
+        Ok(ps) => ps.into_iter().filter_map(|p| p.model).collect(),
+        Err(_) => Vec::new(),
+    };
+    let mut disponibles: Vec<String> = disponibles
+        .into_iter()
+        .chain(modeles_de_conversation())
+        .collect();
+    disponibles.sort();
+    disponibles.dedup();
+    Json(serde_json::json!({ "model": choisi, "available": disponibles })).into_response()
+}
+
+/// Les poids présents qui peuvent tenir une conversation.
+///
+/// Le dossier des modèles mélange les moteurs : ceux de diffusion produisent
+/// des images et ne répondraient pas à une question. On ne propose donc que ce
+/// qui reste.
+fn modeles_de_conversation() -> Vec<String> {
+    let dir = locaryn_config::models_dir();
+    let mut out = Vec::new();
+    let Ok(entrees) = std::fs::read_dir(&dir) else {
+        return out;
+    };
+    for e in entrees.flatten() {
+        let chemin = e.path();
+        if !chemin.is_file() {
+            continue;
+        }
+        let Some(nom) = chemin.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let minuscule = nom.to_ascii_lowercase();
+        if !minuscule.ends_with(".gguf") {
+            continue;
+        }
+        if locaryn_media::image::is_diffusion_checkpoint(nom) {
+            continue;
+        }
+        out.push(nom.to_string());
+    }
+    out
+}
+
+#[derive(serde::Deserialize)]
+struct MicroModelBody {
+    /// `null` ou vide : plus de micro-tâches du tout.
+    #[serde(default)]
+    model: Option<String>,
+}
+
+/// POST /v1/assistance/micro-model — choisir, ou n'en choisir aucun.
+async fn set_micro_model(Json(body): Json<MicroModelBody>) -> Response {
+    let choix = body.model.filter(|m| !m.trim().is_empty());
+    if let Err(e) =
+        locaryn_config::set_global("assistance", serde_json::json!({ "micro_model": choix }))
+    {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": { "code": "config", "message": e.to_string() }
+            })),
+        )
+            .into_response();
+    }
+    Json(serde_json::json!({ "model": choix })).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct RenameBody {
+    title: String,
+}
+
+/// POST /v1/sessions/{id}/title — renommer une conversation à la main.
+async fn rename_session(
+    State(s): State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+    Json(body): Json<RenameBody>,
+) -> Response {
+    let Ok(session_id) = Uuid::parse_str(&id) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": { "code": "bad_request", "message": "identifiant de session invalide" }
+            })),
+        )
+            .into_response();
+    };
+    let titre = body.title.trim();
+    if titre.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": { "code": "bad_request", "message": "Un titre vide n'en est pas un." }
+            })),
+        )
+            .into_response();
+    }
+    match s.storage.sessions.rename_by_user(session_id, titre).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "id": id, "title": titre, "locked": true })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": { "code": "not_found", "message": e.to_string() }
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// Demander au modèle de nommer une conversation, sans faire attendre personne.
+///
+/// Le titre posé à partir de la première phrase reste tant que le modèle n'a
+/// rien donné de meilleur : une conversation nommée approximativement vaut
+/// mieux qu'une conversation qui attend son nom.
+fn spawn_titre_du_modele(s: Arc<DaemonState>, session_id: Uuid, premiere_demande: String) {
+    tokio::spawn(async move {
+        // Un titre ne se redemande pas à chaque message : seule la première
+        // demande le déclenche. À cet instant, elle est le seul message de la
+        // conversation.
+        match s.storage.messages.list_for_session(session_id).await {
+            Ok(msgs) if msgs.len() <= 1 => {}
+            _ => return,
+        }
+
+        // Le modèle des micro-tâches se choisit dans les réglages, et rien
+        // n'est choisi par défaut. Tant qu'aucun n'est désigné, la conversation
+        // garde le titre tiré de sa première phrase : mieux vaut un titre
+        // approximatif que le gros modèle détourné de son tour pour cinq mots.
+        let Some(micro) = locaryn_config::load(None)
+            .ok()
+            .and_then(|c| c.assistance.micro_model)
+            .filter(|m| !m.trim().is_empty())
+        else {
+            return;
+        };
+
+        let Ok(providers) = s.storage.providers.list().await else {
+            return;
+        };
+        let Some(p) = providers.into_iter().find(|p| {
+            p.is_active
+                && (p.engine == ProviderEngine::LlamaCpp
+                    || p.engine == ProviderEngine::OpenAiCompat)
+        }) else {
+            return;
+        };
+
+        let projet = match s.storage.sessions.get(session_id).await {
+            Ok(sess) => s
+                .storage
+                .projects
+                .get(sess.project_id)
+                .await
+                .ok()
+                .map(|pr| pr.name),
+            Err(_) => None,
+        };
+        // Le conteneur des conversations libres n'est pas un projet : le
+        // nommer au modèle ne ferait que le mettre sur une fausse piste.
+        let projet = projet.filter(|n| n != "Conversations libres");
+
+        let client = reqwest::Client::new();
+        let modele = micro;
+        let demande = locaryn_agent_runtime::titling::TitleRequest {
+            first_message: premiere_demande,
+            first_reply: None,
+            project: projet,
+        };
+        if let Some(titre) =
+            locaryn_agent_runtime::titling::ask_for_title(&p.endpoint, &client, &modele, &demande)
+                .await
+        {
+            if let Err(e) = s.storage.sessions.retitle(session_id, &titre).await {
+                tracing::warn!(error = %e, "titre du modèle non enregistré");
+            } else {
+                tracing::info!(session = %session_id, titre, "conversation nommée par le modèle");
+            }
+        }
+    });
 }
 
 /// Simple base64 encoding helper. Uses the `base64` crate if available,

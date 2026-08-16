@@ -11,6 +11,7 @@ pub mod ollama;
 pub mod openai_compat;
 pub mod openai_tool_loop;
 pub mod profile;
+pub mod titling;
 pub mod tool_loop;
 pub mod tools;
 

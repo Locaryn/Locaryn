@@ -56,7 +56,9 @@ pub fn default_sampling(file_name: &str) -> (u32, f32) {
 
 /// True for a GGUF that can actually render an image (as opposed to a
 /// companion file like a VAE or a text encoder).
-fn is_diffusion_checkpoint(file_name: &str) -> bool {
+/// Public : le service en a besoin pour ne pas proposer un modèle
+/// d'images là où il faut un modèle de conversation.
+pub fn is_diffusion_checkpoint(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
     // Only GGUF checkpoints are selectable; a stray test PNG whose name
     // matches a family (z_image_test.png) must not appear as a model.
