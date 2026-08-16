@@ -365,8 +365,32 @@ jobs:
           printf '#!/bin/sh\nif [ "$1" = "tauri" ]; then shift; fi\nexec node "%s/apps/mobile/node_modules/@tauri-apps/cli/tauri.js" "$@"\n' "$GITHUB_WORKSPACE" > "$HOME/.cargo/bin/cargo-tauri"
           chmod +x "$HOME/.cargo/bin/cargo-tauri"
           "$HOME/.cargo/bin/cargo-tauri" --version
+      # Le frontend d'abord, explicitement. La tâche Gradle appelle le CLI
+      # Tauri pour compiler la bibliothèque Rust, et cette route-là ne repasse
+      # pas par `beforeBuildCommand` : sur une copie fraîche du dépôt,
+      # `apps/mobile/dist` n'existe pas encore, `tauri-codegen` n'embarque donc
+      # aucune interface, et l'APK sorti démarre sur un écran vide — sans la
+      # moindre erreur, ni à la compilation ni à l'exécution.
+      - name: Construire l'interface mobile
+        run: pnpm --dir apps/mobile build
+
       - name: Construire l'APK
         run: pnpm --dir apps/mobile build:apk
+
+      # Vérification de ce qui vient d'être produit, pas de ce qu'on espérait :
+      # la bibliothèque doit contenir l'interface. Un APK vide passait tous les
+      # contrôles précédents et ne se voyait qu'une fois installé sur un
+      # téléphone.
+      - name: Vérifier que l'interface est bien embarquée
+        run: |
+          lib=$(find apps/mobile/src-tauri/gen/android -name 'liblocaryn_mobile_lib.so' | head -1)
+          [ -n "$lib" ] || { echo "::error::bibliothèque Android introuvable"; exit 1; }
+          marker=$(grep -o 'lo-screen' "$lib" | head -1 || true)
+          if [ -z "$marker" ]; then
+            echo "::error::l'interface n'est pas embarquée dans $lib — l'application démarrerait sur un écran vide"
+            exit 1
+          fi
+          echo "interface embarquée dans $lib"
 
       - name: Déterminer la version
         shell: bash
