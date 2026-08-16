@@ -3646,29 +3646,6 @@ pre.md-code {
 /* ═══════════════════════════════════════════════════════════
    NAV DRAWER (LEFT SLIDE-OUT MENU)
    ═══════════════════════════════════════════════════════════ */
-.locaryn-navdrawer-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
-  animation: fadeIn 0.15s ease-out;
-}
-
-.locaryn-navdrawer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 280px;
-  background: var(--surface);
-  border-right: 1px solid var(--border-strong);
-  z-index: 1001;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
-  animation: slideInLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
 
 @keyframes slideInLeft {
   from {
@@ -3686,90 +3663,6 @@ pre.md-code {
   to {
     opacity: 1;
   }
-}
-
-.locaryn-navdrawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
-}
-
-.locaryn-navdrawer-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: 700;
-  font-size: var(--text-md);
-  color: var(--text);
-}
-
-.locaryn-navdrawer-items {
-  flex: 1;
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  overflow-y: auto;
-}
-
-.locaryn-navdrawer-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: var(--text-base);
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-  transition: all var(--dur-fast) var(--ease);
-}
-
-.locaryn-navdrawer-item:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.locaryn-navdrawer-item.locaryn-active {
-  background: rgba(var(--accent-rgb), 0.15);
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.locaryn-navdrawer-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.locaryn-navdrawer-footer {
-  padding: var(--space-3);
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.locaryn-navdrawer-account {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  text-align: left;
-  transition: all var(--dur-fast) var(--ease);
-}
-
-.locaryn-navdrawer-account:hover {
-  border-color: var(--accent);
-  background: var(--surface-hover);
 }
 
 .locaryn-avatar {
