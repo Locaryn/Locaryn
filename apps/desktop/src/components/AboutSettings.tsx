@@ -141,7 +141,9 @@ export function AboutSettings() {
             dépendre du cloud.
           </div>
         </div>
-        <span className="locaryn-about-version">v{info?.version ?? "0.1.0"}</span>
+        <span className="locaryn-about-version">
+          {info?.version ? `v${info.version}` : "version inconnue"}
+        </span>
       </div>
 
       <p className="locaryn-field-hint">
@@ -159,12 +161,12 @@ export function AboutSettings() {
                 <span className="locaryn-update-status">Vérification de la dernière version…</span>
               ) : updateState.kind === "uptodate" ? (
                 <span className="locaryn-update-status locaryn-update-ok">
-                  Vous êtes à jour (v{info?.version ?? "0.1.0"}).
+                  Vous êtes à jour ({info?.version ? `v${info.version}` : "version inconnue"}).
                 </span>
               ) : updateState.kind === "available" ? (
                 <span className="locaryn-update-status">
                   Version <b>v{updateState.update.version}</b> disponible (vous avez v
-                  {info?.version ?? "0.1.0"}).
+                  {info?.version ?? "inconnue"}).
                 </span>
               ) : updateState.kind === "downloading" ? (
                 <span className="locaryn-update-status">

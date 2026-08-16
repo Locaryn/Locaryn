@@ -172,7 +172,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
             type="button"
             className="locaryn-settings-close"
             onClick={() => setSettingsOpen(false)}
-            aria-label="Close settings"
+            aria-label="Fermer les paramètres"
           >
             ✕
           </button>

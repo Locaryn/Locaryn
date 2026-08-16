@@ -138,7 +138,7 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
           {text && <div className="locaryn-msg-text">{text}</div>}
           <div className="locaryn-msg-actions">
             <button type="button" className="locaryn-msg-action" onClick={copy}>
-              {copied ? "Copied ✓" : "Copy"}
+              {copied ? "Copié ✓" : "Copier"}
             </button>
             {canEdit && onEdit && (
               <button type="button" className="locaryn-msg-action" onClick={onEdit}>
@@ -157,7 +157,7 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
         <span className="locaryn-msg-avatar" aria-hidden="true" />
         <span className="locaryn-msg-author">Locaryn</span>
         <button type="button" className="locaryn-msg-action" onClick={copy}>
-          {copied ? "Copied ✓" : "Copy"}
+          {copied ? "Copié ✓" : "Copier"}
         </button>
       </div>
       <ReasoningBlock reasoning={reasoning} inProgress={reasoningInProgress} />

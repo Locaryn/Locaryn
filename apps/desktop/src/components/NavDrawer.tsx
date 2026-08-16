@@ -24,7 +24,7 @@ type NavItem = {
 const BASE_NAV_ITEMS: NavItem[] = [
   {
     id: "chat",
-    label: "Chat & Assistant Agent",
+    label: "Chat et agent",
     icon: "💬",
     desc: "Environnement de chat principal, exécution de code et prompts",
   },
@@ -48,13 +48,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
   },
   {
     id: "installed",
-    label: "Mes Modèles Installés",
+    label: "Mes modèles installés",
     icon: "💾",
     desc: "Gérer vos modèles locaux, ouvrir le dossier et sélection rapide",
   },
   {
     id: "models",
-    label: "Marketplace Modèles",
+    label: "Catalogue de modèles",
     icon: "🛒",
     desc: "Découverte et installation de modèles locaux & HuggingFace",
   },
@@ -67,20 +67,20 @@ const BASE_NAV_ITEMS: NavItem[] = [
   },
   {
     id: "training",
-    label: "Entraînement & Oblitération",
+    label: "Entraînement et oblitération",
     icon: "🔓",
     desc: "Studio d'entraînement LoRA et oblitération de modèles RepE",
     requiredCapabilities: ["model-training"],
   },
   {
     id: "connectors",
-    label: "Extensions & MCP",
+    label: "Extensions et MCP",
     icon: "🔌",
     desc: "Intégrations serveurs distants, plugins et extensions",
   },
   {
     id: "settings",
-    label: "Paramètres Système",
+    label: "Paramètres",
     icon: "⚙️",
     desc: "Configuration des moteurs d'inférence, thèmes et gouvernance",
   },
@@ -124,7 +124,7 @@ export function NavDrawer({
       <div className="locaryn-nav-drawer-head">
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span className="locaryn-logo-dot" />
-          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Locaryn Navigation</strong>
+          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Navigation</strong>
         </div>
         <button
           type="button"
@@ -178,7 +178,7 @@ export function NavDrawer({
 
       <div className="locaryn-nav-drawer-foot">
         <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-          Locaryn Agentic Platform v0.1.0
+          Locaryn — la version exacte est dans Paramètres → À propos
         </span>
       </div>
     </ModalShell>

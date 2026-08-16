@@ -690,6 +690,15 @@ body.locaryn-resizing .locaryn-resizer::after {
 .locaryn-tool-status-error {
   color: var(--danger);
 }
+/* L'appel en cours : le seul des trois états qui n'avait pas de règle, alors
+   que c'est celui qu'on regarde — les deux autres sont déjà finis. Il attire
+   moins l'œil qu'un résultat, mais il existe. */
+.locaryn-tool-status-running {
+  color: var(--text-dim);
+}
+.locaryn-tool-running {
+  border-color: rgba(var(--accent-rgb), 0.35);
+}
 .locaryn-tool-chevron {
   flex: none;
   color: var(--text-faint);
@@ -6764,4 +6773,172 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Classes utilisées sans règle
+
+   Un audit du CSS face aux composants a trouvé dix-sept noms de classe
+   employés dans l'interface sans qu'aucune règle ne leur corresponde :
+   l'élément s'affichait avec le style par défaut du navigateur, au milieu
+   d'une interface qui, elle, a des conventions. Les voici, écrites avec les
+   mêmes jetons que le reste — aucune couleur en dur, pour que le thème clair
+   suive.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Un bouton neutre : la forme commune, sans la couleur d'accentuation que
+   porte le bouton principal. */
+.locaryn-btn {
+  background: var(--surface-hover);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px var(--space-5);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.locaryn-btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.locaryn-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Étiquette courte posée à côté d'un titre : catégorie, état, provenance. */
+.locaryn-badge {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* Un message d'erreur adressé à la personne. Lisible avant d'être rouge :
+   le fond reste discret, c'est le texte qui porte. */
+.locaryn-error {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--danger);
+  background: rgba(var(--danger-rgb), 0.08);
+  border: 1px solid rgba(var(--danger-rgb), 0.25);
+  border-radius: var(--radius-sm);
+}
+
+/* Une case à cocher et son libellé sur la même ligne, alignés sur le carré
+   plutôt que sur le texte : sur deux lignes de libellé, l'inverse est laid. */
+.locaryn-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.locaryn-checkbox-row input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+/* En-tête d'un groupe de champs : le titre à gauche, l'action à droite. */
+.locaryn-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.locaryn-field-head h3,
+.locaryn-field-head h4 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Une carte qui sert de fenêtre : plus haute que large sur un petit écran,
+   et jamais plus grande que la fenêtre elle-même. */
+.locaryn-modal-card {
+  width: min(680px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  margin-bottom: 0;
+}
+
+/* Texte de second plan, à la même valeur que partout ailleurs. */
+.locaryn-text-faint {
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+/* Récapitulatif en pied de liste : discret, aligné à droite. */
+.locaryn-footer-summary {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  text-align: right;
+}
+
+/* Un arbre vide dit pourquoi il l'est, au centre de la place qu'il occupe. */
+.locaryn-tree-empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+/* Onglets internes (moteur, studio) : même barre, même soulignement actif. */
+.locaryn-engine-tab,
+.locaryn-studio-tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-4);
+}
+
+/* L'état du compte, à côté de son nom. */
+.locaryn-account-status {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}
+
+/* Le disque visé par le stockage, dans les réglages. */
+.locaryn-store-drive {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+
+/* Réglages d'une extension : une colonne, respirée comme les autres cartes. */
+.locaryn-ext-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Un message dans un fil, hors du fil principal (aperçus, notifications). */
+.locaryn-msg {
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--text);
+}
+
+/* Estimation de durée sous le bouton de génération : une prévision, donc
+   dite comme telle — discrète, jamais en gras. */
+.img-gen-estimate,
+.locaryn-notif-audio {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
 }

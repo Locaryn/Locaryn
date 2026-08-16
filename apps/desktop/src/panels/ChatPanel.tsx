@@ -1217,7 +1217,7 @@ export function ChatPanel({
               className="locaryn-send"
               onClick={() => send()}
               disabled={!canSend}
-              aria-label="Send message"
+              aria-label="Envoyer le message"
             >
               {streaming ? "File +1 ↵" : "Envoyer ↵"}
             </button>

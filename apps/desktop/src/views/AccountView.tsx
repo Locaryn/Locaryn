@@ -19,7 +19,7 @@ export function AccountView() {
       </div>
 
       <div className="locaryn-card" style={{ maxWidth: "600px" }}>
-        <h3>Profil Utilisateur</h3>
+        <h3>Profil</h3>
         <div className="locaryn-field">
           <label className="locaryn-field-label" htmlFor="account-username">
             Nom d'utilisateur / Alias
