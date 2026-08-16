@@ -989,6 +989,67 @@ async fn archive_project(core: State<'_, Core>, id: Uuid) -> Result<(), String> 
         .map_err(|e| e.to_string())
 }
 
+/// Ranger une conversation aux archives, ou l'en ressortir.
+///
+/// C'est ce que fait le geste courant — glisser vers la corbeille, choisir
+/// « Archiver ». Rien n'est perdu : la suppression reste possible, depuis les
+/// archives, et demande une décision de plus.
+#[tauri::command]
+async fn archive_session(core: State<'_, Core>, id: Uuid, archived: bool) -> Result<(), String> {
+    core.storage
+        .sessions
+        .set_archived(id, archived)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Les conversations rangées d'un projet.
+#[tauri::command]
+async fn archived_sessions(core: State<'_, Core>, project_id: Uuid) -> Result<Vec<Session>, String> {
+    core.storage
+        .sessions
+        .list_archived(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Déplacer une conversation dans un projet.
+#[tauri::command]
+async fn move_session(core: State<'_, Core>, id: Uuid, project_id: Uuid) -> Result<(), String> {
+    core.storage
+        .sessions
+        .move_to_project(id, project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Renommer une conversation à la main.
+///
+/// Le titre devient définitif : aucun modèle n'y revient. Sans cela, un nom
+/// choisi puis remplacé par une micro-tâche ferait chercher dans sa propre
+/// liste un titre qu'on avait pourtant écrit.
+#[tauri::command]
+async fn rename_session(core: State<'_, Core>, id: Uuid, title: String) -> Result<(), String> {
+    core.storage
+        .sessions
+        .rename_by_user(id, title.trim())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Ouvrir une conversation éphémère : rien n'en sera gardé.
+#[tauri::command]
+async fn create_ephemeral_session(
+    core: State<'_, Core>,
+    project_id: Uuid,
+) -> Result<Session, String> {
+    core.storage
+        .sessions
+        .create_with(project_id, None, true)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn delete_session(core: State<'_, Core>, id: Uuid) -> Result<(), String> {
     // Tiré avant la suppression : le hook peut encore lire la session.
@@ -7523,6 +7584,11 @@ pub fn run() {
             update_session_title,
             generate_session_title,
             delete_session,
+            archive_session,
+            archived_sessions,
+            move_session,
+            rename_session,
+            create_ephemeral_session,
             list_messages,
             send_message,
             run_terminal,

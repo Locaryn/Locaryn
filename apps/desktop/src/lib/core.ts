@@ -30,6 +30,10 @@ export interface Session {
   created_at: string;
   last_message_at: string | null;
   closed_at: string | null;
+  /** Rangée aux archives : absente des listes, mais pas perdue. */
+  archived_at?: string | null;
+  /** Éphémère : rien n'en sera gardé, pas même un titre. */
+  ephemeral?: boolean;
 }
 
 export interface Message {
@@ -1204,6 +1208,16 @@ export interface CoreApi {
   generateSessionTitle(sessionId: string, firstPrompt: string): Promise<string>;
   /** Permanently delete a session and its messages. */
   deleteSession(sessionId: string): Promise<void>;
+  /** Ranger aux archives, ou en ressortir. Rien n'est perdu. */
+  archiveSession(sessionId: string, archived: boolean): Promise<void>;
+  /** Ce qui a été rangé, pour un projet. */
+  archivedSessions(projectId: string): Promise<Session[]>;
+  /** Déplacer une conversation dans un projet. */
+  moveSession(sessionId: string, projectId: string): Promise<void>;
+  /** Renommer à la main : le titre devient définitif. */
+  renameSession(sessionId: string, title: string): Promise<void>;
+  /** Une conversation dont rien ne sera gardé. */
+  createEphemeralSession(projectId: string): Promise<Session>;
   listMessages(sessionId: string): Promise<Message[]>;
   sendMessage(
     sessionId: string,
@@ -1601,6 +1615,12 @@ const tauriCore: CoreApi = {
   generateSessionTitle: (sessionId, firstPrompt) =>
     invoke<string>("generate_session_title", { sessionId, firstPrompt }),
   deleteSession: (sessionId) => invoke<void>("delete_session", { id: sessionId }),
+  archiveSession: (sessionId, archived) =>
+    invoke<void>("archive_session", { id: sessionId, archived }),
+  archivedSessions: (projectId) => invoke<Session[]>("archived_sessions", { projectId }),
+  moveSession: (sessionId, projectId) => invoke<void>("move_session", { id: sessionId, projectId }),
+  renameSession: (sessionId, title) => invoke<void>("rename_session", { id: sessionId, title }),
+  createEphemeralSession: (projectId) => invoke<Session>("create_ephemeral_session", { projectId }),
   listMessages: (sessionId) => invoke<Message[]>("list_messages", { sessionId }),
 
   sendMessage(sessionId, content, onEvent, images, responseFormat, reasoning) {
@@ -2876,6 +2896,22 @@ const demoCore: CoreApi = {
     return words.join(" ").replace(/[.!?\n]+$/, "");
   },
   deleteSession: async () => {},
+  archiveSession: async () => {},
+  archivedSessions: async () => [],
+  moveSession: async () => {},
+  renameSession: async () => {},
+  createEphemeralSession: async (projectId) => ({
+    id: "ephemere",
+    project_id: projectId,
+    title: null,
+    provider_id: null,
+    model: null,
+    created_at: new Date().toISOString(),
+    last_message_at: null,
+    closed_at: null,
+    archived_at: null,
+    ephemeral: true,
+  }),
   listMessages: async (sessionId) => demoMessages.filter((m) => m.session_id === sessionId),
 
   async sendMessage(_sessionId, content, onEvent, images, _responseFormat, _reasoning) {

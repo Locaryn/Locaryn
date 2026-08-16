@@ -72,6 +72,8 @@ function nextId(prefix: string): string {
 type Props = {
   sessionId: string | null;
   projectId?: string | null;
+  /** Rien de cette conversation ne sera gardé : l'écran doit le dire. */
+  ephemeral?: boolean;
   ctxSize?: number;
   onOpenMarketplace?: () => void;
   forceOpenImageGen?: boolean;
@@ -140,6 +142,7 @@ function readFile(file: File): Promise<Attachment> {
 export function ChatPanel({
   sessionId,
   projectId,
+  ephemeral,
   ctxSize,
   onOpenMarketplace,
   forceOpenImageGen,
@@ -889,7 +892,17 @@ export function ChatPanel({
   }
 
   return (
-    <section className="locaryn-chat">
+    <section className={`locaryn-chat${ephemeral ? " locaryn-chat-ephemeral" : ""}`}>
+      {/*
+        Le mode éphémère se voit, il ne se devine pas. Une bande en tête et un
+        liseré tout autour : on doit savoir sans le chercher que ce qui se dit
+        ici ne sera pas gardé.
+      */}
+      {ephemeral && (
+        <div className="locaryn-ephemeral-banner">
+          Conversation éphémère — rien n'en sera gardé : ni le fil, ni son titre.
+        </div>
+      )}
       <QuickModelSelector
         isOpen={quickModelOpen}
         onClose={() => setQuickModelOpen(false)}

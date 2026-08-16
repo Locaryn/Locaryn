@@ -326,6 +326,68 @@ export function App() {
     }
   }
 
+  /**
+   * Ranger une conversation aux archives.
+   *
+   * Elle sort des listes, rien n'est effacé. C'est le geste courant : on
+   * range, on ne détruit pas.
+   */
+  async function handleArchiveSession(s: Session) {
+    try {
+      await core.archiveSession(s.id, true);
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+    setStandaloneSessions((prev) => prev.filter((x) => x.id !== s.id));
+    setSessions((prev) => prev.filter((x) => x.id !== s.id));
+    if (activeSession?.id === s.id) setActiveSession(null);
+  }
+
+  /** Déplacer une conversation dans un projet. */
+  async function handleMoveSession(s: Session, projectId: string) {
+    try {
+      await core.moveSession(s.id, projectId);
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+    setStandaloneSessions((prev) => prev.filter((x) => x.id !== s.id));
+    setSessions((prev) => prev.filter((x) => x.id !== s.id));
+    // Elle réapparaîtra sous son nouveau projet à la prochaine sélection.
+    if (activeProject?.id === projectId) {
+      setSessions((prev) => [{ ...s, project_id: projectId }, ...prev]);
+    }
+  }
+
+  /** Renommer à la main : le titre devient définitif. */
+  async function handleRenameSession(s: Session, title: string) {
+    try {
+      await core.renameSession(s.id, title);
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+    const rename = (list: Session[]) => list.map((x) => (x.id === s.id ? { ...x, title } : x));
+    setStandaloneSessions(rename);
+    setSessions(rename);
+    if (activeSession?.id === s.id) setActiveSession({ ...activeSession, title });
+  }
+
+  /** Une conversation dont rien ne sera gardé. */
+  async function handleNewEphemeralChat() {
+    try {
+      const project = freeProject ?? (await core.freeChatProject());
+      if (!freeProject) setFreeProject(project);
+      const s = await core.createEphemeralSession(project.id);
+      setActiveProject(null);
+      setActiveSession(s);
+      setActiveView("chat");
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   function handleNewStandaloneChat() {
     // Open a fresh, unsaved chat view. The session is only created when the
     // user sends the first message, and the LLM picks a title from context.
@@ -636,6 +698,10 @@ export function App() {
                 onNewStandaloneChat={handleNewStandaloneChat}
                 onAddProject={handleAddProject}
                 onDeleteSession={handleDeleteSession}
+                onSessionArchived={handleArchiveSession}
+                onSessionMoved={handleMoveSession}
+                onSessionRenamed={handleRenameSession}
+                onNewEphemeralChat={handleNewEphemeralChat}
                 onOpenProjectSettings={(p) => setProjectSettings(p)}
                 onProjectArchived={(p) => {
                   // Drop it from the sidebar and fall back to another project.
@@ -675,6 +741,7 @@ export function App() {
             connectionMode={health?.mode}
             onCreateSessionForPrompt={handleCreateSessionForPrompt}
             onOpenSettings={() => setActiveView("settings")}
+            ephemeral={activeSession?.ephemeral ?? false}
             onNewChat={handleNewStandaloneChat}
             onAddProject={async () => {
               const path = await pickFolder();

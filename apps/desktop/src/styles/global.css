@@ -6869,3 +6869,136 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   color: #12140f;
   background: var(--accent);
 }
+
+/* ---------------------------------------------------------------------------
+   Conversations : prendre, déposer, ranger.
+
+   Le mouvement dit ce qui se passe. Une conversation archivée ou déplacée
+   glisse hors de la liste au lieu de disparaître d'un coup : on voit ce qui
+   part, et où.
+   --------------------------------------------------------------------------- */
+
+.locaryn-drag-item {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+.locaryn-drag-item:active {
+  cursor: grabbing;
+}
+.locaryn-leaving {
+  opacity: 0;
+  transform: translateX(14px) scale(0.97);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-drag-item {
+    transition: none;
+  }
+}
+
+/* Le projet sous le curseur pendant un glisser. */
+.locaryn-drop-target {
+  outline: 1px dashed var(--accent);
+  outline-offset: -2px;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+/* La corbeille : discrète au repos, franche quand on arrive dessus. */
+.locaryn-bin {
+  margin: 10px 8px 4px;
+  padding: 10px 12px;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+.locaryn-bin-hot {
+  color: var(--text);
+  border-color: var(--accent);
+  border-style: solid;
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.locaryn-ephemeral-btn {
+  width: calc(100% - 16px);
+  margin: 0 8px 10px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.locaryn-ephemeral-btn:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+/* Une conversation éphémère se signale d'un point, sans mot de plus. */
+.locaryn-ephemeral-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.locaryn-session-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  font-size: var(--text-sm);
+}
+
+/* Menu contextuel : posé où l'on a cliqué, au-dessus de tout le reste. */
+.locaryn-ctx {
+  position: fixed;
+  z-index: 60;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+.locaryn-ctx-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.locaryn-ctx-item:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+.locaryn-ctx-label {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* Conversation éphémère : un liseré et une bande, pour qu'on le sache sans
+   avoir à s'en souvenir. */
+.locaryn-chat-ephemeral {
+  outline: 1px solid rgba(var(--danger-rgb), 0.35);
+  outline-offset: -1px;
+}
+.locaryn-ephemeral-banner {
+  padding: 8px 16px;
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  background: rgba(var(--danger-rgb), 0.08);
+  border-bottom: 1px solid rgba(var(--danger-rgb), 0.25);
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { SessionRow } from "../components/SessionRow";
 import { type Project, type Session, core } from "../lib/core";
 import { pickFolder } from "../lib/dialog";
 
@@ -15,6 +16,14 @@ type Props = {
   onAddProject: (path: string, name: string) => void;
   onOpenProjectSettings?: (p: Project) => void;
   onDeleteSession?: (s: Session) => void;
+  /** Rangée aux archives — la liste doit la retirer. */
+  onSessionArchived?: (s: Session) => void;
+  /** Déplacée dans un projet — les deux listes bougent. */
+  onSessionMoved?: (s: Session, projectId: string) => void;
+  /** Renommée à la main. */
+  onSessionRenamed?: (s: Session, title: string) => void;
+  /** Ouvrir une conversation dont rien ne sera gardé. */
+  onNewEphemeralChat?: () => void;
   /** Called after a project is archived so the app can refresh its list. */
   onProjectArchived?: (p: Project) => void;
 };
@@ -39,7 +48,38 @@ export function LeftPanel({
   onOpenProjectSettings,
   onDeleteSession,
   onProjectArchived,
+  onSessionArchived,
+  onSessionMoved,
+  onSessionRenamed,
+  onNewEphemeralChat,
 }: Props) {
+  /**
+   * La conversation qui s'en va, le temps de l'animation.
+   *
+   * Sans ce délai, une conversation archivée disparaît d'un coup et on ne sait
+   * pas ce qui vient de partir. Deux cents millisecondes suffisent à voir le
+   * mouvement sans avoir à l'attendre.
+   */
+  const [leaving, setLeaving] = useState<string | null>(null);
+  /** La corbeille s'allume quand on survole avec une conversation en main. */
+  const [overBin, setOverBin] = useState(false);
+  /** Le projet survolé pendant un glisser, pour montrer où ça va tomber. */
+  const [overProject, setOverProject] = useState<string | null>(null);
+
+  function partirPuis(s: Session, action: () => void) {
+    setLeaving(s.id);
+    window.setTimeout(() => {
+      setLeaving(null);
+      action();
+    }, 200);
+  }
+
+  function sessionDeposee(e: React.DragEvent): string | null {
+    const id = e.dataTransfer.getData("application/locaryn-session");
+    return id || null;
+  }
+
+  const tousLesSessions = [...standaloneSessions, ...sessions];
   /** Project whose quick-actions menu is open (the ⚙ button), plus the anchor
    *  position. The menu renders `position: fixed` so the sidebar's own
    *  `overflow: auto` cannot clip it (it used to cut off the last action). */
@@ -120,37 +160,22 @@ export function LeftPanel({
           <li className="locaryn-tree-empty">Aucune conversation libre</li>
         ) : (
           standaloneSessions.map((s, i) => (
-            <li key={s.id} className="locaryn-session-row">
-              <button
-                type="button"
-                className={`locaryn-tree-item${s.id === activeSession?.id ? " locaryn-active" : ""}`}
-                style={{
-                  flex: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                onClick={() => {
-                  onSelectProject(null);
-                  onSelectSession(s);
-                }}
-              >
-                💬 {sessionLabel(s, i)}
-              </button>
-              {onDeleteSession && (
-                <button
-                  type="button"
-                  className="locaryn-session-delete-btn"
-                  title="Supprimer cette conversation libre"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteSession(s);
-                  }}
-                >
-                  🗑
-                </button>
-              )}
-            </li>
+            <SessionRow
+              key={s.id}
+              session={s}
+              label={sessionLabel(s, i)}
+              bullet="💬"
+              active={s.id === activeSession?.id}
+              leaving={leaving === s.id}
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              onSelect={() => {
+                onSelectProject(null);
+                onSelectSession(s);
+              }}
+              onRename={(t) => onSessionRenamed?.(s, t)}
+              onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
+              onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+            />
           ))
         )}
       </ul>
@@ -167,10 +192,27 @@ export function LeftPanel({
               >
                 <button
                   type="button"
-                  className={`locaryn-tree-item${isActive ? " locaryn-active" : ""}`}
+                  className={`locaryn-tree-item${isActive ? " locaryn-active" : ""}${
+                    overProject === p.id ? " locaryn-drop-target" : ""
+                  }`}
                   style={{ flex: 1 }}
                   onClick={() => onSelectProject(p)}
                   title={p.path}
+                  // Déposer une conversation ici la range dans ce projet.
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes("application/locaryn-session")) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setOverProject(p.id);
+                  }}
+                  onDragLeave={() => setOverProject((cur) => (cur === p.id ? null : cur))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setOverProject(null);
+                    const id = sessionDeposee(e);
+                    const s = tousLesSessions.find((x) => x.id === id);
+                    if (s && s.project_id !== p.id) partirPuis(s, () => onSessionMoved?.(s, p.id));
+                  }}
                 >
                   <span className="locaryn-caret">{isActive ? "▾" : "▸"}</span> 📁 {p.name}
                 </button>
@@ -258,36 +300,21 @@ export function LeftPanel({
               {isActive && (
                 <ul>
                   {sessions.map((s, i) => (
-                    <li key={s.id} className="locaryn-session-row">
-                      <button
-                        type="button"
-                        className={`locaryn-tree-item${
-                          s.id === activeSession?.id ? " locaryn-active" : ""
-                        }`}
-                        style={{
-                          flex: 1,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        onClick={() => onSelectSession(s)}
-                      >
-                        • {sessionLabel(s, i)}
-                      </button>
-                      {onDeleteSession && (
-                        <button
-                          type="button"
-                          className="locaryn-session-delete-btn"
-                          title="Supprimer cette conversation"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteSession(s);
-                          }}
-                        >
-                          🗑
-                        </button>
-                      )}
-                    </li>
+                    <SessionRow
+                      key={s.id}
+                      session={s}
+                      label={sessionLabel(s, i)}
+                      bullet="•"
+                      active={s.id === activeSession?.id}
+                      leaving={leaving === s.id}
+                      projects={projects
+                        .filter((x) => x.id !== p.id)
+                        .map((x) => ({ id: x.id, name: x.name }))}
+                      onSelect={() => onSelectSession(s)}
+                      onRename={(t) => onSessionRenamed?.(s, t)}
+                      onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
+                      onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+                    />
                   ))}
                   <li>
                     <button
@@ -307,6 +334,43 @@ export function LeftPanel({
       <button type="button" className="locaryn-add-btn" onClick={promptAddProject}>
         + Ajouter un projet
       </button>
+
+      {/*
+        La corbeille archive, elle ne supprime pas. Retirer une conversation
+        d'une liste n'est presque jamais vouloir la perdre : elle part aux
+        archives, où elle reste consultable, et la suppression devient un
+        second geste, pris là-bas.
+      */}
+      <div
+        className={`locaryn-bin${overBin ? " locaryn-bin-hot" : ""}`}
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes("application/locaryn-session")) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setOverBin(true);
+        }}
+        onDragLeave={() => setOverBin(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOverBin(false);
+          const id = sessionDeposee(e);
+          const s = tousLesSessions.find((x) => x.id === id);
+          if (s) partirPuis(s, () => onSessionArchived?.(s));
+        }}
+      >
+        🗄 Déposer ici pour archiver
+      </div>
+
+      {onNewEphemeralChat && (
+        <button
+          type="button"
+          className="locaryn-ephemeral-btn"
+          onClick={onNewEphemeralChat}
+          title="Rien de cette conversation ne sera gardé"
+        >
+          Conversation éphémère
+        </button>
+      )}
     </aside>
   );
 }
