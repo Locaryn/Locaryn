@@ -8,6 +8,15 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PluginManifest {
+    /// URL du schéma, purement documentaire.
+    ///
+    /// `$schema` est la convention JSON Schema, et c'est ce qu'écrivent tous
+    /// les manifestes publiés — y compris les treize extensions officielles.
+    /// L'exiger sous le nom `schema` faisait échouer leur installation avec
+    /// « missing field `schema` ». On accepte les deux, et son absence : un
+    /// champ qui ne sert qu'à aider les éditeurs de texte n'a pas à bloquer
+    /// une installation.
+    #[serde(default, alias = "$schema")]
     pub schema: String,
     #[serde(rename = "apiVersion")]
     pub api_version: String,
@@ -35,6 +44,36 @@ pub struct PluginManifest {
     pub deps: Vec<Dep>,
     #[serde(default)]
     pub config: Option<ConfigSchema>,
+    /// Ce que l'extension apporte comme fonction, en mots que l'interface
+    /// comprend : `image-gen`, `voice-tts`, `model-training`…
+    ///
+    /// C'est ce qui décide de la présence d'un écran : le Studio de génération
+    /// n'existe que si une extension installée sait générer quelque chose.
+    /// Retirer l'extension retire l'écran.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    /// Ce que l'extension ajoute à l'interface.
+    #[serde(default, rename = "ui_contributions", alias = "uiContributions")]
+    pub ui: UiContributions,
+}
+
+/// Entrées d'interface apportées par une extension.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UiContributions {
+    /// Entrées de navigation de premier niveau.
+    #[serde(default, rename = "nav_items", alias = "navItems")]
+    pub nav_items: Vec<UiEntry>,
+    /// Onglets à l'intérieur du Studio de génération.
+    #[serde(default, rename = "studio_tabs", alias = "studioTabs")]
+    pub studio_tabs: Vec<UiEntry>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UiEntry {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 /// Permissions can be `false` (explicit no), `true` (request with defaults),

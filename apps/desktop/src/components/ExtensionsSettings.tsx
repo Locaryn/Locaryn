@@ -173,13 +173,25 @@ export function ExtensionsSettings() {
     return subscribeDeepLink(openFromLink);
   }, []);
 
+  /**
+   * Publie la liste et prévient le reste de l'application.
+   *
+   * La navigation dépend de ce que les extensions apportent : installer la
+   * génération d'images doit faire apparaître le Studio, la retirer doit le
+   * faire disparaître. Sans ce signal, il fallait redémarrer pour le voir.
+   */
+  const publishInstalled = useCallback((list: InstalledExtension[]) => {
+    setInstalled(list);
+    window.dispatchEvent(new Event("locaryn:extensions-changed"));
+  }, []);
+
   const loadInstalled = useCallback(async () => {
     try {
-      setInstalled(await core.listExtensions());
+      publishInstalled(await core.listExtensions());
     } catch (e) {
       setError(String(e));
     }
-  }, []);
+  }, [publishInstalled]);
 
   /** Compare les versions installées à la source GitHub. Silencieux hors-ligne. */
   const refreshUpdates = useCallback(async (force = false) => {
@@ -302,7 +314,7 @@ export function ExtensionsSettings() {
     setBusy(e.id);
     setError(null);
     try {
-      setInstalled(await core.setExtensionEnabled(e.id, !e.enabled));
+      publishInstalled(await core.setExtensionEnabled(e.id, !e.enabled));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -405,7 +417,7 @@ export function ExtensionsSettings() {
     if (!window.confirm(`Désinstaller « ${e.name} » et supprimer ses fichiers ?`)) return;
     setBusy(e.id);
     try {
-      setInstalled(await core.removeExtension(e.id));
+      publishInstalled(await core.removeExtension(e.id));
       await refreshUpdates(true);
       if (tab === "browse") await loadCatalog();
     } catch (err) {

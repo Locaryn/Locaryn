@@ -58,6 +58,8 @@ impl ExtensionRegistry {
                 requested: manifest::requested_permissions(&m),
                 granted: Vec::new(),
             },
+            capabilities: m.capabilities.clone(),
+            ui: m.ui.clone(),
         };
         by_name.insert(m.name.clone(), entry.clone());
         Ok(entry)

@@ -57,6 +57,13 @@ pub struct ExtensionEntry {
     pub manifest_path: std::path::PathBuf,
     pub enabled: bool,
     pub permissions: PermissionSet,
+    /// Ce que l'extension sait faire (`image-gen`, `voice-tts`…). Les clients
+    /// s'en servent pour décider quels écrans existent — c'est ce qui fait
+    /// apparaître le Studio de génération, et disparaître avec la dernière
+    /// extension qui l'apportait.
+    pub capabilities: Vec<String>,
+    /// Ce qu'elle ajoute à l'interface.
+    pub ui: manifest::UiContributions,
 }
 
 /// Resolved permission set: requested (paired with the `Permission`) vs granted.

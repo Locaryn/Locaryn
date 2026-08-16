@@ -29,6 +29,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 pub mod engine_manager;
+pub mod runtime_install;
 
 // ============================================================================
 // Config

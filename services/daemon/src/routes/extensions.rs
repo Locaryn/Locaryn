@@ -96,28 +96,77 @@ fn registry_error_response(e: RegistryError) -> (StatusCode, Json<serde_json::Va
     )
 }
 
-fn entry_to_json(e: &locaryn_extensions::ExtensionEntry) -> serde_json::Value {
-    serde_json::json!({
-        "id": e.id,
-        "name": e.name,
-        "version": e.version,
-        "api_version": e.api_version,
-        "kind": e.kind,
-        "scope": e.scope,
-        "manifest_path": e.manifest_path,
-        "enabled": e.enabled,
-        "permissions": {
-            "requested": e.permissions.requested.iter().map(|(p, r)| {
-                serde_json::json!({
-                    "permission": format!("{p:?}"),
-                    "reason": r.reason,
-                    "scope": r.scope,
-                    "require_approval": r.require_approval,
-                })
-            }).collect::<Vec<_>>(),
-            "granted": e.permissions.granted.iter().map(|p| format!("{p:?}")).collect::<Vec<_>>(),
-        }
-    })
+/// Une extension telle que tous les clients la lisent.
+///
+/// Le service renvoyait auparavant une forme à lui, où `permissions` était un
+/// objet `{requested, granted}` — la CLI et le téléphone, qui attendent le type
+/// partagé, échouaient au décodage. Un seul contrat, celui du type partagé.
+fn entry_to_installed(
+    e: &locaryn_extensions::ExtensionEntry,
+) -> locaryn_shared_types::InstalledExtension {
+    let dir = e.manifest_path.parent().map(|p| p.to_path_buf());
+    let manifest = dir
+        .as_deref()
+        .and_then(|d| locaryn_extensions::manifest::load(d).ok());
+    let components = match (&dir, &manifest) {
+        (Some(d), Some(m)) => locaryn_extensions::loader::load_with_manifest(d, m.clone()).counts(),
+        _ => locaryn_shared_types::ExtensionComponents::default(),
+    };
+    let now = chrono::Utc::now();
+    locaryn_shared_types::InstalledExtension {
+        id: e.id,
+        name: e.name.clone(),
+        display_name: e.name.clone(),
+        version: e.version.clone(),
+        api_version: e.api_version.clone(),
+        description: manifest.as_ref().and_then(|m| m.description.clone()),
+        author: manifest.as_ref().and_then(|m| m.author.clone()),
+        homepage: manifest.as_ref().and_then(|m| m.homepage.clone()),
+        kind: e.kind.clone(),
+        scope: e.scope,
+        ecosystem: locaryn_shared_types::ExtensionEcosystem::Locaryn,
+        source: dir.as_ref().map(|d| d.display().to_string()),
+        install_dir: dir
+            .as_ref()
+            .map(|d| d.display().to_string())
+            .unwrap_or_default(),
+        enabled: e.enabled,
+        components,
+        // Une extension désactivée n'apporte rien : sinon un écran survivrait
+        // à l'extinction de ce qui le portait.
+        capabilities: if e.enabled {
+            e.capabilities.clone()
+        } else {
+            Vec::new()
+        },
+        ui: locaryn_shared_types::ExtensionUi {
+            nav_items: e.ui.nav_items.iter().map(to_ui_entry).collect(),
+            studio_tabs: e.ui.studio_tabs.iter().map(to_ui_entry).collect(),
+        },
+        permissions: e
+            .permissions
+            .requested
+            .iter()
+            .map(|(p, r)| locaryn_shared_types::ExtensionPermissionState {
+                permission: p.clone(),
+                reason: r.reason.clone(),
+                granted: e.permissions.granted.contains(p),
+            })
+            .collect(),
+        load_errors: Vec::new(),
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+fn to_ui_entry(
+    e: &locaryn_extensions::manifest::UiEntry,
+) -> locaryn_shared_types::ExtensionUiEntry {
+    locaryn_shared_types::ExtensionUiEntry {
+        id: e.id.clone(),
+        label: e.label.clone(),
+        icon: e.icon.clone(),
+    }
 }
 
 // ============================================================================
@@ -127,7 +176,7 @@ fn entry_to_json(e: &locaryn_extensions::ExtensionEntry) -> serde_json::Value {
 /// GET /v1/extensions — list all installed extensions.
 pub async fn list_extensions(State(s): State<Arc<DaemonState>>) -> Response {
     let entries = s.extensions.list();
-    let json: Vec<serde_json::Value> = entries.iter().map(entry_to_json).collect();
+    let json: Vec<_> = entries.iter().map(entry_to_installed).collect();
     (StatusCode::OK, Json(json)).into_response()
 }
 
@@ -164,7 +213,7 @@ pub async fn install_extension(
     }
 
     match s.extensions.install_from_dir(dir, scope) {
-        Ok(entry) => (StatusCode::CREATED, Json(entry_to_json(&entry))).into_response(),
+        Ok(entry) => (StatusCode::CREATED, Json(entry_to_installed(&entry))).into_response(),
         Err(e) => registry_error_response(e).into_response(),
     }
 }
@@ -311,7 +360,7 @@ pub async fn reload_extensions(
                 Json(serde_json::json!({
                     "status": "reloaded",
                     "name": name,
-                    "entry": entry_to_json(&entry),
+                    "entry": entry_to_installed(&entry),
                 })),
             )
                 .into_response(),

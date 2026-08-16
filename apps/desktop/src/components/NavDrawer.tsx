@@ -86,6 +86,18 @@ const BASE_NAV_ITEMS: NavItem[] = [
   },
 ];
 
+/**
+ * Les écrans qui n'existent que si une extension les apporte, et ce qu'ils
+ * exigent. Dérivé de la même liste que le menu : une entrée cachée du menu et
+ * un écran ouvert par un ancien clic doivent obéir à la même règle.
+ */
+export const CAPABILITY_GATED_VIEWS: Record<string, string[]> = Object.fromEntries(
+  BASE_NAV_ITEMS.filter((i) => i.requiredCapabilities?.length).map((i) => [
+    i.id,
+    i.requiredCapabilities as string[],
+  ]),
+);
+
 export function NavDrawer({
   isOpen,
   onClose,

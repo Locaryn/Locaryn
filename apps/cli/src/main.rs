@@ -141,6 +141,8 @@ enum ProviderCmd {
         #[arg(long)]
         model: Option<String>,
     },
+    /// Install the local inference engine (llama-server), pinned build.
+    Install,
 }
 
 #[derive(Subcommand)]
@@ -365,47 +367,140 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
             ProviderCmd::Health { id } => {
-                println!("health {id} (V1 wires per-provider healthcheck)");
+                let status = client.supervisor_status().await?;
+                let rows = status.as_array().cloned().unwrap_or_default();
+                let rows: Vec<_> = rows
+                    .into_iter()
+                    .filter(|r| {
+                        id.is_empty() || r["engine"].as_str().unwrap_or("").contains(id.as_str())
+                    })
+                    .collect();
+                if rows.is_empty() {
+                    println!("Aucun moteur ne correspond à « {id} ».");
+                    return Ok(());
+                }
+                println!(
+                    "{:<14} {:<28} {:<8} PROCESSUS",
+                    "MOTEUR", "ADRESSE", "SANTÉ"
+                );
+                for r in rows {
+                    println!(
+                        "{:<14} {:<28} {:<8} {}",
+                        r["engine"].as_str().unwrap_or("?"),
+                        r["endpoint"].as_str().unwrap_or("?"),
+                        if r["healthy"] == true { "ok" } else { "muet" },
+                        if r["child_alive"] == true {
+                            "lancé par Locaryn"
+                        } else {
+                            "non lancé ici"
+                        }
+                    );
+                }
+                Ok(())
+            }
+            ProviderCmd::Install => {
+                println!("Téléchargement du moteur local (llama.cpp, build épinglée)…");
+                let path = locaryn_provider_supervisor::runtime_install::install_llama_runtime(
+                    Some(&|done, total| {
+                        if total > 0 && done % (8 * 1024 * 1024) < 65536 {
+                            let pct = done as f64 / total as f64 * 100.0;
+                            println!("  {pct:.0} % ({} Mo)", done / 1_048_576);
+                        }
+                    }),
+                )
+                .await?;
+                println!("Moteur installé : {}", path.display());
+                println!("Il démarrera tout seul à la prochaine conversation.");
                 Ok(())
             }
             ProviderCmd::Start { engine, model } => {
                 let e = parse_engine(&engine)?;
-                let p = client.start_local(e, model.as_deref()).await?;
-                println!("started {:?} at {}", p.engine, p.endpoint);
-                Ok(())
-            }
-        },
-        Cmd::Plugin { action } => match action {
-            PluginCmd::Install { path, scope } => {
-                let scope = parse_scope(&scope)?;
-                let reg = locaryn_extensions::ExtensionRegistry::new();
-                let entry = reg.install_from_dir(std::path::Path::new(&path), scope)?;
+                let out = client.start_local(e, model.as_deref()).await?;
                 println!(
-                    "installed {} v{} ({}), permissions pending approval",
-                    entry.name,
-                    entry.version,
-                    format!("{:?}", entry.scope).to_lowercase()
+                    "{} démarré sur {}",
+                    out["engine"].as_str().unwrap_or("moteur"),
+                    out["endpoint"].as_str().unwrap_or("?")
                 );
                 Ok(())
             }
+        },
+        // Ces commandes passent par le service, comme l'application : c'est lui
+        // qui tient le registre. Elles imprimaient auparavant « enabled x »
+        // sans rien appeler — un succès annoncé qui n'avait jamais eu lieu.
+        Cmd::Plugin { action } => match action {
+            PluginCmd::Install { path, scope } => {
+                // Chemin résolu pour la même raison que `projects add` : le
+                // service ne partage pas le dossier courant de la CLI.
+                let source = match std::fs::canonicalize(&path) {
+                    Ok(p) => p
+                        .to_string_lossy()
+                        .trim_start_matches(r"\\?\")
+                        .replace('\\', "/"),
+                    // Pas un chemin local : c'est un `owner/repo` du catalogue.
+                    Err(_) => path.clone(),
+                };
+                let ext = client.install_extension(&source, &scope).await?;
+                let name = ext["name"].as_str().unwrap_or("extension");
+                let version = ext["version"].as_str().unwrap_or("?");
+                println!("installée : {name} v{version}");
+                let caps = ext["capabilities"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|c| c.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+                if !caps.is_empty() {
+                    println!("apporte : {caps}");
+                }
+                let pending = ext["permissions"]
+                    .as_array()
+                    .map(|a| a.iter().filter(|p| p["granted"] != true).count())
+                    .unwrap_or(0);
+                if pending > 0 {
+                    println!("{pending} permission(s) en attente d'accord — activez-la depuis l'application.");
+                }
+                Ok(())
+            }
             PluginCmd::List => {
-                println!("(plugin list — V1 wires the registry query)");
+                let exts = client.list_extensions().await?;
+                if exts.is_empty() {
+                    println!("Aucune extension installée.");
+                    return Ok(());
+                }
+                println!("{:<24} {:<10} {:<9} APPORTE", "NOM", "VERSION", "ÉTAT");
+                for e in exts {
+                    println!(
+                        "{:<24} {:<10} {:<9} {}",
+                        e.name,
+                        e.version,
+                        if e.enabled { "active" } else { "inactive" },
+                        e.capabilities.join(", ")
+                    );
+                }
                 Ok(())
             }
             PluginCmd::Enable { name } => {
-                println!("enabled {name}");
+                client.set_extension_enabled(&name, true).await?;
+                println!("{name} : activée");
                 Ok(())
             }
             PluginCmd::Disable { name } => {
-                println!("disabled {name}");
+                client.set_extension_enabled(&name, false).await?;
+                println!("{name} : désactivée");
                 Ok(())
             }
             PluginCmd::Remove { name } => {
-                println!("removed {name}");
+                client.remove_extension(&name).await?;
+                println!("{name} : retirée");
                 Ok(())
             }
             PluginCmd::Reload => {
-                println!("reloaded");
+                let out = client.reload_extensions().await?;
+                let n = out.as_array().map(|a| a.len()).unwrap_or(0);
+                println!("{n} extension(s) rechargée(s)");
                 Ok(())
             }
         },
@@ -1262,15 +1357,5 @@ fn parse_engine(s: &str) -> anyhow::Result<locaryn_shared_types::ProviderEngine>
         "lmstudio" | "lm_studio" => locaryn_shared_types::ProviderEngine::Lmstudio,
         "vllm" => locaryn_shared_types::ProviderEngine::Vllm,
         _ => anyhow::bail!("unknown engine: {s}"),
-    })
-}
-
-fn parse_scope(s: &str) -> anyhow::Result<locaryn_shared_types::ExtensionScope> {
-    Ok(match s.to_lowercase().as_str() {
-        "global" => locaryn_shared_types::ExtensionScope::Global,
-        "user" => locaryn_shared_types::ExtensionScope::User,
-        "workspace" => locaryn_shared_types::ExtensionScope::Workspace,
-        "session" => locaryn_shared_types::ExtensionScope::Session,
-        _ => anyhow::bail!("invalid scope: {s}"),
     })
 }

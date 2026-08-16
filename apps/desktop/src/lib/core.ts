@@ -332,6 +332,18 @@ export interface ExtensionPermissionState {
   granted: boolean;
 }
 
+/** Une entrée d'interface apportée par une extension. */
+export interface ExtensionUiEntry {
+  id: string;
+  label: string;
+  icon: string | null;
+}
+
+export interface ExtensionUi {
+  nav_items: ExtensionUiEntry[];
+  studio_tabs: ExtensionUiEntry[];
+}
+
 export interface InstalledExtension {
   id: string;
   name: string;
@@ -348,6 +360,14 @@ export interface InstalledExtension {
   install_dir: string;
   enabled: boolean;
   components: ExtensionComponents;
+  /**
+   * Ce que l'extension sait faire : `image-gen`, `voice-tts`, `model-training`…
+   * Vide quand elle est désactivée. La navigation s'en sert pour décider quels
+   * écrans existent.
+   */
+  capabilities: string[];
+  /** Ce qu'elle ajoute à l'interface. */
+  ui: ExtensionUi;
   permissions: ExtensionPermissionState[];
   /** Components that failed to parse. The plugin still runs without them. */
   load_errors: string[];
@@ -2339,6 +2359,8 @@ let demoExtensions: InstalledExtension[] = [
     },
     permissions: [{ permission: "files_read", reason: "Lire le diff à relire", granted: true }],
     load_errors: [],
+    capabilities: [],
+    ui: { nav_items: [], studio_tabs: [] },
     created_at: "2026-07-20T10:00:00Z",
     updated_at: "2026-07-20T10:00:00Z",
   },
@@ -2371,6 +2393,8 @@ let demoExtensions: InstalledExtension[] = [
       { permission: "network", reason: "Interroger la base de vulnérabilités", granted: false },
     ],
     load_errors: [],
+    capabilities: [],
+    ui: { nav_items: [], studio_tabs: [] },
     created_at: "2026-07-22T09:00:00Z",
     updated_at: "2026-07-22T09:00:00Z",
   },
@@ -3146,6 +3170,8 @@ const demoCore: CoreApi = {
         { permission: "files_read", reason: "Lire le projet", granted: false },
       ],
       load_errors: [],
+      capabilities: [],
+      ui: { nav_items: [], studio_tabs: [] },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

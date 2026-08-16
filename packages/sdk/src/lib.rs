@@ -217,6 +217,104 @@ impl LocarynClient {
         }
     }
 
+    // ---- Extensions -------------------------------------------------------
+
+    pub async fn list_extensions(
+        &self,
+    ) -> Result<Vec<locaryn_shared_types::InstalledExtension>, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/extensions")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn install_extension(
+        &self,
+        source: &str,
+        scope: &str,
+    ) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({ "source": source, "scope": scope });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url("/v1/extensions/install"))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// `enable`/`disable`, par nom d'extension.
+    pub async fn set_extension_enabled(
+        &self,
+        name: &str,
+        enabled: bool,
+    ) -> Result<serde_json::Value, SdkError> {
+        let action = if enabled { "enable" } else { "disable" };
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/extensions/{name}/{action}"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn remove_extension(&self, name: &str) -> Result<(), SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .delete(self.url(&format!("/v1/extensions/{name}"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn reload_extensions(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/extensions/reload")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// État des moteurs locaux vu par le superviseur.
+    pub async fn supervisor_status(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/supervisor/status")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
     // ---- Sessions ---------------------------------------------------------
 
     pub async fn list_sessions(&self, project_id: &str) -> Result<Vec<Session>, SdkError> {
@@ -376,21 +474,23 @@ impl LocarynClient {
         }
     }
 
+    /// Démarre un moteur local par l'intermédiaire du superviseur.
+    ///
+    /// L'adresse visée était `/v1/providers/local/start`, qui n'existe pas :
+    /// le service répondait 405 et la commande échouait sans jamais rien
+    /// démarrer. La route réelle est celle du superviseur.
     pub async fn start_local(
         &self,
         engine: locaryn_shared_types::ProviderEngine,
         model: Option<&str>,
-    ) -> Result<Provider, SdkError> {
-        let mut body = serde_json::json!({ "engine": engine });
+    ) -> Result<serde_json::Value, SdkError> {
+        let engine_name = format!("{engine:?}").to_lowercase();
+        let mut body = serde_json::json!({ "engine": engine_name });
         if let Some(m) = model {
             body["model"] = serde_json::Value::String(m.to_string());
         }
         let resp = self
-            .add_auth(
-                self.http
-                    .post(self.url("/v1/providers/local/start"))
-                    .json(&body),
-            )
+            .add_auth(self.http.post(self.url("/v1/supervisor/start")).json(&body))
             .send()
             .await?;
         if resp.status().is_success() {

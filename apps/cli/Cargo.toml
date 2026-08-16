@@ -20,6 +20,7 @@ locaryn-storage = { workspace = true }
 locaryn-sdk = { workspace = true }
 locaryn-config = { workspace = true }
 locaryn-extensions = { workspace = true }
+locaryn-provider-supervisor = { workspace = true }
 locaryn-events = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }

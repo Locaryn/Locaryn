@@ -1,12 +1,12 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BatchStudio } from "./components/BatchStudio";
 import { ChatPermissionsModal } from "./components/ChatPermissionsModal";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
-import { NavDrawer } from "./components/NavDrawer";
+import { CAPABILITY_GATED_VIEWS, NavDrawer } from "./components/NavDrawer";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { TaskCenter } from "./components/TaskCenter";
@@ -62,6 +62,15 @@ export function App() {
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
+  /**
+   * Ce que les extensions actives savent faire.
+   *
+   * Décide de la présence d'écrans entiers : le Studio de génération n'existe
+   * que si une extension apporte `image-gen`, `voice-tts`… et disparaît quand
+   * la dernière est retirée ou désactivée. Les badges de capacité du
+   * catalogue de modèles suivent la même liste.
+   */
+  const [activeCapabilities, setActiveCapabilities] = useState<string[]>([]);
 
   const theme = useTheme();
 
@@ -132,6 +141,48 @@ export function App() {
   useEffect(() => {
     bootstrap();
   }, []);
+
+  /**
+   * Relit ce que les extensions actives apportent.
+   *
+   * Appelée au démarrage et après chaque installation, activation ou retrait :
+   * c'est ce qui fait apparaître le Studio quand on ajoute la génération
+   * d'images, et disparaître quand on la retire.
+   */
+  const refreshCapabilities = useCallback(async () => {
+    try {
+      const installed = await core.listExtensions();
+      const caps = new Set<string>();
+      for (const ext of installed) {
+        if (!ext.enabled) continue;
+        for (const c of ext.capabilities ?? []) caps.add(c);
+      }
+      setActiveCapabilities([...caps]);
+    } catch {
+      // Registre illisible : on n'invente pas de capacités. L'interface se
+      // réduit à ce qui marche sans extension.
+      setActiveCapabilities([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCapabilities();
+    // L'écran des extensions émet cet évènement après chaque changement, pour
+    // que la navigation suive sans qu'on ait à redémarrer l'application.
+    const onChange = () => void refreshCapabilities();
+    window.addEventListener("locaryn:extensions-changed", onChange);
+    return () => window.removeEventListener("locaryn:extensions-changed", onChange);
+  }, [refreshCapabilities]);
+
+  // Retirer l'extension qui portait l'écran ouvert laisserait la personne
+  // devant une vue qui n'existe plus. On revient au chat plutôt que d'afficher
+  // le vide.
+  useEffect(() => {
+    const needs = CAPABILITY_GATED_VIEWS[activeView];
+    if (needs && !needs.some((c) => activeCapabilities.includes(c))) {
+      setActiveView("chat");
+    }
+  }, [activeView, activeCapabilities]);
 
   // Deep links (`locaryn://install?src=owner/repo`): a link can open the app
   // from a cold start (URL passed as CLI argument — read via `get_current`)
@@ -563,6 +614,7 @@ export function App() {
         onClose={() => setNavDrawerOpen(false)}
         activeView={activeView}
         onSelectView={(v) => setActiveView(v)}
+        activeCapabilities={activeCapabilities}
       />
 
       <div

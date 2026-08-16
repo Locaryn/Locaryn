@@ -1500,6 +1500,11 @@ async fn supervisor_status(
 #[derive(serde::Deserialize)]
 struct SupervisorActionBody {
     engine: String,
+    /// Modèle à servir. Le drapeau existait côté CLI mais n'était lu par
+    /// personne : le moteur redémarrait sur le modèle déjà enregistré, et
+    /// `--model` n'avait aucun effet visible.
+    #[serde(default)]
+    model: Option<String>,
 }
 
 /// POST /v1/supervisor/start — manually start an engine.
@@ -1519,6 +1524,26 @@ async fn supervisor_start(
                 .into_response();
         }
     };
+    // Le modèle demandé est enregistré avant le démarrage : c'est lui que le
+    // superviseur lira pour construire la ligne de commande du moteur.
+    if let Some(model) = body.model.as_deref().filter(|m| !m.is_empty()) {
+        let endpoint = locaryn_provider_supervisor::default_endpoint(engine).to_string();
+        if let Err(e) = s
+            .storage
+            .providers
+            .upsert_local(engine, &endpoint, Some(model.to_string()))
+            .await
+        {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(serde_json::json!({
+                    "error": { "code": "bad_model", "message": e.to_string() }
+                })),
+            )
+                .into_response();
+        }
+    }
+
     match s.supervisor.ensure_running(engine).await {
         Ok(endpoint) => (
             StatusCode::OK,

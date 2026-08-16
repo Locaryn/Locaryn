@@ -334,6 +334,23 @@ pub struct ExtensionPermissionState {
     pub granted: bool,
 }
 
+/// Ce qu'une extension ajoute à l'interface.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExtensionUi {
+    #[serde(default)]
+    pub nav_items: Vec<ExtensionUiEntry>,
+    #[serde(default)]
+    pub studio_tabs: Vec<ExtensionUiEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionUiEntry {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+}
+
 /// An installed extension as the UI sees it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledExtension {
@@ -355,6 +372,16 @@ pub struct InstalledExtension {
     pub install_dir: String,
     pub enabled: bool,
     pub components: ExtensionComponents,
+    /// Ce que l'extension sait faire (`image-gen`, `voice-tts`, …). L'interface
+    /// s'en sert pour décider quels écrans existent : le Studio de génération
+    /// n'apparaît que si une extension active apporte une de ces capacités, et
+    /// disparaît quand la dernière est retirée.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    /// Ce que l'extension ajoute à l'interface : entrées de navigation et
+    /// onglets du Studio.
+    #[serde(default)]
+    pub ui: ExtensionUi,
     pub permissions: Vec<ExtensionPermissionState>,
     /// Non-fatal problems found while loading components. A plugin can be
     /// enabled with a broken skill file; the UI surfaces why that skill is

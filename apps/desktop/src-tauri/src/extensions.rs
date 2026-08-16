@@ -207,6 +207,14 @@ fn plugin_root(manifest_path: &str) -> Option<PathBuf> {
 // Reading the installed set
 // ============================================================================
 
+fn ui_entry(e: &locaryn_extensions::manifest::UiEntry) -> locaryn_shared_types::ExtensionUiEntry {
+    locaryn_shared_types::ExtensionUiEntry {
+        id: e.id.clone(),
+        label: e.label.clone(),
+        icon: e.icon.clone(),
+    }
+}
+
 async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String> {
     let rows = core
         .storage
@@ -276,6 +284,24 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
                 .unwrap_or_else(|| row.manifest_path.clone()),
             enabled: row.enabled,
             components,
+            // Une extension désactivée n'apporte plus rien à l'interface : ses
+            // capacités ne comptent que tant qu'elle est active, sinon le
+            // Studio survivrait à sa propre désactivation.
+            capabilities: if row.enabled {
+                manifest
+                    .as_ref()
+                    .map(|m| m.capabilities.clone())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            },
+            ui: manifest
+                .as_ref()
+                .map(|m| locaryn_shared_types::ExtensionUi {
+                    nav_items: m.ui.nav_items.iter().map(ui_entry).collect(),
+                    studio_tabs: m.ui.studio_tabs.iter().map(ui_entry).collect(),
+                })
+                .unwrap_or_default(),
             permissions,
             load_errors,
             created_at: row.created_at,

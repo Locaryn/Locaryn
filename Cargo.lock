@@ -3462,6 +3462,7 @@ dependencies = [
  "locaryn-events",
  "locaryn-extensions",
  "locaryn-mcp",
+ "locaryn-provider-supervisor",
  "locaryn-sdk",
  "locaryn-shared-types",
  "locaryn-storage",
