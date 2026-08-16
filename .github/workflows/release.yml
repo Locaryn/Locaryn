@@ -397,7 +397,15 @@ jobs:
           [ -n "$apk" ] || { echo "::error::aucun APK produit"; exit 1; }
           # Nom aligné sur les autres artefacts : locaryn-<version>-<produit>-<plateforme>.
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            tools=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+            # `zipalign` et `apksigner` vivent dans les build-tools, que l'image
+            # du runner fournit — mais pas contractuellement. Les installer si
+            # elles manquent coûte une minute ; découvrir leur absence en pleine
+            # release en coûte quarante.
+            tools=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* 2>/dev/null | sort -V | tail -1)
+            if [ -z "$tools" ]; then
+              sdkmanager --install "build-tools;34.0.0" > /dev/null
+              tools="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+            fi
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore.jks"
             "$tools/zipalign" -p -f 4 "$apk" "$RUNNER_TEMP/aligned.apk"
             "$tools/apksigner" sign \
