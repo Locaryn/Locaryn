@@ -408,7 +408,12 @@ jobs:
             fi
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore.jks"
             "$tools/zipalign" -p -f 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+            # Pas de fichier `.idsig` : la signature v4 ne sert qu'à
+            # l'installation incrémentale par adb, et publier à côté de l'APK un
+            # fichier que personne ne télécharge est exactement le genre de
+            # bruit qu'on vient de retirer de la release.
             "$tools/apksigner" sign \
+              --v4-signing-enabled false \
               --ks "$RUNNER_TEMP/keystore.jks" \
               --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
               --ks-key-alias "$ANDROID_KEY_ALIAS" \
