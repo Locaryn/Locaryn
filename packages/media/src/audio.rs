@@ -40,6 +40,41 @@ pub fn list_tts_models() -> Vec<String> {
     names
 }
 
+/// Une voix qui peut parler d'elle-même, sans enregistrement de référence.
+///
+/// La variante « Base » de Qwen3-TTS n'a pas de voix par défaut : elle ne sait
+/// que cloner celle qu'on lui donne. La proposer comme premier choix — c'est
+/// l'ordre alphabétique — menait à un échec systématique quand personne
+/// n'avait choisi de modèle.
+pub fn has_own_voice(name: &str) -> bool {
+    !name.to_ascii_lowercase().contains("base")
+}
+
+/// Les voix installées qui peuvent parler sans référence, la plus autonome
+/// d'abord.
+///
+/// Kokoro tourne avec ce que l'installation apporte ; Qwen3-TTS a besoin
+/// d'outils externes qui peuvent manquer sur la machine. Quand personne n'a
+/// choisi de voix, mieux vaut commencer par celle qui a le plus de chances de
+/// répondre.
+pub fn list_usable_tts_models() -> Vec<String> {
+    let mut v: Vec<String> = list_tts_models()
+        .into_iter()
+        .filter(|n| has_own_voice(n))
+        .collect();
+    v.sort_by_key(|n| {
+        let l = n.to_ascii_lowercase();
+        if l.contains("kokoro") {
+            0
+        } else if l.ends_with(".onnx") || l.contains("piper") {
+            1
+        } else {
+            2
+        }
+    });
+    v
+}
+
 /// One text-to-speech generation.
 pub struct TtsRequest {
     /// Model name as returned by [`list_tts_models`].
@@ -450,5 +485,49 @@ async fn run_python_script(python: &str, script: &str, text: &str) -> Result<(),
         Ok(())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+#[cfg(test)]
+mod voix_tests {
+    use super::has_own_voice;
+
+    /// Le choix automatique doit écarter les modèles qui exigent un
+    /// enregistrement de référence : sinon la première voix par ordre
+    /// alphabétique est justement celle qui ne peut pas parler.
+    #[test]
+    fn la_variante_base_est_ecartee() {
+        assert!(!has_own_voice("Qwen__Qwen3-TTS-12Hz-0.6B-Base"));
+        assert!(has_own_voice("Qwen__Qwen3-TTS-12Hz-1.7B-CustomVoice"));
+        assert!(has_own_voice("hexgrad__Kokoro-82M"));
+    }
+}
+
+#[cfg(test)]
+mod ordre_des_voix_tests {
+    /// L'ordre de préférence, sans toucher au disque : Kokoro d'abord, parce
+    /// qu'il tourne avec ce que l'installation apporte, puis les voix ONNX,
+    /// puis le reste — qui peut réclamer un outil externe absent.
+    fn rang(nom: &str) -> u8 {
+        let l = nom.to_ascii_lowercase();
+        if l.contains("kokoro") {
+            0
+        } else if l.ends_with(".onnx") || l.contains("piper") {
+            1
+        } else {
+            2
+        }
+    }
+
+    #[test]
+    fn kokoro_passe_avant_qwen() {
+        let mut v = vec![
+            "Qwen__Qwen3-TTS-12Hz-1.7B-CustomVoice".to_string(),
+            "hexgrad__Kokoro-82M".to_string(),
+            "fr_FR-siwis-medium.onnx".to_string(),
+        ];
+        v.sort_by_key(|n| rang(n));
+        assert_eq!(v[0], "hexgrad__Kokoro-82M");
+        assert_eq!(v[1], "fr_FR-siwis-medium.onnx");
     }
 }

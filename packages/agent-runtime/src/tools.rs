@@ -770,47 +770,65 @@ async fn exec_generate_speech(args: &serde_json::Value) -> ToolResult {
 
     // Aucun modèle demandé : le premier installé. Sans modèle du tout, le dire
     // plutôt que d'échouer sur un nom vide.
-    let model = match args.get("model").and_then(|v| v.as_str()) {
-        Some(m) if !m.is_empty() => m.to_string(),
-        _ => match locaryn_media::audio::list_tts_models().into_iter().next() {
-            Some(m) => m,
-            None => {
+    // Aucune voix demandée : on essaie les installées, la plus autonome
+    // d'abord. Une voix peut manquer d'un outil externe sur cette machine —
+    // s'arrêter au premier échec reviendrait à refuser alors qu'une autre
+    // aurait parlé.
+    let candidates: Vec<String> = match args.get("model").and_then(|v| v.as_str()) {
+        Some(m) if !m.is_empty() => vec![m.to_string()],
+        _ => {
+            let mut v = locaryn_media::audio::list_usable_tts_models();
+            v.truncate(2);
+            if v.is_empty() {
                 return err(
                     "aucune voix n'est installée sur cette machine —                      ajoutez un modèle de synthèse vocale",
-                )
+                );
             }
-        },
+            v
+        }
     };
 
-    let req = locaryn_media::audio::TtsRequest {
-        model: model.clone(),
-        text: text.to_string(),
-        speed: args
-            .get("speed")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0)
-            .clamp(0.5, 2.0) as f32,
-        language: args
-            .get("language")
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-        output_dir: locaryn_config::generated_audio_dir(),
-    };
-    match locaryn_media::audio::generate_tts(req, &|_, _| {}).await {
-        Ok(file) => ToolResult {
-            ok: true,
-            output: format!(
-                "Voix générée avec {model} : {}
-                 Dis en une phrase ce qui a été enregistré.",
-                file.path.display()
-            ),
-            artifact: Some(ToolArtifact {
-                kind: locaryn_shared_types::ArtifactKind::AudioWav,
-                path: file.path.display().to_string(),
-            }),
-        },
-        Err(e) => err(&format!("synthèse impossible — {e}")),
+    let speed = args
+        .get("speed")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.0)
+        .clamp(0.5, 2.0) as f32;
+    let language = args
+        .get("language")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let mut derniere = String::new();
+    for model in &candidates {
+        let req = locaryn_media::audio::TtsRequest {
+            model: model.clone(),
+            text: text.to_string(),
+            speed,
+            language: language.clone(),
+            output_dir: locaryn_config::generated_audio_dir(),
+        };
+        match locaryn_media::audio::generate_tts(req, &|_, _| {}).await {
+            Ok(file) => {
+                return ToolResult {
+                    ok: true,
+                    output: format!(
+                        "Voix générée avec {model} : {}
+                         Dis en une phrase ce qui a été enregistré.",
+                        file.path.display()
+                    ),
+                    artifact: Some(ToolArtifact {
+                        kind: locaryn_shared_types::ArtifactKind::AudioWav,
+                        path: file.path.display().to_string(),
+                    }),
+                }
+            }
+            Err(e) => {
+                tracing::warn!(model, error = %e, "synthèse vocale échouée");
+                derniere = format!("{model} : {e}");
+            }
+        }
     }
+    err(&format!("synthèse impossible — {derniere}"))
 }
 
 async fn exec_read_file(args: &serde_json::Value, project_root: &Path) -> ToolResult {
