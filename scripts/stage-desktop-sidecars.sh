@@ -41,6 +41,14 @@ if [ "${UNIVERSAL:-0}" = "1" ]; then
   cargo build "${flags[@]}" --target x86_64-apple-darwin -p locaryn-daemon -p locaryn-cli
   cargo build "${flags[@]}" --target aarch64-apple-darwin -p locaryn-daemon -p locaryn-cli
   for bin in locaryn-daemon locaryn; do
+    # Tauri compile l'application une fois par architecture avant de fusionner :
+    # chacune de ces compilations réclame le compagnon portant *son* triplet, et
+    # c'est seulement l'empaquetage qui demande la version universelle. Il faut
+    # donc les trois noms, pas seulement le dernier.
+    for triple in x86_64-apple-darwin aarch64-apple-darwin; do
+      cp "target/$triple/$subdir/$bin" "$out/$bin-$triple"
+      chmod +x "$out/$bin-$triple"
+    done
     lipo -create \
       "target/x86_64-apple-darwin/$subdir/$bin" \
       "target/aarch64-apple-darwin/$subdir/$bin" \

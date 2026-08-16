@@ -68,6 +68,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.88
       - name: Ajouter la cible de compilation
         run: rustup target add ${{ matrix.target }}
+      # Le trousseau système passe par dbus sous Linux (keyring →
+      # dbus-secret-service → libdbus-sys), dont le build.rs abandonne si
+      # pkg-config ne trouve pas la bibliothèque. Tant qu'un cache tiède la
+      # fournissait, le manque restait invisible.
+      - name: Dépendances système (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev pkg-config
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -149,7 +158,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           cargo install cargo-deb --locked
-          cargo deb -p locaryn-daemon --target ${{ matrix.target }} --output "dist/locaryn-${VER}-server-linux-x64.deb"
+          # `--no-build` : les deux binaires sont déjà compilés par l'étape
+          # précédente, pour la même cible. Laisser cargo-deb relancer sa propre
+          # compilation lui faisait reprendre l'arbre entier — et échouer sur
+          # libdbus-sys, dépendance Linux du trousseau, dont le build.rs abandonne
+          # quand pkg-config ne trouve pas dbus.
+          cargo deb -p locaryn-daemon --no-build --target ${{ matrix.target }} --output "dist/locaryn-${VER}-server-linux-x64.deb"
 
       - uses: actions/upload-artifact@v4
         with:
