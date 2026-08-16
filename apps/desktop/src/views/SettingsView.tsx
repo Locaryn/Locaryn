@@ -7,6 +7,7 @@ import { EngineSettings } from "../components/EngineSettings";
 import { ExtensionsSettings } from "../components/ExtensionsSettings";
 import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
 import { ImageSettings } from "../components/ImageSettings";
+import { MemorySettings } from "../components/MemorySettings";
 import { PerformancePanel } from "../components/PerformancePanel";
 import { ServerSettings } from "../components/ServerSettings";
 import { StorageSettings } from "../components/StorageSettings";
@@ -19,6 +20,7 @@ import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
 import { ProjectSettings } from "./ProjectSettings";
 
 type Section =
+  | "memory"
   | "engine"
   | "performance"
   | "image"
@@ -77,6 +79,12 @@ const SECTIONS: { id: Section; icon: string; label: string; desc: string }[] = [
     icon: "🔌",
     label: "Connecteurs",
     desc: "Serveurs SSH et MCP ajoutés à la main",
+  },
+  {
+    id: "memory",
+    icon: "🧠",
+    label: "Mémoire",
+    desc: "Ce que Locaryn retient de vous, à lire et à corriger",
   },
   { id: "appearance", icon: "🎨", label: "Apparence", desc: "Couleur d'accentuation, thème" },
   { id: "language", icon: "🌍", label: "Langue", desc: "Langue de l'interface" },
@@ -233,6 +241,7 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
             </>
           )}
 
+          {section === "memory" && <MemorySettings />}
           {section === "storage" && <StorageSettings onOpenMarketplace={onOpenMarketplace} />}
 
           {section === "language" && (

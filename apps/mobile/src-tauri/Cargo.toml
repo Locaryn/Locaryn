@@ -21,6 +21,9 @@ locaryn-travel = { workspace = true }
 # l'application ne charge que le devUrl — écran blanc sur un vrai appareil.
 tauri = { version = "2", features = ["custom-protocol"] }
 tauri-plugin-deep-link = "2"
+# Ouvre l'APK d'une nouvelle version avec le système : c'est Android qui
+# installe, vérifie la signature et demande confirmation.
+tauri-plugin-opener = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }

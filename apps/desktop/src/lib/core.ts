@@ -344,6 +344,18 @@ export interface ExtensionUi {
   studio_tabs: ExtensionUiEntry[];
 }
 
+/** Une chose que Locaryn retient de la personne. */
+export interface MemoryEntry {
+  id: string;
+  user_id: string | null;
+  category: string;
+  content: string;
+  /** `utilisateur` ou `assistant` : ce que le modèle a retenu se relit d'un autre œil. */
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface InstalledExtension {
   id: string;
   name: string;
@@ -1220,6 +1232,11 @@ export interface CoreApi {
   listConnectorTypes(): Promise<ConnectorType[]>;
 
   // --- Extensions ---------------------------------------------------------
+  listMemory(): Promise<MemoryEntry[]>;
+  remember(category: string, content: string): Promise<MemoryEntry>;
+  editMemory(id: string, category: string, content: string): Promise<MemoryEntry>;
+  forgetMemory(id: string): Promise<void>;
+  forgetAllMemory(): Promise<number>;
   listExtensions(): Promise<InstalledExtension[]>;
   /**
    * `source` is `owner/repo`, a git URL, a `github:owner/repo@ref#subdir`
@@ -1630,6 +1647,12 @@ const tauriCore: CoreApi = {
 
   listConnectorTypes: () => invoke<ConnectorType[]>("list_connector_types"),
 
+  listMemory: () => invoke<MemoryEntry[]>("list_memory"),
+  remember: (category, content) => invoke<MemoryEntry>("remember", { category, content }),
+  editMemory: (id, category, content) =>
+    invoke<MemoryEntry>("edit_memory", { id, category, content }),
+  forgetMemory: (id) => invoke<void>("forget_memory", { id }),
+  forgetAllMemory: () => invoke<number>("forget_all_memory"),
   listExtensions: () => invoke<InstalledExtension[]>("list_extensions"),
   installExtension: (source, scope) =>
     invoke<InstalledExtension>("install_extension", { source, scope }),
@@ -2689,6 +2712,18 @@ function demoResidencyStatus(): ResidencyStatus {
   };
 }
 
+let demoUserMemory: MemoryEntry[] = [
+  {
+    id: "demo-mem-1",
+    user_id: null,
+    category: "preference",
+    content: "Réponds-moi en français, sans préambule.",
+    source: "utilisateur",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
 const demoCore: CoreApi = {
   health: async () => cloneHealth(),
   bootstrap: async () => ({
@@ -3136,6 +3171,36 @@ const demoCore: CoreApi = {
 
   listConnectorTypes: async () => demoConnectorTypes,
 
+  // Mémoire de démonstration : de vraies entrées, pour que l'écran se
+  // travaille dans un navigateur sans base derrière.
+  listMemory: async () => demoUserMemory,
+  remember: async (category, content) => {
+    const entry: MemoryEntry = {
+      id: `demo-mem-${demoUserMemory.length + 1}`,
+      user_id: null,
+      category,
+      content,
+      source: "utilisateur",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    demoUserMemory = [entry, ...demoUserMemory];
+    return entry;
+  },
+  editMemory: async (id, category, content) => {
+    demoUserMemory = demoUserMemory.map((m) =>
+      m.id === id ? { ...m, category, content, updated_at: new Date().toISOString() } : m,
+    );
+    return demoUserMemory.find((m) => m.id === id) as MemoryEntry;
+  },
+  forgetMemory: async (id) => {
+    demoUserMemory = demoUserMemory.filter((m) => m.id !== id);
+  },
+  forgetAllMemory: async () => {
+    const n = demoUserMemory.length;
+    demoUserMemory = [];
+    return n;
+  },
   listExtensions: async () => demoExtensions,
   getExtensionMcpServers: async () => [],
   setExtensionMcpServers: async () => [],

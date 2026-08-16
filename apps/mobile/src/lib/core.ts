@@ -19,6 +19,15 @@ export interface Message {
   content: string;
 }
 
+/** Ce que le téléphone sait de sa propre mise à jour. */
+export interface UpdateStatus {
+  current: string;
+  latest: string | null;
+  available: boolean;
+  download_url: string | null;
+  error: string | null;
+}
+
 /** A file generated on the machine at the other end, ready to show. */
 export interface MediaResult {
   name: string;
@@ -41,6 +50,10 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
  */
 export const core = {
   status: () => invoke<MobileStatus>("status"),
+  /** Y a-t-il une version plus récente publiée ? */
+  checkUpdate: () => invoke<UpdateStatus>("check_update"),
+  /** Passe la main au système pour installer la nouvelle version. */
+  openUpdate: (url: string) => invoke<void>("open_update", { url }),
   registerServer: (provisioningJson: string) =>
     invoke<MobileStatus>("register_server", { provisioningJson }),
   signIn: (username: string, password: string) =>
@@ -82,6 +95,16 @@ export const demoCore: typeof core = {
     signed_in: true,
     servers: 1,
   }),
+  // Dans un navigateur il n'y a pas d'APK à remplacer : la vérification dit
+  // simplement qu'il n'y a rien à faire, et le bouton ne s'affiche pas.
+  checkUpdate: async () => ({
+    current: "0.0.0-dev",
+    latest: null,
+    available: false,
+    download_url: null,
+    error: null,
+  }),
+  openUpdate: async () => {},
   registerServer: async () => ({
     server_name: "Atelier Vasseur",
     travelling: false,

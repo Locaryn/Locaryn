@@ -544,6 +544,15 @@ jobs:
           if not platforms:
               raise SystemExit("::error::aucune signature .sig trouvée — createUpdaterArtifacts est-il activé ?")
 
+          # Android — pas de signature d'updater ici : c'est le système qui
+          # vérifie la signature de l'APK au moment d'installer. L'application
+          # compare les versions, puis lui passe la main. Un APK non signé n'y
+          # figure pas : proposer une mise à jour qu'Android refusera
+          # d'installer serait pire que ne rien proposer.
+          apk = glob.glob(f"artifacts/android-apk/locaryn-{ver}-android.apk")
+          if apk:
+              platforms["android"] = {"url": f"{base}/{os.path.basename(apk[0])}"}
+
           manifest = {
               "version": ver,
               "pub_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

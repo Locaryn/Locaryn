@@ -10,6 +10,7 @@
 
 mod pairing;
 mod servers;
+mod update;
 
 use serde::{Deserialize, Serialize};
 
@@ -470,7 +471,9 @@ async fn generate_audio(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_deep_link::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init());
 
     // The camera plugin only exists on a phone. Registering it unconditionally
     // would stop the desktop build, which is what the layout is developed on.
@@ -488,6 +491,8 @@ pub fn run() {
             generate_image,
             generate_audio,
             pairing::apply_pairing_link,
+            update::check_update,
+            update::open_update,
         ])
         .setup(|app| {
             // On Android the native process has no home directory (`$HOME` is

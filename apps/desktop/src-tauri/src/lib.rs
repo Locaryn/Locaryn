@@ -14,6 +14,7 @@ mod client_cert;
 mod extensions;
 mod hooks;
 mod mcp_servers;
+mod memory;
 mod model_residency;
 mod region_edit;
 mod sd_engine;
@@ -7596,6 +7597,11 @@ pub fn run() {
             travel_mode::travel_status,
             travel_mode::set_travel_mode,
             travel_mode::travel_home_code,
+            memory::list_memory,
+            memory::remember,
+            memory::edit_memory,
+            memory::forget_memory,
+            memory::forget_all_memory,
             extensions::list_extensions,
             extensions::install_extension,
             extensions::update_extension,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { type Message, type MobileStatus, api } from "../lib/core";
+import { UpdateButton } from "./UpdateButton";
 
 type Props = {
   status: MobileStatus;
@@ -69,6 +70,7 @@ export function Chat({ status, onScan, onStudio }: Props) {
         >
           Créer
         </button>
+        <UpdateButton />
       </div>
 
       <div className="lo-thread">
