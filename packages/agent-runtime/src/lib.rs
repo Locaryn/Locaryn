@@ -56,6 +56,12 @@ pub struct AgentInput {
     /// was before extensions existed.
     #[allow(clippy::doc_markdown)]
     pub extra_system: Option<String>,
+    /// Ce que les extensions actives apportent (`image-gen`, `voice-tts`…).
+    ///
+    /// Décide des outils offerts au modèle : sans l'extension de génération
+    /// d'images, `generate_image` n'existe pas dans sa liste, et il répond
+    /// qu'il ne sait pas le faire — au lieu de l'appeler puis d'échouer.
+    pub capabilities: Vec<String>,
     /// Comment demander son accord à l'utilisateur avant un appel d'outil
     /// sensible. `None` — le cas d'un hôte sans interface — vaut refus : un
     /// service qui tourne sans personne devant ne doit pas s'autoriser une

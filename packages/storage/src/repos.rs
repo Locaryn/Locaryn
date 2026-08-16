@@ -1999,6 +1999,8 @@ pub struct Storage {
     pub artifacts: ArtifactRepo,
     pub providers: ProviderRepo,
     pub extensions: ExtensionRepo,
+    /// Ce que Locaryn retient de la personne, d'une conversation à l'autre.
+    pub memory: crate::memory::MemoryRepo,
     #[cfg(feature = "ssh-connector")]
     pub ssh_servers: SshServerRepo,
 }
@@ -2013,6 +2015,7 @@ impl Storage {
             artifacts: ArtifactRepo::new(pool.clone()),
             providers: ProviderRepo::new(pool.clone()),
             extensions: ExtensionRepo::new(pool.clone()),
+            memory: crate::memory::MemoryRepo::new(pool.clone()),
             #[cfg(feature = "ssh-connector")]
             ssh_servers: SshServerRepo::new(pool),
         }

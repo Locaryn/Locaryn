@@ -169,6 +169,109 @@ fn to_ui_entry(
     }
 }
 
+/// Recharge le registre depuis la base au démarrage du service.
+///
+/// Le registre vivait en mémoire seule : installer une extension puis
+/// redémarrer le service la faisait disparaître, avec l'écran qu'elle
+/// apportait. Une installation doit survivre à un redémarrage — c'est le
+/// minimum qu'on attend d'une installation.
+pub async fn restore_from_storage(state: &DaemonState) {
+    let records = match state.storage.extensions.list().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "extensions : lecture de la base impossible");
+            return;
+        }
+    };
+    let mut restored = 0usize;
+    for rec in records {
+        let dir = std::path::Path::new(&rec.manifest_path)
+            .parent()
+            .map(|p| p.to_path_buf());
+        let Some(dir) = dir else { continue };
+        match state.extensions.install_from_dir(&dir, rec.scope) {
+            Ok(entry) => {
+                if rec.enabled {
+                    let _ = state.extensions.enable(&entry.name);
+                }
+                restored += 1;
+            }
+            Err(e) => tracing::warn!(
+                name = %rec.name,
+                error = %e,
+                "extension enregistrée mais introuvable sur le disque"
+            ),
+        }
+    }
+    if restored > 0 {
+        tracing::info!(restored, "extensions rechargées depuis la base");
+    }
+}
+
+/// Écrit dans la base ce que le registre vient de faire.
+async fn persist(state: &DaemonState, entry: &locaryn_extensions::ExtensionEntry) {
+    let new = locaryn_storage::repos::NewExtension {
+        name: entry.name.clone(),
+        version: entry.version.clone(),
+        api_version: entry.api_version.clone(),
+        kind: entry.kind.clone(),
+        scope: entry.scope,
+        ecosystem: locaryn_shared_types::ExtensionEcosystem::Locaryn,
+        source: entry
+            .manifest_path
+            .parent()
+            .map(|p| p.display().to_string()),
+        manifest_path: entry.manifest_path.display().to_string(),
+        requested: entry
+            .permissions
+            .requested
+            .iter()
+            .map(|(p, _)| p.clone())
+            .collect(),
+    };
+    if let Err(e) = state.storage.extensions.upsert(new).await {
+        tracing::warn!(name = %entry.name, error = %e, "extension non enregistrée en base");
+    }
+}
+
+/// Met à jour l'état actif en base, par nom.
+async fn persist_enabled(state: &DaemonState, name: &str, enabled: bool) {
+    let Some(rec) = find_record(state, name).await else {
+        tracing::warn!(name, "extension absente de la base");
+        return;
+    };
+    if let Err(e) = state.storage.extensions.set_enabled(rec.id, enabled).await {
+        tracing::warn!(name, error = %e, "état de l'extension non enregistré");
+    }
+}
+
+/// Retrouve l'enregistrement quelle que soit sa portée : le nom est unique
+/// dans le registre du service, la portée n'est qu'un détail de rangement.
+async fn find_record(
+    state: &DaemonState,
+    name: &str,
+) -> Option<locaryn_storage::repos::ExtensionRecord> {
+    for scope in [
+        ExtensionScope::User,
+        ExtensionScope::Global,
+        ExtensionScope::Workspace,
+        ExtensionScope::Session,
+    ] {
+        if let Ok(Some(rec)) = state.storage.extensions.get_by_name(name, scope).await {
+            return Some(rec);
+        }
+    }
+    None
+}
+
+async fn persist_removed(state: &DaemonState, name: &str) {
+    if let Some(rec) = find_record(state, name).await {
+        if let Err(e) = state.storage.extensions.delete(rec.id).await {
+            tracing::warn!(name, error = %e, "extension non retirée de la base");
+        }
+    }
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -213,7 +316,10 @@ pub async fn install_extension(
     }
 
     match s.extensions.install_from_dir(dir, scope) {
-        Ok(entry) => (StatusCode::CREATED, Json(entry_to_installed(&entry))).into_response(),
+        Ok(entry) => {
+            persist(&s, &entry).await;
+            (StatusCode::CREATED, Json(entry_to_installed(&entry))).into_response()
+        }
         Err(e) => registry_error_response(e).into_response(),
     }
 }
@@ -224,11 +330,14 @@ pub async fn enable_extension(
     Path(name): Path<String>,
 ) -> Response {
     match s.extensions.enable(&name) {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "status": "enabled", "name": name })),
-        )
-            .into_response(),
+        Ok(()) => {
+            persist_enabled(&s, &name, true).await;
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "enabled", "name": name })),
+            )
+                .into_response()
+        }
         Err(e) => registry_error_response(e).into_response(),
     }
 }
@@ -239,11 +348,14 @@ pub async fn disable_extension(
     Path(name): Path<String>,
 ) -> Response {
     match s.extensions.disable(&name) {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "status": "disabled", "name": name })),
-        )
-            .into_response(),
+        Ok(()) => {
+            persist_enabled(&s, &name, false).await;
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "disabled", "name": name })),
+            )
+                .into_response()
+        }
         Err(e) => registry_error_response(e).into_response(),
     }
 }
@@ -254,11 +366,14 @@ pub async fn remove_extension(
     Path(name): Path<String>,
 ) -> Response {
     match s.extensions.remove(&name) {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "status": "removed", "name": name })),
-        )
-            .into_response(),
+        Ok(()) => {
+            persist_removed(&s, &name).await;
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "removed", "name": name })),
+            )
+                .into_response()
+        }
         Err(e) => registry_error_response(e).into_response(),
     }
 }

@@ -199,6 +199,11 @@ async fn main() -> anyhow::Result<()> {
         cancel_map: Arc::new(Mutex::new(HashMap::new())),
     });
 
+    // Les extensions installées reviennent de la base : sans cela, un
+    // redémarrage du service les faisait disparaître, avec les écrans et les
+    // outils qu'elles apportaient.
+    routes::extensions::restore_from_storage(&state).await;
+
     if exposed && users.count().await.unwrap_or(0) == 0 {
         anyhow::bail!(
             "Le daemon est configuré pour écouter sur {} mais aucun compte n'existe.\n\
@@ -295,6 +300,19 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/media/models", get(media::list_models))
         .route("/v1/media/image", post(media::generate_image))
         .route("/v1/media/audio", post(media::generate_audio))
+        // Mémoire de l'utilisateur : ce que le service retient d'une
+        // conversation à l'autre, lisible et corrigible depuis n'importe quel
+        // client puisqu'elle vit ici et non dans un fichier d'application.
+        .route(
+            "/v1/memory",
+            get(routes::memory::list)
+                .post(routes::memory::remember)
+                .delete(routes::memory::forget_all),
+        )
+        .route(
+            "/v1/memory/:id",
+            axum::routing::put(routes::memory::edit).delete(routes::memory::forget),
+        )
         .route("/v1/providers", get(list_providers))
         .route("/v1/supervisor/status", get(supervisor_status))
         .route("/v1/supervisor/start", post(supervisor_start))
@@ -852,7 +870,20 @@ async fn send_message(
         history,
         mcp_state,
         // The daemon has no extension runtime yet; the desktop shell owns it.
-        extra_system: None,
+        // Ce que le service retient de la personne, versé au prompt système.
+        // C'est le même texte que montre l'écran de réglages : personne ne
+        // doit avoir à deviner ce que le modèle sait de lui.
+        extra_system: s.storage.memory.as_system_block(None).await.unwrap_or(None),
+        // Ce que les extensions actives apportent : c'est ce qui décide des
+        // outils offerts au modèle. Sans l'extension d'images, il n'a aucun
+        // moyen d'en générer une, et le dit.
+        capabilities: s
+            .extensions
+            .list()
+            .into_iter()
+            .filter(|e| e.enabled)
+            .flat_map(|e| e.capabilities)
+            .collect(),
         // Le démon tourne sans interface : personne ne peut arbitrer, donc
         // tout appel exigeant un accord est refusé. C'est le comportement
         // voulu pour un service, pas un oubli.

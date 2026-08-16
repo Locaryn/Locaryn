@@ -1471,6 +1471,9 @@ async fn send_message(
             let rt = core.extensions.read().await;
             (!rt.system_prompt.trim().is_empty()).then(|| rt.system_prompt.clone())
         },
+        // Ce que les extensions actives apportent, d'après ce que le service
+        // en dit : c'est la liste qui décide des outils offerts au modèle.
+        capabilities: extensions::active_capabilities(&core).await,
         // Sans elle, tout appel exigeant un accord serait refusé faute
         // d'interlocuteur — le comportement voulu pour un service sans
         // interface, pas pour l'application de bureau.

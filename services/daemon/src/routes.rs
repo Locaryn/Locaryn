@@ -2,4 +2,5 @@
 
 pub mod extensions;
 pub mod mcp;
+pub mod memory;
 pub mod travel;

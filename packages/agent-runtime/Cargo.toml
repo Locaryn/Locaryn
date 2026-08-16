@@ -9,6 +9,8 @@ description = "Agent runtime: agentic tool-use loop + specialized subagents for 
 
 [dependencies]
 locaryn-shared-types = { workspace = true }
+locaryn-media = { workspace = true }
+locaryn-config = { workspace = true }
 locaryn-events = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

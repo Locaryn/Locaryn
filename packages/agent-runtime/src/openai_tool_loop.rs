@@ -52,14 +52,20 @@ pub async fn run_openai_tool_loop(
     let model = input.model.clone().unwrap_or_else(|| "default".into());
     let chat_url = format!("{}/v1/chat/completions", endpoint.trim_end_matches('/'));
 
-    let use_tools = input.project_path.is_some();
+    // Les outils intégrés touchent des fichiers : ils n'ont de sens que dans un
+    // projet. Ceux apportés par une extension, non — générer une image ne
+    // demande aucun dossier de travail, et l'exiger revenait à répondre « je ne
+    // sais pas faire » dans une conversation libre alors que l'extension était
+    // installée.
+    let in_project = input.project_path.is_some();
+    let extension_tools = crate::tools::capability_tools(&input.capabilities);
     let trust = input.trust.unwrap_or(TrustLevel::Sandbox);
-    let tools = if use_tools {
+    let tools = if in_project {
         builtin_tools()
     } else {
         Vec::new()
     };
-    let mcp_tools = if use_tools {
+    let mcp_tools = if in_project {
         if let Some(ref mcp) = input.mcp_state {
             crate::mcp_tools::collect_mcp_tools(mcp).await
         } else {
@@ -70,11 +76,18 @@ pub async fn run_openai_tool_loop(
     };
     // MCP tools are merged into the main list so approval gating works
     // uniformly. The `all_tools` vec must stay alive for the spawned task.
-    let all_tools: Vec<_> = tools.into_iter().chain(mcp_tools.clone()).collect();
-    let tools_json = if use_tools && !all_tools.is_empty() {
-        Some(ollama_tools_json(&all_tools))
-    } else {
+    // Outils intégrés + ceux apportés par les extensions actives + ceux des
+    // serveurs MCP. Tous passent par la même liste, donc par la même
+    // demande d'accord.
+    let all_tools: Vec<_> = tools
+        .into_iter()
+        .chain(extension_tools)
+        .chain(mcp_tools.clone())
+        .collect();
+    let tools_json = if all_tools.is_empty() {
         None
+    } else {
+        Some(ollama_tools_json(&all_tools))
     };
 
     // OpenAI vision: images go in `content` as an array of parts.
@@ -97,10 +110,19 @@ pub async fn run_openai_tool_loop(
         serde_json::json!(parts)
     };
 
-    let base_prompt = if use_tools {
+    // Le prompt d'agent développeur ne vaut que dans un projet. Hors projet on
+    // reste un assistant, mais un assistant qui sait de quoi il dispose : sans
+    // cette phrase, le modèle annonce qu'il ne peut pas générer d'image alors
+    // que l'outil lui est offert.
+    let base_prompt = if in_project {
         system_prompt_for_dev_agent()
-    } else {
+    } else if all_tools.is_empty() {
         "You are Locaryn, a helpful, concise AI assistant running on a local model.".to_string()
+    } else {
+        "You are Locaryn, a helpful, concise AI assistant running on a local model. \
+         You have tools available — use them instead of saying you cannot do something. \
+         Never claim you are unable to produce an image if an image tool is listed."
+            .to_string()
     };
     let system_prompt = crate::compose_system_prompt(&base_prompt, input.extra_system.as_ref());
 

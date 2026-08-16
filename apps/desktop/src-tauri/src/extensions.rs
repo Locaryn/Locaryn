@@ -207,6 +207,25 @@ fn plugin_root(manifest_path: &str) -> Option<PathBuf> {
 // Reading the installed set
 // ============================================================================
 
+/// Ce que les extensions actives apportent, réuni en une liste.
+///
+/// Sert deux décisions : quels écrans existent dans l'interface, et quels
+/// outils sont offerts au modèle. Une seule source pour les deux, sinon un
+/// menu pourrait promettre ce que le modèle ne sait pas faire.
+pub async fn active_capabilities(core: &Core) -> Vec<String> {
+    let Ok(installed) = build_installed(core).await else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = installed
+        .into_iter()
+        .filter(|e| e.enabled)
+        .flat_map(|e| e.capabilities)
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 fn ui_entry(e: &locaryn_extensions::manifest::UiEntry) -> locaryn_shared_types::ExtensionUiEntry {
     locaryn_shared_types::ExtensionUiEntry {
         id: e.id.clone(),

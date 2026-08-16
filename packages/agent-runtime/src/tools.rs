@@ -144,6 +144,60 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
     ]
 }
 
+/// Les outils apportés par les extensions actives.
+///
+/// C'est ici que « installer l'extension de génération d'images » devient
+/// visible pour le modèle : sans elle, `generate_image` n'existe pas dans la
+/// liste d'outils, et le modèle ne peut pas l'appeler — il répondra qu'il ne
+/// sait pas faire, au lieu d'échouer à l'exécution.
+///
+/// Le prompt de l'outil demande explicitement un prompt en anglais : les
+/// modèles de diffusion sont entraînés dessus, et laisser passer la phrase
+/// française de l'utilisateur donne des images approximatives. C'est le modèle
+/// de conversation qui traduit et enrichit, avec tout le contexte qu'il a.
+pub fn capability_tools(capabilities: &[String]) -> Vec<ToolSpec> {
+    let mut out = Vec::new();
+    if capabilities.iter().any(|c| c == "image-gen") {
+        out.push(ToolSpec {
+            name: "generate_image".into(),
+            description:
+                "Generate an image from a text prompt, on this machine. Use it whenever the user \
+                 asks for a picture, an illustration, a logo, a mockup or any visual. Write the \
+                 `prompt` in ENGLISH and make it descriptive (subject, setting, lighting, style), \
+                 whatever language the user wrote in: the diffusion models are trained on English. \
+                 Take into account what you know about the person and the conversation so far."
+                    .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Detailed English description of the image."
+                    },
+                    "negative_prompt": {
+                        "type": "string",
+                        "description": "What to keep out of the image."
+                    },
+                    "width": { "type": "integer", "description": "Default 1024." },
+                    "height": { "type": "integer", "description": "Default 1024." },
+                    "model": {
+                        "type": "string",
+                        "description": "Model file name. Leave empty to use the fastest installed one."
+                    }
+                },
+                "required": ["prompt"]
+            }),
+            risk: Risk::Low,
+            // Aucune permission : l'image est écrite dans le dossier de
+            // données de l'application, jamais dans le projet de quelqu'un.
+            // Il n'y a donc rien à arbitrer, et la demande aboutit même dans
+            // une conversation libre où personne ne peut approuver.
+            required_permissions: Vec::new(),
+        });
+    }
+    out
+}
+
 /// The decision the runtime asks the modal to render. Returned by
 /// `approval_decision` and serialised for the Tauri channel.
 /// `is_remote: true` ALWAYS escalates to Critical, regardless of the
@@ -247,8 +301,31 @@ pub fn approval_decision(input: &ApprovalInput<'_>) -> ApprovalDecision {
     let effective = if is_remote { Risk::Critical } else { declared };
     let escalated = is_remote && declared.tier() < Risk::Critical.tier();
 
-    // ── Auto-approval layer (silent run, no modal) ─────────────────────
-    // The ONLY auto-approved case is: Low risk + no remote + Trusted.
+    // ── Couche d'auto-approbation (exécution silencieuse) ──────────────
+    // Un outil sans aucune permission ne touche ni aux fichiers du projet, ni
+    // au shell, ni au réseau : il n'y a rien à arbitrer. C'est le cas de la
+    // génération d'images, qui n'écrit que dans le dossier de données de
+    // l'application. Sans cette règle, demander une image dans une
+    // conversation libre se soldait par un refus — personne n'étant là pour
+    // approuver côté service — et le modèle répondait qu'il ne savait pas
+    // faire, alors qu'il venait d'appeler l'outil.
+    if declared == Risk::Low && !is_remote && spec.required_permissions.is_empty() {
+        return ApprovalDecision {
+            call_id: String::new(),
+            tool: spec.name.clone(),
+            effective_risk: declared,
+            declared_risk: declared,
+            escalated_to_critical: false,
+            needs_user_consent: false,
+            reason: "Outil sans permission : rien à arbitrer.".into(),
+            diff: None,
+            min_scope: RiskScope::Once,
+            hard_blocked: false,
+            debug_trace: "Low + aucune permission + local → silencieux".into(),
+        };
+    }
+
+    // The ONLY other auto-approved case is: Low risk + no remote + Trusted.
     // Everything else requires the modal. This is intentionally strict;
     // better to ask one extra time than ship a silent execution.
     if declared == Risk::Low && !is_remote && input.ctx.trust == TrustLevel::Trusted {
@@ -532,11 +609,99 @@ pub async fn dispatch_tool(
         "write_file" => exec_write_file(args, project_root).await,
         "search" => exec_search(args, project_root).await,
         "run_command" => exec_run_command(args, project_root).await,
+        "generate_image" => exec_generate_image(args).await,
         _ => ToolResult {
             ok: false,
             output: format!("unknown tool: {tool_name}"),
         },
     }
+}
+
+/// Génère une image et rend son chemin.
+///
+/// Le fichier va dans le dossier de données, pas dans le projet : une image
+/// demandée en conversation n'a pas à atterrir dans le dépôt de quelqu'un.
+async fn exec_generate_image(args: &serde_json::Value) -> ToolResult {
+    let Some(prompt) = args.get("prompt").and_then(|v| v.as_str()) else {
+        return err("il manque le prompt");
+    };
+    let candidates = match args.get("model").and_then(|v| v.as_str()) {
+        Some(m) if !m.is_empty() => vec![m.to_string()],
+        // Aucun modèle demandé : on prend le plus rapide *utilisable*. Un
+        // modèle « turbo » rend en quelques secondes là où un modèle complet
+        // prend des minutes — dans une conversation, l'attente compte. Mais
+        // rapide ne suffit pas : certains modèles de diffusion ne sont qu'une
+        // moitié d'installation et réclament un VAE et des encodeurs de texte.
+        // En choisir un sans ses compagnons, c'est promettre une image puis
+        // afficher une erreur de fichier manquant.
+        _ => {
+            let models_dir = locaryn_config::models_dir();
+            let usable: Vec<String> = locaryn_media::image::list_image_models()
+                .into_iter()
+                .filter(|m| {
+                    let family = locaryn_media::image::classify(m);
+                    let companions = locaryn_media::image::discover_companions(&models_dir, family);
+                    locaryn_media::image::missing_companions(family, &companions).is_empty()
+                })
+                .collect();
+            if usable.is_empty() {
+                return err(
+                    "aucun modèle d'image complet n'est installé sur cette machine — \
+                     ouvrez le catalogue de modèles pour en ajouter un, ou complétez \
+                     celui déjà présent avec son VAE et ses encodeurs",
+                );
+            }
+            // Les modèles rapides d'abord : dans une conversation, l'attente
+            // compte. On en garde deux : un modèle peut être présent et
+            // complet, et refuser malgré tout de se charger sur cette machine.
+            // Réessayer une fois vaut mieux que rendre la main sur un échec.
+            let mut ordered = usable.clone();
+            ordered.sort_by_key(|m| !(m.contains("turbo") || m.contains("schnell")));
+            ordered.truncate(2);
+            ordered
+        }
+    };
+
+    // 768 par défaut, pas 1024 : dans une conversation, une image qui arrive
+    // en une minute vaut mieux qu'une image plus fine qui en prend trois.
+    let width = args.get("width").and_then(|v| v.as_u64()).unwrap_or(768) as u32;
+    let height = args.get("height").and_then(|v| v.as_u64()).unwrap_or(768) as u32;
+    let negative = args
+        .get("negative_prompt")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let mut last_error = String::new();
+    for model in &candidates {
+        let req = locaryn_media::image::ImageRequest {
+            model: model.clone(),
+            prompt: prompt.to_string(),
+            negative_prompt: negative.clone(),
+            width,
+            height,
+            steps: None,
+            cfg_scale: None,
+            variants: 1,
+            output_dir: locaryn_config::default_data_dir().join("generated_images"),
+        };
+        match locaryn_media::image::generate_image(req, &|_, _| {}).await {
+            Ok(file) => {
+                return ToolResult {
+                    ok: true,
+                    output: format!(
+                        "Image générée avec {model} : {}\n\
+                         Montre-la à la personne et décris-la en une phrase.",
+                        file.path.display()
+                    ),
+                }
+            }
+            Err(e) => {
+                tracing::warn!(model, error = %e, "génération d'image échouée");
+                last_error = format!("{model} : {e}");
+            }
+        }
+    }
+    err(&format!("génération impossible — {last_error}"))
 }
 
 async fn exec_read_file(args: &serde_json::Value, project_root: &Path) -> ToolResult {
