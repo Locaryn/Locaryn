@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
+import { Extensions } from "./components/Extensions";
+import type { Destination } from "./components/MainMenu";
+import { Models } from "./components/Models";
 import { Paired } from "./components/Paired";
 import { Settings } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
@@ -7,7 +10,7 @@ import { Studio } from "./components/Studio";
 import { type MobileStatus, type PairingResult, api, coreMode } from "./lib/core";
 import { isScannerAvailable, scan } from "./lib/scanner";
 
-type Screen = "loading" | "signin" | "chat" | "studio" | "settings";
+type Screen = "loading" | "signin" | "chat" | Destination;
 
 export function App() {
   const [status, setStatus] = useState<MobileStatus | null>(null);
@@ -15,8 +18,25 @@ export function App() {
   const [paired, setPaired] = useState<PairingResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [startupError, setStartupError] = useState<string | null>(null);
-  /** Change quand les extensions bougent : force la relecture des capacités. */
-  const [capabilitiesKey, setCapabilitiesKey] = useState(0);
+  /** Ce que les extensions actives du serveur apportent. Lu une fois, relu
+   *  quand une extension bouge : c'est ce qui décide des écrans disponibles. */
+  const [capabilities, setCapabilities] = useState<string[]>([]);
+
+  const refreshCapabilities = useCallback(async () => {
+    try {
+      setCapabilities(await api.serverCapabilities());
+    } catch {
+      // Un serveur muet ne doit pas vider l'interface : on garde ce qu'on a.
+    }
+  }, []);
+
+  // Après la connexion, pas avant : sans session, le serveur ne dit rien de
+  // ses extensions, et l'appel au démarrage renvoyait toujours une liste vide
+  // — le Studio n'apparaissait donc jamais.
+  useEffect(() => {
+    if (!status?.signed_in) return;
+    void refreshCapabilities();
+  }, [status?.signed_in, refreshCapabilities]);
 
   const refresh = useCallback(async () => {
     // Cet appel est le tout premier que fait l'application. S'il échoue sans
@@ -141,14 +161,18 @@ export function App() {
   return (
     <>
       {screen === "chat" ? (
-        <Chat
-          key={capabilitiesKey}
-          status={status}
-          onStudio={() => setScreen("studio")}
-          onSettings={() => setScreen("settings")}
-        />
+        <Chat status={status} capabilities={capabilities} onGo={setScreen} />
       ) : screen === "studio" ? (
-        <Studio key={capabilitiesKey} onBack={() => setScreen("chat")} />
+        <Studio onBack={() => setScreen("chat")} />
+      ) : screen === "extensions" ? (
+        <Extensions
+          onBack={() => setScreen("chat")}
+          // Une extension retirée doit faire disparaître ce qu'elle apportait,
+          // pas rester à l'écran jusqu'au prochain démarrage.
+          onChanged={() => void refreshCapabilities()}
+        />
+      ) : screen === "models" ? (
+        <Models onBack={() => setScreen("chat")} />
       ) : screen === "settings" ? (
         <Settings
           status={status}
@@ -157,10 +181,6 @@ export function App() {
             setStatus(s);
             setScreen("signin");
           }}
-          // Remonter le compteur reconstruit le chat et le Studio : une
-          // extension retirée doit faire disparaître ce qu'elle apportait,
-          // pas rester à l'écran jusqu'au prochain démarrage.
-          onExtensionsChanged={() => setCapabilitiesKey((n) => n + 1)}
         />
       ) : (
         <SignIn

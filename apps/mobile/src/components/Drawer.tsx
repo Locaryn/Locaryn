@@ -1,4 +1,5 @@
-import type { Conversation } from "../lib/core";
+import { useEffect, useState } from "react";
+import { type Conversation, type PhoneProject, api } from "../lib/core";
 
 type Props = {
   open: boolean;
@@ -7,55 +8,70 @@ type Props = {
   currentId: string | null;
   onPick: (id: string) => void;
   onNew: () => void;
-  /** Absent tant qu'aucune extension n'apporte de quoi créer. */
-  onStudio: (() => void) | null;
-  onSettings: () => void;
 };
 
 /**
- * Le tiroir de navigation.
+ * L'historique, et rien d'autre.
  *
- * Même organisation que sur l'ordinateur : les conversations d'abord, puis ce
- * qu'on peut ouvrir. Elles viennent du serveur, donc ce sont exactement celles
- * de l'ordinateur — en toucher une la reprend là où elle en était, quel que
- * soit l'appareil qui l'a commencée.
- *
- * Fermé, il ne coûte rien : le panneau est décalé hors de l'écran plutôt que
- * démonté, pour que l'ouverture ne recharge pas la liste.
+ * Ce tiroir ne contient que ce sur quoi on travaille : les conversations
+ * libres, puis les projets, chacun dépliable sur les siennes. Les grands
+ * espaces de l'application — Studio, extensions, modèles, réglages — vivent
+ * dans leur propre menu : mélanger un historique qui s'allonge sans fin avec
+ * une navigation fixe donne une colonne où l'on ne trouve plus rien.
  */
-export function Drawer({
-  open,
-  onClose,
-  conversations,
-  currentId,
-  onPick,
-  onNew,
-  onStudio,
-  onSettings,
-}: Props) {
+export function Drawer({ open, onClose, conversations, currentId, onPick, onNew }: Props) {
+  const [projects, setProjects] = useState<PhoneProject[] | null>(null);
+  const [openProject, setOpenProject] = useState<string | null>(null);
+  const [projectChats, setProjectChats] = useState<Record<string, Conversation[]>>({});
+
+  // Les projets ne sont lus qu'à l'ouverture : un tiroir fermé n'a rien à
+  // demander au serveur.
+  useEffect(() => {
+    if (!open || projects !== null) return;
+    void api
+      .listProjects()
+      .then(setProjects)
+      .catch(() => setProjects([]));
+  }, [open, projects]);
+
+  async function toggleProject(id: string) {
+    if (openProject === id) {
+      setOpenProject(null);
+      return;
+    }
+    setOpenProject(id);
+    if (projectChats[id]) return;
+    try {
+      const list = await api.listProjectConversations(id);
+      setProjectChats((prev) => ({ ...prev, [id]: list }));
+    } catch {
+      setProjectChats((prev) => ({ ...prev, [id]: [] }));
+    }
+  }
+
   return (
     <>
       {open && (
         <button
           type="button"
           className="lo-drawer-veil"
-          aria-label="Fermer le menu"
+          aria-label="Fermer l'historique"
           onClick={onClose}
         />
       )}
       <nav className={`lo-drawer${open ? " lo-drawer-open" : ""}`} aria-hidden={!open}>
         <div className="lo-drawer-head">
-          <span className="lo-drawer-title">Locaryn</span>
-          <button type="button" className="lo-bar-action" onClick={onNew}>
-            Nouvelle
-          </button>
+          <span className="lo-drawer-title">Historique</span>
         </div>
 
         <div className="lo-drawer-scroll">
+          <button type="button" className="lo-drawer-cta" onClick={onNew}>
+            Nouvelle conversation
+          </button>
+
+          <div className="lo-drawer-group-label">Conversations</div>
           {conversations === null && <p className="lo-sub lo-pad">Chargement…</p>}
-          {conversations?.length === 0 && (
-            <p className="lo-sub lo-pad">Aucune conversation pour l'instant.</p>
-          )}
+          {conversations?.length === 0 && <p className="lo-sub lo-pad">Rien pour l'instant.</p>}
           <ul className="lo-list">
             {conversations?.map((c) => (
               <li key={c.id}>
@@ -69,17 +85,47 @@ export function Drawer({
               </li>
             ))}
           </ul>
-        </div>
 
-        <div className="lo-drawer-foot">
-          {onStudio && (
-            <button type="button" className="lo-drawer-item" onClick={onStudio}>
-              Studio
-            </button>
+          {projects && projects.length > 0 && (
+            <>
+              <div className="lo-drawer-group-label">Projets</div>
+              <ul className="lo-list">
+                {projects.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      className="lo-drawer-item lo-drawer-project"
+                      onClick={() => void toggleProject(p.id)}
+                      aria-expanded={openProject === p.id}
+                    >
+                      <span className="lo-drawer-caret">{openProject === p.id ? "▾" : "▸"}</span>
+                      {p.name}
+                    </button>
+                    {openProject === p.id && (
+                      <ul className="lo-list lo-list-nested">
+                        {(projectChats[p.id] ?? []).length === 0 && (
+                          <li className="lo-sub lo-pad">Aucune conversation.</li>
+                        )}
+                        {projectChats[p.id]?.map((c) => (
+                          <li key={c.id}>
+                            <button
+                              type="button"
+                              className={`lo-drawer-item${
+                                c.id === currentId ? " lo-drawer-item-on" : ""
+                              }`}
+                              onClick={() => onPick(c.id)}
+                            >
+                              {c.title}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
-          <button type="button" className="lo-drawer-item" onClick={onSettings}>
-            Réglages
-          </button>
         </div>
       </nav>
     </>

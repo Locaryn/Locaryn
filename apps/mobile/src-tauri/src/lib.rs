@@ -416,7 +416,11 @@ async fn ensure_free_chat_project(
 /// from a finished one. The reply is the concatenation of the `token` events
 /// of the daemon's SSE stream.
 #[tauri::command]
-async fn send_message(text: String, conversation_id: Option<String>) -> Result<ChatReply, String> {
+async fn send_message(
+    text: String,
+    conversation_id: Option<String>,
+    ephemeral: Option<bool>,
+) -> Result<ChatReply, String> {
     let (client, server, session) = authenticated()?;
     let base = server.current_url.trim_end_matches('/').to_string();
 
@@ -433,6 +437,9 @@ async fn send_message(text: String, conversation_id: Option<String>) -> Result<C
             let session_resp = client
                 .post(format!("{base}/v1/projects/{project_id}/sessions"))
                 .bearer_auth(&session.token)
+                // Éphémère : le serveur ne lui donnera pas de titre et ne la
+                // fera pas apparaître dans les listes.
+                .json(&serde_json::json!({ "ephemeral": ephemeral.unwrap_or(false) }))
                 .send()
                 .await
                 .map_err(|_| unreachable(&server))?;
@@ -559,6 +566,13 @@ async fn list_conversations() -> Result<Vec<Conversation>, String> {
     }
     let brut: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
 
+    Ok(conversations_depuis(&brut))
+}
+
+/// Des sessions du serveur aux conversations que le téléphone affiche.
+///
+/// La plus récente en tête : c'est celle qu'on reprend neuf fois sur dix.
+fn conversations_depuis(brut: &[serde_json::Value]) -> Vec<Conversation> {
     let mut out: Vec<Conversation> = brut
         .iter()
         .filter_map(|v| {
@@ -579,9 +593,70 @@ async fn list_conversations() -> Result<Vec<Conversation>, String> {
             })
         })
         .collect();
-    // La plus récente en tête : c'est celle qu'on reprend neuf fois sur dix.
     out.sort_by(|a, b| b.last_message_at.cmp(&a.last_message_at));
-    Ok(out)
+    out
+}
+
+/// Un projet du serveur, tel que le téléphone le liste.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PhoneProject {
+    pub id: String,
+    pub name: String,
+}
+
+/// Les projets ouverts sur le serveur.
+///
+/// Le conteneur des conversations libres n'en est pas un : il n'existe que
+/// pour héberger ce qui n'appartient à aucun projet, et l'afficher comme un
+/// projet serait mentir sur l'organisation de quelqu'un.
+#[tauri::command]
+async fn list_projects() -> Result<Vec<PhoneProject>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/').to_string();
+    let resp = client
+        .get(format!("{base}/v1/projects"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    let brut: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(brut
+        .iter()
+        .filter(|p| p.get("path").and_then(|x| x.as_str()) != Some(FREE_CHAT_PROJECT_PATH))
+        .filter_map(|p| {
+            Some(PhoneProject {
+                id: p.get("id")?.as_str()?.to_string(),
+                name: p.get("name")?.as_str()?.to_string(),
+            })
+        })
+        .collect())
+}
+
+/// Les conversations d'un projet donné.
+#[tauri::command]
+async fn list_project_conversations(project_id: String) -> Result<Vec<Conversation>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/').to_string();
+    let resp = client
+        .get(format!("{base}/v1/projects/{project_id}/sessions"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    let brut: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(conversations_depuis(&brut))
 }
 
 /// Le contenu d'une conversation, pour la reprendre là où elle en était.
@@ -1129,6 +1204,8 @@ pub fn run() {
             send_message,
             list_media_models,
             list_conversations,
+            list_projects,
+            list_project_conversations,
             load_conversation,
             list_memory,
             remember,

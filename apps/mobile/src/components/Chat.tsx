@@ -7,12 +7,15 @@ import {
   api,
 } from "../lib/core";
 import { Drawer } from "./Drawer";
+import { type Destination, MainMenu } from "./MainMenu";
 import { UpdateButton } from "./UpdateButton";
 
 type Props = {
   status: MobileStatus;
-  onStudio: () => void;
-  onSettings: () => void;
+  /** Chaque grand espace a son écran ; le tiroir dit lequel ouvrir. */
+  onGo: (d: Destination) => void;
+  /** Ce que les extensions actives du serveur apportent, déjà lu par l'app. */
+  capabilities: string[];
 };
 
 /**
@@ -23,17 +26,23 @@ type Props = {
  * serveur, donc celles de l'ordinateur : une phrase écrite ici se lit là-bas,
  * et une conversation commencée là-bas se continue ici.
  */
-export function Chat({ status, onStudio, onSettings }: Props) {
+export function Chat({ status, onGo, capabilities }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  /**
+   * Conversation éphémère : rien n'en sera gardé, pas même son titre. L'écran
+   * le dit — un mode dont on ne se souvient pas n'en est pas un.
+   */
+  const [ephemeral, setEphemeral] = useState(false);
   /**
    * Le Studio n'existe que si le serveur a une extension qui apporte de quoi
-   * générer. C'est la même liste que lit l'application de bureau : ajouter la
-   * génération d'images sur le serveur la fait apparaître ici aussi.
+   * générer. La liste vient de l'application, qui la relit quand les
+   * extensions bougent.
    */
-  const [canCreate, setCanCreate] = useState(false);
+  const canCreate = capabilities.some((c) => c.endsWith("-gen") || c === "voice-tts");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,16 +57,6 @@ export function Chat({ status, onStudio, onSettings }: Props) {
     const t = setTimeout(() => setNotice(null), 3000);
     return () => clearTimeout(t);
   }, [notice]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void api.serverCapabilities().then((caps) => {
-      if (!cancelled) setCanCreate(caps.length > 0);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const refreshList = useCallback(async () => {
     try {
@@ -101,6 +100,12 @@ export function Chat({ status, onStudio, onSettings }: Props) {
     setError(null);
   }
 
+  /** Reprendre une conversation gardée quitte le mode éphémère. */
+  function openKept(id: string) {
+    setEphemeral(false);
+    void open(id);
+  }
+
   /**
    * Copier un message.
    *
@@ -142,14 +147,14 @@ export function Chat({ status, onStudio, onSettings }: Props) {
     setMessages((m) => [...m, { id: `u${m.length}`, role: "user", content: text }]);
     setBusy(true);
     try {
-      const reply = await api.send(text, currentId);
+      const reply = await api.send(text, currentId, ephemeral);
       setCurrentId(reply.conversation_id);
       setMessages((m) => [
         ...m,
         { id: `a${m.length}`, role: "assistant", content: reply.text, images: reply.images },
       ]);
-      // La liste bouge : titre nouvellement donné, ou conversation qui remonte.
-      void refreshList();
+      // Une conversation éphémère n'apparaît nulle part : rien à rafraîchir.
+      if (!ephemeral) void refreshList();
     } catch (e) {
       setError(String(e));
       // Put the text back rather than losing it to a failed send.
@@ -161,7 +166,7 @@ export function Chat({ status, onStudio, onSettings }: Props) {
   }
 
   return (
-    <div className="lo-screen">
+    <div className={`lo-screen${ephemeral ? " lo-ephemeral" : ""}`}>
       <div className="lo-bar">
         <button
           type="button"
@@ -175,18 +180,57 @@ export function Chat({ status, onStudio, onSettings }: Props) {
         <span>{status.server_name ?? "Locaryn"}</span>
         {status.travelling && <span className="lo-bar-away">à distance</span>}
         <span className="lo-bar-spacer" />
+        {/*
+          L'éphémère se propose là où il se décide : en haut à droite d'une
+          conversation encore vide. Une fois le premier message parti, le choix
+          n'a plus de sens — la conversation existe — et le bouton disparaît
+          plutôt que de rester à ne rien faire.
+        */}
+        {messages.length === 0 && !currentId && (
+          <button
+            type="button"
+            className={`lo-bar-action${ephemeral ? " lo-bar-action-on" : ""}`}
+            onClick={() => setEphemeral((v) => !v)}
+            aria-pressed={ephemeral}
+            title="Rien de cette conversation ne sera gardé"
+          >
+            Éphémère
+          </button>
+        )}
         <UpdateButton />
+        <button
+          type="button"
+          className="lo-bar-menu"
+          onClick={() => setMenuOpen(true)}
+          aria-label="Ouvrir le menu"
+        >
+          ⋮
+        </button>
       </div>
+
+      {ephemeral && (
+        <p className="lo-ephemeral-banner">
+          Conversation éphémère — rien n'en sera gardé, pas même son titre.
+        </p>
+      )}
 
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         conversations={conversations}
         currentId={currentId}
-        onPick={(id) => void open(id)}
+        onPick={openKept}
         onNew={startNew}
-        onStudio={canCreate ? onStudio : null}
-        onSettings={onSettings}
+      />
+
+      <MainMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        canCreate={canCreate}
+        onGo={(d) => {
+          setMenuOpen(false);
+          onGo(d);
+        }}
       />
 
       <div className="lo-thread">

@@ -89,6 +89,12 @@ export interface Conversation {
   last_message_at: string | null;
 }
 
+/** Un projet ouvert sur le serveur. */
+export interface PhoneProject {
+  id: string;
+  name: string;
+}
+
 /** Un tour déjà écrit, relu depuis le serveur. */
 export interface ChatTurn {
   id: string;
@@ -142,10 +148,14 @@ export const core = {
   signOut: () => invoke<MobileStatus>("sign_out"),
   /** Verify a scanned code and apply it. Throws with a phrased message. */
   applyPairingLink: (uri: string) => invoke<PairingResult>("apply_pairing_link", { uri }),
-  send: (text: string, conversationId: string | null) =>
-    invoke<ChatReply>("send_message", { text, conversationId }),
+  send: (text: string, conversationId: string | null, ephemeral = false) =>
+    invoke<ChatReply>("send_message", { text, conversationId, ephemeral }),
   /** Les conversations du serveur — les mêmes que sur l'ordinateur. */
   listConversations: () => invoke<Conversation[]>("list_conversations"),
+  /** Les projets du serveur, et les conversations de l'un d'eux. */
+  listProjects: () => invoke<PhoneProject[]>("list_projects"),
+  listProjectConversations: (projectId: string) =>
+    invoke<Conversation[]>("list_project_conversations", { projectId }),
   loadConversation: (id: string) => invoke<ChatTurn[]>("load_conversation", { id }),
   /** Models the machine can generate with: kind = "image" | "audio". */
   listMediaModels: (kind: "image" | "audio") => invoke<MediaModel[]>("list_media_models", { kind }),
@@ -243,6 +253,8 @@ export const demoCore: typeof core = {
   listConversations: async () => [
     { id: "demo", title: "Conversation de démonstration", last_message_at: null },
   ],
+  listProjects: async () => [{ id: "p1", name: "Atelier" }],
+  listProjectConversations: async () => [],
   loadConversation: async () => [],
   listMediaModels: async () => [
     { name: "sd_xl_turbo_1.0.q8_0.gguf", ready: true, missing: [] },

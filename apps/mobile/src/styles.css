@@ -181,17 +181,31 @@ body {
 
 /* ── Bandeau serveur — même langue que la topbar du desktop :
    même hauteur, même graisse, mêmes boutons fantômes. ── */
+/* La barre du haut.
+   56 px : la hauteur d'une barre d'application sur Android, et la place qu'il
+   faut pour que tout ce qu'elle contient atteigne la cible tactile minimale de
+   44 px sans déborder. À 46 px, les boutons étaient rognés ou décentrés. */
 .lo-bar {
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 46px;
-  padding: var(--space-2) var(--space-5);
+  min-height: 56px;
+  padding: 0 var(--space-3);
   border-bottom: 1px solid var(--border);
   font-size: var(--text-base);
   font-weight: 700;
   color: var(--text-dim);
+}
+
+/* Tout ce qui se touche dans la barre : même hauteur, texte centré sur les
+   deux axes. Un bouton dont le texte flotte au-dessus de sa boîte se voit
+   immédiatement, et c'était le cas du retour. */
+.lo-bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
 }
 .lo-dot {
   width: 7px;
@@ -217,13 +231,14 @@ body {
 }
 .lo-bar-action {
   flex: none;
+  font-family: inherit;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-dim);
   background: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  padding: 3px 10px;
+  padding: 0 12px;
   cursor: pointer;
 }
 .lo-bar-action:active {
@@ -418,15 +433,31 @@ body {
 /* ── Studio de création ─────────────────────────────────────
    Image and voice, made on the machine at the other end.
    The form is one thumb's reach wide; the result opens full. */
+/* Le retour : une cible carrée d'au moins 44 px, centrée, à gauche de tout. */
 .lo-back {
+  flex: none;
+  min-width: 44px;
+  padding: 0 var(--space-2);
   background: none;
   border: none;
   color: var(--text-dim);
   font-family: inherit;
   font-size: var(--text-base);
   font-weight: 600;
-  padding: 0;
   cursor: pointer;
+}
+.lo-back:active {
+  color: var(--text);
+}
+
+/* Le titre de l'écran, entre le retour et les actions. */
+.lo-bar-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
 }
 .lo-tabs {
   display: flex;
@@ -597,7 +628,8 @@ body.lo-scanning .lo-screen {
 
 .lo-bar-menu {
   flex: none;
-  padding: 2px 8px;
+  min-width: 44px;
+  padding: 0;
   font-size: 18px;
   line-height: 1;
   color: var(--text-dim);
@@ -698,4 +730,270 @@ body.lo-scanning .lo-screen {
 .lo-drawer-item-on {
   color: var(--text);
   background: var(--bg);
+}
+
+/* ---------------------------------------------------------------------------
+   Tiroir : ce sur quoi on travaille en haut, les grands espaces en bas.
+   --------------------------------------------------------------------------- */
+
+.lo-drawer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+}
+
+.lo-drawer-cta {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: #12140f;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* Un groupe qui se replie : dix conversations ne doivent pas repousser le
+   reste du menu hors de l'écran. */
+.lo-drawer-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.lo-drawer-caret {
+  display: inline-block;
+  width: 10px;
+}
+
+.lo-drawer-dest {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lo-drawer-icon {
+  width: 18px;
+  text-align: center;
+}
+
+/* Mode éphémère : un liseré et une bande, pour qu'on le sache sans le
+   chercher. */
+.lo-ephemeral {
+  box-shadow: inset 0 0 0 1px rgba(var(--danger-rgb), 0.35);
+}
+.lo-ephemeral-banner {
+  flex: none;
+  margin: 0;
+  padding: 8px var(--space-5);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  background: rgba(var(--danger-rgb), 0.08);
+  border-bottom: 1px solid rgba(var(--danger-rgb), 0.25);
+}
+
+/* ---------------------------------------------------------------------------
+   Écrans secondaires : une page qui défile, des cartes qui se lisent.
+   --------------------------------------------------------------------------- */
+
+.lo-page {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+}
+
+.lo-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lo-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.lo-card-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lo-card-title {
+  font-size: 14px;
+  color: var(--text);
+  word-break: break-word;
+}
+.lo-card-actions {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Un bouton d'action dans une carte : la cible tactile ne descend pas sous
+   40 px, même quand le texte est court. */
+.lo-btn-small {
+  min-height: 40px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.lo-btn-small:disabled {
+  opacity: 0.5;
+}
+.lo-btn-small-on {
+  color: #12140f;
+  background: var(--accent);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   Menu principal : une feuille qui monte du bas.
+
+   Séparé de l'historique parce que les deux ne tiennent pas dans la même
+   colonne : une navigation fixe de quatre entrées, et une liste qui s'allonge
+   sans fin, finissent par se cacher l'une l'autre.
+   --------------------------------------------------------------------------- */
+
+.lo-sheet-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  cursor: pointer;
+}
+
+.lo-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-3);
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  animation: lo-sheet-up 200ms ease;
+}
+@keyframes lo-sheet-up {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-sheet {
+    animation: none;
+  }
+}
+
+/* La poignée : elle dit qu'on peut refermer, sans l'écrire. */
+.lo-sheet-grip {
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  margin: 4px 0 10px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.lo-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 0 var(--space-2);
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.lo-sheet-item:active {
+  background: var(--bg);
+}
+.lo-sheet-icon {
+  width: 24px;
+  font-size: 18px;
+  text-align: center;
+}
+.lo-sheet-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lo-sheet-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Le mode éphémère armé : la pastille se remplit. */
+.lo-bar-action-on {
+  color: #12140f;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+/* Un intitulé de groupe dans l'historique. */
+.lo-drawer-group-label {
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.lo-drawer-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.lo-list-nested {
+  padding-left: var(--space-4);
 }
