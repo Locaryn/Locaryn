@@ -13,16 +13,29 @@ export function App() {
   const [screen, setScreen] = useState<Screen>("loading");
   const [paired, setPaired] = useState<PairingResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [startupError, setStartupError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const s = await api.status();
-    setStatus(s);
-    setScreen(s.signed_in ? "chat" : "signin");
-    return s;
+    // Cet appel est le tout premier que fait l'application. S'il échoue sans
+    // être rattrapé, `status` reste nul, l'écran reste sur « loading », et
+    // l'application affiche un rectangle vide — indéfiniment, sans rien dire.
+    // C'est ce qu'on voyait sur un téléphone : une app qui démarre sur du noir.
+    try {
+      const s = await api.status();
+      setStartupError(null);
+      setStatus(s);
+      setScreen(s.signed_in ? "chat" : "signin");
+      return s;
+    } catch (e) {
+      setStartupError(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }, []);
 
   useEffect(() => {
-    void refresh();
+    // `catch` vide : `refresh` a déjà retenu le message pour l'écran d'erreur.
+    // Sans lui, l'échec ne serait qu'une promesse rejetée dans la console.
+    refresh().catch(() => {});
   }, [refresh]);
 
   /**
@@ -81,6 +94,24 @@ export function App() {
 
   if (paired) {
     return <Paired result={paired} onDone={() => setPaired(null)} />;
+  }
+
+  if (startupError) {
+    return (
+      <div className="lo-screen">
+        <div className="lo-center">
+          <h1 className="lo-title">Locaryn n'a pas pu démarrer</h1>
+          <p className="lo-sub">
+            L'application n'a pas obtenu son état de départ. Rien n'est perdu : réessayez, et si
+            cela persiste, réinstallez-la.
+          </p>
+          <p className="lo-error">{startupError}</p>
+          <button type="button" className="lo-btn" onClick={() => void refresh().catch(() => {})}>
+            Réessayer
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (screen === "loading" || !status) {

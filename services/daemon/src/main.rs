@@ -14,7 +14,7 @@ use axum::{
     Json, Router,
 };
 use futures::StreamExt as _;
-use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent, StubAgent};
+use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent};
 use locaryn_events::{sse_event_tag, StreamEvent};
 use locaryn_extensions::ExtensionRegistry;
 use locaryn_mcp::McpState;
@@ -499,11 +499,16 @@ async fn health(State(s): State<Arc<DaemonState>>) -> Json<Health> {
     })
 }
 
-async fn info(State(_s): State<Arc<DaemonState>>) -> Json<serde_json::Value> {
+async fn info(State(s): State<Arc<DaemonState>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "name": "locaryn-daemon",
         "version": env!("CARGO_PKG_VERSION"),
         "capabilities": ["sessions", "projects", "tasks", "artifacts", "extensions", "mcp", "media"],
+        // Sur la boucle locale, le service sert l'API sans jeton : la personne
+        // au clavier est déjà celle que le système a authentifiée. Le client web
+        // ne pouvait pas le savoir et présentait un écran de connexion que rien
+        // n'exigeait — infranchissable pour qui n'a jamais créé de compte.
+        "auth_required": s.auth_required,
     }))
 }
 
@@ -799,7 +804,7 @@ async fn send_message(
         if p.engine == ProviderEngine::LlamaCpp {
             tracing::debug!(endpoint = %p.endpoint, "ensuring llama-server is running");
             if let Err(e) = s.supervisor.ensure_running(ProviderEngine::LlamaCpp).await {
-                tracing::warn!(error = %e, "supervisor could not ensure llama-server running — falling back to StubAgent");
+                tracing::warn!(error = %e, "supervisor could not ensure llama-server running");
                 supervisor_ok = false;
             } else {
                 s.supervisor.note_activity(ProviderEngine::LlamaCpp).await;
@@ -854,7 +859,8 @@ async fn send_message(
         approval: None,
     };
 
-    // 4. Run the agent: OpenAiCompatAgent (llama-server) if possible, otherwise StubAgent.
+    // 4. Run the agent: OpenAiCompatAgent (llama-server) when one answers,
+    //    otherwise a response that names what is missing.
     let event_stream: EventStream = {
         match &active_provider {
             Some(p)
@@ -867,16 +873,21 @@ async fn send_message(
                 match agent.run(input.clone()).await {
                     Ok(stream) => stream,
                     Err(e) => {
-                        tracing::warn!(error = %e, "OpenAiCompatAgent run failed, falling back to StubAgent");
-                        run_stub_agent(input).await
+                        tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
+                        no_model_stream(&format!("le moteur a refusé la requête ({e})"))
                     }
                 }
             }
+            Some(p) if !supervisor_ok => {
+                tracing::warn!(endpoint = %p.endpoint, "provider unreachable");
+                no_model_stream(&format!(
+                    "le moteur configuré ({}) ne répond pas",
+                    p.endpoint
+                ))
+            }
             _ => {
-                tracing::warn!(
-                    "falling back to StubAgent (no local provider or supervisor failed)"
-                );
-                run_stub_agent(input).await
+                tracing::warn!("no usable provider configured");
+                no_model_stream("aucun fournisseur de modèle n'est configuré")
             }
         }
     };
@@ -1037,14 +1048,33 @@ struct SendMessageBody {
     images: Option<Vec<String>>,
 }
 
-async fn run_stub_agent(input: AgentInput) -> EventStream {
-    match StubAgent.run(input).await {
-        Ok(stream) => stream,
-        Err(e) => {
-            tracing::warn!(error = %e, "StubAgent run failed, returning empty stream");
-            Box::pin(futures::stream::empty())
-        }
-    }
+/// Réponse rendue quand aucun modèle de conversation n'est joignable.
+///
+/// Le repli était l'agent factice : il renvoyait « (stub agent) echo: … », que
+/// l'interface affichait comme une réponse de l'assistant. On voyait donc un
+/// modèle qui répète la question au lieu d'un service qui dit ce qui lui
+/// manque — et le journal, seul à porter la raison, n'est lu par personne.
+fn no_model_stream(reason: &str) -> EventStream {
+    let message = format!(
+        "Aucun modèle de conversation n'est disponible : {reason}.\n\n\
+         Vérifiez dans Réglages → Moteur que le moteur local est installé et \
+         qu'un modèle de discussion est sélectionné (les modèles d'image ou de \
+         voix ne savent pas répondre à une conversation).",
+    );
+    let message_id = Uuid::new_v4().to_string();
+    Box::pin(futures::stream::iter(vec![
+        StreamEvent::MessageStart {
+            message_id: message_id.clone(),
+            task_id: Uuid::new_v4().to_string(),
+        },
+        StreamEvent::Token { text: message },
+        StreamEvent::MessageEnd {
+            message_id,
+            tokens_in: 0,
+            tokens_out: 0,
+            duration_ms: 0,
+        },
+    ]))
 }
 
 async fn list_providers(State(s): State<Arc<DaemonState>>) -> Response {

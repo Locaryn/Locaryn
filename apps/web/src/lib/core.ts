@@ -102,6 +102,18 @@ async function http<T>(
 const SERVER_NAME = "Locaryn";
 
 export const api = {
+  /** Le service exige-t-il un compte ? Faux quand il n'écoute que la machine. */
+  async authRequired(): Promise<boolean> {
+    try {
+      const info = await http<{ auth_required?: boolean }>("/v1/info");
+      return info.auth_required !== false;
+    } catch {
+      // Injoignable : on garde l'écran de connexion plutôt que d'ouvrir une
+      // interface qui ne pourra rien afficher.
+      return true;
+    }
+  },
+
   /** Local view of the session: the token is validated lazily, the moment an
    * API call answers 401 (which clears it). No round-trip on every load. */
   status(): WebStatus {

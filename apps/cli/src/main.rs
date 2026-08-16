@@ -310,13 +310,24 @@ async fn main() -> anyhow::Result<()> {
             }
             ProjectsCmd::Add { path, trust } => {
                 let t = parse_trust(&trust)?;
-                let name = std::path::Path::new(&path)
+                // Le chemin est résolu ici, pas envoyé tel quel : un « . »
+                // désignerait le dossier courant du *service*, pas celui de la
+                // personne. C'est aussi ce qui donne un vrai nom de dossier —
+                // `Path::new(".").file_name()` ne renvoie rien, et le projet
+                // s'appelait « project ».
+                let resolved = std::fs::canonicalize(&path)
+                    .map_err(|e| anyhow::anyhow!("chemin introuvable : {path} ({e})"))?;
+                let display = resolved
+                    .to_string_lossy()
+                    .trim_start_matches(r"\\?\")
+                    .replace('\\', "/");
+                let name = resolved
                     .file_name()
                     .and_then(|s| s.to_str())
-                    .unwrap_or("project")
+                    .unwrap_or("projet")
                     .to_string();
-                let p = client.create_project(&path, &name, t).await?;
-                println!("added project {} ({})", p.name, p.id);
+                let p = client.create_project(&display, &name, t).await?;
+                println!("projet ajouté : {} ({})", p.name, p.id);
                 Ok(())
             }
         },

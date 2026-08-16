@@ -22,7 +22,11 @@ export function App() {
   const refresh = useCallback(async () => {
     const s = await api.status();
     setStatus(s);
-    setScreen(s.signed_in ? "chat" : "signin");
+    // Un service qui n'écoute que sa propre machine sert l'API sans jeton :
+    // demander un mot de passe n'y protège rien, et bloque net celui qui n'a
+    // jamais créé de compte. On ne présente donc l'écran de connexion que
+    // lorsque le service l'exige vraiment.
+    setScreen(s.signed_in || !(await api.authRequired()) ? "chat" : "signin");
     return s;
   }, []);
 
