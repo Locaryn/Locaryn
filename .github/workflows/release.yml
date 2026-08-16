@@ -377,20 +377,21 @@ jobs:
       - name: Construire l'APK
         run: pnpm --dir apps/mobile build:apk
 
-      # Vérification de ce qui vient d'être produit, pas de ce qu'on espérait :
-      # la bibliothèque doit contenir l'interface. Un APK vide passait tous les
-      # contrôles précédents et ne se voyait qu'une fois installé sur un
-      # téléphone.
-      - name: Vérifier que l'interface est bien embarquée
+      # Ce qu'on peut vérifier honnêtement ici : que l'interface a bien été
+      # produite avant la compilation. Chercher ses fichiers *dans* la
+      # bibliothèque ne marche pas — Tauri compresse ce qu'il embarque, et un
+      # `grep` sur le binaire répond « absent » même quand tout est là. Un
+      # contrôle qui échoue à tort bloque des releases saines : il vaut moins
+      # que pas de contrôle.
+      - name: Vérifier que l'interface a été produite
         run: |
-          lib=$(find apps/mobile/src-tauri/gen/android -name 'liblocaryn_mobile_lib.so' | head -1)
-          [ -n "$lib" ] || { echo "::error::bibliothèque Android introuvable"; exit 1; }
-          marker=$(grep -o 'lo-screen' "$lib" | head -1 || true)
-          if [ -z "$marker" ]; then
-            echo "::error::l'interface n'est pas embarquée dans $lib — l'application démarrerait sur un écran vide"
+          index=apps/mobile/dist/index.html
+          [ -f "$index" ] || { echo "::error::apps/mobile/dist/index.html absent — l'APK n'aurait aucune interface"; exit 1; }
+          if grep -q 'src="/src/' "$index"; then
+            echo "::error::$index pointe encore vers les sources : ce n'est pas la version construite"
             exit 1
           fi
-          echo "interface embarquée dans $lib"
+          echo "interface construite : $(du -sh apps/mobile/dist | cut -f1)"
 
       - name: Déterminer la version
         shell: bash
