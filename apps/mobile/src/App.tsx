@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
 import { Extensions } from "./components/Extensions";
 import type { Destination } from "./components/MainMenu";
+import { MemoryScreen } from "./components/MemoryScreen";
 import { Models } from "./components/Models";
 import { Paired } from "./components/Paired";
 import { Settings } from "./components/Settings";
@@ -10,7 +11,7 @@ import { Studio } from "./components/Studio";
 import { type MobileStatus, type PairingResult, api, coreMode } from "./lib/core";
 import { isScannerAvailable, scan } from "./lib/scanner";
 
-type Screen = "loading" | "signin" | "chat" | Destination;
+type Screen = "loading" | "signin" | "chat" | "memory" | Destination;
 
 export function App() {
   const [status, setStatus] = useState<MobileStatus | null>(null);
@@ -173,6 +174,8 @@ export function App() {
         />
       ) : screen === "models" ? (
         <Models onBack={() => setScreen("chat")} />
+      ) : screen === "memory" ? (
+        <MemoryScreen onBack={() => setScreen("settings")} />
       ) : screen === "settings" ? (
         <Settings
           status={status}
@@ -181,6 +184,7 @@ export function App() {
             setStatus(s);
             setScreen("signin");
           }}
+          onMemory={() => setScreen("memory")}
         />
       ) : (
         <SignIn

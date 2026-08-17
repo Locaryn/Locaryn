@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Icon } from "./Icon";
 
 type Props = {
   title: string;
@@ -20,7 +21,7 @@ export function Screen({ title, onBack, action, children }: Props) {
     <div className="lo-screen">
       <div className="lo-bar">
         <button type="button" className="lo-back" onClick={onBack} aria-label="Revenir">
-          ←
+          <Icon name="back" />
         </button>
         <span className="lo-bar-title">{title}</span>
         {action}

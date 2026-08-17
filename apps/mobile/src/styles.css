@@ -997,3 +997,59 @@ body.lo-scanning .lo-screen {
 .lo-list-nested {
   padding-left: var(--space-4);
 }
+
+/* Une ligne qui mène ailleurs : intitulé, précision, chevron. C'est la forme
+   d'un sous-menu, et elle se répétera pour tout ce que les réglages
+   abriteront. */
+.lo-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 0 var(--space-3);
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.lo-row:active {
+  background: var(--bg);
+}
+.lo-row-icon,
+.lo-row-go {
+  flex: none;
+  display: inline-flex;
+  color: var(--text-faint);
+}
+.lo-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lo-row-label {
+  font-size: 15px;
+}
+
+/* Un bouton de barre réduit à son icône : la cible reste carrée et pleine. */
+.lo-bar-icon {
+  flex: none;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.lo-bar-icon-on {
+  color: #12140f;
+  background: var(--accent);
+}

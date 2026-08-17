@@ -986,6 +986,9 @@ async fn send_message(
     //    up the cancellation entry.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamEvent>(128);
     let storage_bg = s.storage.clone();
+    // Le profil se déduit après coup, donc la tâche de fond a besoin de tout
+    // l'état, pas seulement du dépôt.
+    let state_bg = s.clone();
     let cancel_map_bg = s.cancel_map.clone();
     // Le nom du modèle et l'instant de départ, pour mesurer la vitesse au bout.
     // Un chemin complet est illisible dans une liste : on garde le nom de
@@ -1087,7 +1090,12 @@ async fn send_message(
                 )
                 .await
             {
-                Ok(_) => true,
+                Ok(_) => {
+                    // L'échange est écrit : on peut en tirer ce qu'il apprend
+                    // de la personne, sans retarder personne.
+                    spawn_profil_de_l_utilisateur(state_bg.clone(), session_uuid);
+                    true
+                }
                 Err(e) => {
                     tracing::warn!(error = %e, "failed to persist assistant message");
                     false
@@ -1789,6 +1797,91 @@ async fn rename_session(
         )
             .into_response(),
     }
+}
+
+/// Écouter ce qu'un échange apprend de durable sur la personne, et le retenir.
+///
+/// Une mémoire qu'il faut remplir soi-même reste vide : personne n'ouvre un
+/// formulaire pour déclarer ses préférences. Elles se disent en passant — « fais
+/// court », « je travaille en Rust » — et c'est là qu'il faut les entendre.
+///
+/// Comme le titre : en tâche de fond, avec le modèle des micro-tâches, et
+/// seulement si quelqu'un en a désigné un. Une conversation éphémère est
+/// ignorée : elle promet de ne rien laisser.
+fn spawn_profil_de_l_utilisateur(s: Arc<DaemonState>, session_id: Uuid) {
+    tokio::spawn(async move {
+        match s.storage.sessions.get(session_id).await {
+            Ok(sess) if !sess.ephemeral => {}
+            _ => return,
+        }
+
+        let Some(micro) = locaryn_config::load(None)
+            .ok()
+            .and_then(|c| c.assistance.micro_model)
+            .filter(|m| !m.trim().is_empty())
+        else {
+            return;
+        };
+
+        // Le dernier aller-retour suffit : c'est là que se disent les
+        // préférences, et relire toute la conversation à chaque message
+        // coûterait plus que ça ne rapporte.
+        let Ok(msgs) = s.storage.messages.list_for_session(session_id).await else {
+            return;
+        };
+        let echange: String = msgs
+            .iter()
+            .rev()
+            .filter(|m| matches!(m.role, MessageRole::User | MessageRole::Assistant))
+            .take(2)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .map(|m| {
+                let qui = match m.role {
+                    MessageRole::User => "Personne",
+                    _ => "Assistant",
+                };
+                format!("{qui} : {}", m.content)
+            })
+            .collect::<Vec<_>>()
+            .join(
+                "
+",
+            );
+        if echange.trim().is_empty() {
+            return;
+        }
+
+        let Ok(providers) = s.storage.providers.list().await else {
+            return;
+        };
+        let Some(p) = providers.into_iter().find(|p| {
+            p.is_active
+                && (p.engine == ProviderEngine::LlamaCpp
+                    || p.engine == ProviderEngine::OpenAiCompat)
+        }) else {
+            return;
+        };
+
+        let client = reqwest::Client::new();
+        let faits =
+            locaryn_agent_runtime::titling::ask_for_profile(&p.endpoint, &client, &micro, &echange)
+                .await;
+        for f in faits {
+            // Le dépôt refuse les doublons : réentendre deux fois la même
+            // préférence ne la note pas deux fois.
+            match s
+                .storage
+                .memory
+                .remember(None, &f.category, &f.content, "assistant")
+                .await
+            {
+                Ok(_) => tracing::info!(fait = %f.content, "mémoire enrichie"),
+                Err(e) => tracing::debug!(error = %e, "fait déjà connu ou non enregistré"),
+            }
+        }
+    });
 }
 
 /// Demander au modèle de nommer une conversation, sans faire attendre personne.

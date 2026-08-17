@@ -69,7 +69,6 @@ export function Drawer({ open, onClose, conversations, currentId, onPick, onNew 
             Nouvelle conversation
           </button>
 
-          <div className="lo-drawer-group-label">Conversations</div>
           {conversations === null && <p className="lo-sub lo-pad">Chargement…</p>}
           {conversations?.length === 0 && <p className="lo-sub lo-pad">Rien pour l'instant.</p>}
           <ul className="lo-list">

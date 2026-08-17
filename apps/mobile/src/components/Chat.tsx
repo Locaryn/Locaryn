@@ -7,6 +7,7 @@ import {
   api,
 } from "../lib/core";
 import { Drawer } from "./Drawer";
+import { Icon } from "./Icon";
 import { type Destination, MainMenu } from "./MainMenu";
 import { UpdateButton } from "./UpdateButton";
 
@@ -172,9 +173,9 @@ export function Chat({ status, onGo, capabilities }: Props) {
           type="button"
           className="lo-bar-menu"
           onClick={() => setDrawerOpen(true)}
-          aria-label="Ouvrir le menu"
+          aria-label="Ouvrir l'historique"
         >
-          ☰
+          <Icon name="menu" />
         </button>
         <span className="lo-dot" />
         <span>{status.server_name ?? "Locaryn"}</span>
@@ -189,12 +190,13 @@ export function Chat({ status, onGo, capabilities }: Props) {
         {messages.length === 0 && !currentId && (
           <button
             type="button"
-            className={`lo-bar-action${ephemeral ? " lo-bar-action-on" : ""}`}
+            className={`lo-bar-icon${ephemeral ? " lo-bar-icon-on" : ""}`}
             onClick={() => setEphemeral((v) => !v)}
             aria-pressed={ephemeral}
+            aria-label="Conversation éphémère"
             title="Rien de cette conversation ne sera gardé"
           >
-            Éphémère
+            <Icon name="private" />
           </button>
         )}
         <UpdateButton />
@@ -204,7 +206,7 @@ export function Chat({ status, onGo, capabilities }: Props) {
           onClick={() => setMenuOpen(true)}
           aria-label="Ouvrir le menu"
         >
-          ⋮
+          <Icon name="more" />
         </button>
       </div>
 

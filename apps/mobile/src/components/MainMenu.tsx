@@ -1,3 +1,5 @@
+import { Icon } from "./Icon";
+
 /** Les grands espaces de l'application, ceux qui méritent leur propre écran. */
 export type Destination = "studio" | "extensions" | "models" | "settings";
 
@@ -20,11 +22,11 @@ type Props = {
 export function MainMenu({ open, onClose, canCreate, onGo }: Props) {
   if (!open) return null;
 
-  const destinations: { id: Destination; label: string; icon: string; note: string }[] = [
-    { id: "studio", label: "Studio", icon: "🎨", note: "Images et voix" },
-    { id: "extensions", label: "Extensions", icon: "🧩", note: "Ce que le serveur sait faire" },
-    { id: "models", label: "Modèles", icon: "📦", note: "Ce qui est installé" },
-    { id: "settings", label: "Réglages", icon: "⚙", note: "Serveur, mémoire, mise à jour" },
+  const destinations: { id: Destination; label: string; note: string }[] = [
+    { id: "studio", label: "Studio", note: "Images et voix" },
+    { id: "extensions", label: "Extensions", note: "Ce que le serveur sait faire" },
+    { id: "models", label: "Modèles", note: "Ce qui est installé" },
+    { id: "settings", label: "Réglages", note: "Serveur, mémoire, mise à jour" },
   ];
 
   return (
@@ -41,7 +43,9 @@ export function MainMenu({ open, onClose, canCreate, onGo }: Props) {
           .filter((d) => d.id !== "studio" || canCreate)
           .map((d) => (
             <button key={d.id} type="button" className="lo-sheet-item" onClick={() => onGo(d.id)}>
-              <span className="lo-sheet-icon">{d.icon}</span>
+              <span className="lo-sheet-icon">
+                <Icon name={d.id} />
+              </span>
               <span className="lo-sheet-text">
                 <span className="lo-sheet-label">{d.label}</span>
                 <span className="lo-hint">{d.note}</span>

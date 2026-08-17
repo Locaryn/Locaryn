@@ -177,3 +177,159 @@ mod tests {
         assert_eq!(tronquer("court", 800), "court");
     }
 }
+
+// ============================================================================
+// Le profil de l'utilisateur
+// ============================================================================
+
+/// Ce que le modèle a compris de la personne, à partir d'un échange.
+///
+/// Une mémoire que l'utilisateur doit remplir lui-même reste vide : personne
+/// n'ouvre un formulaire pour déclarer ses préférences. Elles se disent en
+/// passant, au fil des conversations — « fais court », « je travaille en
+/// Rust », « je suis sur le projet Locaryn » — et c'est là qu'il faut les
+/// entendre.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fait {
+    /// `preference`, `habitude`, `projet` ou `fait`.
+    pub category: String,
+    pub content: String,
+}
+
+/// Lire un échange et en tirer ce qui vaut d'être retenu.
+///
+/// Rend une liste vide bien plus souvent qu'autre chose : la plupart des
+/// échanges n'apprennent rien de durable, et une mémoire qui enfle à chaque
+/// message devient un bruit que le modèle traîne dans chaque réponse.
+pub async fn ask_for_profile(
+    endpoint: &str,
+    client: &reqwest::Client,
+    model: &str,
+    echange: &str,
+) -> Vec<Fait> {
+    let corps = serde_json::json!({
+        "model": model,
+        "stream": false,
+        "max_tokens": 160,
+        "temperature": 0.1,
+        "messages": [
+            {
+                "role": "system",
+                "content":
+                    "Tu lis un échange et tu notes ce qu'il apprend de DURABLE sur la \
+                     personne : ses préférences de travail, ses habitudes, ses projets. \
+                     Une ligne par fait, au format « categorie | fait », où categorie vaut \
+                     preference, habitude, projet ou fait. Trois lignes au maximum. \
+                     N'invente rien, ne note rien de ponctuel ni de trivial. \
+                     Si l'échange n'apprend rien de durable, réponds exactement RIEN."
+            },
+            { "role": "user", "content": tronquer(echange, 3000) }
+        ]
+    });
+
+    let Ok(resp) = client
+        .post(format!(
+            "{}/v1/chat/completions",
+            endpoint.trim_end_matches('/')
+        ))
+        .timeout(Duration::from_secs(45))
+        .json(&corps)
+        .send()
+        .await
+    else {
+        return Vec::new();
+    };
+    if !resp.status().is_success() {
+        return Vec::new();
+    }
+    let Ok(v) = resp.json::<serde_json::Value>().await else {
+        return Vec::new();
+    };
+    let brut = v
+        .pointer("/choices/0/message/content")
+        .and_then(|c| c.as_str())
+        .unwrap_or_default();
+    lire_faits(brut)
+}
+
+/// Transformer la réponse du modèle en faits utilisables.
+pub fn lire_faits(brut: &str) -> Vec<Fait> {
+    const CATEGORIES: [&str; 4] = ["preference", "habitude", "projet", "fait"];
+    let apres_reflexion = brut.rsplit("</think>").next().unwrap_or(brut);
+    let mut out = Vec::new();
+    for ligne in apres_reflexion.lines() {
+        let ligne = ligne.trim().trim_start_matches(['-', '*', '•']).trim();
+        if ligne.is_empty() || ligne.eq_ignore_ascii_case("rien") {
+            continue;
+        }
+        let Some((cat, contenu)) = ligne.split_once('|') else {
+            continue;
+        };
+        let cat = cat.trim().to_ascii_lowercase();
+        let contenu = contenu.trim().trim_matches('"').trim();
+        if !CATEGORIES.contains(&cat.as_str()) || contenu.is_empty() {
+            continue;
+        }
+        // Un « fait » d'une phrase entière n'en est pas un : c'est un résumé,
+        // et il polluerait chaque réponse suivante.
+        if contenu.chars().count() > 160 {
+            continue;
+        }
+        out.push(Fait {
+            category: cat,
+            content: contenu.to_string(),
+        });
+        if out.len() == 3 {
+            break;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod profil_tests {
+    use super::{lire_faits, Fait};
+
+    #[test]
+    fn les_faits_bien_formes_sont_gardes() {
+        let f =
+            lire_faits("preference | Préfère les réponses courtes\nprojet | Travaille sur Locaryn");
+        assert_eq!(
+            f,
+            vec![
+                Fait {
+                    category: "preference".into(),
+                    content: "Préfère les réponses courtes".into()
+                },
+                Fait {
+                    category: "projet".into(),
+                    content: "Travaille sur Locaryn".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rien_veut_dire_rien() {
+        assert!(lire_faits("RIEN").is_empty());
+        assert!(lire_faits("rien\n").is_empty());
+        assert!(lire_faits("").is_empty());
+    }
+
+    #[test]
+    fn ce_qui_n_est_pas_un_fait_est_ecarte() {
+        // Catégorie inconnue, ligne sans séparateur, phrase-résumé : rien de
+        // tout cela n'a sa place dans une mémoire relue à chaque réponse.
+        let f = lire_faits(&format!(
+            "humeur | content aujourd'hui\nune ligne sans separateur\nfait | {}",
+            "a".repeat(200)
+        ));
+        assert!(f.is_empty(), "{f:?}");
+    }
+
+    #[test]
+    fn trois_faits_au_maximum() {
+        let f = lire_faits("fait | un\nfait | deux\nfait | trois\nfait | quatre");
+        assert_eq!(f.len(), 3);
+    }
+}
