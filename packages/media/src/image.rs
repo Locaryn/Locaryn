@@ -471,6 +471,10 @@ pub struct ImageRequest {
     pub variants: u32,
     /// Output directory on the machine running the engine.
     pub output_dir: PathBuf,
+    /// img2img source, already decoded to a file on this machine. The caller
+    /// (the daemon route) owns turning a client's base64 upload into a path —
+    /// this crate only knows how to hand it to sd.cpp.
+    pub input_image: Option<PathBuf>,
 }
 
 /// Run `sd.exe` and wait for the finished PNG.
@@ -524,7 +528,7 @@ pub async fn generate_image(
         cfg_scale,
         seed: 42,
         out_file: &out_file,
-        init_image: None,
+        init_image: req.input_image.as_deref(),
         mask: None,
         strength: 0.75,
         vram_gb: vram_gb(),

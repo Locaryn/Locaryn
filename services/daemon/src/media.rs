@@ -49,7 +49,33 @@ pub async fn list_models(
     Json(serde_json::json!({ "kind": kind, "models": models })).into_response()
 }
 
-/// POST /v1/media/image — text-to-image via stable-diffusion.cpp.
+/// Décode une image source envoyée par un client mince (base64, avec ou
+/// sans le préfixe `data:...;base64,`) vers un fichier temporaire sur cette
+/// machine — c'est elle qui a le moteur, la vue web du client n'a pas accès
+/// à son propre disque de la même façon.
+fn decode_input_image(data: &str) -> Result<std::path::PathBuf, String> {
+    let payload = data.split_once(',').map(|(_, p)| p).unwrap_or(data);
+    let bytes = locaryn_shared_types::base64_decode(payload)?;
+    let ext = if data.contains("jpeg") || data.contains("jpg") {
+        "jpg"
+    } else if data.contains("webp") {
+        "webp"
+    } else {
+        "png"
+    };
+    let path = locaryn_config::ensure_temp_dir().join(format!(
+        "media_input_{}.{ext}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    ));
+    std::fs::write(&path, bytes).map_err(|e| format!("écriture image source : {e}"))?;
+    Ok(path)
+}
+
+/// POST /v1/media/image — text-to-image (ou img2img si `input_image` est
+/// fourni) via stable-diffusion.cpp.
 pub async fn generate_image(
     State(s): State<Arc<DaemonState>>,
     Json(body): Json<ImageGenBody>,
@@ -57,6 +83,14 @@ pub async fn generate_image(
     let width = body.width.unwrap_or(1024);
     let height = body.height.unwrap_or(1024);
     let variants = body.variants.unwrap_or(1).clamp(1, 8);
+
+    let input_image = match body.input_image.as_deref().filter(|s| !s.is_empty()) {
+        Some(data) => match decode_input_image(data) {
+            Ok(p) => Some(p),
+            Err(e) => return err_response(StatusCode::BAD_REQUEST, "bad_request", &e),
+        },
+        None => None,
+    };
 
     let req = locaryn_media::image::ImageRequest {
         model: body.model,
@@ -70,6 +104,7 @@ pub async fn generate_image(
         // Volumineux et refabricable : suit la racine de stockage, pas le
         // disque système.
         output_dir: locaryn_config::generated_images_dir(),
+        input_image,
     };
     let progress = |pct: u32, detail: &str| {
         tracing::info!(progress = pct, detail, "image generation");
@@ -175,6 +210,9 @@ pub struct ImageGenBody {
     steps: Option<u32>,
     cfg_scale: Option<f32>,
     variants: Option<u32>,
+    /// Image source pour une édition (img2img) : base64, avec ou sans le
+    /// préfixe `data:image/...;base64,`. Absent = texte vers image ordinaire.
+    input_image: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

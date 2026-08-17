@@ -732,6 +732,7 @@ async fn exec_generate_image(args: &serde_json::Value) -> ToolResult {
             cfg_scale: None,
             variants: 1,
             output_dir: locaryn_config::generated_images_dir(),
+            input_image: None,
         };
         match locaryn_media::image::generate_image(req, &|_, _| {}).await {
             Ok(file) => {

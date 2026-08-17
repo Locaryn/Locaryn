@@ -8,6 +8,12 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // ============================================================================
+// Extension capabilities — liste canonique partagée
+// ============================================================================
+
+pub mod capabilities;
+
+// ============================================================================
 // Projects
 // ============================================================================
 
@@ -860,9 +866,62 @@ pub fn base64_encode(bytes: &[u8]) -> String {
     result
 }
 
+/// L'inverse de [`base64_encode`] — un client (téléphone, web) envoie une
+/// image source pour l'édition dans le même encodage que le serveur lui
+/// répond avec des fichiers générés. Rejette tout ce qui n'est pas un
+/// multiple de 4 caractères ou contient un caractère hors alphabet : mieux
+/// vaut une erreur claire qu'une image tronquée en silence.
+pub fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
+    fn valeur(c: u8) -> Result<u8, String> {
+        match c {
+            b'A'..=b'Z' => Ok(c - b'A'),
+            b'a'..=b'z' => Ok(c - b'a' + 26),
+            b'0'..=b'9' => Ok(c - b'0' + 52),
+            b'+' => Ok(62),
+            b'/' => Ok(63),
+            _ => Err(format!("caractère base64 invalide : {:?}", c as char)),
+        }
+    }
+
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(Vec::new());
+    }
+    if s.len() % 4 != 0 {
+        return Err("longueur base64 invalide (attendu un multiple de 4)".into());
+    }
+
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(s.len() / 4 * 3);
+    for (i, chunk) in bytes.chunks(4).enumerate() {
+        let is_last = i == bytes.len() / 4 - 1;
+        let pad = if is_last {
+            chunk.iter().rev().take_while(|&&c| c == b'=').count()
+        } else {
+            0
+        };
+        if pad > 0 && chunk[..4 - pad].contains(&b'=') {
+            return Err("caractère de bourrage ('=') au milieu de la séquence".into());
+        }
+        let mut v = [0u8; 4];
+        for (j, &c) in chunk.iter().enumerate() {
+            v[j] = if c == b'=' { 0 } else { valeur(c)? };
+        }
+        let triple = ((v[0] as u32) << 18) | ((v[1] as u32) << 12) | ((v[2] as u32) << 6) | v[3] as u32;
+        out.push((triple >> 16) as u8);
+        if pad < 2 {
+            out.push((triple >> 8) as u8);
+        }
+        if pad < 1 {
+            out.push(triple as u8);
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod base64_tests {
-    use super::base64_encode;
+    use super::{base64_decode, base64_encode};
 
     #[test]
     fn vecteurs_de_la_rfc_4648() {
@@ -879,5 +938,22 @@ mod base64_tests {
     fn les_octets_non_ascii_passent_entiers() {
         // L'en-tête PNG : c'est ce qui traverse réellement.
         assert_eq!(base64_encode(&[0x89, 0x50, 0x4E, 0x47]), "iVBORw==");
+    }
+
+    #[test]
+    fn le_decodage_est_l_inverse_exact_de_l_encodage() {
+        for original in [b"".as_slice(), b"f", b"fo", b"foo", b"foob", b"fooba", b"foobar"] {
+            assert_eq!(base64_decode(&base64_encode(original)).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn une_longueur_qui_n_est_pas_un_multiple_de_quatre_est_refusee() {
+        assert!(base64_decode("Zm9v Y").is_err());
+    }
+
+    #[test]
+    fn un_caractere_hors_alphabet_est_refuse() {
+        assert!(base64_decode("Zm9v!===").is_err());
     }
 }
