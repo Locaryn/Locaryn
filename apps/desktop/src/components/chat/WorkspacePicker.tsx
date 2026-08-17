@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { FREE_CHAT_PATH } from "../../lib/constants";
 import { type Project, type SshServer, core } from "../../lib/core";
@@ -26,12 +27,16 @@ type Props = {
   cloudConnected?: boolean;
 };
 
-const KIND_META: Record<WorkspaceKind, { icon: string; label: string; hint: string }> = {
-  cloud: { icon: "☁️", label: "Cloud", hint: "Aucun accès fichier — conversation seule" },
-  local: { icon: "📁", label: "Local", hint: "Un dossier de votre machine" },
-  ssh: { icon: "🖧", label: "SSH", hint: "Un serveur distant enregistré" },
+const KIND_META: Record<WorkspaceKind, { icon: IconName; label: string; hint: string }> = {
+  cloud: {
+    icon: "cloud",
+    label: "Cloud",
+    hint: "Aucun accès fichier — conversation seule",
+  },
+  local: { icon: "project", label: "Local", hint: "Un dossier de votre machine" },
+  ssh: { icon: "server", label: "SSH", hint: "Un serveur distant enregistré" },
   temp: {
-    icon: "🗂️",
+    icon: "archive",
     label: "Temporaire",
     hint: "Dossier temporaire créé automatiquement pour cette conversation",
   },
@@ -94,7 +99,9 @@ export function WorkspacePicker({
           title={meta.hint}
           style={{ cursor: "default" }}
         >
-          <span>{meta.icon}</span>
+          <span style={{ display: "inline-flex" }}>
+            <Icon name={meta.icon} size={15} />
+          </span>
           <span className="locaryn-ws-label">{meta.label}</span>
         </button>
       </div>
@@ -111,7 +118,9 @@ export function WorkspacePicker({
         aria-expanded={open}
         title={meta.hint}
       >
-        <span>{meta.icon}</span>
+        <span style={{ display: "inline-flex" }}>
+          <Icon name={meta.icon} size={15} />
+        </span>
         <span className="locaryn-ws-label">{value.label}</span>
         <span className="locaryn-ws-caret">{open ? "▾" : "▸"}</span>
       </button>
@@ -134,7 +143,9 @@ export function WorkspacePicker({
             }
             style={!cloudConnected ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
           >
-            <span>☁️</span>
+            <span style={{ display: "inline-flex" }}>
+              <Icon name="cloud" size={15} />
+            </span>
             <span className="locaryn-ws-item-text">
               <span>Cloud {cloudConnected ? "" : "(off)"}</span>
               <span className="locaryn-ws-item-hint">
@@ -146,7 +157,9 @@ export function WorkspacePicker({
           </button>
 
           <div className="locaryn-ws-sep">
-            <span>📁 Dossiers locaux</span>
+            <span>
+              <Icon name="project" size={14} /> Dossiers locaux
+            </span>
             {onAddProject && (
               <button
                 type="button"
@@ -175,7 +188,9 @@ export function WorkspacePicker({
                 }}
                 title={p.path}
               >
-                <span>📁</span>
+                <span style={{ display: "inline-flex" }}>
+                  <Icon name="project" size={15} />
+                </span>
                 <span className="locaryn-ws-item-text">
                   <span>{p.name}</span>
                   <span className="locaryn-ws-item-hint">{p.path}</span>
@@ -185,7 +200,9 @@ export function WorkspacePicker({
           )}
 
           <div className="locaryn-ws-sep">
-            <span>🖧 Serveurs SSH</span>
+            <span>
+              <Icon name="server" size={14} /> Serveurs SSH
+            </span>
             {onAddSsh && (
               <button
                 type="button"
@@ -214,7 +231,9 @@ export function WorkspacePicker({
                 }}
                 title={`${s.username}@${s.host}:${s.port}`}
               >
-                <span>🖧</span>
+                <span style={{ display: "inline-flex" }}>
+                  <Icon name="server" size={15} />
+                </span>
                 <span className="locaryn-ws-item-text">
                   <span>{s.name}</span>
                   <span className="locaryn-ws-item-hint">

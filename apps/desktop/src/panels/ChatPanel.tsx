@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageGenPanel } from "../components/ImageGenPanel";
 import { QuickModelSelector } from "../components/QuickModelSelector";
@@ -321,7 +322,7 @@ export function ChatPanel({
           id: nextId("msg"),
           kind: "msg",
           role: "assistant",
-          text: `🎨 ${r.simulated ? "(simulation) " : ""}Image générée — « ${r.prompt} »`,
+          text: `${r.simulated ? "(simulation) " : ""}Image générée — « ${r.prompt} »`,
           images: [r.url],
         },
       ]);
@@ -1068,7 +1069,7 @@ export function ChatPanel({
                   onClick={() => removeQueuedMessage(i)}
                   title="Retirer de la file d'attente"
                 >
-                  ✕
+                  <Icon name="close" size={13} />
                 </button>
               </div>
             ))}
@@ -1158,7 +1159,7 @@ export function ChatPanel({
                     aria-label="Retirer l'image"
                     onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
                   >
-                    ✕
+                    <Icon name="close" size={13} />
                   </button>
                 </div>
               ))}
@@ -1198,7 +1199,7 @@ export function ChatPanel({
               disabled={!canCompose}
               onClick={() => fileRef.current?.click()}
             >
-              <span aria-hidden="true">📎</span> Joindre
+              <Icon name="plus" size={15} /> Joindre
             </button>
             <button
               type="button"
@@ -1207,7 +1208,7 @@ export function ChatPanel({
               disabled={!canCompose}
               onClick={() => setImageGenOpen(true)}
             >
-              <span aria-hidden="true">🎨</span> Créer
+              <Icon name="studio" size={15} /> Créer
             </button>
 
             <ReasoningPicker value={reasoning} onChange={setReasoning} disabled={!canCompose} />
@@ -1219,7 +1220,7 @@ export function ChatPanel({
               disabled={!projectId}
               onClick={() => setRagOpen(true)}
             >
-              <span aria-hidden="true">📚</span> Documents
+              <Icon name="models" size={15} /> Documents
               {ragCount > 0 && <span className="locaryn-chip-state">{ragCount}</span>}
             </button>
             <span className="locaryn-composer-hint">
@@ -1268,7 +1269,9 @@ export function ChatPanel({
               }}
               title="Changer rapidement parmi vos modèles installés"
             >
-              <span>{isLocalModel ? "💻" : "☁️"}</span>
+              <span style={{ display: "inline-flex" }}>
+                <Icon name={isLocalModel ? "cpu" : "cloud"} size={14} />
+              </span>
               <span style={{ fontWeight: 700 }}>{activeModel}</span>
               <span style={{ fontSize: "9px", color: "var(--text-faint)" }}>▾</span>
             </button>
@@ -1312,7 +1315,7 @@ export function ChatPanel({
                 id: nextId("msg"),
                 kind: "msg",
                 role: "assistant",
-                text: `🎨 Image générée localement :\n\n![Image](${url})`,
+                text: `Image générée localement :\n\n![Image](${url})`,
                 images: [url],
               },
             ]);

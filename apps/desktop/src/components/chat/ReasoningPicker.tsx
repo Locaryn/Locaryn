@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import type { ReasoningLevel } from "../../lib/core";
 
@@ -53,7 +54,7 @@ export function ReasoningPicker({ value, onChange, disabled }: Props) {
         aria-expanded={open}
         title="Combien le modèle doit réfléchir avant de répondre"
       >
-        <span aria-hidden="true">🧠</span> Réflexion
+        <Icon name="memory" size={15} /> Réflexion
         <span className="locaryn-chip-state">{current.label}</span>
       </button>
 
@@ -73,7 +74,9 @@ export function ReasoningPicker({ value, onChange, disabled }: Props) {
                 setOpen(false);
               }}
             >
-              <span className="locaryn-reason-opt-mark">{l.id === value ? "✓" : ""}</span>
+              <span className="locaryn-reason-opt-mark">
+                {l.id === value ? <Icon name="check" size={14} /> : null}
+              </span>
               <span className="locaryn-reason-opt-body">
                 <span className="locaryn-reason-opt-label">{l.label}</span>
                 <span className="locaryn-reason-opt-hint">{l.hint}</span>

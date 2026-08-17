@@ -81,7 +81,7 @@ export function LeftPanel({
   }
 
   const tousLesSessions = [...standaloneSessions, ...sessions];
-  /** Project whose quick-actions menu is open (the ⚙ button), plus the anchor
+  /** Project whose quick-actions menu is open (the settings button), plus the anchor
    *  position. The menu renders `position: fixed` so the sidebar's own
    *  `overflow: auto` cannot clip it (it used to cut off the last action). */
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -231,7 +231,7 @@ export function LeftPanel({
                     aria-expanded={menuFor === p.id}
                     onClick={(e) => openMenu(e, p.id)}
                   >
-                    ⚙
+                    <Icon name="settings" size={14} />
                   </button>
 
                   {menuFor === p.id && (
