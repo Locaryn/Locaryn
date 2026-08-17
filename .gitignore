@@ -157,3 +157,6 @@ Lancer-Banc-SnapMCP.bat
 # Clé de signature Android : même statut que la clé de l'updater — elle vit sur
 # la machine du propriétaire et dans les secrets GitHub, jamais ici.
 .android-keys/
+
+# Les extensions sont des produits distincts, avec leur propre dépôt.
+plugins/
