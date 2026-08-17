@@ -24,7 +24,11 @@ locaryn-agent-runtime = { workspace = true }
 # Pas de version épinglée : la brique entreprise n'est pas publiée, elle vit
 # dans ce dépôt. L'épingle restait en arrière à chaque montée de version et ne
 # se voyait que le jour où la résolution passait sous elle.
-locaryn-enterprise = { path = "enterprise", optional = true }
+# La version accompagne le chemin, comme pour tous les autres membres : sans
+# elle, c'est un joker, et `cargo-deny` le refuse à raison — un joker accepte
+# n'importe quelle version publiée sous ce nom. Elle suit celle de l'espace de
+# travail, qui monte d'un seul mouvement à chaque release.
+locaryn-enterprise = { path = "enterprise", version = "0.3.4", optional = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
