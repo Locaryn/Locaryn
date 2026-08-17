@@ -129,6 +129,161 @@ fn tronquer(texte: &str, max: usize) -> String {
     texte.chars().take(max).collect::<String>() + "…"
 }
 
+/// Un projet, tel qu'on le propose au modèle.
+#[derive(Debug, Clone)]
+pub struct ProjetConnu {
+    pub id: String,
+    pub name: String,
+}
+
+/// Demander dans quel projet cette conversation aurait sa place.
+///
+/// Rend `None` bien plus souvent qu'un projet, et c'est voulu : une
+/// proposition qui tombe à côté coûte plus cher qu'une absence de proposition.
+/// Le modèle doit répondre par un numéro de la liste, ou par `AUCUN` — c'est
+/// la seule façon d'éviter qu'il invente un projet qui n'existe pas.
+pub async fn ask_for_project(
+    endpoint: &str,
+    client: &reqwest::Client,
+    model: &str,
+    echange: &str,
+    projets: &[ProjetConnu],
+) -> Option<String> {
+    if projets.is_empty() {
+        return None;
+    }
+    let liste = projets
+        .iter()
+        .enumerate()
+        .map(|(i, p)| format!("{}. {}", i + 1, p.name))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let corps = serde_json::json!({
+        "model": model,
+        "stream": false,
+        "max_tokens": 8,
+        "temperature": 0.0,
+        "messages": [
+            {
+                "role": "system",
+                "content":
+                    "On te donne une conversation et une liste numérotée de projets. \
+                     Si la conversation relève clairement de l'un d'eux, réponds par son \
+                     numéro, et rien d'autre. Au moindre doute, réponds exactement AUCUN. \
+                     Mieux vaut AUCUN qu'un rangement à côté."
+            },
+            {
+                "role": "user",
+                "content": format!("Projets :\n{liste}\n\nConversation :\n{}", tronquer(echange, 1500))
+            }
+        ]
+    });
+
+    let resp = client
+        .post(format!(
+            "{}/v1/chat/completions",
+            endpoint.trim_end_matches('/')
+        ))
+        .timeout(Duration::from_secs(30))
+        .json(&corps)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let v: serde_json::Value = resp.json().await.ok()?;
+    let brut = v
+        .pointer("/choices/0/message/content")
+        .and_then(|c| c.as_str())?;
+    lire_le_numero(brut, projets.len()).map(|i| projets[i].id.clone())
+}
+
+/// Lire le numéro que le modèle a rendu, et refuser tout le reste.
+///
+/// Un modèle répond rarement par un chiffre seul : il commente, il justifie,
+/// il propose deux projets. Un seul nombre, dans l'intervalle, et rien qui
+/// ressemble à un refus — sinon on ne propose rien.
+pub fn lire_le_numero(brut: &str, combien: usize) -> Option<usize> {
+    let apres_reflexion = brut.rsplit("</think>").next().unwrap_or(brut).trim();
+    if apres_reflexion.to_uppercase().contains("AUCUN") {
+        return None;
+    }
+    let chiffres: Vec<usize> = apres_reflexion
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|m| !m.is_empty())
+        .filter_map(|m| m.parse().ok())
+        .collect();
+    // Deux nombres, c'est une hésitation ou une phrase : on ne tranche pas à
+    // la place du modèle.
+    match chiffres.as_slice() {
+        [n] if *n >= 1 && *n <= combien => Some(n - 1),
+        _ => None,
+    }
+}
+
+/// Écrire ce que deux conversations racontent ensemble.
+///
+/// Sert quand on dépose une conversation sur une autre : plutôt que de coller
+/// deux fils bout à bout, le modèle en fait un récit unique — ce qui a été
+/// cherché, ce qui a été trouvé, ce qui reste ouvert. Le texte est versé dans
+/// la conversation d'accueil ; rien n'est effacé de l'autre côté tant que la
+/// personne n'a pas archivé la conversation absorbée.
+pub async fn ask_for_merge(
+    endpoint: &str,
+    client: &reqwest::Client,
+    model: &str,
+    accueil: &str,
+    absorbee: &str,
+) -> Option<String> {
+    let corps = serde_json::json!({
+        "model": model,
+        "stream": false,
+        "max_tokens": 700,
+        "temperature": 0.2,
+        "messages": [
+            {
+                "role": "system",
+                "content":
+                    "On te donne deux conversations à réunir. Écris un seul texte qui \
+                     reprend ce qui a été cherché, ce qui a été établi, et ce qui reste \
+                     ouvert. Garde les détails concrets — noms de fichiers, décisions, \
+                     chiffres. N'invente rien, ne commente pas ton travail, ne dis pas \
+                     que tu fusionnes : écris le texte, et lui seul."
+            },
+            {
+                "role": "user",
+                "content": format!(
+                    "Conversation d'accueil :\n{}\n\n---\n\nConversation à y verser :\n{}",
+                    tronquer(accueil, 6000),
+                    tronquer(absorbee, 6000)
+                )
+            }
+        ]
+    });
+
+    let resp = client
+        .post(format!(
+            "{}/v1/chat/completions",
+            endpoint.trim_end_matches('/')
+        ))
+        .timeout(Duration::from_secs(120))
+        .json(&corps)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let v: serde_json::Value = resp.json().await.ok()?;
+    let brut = v
+        .pointer("/choices/0/message/content")
+        .and_then(|c| c.as_str())?;
+    let texte = brut.rsplit("</think>").next().unwrap_or(brut).trim();
+    (!texte.is_empty()).then(|| texte.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{nettoyer, tronquer};
@@ -288,7 +443,7 @@ pub fn lire_faits(brut: &str) -> Vec<Fait> {
 
 #[cfg(test)]
 mod profil_tests {
-    use super::{lire_faits, Fait};
+    use super::{lire_faits, lire_le_numero, Fait};
 
     #[test]
     fn les_faits_bien_formes_sont_gardes() {
@@ -331,5 +486,45 @@ mod profil_tests {
     fn trois_faits_au_maximum() {
         let f = lire_faits("fait | un\nfait | deux\nfait | trois\nfait | quatre");
         assert_eq!(f.len(), 3);
+    }
+
+    #[test]
+    fn un_numero_seul_et_dans_la_liste() {
+        assert_eq!(lire_le_numero("2", 3), Some(1));
+        assert_eq!(lire_le_numero(" 1 \n", 3), Some(0));
+    }
+
+    #[test]
+    fn le_refus_est_respecte() {
+        assert_eq!(lire_le_numero("AUCUN", 3), None);
+        assert_eq!(
+            lire_le_numero(
+                "Aucun de ces projets ne correspond, mais le 2 s'en approche",
+                3
+            ),
+            None,
+            "un refus l'emporte, même suivi d'un chiffre"
+        );
+    }
+
+    #[test]
+    fn hors_liste_ou_hesitant_ne_range_rien() {
+        assert_eq!(lire_le_numero("7", 3), None, "au-delà de la liste");
+        assert_eq!(lire_le_numero("0", 3), None, "la liste commence à 1");
+        assert_eq!(
+            lire_le_numero("1 ou 2", 3),
+            None,
+            "deux nombres, donc un doute"
+        );
+        assert_eq!(lire_le_numero("le projet Locaryn", 3), None);
+    }
+
+    #[test]
+    fn la_reflexion_ne_compte_pas() {
+        assert_eq!(
+            lire_le_numero("<think>Hmm, 1 ou 3 ?</think>3", 3),
+            Some(2),
+            "seul ce qui suit la réflexion est lu"
+        );
     }
 }

@@ -363,6 +363,35 @@ export function App() {
     }
   }
 
+  /**
+   * Verser une conversation dans une autre.
+   *
+   * Le petit modèle relit les deux fils et en écrit un seul récit, ajouté à
+   * la conversation d'accueil. Celle qui a été déposée part aux archives : si
+   * le résumé a perdu quelque chose, elle est encore là pour le dire.
+   *
+   * Le travail prend du temps — un modèle relit deux conversations entières —
+   * donc il passe par le centre de notifications plutôt que de laisser la
+   * barre latérale figée sans explication.
+   */
+  async function handleMergeSessions(accueil: Session, sourceId: string) {
+    const tache = taskCenter.add({
+      type: "workflow",
+      label: `Réunion dans « ${accueil.title ?? "cette conversation"} »`,
+      detail: "Le petit modèle relit les deux fils",
+    });
+    try {
+      await core.mergeSessions(accueil.id, sourceId);
+      taskCenter.done(tache, { detail: "Conversations réunies" });
+      setStandaloneSessions((prev) => prev.filter((x) => x.id !== sourceId));
+      setSessions((prev) => prev.filter((x) => x.id !== sourceId));
+      // Rouvrir celle d'accueil : le récit vient d'y être écrit.
+      if (activeSession?.id === accueil.id) handleSelectSession(accueil);
+    } catch (e) {
+      taskCenter.fail(tache, String(e));
+    }
+  }
+
   /** Renommer à la main : le titre devient définitif. */
   async function handleRenameSession(s: Session, title: string) {
     try {
@@ -704,6 +733,7 @@ export function App() {
                 onSessionArchived={handleArchiveSession}
                 onSessionMoved={handleMoveSession}
                 onSessionRenamed={handleRenameSession}
+                onSessionsMerged={handleMergeSessions}
                 onNewEphemeralChat={handleNewEphemeralChat}
                 onOpenProjectSettings={(p) => setProjectSettings(p)}
                 onProjectArchived={(p) => {
@@ -743,6 +773,9 @@ export function App() {
             projectId={activeProject?.id ?? null}
             connectionMode={health?.mode}
             onCreateSessionForPrompt={handleCreateSessionForPrompt}
+            onSessionMoved={(projectId) => {
+              if (activeSession) void handleMoveSession(activeSession, projectId);
+            }}
             onOpenSettings={() => setActiveView("settings")}
             ephemeral={activeSession?.ephemeral ?? false}
             onNewChat={handleNewStandaloneChat}

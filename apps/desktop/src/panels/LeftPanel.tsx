@@ -27,6 +27,8 @@ type Props = {
   onNewEphemeralChat?: () => void;
   /** Called after a project is archived so the app can refresh its list. */
   onProjectArchived?: (p: Project) => void;
+  /** Une conversation a été déposée sur une autre : les réunir. */
+  onSessionsMerged?: (accueil: Session, sourceId: string) => void;
 };
 
 function sessionLabel(s: Session, index: number) {
@@ -49,6 +51,7 @@ export function LeftPanel({
   onOpenProjectSettings,
   onDeleteSession,
   onProjectArchived,
+  onSessionsMerged,
   onSessionArchived,
   onSessionMoved,
   onSessionRenamed,
@@ -176,6 +179,7 @@ export function LeftPanel({
               onRename={(t) => onSessionRenamed?.(s, t)}
               onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
               onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+              onMergeInto={onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined}
             />
           ))
         )}
@@ -316,6 +320,9 @@ export function LeftPanel({
                       onRename={(t) => onSessionRenamed?.(s, t)}
                       onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
                       onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+                      onMergeInto={
+                        onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
+                      }
                     />
                   ))}
                   <li>

@@ -16,6 +16,9 @@ type Props = {
   onMove: (projectId: string) => void;
   /** Vrai le temps de l'animation de départ, quand elle quitte la liste. */
   leaving: boolean;
+  /** Une autre conversation a été déposée sur celle-ci : les réunir. Absent,
+   *  la ligne n'accepte pas de dépôt. */
+  onMergeInto?: (sourceId: string) => void;
 };
 
 /**
@@ -37,8 +40,11 @@ export function SessionRow({
   projects,
   onMove,
   leaving,
+  onMergeInto,
 }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  /** Une conversation survole celle-ci, prête à y être versée. */
+  const [accueille, setAccueille] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -70,11 +76,35 @@ export function SessionRow({
 
   return (
     <li
-      className={`locaryn-session-row locaryn-drag-item${leaving ? " locaryn-leaving" : ""}`}
+      className={`locaryn-session-row locaryn-drag-item${leaving ? " locaryn-leaving" : ""}${
+        accueille ? " locaryn-session-merge" : ""
+      }`}
       draggable={!editing}
       onDragStart={(e) => {
         e.dataTransfer.setData("application/locaryn-session", session.id);
         e.dataTransfer.effectAllowed = "move";
+      }}
+      // Déposer une conversation sur une autre les réunit. Le geste dit ce
+      // qu'il fait : on met l'une dans l'autre, littéralement. Une ligne ne
+      // s'accepte pas elle-même, et le survol se voit avant le lâcher —
+      // sinon on découvre la fusion après coup.
+      onDragOver={(e) => {
+        if (!onMergeInto) return;
+        if (!e.dataTransfer.types.includes("application/locaryn-session")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        setAccueille(true);
+      }}
+      onDragLeave={() => setAccueille(false)}
+      onDrop={(e) => {
+        if (!onMergeInto) return;
+        const source = e.dataTransfer.getData("application/locaryn-session");
+        setAccueille(false);
+        if (!source || source === session.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onMergeInto(source);
       }}
       onContextMenu={(e) => {
         e.preventDefault();

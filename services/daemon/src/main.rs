@@ -238,6 +238,9 @@ async fn main() -> anyhow::Result<()> {
         // Archiver, sortir des archives, ranger dans un projet.
         .route("/v1/sessions/:id/archive", post(archive_session))
         .route("/v1/sessions/:id/project", post(move_session))
+        // Ce que le petit modèle propose : un rangement, une réunion.
+        .route("/v1/sessions/:id/suggest-project", get(suggest_project))
+        .route("/v1/sessions/:id/merge", post(merge_sessions))
         .route("/v1/projects/:pid/archived", get(list_archived_sessions))
         // Les figures : un rôle, ses consignes, ses conversations.
         .route("/v1/figures", get(list_figures).post(save_figure))
@@ -1722,6 +1725,190 @@ async fn move_session(
         }
         Err(e) => introuvable(&e.to_string()),
     }
+}
+
+/// GET /v1/sessions/{id}/suggest-project — où cette conversation irait bien.
+///
+/// Répond `{ "project_id": null }` la plupart du temps, et c'est la bonne
+/// réponse : une suggestion qui tombe à côté agace plus qu'elle n'aide. Rien
+/// n'est déplacé ici — c'est une proposition, le déplacement reste un geste de
+/// la personne.
+async fn suggest_project(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> Response {
+    let Ok(session_id) = Uuid::parse_str(&id) else {
+        return mauvaise_requete("identifiant invalide");
+    };
+
+    let rien = || Json(serde_json::json!({ "project_id": null })).into_response();
+
+    // Une conversation éphémère ne se range nulle part : elle ne survit pas.
+    // Une conversation déjà dans un projet n'a rien à se voir proposer.
+    let Ok(sess) = s.storage.sessions.get(session_id).await else {
+        return introuvable("conversation inconnue");
+    };
+    if sess.ephemeral {
+        return rien();
+    }
+
+    let Ok(projets) = s.storage.projects.list().await else {
+        return rien();
+    };
+    let candidats: Vec<locaryn_agent_runtime::titling::ProjetConnu> = projets
+        .iter()
+        .filter(|p| p.id != sess.project_id && p.name != "Conversations libres")
+        .map(|p| locaryn_agent_runtime::titling::ProjetConnu {
+            id: p.id.to_string(),
+            name: p.name.clone(),
+        })
+        .collect();
+    if candidats.is_empty() {
+        return rien();
+    }
+
+    let Some(micro) = locaryn_config::load(None)
+        .ok()
+        .and_then(|c| c.assistance.micro_model)
+        .filter(|m| !m.trim().is_empty())
+    else {
+        return rien();
+    };
+    let Ok(providers) = s.storage.providers.list().await else {
+        return rien();
+    };
+    let Some(p) = providers.into_iter().find(|p| {
+        p.is_active
+            && (p.engine == ProviderEngine::LlamaCpp || p.engine == ProviderEngine::OpenAiCompat)
+    }) else {
+        return rien();
+    };
+
+    let echange = match s.storage.messages.list_for_session(session_id).await {
+        Ok(msgs) => resume_des_messages(&msgs, 6),
+        Err(_) => return rien(),
+    };
+    if echange.trim().is_empty() {
+        return rien();
+    }
+
+    let client = reqwest::Client::new();
+    let choix = locaryn_agent_runtime::titling::ask_for_project(
+        &p.endpoint,
+        &client,
+        &micro,
+        &echange,
+        &candidats,
+    )
+    .await;
+    match choix {
+        Some(pid) => {
+            let nom = projets
+                .iter()
+                .find(|p| p.id.to_string() == pid)
+                .map(|p| p.name.clone());
+            Json(serde_json::json!({ "project_id": pid, "project_name": nom })).into_response()
+        }
+        None => rien(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct MergeBody {
+    /// La conversation à verser dans celle-ci.
+    source_id: String,
+}
+
+/// POST /v1/sessions/{id}/merge — réunir deux conversations en une.
+///
+/// Le modèle des micro-tâches relit les deux fils et en écrit un seul récit,
+/// versé dans la conversation d'accueil. La conversation absorbée n'est pas
+/// supprimée : elle part aux archives, d'où elle peut ressortir si le résumé
+/// a perdu quelque chose. Une fusion ne doit jamais être un geste sans retour.
+async fn merge_sessions(
+    State(s): State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+    Json(body): Json<MergeBody>,
+) -> Response {
+    let (Ok(accueil_id), Ok(source_id)) = (Uuid::parse_str(&id), Uuid::parse_str(&body.source_id))
+    else {
+        return mauvaise_requete("identifiant invalide");
+    };
+    if accueil_id == source_id {
+        return mauvaise_requete("une conversation ne se fusionne pas avec elle-même");
+    }
+
+    let Some(micro) = locaryn_config::load(None)
+        .ok()
+        .and_then(|c| c.assistance.micro_model)
+        .filter(|m| !m.trim().is_empty())
+    else {
+        return mauvaise_requete(
+            "aucun modèle de micro-tâches n'est choisi : la fusion demande un modèle \
+             pour relire les deux conversations (Réglages → Assistance)",
+        );
+    };
+    let Ok(providers) = s.storage.providers.list().await else {
+        return introuvable("aucun moteur disponible");
+    };
+    let Some(p) = providers.into_iter().find(|p| {
+        p.is_active
+            && (p.engine == ProviderEngine::LlamaCpp || p.engine == ProviderEngine::OpenAiCompat)
+    }) else {
+        return introuvable("aucun moteur actif");
+    };
+
+    let (Ok(msgs_accueil), Ok(msgs_source)) = (
+        s.storage.messages.list_for_session(accueil_id).await,
+        s.storage.messages.list_for_session(source_id).await,
+    ) else {
+        return introuvable("conversation inconnue");
+    };
+
+    let client = reqwest::Client::new();
+    let Some(texte) = locaryn_agent_runtime::titling::ask_for_merge(
+        &p.endpoint,
+        &client,
+        &micro,
+        &resume_des_messages(&msgs_accueil, 40),
+        &resume_des_messages(&msgs_source, 40),
+    )
+    .await
+    else {
+        return introuvable("le modèle n'a rien rendu — rien n'a été modifié");
+    };
+
+    // Le récit est versé comme un message de l'assistant : il se lit dans le
+    // fil, se copie, et se relit plus tard comme n'importe quelle réponse.
+    if let Err(e) = s
+        .storage
+        .messages
+        .append(
+            accueil_id,
+            locaryn_shared_types::MessageRole::Assistant,
+            &texte,
+        )
+        .await
+    {
+        return introuvable(&e.to_string());
+    }
+    // Aux archives, pas à la poubelle.
+    if let Err(e) = s.storage.sessions.set_archived(source_id, true).await {
+        tracing::warn!(error = %e, "conversation fusionnée non archivée");
+    }
+
+    Json(serde_json::json!({ "id": id, "archived_source": body.source_id })).into_response()
+}
+
+/// Mettre les derniers messages sous une forme lisible par le modèle.
+///
+/// Les derniers, pas les premiers : ce qui vient d'être dit renseigne mieux
+/// sur le sujet d'une conversation que la façon dont elle a commencé.
+fn resume_des_messages(msgs: &[locaryn_shared_types::Message], combien: usize) -> String {
+    let debut = msgs.len().saturating_sub(combien);
+    msgs[debut..]
+        .iter()
+        .filter(|m| !m.content.trim().is_empty())
+        .map(|m| format!("{:?} : {}", m.role, m.content))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// GET /v1/projects/{pid}/archived — ce qui a été rangé.

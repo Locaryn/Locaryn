@@ -1246,6 +1246,14 @@ export interface CoreApi {
   archivedSessions(projectId: string): Promise<Session[]>;
   /** Déplacer une conversation dans un projet. */
   moveSession(sessionId: string, projectId: string): Promise<void>;
+  /** Où le petit modèle rangerait cette conversation. Presque toujours nulle
+   *  part : une proposition à côté agace plus qu'elle n'aide. */
+  suggestProject(
+    sessionId: string,
+  ): Promise<{ project_id?: string | null; project_name?: string | null }>;
+  /** Verser une conversation dans une autre. Le petit modèle en écrit un seul
+   *  récit ; celle qui a été déposée part aux archives, jamais à la poubelle. */
+  mergeSessions(sessionId: string, sourceId: string): Promise<void>;
   /** Renommer à la main : le titre devient définitif. */
   renameSession(sessionId: string, title: string): Promise<void>;
   /** Une conversation dont rien ne sera gardé. */
@@ -1658,6 +1666,8 @@ const tauriCore: CoreApi = {
     invoke<void>("archive_session", { id: sessionId, archived }),
   archivedSessions: (projectId) => invoke<Session[]>("archived_sessions", { projectId }),
   moveSession: (sessionId, projectId) => invoke<void>("move_session", { id: sessionId, projectId }),
+  suggestProject: (sessionId) => invoke("suggest_project", { sessionId }),
+  mergeSessions: (sessionId, sourceId) => invoke<void>("merge_sessions", { sessionId, sourceId }),
   renameSession: (sessionId, title) => invoke<void>("rename_session", { id: sessionId, title }),
   createEphemeralSession: (projectId) => invoke<Session>("create_ephemeral_session", { projectId }),
   listFigures: () => invoke<Figure[]>("list_figures"),
@@ -2951,6 +2961,8 @@ const demoCore: CoreApi = {
   archiveSession: async () => {},
   archivedSessions: async () => [],
   moveSession: async () => {},
+  suggestProject: async () => ({ project_id: null }),
+  mergeSessions: async () => {},
   renameSession: async () => {},
   listFigures: async () => [],
   saveFigure: async (f) => ({

@@ -6,6 +6,7 @@ import { RagPanel } from "../components/RagPanel";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import { ImageIntentCard } from "../components/chat/ImageIntentCard";
 import { MessageBubble } from "../components/chat/MessageBubble";
+import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { ToolCard } from "../components/chat/ToolCard";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
@@ -92,6 +93,9 @@ type Props = {
   /** Connection mode from the Rust core. Cloud workspace is only enabled
    *  when the app is connected to a remote Locaryn server (mode === "remote"). */
   connectionMode?: ConnectionMode;
+  /** La conversation vient d'être rangée dans un projet, sur proposition du
+   *  petit modèle : les listes doivent suivre. */
+  onSessionMoved?: (projectId: string) => void;
 };
 
 const SUGGESTIONS = [
@@ -154,6 +158,7 @@ export function ChatPanel({
   onAddProject,
   onAddSsh,
   connectionMode,
+  onSessionMoved,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -1135,6 +1140,14 @@ export function ChatPanel({
                 ))}
           </div>
         )}
+
+        <ProjectSuggestion
+          sessionId={sessionId}
+          projectId={projectId}
+          messageCount={items.filter((i) => i.kind === "msg").length}
+          ephemeral={ephemeral}
+          onMoved={onSessionMoved}
+        />
 
         <div className="locaryn-composer-context">
           <WorkspacePicker

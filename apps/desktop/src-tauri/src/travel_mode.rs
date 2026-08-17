@@ -280,3 +280,59 @@ mod tests {
         }
     }
 }
+
+/// Ce que le petit modèle propose comme rangement.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SuggestionDeProjet {
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+}
+
+/// Demander où cette conversation aurait sa place.
+///
+/// Répond presque toujours « nulle part », et c'est voulu : la question se
+/// pose après chaque échange, et une proposition à côté de la plaque coûte
+/// plus cher qu'un silence. Rien n'est déplacé — le déplacement reste un
+/// geste de la personne.
+#[tauri::command]
+pub async fn suggest_project(session_id: String) -> Result<SuggestionDeProjet, String> {
+    let req = daemon(&format!("/v1/sessions/{session_id}/suggest-project")).await?;
+    match req.send().await {
+        Ok(r) if r.status().is_success() => r.json().await.map_err(|e| e.to_string()),
+        // Pas de service, pas de proposition. Ce n'est pas une panne à
+        // annoncer : c'est une aide qui ne s'affiche pas.
+        _ => Ok(SuggestionDeProjet::default()),
+    }
+}
+
+/// Réunir deux conversations en une.
+///
+/// Le petit modèle relit les deux fils et en écrit un seul récit, versé dans
+/// la conversation d'accueil. Celle qui a été déposée part aux archives : une
+/// fusion ratée doit pouvoir se défaire.
+#[tauri::command]
+pub async fn merge_sessions(session_id: String, source_id: String) -> Result<(), String> {
+    let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
+    let port = cfg.daemon.port;
+    let client =
+        crate::secure_client::build(None, None, None, std::time::Duration::from_secs(180))?;
+    let resp = client
+        .post(format!(
+            "https://127.0.0.1:{port}/v1/sessions/{session_id}/merge"
+        ))
+        .json(&serde_json::json!({ "source_id": source_id }))
+        .send()
+        .await
+        .map_err(|_| not_running())?;
+    if resp.status().is_success() {
+        return Ok(());
+    }
+    // Le service explique pourquoi — modèle de micro-tâches absent, moteur
+    // éteint. Répéter son message vaut mieux qu'un code d'erreur.
+    let texte = resp.text().await.unwrap_or_default();
+    Err(if texte.trim().is_empty() {
+        "La fusion a échoué. Rien n'a été modifié.".to_string()
+    } else {
+        texte
+    })
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type PairingCode, type PairingMode, core } from "../lib/core";
 
 /**
@@ -38,6 +38,9 @@ export function PairingCodes() {
   const [code, setCode] = useState<PairingCode | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** De quel côté le code arrive : celui d'où l'on vient. */
+  const [sens, setSens] = useState<"gauche" | "droite">("droite");
+  const precedent = useRef<PairingMode>("local");
 
   const charger = useCallback(async (m: PairingMode, url?: string) => {
     setBusy(true);
@@ -78,7 +81,16 @@ export function PairingCodes() {
             role="tab"
             aria-selected={mode === m.id}
             className={`locaryn-segment${mode === m.id ? " locaryn-segment-on" : ""}`}
-            onClick={() => setMode(m.id)}
+            onClick={() => {
+              // Le code glisse dans le sens du geste : choisir un onglet à
+              // droite le fait entrer par la droite. Sans cela, l'image change
+              // sans qu'on sache si l'on a avancé ou reculé.
+              const de = MODES.findIndex((x) => x.id === precedent.current);
+              const vers = MODES.findIndex((x) => x.id === m.id);
+              setSens(vers >= de ? "droite" : "gauche");
+              precedent.current = m.id;
+              setMode(m.id);
+            }}
           >
             {m.label}
           </button>
@@ -110,7 +122,10 @@ export function PairingCodes() {
       {busy && <p className="locaryn-field-hint">…</p>}
 
       {code?.qr_svg && (
-        <div className="locaryn-travel-code">
+        <div
+          key={`${mode}-${code.url}`}
+          className={`locaryn-travel-code locaryn-qr-entre locaryn-qr-${sens}`}
+        >
           <div
             className="locaryn-travel-qr"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: le SVG est dessiné par notre propre démon, sur cette machine, à partir d'une chaîne qu'il vient de composer — il ne traverse jamais le réseau et ne contient pas de script.

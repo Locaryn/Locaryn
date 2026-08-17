@@ -7183,3 +7183,95 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: 13px;
   color: var(--locaryn-danger, #c0645c);
 }
+
+/* Le code d'appairage glisse dans le sens du geste : choisir un onglet à
+   droite le fait entrer par la droite. Une image qui change sans direction
+   laisse croire qu'on a raté quelque chose. */
+@keyframes locaryn-qr-droite {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes locaryn-qr-gauche {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.locaryn-qr-entre.locaryn-qr-droite {
+  animation: locaryn-qr-droite 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.locaryn-qr-entre.locaryn-qr-gauche {
+  animation: locaryn-qr-gauche 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* Proposer un rangement, au-dessus du composeur. La ligne se pose là où le
+   regard revient entre deux messages, jamais au milieu du fil. */
+.locaryn-suggest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2, var(--surface));
+  font-size: 13px;
+  animation: locaryn-suggest-entre 240ms ease-out;
+}
+@keyframes locaryn-suggest-entre {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.locaryn-suggest-text {
+  flex: 1;
+}
+.locaryn-suggest-yes,
+.locaryn-suggest-no {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  padding: 3px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.locaryn-suggest-yes:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.locaryn-suggest-no {
+  padding: 3px 6px;
+}
+
+/* Une conversation survole une autre : elle va y être versée. */
+.locaryn-session-merge {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-qr-entre.locaryn-qr-droite,
+  .locaryn-qr-entre.locaryn-qr-gauche,
+  .locaryn-suggest {
+    animation: none;
+  }
+}
