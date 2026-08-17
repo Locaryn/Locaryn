@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
 import { Icon } from "@locaryn/ui-core";
+import type { ReactNode } from "react";
 
 type Props = {
   title: string;

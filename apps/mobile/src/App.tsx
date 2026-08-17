@@ -179,7 +179,7 @@ export function App() {
       ) : screen === "settings" ? (
         <Settings
           status={status}
-          onBack={() => setScreen("chat")}
+          onBack={() => setScreen(status?.signed_in ? "chat" : "signin")}
           onSignedOut={(s) => {
             setStatus(s);
             setScreen("signin");
@@ -195,6 +195,7 @@ export function App() {
           }}
           onRegistered={setStatus}
           onScan={openScanner}
+          onSettings={() => setScreen("settings")}
         />
       )}
       {/*

@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type Conversation,
@@ -7,7 +8,6 @@ import {
   api,
 } from "../lib/core";
 import { Drawer } from "./Drawer";
-import { Icon } from "@locaryn/ui-core";
 import { type Destination, MainMenu } from "./MainMenu";
 import { UpdateButton } from "./UpdateButton";
 

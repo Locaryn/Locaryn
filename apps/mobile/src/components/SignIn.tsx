@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 import { type MobileStatus, api } from "../lib/core";
 
@@ -7,6 +8,14 @@ type Props = {
   /** Un serveur vient d'être ajouté : l'écran doit repasser aux identifiants. */
   onRegistered: (s: MobileStatus) => void;
   onScan: () => void;
+  /**
+   * Les réglages, atteignables sans être connecté.
+   *
+   * Un téléphone en retard sur son serveur n'arrive plus à se connecter :
+   * si la mise à jour n'était accessible qu'après la connexion, il n'y aurait
+   * aucune façon d'en sortir depuis l'application.
+   */
+  onSettings: () => void;
 };
 
 /**
@@ -17,7 +26,7 @@ type Props = {
  * serveur enregistré, l'adresse redevient un détail — elle suit les codes
  * scannés — et il ne reste que l'identifiant et le mot de passe.
  */
-export function SignIn({ status, onSignedIn, onRegistered, onScan }: Props) {
+export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [address, setAddress] = useState("");
@@ -61,6 +70,18 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan }: Props) {
   if (status.servers === 0) {
     return (
       <div className="lo-screen">
+        <div className="lo-bar">
+          <span className="lo-bar-spacer" />
+          <button
+            type="button"
+            className="lo-bar-icon"
+            onClick={onSettings}
+            aria-label="Réglages"
+            title="Version, mise à jour"
+          >
+            <Icon name="settings" />
+          </button>
+        </div>
         <div className="lo-center">
           <h1 className="lo-title">Locaryn</h1>
           <p className="lo-sub">Indiquez où joindre votre serveur.</p>
@@ -105,6 +126,18 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan }: Props) {
 
   return (
     <div className="lo-screen">
+      <div className="lo-bar">
+        <span className="lo-bar-spacer" />
+        <button
+          type="button"
+          className="lo-bar-icon"
+          onClick={onSettings}
+          aria-label="Réglages"
+          title="Version, mise à jour"
+        >
+          <Icon name="settings" />
+        </button>
+      </div>
       <div className="lo-center">
         <h1 className="lo-title">{status.server_name ?? "Locaryn"}</h1>
         <p className="lo-sub">
