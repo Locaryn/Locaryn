@@ -783,6 +783,38 @@ export interface PairingCode {
   qr_svg: string;
 }
 
+/**
+ * Une figure : un rôle et un agencement à la fois.
+ *
+ * Ses consignes sont versées au prompt système de chacune de ses
+ * conversations, devant la mémoire de l'utilisateur — le rôle qu'on lui a
+ * donné prime sur ce que le service sait par ailleurs.
+ */
+export interface Figure {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  model: string | null;
+  opening: string | null;
+  /** Fausse : la figure travaille sans rien savoir de son utilisateur. */
+  uses_memory: boolean;
+  /** `user` quand elle est écrite à la main ; sinon le dépôt d'où elle vient. */
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Ce qu'on envoie pour créer ou corriger une figure. */
+export interface FigureDraft {
+  name: string;
+  description: string;
+  instructions: string;
+  model: string | null;
+  opening: string | null;
+  usesMemory: boolean;
+}
+
 /** Travel mode: this machine reachable from elsewhere, through a relay. */
 export interface TravelStatus {
   active: boolean;
@@ -1218,6 +1250,13 @@ export interface CoreApi {
   renameSession(sessionId: string, title: string): Promise<void>;
   /** Une conversation dont rien ne sera gardé. */
   createEphemeralSession(projectId: string): Promise<Session>;
+
+  /** Les figures : un rôle, ses consignes, ses conversations. */
+  listFigures(): Promise<Figure[]>;
+  saveFigure(f: FigureDraft): Promise<Figure>;
+  deleteFigure(id: string): Promise<void>;
+  attachFigure(sessionId: string, figureId: string | null): Promise<void>;
+  figureSessions(figureId: string): Promise<Session[]>;
   listMessages(sessionId: string): Promise<Message[]>;
   sendMessage(
     sessionId: string,
@@ -1621,6 +1660,19 @@ const tauriCore: CoreApi = {
   moveSession: (sessionId, projectId) => invoke<void>("move_session", { id: sessionId, projectId }),
   renameSession: (sessionId, title) => invoke<void>("rename_session", { id: sessionId, title }),
   createEphemeralSession: (projectId) => invoke<Session>("create_ephemeral_session", { projectId }),
+  listFigures: () => invoke<Figure[]>("list_figures"),
+  saveFigure: (f) =>
+    invoke<Figure>("save_figure", {
+      name: f.name,
+      description: f.description,
+      instructions: f.instructions,
+      model: f.model,
+      opening: f.opening,
+      usesMemory: f.usesMemory,
+    }),
+  deleteFigure: (id) => invoke<void>("delete_figure", { id }),
+  attachFigure: (sessionId, figureId) => invoke<void>("attach_figure", { sessionId, figureId }),
+  figureSessions: (figureId) => invoke<Session[]>("figure_sessions", { figureId }),
   listMessages: (sessionId) => invoke<Message[]>("list_messages", { sessionId }),
 
   sendMessage(sessionId, content, onEvent, images, responseFormat, reasoning) {
@@ -2900,6 +2952,22 @@ const demoCore: CoreApi = {
   archivedSessions: async () => [],
   moveSession: async () => {},
   renameSession: async () => {},
+  listFigures: async () => [],
+  saveFigure: async (f) => ({
+    id: "demo",
+    name: f.name,
+    description: f.description,
+    instructions: f.instructions,
+    model: f.model,
+    opening: f.opening,
+    uses_memory: f.usesMemory,
+    source: "user",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }),
+  deleteFigure: async () => {},
+  attachFigure: async () => {},
+  figureSessions: async () => [],
   createEphemeralSession: async (projectId) => ({
     id: "ephemere",
     project_id: projectId,

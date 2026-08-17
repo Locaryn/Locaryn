@@ -30,6 +30,7 @@ import { ChatPanel } from "./panels/ChatPanel";
 import { LeftPanel } from "./panels/LeftPanel";
 import { ModelConfigPanel } from "./panels/ModelConfigPanel";
 import { RunPanel } from "./panels/RunPanel";
+import { FiguresView } from "./views/FiguresView";
 import { InstalledModelsView } from "./views/InstalledModelsView";
 import { ModelStudioView } from "./views/ModelStudioView";
 import { SettingsView } from "./views/SettingsView";
@@ -832,6 +833,32 @@ export function App() {
         )}
 
         {activeView === "batch" && <BatchStudio />}
+
+        {activeView === "figures" && (
+          <FiguresView
+            onOpenSession={(sess) => {
+              handleSelectSession(sess);
+              setActiveView("chat");
+            }}
+            onNewWithFigure={async (f) => {
+              // Une conversation neuve, confiée à la figure : ses consignes
+              // partent avec le premier message, sans que personne ait à les
+              // recopier.
+              try {
+                const project = freeProject ?? (await core.freeChatProject());
+                if (!freeProject) setFreeProject(project);
+                const sess = await core.createSession(project.id);
+                await core.attachFigure(sess.id, f.id);
+                setStandaloneSessions((prev) => [sess, ...prev]);
+                setActiveProject(null);
+                setActiveSession(sess);
+                setActiveView("chat");
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+          />
+        )}
 
         {activeView === "studio" && (
           <StudioView

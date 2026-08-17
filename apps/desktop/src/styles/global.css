@@ -7042,3 +7042,36 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   display: inline-flex;
   align-items: center;
 }
+
+/* ---------------------------------------------------------------------------
+   Figures : la liste à gauche, ce qu'on écrit à droite.
+   --------------------------------------------------------------------------- */
+
+.locaryn-figures {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+.locaryn-figures-list {
+  flex: none;
+  width: 260px;
+  overflow-y: auto;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+}
+.locaryn-figures-edit {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+  /* Les consignes se lisent comme un texte, pas comme un formulaire large. */
+  max-width: 760px;
+}
+.locaryn-figures-instructions {
+  width: 100%;
+  min-height: 220px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}

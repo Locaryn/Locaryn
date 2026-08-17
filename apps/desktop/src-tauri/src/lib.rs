@@ -989,6 +989,88 @@ async fn archive_project(core: State<'_, Core>, id: Uuid) -> Result<(), String> 
         .map_err(|e| e.to_string())
 }
 
+// ============================================================================
+// Figures — un rôle, ses consignes, ses conversations. L'écran n'existe que si
+// une extension apporte la capacité `figures` ; ce qui suit est le pilotage.
+// ============================================================================
+
+#[tauri::command]
+async fn list_figures(core: State<'_, Core>) -> Result<Vec<locaryn_storage::figures::Figure>, String> {
+    core.storage.figures.list().await.map_err(|e| e.to_string())
+}
+
+/// Créer une figure, ou remplacer celle du même nom.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn save_figure(
+    core: State<'_, Core>,
+    name: String,
+    description: String,
+    instructions: String,
+    model: Option<String>,
+    opening: Option<String>,
+    uses_memory: bool,
+) -> Result<locaryn_storage::figures::Figure, String> {
+    core.storage
+        .figures
+        .upsert(
+            &name,
+            &description,
+            &instructions,
+            model.as_deref().filter(|m| !m.trim().is_empty()),
+            opening.as_deref().filter(|o| !o.trim().is_empty()),
+            uses_memory,
+            // Écrite depuis l'interface : c'est le travail de quelqu'un, et
+            // aucune mise à jour d'extension ne l'écrasera.
+            "user",
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_figure(core: State<'_, Core>, id: String) -> Result<(), String> {
+    core.storage
+        .figures
+        .delete(&id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Confier une conversation à une figure, ou l'en détacher.
+#[tauri::command]
+async fn attach_figure(
+    core: State<'_, Core>,
+    session_id: Uuid,
+    figure_id: Option<String>,
+) -> Result<(), String> {
+    core.storage
+        .figures
+        .attach_session(session_id, figure_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Les conversations d'une figure.
+#[tauri::command]
+async fn figure_sessions(core: State<'_, Core>, figure_id: String) -> Result<Vec<Session>, String> {
+    let ids = core
+        .storage
+        .figures
+        .session_ids(&figure_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for id in ids {
+        if let Ok(uuid) = Uuid::parse_str(&id) {
+            if let Ok(s) = core.storage.sessions.get(uuid).await {
+                out.push(s);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Ranger une conversation aux archives, ou l'en ressortir.
 ///
 /// C'est ce que fait le geste courant — glisser vers la corbeille, choisir
@@ -7592,6 +7674,11 @@ pub fn run() {
             move_session,
             rename_session,
             create_ephemeral_session,
+            list_figures,
+            save_figure,
+            delete_figure,
+            attach_figure,
+            figure_sessions,
             list_messages,
             send_message,
             run_terminal,

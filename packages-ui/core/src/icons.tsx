@@ -59,7 +59,8 @@ export type IconName =
   | "cpu"
   | "star"
   | "refresh"
-  | "lock";
+  | "lock"
+  | "figures";
 
 type Props = {
   name: IconName;
@@ -393,6 +394,17 @@ export function Icon({ name, size = 20, title }: Props) {
           {label}
           <rect x="5" y="10" width="14" height="10" rx="2" />
           <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" />
+        </svg>
+      );
+    // Deux masques qui se recouvrent : un rôle qu'on endosse, et plusieurs
+    // qu'on agence. Le mot « figure » dit les deux, le dessin aussi.
+    case "figures":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M3 7h9v4.5A4.5 4.5 0 013 11.5V7z" />
+          <path d="M12 7h9v4.5a4.5 4.5 0 01-9 0V7z" />
+          <path d="M6 15.5c1.6 1.4 3.4 1.4 5 0M13 15.5c1.6 1.4 3.4 1.4 5 0" />
         </svg>
       );
   }

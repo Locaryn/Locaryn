@@ -48,6 +48,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
     ],
   },
   {
+    id: "figures",
+    label: "Figures",
+    icon: "figures",
+    desc: "Un rôle, ses consignes, ses conversations",
+    requiredCapabilities: ["figures"],
+  },
+  {
     id: "installed",
     label: "Mes modèles installés",
     icon: "models",
