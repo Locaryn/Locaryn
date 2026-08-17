@@ -309,7 +309,10 @@ export const core = {
       model: f.model,
       opening: f.opening,
       usesMemory: f.usesMemory,
-      tools: f.tools.split(",").map((t) => t.trim()).filter(Boolean),
+      tools: f.tools
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
     }),
   deleteFigure: (id: string) => invoke<void>("delete_figure", { id }),
   startFigureChat: (figureId: string) => invoke<string>("start_figure_chat", { figureId }),
@@ -457,7 +460,10 @@ export const demoCore: typeof core = {
     model: f.model,
     opening: f.opening,
     uses_memory: f.usesMemory,
-    tools: f.tools.split(",").map((t) => t.trim()).filter(Boolean),
+    tools: f.tools
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
   }),
   deleteFigure: async () => {},
   startFigureChat: async (figureId: string) => `demo-${figureId}`,

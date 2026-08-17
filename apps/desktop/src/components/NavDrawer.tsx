@@ -1,4 +1,4 @@
-import { Icon, isIconName, type IconName } from "@locaryn/ui-core";
+import { Icon, type IconName, isIconName } from "@locaryn/ui-core";
 import type { ConnectionMode, InstalledExtension, ProviderSummary } from "../lib/core";
 import { ModalShell } from "./ModalShell";
 
