@@ -108,6 +108,11 @@ export interface UpdateStatus {
   latest: string | null;
   available: boolean;
   download_url: string | null;
+  /** Ce que la version apporte, dit ici plutôt que sur une page web. */
+  notes: string | null;
+  size: number | null;
+  /** Le paquet est déjà là : il n'y a plus qu'à relancer l'installation. */
+  downloaded: boolean;
   error: string | null;
 }
 
@@ -137,8 +142,11 @@ export const core = {
   serverCapabilities: () => invoke<string[]>("server_capabilities"),
   /** Y a-t-il une version plus récente publiée ? */
   checkUpdate: () => invoke<UpdateStatus>("check_update"),
-  /** Passe la main au système pour installer la nouvelle version. */
-  openUpdate: (url: string) => invoke<void>("open_update", { url }),
+  /** Télécharge la nouvelle version et ouvre l'installateur d'Android. */
+  installUpdate: (url: string, size: number | null) =>
+    invoke<string>("install_update", { url, size }),
+  /** Relance l'installation d'un paquet déjà téléchargé. */
+  resumeInstall: (url: string) => invoke<void>("resume_install", { url }),
   registerServer: (provisioningJson: string) =>
     invoke<MobileStatus>("register_server", { provisioningJson }),
   /** Enregistre un serveur depuis son adresse, sans code à scanner. */
@@ -213,9 +221,13 @@ export const demoCore: typeof core = {
     latest: null,
     available: false,
     download_url: null,
+    notes: null,
+    size: null,
+    downloaded: false,
     error: null,
   }),
-  openUpdate: async () => {},
+  installUpdate: async () => "/tmp/demo.apk",
+  resumeInstall: async () => {},
   registerServer: async () => ({
     server_name: "Atelier Vasseur",
     travelling: false,

@@ -96,7 +96,7 @@ export function ProjectSettings({ projects, onArchived }: Props) {
             onClick={() => setSelectedId(p.id)}
             title={p.path}
           >
-            📁 {p.name}
+            <Icon name="project" size={14} /> {p.name}
           </button>
         ))}
       </div>

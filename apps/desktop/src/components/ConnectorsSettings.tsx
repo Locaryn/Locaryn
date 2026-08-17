@@ -280,7 +280,7 @@ export function ConnectorsSettings() {
                         className={`locaryn-btn-${isEnabled ? "ghost" : "primary"}`}
                         onClick={() => toggleEnable(t.type_id)}
                       >
-                        {isEnabled ? "Actif ✓" : "Installer / Activer"}
+                        {isEnabled ? "Actif" : "Installer et activer"}
                       </button>
                     )}
                   </div>

@@ -287,7 +287,7 @@ export function StudioView({
                   target="_blank"
                   rel="noreferrer"
                 >
-                  ⬇
+                  Télécharger
                 </a>
               </div>
             </div>

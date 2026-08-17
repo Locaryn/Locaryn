@@ -1,15 +1,18 @@
 //! Mise à jour de l'application Android.
 //!
 //! L'updater de Tauri ne couvre pas Android : il installe des paquets de
-//! bureau. Sur un téléphone, la mise à jour d'une application distribuée hors
-//! magasin passe par le gestionnaire de paquets du système, qu'on atteint en
-//! ouvrant le fichier `.apk` — Android affiche alors sa propre demande
-//! d'installation, signature vérifiée par lui.
+//! bureau. Sur un téléphone, une application distribuée hors magasin se met à
+//! jour par le gestionnaire de paquets du système.
 //!
-//! L'application ne télécharge donc rien elle-même et n'installe rien : elle
-//! compare sa version à celle publiée, et si une version plus récente existe,
-//! elle passe la main au système. C'est aussi ce qui garde la décision chez la
-//! personne : rien ne s'installe sans qu'elle ait vu l'écran d'Android.
+//! Tout se passe donc ici, sans détour par un navigateur : l'application
+//! compare sa version à celle publiée, dit d'où l'on part et où l'on va,
+//! télécharge le paquet, puis ouvre l'installateur d'Android. Un paquet déjà
+//! complet n'est jamais retéléchargé — c'est précisément le cas d'une
+//! installation refusée faute d'autorisation, où reprendre ne doit rien coûter.
+//!
+//! Ce qui reste au système reste au système : c'est Android qui installe, qui
+//! vérifie la signature et qui demande confirmation. Rien ne s'installe sans
+//! que la personne ait vu son écran, et c'est très bien ainsi.
 
 use serde::Serialize;
 
@@ -28,6 +31,14 @@ pub struct UpdateStatus {
     pub available: bool,
     /// Adresse de l'APK à installer.
     pub download_url: Option<String>,
+    /// Ce que la version apporte, tel que la release le dit.
+    pub notes: Option<String>,
+    /// Taille de l'APK, pour une progression honnête et pour reconnaître un
+    /// fichier déjà complet.
+    pub size: Option<u64>,
+    /// Vrai quand l'APK est déjà téléchargé et complet : il n'y a plus qu'à
+    /// relancer l'installation, sans reprendre les trente mégaoctets.
+    pub downloaded: bool,
     /// Ce qui a empêché la vérification, le cas échéant. Dit en français :
     /// c'est affiché tel quel.
     pub error: Option<String>,
@@ -40,6 +51,9 @@ impl UpdateStatus {
             latest: None,
             available: false,
             download_url: None,
+            notes: None,
+            size: None,
+            downloaded: false,
             error: Some(error.into()),
         }
     }
@@ -70,7 +84,7 @@ fn is_newer(latest: &str, current: &str) -> bool {
 
 /// Regarde s'il existe une version plus récente.
 #[tauri::command]
-pub async fn check_update() -> UpdateStatus {
+pub async fn check_update(app: tauri::AppHandle) -> UpdateStatus {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -104,37 +118,387 @@ pub async fn check_update() -> UpdateStatus {
     let url = manifest["platforms"]["android"]["url"]
         .as_str()
         .map(str::to_string);
+    let size = manifest["platforms"]["android"]["size"].as_u64();
+    let notes = manifest["notes"]
+        .as_str()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_string);
 
     // Une version plus récente sans fichier à installer n'est pas une mise à
     // jour : c'est une promesse qu'on ne pourrait pas tenir.
     let available = !latest.is_empty() && is_newer(&latest, &current) && url.is_some();
+
+    // Un APK déjà téléchargé en entier n'a pas à l'être une seconde fois :
+    // c'est le cas quand une installation a été refusée puis reprise.
+    //
+    // Le fichier ne prend son nom définitif qu'une fois complet — il se
+    // télécharge sous `.part`. Sa présence suffit donc à répondre, et la
+    // taille, quand le manifeste la donne, confirme.
+    let downloaded = url
+        .as_deref()
+        .and_then(|u| fichier_apk(&app, u))
+        .and_then(|p| std::fs::metadata(p).ok())
+        .is_some_and(|m| size.is_none_or(|t| m.len() == t));
+
+    // Plus de mise à jour en attente : le paquet installé la veille n'a plus
+    // de raison d'occuper trente mégaoctets sur le téléphone.
+    if !available {
+        vider_les_paquets(&app);
+    }
 
     UpdateStatus {
         current,
         latest: (!latest.is_empty()).then_some(latest),
         available,
         download_url: url,
+        notes,
+        size,
+        downloaded,
         error: None,
     }
 }
 
-/// Passe la main au système pour installer la nouvelle version.
+/// Où se range l'APK téléchargé.
 ///
-/// Sur Android, ouvrir une adresse d'APK déclenche le téléchargement puis
-/// l'écran d'installation du système — celui qui vérifie la signature et
-/// demande confirmation. L'application ne s'installe donc jamais elle-même,
-/// et la personne voit toujours ce qui va se passer.
+/// Le dossier de cache, parce que c'est celui que le fournisseur de fichiers
+/// déclare : c'est de là qu'Android accepte de lire le paquet à installer.
+fn fichier_apk(app: &tauri::AppHandle, url: &str) -> Option<std::path::PathBuf> {
+    use tauri::Manager as _;
+    let nom = url.rsplit('/').next().filter(|n| n.ends_with(".apk"))?;
+    let dir = app.path().app_cache_dir().ok()?.join("updates");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join(nom))
+}
+
+/// Effacer les paquets téléchargés.
+///
+/// Appelé quand il n'y a plus rien à installer : soit la mise à jour a été
+/// faite, soit elle n'a jamais existé. Dans les deux cas, garder l'APK ne sert
+/// qu'à remplir le téléphone.
+fn vider_les_paquets(app: &tauri::AppHandle) {
+    use tauri::Manager as _;
+    let Ok(dir) = app.path().app_cache_dir() else {
+        return;
+    };
+    let dir = dir.join("updates");
+    let Ok(entrees) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entree in entrees.flatten() {
+        let _ = std::fs::remove_file(entree.path());
+    }
+}
+
+/// Télécharger la nouvelle version, puis la confier à l'installateur.
+///
+/// L'application ne renvoie plus vers une page web : elle télécharge, puis
+/// ouvre le paquet. C'est Android qui installe, vérifie la signature et
+/// demande confirmation — cette part-là n'est pas négociable, et c'est très
+/// bien ainsi.
+///
+/// Un APK déjà complet n'est pas retéléchargé. C'est exactement le cas d'une
+/// installation refusée faute d'autorisation : on relance l'installateur, on
+/// ne reprend pas trente mégaoctets.
 #[tauri::command]
-pub async fn open_update(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    // Une adresse arbitraire venue de l'interface ne doit pas pouvoir ouvrir
-    // n'importe quoi : on n'accepte que les releases du projet.
+pub async fn install_update(
+    app: tauri::AppHandle,
+    url: String,
+    size: Option<u64>,
+) -> Result<String, String> {
     if !url.starts_with("https://github.com/Locaryn/") {
         return Err("adresse de mise à jour inattendue".to_string());
     }
-    use tauri_plugin_opener::OpenerExt as _;
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|e| format!("ouverture impossible : {e}"))
+    let cible = fichier_apk(&app, &url).ok_or("dossier de téléchargement indisponible")?;
+
+    // Le paquet ne prend son nom définitif qu'une fois entier : le trouver
+    // suffit. La taille, quand le manifeste la donne, confirme.
+    let deja_complet = std::fs::metadata(&cible)
+        .map(|m| size.is_none_or(|t| m.len() == t))
+        .unwrap_or(false);
+
+    if !deja_complet {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(600))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|_| "téléchargement impossible — vérifiez la connexion".to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("le serveur a répondu {}", resp.status()));
+        }
+        let octets = resp
+            .bytes()
+            .await
+            .map_err(|e| format!("téléchargement interrompu : {e}"))?;
+        // Écriture d'abord à côté, puis renommage : un fichier partiel ne doit
+        // jamais passer pour un paquet complet si le téléchargement casse.
+        let partiel = cible.with_extension("apk.part");
+        std::fs::write(&partiel, &octets).map_err(|e| format!("écriture : {e}"))?;
+        std::fs::rename(&partiel, &cible).map_err(|e| format!("renommage : {e}"))?;
+    }
+
+    ouvrir_le_paquet(&app, &cible)?;
+    Ok(cible.to_string_lossy().to_string())
+}
+
+/// Reprendre une installation refusée, sans retélécharger.
+#[tauri::command]
+pub async fn resume_install(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let cible = fichier_apk(&app, &url).ok_or("aucun paquet téléchargé")?;
+    if !cible.is_file() {
+        return Err("le paquet n'est plus là — relancez le téléchargement".into());
+    }
+    ouvrir_le_paquet(&app, &cible)
+}
+
+fn ouvrir_le_paquet(app: &tauri::AppHandle, chemin: &std::path::Path) -> Result<(), String> {
+    let _ = app;
+    #[cfg(target_os = "android")]
+    {
+        return lancer_installateur(chemin);
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = chemin;
+        Err("l'installation d'un APK n'a de sens que sur un téléphone".into())
+    }
+}
+
+/// Ouvrir l'installateur d'Android sur un paquet local.
+///
+/// Il faut construire l'`Intent` à la main. Le greffon `opener` ne sait ouvrir
+/// qu'une adresse, et passer par un navigateur n'est pas une mise à jour :
+/// c'est un détour qui laisse la personne se débrouiller avec un fichier
+/// téléchargé.
+///
+/// Deux choses se jouent ici. D'abord l'autorisation : depuis Android 8, une
+/// application doit avoir le droit d'en installer d'autres, et ce droit se
+/// donne écran par écran. Plutôt que de dire d'aller le chercher, on ouvre cet
+/// écran-là. Ensuite le fichier : il est confié au fournisseur déclaré par
+/// l'application, parce qu'Android refuse depuis longtemps qu'une application
+/// en expose une autre un `file://` — et c'est une bonne chose.
+///
+/// C'est ensuite le système qui installe, vérifie la signature et demande
+/// confirmation.
+#[cfg(target_os = "android")]
+fn lancer_installateur(chemin: &std::path::Path) -> Result<(), String> {
+    use jni::objects::{JObject, JValue};
+    use tao::platform::android::prelude::main_android_context;
+
+    const FLAG_GRANT_READ: i32 = 0x0000_0001;
+    const FLAG_NEW_TASK: i32 = 0x1000_0000;
+
+    let ctx = main_android_context().ok_or("activité Android introuvable")?;
+    let vm = unsafe { jni::JavaVM::from_raw(ctx.java_vm.cast()) }
+        .map_err(|e| format!("machine virtuelle indisponible : {e}"))?;
+    let activite = unsafe { JObject::from_raw(ctx.context_jobject.cast()) };
+    // En démon : ce fil appartient à tokio, et le détachement de JNI ne doit
+    // pas dépendre de sa fin de vie.
+    let mut env = vm
+        .attach_current_thread_as_daemon()
+        .map_err(|e| format!("attachement impossible : {e}"))?;
+
+    let chemin_txt = chemin.to_string_lossy().to_string();
+
+    // A-t-on le droit d'installer ? Sinon, on ouvre l'écran qui le donne.
+    let mut autorise = || -> Result<bool, jni::errors::Error> {
+        let pm = env
+            .call_method(
+                &activite,
+                "getPackageManager",
+                "()Landroid/content/pm/PackageManager;",
+                &[],
+            )?
+            .l()?;
+        env.call_method(&pm, "canRequestPackageInstalls", "()Z", &[])?
+            .z()
+    };
+    let permis = autorise().unwrap_or_else(|_| {
+        let _ = env.exception_clear();
+        // Avant Android 8 la question ne se posait pas : on tente.
+        true
+    });
+
+    let mut demander_le_droit = || -> Result<(), jni::errors::Error> {
+        let action = env.new_string("android.settings.MANAGE_UNKNOWN_APP_SOURCES")?;
+        let paquet = nom_du_paquet(&mut env, &activite)?;
+        let cible = env.new_string(format!("package:{paquet}"))?;
+        let uri = env
+            .call_static_method(
+                "android/net/Uri",
+                "parse",
+                "(Ljava/lang/String;)Landroid/net/Uri;",
+                &[(&cible).into()],
+            )?
+            .l()?;
+        let intent = env.new_object(
+            "android/content/Intent",
+            "(Ljava/lang/String;Landroid/net/Uri;)V",
+            &[(&action).into(), (&uri).into()],
+        )?;
+        env.call_method(
+            &intent,
+            "addFlags",
+            "(I)Landroid/content/Intent;",
+            &[JValue::Int(FLAG_NEW_TASK)],
+        )?;
+        env.call_method(
+            &activite,
+            "startActivity",
+            "(Landroid/content/Intent;)V",
+            &[(&intent).into()],
+        )?;
+        Ok(())
+    };
+
+    if !permis {
+        let ouvert = demander_le_droit().is_ok();
+        let _ = env.exception_clear();
+        return Err(if ouvert {
+            "Locaryn n'a pas encore le droit d'installer des applications. L'écran \
+             d'autorisation vient de s'ouvrir : accordez-le, revenez, et reprenez — le \
+             paquet est déjà téléchargé."
+                .to_string()
+        } else {
+            "Locaryn n'a pas le droit d'installer des applications. Accordez-le dans \
+             Réglages → Applications → Locaryn → Installer des applications inconnues, \
+             puis reprenez : le paquet est déjà téléchargé."
+                .to_string()
+        });
+    }
+
+    let mut travail = || -> Result<(), jni::errors::Error> {
+        // File(chemin)
+        let s_chemin = env.new_string(&chemin_txt)?;
+        let fichier = env.new_object(
+            "java/io/File",
+            "(Ljava/lang/String;)V",
+            &[(&s_chemin).into()],
+        )?;
+
+        // FileProvider.getUriForFile(activité, "<paquet>.fileprovider", fichier)
+        let paquet = nom_du_paquet(&mut env, &activite)?;
+        let autorite = env.new_string(format!("{paquet}.fileprovider"))?;
+        let classe = classe_de_l_app(&mut env, &activite, "androidx.core.content.FileProvider")?;
+        let uri = env
+            .call_static_method(
+                &classe,
+                "getUriForFile",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/io/File;)Landroid/net/Uri;",
+                &[(&activite).into(), (&autorite).into(), (&fichier).into()],
+            )?
+            .l()?;
+
+        // Intent(ACTION_VIEW).setDataAndType(uri, mime du paquet)
+        let action = env.new_string("android.intent.action.VIEW")?;
+        let intent = env.new_object(
+            "android/content/Intent",
+            "(Ljava/lang/String;)V",
+            &[(&action).into()],
+        )?;
+        let mime = env.new_string("application/vnd.android.package-archive")?;
+        env.call_method(
+            &intent,
+            "setDataAndType",
+            "(Landroid/net/Uri;Ljava/lang/String;)Landroid/content/Intent;",
+            &[(&uri).into(), (&mime).into()],
+        )?;
+        // Lire l'URI est un droit qu'on accorde à l'installateur, et à lui
+        // seul, le temps de l'installation.
+        env.call_method(
+            &intent,
+            "addFlags",
+            "(I)Landroid/content/Intent;",
+            &[JValue::Int(FLAG_GRANT_READ | FLAG_NEW_TASK)],
+        )?;
+
+        env.call_method(
+            &activite,
+            "startActivity",
+            "(Landroid/content/Intent;)V",
+            &[(&intent).into()],
+        )?;
+        Ok(())
+    };
+
+    if travail().is_ok() {
+        return Ok(());
+    }
+
+    // « Java exception was thrown » ne dit rien à personne. On va chercher le
+    // message que la machine virtuelle a mis de côté.
+    Err(format!(
+        "Android n'a pas ouvert l'installateur : {}. Le paquet est déjà téléchargé — \
+         reprendre ne le retéléchargera pas.",
+        message_de_l_exception(&mut env)
+    ))
+}
+
+/// Trouver une classe **de l'application**, pas seulement du système.
+///
+/// Un fil natif n'hérite pas du chargeur de classes de l'application : demander
+/// `androidx.core.content.FileProvider` à JNI depuis ici répond
+/// `ClassNotFoundException`, alors que la classe est bien dans l'APK. L'activité
+/// expose `getAppClass` exactement pour cette raison — c'est elle qui connaît le
+/// bon chargeur.
+#[cfg(target_os = "android")]
+fn classe_de_l_app<'a>(
+    env: &mut jni::JNIEnv<'a>,
+    activite: &jni::objects::JObject,
+    nom: &str,
+) -> Result<jni::objects::JClass<'a>, jni::errors::Error> {
+    let nom = env.new_string(nom)?;
+    let classe = env
+        .call_method(
+            activite,
+            "getAppClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[(&nom).into()],
+        )?
+        .l()?;
+    Ok(classe.into())
+}
+
+/// Le nom du paquet de l'application.
+#[cfg(target_os = "android")]
+fn nom_du_paquet(
+    env: &mut jni::JNIEnv,
+    activite: &jni::objects::JObject,
+) -> Result<String, jni::errors::Error> {
+    let nom = env
+        .call_method(activite, "getPackageName", "()Ljava/lang/String;", &[])?
+        .l()?;
+    let nom: jni::objects::JString = nom.into();
+    let texte = env.get_string(&nom)?;
+    Ok(texte.into())
+}
+
+/// Ce que l'exception Java en attente raconte, en clair.
+///
+/// Sans cela, l'écran affiche « Java exception was thrown », qui n'aide ni la
+/// personne devant le téléphone ni celle qui lit le rapport.
+#[cfg(target_os = "android")]
+fn message_de_l_exception(env: &mut jni::JNIEnv) -> String {
+    let Ok(exception) = env.exception_occurred() else {
+        return "cause inconnue".to_string();
+    };
+    // Il faut effacer avant de rappeler quoi que ce soit : tant qu'une
+    // exception est en attente, JNI refuse tout autre appel.
+    let _ = env.exception_clear();
+    let texte = env
+        .call_method(&exception, "toString", "()Ljava/lang/String;", &[])
+        .and_then(|v| v.l())
+        .and_then(|s| {
+            env.get_string((&s).into())
+                .map(String::from)
+                .map_err(Into::into)
+        });
+    let _ = env.exception_clear();
+    texte.unwrap_or_else(|_| "cause inconnue".to_string())
 }
 
 #[cfg(test)]

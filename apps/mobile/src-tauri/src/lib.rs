@@ -1220,7 +1220,8 @@ pub fn run() {
             pairing::apply_pairing_link,
             server_capabilities,
             update::check_update,
-            update::open_update,
+            update::install_update,
+            update::resume_install,
         ])
         .setup(|app| {
             // On Android the native process has no home directory (`$HOME` is

@@ -106,7 +106,7 @@ export function ServerSettings() {
                 }
               }}
             >
-              {copied ? "Adresse copiée ✓" : "Copier l'adresse"}
+              {copied ? "Adresse copiée" : "Copier l'adresse"}
             </button>
           </div>
 

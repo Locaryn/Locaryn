@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -18,12 +14,8 @@
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
-      "@locaryn/ui-core": [
-        "../../packages-ui/core/src/index.tsx"
-      ]
+      "@locaryn/ui-core": ["../../packages-ui/core/src/index.tsx"]
     }
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+      Installer la mise à jour depuis l'application.
+
+      Sans cette permission, Android refuse d'ouvrir l'installateur et il n'y a
+      aucun moyen de mettre à jour autrement qu'en passant par un navigateur.
+      Elle ne suffit pas : la personne doit encore autoriser Locaryn à installer
+      des applications, et c'est l'écran d'Android qui le demande.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />

@@ -33,5 +33,15 @@ tracing = { workspace = true }
 
 # The camera only exists on a phone; on desktop the crate has no entry point,
 # and the layout is developed on desktop.
+# Lancer l'installateur d'Android demande de construire un `Intent` : le
+# greffon `opener` ne sait ouvrir qu'une adresse, pas un fichier local, et le
+# passage par un navigateur n'est pas une mise à jour, c'est un détour.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+# `tao` porte déjà la machine virtuelle et l'activité — celles que sa couche
+# Android enregistre au démarrage. `ndk-context` n'est pas alimenté ici : il
+# panique, et le processus meurt avec lui.
+tao = "0.35"
+
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"

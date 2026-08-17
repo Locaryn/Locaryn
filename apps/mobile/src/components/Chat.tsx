@@ -199,7 +199,7 @@ export function Chat({ status, onGo, capabilities }: Props) {
             <Icon name="private" />
           </button>
         )}
-        <UpdateButton />
+        <UpdateButton onOpen={() => onGo("settings")} />
         <button
           type="button"
           className="lo-bar-menu"

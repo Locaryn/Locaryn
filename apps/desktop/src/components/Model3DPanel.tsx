@@ -298,7 +298,9 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
           />
           {inputImage ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "var(--text)" }}>🖼️ {inputImageName}</span>
+              <span style={{ fontSize: 12, color: "var(--text)" }}>
+                <Icon name="image" size={13} /> {inputImageName}
+              </span>
               <button
                 type="button"
                 className="locaryn-icon-btn"
@@ -488,7 +490,7 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
                 className="locaryn-btn-primary"
                 style={{ fontSize: 12, textDecoration: "none" }}
               >
-                ⬇ Télécharger
+                Télécharger
               </a>
             </div>
           </div>
@@ -527,7 +529,7 @@ export function Model3DPanel({ installedModels, onClose, inline }: Props) {
             onClick={handleGenerate}
             disabled={!prompt.trim() || jobRunning || !hasModels || (mode === "i2m" && !inputImage)}
           >
-            {jobRunning ? "Génération…" : "🧊 Générer le modèle 3D"}
+            {jobRunning ? "Génération…" : "Générer le modèle 3D"}
           </button>
         </div>
       </div>

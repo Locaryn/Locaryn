@@ -19,3 +19,11 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# L'installateur de mises à jour appelle `FileProvider.getUriForFile` depuis le
+# code natif, en JNI. R8 ne voit pas cet appel — aucun code Java ou Kotlin ne
+# passe par là — et supprime la méthode : au moment d'installer, la machine
+# virtuelle répond `NoSuchMethodError`. La classe est conservée par le
+# manifeste ; c'est la méthode qu'il faut nommer.
+-keep class androidx.core.content.FileProvider {
+    public static android.net.Uri getUriForFile(android.content.Context, java.lang.String, java.io.File);
+}

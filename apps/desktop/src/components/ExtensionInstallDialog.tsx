@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import {
   type CatalogSource,
@@ -267,21 +268,55 @@ export function ExtensionInstallDialog({
                     Suggestions certifiées Locaryn & populaires :
                   </p>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {[
-                      { label: "🖼️ Image Gen", repo: "Locaryn/plugin-image-gen" },
-                      { label: "🎨 Image Editor", repo: "Locaryn/plugin-image-editor" },
-                      { label: "🎬 Video Gen", repo: "Locaryn/plugin-video-gen" },
-                      { label: "🧊 3D Gen", repo: "Locaryn/plugin-3d-gen" },
-                      { label: "🎙️ Voice TTS", repo: "Locaryn/plugin-voice-tts" },
-                      { label: "🎵 Musique", repo: "Locaryn/plugin-music-gen" },
-                      { label: "👁️ Vision & OCR", repo: "Locaryn/plugin-vision-ocr" },
-                      { label: "📚 RAG & Docs", repo: "Locaryn/plugin-rag-qa" },
-                      { label: "🌐 Traduction", repo: "Locaryn/plugin-translation" },
-                      { label: "📊 Analyse Texte", repo: "Locaryn/plugin-text-analysis" },
-                      { label: "🔒 SSH Connect", repo: "Locaryn/plugin-ssh" },
-                      { label: "✈️ Mode Voyage", repo: "Locaryn/plugin-travel-tunnel" },
-                      { label: "🧪 LoRA Workbench", repo: "Locaryn/plugin-model-training" },
-                    ].map((preset) => (
+                    {(
+                      [
+                        {
+                          icon: "image",
+                          label: "Génération d'images",
+                          repo: "Locaryn/plugin-image-gen",
+                        },
+                        {
+                          icon: "edit",
+                          label: "Édition d'images",
+                          repo: "Locaryn/plugin-image-editor",
+                        },
+                        { icon: "video", label: "Vidéo", repo: "Locaryn/plugin-video-gen" },
+                        { icon: "cube", label: "3D", repo: "Locaryn/plugin-3d-gen" },
+                        { icon: "mic", label: "Synthèse vocale", repo: "Locaryn/plugin-voice-tts" },
+                        { icon: "music", label: "Musique", repo: "Locaryn/plugin-music-gen" },
+                        {
+                          icon: "search",
+                          label: "Vision et OCR",
+                          repo: "Locaryn/plugin-vision-ocr",
+                        },
+                        {
+                          icon: "models",
+                          label: "Documents et RAG",
+                          repo: "Locaryn/plugin-rag-qa",
+                        },
+                        {
+                          icon: "translate",
+                          label: "Traduction",
+                          repo: "Locaryn/plugin-translation",
+                        },
+                        {
+                          icon: "chart",
+                          label: "Analyse de texte",
+                          repo: "Locaryn/plugin-text-analysis",
+                        },
+                        { icon: "server", label: "SSH", repo: "Locaryn/plugin-ssh" },
+                        {
+                          icon: "cloud",
+                          label: "Mode voyage",
+                          repo: "Locaryn/plugin-travel-tunnel",
+                        },
+                        {
+                          icon: "shield",
+                          label: "Atelier LoRA",
+                          repo: "Locaryn/plugin-model-training",
+                        },
+                      ] as { icon: IconName; label: string; repo: string }[]
+                    ).map((preset) => (
                       <button
                         key={preset.repo}
                         type="button"
@@ -292,7 +327,7 @@ export function ExtensionInstallDialog({
                           inputRef.current?.focus();
                         }}
                       >
-                        {preset.label}
+                        <Icon name={preset.icon} size={12} /> {preset.label}
                       </button>
                     ))}
                   </div>

@@ -271,7 +271,7 @@ export function RagPanel({ projectId, onClose }: Props) {
                   {/* Des <span> et non des <div> : le contenu d'un <button> doit rester
                       du contenu de phrasé, et la colonne flex les rend à l'identique. */}
                   <span className="locaryn-dropzone-main">
-                    📄 Glissez vos documents ici, ou cliquez pour choisir
+                    Glissez vos documents ici, ou cliquez pour choisir
                   </span>
                   <span className="locaryn-dropzone-sub">
                     .txt .md .csv .json .html, code source… — plusieurs fichiers acceptés

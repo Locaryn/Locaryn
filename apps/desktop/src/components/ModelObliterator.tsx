@@ -55,7 +55,7 @@ export function ModelObliterator({
           `[${new Date().toLocaleTimeString()}] Calcul de la direction moyenne de refus (Harmful/Harmless contrastive pair)...`,
           `[${new Date().toLocaleTimeString()}] Orthogonalisation des poids de projection (Intensité alpha: ${intensity})...`,
           `[${new Date().toLocaleTimeString()}] Sauvegarde des nouveaux poids GGUF : ${newTag}`,
-          `[${new Date().toLocaleTimeString()}] ✅ Oblitération terminée avec succès ! Le modèle ${newTag} est prêt à l'emploi.`,
+          `[${new Date().toLocaleTimeString()}] Oblitération terminée. Le modèle ${newTag} est prêt à l'emploi.`,
         ]);
         onModelAbliterated?.(newTag);
       } else {
@@ -285,7 +285,9 @@ export function ModelObliterator({
                   // biome-ignore lint/suspicious/noArrayIndexKey: le journal n'est qu'ajouté en fin de liste ou vidé d'un bloc, jamais réordonné ni amputé, et les lignes ne portent aucun état.
                   key={i}
                   className="locaryn-log-line"
-                  style={{ color: l.includes("✅") ? "var(--accent)" : "var(--text)" }}
+                  style={{
+                    color: l.includes("Oblitération terminée") ? "var(--accent)" : "var(--text)",
+                  }}
                 >
                   {l}
                 </div>
@@ -316,7 +318,7 @@ export function ModelObliterator({
             disabled={!disclaimerAccepted || isProcessing}
             onClick={startObliteration}
           >
-            {isProcessing ? "Oblitération en cours..." : "⚡ Lancer le Script d'Oblitération"}
+            {isProcessing ? "Oblitération en cours…" : "Lancer l'oblitération"}
           </button>
         </div>
       </div>

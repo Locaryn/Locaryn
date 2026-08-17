@@ -68,15 +68,9 @@ export function ChatPermissionsModal({
           value={trustLevel}
           onChange={(e) => onTrustLevelChange?.(e.target.value as TrustLevel)}
         >
-          <option value="untrusted">
-            <Icon name="shield" size={15} /> Untrusted (Demander confirmation pour chaque écriture)
-          </option>
-          <option value="trusted">
-            <Icon name="speed" size={15} /> Trusted (Auto-approbation des lectures et modifications)
-          </option>
-          <option value="sandbox">
-            <Icon name="lock" size={15} /> Sandbox (Lecture seule strict - aucun terminal)
-          </option>
+          <option value="untrusted">Untrusted (Demander confirmation pour chaque écriture)</option>
+          <option value="trusted">Trusted (Auto-approbation des lectures et modifications)</option>
+          <option value="sandbox">Sandbox (Lecture seule strict - aucun terminal)</option>
         </select>
         <p className="locaryn-field-hint">
           Définit l'autonomie accordée à l'agent IA pour exécuter des commandes et modifier votre

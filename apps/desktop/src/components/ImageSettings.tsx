@@ -60,7 +60,7 @@ export function ImageSettings() {
           Qualité par défaut
           {saved && (
             <span style={{ marginLeft: 8, color: "var(--accent)", fontSize: "var(--text-xs)" }}>
-              enregistré ✓
+              enregistré
             </span>
           )}
         </div>

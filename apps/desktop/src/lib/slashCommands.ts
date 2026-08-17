@@ -78,7 +78,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "image",
     aliases: ["img", "generer", "générer", "dessine"],
-    icon: "🎨",
+    icon: "image",
     label: "Générer une image",
     hint: "Ouvre le studio d'image",
     action: "image",
@@ -87,7 +87,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "editer-image",
     aliases: ["edit", "retouche", "img2img"],
-    icon: "🖼️",
+    icon: "image",
     label: "Éditer une image",
     hint: "Transformer une image existante",
     action: "edit-image",
@@ -104,7 +104,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "documents",
     aliases: ["rag", "doc", "connaissance"],
-    icon: "📚",
+    icon: "models",
     label: "Base de connaissances",
     hint: "Indexer des documents (RAG)",
     action: "documents",
@@ -120,7 +120,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "rapide",
     aliases: ["off", "sans-reflexion"],
-    icon: "⚡",
+    icon: "speed",
     label: "Réflexion désactivée",
     hint: "Réponses directes, plus rapides",
     action: "reasoning-off",
@@ -128,7 +128,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "reflechir",
     aliases: ["réfléchir", "thinking", "raisonnement"],
-    icon: "🧠",
+    icon: "memory",
     label: "Réflexion élevée",
     hint: "Le modèle raisonne davantage",
     action: "reasoning-high",
@@ -136,7 +136,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "modele",
     aliases: ["modèle", "model", "changer"],
-    icon: "🔀",
+    icon: "forward",
     label: "Changer de modèle",
     hint: "Choisir parmi les modèles installés",
     action: "model",
@@ -144,7 +144,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "parametres",
     aliases: ["paramètres", "settings", "options"],
-    icon: "⚙",
+    icon: "settings",
     label: "Paramètres",
     hint: "Ouvrir les réglages de l'application",
     action: "settings",
@@ -152,7 +152,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "nouveau",
     aliases: ["new", "chat"],
-    icon: "✨",
+    icon: "star",
     label: "Nouvelle conversation",
     hint: "Repartir de zéro",
     action: "new-chat",
@@ -160,7 +160,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "effacer",
     aliases: ["clear", "vider"],
-    icon: "🧹",
+    icon: "trash",
     label: "Effacer l'affichage",
     hint: "Vide la vue (l'historique est conservé)",
     action: "clear",

@@ -139,14 +139,14 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               className={`locaryn-chip${preset === "gaming" ? " locaryn-chip-on" : ""}`}
               onClick={() => applyPreset("gaming")}
             >
-              🎮 PC Gaming (16 Go RAM, 8 Go VRAM)
+              PC de jeu (16 Go RAM, 8 Go VRAM)
             </button>
             <button
               type="button"
               className={`locaryn-chip${preset === "mac" ? " locaryn-chip-on" : ""}`}
               onClick={() => applyPreset("mac")}
             >
-              🍎 Mac M-Series (32 Go RAM Unifiée)
+              Mac Apple Silicon (32 Go unifiés)
             </button>
             <button
               type="button"
@@ -186,7 +186,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               onClick={runScanSimulation}
               disabled={isScanning}
             >
-              {isScanning ? "Calcul..." : "🔄 Recalculer le Diagnostic"}
+              {isScanning ? "Calcul…" : "Recalculer le diagnostic"}
             </button>
           </div>
 
@@ -292,7 +292,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
             >
               <div>
                 <span style={{ fontWeight: 700, color: "#64c878" }}>
-                  🟢 {optimalCount} Modèles Optimaux (Recommandés)
+                  <span className="locaryn-dot locaryn-dot-ok" /> {optimalCount} modèles à l'aise
                 </span>
                 <span
                   style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}
@@ -318,7 +318,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
             >
               <div>
                 <span style={{ fontWeight: 700, color: "#dcb450" }}>
-                  🟡 {mediumCount} Modèles Exécutables avec Shared Memory
+                  <span className="locaryn-dot locaryn-dot-warn" /> {mediumCount} modèles via la RAM
                 </span>
                 <span
                   style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}
@@ -343,7 +343,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
             >
               <div>
                 <span style={{ fontWeight: 700, color: "var(--danger)" }}>
-                  🔴 {heavyCount} Modèles Trop Lourds pour cette Config
+                  <span className="locaryn-dot locaryn-dot-bad" /> {heavyCount} modèles trop lourds
                 </span>
                 <span
                   style={{ fontSize: "var(--text-xs)", color: "var(--text-dim)", display: "block" }}

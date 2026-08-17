@@ -128,12 +128,12 @@ export function classifyModel(
     n.includes("sans-garde-fous");
 
   if (isHereticOrUncensored) {
-    return { risk: "uncensored", label: "Sans limite", icon: "🔓" };
+    return { risk: "uncensored", label: "Sans limite", icon: "lock" };
   }
   if (isNsfwCheckpoint(name) || isNsfwLora(name)) {
     return { risk: "nsfw", label: "NSFW", icon: "" };
   }
-  return { risk: "safe", label: "Safe", icon: "🛡️" };
+  return { risk: "safe", label: "Safe", icon: "shield" };
 }
 
 /** Classify only by name (no catalog flag). Kept for backwards compat. */

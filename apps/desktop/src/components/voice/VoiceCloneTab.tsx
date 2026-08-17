@@ -237,7 +237,7 @@ export function VoiceCloneTab({
               onClick={onStartRecording}
               disabled={jobRunning}
             >
-              🎤 Enregistrer
+              <Icon name="mic" size={14} /> Enregistrer
             </button>
           ) : (
             <button type="button" style={recordingButtonStyle} onClick={onStopRecording}>

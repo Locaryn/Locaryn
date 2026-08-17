@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { type ModelMetric, core } from "../lib/core";
 import {
@@ -68,26 +68,30 @@ const AIRLLM_MODELS: Record<string, { repo: string; sizeGb: number }> = {
   mistral: { repo: "mistralai/Mistral-7B-Instruct-v0.3", sizeGb: 30 },
 };
 
-function capBadges(f: ModelFamily, activeCapabilities: string[] = []) {
-  const caps: string[] = [];
+/** Une capacité annoncée : son icône et son nom. */
+type Pastille = { icon: IconName; label: string };
+
+function capBadges(f: ModelFamily, activeCapabilities: string[] = []): Pastille[] {
+  const caps: Pastille[] = [];
   const isCloud = f.variants.length > 0 && f.variants.every((v) => v.quants.includes("cloud"));
-  if (isCloud) caps.push("☁️ Cloud");
-  if (f.imageGen && activeCapabilities.includes("image-gen")) caps.push("🎨 Image Gen");
-  if (f.tts && activeCapabilities.includes("voice-tts")) caps.push("🎙️ TTS");
-  if (f.voiceCloning && activeCapabilities.includes("voice-cloning")) caps.push("🎭 Clonage");
-  if (f.videoGen && activeCapabilities.includes("video-gen")) caps.push("🎬 Vidéo");
-  if (f.musicGen && activeCapabilities.includes("music-gen")) caps.push("🎵 Musique");
-  if (f.model3d && activeCapabilities.includes("3d-gen")) caps.push("🧩 3D");
-  if (f.translation && activeCapabilities.includes("translation")) caps.push("🌐 Traduction");
-  if (f.objectDetection && activeCapabilities.includes("vision-ocr")) caps.push("🎯 Détection");
-  if (f.textAnalysis && activeCapabilities.includes("text-analysis")) caps.push("📊 Texte");
-  if (f.imageEditing && activeCapabilities.includes("image-editor")) caps.push("✏️ Édition");
-  if (f.questionAnswering && activeCapabilities.includes("rag-qa")) caps.push("❓ Q&R");
-  if (f.vision && activeCapabilities.includes("vision-ocr")) caps.push("🖼️ Vision");
-  if (f.audio && activeCapabilities.includes("voice-tts")) caps.push("🔊 Audio");
-  if (f.code) caps.push("💻 Code");
-  if (f.reasoning) caps.push("🧠 Raisonnement");
-  if (f.instruct) caps.push(" Instruct");
+  const a = (c: string) => activeCapabilities.includes(c);
+  if (isCloud) caps.push({ icon: "cloud", label: "Cloud" });
+  if (f.imageGen && a("image-gen")) caps.push({ icon: "image", label: "Image" });
+  if (f.tts && a("voice-tts")) caps.push({ icon: "mic", label: "Voix" });
+  if (f.voiceCloning && a("voice-cloning")) caps.push({ icon: "figures", label: "Clonage" });
+  if (f.videoGen && a("video-gen")) caps.push({ icon: "video", label: "Vidéo" });
+  if (f.musicGen && a("music-gen")) caps.push({ icon: "music", label: "Musique" });
+  if (f.model3d && a("3d-gen")) caps.push({ icon: "cube", label: "3D" });
+  if (f.translation && a("translation")) caps.push({ icon: "translate", label: "Traduction" });
+  if (f.objectDetection && a("vision-ocr")) caps.push({ icon: "target", label: "Détection" });
+  if (f.textAnalysis && a("text-analysis")) caps.push({ icon: "chart", label: "Texte" });
+  if (f.imageEditing && a("image-editor")) caps.push({ icon: "edit", label: "Édition" });
+  if (f.questionAnswering && a("rag-qa")) caps.push({ icon: "question", label: "Q&R" });
+  if (f.vision && a("vision-ocr")) caps.push({ icon: "image", label: "Vision" });
+  if (f.audio && a("voice-tts")) caps.push({ icon: "sound", label: "Audio" });
+  if (f.code) caps.push({ icon: "cpu", label: "Code" });
+  if (f.reasoning) caps.push({ icon: "memory", label: "Raisonnement" });
+  if (f.instruct) caps.push({ icon: "chat", label: "Instruct" });
   return caps;
 }
 
@@ -134,7 +138,7 @@ function getQuantStorageGb(baseStorageGb: number, quant: string): number {
 // so the user never has to fiddle with size filters to know what will run.
 type HwSpec = { total_ram_gb: number; total_vram_gb: number };
 type CompatLevel = "cloud" | "gpu" | "offload" | "airllm" | "heavy" | "unknown";
-type Compat = { level: CompatLevel; label: string; short: string; color: string; icon: string };
+type Compat = { level: CompatLevel; label: string; short: string; color: string };
 
 const COMPAT_RANK: Record<CompatLevel, number> = {
   cloud: 0,
@@ -163,7 +167,6 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
       label: "Modèle cloud — exécution distante, aucun stockage local requis",
       short: "Cloud",
       color: "#60a5fa",
-      icon: "☁️",
     };
   }
   if (!hw) {
@@ -172,7 +175,6 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
       label: "Analyse PC requise pour estimer",
       short: "?",
       color: "var(--text-faint)",
-      icon: "•",
     };
   }
   const vram = hw.total_vram_gb || 0;
@@ -184,7 +186,6 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
       label: "Tient dans votre VRAM — fluide sur GPU",
       short: "Fluide GPU",
       color: "#5aa86a",
-      icon: "🟢",
     };
   }
   if (need <= ram * 0.85) {
@@ -193,7 +194,6 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
       label: "Trop gros pour la VRAM, mais tourne via la RAM (offload CPU, plus lent)",
       short: "OK via RAM",
       color: "#d4a03a",
-      icon: "🟡",
     };
   }
   if (airllm) {
@@ -204,7 +204,6 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
         "(chargement des couches une par une — un GPU 4 Go de VRAM suffit)",
       short: "AirLLM",
       color: "#a78bfa",
-      icon: "🟣",
     };
   }
   return {
@@ -212,7 +211,6 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
     label: "Dépasse la mémoire de ce PC — non recommandé",
     short: "Trop lourd",
     color: "#cc7d72",
-    icon: "🔴",
   };
 }
 
@@ -712,7 +710,7 @@ export function ModelBrowser({
       }
       const after = await core.airllmInstalled();
       setAirllmInstalled(new Set(after.map((m) => m.repo)));
-      setAirllmLog((prev) => [...prev, `✅ ${repo} prêt — démarrage du moteur AirLLM…`]);
+      setAirllmLog((prev) => [...prev, `${repo} prêt — démarrage du moteur AirLLM…`]);
       await onLaunchAirllm?.(repo);
     } catch (e) {
       setAirllmError(String(e));
@@ -774,14 +772,12 @@ export function ModelBrowser({
             onChange={(e) => setSortBy(e.target.value as "compat" | "newest" | "name" | "pulls")}
             aria-label="Trier les modèles"
           >
-            <option value="compat">
-              <span className="locaryn-dot locaryn-dot-ok" /> Compatibles d'abord
-            </option>
-            <option value="newest">
-              <Icon name="calendar" size={15} /> Plus récents
-            </option>
-            <option value="pulls">🔥 Plus populaires (Pulls)</option>
-            <option value="name">🔤 Nom (A-Z)</option>
+            {/* Un `<option>` ne contient que du texte : ni icône, ni pastille.
+                Le navigateur les refuse, et React le signale. */}
+            <option value="compat">Compatibles d'abord</option>
+            <option value="newest">Plus récents</option>
+            <option value="pulls">Plus populaires</option>
+            <option value="name">Nom (A → Z)</option>
           </select>
         </div>
 
@@ -828,7 +824,7 @@ export function ModelBrowser({
               whiteSpace: "pre-wrap",
             }}
           >
-            {airllmError ? `⚠️ ${airllmError}` : airllmLog.slice(-6).join("\n")}
+            {airllmError ? airllmError : airllmLog.slice(-6).join("\n")}
           </div>
         )}
 
@@ -859,7 +855,7 @@ export function ModelBrowser({
             disabled={isLoadingRegistry}
             title="Vider le cache local et rafraîchir la liste"
           >
-            {isLoadingRegistry ? "🔄 Chargement..." : "⚡ Rafraîchir catalogue"}
+            {isLoadingRegistry ? "Chargement…" : "Rafraîchir le catalogue"}
           </button>
           {lastUpdated && (
             <span
@@ -881,7 +877,7 @@ export function ModelBrowser({
           <input
             className="locaryn-input"
             style={{ flex: 1, fontSize: "12px" }}
-            placeholder="➕ Télécharger un modèle spécifique ou dépôt HuggingFace (ex: gemma4:2b, kimi-k3:8b, mimo:7b, glm5.2:9b, hf.co/user/repo)..."
+            placeholder="Télécharger un modèle ou un dépôt HuggingFace (ex: gemma4:2b, kimi-k3:8b, mimo:7b, glm5.2:9b, hf.co/user/repo)..."
             value={customTagInput}
             onChange={(e) => setCustomTagInput(e.target.value)}
           />
@@ -895,7 +891,7 @@ export function ModelBrowser({
               setCustomTagInput("");
             }}
           >
-            ⬇️ Télécharger ce modèle
+            Télécharger ce modèle
           </button>
           <button
             type="button"
@@ -910,7 +906,7 @@ export function ModelBrowser({
             disabled={isFetchingLive}
             title="Interroger directement les API HuggingFace Hub pour découvrir les derniers modèles en temps réel"
           >
-            {isFetchingLive ? "Recherche en direct..." : "🌐 Recherche API HuggingFace"}
+            {isFetchingLive ? "Recherche en cours…" : "Chercher sur HuggingFace"}
           </button>
         </div>
 
@@ -1021,7 +1017,7 @@ export function ModelBrowser({
               onClick={() => setRiskFilter((prev) => (prev === "nsfw" ? "all" : "nsfw"))}
               title="Afficher uniquement les modèles NSFW / sans garde-fous connus"
             >
-              🔞 NSFW
+              NSFW
             </button>
             <button
               type="button"
@@ -1056,7 +1052,7 @@ export function ModelBrowser({
               onClick={() => setShowCloud((prev) => !prev)}
               title="Par défaut, les modèles cloud-only sont masqués pour privilégier les téléchargements locaux"
             >
-              {showCloud ? "☁️ Cloud affiché" : "☁️ Cloud masqué"}
+              {showCloud ? "Cloud affiché" : "Cloud masqué"}
             </button>
           </div>
 
@@ -1176,20 +1172,44 @@ export function ModelBrowser({
               <span className="locaryn-hw-banner-counts">
                 {airllmEnabled ? (
                   <>
-                    <span style={{ color: "#a78bfa" }}>🟣 {counts.airllm} via AirLLM</span>
-                    <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
-                    <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
-                    <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
+                    <span style={{ color: "#a78bfa" }}>
+                      <span className="locaryn-dot" style={{ background: "#a78bfa" }} />{" "}
+                      {counts.airllm} via AirLLM
+                    </span>
+                    <span style={{ color: "#60a5fa" }}>
+                      <span className="locaryn-dot" style={{ background: "#60a5fa" }} />{" "}
+                      {counts.cloud} cloud
+                    </span>
+                    <span style={{ color: "#5aa86a" }}>
+                      <span className="locaryn-dot" style={{ background: "#5aa86a" }} />{" "}
+                      {counts.gpu} fluides GPU
+                    </span>
+                    <span style={{ color: "#d4a03a" }}>
+                      <span className="locaryn-dot" style={{ background: "#d4a03a" }} />{" "}
+                      {counts.offload} via RAM
+                    </span>
                     <span className="locaryn-hw-banner-note">
                       — AirLLM actif : chaque modèle est exécutable (local ou cloud)
                     </span>
                   </>
                 ) : (
                   <>
-                    <span style={{ color: "#60a5fa" }}>☁️ {counts.cloud} cloud</span>
-                    <span style={{ color: "#5aa86a" }}>🟢 {counts.gpu} fluides GPU</span>
-                    <span style={{ color: "#d4a03a" }}>🟡 {counts.offload} via RAM</span>
-                    <span style={{ color: "#cc7d72" }}>🔴 {counts.heavy} trop lourds</span>
+                    <span style={{ color: "#60a5fa" }}>
+                      <span className="locaryn-dot" style={{ background: "#60a5fa" }} />{" "}
+                      {counts.cloud} cloud
+                    </span>
+                    <span style={{ color: "#5aa86a" }}>
+                      <span className="locaryn-dot" style={{ background: "#5aa86a" }} />{" "}
+                      {counts.gpu} fluides GPU
+                    </span>
+                    <span style={{ color: "#d4a03a" }}>
+                      <span className="locaryn-dot" style={{ background: "#d4a03a" }} />{" "}
+                      {counts.offload} via RAM
+                    </span>
+                    <span style={{ color: "#cc7d72" }}>
+                      <span className="locaryn-dot" style={{ background: "#cc7d72" }} />{" "}
+                      {counts.heavy} trop lourds
+                    </span>
                     <span className="locaryn-hw-banner-note">
                       — triés du plus adapté au plus lourd
                     </span>
@@ -1258,7 +1278,8 @@ export function ModelBrowser({
                       }}
                       title={compat.label}
                     >
-                      {compat.icon} {compat.short}
+                      <span className="locaryn-dot" style={{ background: compat.color }} />{" "}
+                      {compat.short}
                     </span>
                     {familyAirSpeed && (
                       <span
@@ -1266,7 +1287,7 @@ export function ModelBrowser({
                         style={{ background: "rgba(167, 139, 250, 0.18)", color: "#a78bfa" }}
                         title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
                       >
-                        ⚡ ~{fmtTokPerSec(familyAirSpeed)}
+                        <Icon name="speed" size={13} /> ~{fmtTokPerSec(familyAirSpeed)}
                       </span>
                     )}
                     <span
@@ -1279,7 +1300,7 @@ export function ModelBrowser({
                       className="locaryn-tag locaryn-tag-soft"
                       title="Date de sortie officielle"
                     >
-                      📅 {f.releaseDate}
+                      <Icon name="calendar" size={13} /> {f.releaseDate}
                     </span>
                     {(() => {
                       const c = classifyModel(`${f.name} ${f.id}`, { uncensored: f.uncensored });
@@ -1320,8 +1341,8 @@ export function ModelBrowser({
                       </span>
                     )}
                     {capBadges(f).map((c) => (
-                      <span key={c} className="locaryn-tag">
-                        {c}
+                      <span key={c.label} className="locaryn-tag">
+                        <Icon name={c.icon} size={13} /> {c.label}
                       </span>
                     ))}
                     <SpeedBadge metric={findMetric(metrics, f.id)} />
@@ -1342,7 +1363,7 @@ export function ModelBrowser({
                       flex: "none",
                     }}
                   >
-                    {favorites.has(f.id) ? "★" : "☆"}
+                    <Icon name="star" size={15} />
                   </button>
                 </div>
 
@@ -1427,13 +1448,19 @@ export function ModelBrowser({
                           >
                             <div className="locaryn-box-variant-info">
                               <span className="locaryn-variant-size">{v.size}</span>
-                              <span className="locaryn-stat-vram">💾 ~{targetStorageGb} Go</span>
+                              <span className="locaryn-stat-vram">
+                                <Icon name="models" size={13} /> ~{targetStorageGb} Go
+                              </span>
                               <span
                                 className="locaryn-tag"
                                 style={{ background: `${compatV.color}22`, color: compatV.color }}
                                 title={compatV.label}
                               >
-                                {compatV.icon} {compatV.short}
+                                <span
+                                  className="locaryn-dot"
+                                  style={{ background: compatV.color }}
+                                />{" "}
+                                {compatV.short}
                               </span>
                               {compatV.level === "airllm" && (
                                 <span
@@ -1444,7 +1471,7 @@ export function ModelBrowser({
                                   }}
                                   title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
                                 >
-                                  ⚡ ~
+                                  <Icon name="speed" size={13} /> ~
                                   {fmtTokPerSec(
                                     estimateAirllmTokPerSec(
                                       targetStorageGb,
@@ -1455,9 +1482,7 @@ export function ModelBrowser({
                                 </span>
                               )}
                               {isInstalled && (
-                                <span className="locaryn-tag locaryn-tag-installed">
-                                  Installé ✓
-                                </span>
+                                <span className="locaryn-tag locaryn-tag-installed">Installé</span>
                               )}
                             </div>
 
@@ -1557,7 +1582,7 @@ export function ModelBrowser({
                                     >
                                       {busy
                                         ? "⏳ AirLLM…"
-                                        : `🚀 Installer via AirLLM (~${entry.sizeGb} Go)`}
+                                        : `Installer via AirLLM (~${entry.sizeGb} Go)`}
                                     </button>
                                   );
                                 })()
@@ -1637,7 +1662,9 @@ export function ModelBrowser({
                         <span className="locaryn-model-brand">{f.brand}</span>
                       </div>
                       <div className="locaryn-model-badges">
-                        <span className="locaryn-tag locaryn-tag-soft">📅 {f.releaseDate}</span>
+                        <span className="locaryn-tag locaryn-tag-soft">
+                          <Icon name="calendar" size={13} /> {f.releaseDate}
+                        </span>
                         {(() => {
                           const c = classifyModel(`${f.name} ${f.id}`, {
                             uncensored: f.uncensored,
@@ -1676,8 +1703,8 @@ export function ModelBrowser({
                           </span>
                         )}
                         {capBadges(f).map((c) => (
-                          <span key={c} className="locaryn-tag">
-                            {c}
+                          <span key={c.label} className="locaryn-tag">
+                            <Icon name={c.icon} size={13} /> {c.label}
                           </span>
                         ))}
                         <span className="locaryn-tag locaryn-tag-soft">{f.license}</span>
@@ -1701,7 +1728,7 @@ export function ModelBrowser({
                       flex: "none",
                     }}
                   >
-                    {favorites.has(f.id) ? "★" : "☆"}
+                    <Icon name="star" size={15} />
                   </button>
                 </div>
 
@@ -1725,14 +1752,15 @@ export function ModelBrowser({
                           <div className="locaryn-variant-top">
                             <span className="locaryn-variant-size">{v.size}</span>
                             <span className="locaryn-stat-vram">
-                              💾 ~{targetStorageGb} Go Stockage
+                              <Icon name="models" size={13} /> ~{targetStorageGb} Go
                             </span>
                             <span
                               className="locaryn-tag"
                               style={{ background: `${compatV.color}22`, color: compatV.color }}
                               title={compatV.label}
                             >
-                              {compatV.icon} {compatV.short}
+                              <span className="locaryn-dot" style={{ background: compatV.color }} />{" "}
+                              {compatV.short}
                             </span>
                             {compatV.level === "airllm" && (
                               <span
@@ -1743,7 +1771,7 @@ export function ModelBrowser({
                                 }}
                                 title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
                               >
-                                ⚡ ~
+                                <Icon name="speed" size={13} /> ~
                                 {fmtTokPerSec(
                                   estimateAirllmTokPerSec(targetStorageGb, hardwareSpec, v.size) ??
                                     0,
@@ -1751,7 +1779,7 @@ export function ModelBrowser({
                               </span>
                             )}
                             {isInstalled && (
-                              <span className="locaryn-tag locaryn-tag-installed">Installé ✓</span>
+                              <span className="locaryn-tag locaryn-tag-installed">Installé</span>
                             )}
                             <code className="locaryn-variant-tag">{targetTag}</code>
 
@@ -1851,7 +1879,7 @@ export function ModelBrowser({
                                     >
                                       {busy
                                         ? "⏳ AirLLM…"
-                                        : `🚀 Installer via AirLLM (~${entry.sizeGb} Go)`}
+                                        : `Installer via AirLLM (~${entry.sizeGb} Go)`}
                                     </button>
                                   );
                                 })()

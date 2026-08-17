@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { IMAGE_QUALITIES, type ImageIntent } from "../../lib/core";
 
 type Props = {
@@ -23,7 +24,9 @@ export function ImageIntentCard({ intent, model, onAccept, onRefuse, decided }: 
   return (
     <div className={`locaryn-intent${decided ? " locaryn-intent-decided" : ""}`}>
       <div className="locaryn-intent-head">
-        <span className="locaryn-intent-icon">{intent.is_edit ? "🖼️" : "🎨"}</span>
+        <span className="locaryn-intent-icon">
+          <Icon name={intent.is_edit ? "edit" : "image"} size={15} />
+        </span>
         <strong>{intent.is_edit ? "Modifier une image ?" : "Générer une image ?"}</strong>
         {decided && (
           <span className="locaryn-intent-badge">

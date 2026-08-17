@@ -433,7 +433,9 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
                 color: "var(--text)",
               }}
             >
-              <span>🎵 {melodyFileName}</span>
+              <span>
+                <Icon name="music" size={13} /> {melodyFileName}
+              </span>
               <button
                 type="button"
                 className="locaryn-icon-btn"
@@ -511,7 +513,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
             onClick={handleGenerate}
             disabled={(!prompt.trim() && !selectedStyle) || jobRunning || !hasModels}
           >
-            {jobRunning ? "Génération…" : "🎵 Générer la musique"}
+            {jobRunning ? "Génération…" : "Générer la musique"}
           </button>
         </div>
       </div>

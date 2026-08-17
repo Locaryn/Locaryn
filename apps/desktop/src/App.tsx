@@ -31,6 +31,7 @@ import { ChatPanel } from "./panels/ChatPanel";
 import { LeftPanel } from "./panels/LeftPanel";
 import { ModelConfigPanel } from "./panels/ModelConfigPanel";
 import { RunPanel } from "./panels/RunPanel";
+import { ArchivesView } from "./views/ArchivesView";
 import { FiguresView } from "./views/FiguresView";
 import { InstalledModelsView } from "./views/InstalledModelsView";
 import { ModelStudioView } from "./views/ModelStudioView";
@@ -483,7 +484,7 @@ export function App() {
         heretic,
         consent,
       );
-      setDownloadProgress({ tag, progress: 100, status: "Téléchargement terminé ✓" });
+      setDownloadProgress({ tag, progress: 100, status: "Téléchargement terminé" });
       taskCenter.done(taskId);
       setTimeout(() => setDownloadProgress(null), 3000);
     } catch (e) {
@@ -770,8 +771,8 @@ export function App() {
             <div className="locaryn-view-header">
               <h2>Marketplace Modèles (HuggingFace Hub & Modèles Locaux)</h2>
               <p className="locaryn-view-desc">
-                Explorez, installez et gérez vos modèles d'IA locaux (Gemma 2 E2B/E4B, Instruct 💬,
-                Audio 🎙️, Kimi K3, MiMo, GLM 5.2...).
+                Explorez, installez et gérez vos modèles d'IA locaux (Gemma 2 E2B/E4B, Instruct,
+                Audio, Kimi K3, MiMo, GLM 5.2...).
               </p>
             </div>
             <ModelBrowser
@@ -835,6 +836,15 @@ export function App() {
 
         {activeView === "batch" && <BatchStudio />}
 
+        {activeView === "archives" && (
+          <ArchivesView
+            onOpenSession={(sess) => {
+              handleSelectSession(sess);
+              setActiveView("chat");
+            }}
+          />
+        )}
+
         {activeView === "figures" && (
           <FiguresView
             onOpenSession={(sess) => {
@@ -874,7 +884,7 @@ export function App() {
               // Append the image to the active chat session, then switch to chat view.
               if (activeSession) {
                 try {
-                  await core.appendAssistantMessage(activeSession.id, `🖼️ ${label}\n\n![](${url})`);
+                  await core.appendAssistantMessage(activeSession.id, `${label}\n\n![](${url})`);
                 } catch (e) {
                   console.warn("Failed to append image message:", e);
                 }

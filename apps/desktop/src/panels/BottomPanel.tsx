@@ -124,7 +124,7 @@ export function BottomPanel({ cwd, sessionId }: Props) {
               ))}
             </div>
             <div className="locaryn-term-input-row">
-              <span className="locaryn-term-prompt">{running ? "…" : "❯"}</span>
+              <span className="locaryn-term-prompt">{running ? "…" : ">"}</span>
               <input
                 className="locaryn-term-input"
                 value={cmd}

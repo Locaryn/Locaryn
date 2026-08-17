@@ -158,8 +158,8 @@ export function startImageGeneration(p: ImageJobParams): string {
       if (p.sessionId) {
         const heading =
           allUrls.length > 1
-            ? `🎨 ${allUrls.length} variantes — « ${p.prompt} »`
-            : `🎨 ${res.simulated ? "(simulation) " : ""}Image générée — « ${p.prompt} »`;
+            ? `${allUrls.length} variantes — « ${p.prompt} »`
+            : `${res.simulated ? "(simulation) " : ""}Image générée — « ${p.prompt} »`;
         const md = `${heading}\n\n${allUrls.map((u) => `![](${u})`).join("\n")}`;
         core.appendAssistantMessage(p.sessionId, md).catch((err) => {
           // Do not swallow persistence errors; they make it look like the

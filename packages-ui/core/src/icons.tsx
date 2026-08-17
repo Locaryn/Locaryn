@@ -89,6 +89,11 @@ export function Icon({ name, size = 20, title }: Props) {
     role: title ? "img" : undefined,
     focusable: false,
   };
+  // Le titre est optionnel *à dessein*, et la règle `noSvgWithoutTitle` est
+  // désactivée pour ce fichier seul (voir biome.json) : elle attend un
+  // `<title>` littéral et ne sait pas voir celui-ci. Une icône posée à côté de
+  // son libellé n'a pas à être annoncée deux fois — elle est alors
+  // `aria-hidden`, ce qui est la bonne réponse, pas un contournement.
   const label = title ? <title>{title}</title> : null;
 
   switch (name) {

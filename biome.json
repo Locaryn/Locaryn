@@ -26,5 +26,15 @@
   },
   "javascript": {
     "formatter": { "quoteStyle": "double", "semicolons": "always", "trailingCommas": "all" }
-  }
+  },
+  "overrides": [
+    {
+      "include": ["packages-ui/core/src/icons.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": { "noSvgWithoutTitle": "off" }
+        }
+      }
+    }
+  ]
 }

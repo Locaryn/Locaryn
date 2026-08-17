@@ -94,16 +94,13 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
           onChange={(e) => setTrustLevel(e.target.value as TrustLevel)}
         >
           <option value="untrusted">
-            <Icon name="shield" size={15} /> Untrusted (Recommandé : Demander confirmation pour
-            chaque écriture)
+            Untrusted (Recommandé : Demander confirmation pour chaque écriture)
           </option>
           <option value="trusted">
-            <Icon name="speed" size={15} /> Trusted (Auto-approbation des lectures et modifications
-            de code)
+            Trusted (Auto-approbation des lectures et modifications de code)
           </option>
           <option value="sandbox">
-            <Icon name="lock" size={15} /> Sandbox (Lecture seule stricte - aucun terminal ni
-            modification)
+            Sandbox (Lecture seule stricte - aucun terminal ni modification)
           </option>
         </select>
       </div>
@@ -132,7 +129,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
       <div className="locaryn-field" style={{ marginBottom: "20px" }}>
         {/* Titre d'un groupe de cases à cocher, pas l'étiquette d'un champ :
             chaque case porte déjà la sienne. */}
-        <div className="locaryn-field-label">🔔 Exigences de Confirmation par Action</div>
+        <div className="locaryn-field-label">Confirmations demandées, action par action</div>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "6px" }}>
           <label className="locaryn-checkbox-row">
             <input
@@ -163,7 +160,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
       <div className="locaryn-field">
         {/* Idem : coiffe la liste des connecteurs, ne désigne aucun champ. */}
         <div className="locaryn-field-label">
-          🔌 Extensions & Connecteurs Autorisés pour ce Projet
+          Extensions et connecteurs autorisés pour ce projet
         </div>
         <p className="locaryn-field-hint" style={{ marginBottom: "8px" }}>
           Cochez les connecteurs auxquels ce projet a le droit d'accéder durant les sessions de
@@ -247,7 +244,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
               onChange={() => toggleEnable("postgres_mcp")}
             />
             <div>
-              <span style={{ fontWeight: 700 }}>🐘 Base de Données PostgreSQL / MySQL</span>
+              <span style={{ fontWeight: 700 }}>Base de données PostgreSQL ou MySQL</span>
               <span
                 style={{
                   fontSize: "var(--text-xs)",
@@ -300,7 +297,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
           Annuler
         </button>
         <button type="button" className="locaryn-btn-primary" onClick={handleSave}>
-          {saved ? "Enregistré ✓" : "Enregistrer les paramètres du projet"}
+          {saved ? "Enregistré" : "Enregistrer les paramètres du projet"}
         </button>
       </div>
     </ModalShell>

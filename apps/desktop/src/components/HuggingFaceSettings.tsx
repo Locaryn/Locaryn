@@ -35,7 +35,7 @@ export function HuggingFaceSettings() {
         Token d'accès HuggingFace
         {saved && (
           <span style={{ marginLeft: 8, color: "var(--accent)", fontSize: "var(--text-xs)" }}>
-            enregistré ✓
+            enregistré
           </span>
         )}
       </label>
@@ -65,7 +65,7 @@ export function HuggingFaceSettings() {
           title={show ? "Masquer le token" : "Afficher le token"}
           style={{ whiteSpace: "nowrap" }}
         >
-          {show ? "🙈 Masquer" : "👁 Afficher"}
+          {show ? "Masquer" : "Afficher"}
         </button>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>

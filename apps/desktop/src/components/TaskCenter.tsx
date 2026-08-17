@@ -193,7 +193,7 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                                 className={`locaryn-wf-step${done ? " done" : ""}${current ? " current" : ""}`}
                               >
                                 <span className="locaryn-wf-mark">
-                                  {done ? "✓" : current ? "▸" : "·"}
+                                  {done ? <Icon name="check" size={13} /> : current ? "▸" : "·"}
                                 </span>
                                 <span className="locaryn-wf-text">{s}</span>
                               </li>

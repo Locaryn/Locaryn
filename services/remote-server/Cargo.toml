@@ -21,7 +21,10 @@ locaryn-auth = { workspace = true }
 locaryn-extensions = { workspace = true }
 locaryn-mcp = { workspace = true }
 locaryn-agent-runtime = { workspace = true }
-locaryn-enterprise = { path = "enterprise", version = "0.3.1", optional = true }
+# Pas de version épinglée : la brique entreprise n'est pas publiée, elle vit
+# dans ce dépôt. L'épingle restait en arrière à chaque montée de version et ne
+# se voyait que le jour où la résolution passait sous elle.
+locaryn-enterprise = { path = "enterprise", optional = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

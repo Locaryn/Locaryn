@@ -995,7 +995,9 @@ async fn archive_project(core: State<'_, Core>, id: Uuid) -> Result<(), String> 
 // ============================================================================
 
 #[tauri::command]
-async fn list_figures(core: State<'_, Core>) -> Result<Vec<locaryn_storage::figures::Figure>, String> {
+async fn list_figures(
+    core: State<'_, Core>,
+) -> Result<Vec<locaryn_storage::figures::Figure>, String> {
     core.storage.figures.list().await.map_err(|e| e.to_string())
 }
 

@@ -64,7 +64,9 @@ function StepDots({ elapsed }: { elapsed: number }) {
             key={s.label}
             className={`img-gen-step${done ? " img-gen-step-done" : active ? " img-gen-step-active" : ""}`}
           >
-            <span className="img-gen-step-dot">{done ? "✓" : active ? "◌" : "○"}</span>
+            <span className="img-gen-step-dot">
+              {done ? <Icon name="check" size={11} /> : active ? "◌" : "○"}
+            </span>
             <span>{s.label}</span>
           </div>
         );
@@ -213,7 +215,7 @@ export function ImageGenPanel({
 
         const uncensored = !!f.uncensored || isUncensoredName(v.tag);
         if (isMatch && !added.has(v.tag)) {
-          const padlock = uncensored ? "🔓 " : "";
+          const padlock = uncensored ? "Sans filtre · " : "";
           opts.push({ label: `${padlock}${f.name} (${v.size})`, value: v.tag });
           added.add(v.tag);
           added.add(fileName);
@@ -234,7 +236,7 @@ export function ImageGenPanel({
     // extra filtering — just avoid duplicates.
     for (const m of dedupedLocalInstalledModels) {
       if (added.has(m)) continue;
-      const padlock = isUncensoredName(m) ? "🔓 " : "";
+      const padlock = isUncensoredName(m) ? "Sans filtre · " : "";
       opts.push({ label: `${padlock}${m} (Modèle local)`, value: m });
       added.add(m);
     }
@@ -422,7 +424,9 @@ export function ImageGenPanel({
 
       {/* ── Legal strip ── */}
       <div className="img-gen-legal">
-        <span>⚖️</span>
+        <span>
+          <Icon name="shield" size={15} />
+        </span>
         <span>
           Les modèles s'exécutent localement. L'utilisateur est seul responsable des contenus
           générés.
@@ -463,7 +467,9 @@ export function ImageGenPanel({
         </div>
         {selectedNsfw && (
           <div className="img-gen-error" style={{ marginBottom: 8 }}>
-            <span>🔞</span>
+            <span>
+              <Icon name="warning" size={15} />
+            </span>
             <span>
               {nsfwReason(selectedModel)} — le mode responsabilité sera demandé avant génération.
             </span>
@@ -481,7 +487,7 @@ export function ImageGenPanel({
               onClick={() => handleInstall()}
               disabled={isInstalling}
             >
-              {isInstalling ? "Installation…" : "⬇ Installer"}
+              {isInstalling ? "Installation…" : "Installer"}
             </button>
           </div>
         ) : (
@@ -507,9 +513,7 @@ export function ImageGenPanel({
               </option>
             ))}
             {hereticBase && (
-              <option value={HERETIC_VALUE}>
-                <Icon name="lock" size={15} /> Z-Image Turbo — Sans limite (Heretic)
-              </option>
+              <option value={HERETIC_VALUE}>Z-Image Turbo — Sans limite (Heretic)</option>
             )}
           </select>
         )}
@@ -882,7 +886,7 @@ export function ImageGenPanel({
               {mode === "img2img" ? "Transformation…" : "Génération…"}
             </>
           ) : (
-            <>{mode === "img2img" ? "🖼️ Transformer" : "🎨 Générer"}</>
+            <>{mode === "img2img" ? "Transformer" : "Générer"}</>
           )}
         </button>
       </div>

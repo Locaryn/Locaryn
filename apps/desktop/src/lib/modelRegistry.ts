@@ -364,21 +364,21 @@ export type ModelCategory =
   | "audio";
 
 export const MODEL_CATEGORIES: { id: ModelCategory; label: string; icon: string }[] = [
-  { id: "all", label: "Tous", icon: "📦" },
-  { id: "chat", label: "Chat / Instruct", icon: "💬" },
-  { id: "code", label: "Code", icon: "💻" },
-  { id: "vision", label: "Vision", icon: "🖼️" },
-  { id: "reasoning", label: "Raisonnement", icon: "🧠" },
-  { id: "image-gen", label: "Image Gen", icon: "🎨" },
-  { id: "speech-synthesis", label: "Synthèse vocale", icon: "🎙️" },
-  { id: "video-generation", label: "Vidéo", icon: "🎬" },
-  { id: "language-translation", label: "Traduction", icon: "🌐" },
-  { id: "3d-modeling", label: "3D", icon: "🧩" },
-  { id: "music-generation", label: "Musique", icon: "🎵" },
-  { id: "object-detection", label: "Détection", icon: "🎯" },
-  { id: "text-analysis", label: "Analyse texte", icon: "📊" },
-  { id: "image-editing", label: "Édition image", icon: "✏️" },
-  { id: "question-answering", label: "Q&R", icon: "❓" },
+  { id: "all", label: "Tous", icon: "models" },
+  { id: "chat", label: "Chat / Instruct", icon: "chat" },
+  { id: "code", label: "Code", icon: "cpu" },
+  { id: "vision", label: "Vision", icon: "image" },
+  { id: "reasoning", label: "Raisonnement", icon: "memory" },
+  { id: "image-gen", label: "Image Gen", icon: "image" },
+  { id: "speech-synthesis", label: "Synthèse vocale", icon: "mic" },
+  { id: "video-generation", label: "Vidéo", icon: "video" },
+  { id: "language-translation", label: "Traduction", icon: "translate" },
+  { id: "3d-modeling", label: "3D", icon: "extensions" },
+  { id: "music-generation", label: "Musique", icon: "music" },
+  { id: "object-detection", label: "Détection", icon: "target" },
+  { id: "text-analysis", label: "Analyse texte", icon: "chart" },
+  { id: "image-editing", label: "Édition image", icon: "edit" },
+  { id: "question-answering", label: "Q&R", icon: "question" },
 ];
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -486,7 +486,7 @@ export const IMAGE_GEN_MODELS: ModelFamily[] = [
   },
   {
     id: "z-image-turbo-heretic",
-    name: "Z-Image Turbo — Sans limite (Heretic) 🔓",
+    name: "Z-Image Turbo — sans limite (Heretic)",
     brand: "Z-Image / Heretic",
     description:
       "Z-Image Turbo avec encodeur de texte abliteré (méthode heretic) : le modèle ne refuse plus de prompt. " +
@@ -642,7 +642,7 @@ export const IMAGE_GEN_MODELS: ModelFamily[] = [
   },
   {
     id: "flux1-schnell-uncensored",
-    name: "FLUX.1 Schnell (Uncensored 🔓)",
+    name: "FLUX.1 Schnell — sans limite",
     brand: "Black Forest Labs / Community",
     description: "Variante non-filtrée de FLUX.1 Schnell pour l'art libre sans restriction.",
     license: "Open Weights",
@@ -653,7 +653,7 @@ export const IMAGE_GEN_MODELS: ModelFamily[] = [
     uncensored: true,
     variants: [
       {
-        size: "12B (Uncensored 🔓)",
+        size: "12B — sans limite",
         params: 12,
         tag: "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_0.gguf",
         quants: ["Q4_0"],

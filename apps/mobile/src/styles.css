@@ -1053,3 +1053,33 @@ body.lo-scanning .lo-screen {
   color: #12140f;
   background: var(--accent);
 }
+
+/* Ce qu'apporte une mise à jour, dit dans l'application. Personne ne devrait
+   ouvrir un navigateur pour savoir ce qu'il installe. */
+.lo-update {
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.lo-update-jump {
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.lo-update-arrow {
+  margin: 0 4px;
+  color: var(--accent);
+}
+.lo-update-notes {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  /* Un message de version peut être long : on en montre l'essentiel et le
+     reste se déroule, plutôt que de pousser le bouton hors de l'écran. */
+  max-height: 9.5em;
+  overflow-y: auto;
+}

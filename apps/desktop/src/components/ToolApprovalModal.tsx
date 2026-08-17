@@ -31,10 +31,10 @@ const RISK_LABEL: Record<RiskLevel, string> = {
 };
 
 const RISK_ICON: Record<RiskLevel, string> = {
-  low: "🟢",
-  medium: "🟠",
-  high: "🔴",
-  critical: "⛔",
+  low: "ok",
+  medium: "warn",
+  high: "bad",
+  critical: "bad",
 };
 
 const SCOPE_LABEL: Record<RiskScope, string> = {
@@ -184,7 +184,7 @@ export function ToolApprovalModal({
           <div className="locaryn-approval-banner-text">
             <span id="locaryn-approval-title" className="locaryn-approval-banner-title">
               {isCritical
-                ? "⚠ Remote execution — confirm explicitly"
+                ? "Exécution à distance — à confirmer explicitement"
                 : isRemote
                   ? "↗ Remote target — escalated to Critical"
                   : `${RISK_ICON[approval.risk]} ${RISK_LABEL[approval.risk]}`}

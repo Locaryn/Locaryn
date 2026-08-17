@@ -2,20 +2,16 @@ import { useEffect, useState } from "react";
 import { type UpdateStatus, api, coreMode } from "../lib/core";
 
 /**
- * Bouton de mise à jour de l'application Android.
+ * Le raccourci vers la mise à jour, dans la barre du chat.
  *
- * L'updater de Tauri ne couvre pas Android : sur un téléphone, une application
- * distribuée hors magasin se met à jour en ouvrant le nouvel APK, et c'est le
- * système qui installe, vérifie la signature et demande confirmation.
+ * Il ne s'affiche que lorsqu'une version plus récente existe vraiment : un
+ * bouton toujours présent qui répond « vous êtes à jour » est du bruit.
  *
- * Le bouton ne s'affiche que lorsqu'une version plus récente existe vraiment :
- * un bouton toujours présent qui répond « vous êtes à jour » est du bruit, et
- * un bouton qui prétend mettre à jour sans fichier à installer serait pire.
+ * Il n'installe rien lui-même — il mène à l'écran des réglages, où l'on voit
+ * d'où l'on part, où l'on va, et ce que la version apporte avant de décider.
  */
-export function UpdateButton() {
+export function UpdateButton({ onOpen }: { onOpen: () => void }) {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Hors téléphone (interface développée dans un navigateur), il n'y a rien
@@ -43,21 +39,10 @@ export function UpdateButton() {
       type="button"
       className="lo-bar-away"
       style={{ cursor: "pointer" }}
-      disabled={busy}
-      title={error ?? `Version ${status.latest} disponible (vous avez ${status.current})`}
-      onClick={async () => {
-        setBusy(true);
-        setError(null);
-        try {
-          await api.openUpdate(status.download_url as string);
-        } catch (e) {
-          setError(String(e));
-        } finally {
-          setBusy(false);
-        }
-      }}
+      title={`Version ${status.latest} disponible (vous avez ${status.current})`}
+      onClick={onOpen}
     >
-      {error ? "Échec — réessayer" : `Mettre à jour (${status.latest})`}
+      {`Mettre à jour (${status.latest})`}
     </button>
   );
 }

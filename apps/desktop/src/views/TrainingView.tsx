@@ -85,7 +85,7 @@ export function TrainingView({ onOpenModels }: Props) {
           ...prev,
           `[${new Date().toLocaleTimeString()}] Soustraction orthogonale de la direction de refus (Intensité: ${intensity})...`,
           `[${new Date().toLocaleTimeString()}] Sauvegarde des nouveaux poids GGUF : ${newTag}`,
-          `[${new Date().toLocaleTimeString()}] ✅ Oblitération terminée ! Le modèle dé-aligné ${newTag} est désormais disponible dans vos modèles installés.`,
+          `[${new Date().toLocaleTimeString()}] Oblitération terminée. Le modèle dé-aligné ${newTag} est désormais disponible dans vos modèles installés.`,
         ]);
         setInstalledModels((prev) => [...prev, newTag]);
       } else {
@@ -329,7 +329,7 @@ export function TrainingView({ onOpenModels }: Props) {
                   >
                     {installedModels.map((tag) => (
                       <option key={tag} value={tag}>
-                        💻 {tag} (Modèle Installé)
+                        {tag} (installé)
                       </option>
                     ))}
                   </select>
@@ -427,9 +427,7 @@ export function TrainingView({ onOpenModels }: Props) {
                     disabled={!disclaimerAccepted || isObliterating}
                     onClick={startObliteration}
                   >
-                    {isObliterating
-                      ? "Oblitération en cours..."
-                      : "⚡ Lancer l'Oblitération de Modèle"}
+                    {isObliterating ? "Oblitération en cours..." : "Lancer l'oblitération"}
                   </button>
                 </div>
               </>
@@ -449,7 +447,11 @@ export function TrainingView({ onOpenModels }: Props) {
                     // biome-ignore lint/suspicious/noArrayIndexKey: journal en ajout seul, jamais réordonné ni filtré, et les lignes peuvent être identiques : l'index est le seul identifiant stable
                     key={i}
                     className="locaryn-log-line"
-                    style={{ color: log.includes("✅") ? "var(--accent)" : "var(--text)" }}
+                    style={{
+                      color: log.includes("Oblitération terminée")
+                        ? "var(--accent)"
+                        : "var(--text)",
+                    }}
                   >
                     {log}
                   </div>

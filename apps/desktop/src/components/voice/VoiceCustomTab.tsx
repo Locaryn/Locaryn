@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import type React from "react";
 
 export const SPEAKER_OPTIONS = [
@@ -13,46 +14,52 @@ export const SPEAKER_OPTIONS = [
   { id: "dylan", label: "Dylan (北京方言)" },
 ];
 
-export const VOICE_STYLES = [
+export const VOICE_STYLES: {
+  id: string;
+  label: string;
+  icon: IconName;
+  desc: string;
+  prompt: string;
+}[] = [
   {
     id: "narrator",
     label: "Narrateur",
-    icon: "📖",
+    icon: "models",
     desc: "Clair, posé, documentaire",
     prompt: "Voix de narrateur : claire, posée, ton documentaire",
   },
   {
     id: "conversational",
     label: "Conversationnel",
-    icon: "💬",
+    icon: "chat",
     desc: "Naturel, chaleureux, quotidien",
     prompt: "Voix conversationnelle : naturelle, chaleureuse, ton quotidien",
   },
   {
     id: "newscaster",
     label: "Journaliste",
-    icon: "📰",
+    icon: "chart",
     desc: "Professionnel, articulé, neutre",
     prompt: "Voix de journaliste : professionnelle, articulée, ton neutre",
   },
   {
     id: "character",
     label: "Personnage",
-    icon: "🎭",
+    icon: "figures",
     desc: "Expressif, théâtral, varié",
     prompt: "Voix de personnage : expressive, théâtrale, ton varié",
   },
   {
     id: "whisper",
     label: "Chuchotement",
-    icon: "🤫",
+    icon: "private",
     desc: "Doux, intime, proche",
     prompt: "Chuchotement : doux, intime, très proche du micro",
   },
   {
     id: "energetic",
     label: "Énergique",
-    icon: "⚡",
+    icon: "speed",
     desc: "Rapide, enthousiaste, dynamique",
     prompt: "Voix énergique : rapide, enthousiaste, ton dynamique",
   },
@@ -180,7 +187,9 @@ export function VoiceCustomTab({
                 }}
                 disabled={jobRunning}
               >
-                <span style={{ fontSize: "24px", marginBottom: "8px" }}>{style.icon}</span>
+                <span style={{ marginBottom: "8px", display: "inline-flex" }}>
+                  <Icon name={style.icon} size={22} />
+                </span>
                 <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>
                   {style.label}
                 </span>

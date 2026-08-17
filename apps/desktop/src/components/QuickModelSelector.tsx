@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { core } from "../lib/core";
 import { dedupeModelsByDirectory } from "../lib/modelList";
@@ -30,7 +30,7 @@ export interface ModelOptionItem {
   size: string;
   category: "text" | "image" | "code" | "reasoning" | "vision";
   categoryLabel: string;
-  icon: string;
+  icon: IconName;
 }
 
 export function QuickModelSelector({
@@ -98,25 +98,25 @@ export function QuickModelSelector({
           const { kind } = classifyModel(tag);
 
           let category: ModelOptionItem["category"] = "text";
-          let categoryLabel = "💬 Text to Text";
-          let icon = "💬";
+          let categoryLabel = "Texte";
+          let icon: IconName = "chat";
 
           if (kind === "image-gen") {
             category = "image";
-            categoryLabel = "🎨 Text to Image";
-            icon = "🎨";
+            categoryLabel = "Image";
+            icon = "image";
           } else if (kind === "code") {
             category = "code";
-            categoryLabel = "💻 Code & Dev";
-            icon = "💻";
+            categoryLabel = "Code";
+            icon = "cpu";
           } else if (kind === "reasoning") {
             category = "reasoning";
-            categoryLabel = "🧠 Raisonnement";
-            icon = "🧠";
+            categoryLabel = "Raisonnement";
+            icon = "memory";
           } else if (kind === "vision") {
             category = "vision";
-            categoryLabel = "🖼️ Vision";
-            icon = "🖼️";
+            categoryLabel = "Vision";
+            icon = "search";
           }
 
           const isRemoteTag =
@@ -254,7 +254,7 @@ export function QuickModelSelector({
         {/* Search Bar */}
         <input
           className="locaryn-input"
-          placeholder="🔍 Rechercher parmi vos modèles installés..."
+          placeholder="Rechercher parmi vos modèles installés…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{ marginBottom: "10px" }}
@@ -348,7 +348,7 @@ export function QuickModelSelector({
                         className="locaryn-tag locaryn-tag-installed"
                         style={{ fontSize: "10px" }}
                       >
-                        ACTIF ✓
+                        ACTIF
                       </span>
                     )}
                   </div>

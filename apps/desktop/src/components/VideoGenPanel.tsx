@@ -303,7 +303,9 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
           />
           {inputImage ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "var(--text)" }}>🖼️ {inputImageName}</span>
+              <span style={{ fontSize: 12, color: "var(--text)" }}>
+                <Icon name="image" size={13} /> {inputImageName}
+              </span>
               <button
                 type="button"
                 className="locaryn-icon-btn"
@@ -512,7 +514,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
             onClick={handleGenerate}
             disabled={!prompt.trim() || jobRunning || !hasModels || (mode === "i2v" && !inputImage)}
           >
-            {jobRunning ? "Génération…" : "🎬 Générer la vidéo"}
+            {jobRunning ? "Génération…" : "Générer la vidéo"}
           </button>
         </div>
       </div>

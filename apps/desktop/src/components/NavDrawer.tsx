@@ -55,6 +55,12 @@ const BASE_NAV_ITEMS: NavItem[] = [
     requiredCapabilities: ["figures"],
   },
   {
+    id: "archives",
+    label: "Archives",
+    icon: "archive",
+    desc: "Les conversations rangées, à ressortir ou à supprimer pour de bon",
+  },
+  {
     id: "installed",
     label: "Mes modèles installés",
     icon: "models",

@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import {
   type InferenceConfig,
@@ -13,29 +13,29 @@ type Props = {
 };
 
 /** What can genuinely be done to a model from this app, and what cannot. */
-const DOABLE = [
+const DOABLE: { icon: IconName; label: string; desc: string }[] = [
   {
-    icon: "🎯",
+    icon: "target",
     label: "Adaptateurs LoRA",
     desc: "Charger des .gguf et régler leur intensité à chaud, sans redémarrage.",
   },
   {
-    icon: "🗜️",
+    icon: "archive",
     label: "Quantization",
     desc: "Choisir la précision (Q4/Q5/Q6/Q8) au téléchargement dans le marketplace.",
   },
   {
-    icon: "🧠",
+    icon: "memory",
     label: "Compression du cache KV",
     desc: "Cache 4/8-bit pour allonger le contexte à VRAM égale.",
   },
   {
-    icon: "🧩",
+    icon: "extensions",
     label: "Offload RAM / experts MoE",
     desc: "Exécuter des modèles plus gros que la VRAM disponible.",
   },
   {
-    icon: "🔮",
+    icon: "star",
     label: "Décodage spéculatif",
     desc: "Accélérer la génération avec un petit modèle draft.",
   },
@@ -107,7 +107,9 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
         <div className="locaryn-caps-grid" style={{ marginTop: 12 }}>
           {DOABLE.map((d) => (
             <div key={d.label} className="locaryn-cap-chip">
-              <span style={{ flex: "0 0 auto" }}>{d.icon}</span>
+              <span style={{ flex: "0 0 auto", display: "inline-flex" }}>
+                <Icon name={d.icon} size={18} />
+              </span>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{d.label}</div>
                 <div className="locaryn-field-hint" style={{ margin: 0 }}>

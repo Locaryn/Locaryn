@@ -312,7 +312,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
                         onClick={save}
                         disabled={saving || !endpoint.trim()}
                       >
-                        {saving ? "Enregistrement…" : saved ? "Enregistré ✓" : "Enregistrer"}
+                        {saving ? "Enregistrement…" : saved ? "Enregistré" : "Enregistrer"}
                       </button>
                     </div>
                   </>

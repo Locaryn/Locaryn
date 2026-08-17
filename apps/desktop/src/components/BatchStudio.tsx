@@ -151,7 +151,7 @@ export function BatchStudio() {
       {/* New Batch Creation Form */}
       <div className="locaryn-box-card" style={{ marginTop: "16px", padding: "16px" }}>
         <h3 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>
-          ➕ Créer un nouveau Lot de Traitement (Batch JSONL)
+          Créer un lot de traitement (JSONL)
         </h3>
 
         <div
@@ -208,7 +208,7 @@ export function BatchStudio() {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: "11px", color: "#64c878" }}>
-            💡 Réduction de 50% appliquée automatiquement sur la facture de tokens.
+            Réduction de 50 % appliquée automatiquement sur la facture de tokens.
           </span>
           <button
             type="button"
@@ -224,7 +224,7 @@ export function BatchStudio() {
       {/* Existing Batch Jobs Table */}
       <div style={{ marginTop: "24px" }}>
         <h3 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>
-          📋 Historique des Lots de Traitement
+          Historique des lots
         </h3>
 
         <div className="locaryn-model-list">
@@ -265,7 +265,7 @@ export function BatchStudio() {
 
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     {j.status === "completed" ? (
-                      <span className="locaryn-tag locaryn-tag-installed">Terminé ✓</span>
+                      <span className="locaryn-tag locaryn-tag-installed">Terminé</span>
                     ) : (
                       <span
                         className="locaryn-tag"
@@ -282,7 +282,7 @@ export function BatchStudio() {
                         style={{ fontSize: "11px", padding: "4px 8px" }}
                         onClick={() => alert(`Téléchargement des résultats JSONL pour ${j.id}`)}
                       >
-                        ⬇️ Télécharger Résultats
+                        Télécharger les résultats
                       </button>
                     )}
                   </div>

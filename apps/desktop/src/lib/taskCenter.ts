@@ -39,11 +39,11 @@ export interface AppTask {
 
 /** Per-type presentation so the center is instantly scannable. */
 export const TASK_META: Record<TaskType, { label: string; icon: string; color: string }> = {
-  download: { label: "Téléchargement", icon: "⬇️", color: "#5b8dd6" },
-  generation: { label: "Génération", icon: "🎨", color: "#a06cd6" },
-  edit: { label: "Édition modèle", icon: "🛠️", color: "#5aa86a" },
-  workflow: { label: "Workflow", icon: "🧩", color: "#d4a03a" },
-  audio: { label: "Synthèse vocale", icon: "🎙️", color: "#5b8dd6" },
+  download: { label: "Téléchargement", icon: "download", color: "#5b8dd6" },
+  generation: { label: "Génération", icon: "image", color: "#a06cd6" },
+  edit: { label: "Édition modèle", icon: "extensions", color: "#5aa86a" },
+  workflow: { label: "Workflow", icon: "extensions", color: "#d4a03a" },
+  audio: { label: "Synthèse vocale", icon: "mic", color: "#5b8dd6" },
 };
 
 let tasks: AppTask[] = [];

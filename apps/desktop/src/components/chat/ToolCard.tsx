@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useState } from "react";
 
 type Props = {
@@ -7,12 +8,12 @@ type Props = {
   output: string;
 };
 
-const TOOL_ICONS: Record<string, string> = {
-  read_file: "📄",
-  write_file: "✏️",
-  run_command: "❯_",
-  search: "🔍",
-  list_dir: "📁",
+const TOOL_ICONS: Record<string, IconName> = {
+  read_file: "models",
+  write_file: "edit",
+  run_command: "cpu",
+  search: "search",
+  list_dir: "project",
 };
 
 /** Compact one-line summary of the tool arguments. */
@@ -30,7 +31,7 @@ function argsSummary(args: unknown): string {
 
 export function ToolCard({ tool, args, status, output }: Props) {
   const [open, setOpen] = useState(false);
-  const icon = TOOL_ICONS[tool] ?? "🔧";
+  const icon = TOOL_ICONS[tool] ?? "extensions";
 
   return (
     <div className={`locaryn-tool-card locaryn-tool-${status}`}>
@@ -41,7 +42,7 @@ export function ToolCard({ tool, args, status, output }: Props) {
         aria-expanded={open}
       >
         <span className="locaryn-tool-icon" aria-hidden="true">
-          {icon}
+          <Icon name={icon} size={14} />
         </span>
         <span className="locaryn-tool-name">{tool}</span>
         <span className="locaryn-tool-summary">{argsSummary(args)}</span>
@@ -49,9 +50,9 @@ export function ToolCard({ tool, args, status, output }: Props) {
           {status === "running" ? (
             <span className="locaryn-tool-spinner" aria-label="running" />
           ) : status === "ok" ? (
-            "✓"
+            <Icon name="check" size={13} />
           ) : (
-            "✗"
+            <Icon name="close" size={13} />
           )}
         </span>
         <span className="locaryn-tool-chevron" aria-hidden="true">

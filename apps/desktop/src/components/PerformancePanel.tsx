@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type InferenceConfig, type InferenceProfile, type KvCacheType, core } from "../lib/core";
 
@@ -6,7 +6,7 @@ import { type InferenceConfig, type InferenceProfile, type KvCacheType, core } f
 
 interface ProfileCard {
   id: InferenceProfile;
-  icon: string;
+  icon: IconName;
   label: string;
   tagline: string;
   details: string[];
@@ -17,14 +17,14 @@ interface ProfileCard {
 const PROFILES: ProfileCard[] = [
   {
     id: "eco",
-    icon: "🌱",
+    icon: "cloud",
     label: "Économe",
     tagline: "CPU uniquement, mémoire minimale",
     details: ["0 couches GPU", "Cache FP16 standard", "Contexte 4K tokens"],
   },
   {
     id: "balanced",
-    icon: "⚡",
+    icon: "speed",
     label: "Équilibré",
     tagline: "Mix GPU/CPU, bon compromis",
     details: [
@@ -36,7 +36,7 @@ const PROFILES: ProfileCard[] = [
   },
   {
     id: "performance",
-    icon: "🚀",
+    icon: "speed",
     label: "Performance",
     tagline: "GPU au maximum, contexte long",
     details: [
@@ -48,7 +48,7 @@ const PROFILES: ProfileCard[] = [
   },
   {
     id: "turbo",
-    icon: "🔥",
+    icon: "speed",
     label: "Turbo",
     tagline: "KV Q4 + GPU max + contexte 32K",
     details: [
@@ -63,7 +63,7 @@ const PROFILES: ProfileCard[] = [
   },
   {
     id: "longctx",
-    icon: "↔",
+    icon: "forward",
     label: "Contexte long",
     tagline: "Cache KV 4-bit — max de contexte à VRAM égale",
     details: [
@@ -204,7 +204,9 @@ export function PerformancePanel() {
             <span>{hw.cores} cœurs</span>
           </div>
           <div className="perf-hw-chip perf-hw-active">
-            <span className="perf-hw-icon">🏷️</span>
+            <span className="perf-hw-icon">
+              <Icon name="cpu" size={14} />
+            </span>
             <span>{cfg.profile}</span>
           </div>
         </div>
@@ -231,7 +233,9 @@ export function PerformancePanel() {
                   {p.badge}
                 </div>
               )}
-              <div className="perf-card-icon">{p.icon}</div>
+              <div className="perf-card-icon">
+                <Icon name={p.icon} size={18} />
+              </div>
               <div className="perf-card-label">{p.label}</div>
               <div className="perf-card-tagline">{p.tagline}</div>
               {(isActive || isExpanded) && (
@@ -249,7 +253,7 @@ export function PerformancePanel() {
       {/* ── Custom profile notice ── */}
       {cfg.profile === "custom" && (
         <div className="perf-custom-notice">
-          🎛️ Profil personnalisé — les réglages ci-dessous s'appliquent directement
+          Profil personnalisé — les réglages ci-dessous s'appliquent directement
         </div>
       )}
 
@@ -311,7 +315,7 @@ export function PerformancePanel() {
           {/* GPU Layers */}
           <div className="perf-row">
             <div className="perf-row-left">
-              <div className="perf-row-label">🎮 Couches GPU (Offloading)</div>
+              <div className="perf-row-label">Couches déportées sur le GPU</div>
               <div className="perf-row-hint">
                 {cfg.gpu_layers === -1
                   ? "Maximum — toutes les couches sur GPU"
@@ -359,7 +363,7 @@ export function PerformancePanel() {
           {/* Context Length */}
           <div className="perf-row">
             <div className="perf-row-left">
-              <div className="perf-row-label">📏 Fenêtre de Contexte</div>
+              <div className="perf-row-label">Fenêtre de contexte</div>
               <div className="perf-row-hint">
                 Mémoire de la conversation. Plus grand = plus de VRAM
               </div>
@@ -404,7 +408,7 @@ export function PerformancePanel() {
                 {cfg.use_mmap ? "ON" : "OFF"}
               </button>
               <div>
-                <div className="perf-row-label">💿 mmap Chargement</div>
+                <div className="perf-row-label">Chargement par mmap</div>
                 <div className="perf-row-hint">Chargement rapide, moins de RAM copiée</div>
               </div>
             </div>
@@ -473,7 +477,7 @@ export function PerformancePanel() {
           {/* Parallel Slots */}
           <div className="perf-row">
             <div className="perf-row-left">
-              <div className="perf-row-label">🔀 Slots Parallèles</div>
+              <div className="perf-row-label">Requêtes en parallèle</div>
               <div className="perf-row-hint">
                 Requêtes simultanées (utile pour plusieurs agents)
               </div>

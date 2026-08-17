@@ -530,6 +530,10 @@ jobs:
       # release dont l'auto-update est muette.
       - name: Générer le manifeste de mise à jour (latest.json)
         shell: bash
+        env:
+          # Le sujet du dernier commit : c'est la phrase qui décrit la version,
+          # et elle est écrite pour être lue.
+          RELEASE_NOTES: ${{ github.event.head_commit.message }}
         run: |
           python3 - "$VER" <<'PY'
           import glob
@@ -576,11 +580,24 @@ jobs:
           # d'installer serait pire que ne rien proposer.
           apk = glob.glob(f"artifacts/android-apk/locaryn-{ver}-android.apk")
           if apk:
-              platforms["android"] = {"url": f"{base}/{os.path.basename(apk[0])}"}
+              taille = os.path.getsize(apk[0])
+              platforms["android"] = {
+                  "url": f"{base}/{os.path.basename(apk[0])}",
+                  # La taille sert à afficher une progression honnête pendant
+                  # le téléchargement, et à reconnaître un fichier déjà complet
+                  # pour ne pas le retélécharger.
+                  "size": taille,
+              }
+
+          # Ce que la version apporte, dit dans l'application plutôt que sur une
+          # page web : personne ne devrait avoir à ouvrir un navigateur pour
+          # savoir ce qu'il installe.
+          notes = os.environ.get("RELEASE_NOTES", "").strip()
 
           manifest = {
               "version": ver,
               "pub_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "notes": notes,
               "platforms": platforms,
           }
           with open("artifacts/latest.json", "w", encoding="utf-8") as f:

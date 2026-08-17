@@ -252,7 +252,7 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
               onClick={() => update("seed", Math.floor(Math.random() * 2147483647))}
               title="Random seed"
             >
-              🎲
+              <Icon name="refresh" size={14} />
             </button>
             <button
               type="button"
@@ -269,7 +269,7 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
       <div className="lmc-footer">
         {error && <div className="lmc-error">{error}</div>}
         <button type="button" className="lmc-save-btn" onClick={save} disabled={saving}>
-          {saving ? "Saving…" : saved ? "Saved ✓" : "Apply"}
+          {saving ? "Enregistrement…" : saved ? "Enregistré" : "Appliquer"}
         </button>
       </div>
     </aside>

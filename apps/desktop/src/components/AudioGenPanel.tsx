@@ -40,9 +40,9 @@ const LANGUAGE_OPTIONS = [
 ];
 
 const TAB_LABELS: Record<StudioTab, { label: string; icon: string }> = {
-  design: { label: "Voice Design", icon: "✨" },
-  clone: { label: "Voice Clone (Base)", icon: "🧬" },
-  tts: { label: "TTS (CustomVoice)", icon: "🗣️" },
+  design: { label: "Voix composée", icon: "star" },
+  clone: { label: "Voix clonée", icon: "figures" },
+  tts: { label: "Synthèse vocale", icon: "mic" },
 };
 
 // ── Model name formatter ────────────────────────────────────────────────────
@@ -490,7 +490,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
             path: task.resultAudioUrl,
             simulated: task.detail?.includes("simulé") ?? false,
           });
-          setStatusMessage("Génération terminée ✓");
+          setStatusMessage("Génération terminée");
           clearInterval(interval);
           setIsGenerating(false);
         }
@@ -582,11 +582,11 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
     if (jobRunning) return "Génération…";
     switch (activeTab) {
       case "design":
-        return "✨ Generate with Custom Voice";
+        return "Générer avec la voix composée";
       case "clone":
-        return "🧬 Clone & Generate";
+        return "Cloner puis générer";
       case "tts":
-        return "🗣️ Generate Speech";
+        return "Générer la parole";
     }
   }
 
