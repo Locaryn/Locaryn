@@ -1,4 +1,4 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { Channel, invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { signalerErreur } from "./reachability";
 
 export interface MobileStatus {
@@ -160,6 +160,17 @@ export interface UpdateStatus {
   error: string | null;
 }
 
+/** Un point d'avancement du téléchargement de la mise à jour. */
+export interface ProgressionTelechargement {
+  downloaded: number;
+  /** Absent quand le manifeste n'a pas donné de taille : un octet compté ne
+   *  dit rien sans un total à côté. */
+  total: number | null;
+  /** Absent dans le même cas — une barre indéterminée vaut mieux qu'un
+   *  pourcentage inventé. */
+  percentage: number | null;
+}
+
 /** A file generated on the machine at the other end, ready to show. */
 export interface MediaResult {
   name: string;
@@ -196,9 +207,21 @@ export const core = {
   serverCapabilities: () => invoke<string[]>("server_capabilities"),
   /** Y a-t-il une version plus récente publiée ? */
   checkUpdate: () => invoke<UpdateStatus>("check_update"),
-  /** Télécharge la nouvelle version et ouvre l'installateur d'Android. */
-  installUpdate: (url: string, size: number | null) =>
-    invoke<string>("install_update", { url, size }),
+  /**
+   * Télécharge la nouvelle version et ouvre l'installateur d'Android.
+   *
+   * `onProgress` reçoit l'avancement au fil de l'eau — un canal, pas une
+   * promesse : l'écran dessine la barre sans attendre la fin du téléchargement.
+   */
+  installUpdate: (
+    url: string,
+    size: number | null,
+    onProgress: (p: ProgressionTelechargement) => void,
+  ) => {
+    const canal = new Channel<ProgressionTelechargement>();
+    canal.onmessage = onProgress;
+    return invoke<string>("install_update", { url, size, onProgress: canal });
+  },
   /** Relance l'installation d'un paquet déjà téléchargé. */
   resumeInstall: (url: string) => invoke<void>("resume_install", { url }),
   registerServer: (provisioningJson: string) =>

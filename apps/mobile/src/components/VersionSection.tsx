@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type UpdateStatus, api, coreMode } from "../lib/core";
+import { type ProgressionTelechargement, type UpdateStatus, api, coreMode } from "../lib/core";
 
 /**
  * La version installée, et la mise à jour quand il y en a une.
@@ -24,6 +24,8 @@ export function VersionSection() {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<"repos" | "verifie" | "telecharge" | "installe">("repos");
   const [error, setError] = useState<string | null>(null);
+  /** L'avancement du téléchargement en cours, pour la barre. */
+  const [progression, setProgression] = useState<ProgressionTelechargement | null>(null);
   /** Vrai dès qu'une installation a été demandée dans cette session. */
   const demande = useRef(false);
 
@@ -64,7 +66,8 @@ export function VersionSection() {
         await api.resumeInstall(etat.download_url);
       } else {
         setPhase("telecharge");
-        await api.installUpdate(etat.download_url, etat.size);
+        setProgression(null);
+        await api.installUpdate(etat.download_url, etat.size, setProgression);
       }
       setStatus({ ...etat, downloaded: true });
     } catch (e) {
@@ -80,6 +83,7 @@ export function VersionSection() {
     } finally {
       setBusy(false);
       setPhase("repos");
+      setProgression(null);
     }
   }, []);
 
@@ -118,7 +122,11 @@ export function VersionSection() {
   }, [busy, installer]);
 
   const etat = (() => {
-    if (phase === "telecharge") return "Téléchargement…";
+    if (phase === "telecharge") {
+      return progression?.percentage != null
+        ? `Téléchargement… ${progression.percentage} %`
+        : "Téléchargement…";
+    }
     if (phase === "installe") return "Ouverture de l'installateur…";
     if (busy && !status) return "Vérification…";
     if (!status) return "Version inconnue";
@@ -155,6 +163,32 @@ export function VersionSection() {
               {poids && <span className="lo-hint"> · {poids}</span>}
             </p>
             {status.notes && <p className="lo-update-notes">{status.notes}</p>}
+            {phase === "telecharge" && progression && (
+              <>
+                {/* Le pourcentage vit déjà dans le texte (« Téléchargement…
+                    45 % ») et dans la ligne des tailles : la barre est
+                    décorative, rien à annoncer de plus. */}
+                <div
+                  className={`lo-progress${progression.percentage == null ? " lo-progress-indeterminate" : ""}`}
+                  aria-hidden="true"
+                >
+                  <div
+                    className="lo-progress-fill"
+                    style={
+                      progression.percentage == null
+                        ? undefined
+                        : { width: `${progression.percentage}%` }
+                    }
+                  />
+                </div>
+                {progression.total != null && progression.total > 0 && (
+                  <p className="lo-hint lo-progress-sizes">
+                    {Math.round(progression.downloaded / (1024 * 1024))} Mo sur{" "}
+                    {Math.round(progression.total / (1024 * 1024))} Mo
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           <button

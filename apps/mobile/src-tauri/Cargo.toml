@@ -30,6 +30,10 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+# Le téléchargement d'une mise à jour arrive par morceaux : `StreamExt`
+# déroule le flux et écrit au fil de l'eau, pour que la barre de progression
+# avance sans attendre la fin du paquet.
+futures = { workspace = true }
 
 # The camera only exists on a phone; on desktop the crate has no entry point,
 # and the layout is developed on desktop.

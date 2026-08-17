@@ -1091,6 +1091,45 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   overflow-y: auto;
 }
 
+/* Le téléchargement d'une mise à jour : une barre qui se remplit, ou qui
+   glisse quand le manifeste n'a pas donné de taille — un mouvement honnête
+   vaut mieux qu'un pourcentage inventé. */
+.lo-progress {
+  position: relative;
+  height: 6px;
+  margin-top: var(--space-3);
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.lo-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 120ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-progress-fill {
+    transition: none;
+  }
+}
+/* Indéterminé : un reflet qui glisse, et aucune largeur qui prétend savoir. */
+.lo-progress-indeterminate .lo-progress-fill {
+  width: 40%;
+  animation: lo-progress-glisse 1.2s ease-in-out infinite;
+}
+@keyframes lo-progress-glisse {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+.lo-progress-sizes {
+  margin: var(--space-2) 0 0;
+}
+
 /* Les boutons que les extensions posent à côté du champ de saisie. */
 .lo-compose-actions {
   display: flex;
@@ -1202,4 +1241,22 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   border-left: 0;
   border-top: 0;
   border-radius: 0 0 6px 0;
+}
+.lo-figure-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+.lo-figure-session {
+  text-align: left;
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
 }

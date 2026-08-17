@@ -14,7 +14,9 @@
 //! vérifie la signature et qui demande confirmation. Rien ne s'installe sans
 //! que la personne ait vu son écran, et c'est très bien ainsi.
 
+use futures::StreamExt as _;
 use serde::Serialize;
+use tauri::ipc::Channel;
 
 /// Le manifeste que publie chaque release.
 const MANIFEST_URL: &str =
@@ -190,6 +192,19 @@ fn vider_les_paquets(app: &tauri::AppHandle) {
     }
 }
 
+/// Un point d'avancement du téléchargement, envoyé au fil et à mesure.
+///
+/// `percentage` reste `None` quand le manifeste n'a pas donné de taille : un
+/// octet compté ne dit rien sans un total à côté, et afficher une barre figée
+/// à un pourcentage inventé mentirait plus qu'une barre indéterminée.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ProgressionTelechargement {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+    pub percentage: Option<u8>,
+}
+
 /// Télécharger la nouvelle version, puis la confier à l'installateur.
 ///
 /// L'application ne renvoie plus vers une page web : elle télécharge, puis
@@ -205,6 +220,7 @@ pub async fn install_update(
     app: tauri::AppHandle,
     url: String,
     size: Option<u64>,
+    on_progress: Channel<ProgressionTelechargement>,
 ) -> Result<String, String> {
     if !url.starts_with("https://github.com/Locaryn/") {
         return Err("adresse de mise à jour inattendue".to_string());
@@ -230,14 +246,47 @@ pub async fn install_update(
         if !resp.status().is_success() {
             return Err(format!("le serveur a répondu {}", resp.status()));
         }
-        let octets = resp
-            .bytes()
-            .await
-            .map_err(|e| format!("téléchargement interrompu : {e}"))?;
+        // La réponse elle-même connaît sa longueur, quand le serveur l'a
+        // annoncée ; elle ne dépend pas du manifeste, qui peut mentir ou dater.
+        let total = resp.content_length().or(size);
+
         // Écriture d'abord à côté, puis renommage : un fichier partiel ne doit
         // jamais passer pour un paquet complet si le téléchargement casse.
         let partiel = cible.with_extension("apk.part");
-        std::fs::write(&partiel, &octets).map_err(|e| format!("écriture : {e}"))?;
+        let mut fichier =
+            std::fs::File::create(&partiel).map_err(|e| format!("écriture : {e}"))?;
+
+        let mut recu: u64 = 0;
+        let mut flux = resp.bytes_stream();
+        // Un octet par octet suffirait à saturer le pont IPC ; regrouper les
+        // envois à un seuil fixe garde la barre fluide sans le noyer.
+        let mut prochain_seuil: u64 = 0;
+        const PAS_MO: u64 = 256 * 1024;
+        while let Some(morceau) = flux.next().await {
+            let morceau = morceau.map_err(|e| format!("téléchargement interrompu : {e}"))?;
+            std::io::Write::write_all(&mut fichier, &morceau)
+                .map_err(|e| format!("écriture : {e}"))?;
+            recu += morceau.len() as u64;
+            if recu >= prochain_seuil {
+                prochain_seuil = recu + PAS_MO;
+                let _ = on_progress.send(ProgressionTelechargement {
+                    downloaded: recu,
+                    total,
+                    percentage: total
+                        .filter(|&t| t > 0)
+                        .map(|t| ((recu as f64 / t as f64) * 100.0).min(100.0) as u8),
+                });
+            }
+        }
+        drop(fichier);
+        // Le dernier point, toujours envoyé : sans lui, une taille mal connue
+        // à l'avance (seuil jamais atteint sur un petit reste) laisserait la
+        // barre en dessous de 100 % alors que le fichier est déjà complet.
+        let _ = on_progress.send(ProgressionTelechargement {
+            downloaded: recu,
+            total,
+            percentage: total.filter(|&t| t > 0).map(|_| 100),
+        });
         std::fs::rename(&partiel, &cible).map_err(|e| format!("renommage : {e}"))?;
     }
 
