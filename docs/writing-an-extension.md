@@ -1,7 +1,9 @@
 # Écrire une extension Locaryn
 
-Ce guide s'adresse à qui veut **fabriquer** une extension. Pour la mécanique
-interne — cycle de vie, bac à sable, chargement runtime — voir
+Ce guide s'adresse à qui veut **fabriquer** une extension. Pour le format exact
+et ce que Locaryn accepte des autres écosystèmes — Agent Skills, MCP, plugins
+Claude Code — voir [`extensions-interop.md`](extensions-interop.md). Pour la
+mécanique interne — cycle de vie, bac à sable, chargement runtime — voir
 [`architecture/09-extension-model.md`](architecture/09-extension-model.md).
 
 ---
