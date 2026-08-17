@@ -1015,17 +1015,17 @@ async fn save_figure(
 ) -> Result<locaryn_storage::figures::Figure, String> {
     core.storage
         .figures
-        .upsert(
-            &name,
-            &description,
-            &instructions,
-            model.as_deref().filter(|m| !m.trim().is_empty()),
-            opening.as_deref().filter(|o| !o.trim().is_empty()),
+        .upsert(locaryn_storage::figures::NouvelleFigure {
+            name: &name,
+            description: &description,
+            instructions: &instructions,
+            model: model.as_deref().filter(|m| !m.trim().is_empty()),
+            opening: opening.as_deref().filter(|o| !o.trim().is_empty()),
             uses_memory,
             // Écrite depuis l'interface : c'est le travail de quelqu'un, et
             // aucune mise à jour d'extension ne l'écrasera.
-            "user",
-        )
+            source: "user",
+        })
         .await
         .map_err(|e| e.to_string())
 }

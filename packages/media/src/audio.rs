@@ -521,7 +521,7 @@ mod ordre_des_voix_tests {
 
     #[test]
     fn kokoro_passe_avant_qwen() {
-        let mut v = vec![
+        let mut v = [
             "Qwen__Qwen3-TTS-12Hz-1.7B-CustomVoice".to_string(),
             "hexgrad__Kokoro-82M".to_string(),
             "fr_FR-siwis-medium.onnx".to_string(),

@@ -32,6 +32,24 @@ pub struct Figure {
     pub updated_at: String,
 }
 
+/// Ce qu'il faut pour écrire une figure.
+///
+/// Un objet plutôt que huit paramètres : à ce compte-là, `upsert(nom, "",
+/// consignes, None, None, false, "user")` ne se relit pas, et intervertir deux
+/// options du même type passe la compilation sans qu'on s'en aperçoive.
+#[derive(Debug, Clone, Default)]
+pub struct NouvelleFigure<'a> {
+    pub name: &'a str,
+    pub description: &'a str,
+    /// Ce que le modèle reçoit avant toute conversation. C'est le cœur.
+    pub instructions: &'a str,
+    pub model: Option<&'a str>,
+    pub opening: Option<&'a str>,
+    pub uses_memory: bool,
+    /// `user` pour une figure écrite à la main, sinon le dépôt d'où elle vient.
+    pub source: &'a str,
+}
+
 #[derive(sqlx::FromRow)]
 struct FigureRow {
     id: String,
@@ -101,18 +119,17 @@ impl FigureRepo {
     /// remettre ses figures ne doit pas en créer des doubles. Une figure
     /// écrite à la main n'est jamais écrasée par un dépôt — c'est le travail
     /// de quelqu'un.
-    pub async fn upsert(
-        &self,
-        name: &str,
-        description: &str,
-        instructions: &str,
-        model: Option<&str>,
-        opening: Option<&str>,
-        uses_memory: bool,
-        source: &str,
-    ) -> Result<Figure, StorageError> {
-        let name = name.trim();
-        let instructions = instructions.trim();
+    pub async fn upsert(&self, neuve: NouvelleFigure<'_>) -> Result<Figure, StorageError> {
+        let NouvelleFigure {
+            description,
+            model,
+            opening,
+            uses_memory,
+            source,
+            ..
+        } = neuve;
+        let name = neuve.name.trim();
+        let instructions = neuve.instructions.trim();
         if name.is_empty() {
             return Err(StorageError::NotFound("une figure sans nom".into()));
         }
@@ -198,11 +215,11 @@ impl FigureRepo {
 
     /// La figure qui tient une conversation, s'il y en a une.
     pub async fn for_session(&self, session_id: Uuid) -> Result<Option<Figure>, StorageError> {
-        let row = sqlx::query_as::<_, FigureRow>(&format!(
+        let row = sqlx::query_as::<_, FigureRow>(
             "SELECT f.id, f.name, f.description, f.instructions, f.model, f.opening, \
              f.uses_memory, f.source, f.created_at, f.updated_at \
-             FROM figures f JOIN sessions s ON s.figure_id = f.id WHERE s.id = ?"
-        ))
+             FROM figures f JOIN sessions s ON s.figure_id = f.id WHERE s.id = ?",
+        )
         .bind(session_id.to_string())
         .fetch_optional(&self.pool)
         .await?;
@@ -236,11 +253,27 @@ mod tests {
         // Elle ne dirait rien au modèle : autant ne pas la créer.
         let d = depot().await;
         assert!(d
-            .upsert("vide", "", "   ", None, None, false, "user")
+            .upsert(NouvelleFigure {
+                name: "vide",
+                description: "",
+                instructions: "   ",
+                model: None,
+                opening: None,
+                uses_memory: false,
+                source: "user",
+            })
             .await
             .is_err());
         assert!(d
-            .upsert("  ", "", "des consignes", None, None, false, "user")
+            .upsert(NouvelleFigure {
+                name: "  ",
+                description: "",
+                instructions: "des consignes",
+                model: None,
+                opening: None,
+                uses_memory: false,
+                source: "user",
+            })
             .await
             .is_err());
     }
@@ -249,27 +282,27 @@ mod tests {
     async fn reinstaller_une_extension_ne_double_pas_ses_figures() {
         let d = depot().await;
         let a = d
-            .upsert(
-                "Relecteur",
-                "",
-                "v1",
-                None,
-                None,
-                false,
-                "Locaryn/plugin-figures",
-            )
+            .upsert(NouvelleFigure {
+                name: "Relecteur",
+                description: "",
+                instructions: "v1",
+                model: None,
+                opening: None,
+                uses_memory: false,
+                source: "Locaryn/plugin-figures",
+            })
             .await
             .unwrap();
         let b = d
-            .upsert(
-                "relecteur",
-                "",
-                "v2",
-                None,
-                None,
-                false,
-                "Locaryn/plugin-figures",
-            )
+            .upsert(NouvelleFigure {
+                name: "relecteur",
+                description: "",
+                instructions: "v2",
+                model: None,
+                opening: None,
+                uses_memory: false,
+                source: "Locaryn/plugin-figures",
+            })
             .await
             .unwrap();
         assert_eq!(a.id, b.id, "le nom identifie la figure");
@@ -280,19 +313,27 @@ mod tests {
     #[tokio::test]
     async fn une_extension_ne_reecrit_pas_ce_qu_une_personne_a_ecrit() {
         let d = depot().await;
-        d.upsert("Relecteur", "", "les miennes", None, None, false, "user")
-            .await
-            .unwrap();
+        d.upsert(NouvelleFigure {
+            name: "Relecteur",
+            description: "",
+            instructions: "les miennes",
+            model: None,
+            opening: None,
+            uses_memory: false,
+            source: "user",
+        })
+        .await
+        .unwrap();
         let apres = d
-            .upsert(
-                "Relecteur",
-                "",
-                "celles du dépôt",
-                None,
-                None,
-                false,
-                "Locaryn/plugin-figures",
-            )
+            .upsert(NouvelleFigure {
+                name: "Relecteur",
+                description: "",
+                instructions: "celles du dépôt",
+                model: None,
+                opening: None,
+                uses_memory: false,
+                source: "Locaryn/plugin-figures",
+            })
             .await
             .unwrap();
         assert_eq!(

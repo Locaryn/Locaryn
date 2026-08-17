@@ -1967,15 +1967,15 @@ async fn save_figure(State(s): State<Arc<DaemonState>>, Json(b): Json<FigureBody
     match s
         .storage
         .figures
-        .upsert(
-            &b.name,
-            &b.description,
-            &b.instructions,
-            b.model.as_deref().filter(|m| !m.trim().is_empty()),
-            b.opening.as_deref().filter(|o| !o.trim().is_empty()),
-            b.uses_memory,
-            b.source.as_deref().unwrap_or("user"),
-        )
+        .upsert(locaryn_storage::figures::NouvelleFigure {
+            name: &b.name,
+            description: &b.description,
+            instructions: &b.instructions,
+            model: b.model.as_deref().filter(|m| !m.trim().is_empty()),
+            opening: b.opening.as_deref().filter(|o| !o.trim().is_empty()),
+            uses_memory: b.uses_memory,
+            source: b.source.as_deref().unwrap_or("user"),
+        })
         .await
     {
         Ok(f) => (StatusCode::CREATED, Json(f)).into_response(),
