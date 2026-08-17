@@ -28,7 +28,7 @@ locaryn-agent-runtime = { workspace = true }
 # elle, c'est un joker, et `cargo-deny` le refuse à raison — un joker accepte
 # n'importe quelle version publiée sous ce nom. Elle suit celle de l'espace de
 # travail, qui monte d'un seul mouvement à chaque release.
-locaryn-enterprise = { path = "enterprise", version = "0.3.7", optional = true }
+locaryn-enterprise = { path = "enterprise", version = "0.3.8", optional = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
