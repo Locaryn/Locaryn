@@ -19,14 +19,14 @@
       {
         "id": "studio",
         "label": "Studio de génération",
-        "icon": "🎨"
+        "icon": "image"
       }
     ],
     "studio_tabs": [
       {
         "id": "image-editing",
         "label": "Édition image",
-        "icon": "✏️"
+        "icon": "edit"
       }
     ]
   }

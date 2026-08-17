@@ -178,14 +178,21 @@ d'appeler un outil qui échouera.
     "nav_items":     [{ "id": "studio", "label": "Studio", "icon": "studio" }],
     "studio_tabs":   [{ "id": "image",  "label": "Image",  "icon": "image" }],
     "composer_actions": [
-      { "id": "dictate", "label": "Dicter", "icon": "mic", "capability": "speech-to-text" }
+      {
+        "id": "dictate",
+        "label": "Dicter",
+        "icon": "mic",
+        "action": "tool",
+        "value": "transcribe_audio",
+        "hint": "Dicter au lieu d'écrire"
+      }
     ],
     "settings_sections": [
       {
         "id": "dictee",
         "label": "Dictée",
         "fields": [
-          { "id": "model", "type": "model", "kind": "audio", "label": "Modèle d'écoute" },
+          { "id": "model", "type": "model", "label": "Modèle d'écoute" },
           { "id": "auto_send", "type": "boolean", "label": "Envoyer après la dictée" }
         ]
       }
@@ -201,6 +208,23 @@ d'appeler un outil qui échouera.
 | `composer_actions` | à côté du champ de saisie | oui | oui |
 | `settings_sections` | réglages, en sous-écran | oui | oui |
 
+### 5.2 bis  Ce que fait un bouton de composeur
+
+Deux comportements, pas plus :
+
+| `action` | Effet | `value` |
+| --- | --- | --- |
+| `insert` | écrit `value` dans le champ de saisie | le texte à insérer |
+| `tool` | appelle l'outil nommé avec ce que le champ contient, et met la réponse à la place | le nom de l'outil |
+
+L'outil est cherché parmi les serveurs MCP démarrés de toutes les extensions
+actives : le manifeste nomme un outil, pas un serveur — celui qui écrit
+l'extension sait ce qu'elle expose, pas sous quel nom son serveur tournera
+chez les autres.
+
+Il n'y a pas de troisième comportement, et il n'y en aura pas : faire tourner
+du code d'extension dans l'interface reviendrait à lui donner l'écran entier.
+
 `icon` est un nom du jeu partagé (`@locaryn/ui-core`), jamais une image
 fournie par l'extension : le jeu est dessiné d'une seule main, et une icône
 importée jurerait. Les noms disponibles sont listés dans
@@ -214,15 +238,23 @@ qu'elle propose, elle ne décide pas de l'écran de quelqu'un d'autre.
 
 | `type` | Rendu | Valeur |
 | --- | --- | --- |
-| `boolean` | interrupteur | `true` / `false` |
-| `string` | champ texte | chaîne |
-| `number` | champ numérique | nombre |
-| `select` | liste (`options: [{value, label}]`) | valeur choisie |
-| `model` | liste des modèles installés, filtrée par `kind` (`chat`, `image`, `audio`) | nom du modèle |
-| `prompt` | zone de texte multiligne | chaîne |
+| `boolean` | interrupteur | `"true"` / `"false"` |
+| `select` | liste, à partir de `options: ["a", "b"]` | la valeur choisie |
+| `model` | liste des modèles installés sur le serveur | le nom du modèle |
+| `string`, `number`, `prompt` | champ texte | chaîne |
 
-Les valeurs sont rangées par le serveur, jamais par le client : un réglage
-choisi sur l'ordinateur vaut sur le téléphone.
+Quatre rendus pour six mots : `number` et `prompt` s'affichent comme du texte.
+Mieux vaut un champ honnête qu'un rendu promis et absent — le jour où l'écran
+saura montrer un curseur numérique, `number` en profitera sans qu'aucun
+manifeste change.
+
+Les valeurs sont rangées **par le serveur**, dans le dossier de l'extension
+(`.data/config.json`), jamais par le client : un réglage choisi sur
+l'ordinateur vaut sur le téléphone, et retirer l'extension emporte ses
+réglages avec elle.
+
+`key` s'écrit aussi `id`, `title` s'écrit aussi `label`, `kind` s'écrit aussi
+`type` : les deux orthographes sont lues.
 
 ---
 
@@ -265,7 +297,8 @@ marche, pas ce qu'on voudrait.
 | Lecture de `SKILL.md` (Agent Skills) | **à faire** |
 | Lecture de `.claude-plugin/plugin.json` | **à faire** |
 | `agents/`, `commands/`, `hooks/` d'un plugin Claude Code | **à faire** |
-| `composer_actions` et `settings_sections` | **à faire** |
+| `composer_actions` (`insert` et `tool`) | **fait**, ordinateur et téléphone |
+| `settings_sections` (`boolean`, `select`, `model`, texte) | **fait**, ordinateur et téléphone |
 | Masquage d'une contribution par l'utilisateur | **à faire** |
 
 ---

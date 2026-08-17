@@ -365,3 +365,107 @@ pub async fn invoke_tool(
             .into_response(),
     }
 }
+
+#[derive(serde::Deserialize)]
+pub struct OutilBody {
+    /// Le texte à confier à l'outil — ce que contient le champ de saisie.
+    #[serde(default)]
+    pub text: String,
+}
+
+/// POST /v1/tools/{tool} — appeler un outil sans savoir qui le porte.
+///
+/// Un bouton posé par une extension à côté du champ de saisie nomme un outil,
+/// pas un serveur : la personne qui écrit le manifeste sait ce que son
+/// extension expose, pas sous quel nom son serveur MCP tourne chez les autres.
+/// On cherche donc l'outil parmi les serveurs en marche.
+///
+/// La réponse est ramenée à du texte, parce que c'est ce qui retourne dans le
+/// champ de saisie. Un outil qui rend autre chose voit son résultat rendu tel
+/// quel, en JSON : mieux vaut un objet lisible qu'une réponse perdue.
+pub async fn invoke_tool_par_nom(
+    State(s): State<Arc<DaemonState>>,
+    Path(tool): Path<String>,
+    Json(body): Json<OutilBody>,
+) -> Response {
+    let clients: Vec<(String, std::sync::Arc<dyn locaryn_mcp::McpClient>)> = {
+        let running = s.mcp_state.running.read().await;
+        running
+            .iter()
+            .map(|(n, c)| (n.clone(), c.clone()))
+            .collect()
+    };
+    if clients.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": {
+                    "code": "not_running",
+                    "message": "aucun serveur d'extension n'est démarré"
+                }
+            })),
+        )
+            .into_response();
+    }
+
+    let args = serde_json::json!({ "text": body.text });
+    for (nom, client) in &clients {
+        // Un serveur qui ne répond pas à `discover` n'est pas une erreur à
+        // remonter : on passe au suivant, et c'est l'absence de l'outil qui
+        // sera signalée à la fin.
+        let Ok(caps) = client.discover().await else {
+            continue;
+        };
+        let porte = caps.tools.iter().any(|t| t.name == tool);
+        if !porte {
+            continue;
+        }
+        return match client.invoke_tool(&tool, &args).await {
+            Ok(val) => {
+                let texte = texte_du_resultat(&val);
+                (StatusCode::OK, Json(serde_json::json!({ "text": texte }))).into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": { "code": "mcp_error", "message": format!("{nom} : {e}") }
+                })),
+            )
+                .into_response(),
+        };
+    }
+
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({
+            "error": {
+                "code": "unknown_tool",
+                "message": format!("aucune extension démarrée n'expose « {tool} »")
+            }
+        })),
+    )
+        .into_response()
+}
+
+/// Ramener un résultat d'outil à du texte.
+///
+/// MCP rend souvent `{ "content": [{ "type": "text", "text": "…" }] }`. Une
+/// chaîne nue passe telle quelle. Le reste est rendu en JSON plutôt que perdu.
+fn texte_du_resultat(val: &serde_json::Value) -> String {
+    if let Some(t) = val.as_str() {
+        return t.to_string();
+    }
+    if let Some(items) = val.get("content").and_then(|c| c.as_array()) {
+        let morceaux: Vec<&str> = items
+            .iter()
+            .filter_map(|i| i.get("text").and_then(|t| t.as_str()))
+            .collect();
+        if !morceaux.is_empty() {
+            return morceaux.join("\n");
+        }
+    }
+    if let Some(t) = val.get("text").and_then(|t| t.as_str()) {
+        return t.to_string();
+    }
+    val.to_string()
+}

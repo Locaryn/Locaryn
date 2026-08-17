@@ -7,6 +7,7 @@ import {
   type MobileStatus,
   api,
 } from "../lib/core";
+import { ComposerActions } from "./ComposerActions";
 import { Drawer } from "./Drawer";
 import { type Destination, MainMenu } from "./MainMenu";
 import { UpdateButton } from "./UpdateButton";
@@ -288,6 +289,7 @@ export function Chat({ status, onGo, capabilities }: Props) {
       )}
 
       <div className="lo-compose">
+        <ComposerActions draft={draft} onDraft={setDraft} onError={setError} />
         <input
           className="lo-input"
           placeholder="Votre message"

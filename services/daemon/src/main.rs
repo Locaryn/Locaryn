@@ -283,6 +283,15 @@ async fn main() -> anyhow::Result<()> {
             "/v1/extensions/:name",
             delete(routes::extensions::remove_extension),
         )
+        // Les réglages que les extensions déclarent dans leur manifeste.
+        .route(
+            "/v1/extensions/config",
+            get(routes::extensions::get_extension_config),
+        )
+        .route(
+            "/v1/extensions/:name/config",
+            post(routes::extensions::set_extension_config),
+        )
         .route(
             "/v1/extensions/:name/permissions",
             get(routes::extensions::get_extension_permissions)
@@ -317,6 +326,8 @@ async fn main() -> anyhow::Result<()> {
             "/v1/mcp/servers/:name/tools/:tool",
             post(routes::mcp::invoke_tool),
         )
+        // Un bouton d'extension nomme un outil, pas un serveur : on le cherche.
+        .route("/v1/tools/:tool", post(routes::mcp::invoke_tool_par_nom))
         // Media generation — exposed so thin clients (the phone) can use the
         // engines that only run where the models live.
         // Vitesses mesurées : ce que chaque modèle donne sur cette machine.

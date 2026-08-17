@@ -66,6 +66,87 @@ pub struct UiContributions {
     /// Onglets à l'intérieur du Studio de génération.
     #[serde(default, rename = "studio_tabs", alias = "studioTabs")]
     pub studio_tabs: Vec<UiEntry>,
+    /// Boutons posés à côté du champ de saisie — un micro pour dicter, un
+    /// modèle de demande à insérer. Ils suivent l'extension : sur
+    /// l'ordinateur comme sur le téléphone.
+    #[serde(default, rename = "composer_actions", alias = "composerActions")]
+    pub composer_actions: Vec<ComposerAction>,
+    /// Sections ajoutées à l'écran des réglages, avec leurs champs. C'est là
+    /// qu'une extension fait choisir son modèle, sa langue, sa voix.
+    #[serde(default, rename = "settings_sections", alias = "settingsSections")]
+    pub settings_sections: Vec<SettingsSection>,
+}
+
+/// Un bouton à côté du champ de saisie.
+///
+/// Deux comportements, pas plus. `insert` écrit un texte dans le champ : un
+/// modèle de demande, une consigne récurrente. `tool` appelle un outil de
+/// l'extension avec ce que contient le champ, et met la réponse à la place.
+/// Tout le reste demanderait de faire tourner du code de l'extension dans
+/// l'interface, ce qu'aucune extension ne devrait pouvoir faire.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ComposerAction {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// `insert` ou `tool`.
+    #[serde(default = "action_par_defaut")]
+    pub action: String,
+    /// Le texte à insérer, ou le nom de l'outil à appeler.
+    #[serde(default)]
+    pub value: String,
+    /// Ce que le bouton fait, dit à la personne au survol.
+    #[serde(default)]
+    pub hint: Option<String>,
+}
+
+fn action_par_defaut() -> String {
+    "insert".to_string()
+}
+
+/// Une section de réglages, telle que l'extension la décrit.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SettingsSection {
+    pub id: String,
+    /// `label` est la forme documentée ; `title` est acceptée aussi, parce que
+    /// c'est le mot qu'écrivent la moitié des manifestes existants.
+    #[serde(alias = "label")]
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub fields: Vec<SettingsField>,
+}
+
+/// Un réglage. `model` fait choisir parmi les modèles installés — c'est le cas
+/// le plus fréquent, et celui qu'une extension ne peut pas remplir seule.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SettingsField {
+    /// `id` dans la documentation ; `key` est acceptée de la même façon.
+    #[serde(alias = "id")]
+    pub key: String,
+    pub label: String,
+    /// `boolean`, `string`, `number`, `select`, `model` ou `prompt`.
+    ///
+    /// Ces mots sont ceux de la documentation. Ils sont ramenés à quatre
+    /// rendus au moment de l'affichage : un interrupteur, une liste, un choix
+    /// de modèle, ou du texte — un champ numérique et une zone multiligne
+    /// restent du texte, et prétendre le contraire ferait une promesse que
+    /// l'écran ne tiendrait pas.
+    #[serde(default = "champ_par_defaut", alias = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub hint: Option<String>,
+    /// Les valeurs offertes, pour `choice`.
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub default: Option<String>,
+}
+
+fn champ_par_defaut() -> String {
+    "text".to_string()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -263,5 +344,54 @@ mod tests {
         let json = r#"{"schema":"x","apiVersion":"9.9","name":"ok","version":"1"}"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         assert!(validate(&m).is_err());
+    }
+
+    /// La documentation écrit `label`, `id` et `type` ; le code parle de
+    /// `title`, `key` et `kind`. Un manifeste écrit d'après la documentation
+    /// doit se lire — sinon la documentation ment.
+    #[test]
+    fn la_forme_documentee_se_lit() {
+        let json = r#"{
+            "schema": "x", "apiVersion": "0.1", "name": "dictee", "version": "1",
+            "ui_contributions": {
+                "composer_actions": [
+                    { "id": "dictate", "label": "Dicter", "icon": "mic",
+                      "action": "tool", "value": "transcribe_audio" }
+                ],
+                "settings_sections": [{
+                    "id": "dictee", "label": "Dictée",
+                    "fields": [
+                        { "id": "model", "type": "model", "label": "Modèle d'écoute" },
+                        { "id": "auto_send", "type": "boolean", "label": "Envoyer après" }
+                    ]
+                }]
+            }
+        }"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        assert!(validate(&m).is_ok());
+
+        let bouton = &m.ui.composer_actions[0];
+        assert_eq!(bouton.id, "dictate");
+        assert_eq!(bouton.action, "tool");
+        assert_eq!(bouton.value, "transcribe_audio");
+
+        let section = &m.ui.settings_sections[0];
+        assert_eq!(section.title, "Dictée", "`label` vaut `title`");
+        assert_eq!(section.fields[0].key, "model", "`id` vaut `key`");
+        assert_eq!(section.fields[0].kind, "model", "`type` vaut `kind`");
+        assert_eq!(section.fields[1].kind, "boolean");
+    }
+
+    /// Un bouton sans `action` ne doit pas appeler un outil par surprise.
+    #[test]
+    fn un_bouton_sans_action_se_contente_d_inserer() {
+        let json = r#"{
+            "schema": "x", "apiVersion": "0.1", "name": "modeles", "version": "1",
+            "ui_contributions": {
+                "composer_actions": [{ "id": "revue", "label": "Revue", "value": "Relis ce code" }]
+            }
+        }"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(m.ui.composer_actions[0].action, "insert");
     }
 }

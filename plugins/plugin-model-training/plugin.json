@@ -20,7 +20,7 @@
       {
         "id": "training",
         "label": "Entraînement & Oblitération",
-        "icon": "🔓"
+        "icon": "lock"
       }
     ]
   }

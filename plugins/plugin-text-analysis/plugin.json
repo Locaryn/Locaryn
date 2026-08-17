@@ -19,19 +19,19 @@
       {
         "id": "studio",
         "label": "Studio de génération",
-        "icon": "🎨"
+        "icon": "image"
       },
       {
         "id": "batch",
         "label": "Batch API (-50%)",
-        "icon": "⚡"
+        "icon": "speed"
       }
     ],
     "studio_tabs": [
       {
         "id": "text-analysis",
         "label": "Analyse texte",
-        "icon": "📊"
+        "icon": "chart"
       }
     ]
   }

@@ -350,6 +350,53 @@ pub struct ExtensionUi {
     pub nav_items: Vec<ExtensionUiEntry>,
     #[serde(default)]
     pub studio_tabs: Vec<ExtensionUiEntry>,
+    /// Boutons près du champ de saisie. Le téléphone les affiche aussi : une
+    /// extension qui ajoute la dictée doit poser son micro des deux côtés.
+    #[serde(default)]
+    pub composer_actions: Vec<ExtensionComposerAction>,
+    /// Sections ajoutées aux réglages, avec leurs champs.
+    #[serde(default)]
+    pub settings_sections: Vec<ExtensionSettingsSection>,
+}
+
+/// Un bouton posé à côté du champ de saisie.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionComposerAction {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// `insert` écrit un texte dans le champ ; `tool` appelle un outil de
+    /// l'extension avec ce qu'il contient.
+    pub action: String,
+    pub value: String,
+    #[serde(default)]
+    pub hint: Option<String>,
+}
+
+/// Une section de réglages apportée par une extension.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionSettingsSection {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub fields: Vec<ExtensionSettingsField>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionSettingsField {
+    pub key: String,
+    pub label: String,
+    /// `model`, `text`, `toggle` ou `choice`.
+    pub kind: String,
+    #[serde(default)]
+    pub hint: Option<String>,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub default: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -7756,6 +7756,7 @@ pub fn run() {
             travel_mode::set_travel_mode,
             travel_mode::travel_home_code,
             travel_mode::pairing_code,
+            travel_mode::run_composer_tool,
             travel_mode::suggest_project,
             travel_mode::merge_sessions,
             travel_mode::micro_model,

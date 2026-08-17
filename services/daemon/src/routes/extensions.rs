@@ -96,6 +96,64 @@ fn registry_error_response(e: RegistryError) -> (StatusCode, Json<serde_json::Va
     )
 }
 
+/// Un bouton de composeur, tel que l'interface l'attend.
+fn to_composer_action(
+    a: &locaryn_extensions::manifest::ComposerAction,
+) -> locaryn_shared_types::ExtensionComposerAction {
+    locaryn_shared_types::ExtensionComposerAction {
+        id: a.id.clone(),
+        label: a.label.clone(),
+        icon: a.icon.clone(),
+        // Un comportement inconnu se lit comme une insertion : au pire un
+        // texte est écrit dans le champ, jamais un outil appelé par surprise.
+        action: if a.action == "tool" {
+            "tool".to_string()
+        } else {
+            "insert".to_string()
+        },
+        value: a.value.clone(),
+        hint: a.hint.clone(),
+    }
+}
+
+/// Ramener le type déclaré à l'un des quatre rendus possibles.
+///
+/// La documentation offre six mots ; l'écran n'a que quatre façons de montrer
+/// un réglage. `number` et `prompt` deviennent du texte : mieux vaut un champ
+/// honnête qu'un rendu promis et absent.
+fn rendu_du_champ(declare: &str) -> String {
+    match declare {
+        "boolean" | "toggle" => "toggle",
+        "select" | "choice" => "choice",
+        "model" => "model",
+        _ => "text",
+    }
+    .to_string()
+}
+
+/// Une section de réglages, telle que l'interface l'attend.
+fn to_settings_section(
+    s: &locaryn_extensions::manifest::SettingsSection,
+) -> locaryn_shared_types::ExtensionSettingsSection {
+    locaryn_shared_types::ExtensionSettingsSection {
+        id: s.id.clone(),
+        title: s.title.clone(),
+        description: s.description.clone(),
+        fields: s
+            .fields
+            .iter()
+            .map(|f| locaryn_shared_types::ExtensionSettingsField {
+                key: f.key.clone(),
+                label: f.label.clone(),
+                kind: rendu_du_champ(&f.kind),
+                hint: f.hint.clone(),
+                options: f.options.clone(),
+                default: f.default.clone(),
+            })
+            .collect(),
+    }
+}
+
 /// Une extension telle que tous les clients la lisent.
 ///
 /// Le service renvoyait auparavant une forme à lui, où `permissions` était un
@@ -142,6 +200,25 @@ fn entry_to_installed(
         ui: locaryn_shared_types::ExtensionUi {
             nav_items: e.ui.nav_items.iter().map(to_ui_entry).collect(),
             studio_tabs: e.ui.studio_tabs.iter().map(to_ui_entry).collect(),
+            // Une extension éteinte ne pose plus rien : ni bouton près du
+            // champ de saisie, ni section de réglages. Sinon on garderait un
+            // micro qui ne dicte plus.
+            composer_actions: if e.enabled {
+                e.ui.composer_actions
+                    .iter()
+                    .map(to_composer_action)
+                    .collect()
+            } else {
+                Vec::new()
+            },
+            settings_sections: if e.enabled {
+                e.ui.settings_sections
+                    .iter()
+                    .map(to_settings_section)
+                    .collect()
+            } else {
+                Vec::new()
+            },
         },
         permissions: e
             .permissions
@@ -677,4 +754,131 @@ mod catalogue_tests {
             assert!(parse_repo(source).is_err(), "aurait dû refuser : {source}");
         }
     }
+}
+
+/// Où vivent les réglages d'une extension : dans son propre dossier.
+///
+/// Le même fichier que celui qu'écrit l'application de bureau. Deux magasins
+/// pour la même chose divergeraient au premier changement, et un réglage dont
+/// on ne sait plus lequel fait foi vaut moins que pas de réglage. Le ranger
+/// là a un autre mérite : retirer l'extension emporte ses réglages avec elle.
+fn fichier_de_reglages(dossier: &std::path::Path) -> std::path::PathBuf {
+    dossier.join(".data").join("config.json")
+}
+
+/// Tous les réglages, à plat, clés `extension.champ`.
+///
+/// Un seul objet suffit à peupler tous les écrans : l'application n'a pas à
+/// demander extension par extension, et le téléphone fait un aller-retour.
+fn tous_les_reglages(s: &DaemonState) -> serde_json::Map<String, serde_json::Value> {
+    let mut out = serde_json::Map::new();
+    for e in s.extensions.list() {
+        let Some(dossier) = e.manifest_path.parent() else {
+            continue;
+        };
+        let Ok(brut) = std::fs::read_to_string(fichier_de_reglages(dossier)) else {
+            continue;
+        };
+        let Ok(serde_json::Value::Object(valeurs)) = serde_json::from_str(&brut) else {
+            continue;
+        };
+        for (k, v) in valeurs {
+            // Les valeurs sont rendues en texte : c'est ce que les champs
+            // affichent, et cela évite qu'un booléen arrive tantôt `true`,
+            // tantôt `"true"`, selon qui l'a écrit.
+            let texte = match v {
+                serde_json::Value::String(t) => t,
+                autre => autre.to_string(),
+            };
+            out.insert(format!("{}.{k}", e.name), serde_json::Value::String(texte));
+        }
+    }
+    out
+}
+
+/// GET /v1/extensions/config — tous les réglages, à plat.
+pub async fn get_extension_config(State(s): State<Arc<DaemonState>>) -> Response {
+    (
+        StatusCode::OK,
+        Json(serde_json::Value::Object(tous_les_reglages(&s))),
+    )
+        .into_response()
+}
+
+#[derive(serde::Deserialize)]
+pub struct ReglageBody {
+    pub key: String,
+    #[serde(default)]
+    pub value: String,
+}
+
+/// POST /v1/extensions/{name}/config — écrire un réglage.
+pub async fn set_extension_config(
+    State(s): State<Arc<DaemonState>>,
+    Path(name): Path<String>,
+    Json(body): Json<ReglageBody>,
+) -> Response {
+    if body.key.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": { "code": "bad_request", "message": "nom de réglage vide" }
+            })),
+        )
+            .into_response();
+    }
+    let Some(dossier) = s
+        .extensions
+        .list()
+        .iter()
+        .find(|e| e.name == name)
+        .and_then(|e| e.manifest_path.parent().map(|p| p.to_path_buf()))
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": { "code": "not_found", "message": format!("extension inconnue : {name}") }
+            })),
+        )
+            .into_response();
+    };
+
+    let chemin = fichier_de_reglages(&dossier);
+    let mut valeurs: serde_json::Map<String, serde_json::Value> = std::fs::read_to_string(&chemin)
+        .ok()
+        .and_then(|b| serde_json::from_str(&b).ok())
+        .unwrap_or_default();
+    // Une valeur vide efface le réglage : c'est ce que fait « Aucun » dans une
+    // liste, et laisser une chaîne vide traîner ferait croire à un choix.
+    if body.value.is_empty() {
+        valeurs.remove(&body.key);
+    } else {
+        valeurs.insert(body.key.clone(), serde_json::Value::String(body.value));
+    }
+
+    if let Some(parent) = chemin.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return erreur_ecriture(&e.to_string());
+        }
+    }
+    let joli = serde_json::to_string_pretty(&valeurs).unwrap_or_default();
+    if let Err(e) = std::fs::write(&chemin, joli) {
+        return erreur_ecriture(&e.to_string());
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::Value::Object(tous_les_reglages(&s))),
+    )
+        .into_response()
+}
+
+fn erreur_ecriture(message: &str) -> Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({
+            "error": { "code": "write_failed", "message": message }
+        })),
+    )
+        .into_response()
 }

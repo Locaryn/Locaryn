@@ -19,14 +19,14 @@
       {
         "id": "studio",
         "label": "Studio de génération",
-        "icon": "🎨"
+        "icon": "image"
       }
     ],
     "studio_tabs": [
       {
         "id": "object-detection",
         "label": "Détection & OCR",
-        "icon": "🎯"
+        "icon": "target"
       }
     ]
   }

@@ -1083,3 +1083,54 @@ body.lo-scanning .lo-screen {
   max-height: 9.5em;
   overflow-y: auto;
 }
+
+/* Les boutons que les extensions posent à côté du champ de saisie. */
+.lo-compose-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lo-compose-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border: 1px solid var(--lo-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--lo-text-dim);
+}
+.lo-compose-action:active:not(:disabled) {
+  background: var(--lo-surface-2);
+  color: var(--lo-text);
+}
+.lo-compose-action:disabled {
+  opacity: 0.4;
+}
+
+/* Un réglage d'extension : liste de choix, ou interrupteur. */
+.lo-select {
+  min-width: 140px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--lo-border);
+  border-radius: 10px;
+  background: var(--lo-surface);
+  color: var(--lo-text);
+  font-size: 15px;
+}
+.lo-toggle {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--lo-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--lo-text-dim);
+  font-size: 15px;
+}
+.lo-toggle-on {
+  border-color: var(--lo-accent);
+  color: var(--lo-accent);
+}

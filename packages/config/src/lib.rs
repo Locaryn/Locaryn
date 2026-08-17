@@ -420,6 +420,19 @@ pub enum ConfigError {
 /// réécrire l'objet entier reviendrait à figer dans le fichier global des
 /// valeurs qui venaient d'ailleurs. On relit donc le fichier global tel quel,
 /// on modifie la branche demandée, et on réécrit.
+/// Relire une branche brute de la configuration globale.
+///
+/// `load` rend une `Config` typée, ce qui convient tant qu'on sait d'avance ce
+/// qu'on cherche. Les réglages des extensions ne sont pas connus à la
+/// compilation — c'est leur manifeste qui les décrit — donc ils se lisent
+/// comme du JSON.
+pub fn global_value(branche: &str) -> Option<serde_json::Value> {
+    let chemin = global_config_path();
+    let brut = std::fs::read_to_string(chemin).ok()?;
+    let racine: serde_json::Value = serde_json::from_str(&brut).ok()?;
+    racine.get(branche).cloned()
+}
+
 pub fn set_global(branche: &str, valeur: serde_json::Value) -> Result<(), ConfigError> {
     let chemin = global_config_path();
     let mut racine: serde_json::Value = if chemin.exists() {

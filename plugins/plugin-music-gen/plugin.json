@@ -19,14 +19,14 @@
       {
         "id": "studio",
         "label": "Studio de génération",
-        "icon": "🎨"
+        "icon": "image"
       }
     ],
     "studio_tabs": [
       {
         "id": "music",
         "label": "Musique",
-        "icon": "🎵"
+        "icon": "music"
       }
     ]
   }

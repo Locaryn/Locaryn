@@ -813,6 +813,59 @@ pub struct PhoneExtension {
     pub enabled: bool,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Ce que l'extension ajoute à l'interface. Le téléphone en affiche deux
+    /// choses : les boutons près du champ de saisie et les sections de
+    /// réglages. Une extension de dictée doit poser son micro ici aussi —
+    /// c'est même le téléphone qui en a le plus besoin.
+    #[serde(default)]
+    pub ui: ExtensionUi,
+}
+
+/// Ce qu'une extension ajoute à l'interface du téléphone.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ExtensionUi {
+    #[serde(default)]
+    pub composer_actions: Vec<ComposerAction>,
+    #[serde(default)]
+    pub settings_sections: Vec<SettingsSection>,
+}
+
+/// Un bouton posé à côté du champ de saisie.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ComposerAction {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// `insert` écrit un texte dans le champ ; `tool` appelle un outil.
+    pub action: String,
+    pub value: String,
+    #[serde(default)]
+    pub hint: Option<String>,
+}
+
+/// Une section de réglages apportée par une extension.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SettingsSection {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub fields: Vec<SettingsField>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SettingsField {
+    pub key: String,
+    pub label: String,
+    pub kind: String,
+    #[serde(default)]
+    pub hint: Option<String>,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub default: Option<String>,
 }
 
 #[tauri::command]
@@ -834,6 +887,109 @@ async fn list_extensions() -> Result<Vec<PhoneExtension>, String> {
     resp.json::<Vec<PhoneExtension>>()
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Appeler l'outil qu'un bouton d'extension désigne.
+///
+/// Le bouton nomme un outil, pas un serveur : c'est le serveur qui cherche
+/// lequel de ses serveurs d'extensions le porte. Le téléphone ne fait que
+/// transmettre ce que contient le champ de saisie, et rendre le texte obtenu.
+#[tauri::command]
+async fn run_composer_tool(tool: String, text: String) -> Result<String, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/tools/{tool}"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "text": text }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    let statut = resp.status();
+    let corps: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    if !statut.is_success() {
+        // Le serveur explique pourquoi — outil inconnu, extension éteinte.
+        // Répéter son message vaut mieux qu'un code d'erreur.
+        return Err(corps
+            .pointer("/error/message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("L'outil a échoué.")
+            .to_string());
+    }
+    Ok(corps
+        .get("text")
+        .and_then(|t| t.as_str())
+        .unwrap_or_default()
+        .to_string())
+}
+
+/// Les réglages déclarés par les extensions, tels qu'ils sont sur le serveur.
+///
+/// Les clés sont `extension.champ`. Le téléphone n'en garde pas de copie :
+/// c'est le serveur qui exécutera, c'est lui qui fait foi.
+#[tauri::command]
+async fn extension_config() -> Result<std::collections::HashMap<String, String>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/extensions/config"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Ok(std::collections::HashMap::new());
+    }
+    Ok(resp.json().await.unwrap_or_default())
+}
+
+/// Écrire un réglage d'extension. Une valeur vide l'efface.
+#[tauri::command]
+async fn set_extension_config(extension: String, key: String, value: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/extensions/{extension}/config"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "key": key, "value": value }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status().is_success() {
+        return Ok(());
+    }
+    Err(format!(
+        "Le serveur a refusé la demande ({}).",
+        resp.status()
+    ))
+}
+
+/// Les modèles installés sur le serveur, pour les réglages qui en demandent un.
+#[tauri::command]
+async fn list_models() -> Result<Vec<String>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    // La même liste que celle du modèle des micro-tâches : ce sont les modèles
+    // de conversation installés, et il n'y a pas de raison d'en tenir deux.
+    let resp = client
+        .get(format!("{base}/v1/assistance/micro-model"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Ok(Vec::new());
+    }
+    let corps: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(corps
+        .get("available")
+        .and_then(|a| a.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| m.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default())
 }
 
 /// Installer une extension du catalogue. `source` est un `propriétaire/dépôt`.
@@ -1211,6 +1367,10 @@ pub fn run() {
             remember,
             forget,
             list_extensions,
+            run_composer_tool,
+            extension_config,
+            set_extension_config,
+            list_models,
             install_extension,
             set_extension_enabled,
             remove_extension,

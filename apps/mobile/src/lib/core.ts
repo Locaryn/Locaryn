@@ -15,6 +15,49 @@ export interface PhoneExtension {
   description: string | null;
   enabled: boolean;
   capabilities: string[];
+  /** Ce que l'extension ajoute à l'interface. Vide quand elle est éteinte. */
+  ui?: ExtensionUi;
+}
+
+/** Ce qu'une extension ajoute à l'interface du téléphone. */
+export interface ExtensionUi {
+  composer_actions?: ComposerAction[];
+  settings_sections?: SettingsSection[];
+}
+
+/**
+ * Un bouton posé à côté du champ de saisie.
+ *
+ * `insert` écrit `value` dans le champ — un modèle de demande, une consigne
+ * qui revient. `tool` appelle l'outil nommé par `value` avec ce que le champ
+ * contient. Rien d'autre : faire tourner du code d'extension dans l'interface
+ * reviendrait à lui donner l'écran entier.
+ */
+export interface ComposerAction {
+  id: string;
+  label: string;
+  icon?: string | null;
+  action: "insert" | "tool";
+  value: string;
+  hint?: string | null;
+}
+
+/** Une section de réglages apportée par une extension. */
+export interface SettingsSection {
+  id: string;
+  title: string;
+  description?: string | null;
+  fields: SettingsField[];
+}
+
+export interface SettingsField {
+  key: string;
+  label: string;
+  /** `model`, `text`, `toggle` ou `choice`. */
+  kind: string;
+  hint?: string | null;
+  options?: string[];
+  default?: string | null;
 }
 
 /**
@@ -173,6 +216,15 @@ export const core = {
   setExtensionEnabled: (name: string, enabled: boolean) =>
     invoke<void>("set_extension_enabled", { name, enabled }),
   removeExtension: (name: string) => invoke<void>("remove_extension", { name }),
+  /** Appeler l'outil qu'un bouton d'extension désigne, avec le texte du champ. */
+  runComposerTool: (tool: string, text: string) =>
+    invoke<string>("run_composer_tool", { tool, text }),
+  /** Les réglages déclarés par les extensions, clés `extension.champ`. */
+  extensionConfig: () => invoke<Record<string, string>>("extension_config"),
+  setExtensionConfig: (extension: string, key: string, value: string) =>
+    invoke<void>("set_extension_config", { extension, key, value }),
+  /** Les modèles installés sur le serveur — pour un réglage de type `model`. */
+  listModels: () => invoke<string[]>("list_models"),
   /** Ce que le serveur retient de son utilisateur. */
   listMemory: () => invoke<MemoryEntry[]>("list_memory"),
   remember: (category: string, content: string) => invoke<void>("remember", { category, content }),
@@ -297,6 +349,10 @@ export const demoCore: typeof core = {
   }),
   setExtensionEnabled: async () => {},
   removeExtension: async () => {},
+  runComposerTool: async (_tool: string, text: string) => text,
+  extensionConfig: async () => ({}) as Record<string, string>,
+  setExtensionConfig: async () => {},
+  listModels: async () => ["qwen2.5:3b"],
   listMemory: async () => [
     { id: "1", category: "preference", content: "Je préfère les réponses courtes." },
   ],

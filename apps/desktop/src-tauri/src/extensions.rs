@@ -225,6 +225,63 @@ pub async fn active_capabilities(core: &Core) -> Vec<String> {
     out.dedup();
     out
 }
+/// Un bouton de composeur apporté par une extension.
+fn action_composeur(
+    a: &locaryn_extensions::manifest::ComposerAction,
+) -> locaryn_shared_types::ExtensionComposerAction {
+    locaryn_shared_types::ExtensionComposerAction {
+        id: a.id.clone(),
+        label: a.label.clone(),
+        icon: a.icon.clone(),
+        // Un comportement inconnu se lit comme une insertion : au pire un
+        // texte est écrit dans le champ, jamais un outil appelé par surprise.
+        action: if a.action == "tool" {
+            "tool".to_string()
+        } else {
+            "insert".to_string()
+        },
+        value: a.value.clone(),
+        hint: a.hint.clone(),
+    }
+}
+
+/// Ramener le type déclaré à l'un des quatre rendus possibles.
+///
+/// La documentation offre six mots ; l'écran n'a que quatre façons de montrer
+/// un réglage. `number` et `prompt` deviennent du texte : mieux vaut un champ
+/// honnête qu'un rendu promis et absent.
+fn rendu_du_champ(declare: &str) -> String {
+    match declare {
+        "boolean" | "toggle" => "toggle",
+        "select" | "choice" => "choice",
+        "model" => "model",
+        _ => "text",
+    }
+    .to_string()
+}
+
+/// Une section de réglages apportée par une extension.
+fn section_reglages(
+    s: &locaryn_extensions::manifest::SettingsSection,
+) -> locaryn_shared_types::ExtensionSettingsSection {
+    locaryn_shared_types::ExtensionSettingsSection {
+        id: s.id.clone(),
+        title: s.title.clone(),
+        description: s.description.clone(),
+        fields: s
+            .fields
+            .iter()
+            .map(|f| locaryn_shared_types::ExtensionSettingsField {
+                key: f.key.clone(),
+                label: f.label.clone(),
+                kind: rendu_du_champ(&f.kind),
+                hint: f.hint.clone(),
+                options: f.options.clone(),
+                default: f.default.clone(),
+            })
+            .collect(),
+    }
+}
 
 fn ui_entry(e: &locaryn_extensions::manifest::UiEntry) -> locaryn_shared_types::ExtensionUiEntry {
     locaryn_shared_types::ExtensionUiEntry {
@@ -319,6 +376,22 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
                 .map(|m| locaryn_shared_types::ExtensionUi {
                     nav_items: m.ui.nav_items.iter().map(ui_entry).collect(),
                     studio_tabs: m.ui.studio_tabs.iter().map(ui_entry).collect(),
+                    // Une extension éteinte ne pose plus rien près du champ de
+                    // saisie ni dans les réglages : sinon on garderait un
+                    // bouton qui ne fait plus rien.
+                    composer_actions: if row.enabled {
+                        m.ui.composer_actions.iter().map(action_composeur).collect()
+                    } else {
+                        Vec::new()
+                    },
+                    settings_sections: if row.enabled {
+                        m.ui.settings_sections
+                            .iter()
+                            .map(section_reglages)
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
                 })
                 .unwrap_or_default(),
             permissions,

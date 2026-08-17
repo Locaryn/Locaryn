@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type MobileStatus, api } from "../lib/core";
+import { ExtensionSettings } from "./ExtensionSettings";
 import { Screen } from "./Screen";
 import { VersionSection } from "./VersionSection";
 
@@ -30,6 +31,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
   return (
     <Screen title="Réglages" onBack={onBack}>
       <VersionSection />
+
+      {/* Ce que les extensions ajoutent. Une extension de dictée doit faire
+          choisir son modèle ici comme sur l'ordinateur : c'est le même
+          serveur qui exécutera. Rien ne s'affiche s'il n'y en a pas. */}
+      <ExtensionSettings />
 
       <section className="lo-section">
         <h2 className="lo-section-title">Serveur</h2>

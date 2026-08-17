@@ -336,3 +336,35 @@ pub async fn merge_sessions(session_id: String, source_id: String) -> Result<(),
         texte
     })
 }
+
+/// Appeler l'outil qu'un bouton d'extension désigne.
+///
+/// Le bouton nomme un outil, pas un serveur : c'est le service qui cherche
+/// lequel de ses serveurs d'extensions le porte.
+#[tauri::command]
+pub async fn run_composer_tool(tool: String, text: String) -> Result<String, String> {
+    let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
+    let port = cfg.daemon.port;
+    let client =
+        crate::secure_client::build(None, None, None, std::time::Duration::from_secs(180))?;
+    let resp = client
+        .post(format!("https://127.0.0.1:{port}/v1/tools/{tool}"))
+        .json(&serde_json::json!({ "text": text }))
+        .send()
+        .await
+        .map_err(|_| not_running())?;
+    let statut = resp.status();
+    let corps: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    if !statut.is_success() {
+        return Err(corps
+            .pointer("/error/message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("L'outil a échoué.")
+            .to_string());
+    }
+    Ok(corps
+        .get("text")
+        .and_then(|t| t.as_str())
+        .unwrap_or_default()
+        .to_string())
+}

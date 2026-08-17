@@ -20,14 +20,14 @@
       {
         "id": "studio",
         "label": "Studio de génération",
-        "icon": "🎨"
+        "icon": "image"
       }
     ],
     "studio_tabs": [
       {
         "id": "image",
         "label": "Génération Image",
-        "icon": "🎨"
+        "icon": "image"
       }
     ]
   }

@@ -337,6 +337,35 @@ export interface ExtensionPermissionState {
 }
 
 /** Une entrée d'interface apportée par une extension. */
+/** Un bouton posé à côté du champ de saisie par une extension. */
+export interface ExtensionComposerAction {
+  id: string;
+  label: string;
+  icon?: string | null;
+  /** `insert` écrit `value` dans le champ ; `tool` appelle l'outil nommé. */
+  action: "insert" | "tool";
+  value: string;
+  hint?: string | null;
+}
+
+/** Une section de réglages apportée par une extension. */
+export interface ExtensionSettingsSection {
+  id: string;
+  title: string;
+  description?: string | null;
+  fields: ExtensionSettingsField[];
+}
+
+export interface ExtensionSettingsField {
+  key: string;
+  label: string;
+  /** `model`, `text`, `toggle` ou `choice`. */
+  kind: string;
+  hint?: string | null;
+  options?: string[];
+  default?: string | null;
+}
+
 export interface ExtensionUiEntry {
   id: string;
   label: string;
@@ -346,6 +375,10 @@ export interface ExtensionUiEntry {
 export interface ExtensionUi {
   nav_items: ExtensionUiEntry[];
   studio_tabs: ExtensionUiEntry[];
+  /** Boutons près du champ de saisie. Vide quand l'extension est éteinte. */
+  composer_actions?: ExtensionComposerAction[];
+  /** Sections ajoutées aux réglages. Vide quand l'extension est éteinte. */
+  settings_sections?: ExtensionSettingsSection[];
 }
 
 /** Une chose que Locaryn retient de la personne. */
@@ -1244,6 +1277,8 @@ export interface CoreApi {
   archiveSession(sessionId: string, archived: boolean): Promise<void>;
   /** Ce qui a été rangé, pour un projet. */
   archivedSessions(projectId: string): Promise<Session[]>;
+  /** Appeler l'outil qu'un bouton d'extension désigne, avec le texte du champ. */
+  runComposerTool(tool: string, text: string): Promise<string>;
   /** Déplacer une conversation dans un projet. */
   moveSession(sessionId: string, projectId: string): Promise<void>;
   /** Où le petit modèle rangerait cette conversation. Presque toujours nulle
@@ -1665,6 +1700,7 @@ const tauriCore: CoreApi = {
   archiveSession: (sessionId, archived) =>
     invoke<void>("archive_session", { id: sessionId, archived }),
   archivedSessions: (projectId) => invoke<Session[]>("archived_sessions", { projectId }),
+  runComposerTool: (tool, text) => invoke<string>("run_composer_tool", { tool, text }),
   moveSession: (sessionId, projectId) => invoke<void>("move_session", { id: sessionId, projectId }),
   suggestProject: (sessionId) => invoke("suggest_project", { sessionId }),
   mergeSessions: (sessionId, sourceId) => invoke<void>("merge_sessions", { sessionId, sourceId }),
@@ -2960,6 +2996,7 @@ const demoCore: CoreApi = {
   deleteSession: async () => {},
   archiveSession: async () => {},
   archivedSessions: async () => [],
+  runComposerTool: async (_tool: string, text: string) => text,
   moveSession: async () => {},
   suggestProject: async () => ({ project_id: null }),
   mergeSessions: async () => {},
