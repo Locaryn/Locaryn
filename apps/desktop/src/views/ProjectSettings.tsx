@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { type Project, type RagStatus, type TrustLevel, core } from "../lib/core";
 
@@ -176,7 +177,7 @@ export function ProjectSettings({ projects, onArchived }: Props) {
                 className="locaryn-btn-ghost"
                 onClick={() => core.openModelsFolder(selected.path).catch(() => {})}
               >
-                📂 Ouvrir le dossier
+                <Icon name="project" size={15} /> Ouvrir le dossier
               </button>
               <button
                 type="button"
@@ -185,7 +186,7 @@ export function ProjectSettings({ projects, onArchived }: Props) {
                 disabled={busy}
                 onClick={archive}
               >
-                🗄️ Archiver le projet
+                <Icon name="archive" size={15} /> Archiver le projet
               </button>
             </div>
           </div>

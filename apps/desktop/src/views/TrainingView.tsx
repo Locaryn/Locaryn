@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { core } from "../lib/core";
 
@@ -119,7 +120,7 @@ export function TrainingView({ onOpenModels }: Props) {
           className={`locaryn-tab-btn${tab === "finetune" ? " locaryn-active" : ""}`}
           onClick={() => setTab("finetune")}
         >
-          🎯 Fine-Tuning LoRA / QLoRA
+          <Icon name="target" size={15} /> Fine-Tuning LoRA / QLoRA
         </button>
         <button
           type="button"
@@ -129,7 +130,7 @@ export function TrainingView({ onOpenModels }: Props) {
           }
           onClick={() => setTab("obliteration")}
         >
-          🔓 Studio d'Oblitération de Modèle (RepE Ablation)
+          <Icon name="lock" size={15} /> Studio d'Oblitération de Modèle (RepE Ablation)
         </button>
       </div>
 
@@ -240,7 +241,9 @@ export function TrainingView({ onOpenModels }: Props) {
       {tab === "obliteration" && (
         <div className="locaryn-training-grid">
           <div className="locaryn-card">
-            <h3>🔓 Paramètres de l'Oblitération (RepE Refusal Ablation)</h3>
+            <h3>
+              <Icon name="lock" size={15} /> Paramètres de l'Oblitération (RepE Refusal Ablation)
+            </h3>
             <p className="locaryn-field-hint" style={{ marginBottom: "16px" }}>
               Calcule le vecteur de direction de refus d'un modèle **déjà installé** et applique une
               projection orthogonale pour neutraliser les filtres.
@@ -259,7 +262,7 @@ export function TrainingView({ onOpenModels }: Props) {
                 }}
               >
                 <strong style={{ color: "var(--danger)" }}>
-                  ⚠️ Aucun modèle local actuellement installé :
+                  <Icon name="warning" size={15} /> Aucun modèle local actuellement installé :
                 </strong>
                 <p
                   style={{ margin: "8px 0", fontSize: "var(--text-xs)", color: "var(--text-dim)" }}
@@ -274,7 +277,7 @@ export function TrainingView({ onOpenModels }: Props) {
                     style={{ fontSize: "12px", marginTop: "6px" }}
                     onClick={onOpenModels}
                   >
-                    → Accéder au Marketplace de Modèles
+                    <Icon name="forward" size={15} /> Accéder au Marketplace de Modèles
                   </button>
                 )}
               </div>
@@ -293,7 +296,7 @@ export function TrainingView({ onOpenModels }: Props) {
                   }}
                 >
                   <strong style={{ color: "var(--danger)" }}>
-                    ⚠️ Avis de Responsabilité & Cadre Légal :
+                    <Icon name="warning" size={15} /> Avis de Responsabilité & Cadre Légal :
                   </strong>
                   <br />
                   L'oblitération des contraintes de refus est dédiée **exclusivement au pentesting

@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { type AppTask, TASK_META, taskCenter, useTasks } from "../lib/taskCenter";
 
@@ -93,7 +94,7 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                 onClick={() => setOpen(false)}
                 aria-label="Fermer"
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
             </div>
           </div>

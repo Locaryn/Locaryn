@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { type RagHit, type RagStatus, core } from "../lib/core";
 
@@ -174,14 +175,16 @@ export function RagPanel({ projectId, onClose }: Props) {
         aria-label="Documents (RAG)"
       >
         <div className="locaryn-settings-header">
-          <span className="locaryn-settings-title">📚 Base de connaissances (RAG)</span>
+          <span className="locaryn-settings-title">
+            <Icon name="models" size={15} /> Base de connaissances (RAG)
+          </span>
           <button
             type="button"
             className="locaryn-settings-close"
             onClick={onClose}
             aria-label="Fermer"
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -261,7 +264,7 @@ export function RagPanel({ projectId, onClose }: Props) {
             >
               {importing ? (
                 <>
-                  ⏳ Indexation de <b>{importing}</b>…
+                  <Icon name="clock" size={15} /> Indexation de <b>{importing}</b>…
                 </>
               ) : (
                 <>

@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type VramMode, core } from "../lib/core";
@@ -400,7 +401,7 @@ export function ImageGenPanel({
       {/* ── Header ── */}
       <div className="img-gen-header">
         <div className="img-gen-title-wrap">
-          <span className="img-gen-icon">🎨</span>
+          <Icon name="studio" size={15} />
           <div>
             <div className="img-gen-title">Génération d'Images IA</div>
             <div className="img-gen-subtitle">Local · sd.cpp · Aucune API externe</div>
@@ -414,7 +415,7 @@ export function ImageGenPanel({
             disabled={isInstalling}
             aria-label="Fermer"
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         )}
       </div>
@@ -436,7 +437,7 @@ export function ImageGenPanel({
           onClick={() => setMode("txt2img")}
           disabled={isGenerating}
         >
-          ✨ Texte → Image
+          <Icon name="star" size={15} /> Texte → Image
         </button>
         <button
           type="button"
@@ -444,7 +445,7 @@ export function ImageGenPanel({
           onClick={() => setMode("img2img")}
           disabled={isGenerating}
         >
-          🖼️ Image → Image
+          <Icon name="image" size={15} /> Image → Image
         </button>
       </div>
 
@@ -470,7 +471,7 @@ export function ImageGenPanel({
         )}
         {installedOptions.length === 0 ? (
           <div className="img-gen-no-model">
-            <span>⚠️</span>
+            <Icon name="warning" size={15} />
             <span>
               Aucun modèle d'image installé. Allez dans le Marketplace pour en installer un.
             </span>
@@ -506,7 +507,9 @@ export function ImageGenPanel({
               </option>
             ))}
             {hereticBase && (
-              <option value={HERETIC_VALUE}>🔓 Z-Image Turbo — Sans limite (Heretic)</option>
+              <option value={HERETIC_VALUE}>
+                <Icon name="lock" size={15} /> Z-Image Turbo — Sans limite (Heretic)
+              </option>
             )}
           </select>
         )}
@@ -573,12 +576,12 @@ export function ImageGenPanel({
                     setSourceImagePreview(null);
                   }}
                 >
-                  ✕
+                  <Icon name="close" size={16} />
                 </button>
               </div>
             ) : (
               <>
-                <span className="img-gen-drop-icon">🖼️</span>
+                <Icon name="image" size={15} />
                 <span className="img-gen-drop-text">Cliquez pour choisir une image</span>
                 <span className="img-gen-drop-hint">PNG, JPG, WEBP</span>
               </>
@@ -743,7 +746,9 @@ export function ImageGenPanel({
                   else setUncensored(false);
                 }}
               />
-              <span>🔓 Mode sans limite (encodeur abliteré)</span>
+              <span>
+                <Icon name="lock" size={15} /> Mode sans limite (encodeur abliteré)
+              </span>
             </label>
             <span className="img-gen-hint">
               {uncensored
@@ -806,7 +811,9 @@ export function ImageGenPanel({
           </div>
         ) : activeTask?.status === "done" && activeTask.resultImageUrl ? (
           <div className="img-gen-result">
-            <div className="img-gen-result-label">✓ Image générée</div>
+            <div className="img-gen-result-label">
+              <Icon name="check" size={15} /> Image générée
+            </div>
             <img
               src={activeTask.resultImageUrl}
               alt="Résultat IA"
@@ -826,7 +833,7 @@ export function ImageGenPanel({
       {/* ── Error ── */}
       {error && (
         <div className="img-gen-error">
-          <span>⚠️</span>
+          <Icon name="warning" size={15} />
           <span>{error}</span>
         </div>
       )}
@@ -844,7 +851,8 @@ export function ImageGenPanel({
           }}
           title="Estimation basée sur les durées de tes dernières générations avec ce modèle et ces paramètres"
         >
-          ⏱️ Durée estimée : {formatEstimatedDuration(estimatedDuration)}
+          <Icon name="clock" size={15} /> Durée estimée :{" "}
+          {formatEstimatedDuration(estimatedDuration)}
         </span>
         {!inline && (
           <button

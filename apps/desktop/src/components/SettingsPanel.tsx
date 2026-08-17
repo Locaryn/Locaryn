@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import { type AppInfo, core } from "../lib/core";
@@ -174,7 +175,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
             onClick={() => setSettingsOpen(false)}
             aria-label="Fermer les paramètres"
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -192,7 +193,7 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
               className={`locaryn-nav-item${tab === "performance" ? " locaryn-active" : ""}`}
               onClick={() => setTab("performance")}
             >
-              ⚡ Performance
+              <Icon name="speed" size={15} /> Performance
             </button>
             {onOpenFullSettings && (
               <button

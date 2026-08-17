@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { type CertificateStatus, type Provisioning, core } from "../lib/core";
 import { pickAnyFile } from "../lib/dialog";
@@ -116,7 +117,7 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
         <div className="locaryn-connect-cert">
           {cert?.installed ? (
             <>
-              <span className="locaryn-connect-cert-ok">✓</span>
+              <Icon name="check" size={15} />
               <span>
                 Certificat installé
                 {cert.issued_to ? ` — ${cert.issued_to}` : ""}

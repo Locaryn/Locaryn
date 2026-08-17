@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 import { core } from "../lib/core";
 import { MODEL_CATALOG } from "../lib/modelCatalog";
@@ -101,7 +102,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
         <div className="locaryn-field-head" style={{ marginBottom: "16px" }}>
           <div>
             <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-              📊 Analyseur de Performances & Compatibilité Matérielle
+              <Icon name="chart" size={15} /> Analyseur de Performances & Compatibilité Matérielle
             </h3>
             <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
               Ajustez vos composants matériels pour identifier les modèles utilisables sur votre
@@ -109,7 +110,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
             </span>
           </div>
           <button type="button" className="locaryn-icon-btn" onClick={onClose}>
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -131,7 +132,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               className={`locaryn-chip${preset === "laptop" ? " locaryn-chip-on" : ""}`}
               onClick={() => applyPreset("laptop")}
             >
-              💻 PC Portable (8 Go RAM, CPU 4c)
+              <Icon name="cpu" size={15} /> PC Portable (8 Go RAM, CPU 4c)
             </button>
             <button
               type="button"
@@ -152,7 +153,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               className={`locaryn-chip${preset === "server" ? " locaryn-chip-on" : ""}`}
               onClick={() => applyPreset("server")}
             >
-              🚀 Station / Serveur (64 Go RAM, 24 Go VRAM)
+              <Icon name="speed" size={15} /> Station / Serveur (64 Go RAM, 24 Go VRAM)
             </button>
           </div>
         </div>
@@ -176,7 +177,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
             }}
           >
             <span style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}>
-              ⚙️ Composants Matériels de votre Machine :
+              <Icon name="settings" size={15} /> Composants Matériels de votre Machine :
             </span>
             <button
               type="button"
@@ -278,7 +279,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
         {/* Compatibility Diagnostic Breakdown */}
         <div style={{ marginBottom: "20px" }}>
           <h4 style={{ margin: "0 0 10px 0", fontSize: "var(--text-sm)" }}>
-            🎯 Diagnostic d'Exécution avec cette Configuration :
+            <Icon name="target" size={15} /> Diagnostic d'Exécution avec cette Configuration :
           </h4>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -390,7 +391,8 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               onClose();
             }}
           >
-            🟢 Appliquer le filtre des modèles recommandés ({optimalCount})
+            <span className="locaryn-dot locaryn-dot-ok" /> Appliquer le filtre des modèles
+            recommandés ({optimalCount})
           </button>
         </div>
       </div>

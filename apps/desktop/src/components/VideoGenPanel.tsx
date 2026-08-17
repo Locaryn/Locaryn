@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { core } from "../lib/core";
 import { dedupeModelsByDirectory } from "../lib/modelList";
@@ -198,7 +199,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
         </div>
         {!inline && (
           <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">
-            ✕
+            <Icon name="close" size={16} />
           </button>
         )}
       </div>
@@ -264,7 +265,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
             cursor: jobRunning ? "default" : "pointer",
           }}
         >
-          ✨ Texte → Vidéo
+          <Icon name="star" size={15} /> Texte → Vidéo
         </button>
         <button
           type="button"
@@ -284,7 +285,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
             cursor: jobRunning ? "default" : "pointer",
           }}
         >
-          🖼️ Image → Vidéo
+          <Icon name="image" size={15} /> Image → Vidéo
         </button>
       </div>
 
@@ -309,7 +310,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
                 onClick={clearImage}
                 aria-label="Supprimer"
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
             </div>
           ) : (
@@ -460,7 +461,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Errors ── */}
       {error && (
         <div className="img-gen-error" style={{ marginBottom: 16 }}>
-          <span>⚠️</span>
+          <Icon name="warning" size={15} />
           <span>{error}</span>
         </div>
       )}

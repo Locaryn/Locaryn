@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { core } from "../lib/core";
 import { dedupeModelsByDirectory } from "../lib/modelList";
@@ -197,10 +198,10 @@ export function QuickModelSelector({
               gap: "6px",
             }}
           >
-            <span>⚡</span> Changer de Modèle Installé
+            <Icon name="speed" size={15} /> Changer de Modèle Installé
           </h3>
           <button type="button" className="locaryn-icon-btn" onClick={onClose}>
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -221,28 +222,32 @@ export function QuickModelSelector({
             className={`locaryn-chip${activeTab === "text" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("text")}
           >
-            💬 Text to Text ({options.filter((o) => o.category === "text").length})
+            <Icon name="chat" size={15} /> Text to Text (
+            {options.filter((o) => o.category === "text").length})
           </button>
           <button
             type="button"
             className={`locaryn-chip${activeTab === "code" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("code")}
           >
-            💻 Code ({options.filter((o) => o.category === "code").length})
+            <Icon name="cpu" size={15} /> Code (
+            {options.filter((o) => o.category === "code").length})
           </button>
           <button
             type="button"
             className={`locaryn-chip${activeTab === "reasoning" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("reasoning")}
           >
-            🧠 Raisonnement ({options.filter((o) => o.category === "reasoning").length})
+            <Icon name="memory" size={15} /> Raisonnement (
+            {options.filter((o) => o.category === "reasoning").length})
           </button>
           <button
             type="button"
             className={`locaryn-chip${activeTab === "vision" ? " locaryn-chip-on" : ""}`}
             onClick={() => setActiveTab("vision")}
           >
-            🖼️ Vision ({options.filter((o) => o.category === "vision").length})
+            <Icon name="image" size={15} /> Vision (
+            {options.filter((o) => o.category === "vision").length})
           </button>
         </div>
 
@@ -280,7 +285,7 @@ export function QuickModelSelector({
                     onOpenMarketplace();
                   }}
                 >
-                  → Installer des modèles dans le Marketplace
+                  <Icon name="forward" size={15} /> Installer des modèles dans le Marketplace
                 </button>
               )}
             </div>

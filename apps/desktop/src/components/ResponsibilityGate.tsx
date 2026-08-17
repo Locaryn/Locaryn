@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { ModalShell } from "./ModalShell";
 
 type Props = {
@@ -23,7 +24,7 @@ export function ResponsibilityGate({ open, what, onAccept, onCancel }: Props) {
       label="Confirmation de responsabilité"
     >
       <div className="locaryn-gate-head">
-        <span className="locaryn-gate-icon">⚠️</span>
+        <Icon name="warning" size={15} />
         <h3>Mode sans limite — responsabilité</h3>
       </div>
       <p>

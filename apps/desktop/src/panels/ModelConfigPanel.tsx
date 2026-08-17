@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { core } from "../lib/core";
 
@@ -130,7 +131,9 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
         className="lmc-header"
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
       >
-        <span className="lmc-title">⚙️ Paramètres du Modèle</span>
+        <span className="lmc-title">
+          <Icon name="settings" size={15} /> Paramètres du Modèle
+        </span>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           <button
             type="button"
@@ -148,7 +151,7 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
               title="Fermer ce panneau"
               style={{ fontSize: "14px", padding: "2px 6px" }}
             >
-              ✕
+              <Icon name="close" size={16} />
             </button>
           )}
         </div>

@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import {
   type InferenceConfig,
@@ -140,7 +141,7 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
           <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
             {onOpenSettings && (
               <button type="button" className="locaryn-btn-ghost" onClick={onOpenSettings}>
-                ⚙ Gérer les adaptateurs
+                <Icon name="settings" size={15} /> Gérer les adaptateurs
               </button>
             )}
           </div>
@@ -167,7 +168,7 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
         {onOpenMarketplace && (
           <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
             <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}>
-              🛒 Parcourir le marketplace
+              <Icon name="marketplace" size={15} /> Parcourir le marketplace
             </button>
           </div>
         )}

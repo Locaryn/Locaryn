@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useMemo, useState } from "react";
 
 export interface BatchJob {
@@ -107,7 +108,9 @@ export function BatchStudio() {
       <div className="locaryn-view-header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h2>⚡ Batch API Studio (-50% Coût des Jetons)</h2>
+            <h2>
+              <Icon name="speed" size={15} /> Batch API Studio (-50% Coût des Jetons)
+            </h2>
             <p className="locaryn-view-desc">
               Traitez vos gros volumes de prompts et d'analyse de codebase par lots asynchrones.
               Économisez 50% sur le tarif des tokens API (OpenAI, Anthropic, DeepSeek) et dépassez
@@ -213,7 +216,7 @@ export function BatchStudio() {
             disabled={!newJobName.trim()}
             onClick={handleCreateBatch}
           >
-            🚀 Soumettre le Lot d'API (-50%)
+            <Icon name="speed" size={15} /> Soumettre le Lot d'API (-50%)
           </button>
         </div>
       </div>

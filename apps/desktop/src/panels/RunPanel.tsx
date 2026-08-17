@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { type RunView, clearRun, getRun, subscribeRun } from "../lib/runPanel";
 
@@ -48,7 +49,7 @@ export function RunPanel() {
           aria-label="Fermer"
           title="Fermer"
         >
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </div>
       {run.kind === "terminal" ? <TerminalView run={run} /> : <WebView html={run.html} />}

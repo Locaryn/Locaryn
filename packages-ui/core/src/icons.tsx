@@ -60,7 +60,10 @@ export type IconName =
   | "star"
   | "refresh"
   | "lock"
-  | "figures";
+  | "figures"
+  | "search"
+  | "calendar"
+  | "clock";
 
 type Props = {
   name: IconName;
@@ -394,6 +397,30 @@ export function Icon({ name, size = 20, title }: Props) {
           {label}
           <rect x="5" y="10" width="14" height="10" rx="2" />
           <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" />
+        </svg>
+      );
+    case "search":
+      return (
+        <svg {...common}>
+          {label}
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M16 16l4.5 4.5" />
+        </svg>
+      );
+    case "calendar":
+      return (
+        <svg {...common}>
+          {label}
+          <rect x="3.5" y="5.5" width="17" height="15" rx="2" />
+          <path d="M3.5 10h17M8 3.5v4M16 3.5v4" />
+        </svg>
+      );
+    case "clock":
+      return (
+        <svg {...common}>
+          {label}
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5V12l3 2" />
         </svg>
       );
     // Deux masques qui se recouvrent : un rôle qu'on endosse, et plusieurs

@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { type ModelMetric, core } from "../lib/core";
 import {
@@ -773,8 +774,12 @@ export function ModelBrowser({
             onChange={(e) => setSortBy(e.target.value as "compat" | "newest" | "name" | "pulls")}
             aria-label="Trier les modèles"
           >
-            <option value="compat">🟢 Compatibles d'abord</option>
-            <option value="newest">📅 Plus récents</option>
+            <option value="compat">
+              <span className="locaryn-dot locaryn-dot-ok" /> Compatibles d'abord
+            </option>
+            <option value="newest">
+              <Icon name="calendar" size={15} /> Plus récents
+            </option>
             <option value="pulls">🔥 Plus populaires (Pulls)</option>
             <option value="name">🔤 Nom (A-Z)</option>
           </select>
@@ -793,7 +798,9 @@ export function ModelBrowser({
             <span className="locaryn-airllm-track">
               <span className="locaryn-airllm-thumb" />
             </span>
-            <span className="locaryn-airllm-label">🔮 AirLLM — Gros modèles sur petit GPU</span>
+            <span className="locaryn-airllm-label">
+              <Icon name="star" size={15} /> AirLLM — Gros modèles sur petit GPU
+            </span>
           </button>
           <span className="locaryn-airllm-hint">
             {airllmEnabled
@@ -864,7 +871,7 @@ export function ModelBrowser({
               }}
               title="Le catalogue se met à jour automatiquement toutes les heures"
             >
-              🔄 MAJ {new Date(lastUpdated).toLocaleTimeString()}
+              <Icon name="refresh" size={15} /> MAJ {new Date(lastUpdated).toLocaleTimeString()}
             </span>
           )}
         </div>
@@ -942,7 +949,7 @@ export function ModelBrowser({
               onClick={() => setOnlyRecommended((prev) => !prev)}
               title="Filtrer uniquement les modèles adaptés aux composants de votre PC"
             >
-              🟢 Recommandés pour mon PC
+              <span className="locaryn-dot locaryn-dot-ok" /> Recommandés pour mon PC
             </button>
 
             <button
@@ -952,7 +959,7 @@ export function ModelBrowser({
               onClick={() => setHardwareModalOpen(true)}
               title="Analyser les composants de mon PC pour adapter les recommandations"
             >
-              ⚙️ Analyser mon PC
+              <Icon name="settings" size={15} /> Analyser mon PC
             </button>
 
             <button
@@ -961,7 +968,7 @@ export function ModelBrowser({
               onClick={() => setOnlyFinetunable((prev) => !prev)}
               title="Afficher uniquement les modèles réentraînables via Fine-Tuning / LoRA"
             >
-              🎯 Réentraînable / LoRA
+              <Icon name="target" size={15} /> Réentraînable / LoRA
             </button>
             <button
               type="button"
@@ -978,7 +985,7 @@ export function ModelBrowser({
               onClick={() => setRiskFilter((prev) => (prev === "safe" ? "all" : "safe"))}
               title="Afficher uniquement les modèles classiques avec garde-fous"
             >
-              🛡️ Safe
+              <Icon name="shield" size={15} /> Safe
             </button>
             <button
               type="button"
@@ -997,7 +1004,7 @@ export function ModelBrowser({
               }
               title="Afficher uniquement les modèles sans garde-fous / oblitérés"
             >
-              🔓 Sans limite
+              <Icon name="lock" size={15} /> Sans limite
             </button>
             <button
               type="button"
@@ -1031,7 +1038,8 @@ export function ModelBrowser({
               onClick={() => setOnlyFavorites((prev) => !prev)}
               title="Afficher uniquement les modèles marqués comme favoris"
             >
-              ★ Favoris{favorites.size > 0 ? ` (${favorites.size})` : ""}
+              <Icon name="star" size={15} /> Favoris
+              {favorites.size > 0 ? ` (${favorites.size})` : ""}
             </button>
             <button
               type="button"
@@ -1064,7 +1072,7 @@ export function ModelBrowser({
               onClick={() => setHardwareModalOpen(true)}
               title="Tester les composants de votre PC et analyser les performances d'inférence"
             >
-              📊 Analyse Perf PC
+              <Icon name="chart" size={15} /> Analyse Perf PC
             </button>
 
             <button
@@ -1084,7 +1092,7 @@ export function ModelBrowser({
               }}
               title="Ouvrir le studio d'oblitération de modèle dans le menu Entraînement"
             >
-              🔓 Studio d'Oblitération RepE
+              <Icon name="lock" size={15} /> Studio d'Oblitération RepE
             </button>
 
             {/* View mode switcher */}
@@ -1156,7 +1164,8 @@ export function ModelBrowser({
           return (
             <div className="locaryn-hw-banner">
               <span className="locaryn-hw-banner-pc">
-                🖥️ Votre PC&nbsp;: <b>{hardwareSpec.total_ram_gb} Go RAM</b>
+                <Icon name="server" size={15} /> Votre PC&nbsp;:{" "}
+                <b>{hardwareSpec.total_ram_gb} Go RAM</b>
                 {hardwareSpec.total_vram_gb > 0 && (
                   <>
                     {" "}
@@ -1193,7 +1202,8 @@ export function ModelBrowser({
       ) : (
         <div className="locaryn-hw-banner locaryn-hw-banner-muted">
           <span>
-            🖥️ Analyse du PC en cours… la compatibilité de chaque modèle s'affichera automatiquement.
+            <Icon name="server" size={15} /> Analyse du PC en cours… la compatibilité de chaque
+            modèle s'affichera automatiquement.
           </span>
         </div>
       )}
@@ -1293,7 +1303,7 @@ export function ModelBrowser({
                         className="locaryn-tag locaryn-tag-ft"
                         title="Modèle prêt pour le fine-tuning LoRA"
                       >
-                        🎯 LoRA
+                        <Icon name="target" size={15} /> LoRA
                       </span>
                     )}
                     {f.source === "huggingface" && (
@@ -1306,7 +1316,7 @@ export function ModelBrowser({
                           border: "1px solid rgba(255, 200, 87, 0.35)",
                         }}
                       >
-                        🤗 HuggingFace
+                        <Icon name="marketplace" size={15} /> HuggingFace
                       </span>
                     )}
                     {capBadges(f).map((c) => (
@@ -1462,7 +1472,7 @@ export function ModelBrowser({
                                       onClick={() => onOpenImageGen?.()}
                                       title="Ouvrir la génération d'images avec ce modèle"
                                     >
-                                      🎨 Générer
+                                      <Icon name="studio" size={15} /> Générer
                                     </button>
                                   ) : (
                                     <button
@@ -1472,7 +1482,7 @@ export function ModelBrowser({
                                       onClick={() => onSelectModelForChat?.(targetTag)}
                                       title="Utiliser ce modèle dans le Chat"
                                     >
-                                      💬 Utiliser
+                                      <Icon name="chat" size={15} /> Utiliser
                                     </button>
                                   )}
                                   <button
@@ -1503,7 +1513,7 @@ export function ModelBrowser({
                                   onClick={() => handleCancelInstall(targetTag)}
                                   title="Annuler le téléchargement en cours"
                                 >
-                                  ⛔ Annuler ({progress}%)
+                                  <Icon name="close" size={15} /> Annuler ({progress}%)
                                 </button>
                               ) : compatV.level === "airllm" ? (
                                 (() => {
@@ -1519,7 +1529,7 @@ export function ModelBrowser({
                                         onClick={() => setAirllmModalOpen(true)}
                                         title="Cette architecture n'est pas encore supportée par AirLLM (Llama, Mistral, Qwen2…)"
                                       >
-                                        🔮 Info AirLLM
+                                        <Icon name="star" size={15} /> Info AirLLM
                                       </button>
                                     );
                                   }
@@ -1532,7 +1542,7 @@ export function ModelBrowser({
                                         onClick={() => onLaunchAirllm?.(entry.repo)}
                                         title={`Lancer ${entry.repo} via le moteur AirLLM`}
                                       >
-                                        🚀 Lancer avec AirLLM
+                                        <Icon name="speed" size={15} /> Lancer avec AirLLM
                                       </button>
                                     );
                                   }
@@ -1648,7 +1658,9 @@ export function ModelBrowser({
                           );
                         })()}
                         {f.finetunable && (
-                          <span className="locaryn-tag locaryn-tag-ft">🎯 LoRA Ready</span>
+                          <span className="locaryn-tag locaryn-tag-ft">
+                            <Icon name="target" size={15} /> LoRA Ready
+                          </span>
                         )}
                         {f.source === "huggingface" && (
                           <span
@@ -1660,7 +1672,7 @@ export function ModelBrowser({
                               border: "1px solid rgba(255, 200, 87, 0.35)",
                             }}
                           >
-                            🤗 HuggingFace
+                            <Icon name="marketplace" size={15} /> HuggingFace
                           </span>
                         )}
                         {capBadges(f).map((c) => (
@@ -1754,7 +1766,7 @@ export function ModelBrowser({
                                       onClick={() => onOpenImageGen?.()}
                                       title="Ouvrir la génération d'images avec ce modèle"
                                     >
-                                      🎨 Générer
+                                      <Icon name="studio" size={15} /> Générer
                                     </button>
                                   ) : (
                                     <button
@@ -1764,7 +1776,7 @@ export function ModelBrowser({
                                       onClick={() => onSelectModelForChat?.(targetTag)}
                                       title="Utiliser ce modèle dans le Chat"
                                     >
-                                      💬 Utiliser
+                                      <Icon name="chat" size={15} /> Utiliser
                                     </button>
                                   )}
                                   <button
@@ -1795,7 +1807,7 @@ export function ModelBrowser({
                                   onClick={() => handleCancelInstall(targetTag)}
                                   title="Annuler le téléchargement en cours"
                                 >
-                                  ⛔ Annuler ({progress}%)
+                                  <Icon name="close" size={15} /> Annuler ({progress}%)
                                 </button>
                               ) : compatV.level === "airllm" ? (
                                 (() => {
@@ -1811,7 +1823,7 @@ export function ModelBrowser({
                                         onClick={() => setAirllmModalOpen(true)}
                                         title="Cette architecture n'est pas encore supportée par AirLLM (Llama, Mistral, Qwen2…)"
                                       >
-                                        🔮 Info AirLLM
+                                        <Icon name="star" size={15} /> Info AirLLM
                                       </button>
                                     );
                                   }
@@ -1824,7 +1836,7 @@ export function ModelBrowser({
                                         onClick={() => onLaunchAirllm?.(entry.repo)}
                                         title={`Lancer ${entry.repo} via le moteur AirLLM`}
                                       >
-                                        🚀 Lancer avec AirLLM
+                                        <Icon name="speed" size={15} /> Lancer avec AirLLM
                                       </button>
                                     );
                                   }
@@ -1913,7 +1925,7 @@ export function ModelBrowser({
             <div className="locaryn-field-head" style={{ marginBottom: "14px" }}>
               <div>
                 <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-                  🔮 AirLLM — Gros modèles sur petit GPU
+                  <Icon name="star" size={15} /> AirLLM — Gros modèles sur petit GPU
                 </h3>
                 <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
                   Moteur d'inférence open-source : les gros modèles tournent sur un GPU 4 Go de VRAM
@@ -1925,7 +1937,7 @@ export function ModelBrowser({
                 className="locaryn-icon-btn"
                 onClick={() => setAirllmModalOpen(false)}
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
             </div>
             <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.6, margin: "0 0 12px" }}>

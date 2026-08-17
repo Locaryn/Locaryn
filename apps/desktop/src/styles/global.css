@@ -7075,3 +7075,24 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   line-height: 1.5;
   resize: vertical;
 }
+
+/* Un état se dit par une couleur, pas par une icône : un rond vert se lit
+   d'un coup d'œil là où un pictogramme demande à être reconnu. Les trois
+   couleurs sont celles des jetons, donc cohérentes avec le reste. */
+.locaryn-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: -0.05em;
+  background: var(--text-faint);
+}
+.locaryn-dot-ok {
+  background: var(--accent);
+}
+.locaryn-dot-warn {
+  background: var(--warn, #d29922);
+}
+.locaryn-dot-bad {
+  background: var(--danger);
+}

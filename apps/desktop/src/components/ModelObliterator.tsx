@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 import { MODEL_CATALOG, type ModelFamily } from "../lib/modelCatalog";
 
@@ -107,7 +108,7 @@ export function ModelObliterator({
         >
           <div>
             <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-              🔓 Studio d'Oblitération de Modèle (RepE Refusal Ablation)
+              <Icon name="lock" size={15} /> Studio d'Oblitération de Modèle (RepE Refusal Ablation)
             </h3>
             <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
               Neutralisez les filtres de refus de n'importe quel modèle local via représentation
@@ -115,7 +116,7 @@ export function ModelObliterator({
             </span>
           </div>
           <button type="button" className="locaryn-icon-btn" onClick={onClose}>
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -131,7 +132,9 @@ export function ModelObliterator({
             lineHeight: 1.5,
           }}
         >
-          <strong style={{ color: "var(--danger)" }}>⚠️ AVIS DE RESPONSABILITÉ & SÉCURITÉ :</strong>
+          <strong style={{ color: "var(--danger)" }}>
+            <Icon name="warning" size={15} /> AVIS DE RESPONSABILITÉ & SÉCURITÉ :
+          </strong>
           <br />
           Le script d'oblitération modifie directement les tenseurs d'activation du modèle pour
           supprimer le blocage des réponses. Cet outil est destiné **exclusivement à la recherche en

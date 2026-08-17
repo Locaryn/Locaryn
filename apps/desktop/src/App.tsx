@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BatchStudio } from "./components/BatchStudio";
@@ -1016,7 +1017,7 @@ export function App() {
                 onClick={handleCancelDownload}
                 title="Annuler le téléchargement en cours"
               >
-                ⛔ Annuler
+                <Icon name="close" size={15} /> Annuler
               </button>
             </>
           )}

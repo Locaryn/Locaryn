@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import type React from "react";
 import { useState } from "react";
 import { VOICE_SETTINGS_DEFAULTS, type VoicePreset } from "../../lib/core";
@@ -227,7 +228,7 @@ export function VoiceCloneTab({
             onClick={onPickVoice}
             disabled={jobRunning || isRecording}
           >
-            📁 Importer un fichier
+            <Icon name="project" size={15} /> Importer un fichier
           </button>
           {!isRecording ? (
             <button
@@ -247,7 +248,7 @@ export function VoiceCloneTab({
 
         {voiceFile && (
           <div style={fileInfoStyle}>
-            <span style={{ fontSize: "16px" }}>✅</span>
+            <Icon name="check" size={15} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{

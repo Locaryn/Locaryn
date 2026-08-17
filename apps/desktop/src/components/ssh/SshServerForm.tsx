@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 import {
   type SshAuthMethod,
@@ -162,7 +163,7 @@ export function SshServerForm({ onClose, onSaved }: Props) {
             onClick={onClose}
             aria-label="Close"
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -451,7 +452,9 @@ export function SshServerForm({ onClose, onSaved }: Props) {
                   </div>
                   <code className="locaryn-hostkey-fp">{probe.host_key.sha256}</code>
                   {hostKeyConfirmed ? (
-                    <span className="locaryn-hostkey-ok">✓ confirmed</span>
+                    <span className="locaryn-hostkey-ok">
+                      <Icon name="check" size={15} /> confirmed
+                    </span>
                   ) : (
                     <button type="button" className="locaryn-btn-ghost" onClick={confirmKey}>
                       Confirm fingerprint

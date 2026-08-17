@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type InferenceConfig, type InferenceProfile, type KvCacheType, core } from "../lib/core";
 
@@ -167,16 +168,22 @@ export function PerformancePanel() {
       {/* ── Header ── */}
       <div className="perf-header">
         <div>
-          <div className="perf-title">⚡ Moteur d'Inférence</div>
+          <div className="perf-title">
+            <Icon name="speed" size={15} /> Moteur d'Inférence
+          </div>
           <div className="perf-subtitle">
             Configure comment le modèle est exécuté sur ta machine
           </div>
         </div>
         <div className="perf-save-badge">
           {saving ? (
-            <span className="perf-saving">💾 Sauvegarde…</span>
+            <span className="perf-saving">
+              <Icon name="models" size={15} /> Sauvegarde…
+            </span>
           ) : saved ? (
-            <span className="perf-saved">✓ Sauvegardé</span>
+            <span className="perf-saved">
+              <Icon name="check" size={15} /> Sauvegardé
+            </span>
           ) : null}
         </div>
       </div>
@@ -185,15 +192,15 @@ export function PerformancePanel() {
       {hw && (
         <div className="perf-hw-bar">
           <div className="perf-hw-chip">
-            <span className="perf-hw-icon">🖥️</span>
+            <Icon name="server" size={15} />
             <span>{hw.vram.toFixed(1)} Go VRAM</span>
           </div>
           <div className="perf-hw-chip">
-            <span className="perf-hw-icon">💾</span>
+            <Icon name="models" size={15} />
             <span>{hw.ram.toFixed(0)} Go RAM</span>
           </div>
           <div className="perf-hw-chip">
-            <span className="perf-hw-icon">🧠</span>
+            <Icon name="memory" size={15} />
             <span>{hw.cores} cœurs</span>
           </div>
           <div className="perf-hw-chip perf-hw-active">
@@ -272,7 +279,9 @@ export function PerformancePanel() {
           {/* KV Cache Type */}
           <div className="perf-row">
             <div className="perf-row-left">
-              <div className="perf-row-label">🗜️ Compression KV Cache</div>
+              <div className="perf-row-label">
+                <Icon name="archive" size={15} /> Compression KV Cache
+              </div>
               <div className="perf-row-hint">
                 Compresse la mémoire de conversation. Q4 = compression réelle max (÷4 VRAM) sous
                 llama.cpp
@@ -380,7 +389,9 @@ export function PerformancePanel() {
                 {cfg.flash_attention ? "ON" : "OFF"}
               </button>
               <div>
-                <div className="perf-row-label">⚡ Flash Attention</div>
+                <div className="perf-row-label">
+                  <Icon name="speed" size={15} /> Flash Attention
+                </div>
                 <div className="perf-row-hint">-30% VRAM, +vitesse attention</div>
               </div>
             </div>
@@ -402,7 +413,9 @@ export function PerformancePanel() {
           {/* CPU Threads */}
           <div className="perf-row">
             <div className="perf-row-left">
-              <div className="perf-row-label">🧠 Threads CPU</div>
+              <div className="perf-row-label">
+                <Icon name="memory" size={15} /> Threads CPU
+              </div>
               <div className="perf-row-hint">
                 {cfg.cpu_threads === 0
                   ? `Auto — ${hw?.cores ?? "?"} cœurs détectés`
@@ -436,7 +449,9 @@ export function PerformancePanel() {
           {/* Batch Size */}
           <div className="perf-row">
             <div className="perf-row-left">
-              <div className="perf-row-label">📦 Taille de Batch</div>
+              <div className="perf-row-label">
+                <Icon name="models" size={15} /> Taille de Batch
+              </div>
               <div className="perf-row-hint">
                 Tokens traités en parallèle. Plus grand = plus rapide mais +VRAM
               </div>
@@ -480,7 +495,9 @@ export function PerformancePanel() {
           {/* Speculative Decoding */}
           <div className="perf-row perf-row-col">
             <div className="perf-row-left">
-              <div className="perf-row-label">🔮 Décodage Spéculatif</div>
+              <div className="perf-row-label">
+                <Icon name="star" size={15} /> Décodage Spéculatif
+              </div>
               <div className="perf-row-hint">
                 Un petit modèle "draft" génère des tokens, le grand modèle les valide. ×2 vitesse de
                 génération.
@@ -498,7 +515,9 @@ export function PerformancePanel() {
           {/* MoE expert offload — run huge Mixture-of-Experts models on a modest GPU */}
           <div className="perf-row perf-row-col">
             <div className="perf-row-left">
-              <div className="perf-row-label">🧩 Offload experts MoE → CPU</div>
+              <div className="perf-row-label">
+                <Icon name="extensions" size={15} /> Offload experts MoE → CPU
+              </div>
               <div className="perf-row-hint">
                 Garde les experts d'un modèle MoE (GLM, Qwen3-MoE, DeepSeek) en RAM et l'attention
                 sur le GPU. Fait tourner d'énormes modèles sur une petite carte, bien plus vite que
@@ -539,7 +558,9 @@ export function PerformancePanel() {
           {/* Distributed inference over RPC — spread layers across machines */}
           <div className="perf-row perf-row-col">
             <div className="perf-row-left">
-              <div className="perf-row-label">🌐 Inférence distribuée (RPC)</div>
+              <div className="perf-row-label">
+                <Icon name="translate" size={15} /> Inférence distribuée (RPC)
+              </div>
               <div className="perf-row-hint">
                 Répartit les couches du modèle sur plusieurs machines exécutant{" "}
                 <code>ggml-rpc-server</code>. Laisse vide pour rester en local.
@@ -560,7 +581,7 @@ export function PerformancePanel() {
           {/* KV Q4 note */}
           {cfg.kv_cache_type === "q4_0" && (
             <div className="perf-turboquant-banner">
-              <span className="perf-tq-icon">🗜️</span>
+              <Icon name="archive" size={15} />
               <div>
                 <strong>Cache KV 4-bit</strong> — compression maximale réelle du cache sous
                 llama.cpp (<code>-ctk q4_0 -ctv q4_0</code>, ÷4 VRAM), activée avec Flash Attention.
@@ -618,17 +639,15 @@ export function PerformancePanel() {
             <div className="perf-summary-sep" />
             <div className="perf-summary-item">
               <span className="perf-summary-label">Spéculatif</span>
-              <span className="perf-summary-val" style={{ color: "#d4a03a" }}>
-                ✓
-              </span>
+              <Icon name="check" size={15} />
             </div>
           </>
         )}
       </div>
 
       <p className="perf-restart-hint">
-        ⚠️ Les modifications s'appliquent au prochain redémarrage du moteur (nouvelle session ou
-        reload du modèle).
+        <Icon name="warning" size={15} /> Les modifications s'appliquent au prochain redémarrage du
+        moteur (nouvelle session ou reload du modèle).
       </p>
     </div>
   );

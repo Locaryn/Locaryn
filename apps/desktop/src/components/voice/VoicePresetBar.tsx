@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type EngineSupport, type VoicePreset, type VoiceSettings, core } from "../../lib/core";
 
@@ -200,7 +201,7 @@ export function VoicePresetBar({
                 aria-label={`Supprimer ${p.name}`}
                 title="Supprimer"
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
             </div>
           ))}

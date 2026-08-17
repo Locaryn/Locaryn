@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 import type { Project, TrustLevel } from "../lib/core";
 import { ModalShell } from "./ModalShell";
@@ -69,13 +70,15 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
         }}
       >
         <div>
-          <h3 style={{ margin: 0 }}>⚙️ Paramètres du Projet : {project.name}</h3>
+          <h3 style={{ margin: 0 }}>
+            <Icon name="settings" size={15} /> Paramètres du Projet : {project.name}
+          </h3>
           <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
             {project.path}
           </span>
         </div>
         <button type="button" className="locaryn-icon-btn" onClick={onClose}>
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </div>
 
@@ -91,13 +94,16 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
           onChange={(e) => setTrustLevel(e.target.value as TrustLevel)}
         >
           <option value="untrusted">
-            🛡️ Untrusted (Recommandé : Demander confirmation pour chaque écriture)
+            <Icon name="shield" size={15} /> Untrusted (Recommandé : Demander confirmation pour
+            chaque écriture)
           </option>
           <option value="trusted">
-            ⚡ Trusted (Auto-approbation des lectures et modifications de code)
+            <Icon name="speed" size={15} /> Trusted (Auto-approbation des lectures et modifications
+            de code)
           </option>
           <option value="sandbox">
-            🔒 Sandbox (Lecture seule stricte - aucun terminal ni modification)
+            <Icon name="lock" size={15} /> Sandbox (Lecture seule stricte - aucun terminal ni
+            modification)
           </option>
         </select>
       </div>
@@ -105,7 +111,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
       {/* 2. Protected & Excluded Files */}
       <div className="locaryn-field" style={{ marginBottom: "20px" }}>
         <label htmlFor="projset-protected" className="locaryn-field-label">
-          🛡️ Fichiers Protégés & Interdits à l'IA (Patterns Glob)
+          <Icon name="shield" size={15} /> Fichiers Protégés & Interdits à l'IA (Patterns Glob)
         </label>
         <textarea
           id="projset-protected"
@@ -180,7 +186,9 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
               onChange={() => toggleEnable("ssh_server_1")}
             />
             <div>
-              <span style={{ fontWeight: 700 }}>🖧 Serveur SSH Distant</span>
+              <span style={{ fontWeight: 700 }}>
+                <Icon name="server" size={15} /> Serveur SSH Distant
+              </span>
               <span
                 style={{
                   fontSize: "var(--text-xs)",
@@ -208,7 +216,9 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
               onChange={() => toggleEnable("brave_web_search")}
             />
             <div>
-              <span style={{ fontWeight: 700 }}>🔍 Recherche Web Brave & Scraper</span>
+              <span style={{ fontWeight: 700 }}>
+                <Icon name="search" size={15} /> Recherche Web Brave & Scraper
+              </span>
               <span
                 style={{
                   fontSize: "var(--text-xs)",
@@ -265,7 +275,9 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
               onChange={() => toggleEnable("lsp_plugin")}
             />
             <div>
-              <span style={{ fontWeight: 700 }}>⚡ Language Server Protocol (LSP)</span>
+              <span style={{ fontWeight: 700 }}>
+                <Icon name="speed" size={15} /> Language Server Protocol (LSP)
+              </span>
               <span
                 style={{
                   fontSize: "var(--text-xs)",

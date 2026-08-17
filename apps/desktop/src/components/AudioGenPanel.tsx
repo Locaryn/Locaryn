@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type AudioJobResult, startAudioGeneration, toAudioUrl } from "../lib/audioJobs";
 import {
@@ -613,7 +614,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
         </div>
         {!inline && (
           <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">
-            ✕
+            <Icon name="close" size={16} />
           </button>
         )}
       </div>
@@ -903,7 +904,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
           {/* Error display */}
           {error && (
             <div className="img-gen-error" style={{ marginBottom: 0 }}>
-              <span>⚠️</span>
+              <Icon name="warning" size={15} />
               <span>{error}</span>
             </div>
           )}
@@ -950,7 +951,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
                 marginBottom: 12,
               }}
             >
-              🎵 Generated Audio
+              <Icon name="music" size={15} /> Generated Audio
             </div>
             {generatedResult ? (
               // biome-ignore lint/a11y/useMediaCaption: l'audio vient d'être synthétisé localement, il n'existe aucune piste de sous-titres à lui associer
@@ -972,7 +973,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
                   fontSize: 32,
                 }}
               >
-                🎵
+                <Icon name="music" size={16} />
               </div>
             )}
           </div>

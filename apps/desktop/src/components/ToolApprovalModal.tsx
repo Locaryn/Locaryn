@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import type { RiskLevel, RiskScope, ToolApprovalDecision, ToolApprovalRequest } from "../lib/core";
 
@@ -201,7 +202,7 @@ export function ToolApprovalModal({
             title={isCritical ? "Utilisez Refuser pour fermer cette fenêtre" : "Annuler"}
             onClick={onCancel}
           >
-            ✕
+            <Icon name="close" size={16} />
           </button>
         </header>
 

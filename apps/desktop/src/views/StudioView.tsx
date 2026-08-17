@@ -249,7 +249,7 @@ export function StudioView({
                     color: "var(--text-faint)",
                   }}
                 >
-                  🧊
+                  <Icon name="cube" size={16} />
                 </div>
               )}
               {/* Label + download */}

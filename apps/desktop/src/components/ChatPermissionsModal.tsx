@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { type SshAiAccess, type SshServer, type TrustLevel, core } from "../lib/core";
 import { ModalShell } from "./ModalShell";
@@ -48,9 +49,11 @@ export function ChatPermissionsModal({
       }}
     >
       <div className="locaryn-field-head" style={{ marginBottom: "16px" }}>
-        <h3 style={{ margin: 0 }}>🛡️ Autorisations & Gouvernance du Chat</h3>
+        <h3 style={{ margin: 0 }}>
+          <Icon name="shield" size={15} /> Autorisations & Gouvernance du Chat
+        </h3>
         <button type="button" className="locaryn-icon-btn" onClick={onClose}>
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </div>
 
@@ -66,12 +69,14 @@ export function ChatPermissionsModal({
           onChange={(e) => onTrustLevelChange?.(e.target.value as TrustLevel)}
         >
           <option value="untrusted">
-            🛡️ Untrusted (Demander confirmation pour chaque écriture)
+            <Icon name="shield" size={15} /> Untrusted (Demander confirmation pour chaque écriture)
           </option>
           <option value="trusted">
-            ⚡ Trusted (Auto-approbation des lectures et modifications)
+            <Icon name="speed" size={15} /> Trusted (Auto-approbation des lectures et modifications)
           </option>
-          <option value="sandbox">🔒 Sandbox (Lecture seule strict - aucun terminal)</option>
+          <option value="sandbox">
+            <Icon name="lock" size={15} /> Sandbox (Lecture seule strict - aucun terminal)
+          </option>
         </select>
         <p className="locaryn-field-hint">
           Définit l'autonomie accordée à l'agent IA pour exécuter des commandes et modifier votre

@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { core } from "../lib/core";
 import { toMediaUrl } from "../lib/media";
@@ -213,7 +214,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
         </div>
         {!inline && (
           <button type="button" className="locaryn-icon-btn" onClick={onClose} aria-label="Fermer">
-            ✕
+            <Icon name="close" size={16} />
           </button>
         )}
       </div>
@@ -440,7 +441,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
                 aria-label="Supprimer"
                 style={{ fontSize: 14 }}
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
               {/* melodyFile is a disk path: a webview cannot load it directly. */}
               {/* biome-ignore lint/a11y/useMediaCaption: fichier audio choisi par l'utilisateur sur son disque, aucune piste de sous-titres n'existe */}
@@ -463,7 +464,7 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
       {/* ── Errors ── */}
       {error && (
         <div className="img-gen-error" style={{ marginBottom: 16 }}>
-          <span>⚠️</span>
+          <Icon name="warning" size={15} />
           <span>{error}</span>
         </div>
       )}
