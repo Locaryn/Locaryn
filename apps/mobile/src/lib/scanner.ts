@@ -16,8 +16,28 @@ export function isScannerAvailable(): boolean {
   return true;
 }
 
-/** Returns the scanned text, or null if the user backed out. */
-export async function scan(): Promise<string | null> {
+/**
+ * Refermer la caméra depuis l'extérieur — le bouton « Annuler » de l'écran.
+ *
+ * Le greffon n'expose pas d'autre sortie que l'annulation : `scan()` rendra
+ * `null`, et l'appelant traitera cela comme un renoncement.
+ */
+export async function annulerScan(): Promise<void> {
+  if (coreMode !== "tauri") return;
+  const mod = await import("@tauri-apps/plugin-barcode-scanner");
+  await mod.cancel().catch(() => {});
+}
+
+/**
+ * Lire un QR code. Rend son contenu, ou `null` si la personne a renoncé.
+ *
+ * `pendant` est appelé une fois la caméra ouverte et une fois refermée : c'est
+ * ce qui permet à l'écran d'afficher le cadre de visée. Sans lui, la page
+ * devenait transparente pour laisser voir la caméra et plus rien n'était
+ * dessiné — un écran vide, sans repère et sans moyen d'en sortir autrement
+ * que par le bouton retour.
+ */
+export async function scan(pendant?: (ouvert: boolean) => void): Promise<string | null> {
   if (coreMode !== "tauri") {
     // Stands in for a code, so the screens after it can be developed in a
     // browser. The verification it feeds is in Rust and is tested there.
@@ -40,9 +60,12 @@ export async function scan(): Promise<string | null> {
     );
   }
 
-  // The camera preview is drawn by the system *behind* the webview, so the
-  // page has to become transparent or there is nothing to aim with.
+  // L'aperçu de la caméra est dessiné par le système *derrière* la vue web :
+  // la page doit devenir transparente, sinon on ne voit rien. Le fond de la
+  // vue web elle-même est rendu transparent côté Android — le CSS seul n'y
+  // suffit pas, la vue peint son propre fond opaque par-dessus la caméra.
   document.body.classList.add("lo-scanning");
+  pendant?.(true);
   try {
     const result = await mod.scan({ windowed: true, formats: [mod.Format.QRCode] });
     return result?.content ?? null;
@@ -52,6 +75,7 @@ export async function scan(): Promise<string | null> {
     return null;
   } finally {
     document.body.classList.remove("lo-scanning");
+    pendant?.(false);
     await mod.cancel().catch(() => {});
   }
 }

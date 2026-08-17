@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { signalerErreur } from "./reachability";
 
 export interface MobileStatus {
   server_name: string | null;
@@ -169,8 +170,18 @@ export interface MediaResult {
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+/**
+ * Un seul endroit par lequel passe chaque commande, donc un seul endroit où
+ * reconnaître un serveur devenu injoignable — plutôt que de le refaire dans
+ * chaque écran qui appelle le serveur.
+ */
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  return tauriInvoke<T>(cmd, args);
+  try {
+    return await tauriInvoke<T>(cmd, args);
+  } catch (e) {
+    signalerErreur(String(e));
+    throw e;
+  }
 }
 
 /**
@@ -194,6 +205,10 @@ export const core = {
     invoke<MobileStatus>("register_server", { provisioningJson }),
   /** Enregistre un serveur depuis son adresse, sans code à scanner. */
   registerAddress: (address: string) => invoke<MobileStatus>("register_address", { address }),
+  /** Reprendre le serveur actif à une nouvelle adresse : même autorité, même
+   *  session, même historique — seule l'adresse change. */
+  reconnectActiveServer: (address: string) =>
+    invoke<MobileStatus>("reconnect_active_server", { address }),
   signIn: (username: string, password: string) =>
     invoke<MobileStatus>("sign_in", { username, password }),
   signOut: () => invoke<MobileStatus>("sign_out"),
@@ -284,6 +299,12 @@ export const demoCore: typeof core = {
     server_name: "Atelier Vasseur",
     travelling: false,
     signed_in: false,
+    servers: 1,
+  }),
+  reconnectActiveServer: async (_address: string): Promise<MobileStatus> => ({
+    server_name: "démo",
+    travelling: false,
+    signed_in: true,
     servers: 1,
   }),
   registerAddress: async (address: string) => ({

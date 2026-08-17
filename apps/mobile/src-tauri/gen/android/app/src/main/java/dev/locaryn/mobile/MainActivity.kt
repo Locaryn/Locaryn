@@ -3,12 +3,27 @@ package dev.locaryn.mobile
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.webkit.WebView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
+  /**
+   * La vue web ne peint pas son propre fond.
+   *
+   * Le lecteur de QR code dessine l'aperçu de la caméra *derrière* la vue web.
+   * Rendre la page transparente en CSS ne suffit pas : la vue elle-même peint
+   * un fond opaque par-dessus la caméra, et l'écran de lecture restait noir.
+   *
+   * Le reste du temps cela ne change rien — la page a son propre fond, opaque,
+   * et c'est lui qu'on voit.
+   */
+  override fun onWebViewCreate(webView: WebView) {
+    webView.setBackgroundColor(Color.TRANSPARENT)
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     // L'app est sombre partout. Forcer des barres sombres (icônes claires) pour
     // qu'elles ne deviennent jamais invisibles sur un appareil en thème clair.

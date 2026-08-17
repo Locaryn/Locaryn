@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Locaryn</title>
+    <style>
+      /*
+        Peint avant tout le reste, sans attendre le CSS de l'application ni
+        React : sans ça, la fenêtre s'ouvrait en blanc le temps que la feuille
+        de style arrive, puis basculait d'un coup vers le fond sombre — un
+        flash visible à chaque lancement. La couleur reprend --bg de
+        packages-ui/tokens/tokens.css ; les deux doivent rester d'accord.
+      */
+      html,
+      body {
+        background: #17191a;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

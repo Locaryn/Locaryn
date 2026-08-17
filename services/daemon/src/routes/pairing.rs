@@ -85,12 +85,33 @@ pub async fn qr(State(s): State<Arc<DaemonState>>, Query(q): Query<QrQuery>) -> 
         }
     };
 
-    let provisioning = serde_json::json!({
-        "server_url": url,
-        "organisation": nom_du_serveur(),
-        "authority_pem": ca.cert_pem,
-    });
-    let charge = provisioning.to_string();
+    // Le mode voyage avec le code : sans lui, le téléphone ne sait pas s'il
+    // reçoit une adresse de réseau local, un port ouvert, ou un tunnel dont
+    // l'adresse expirera. Les trois se comportent différemment, et la
+    // différence se voit le jour où ça ne marche plus.
+    //
+    // Construit le vrai type plutôt qu'un objet écrit à la main : celui-ci
+    // porte `#[serde(rename_all = "camelCase")]`, et un `json!({"server_url":
+    // ...})` composé indépendamment produisait des clés que le téléphone ne
+    // reconnaissait pas — chaque code scanné échouait au décodage, en silence
+    // jusqu'à ce qu'une personne essaie vraiment de s'appairer.
+    let provisioning = locaryn_config::provision::Provisioning {
+        server_url: url.clone(),
+        organisation: nom_du_serveur(),
+        certificate_fingerprint: None,
+        authority_pem: Some(ca.cert_pem),
+        access_mode: Some(mode.to_string()),
+        note: String::new(),
+    };
+    let charge = match serde_json::to_string(&provisioning) {
+        Ok(c) => c,
+        Err(e) => {
+            return erreur(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("configuration illisible ({e})"),
+            );
+        }
+    };
 
     let svg = match locaryn_travel::qr::svg(&charge) {
         Ok(svg) => svg,

@@ -129,6 +129,7 @@ fn register_server(provisioning_json: String) -> Result<MobileStatus, String> {
         current_url: p.server_url,
         authority_pem: authority,
         travelling: false,
+        access_mode: p.access_mode.clone().unwrap_or_default(),
     });
     servers::save(&store)?;
     Ok(status())
@@ -220,7 +221,63 @@ async fn register_address(address: String) -> Result<MobileStatus, String> {
         current_url: url,
         authority_pem: String::new(),
         travelling: false,
+        // Une adresse tapée à la main ne dit pas par quel chemin elle passe :
+        // on ne le devine pas, on laisse vide.
+        access_mode: String::new(),
     });
+    servers::save(&store)?;
+    Ok(status())
+}
+
+/// Reprendre le serveur déjà connu à une nouvelle adresse, après un échec.
+///
+/// Ce n'est pas un nouvel appairage : c'est le **même** serveur, qui a changé
+/// d'adresse — une box qui a redémarré, un tunnel qui a expiré. `register_address`
+/// créerait une seconde entrée, sans autorité et sans session, et la
+/// personne devrait tout resaisir. Ici, seule `current_url` (et `home_url` si le
+/// téléphone n'est pas en voyage) change ; l'autorité et la session restent —
+/// c'est ce qui garde le compte connecté et l'historique en place.
+#[tauri::command]
+async fn reconnect_active_server(address: String) -> Result<MobileStatus, String> {
+    let url = normalise_address(&address)?;
+
+    let mut store = servers::load();
+    let actif = store
+        .active
+        .clone()
+        .ok_or("Aucun serveur enregistré sur cet appareil.")?;
+    let Some(serveur) = store.get_mut(&actif) else {
+        return Err("Aucun serveur enregistré sur cet appareil.".into());
+    };
+
+    // Vérifié à la nouvelle adresse, avec l'autorité déjà connue de ce
+    // serveur — c'est elle qui distingue ce serveur d'un autre qui
+    // répondrait par hasard sur la même adresse.
+    let mut sonde = serveur.clone();
+    sonde.current_url = url.clone();
+    let client = client_for(&sonde)?;
+    let resp = client
+        .get(format!("{url}/v1/info"))
+        .send()
+        .await
+        .map_err(|_| format!("Aucune réponse de {url}. Vérifiez l'adresse et le réseau."))?;
+    if !resp.status().is_success() {
+        return Err(format!("{url} a répondu {}.", resp.status()));
+    }
+    let info: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|_| format!("{url} répond, mais ce n'est pas un serveur Locaryn."))?;
+    if info["name"].as_str() != Some("locaryn-daemon") {
+        return Err(format!(
+            "{url} répond, mais ce n'est pas un serveur Locaryn."
+        ));
+    }
+
+    serveur.current_url = url.clone();
+    if !serveur.travelling {
+        serveur.home_url = url;
+    }
     servers::save(&store)?;
     Ok(status())
 }
@@ -1355,6 +1412,7 @@ pub fn run() {
             status,
             register_server,
             register_address,
+            reconnect_active_server,
             sign_in,
             sign_out,
             send_message,

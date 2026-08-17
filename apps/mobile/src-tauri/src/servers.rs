@@ -29,6 +29,10 @@ pub struct KnownServer {
     pub authority_pem: String,
     /// True while a travel link is in force.
     pub travelling: bool,
+    /// Par quel chemin ce serveur a été appairé : `local`, `public` ou
+    /// `tunnel`. Vide pour un code produit avant que le champ existe.
+    #[serde(default)]
+    pub access_mode: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -109,6 +113,7 @@ mod tests {
             current_url: "https://192.168.1.10:7474".into(),
             authority_pem: "-----BEGIN CERTIFICATE-----\nAA\n-----END CERTIFICATE-----".into(),
             travelling: false,
+            access_mode: "local".into(),
         }
     }
 

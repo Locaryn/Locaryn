@@ -1134,3 +1134,65 @@ body.lo-scanning .lo-screen {
   border-color: var(--lo-accent);
   color: var(--lo-accent);
 }
+
+/* Le cadre de visée, et la sortie.
+
+   Sans eux l'écran de lecture était vide : la page devient transparente pour
+   laisser voir la caméra dessinée derrière, et il ne restait rien à l'écran —
+   ni repère pour viser, ni bouton pour renoncer. */
+.lo-scan-hint {
+  color: #fff;
+  text-align: center;
+  font-size: 15px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  margin: 0;
+  max-width: 30ch;
+}
+.lo-scan-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 16px;
+}
+/* Quatre angles plutôt qu'un rectangle plein : le cadre doit dire où viser
+   sans masquer ce qu'on vise. */
+.lo-scan-corner {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--lo-accent);
+}
+.lo-scan-tl {
+  top: -1px;
+  left: -1px;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 6px 0 0 0;
+}
+.lo-scan-tr {
+  top: -1px;
+  right: -1px;
+  border-left: 0;
+  border-bottom: 0;
+  border-radius: 0 6px 0 0;
+}
+.lo-scan-bl {
+  bottom: -1px;
+  left: -1px;
+  border-right: 0;
+  border-top: 0;
+  border-radius: 0 0 0 6px;
+}
+.lo-scan-br {
+  bottom: -1px;
+  right: -1px;
+  border-left: 0;
+  border-top: 0;
+  border-radius: 0 0 6px 0;
+}

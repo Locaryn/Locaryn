@@ -1025,6 +1025,10 @@ async fn provision_cmd(
         certificate_fingerprint: fingerprint,
         authority_pem,
         note: note.unwrap_or_default(),
+        // Un fichier de déploiement n'a pas de chemin d'accès unique choisi à
+        // la génération — contrairement au code scanné, qui sait par quel
+        // canal il vient d'être produit.
+        access_mode: None,
     };
     let dir = std::path::PathBuf::from(out.unwrap_or_else(|| ".".into()));
     let path = locaryn_config::provision::write(&dir, &p).map_err(|e| anyhow::anyhow!(e))?;

@@ -125,6 +125,7 @@ mod tests {
             current_url: "https://192.168.1.10:7474".into(),
             authority_pem: f.cert.clone(),
             travelling: false,
+            access_mode: "local".into(),
         });
         s
     }

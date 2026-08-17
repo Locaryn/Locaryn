@@ -1,24 +1,48 @@
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
+import { ConfirmServer, type ProvisioningApercu, lireApercu } from "./components/ConfirmServer";
 import { Extensions } from "./components/Extensions";
 import type { Destination } from "./components/MainMenu";
 import { MemoryScreen } from "./components/MemoryScreen";
 import { Models } from "./components/Models";
 import { Paired } from "./components/Paired";
+import { ReconnectPrompt } from "./components/ReconnectPrompt";
+import { ScanOverlay } from "./components/ScanOverlay";
 import { Settings } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
 import { type MobileStatus, type PairingResult, api, coreMode } from "./lib/core";
-import { isScannerAvailable, scan } from "./lib/scanner";
+import { useNavigation } from "./lib/navigation";
+import { surEchecReseau } from "./lib/reachability";
+import { annulerScan, isScannerAvailable, scan } from "./lib/scanner";
 
-type Screen = "loading" | "signin" | "chat" | "memory" | Destination;
+type Screen = "signin" | "chat" | "memory" | Destination;
 
 export function App() {
   const [status, setStatus] = useState<MobileStatus | null>(null);
-  const [screen, setScreen] = useState<Screen>("loading");
+  // La navigation passe par l'historique : c'est ce qui donne au bouton retour
+  // d'Android quelque chose à faire, au lieu de fermer l'application depuis
+  // n'importe quel écran.
+  const { ecran: screen, aller, revenir, remplacer } = useNavigation<Screen>("chat");
   const [paired, setPaired] = useState<PairingResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  /** Un code de configuration vient d'être lu, mais rien n'est encore
+   *  enregistré : la personne doit d'abord voir à quel serveur elle se
+   *  connecterait, et par quel chemin. */
+  const [pendingProvisioning, setPendingProvisioning] = useState<{
+    raw: string;
+    apercu: ProvisioningApercu;
+  } | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  /** Vrai pendant que la caméra est ouverte : c'est ce qui dessine le cadre. */
+  const [scanning, setScanning] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
+  /** Le serveur ne répond plus : proposer de reprendre à une nouvelle adresse
+   *  plutôt que de laisser chaque écran l'annoncer à sa façon. `null` tant
+   *  que la personne n'a pas rencontré l'échec, ou qu'elle l'a écarté. */
+  const [showReconnect, setShowReconnect] = useState(false);
+  const [reconnectBusy, setReconnectBusy] = useState(false);
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
   /** Ce que les extensions actives du serveur apportent. Lu une fois, relu
    *  quand une extension bouge : c'est ce qui décide des écrans disponibles. */
   const [capabilities, setCapabilities] = useState<string[]>([]);
@@ -48,19 +72,45 @@ export function App() {
       const s = await api.status();
       setStartupError(null);
       setStatus(s);
-      setScreen(s.signed_in ? "chat" : "signin");
+      remplacer(s.signed_in ? "chat" : "signin");
       return s;
     } catch (e) {
       setStartupError(e instanceof Error ? e.message : String(e));
       throw e;
     }
-  }, []);
+  }, [remplacer]);
 
   useEffect(() => {
     // `catch` vide : `refresh` a déjà retenu le message pour l'écran d'erreur.
     // Sans lui, l'échec ne serait qu'une promesse rejetée dans la console.
     refresh().catch(() => {});
   }, [refresh]);
+
+  // N'importe quel écran peut être le premier à découvrir que le serveur ne
+  // répond plus. Un seul endroit décide alors de proposer une reconnexion —
+  // pas une fois par écran, ni un message qui se contente de le dire sans
+  // offrir de le corriger. Rien n'est enregistré tant que la personne n'a
+  // pas choisi : le compte et l'historique restent tels quels en attendant.
+  useEffect(() => {
+    return surEchecReseau(() => {
+      setShowReconnect(true);
+      setReconnectError(null);
+    });
+  }, []);
+
+  async function reconnectViaAdresse(address: string) {
+    setReconnectBusy(true);
+    setReconnectError(null);
+    try {
+      setStatus(await api.reconnectActiveServer(address));
+      setShowReconnect(false);
+      await refresh();
+    } catch (e) {
+      setReconnectError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReconnectBusy(false);
+    }
+  }
 
   /**
    * A code was read — from the in-app scanner, or handed to us by Android
@@ -78,8 +128,16 @@ export function App() {
         // Celui du mode voyage est un lien signé, et sa vérification est
         // entièrement en Rust.
         if (uri.trimStart().startsWith("{")) {
-          setStatus(await api.registerServer(uri));
-          await refresh();
+          // Rien ne s'enregistre tout de suite : la caméra se refermait et le
+          // téléphone parlait déjà à un autre serveur, sans que personne ait
+          // vu à qui, ni par quel chemin. L'écran de confirmation s'interpose
+          // avant que quoi que ce soit ne change.
+          const apercu = lireApercu(uri);
+          if (!apercu) {
+            setScanError("Ce code ne contient pas une configuration lisible.");
+            return;
+          }
+          setPendingProvisioning({ raw: uri, apercu });
           return;
         }
         const result = await api.applyPairingLink(uri);
@@ -116,6 +174,39 @@ export function App() {
     };
   }, [applyLink]);
 
+  // Le scan n'est pas un écran de la navigation — c'est une caméra ouverte
+  // par-dessus l'écran courant — mais le bouton retour d'Android doit quand
+  // même savoir quoi en faire. Sans cette entrée d'historique, le retour
+  // matériel tombait tout droit sur le comportement natif : fermer
+  // l'application, caméra ouverte, en plein milieu d'un appairage.
+  useEffect(() => {
+    if (!scanning) return;
+    window.history.pushState({ scan: true }, "");
+    function auRetour(e: PopStateEvent) {
+      const etat = e.state as { scan?: boolean } | null;
+      if (etat?.scan) return;
+      void annulerScan();
+    }
+    window.addEventListener("popstate", auRetour);
+    return () => window.removeEventListener("popstate", auRetour);
+  }, [scanning]);
+
+  /** La personne a vu à quel serveur elle se connecterait, et a confirmé. */
+  async function confirmerProvisioning() {
+    if (!pendingProvisioning) return;
+    setConnecting(true);
+    try {
+      setStatus(await api.registerServer(pendingProvisioning.raw));
+      setPendingProvisioning(null);
+      await refresh();
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : String(e));
+      setPendingProvisioning(null);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
   async function openScanner() {
     setScanError(null);
     if (!isScannerAvailable()) {
@@ -125,7 +216,10 @@ export function App() {
     // Sans ce `catch`, un refus de l'appareil photo n'était qu'une promesse
     // rejetée : le bouton ne faisait visiblement rien.
     try {
-      const text = await scan();
+      const text = await scan(setScanning);
+      // L'entrée d'historique pour le retour n'a plus de raison d'être une
+      // fois la caméra refermée — par annulation ou par une lecture réussie.
+      if (window.history.state?.scan) window.history.back();
       if (text) await applyLink(text);
     } catch (e) {
       setScanError(e instanceof Error ? e.message : String(e));
@@ -134,6 +228,17 @@ export function App() {
 
   if (paired) {
     return <Paired result={paired} onDone={() => setPaired(null)} />;
+  }
+
+  if (pendingProvisioning) {
+    return (
+      <ConfirmServer
+        apercu={pendingProvisioning.apercu}
+        busy={connecting}
+        onConfirm={() => void confirmerProvisioning()}
+        onCancel={() => setPendingProvisioning(null)}
+      />
+    );
   }
 
   if (startupError) {
@@ -154,7 +259,7 @@ export function App() {
     );
   }
 
-  if (screen === "loading" || !status) {
+  if (!status) {
     // Blank rather than a spinner: this lasts a few milliseconds.
     return <div className="lo-screen" />;
   }
@@ -162,40 +267,40 @@ export function App() {
   return (
     <>
       {screen === "chat" ? (
-        <Chat status={status} capabilities={capabilities} onGo={setScreen} />
+        <Chat status={status} capabilities={capabilities} onGo={aller} />
       ) : screen === "studio" ? (
-        <Studio onBack={() => setScreen("chat")} />
+        <Studio onBack={revenir} />
       ) : screen === "extensions" ? (
         <Extensions
-          onBack={() => setScreen("chat")}
+          onBack={revenir}
           // Une extension retirée doit faire disparaître ce qu'elle apportait,
           // pas rester à l'écran jusqu'au prochain démarrage.
           onChanged={() => void refreshCapabilities()}
         />
       ) : screen === "models" ? (
-        <Models onBack={() => setScreen("chat")} />
+        <Models onBack={revenir} />
       ) : screen === "memory" ? (
-        <MemoryScreen onBack={() => setScreen("settings")} />
+        <MemoryScreen onBack={revenir} />
       ) : screen === "settings" ? (
         <Settings
           status={status}
-          onBack={() => setScreen(status?.signed_in ? "chat" : "signin")}
+          onBack={revenir}
           onSignedOut={(s) => {
             setStatus(s);
-            setScreen("signin");
+            remplacer("signin");
           }}
-          onMemory={() => setScreen("memory")}
+          onMemory={() => aller("memory")}
         />
       ) : (
         <SignIn
           status={status}
           onSignedIn={(s) => {
             setStatus(s);
-            setScreen("chat");
+            remplacer("chat");
           }}
           onRegistered={setStatus}
           onScan={openScanner}
-          onSettings={() => setScreen("settings")}
+          onSettings={() => aller("settings")}
         />
       )}
       {/*
@@ -203,6 +308,19 @@ export function App() {
         hauteur, donc un message placé après eux tombait sous le pli d'une page
         qui ne défile pas — un code refusé ne disait rien du tout.
       */}
+      {scanning && <ScanOverlay onCancel={() => void annulerScan()} />}
+      {showReconnect && !scanning && (
+        <ReconnectPrompt
+          busy={reconnectBusy}
+          error={reconnectError}
+          onScan={() => {
+            setShowReconnect(false);
+            void openScanner();
+          }}
+          onAddress={(a) => void reconnectViaAdresse(a)}
+          onDismiss={() => setShowReconnect(false)}
+        />
+      )}
       {scanError && (
         <div className="lo-toast">
           <p className="lo-error">{scanError}</p>

@@ -117,7 +117,7 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
           </p>
 
           <button type="button" className="lo-btn-ghost" onClick={onScan}>
-            Scanner un code
+            Scanner un QR code
           </button>
         </div>
       </div>
@@ -181,7 +181,7 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
         {error && <p className="lo-error">{error}</p>}
 
         <button type="button" className="lo-btn-ghost" onClick={onScan}>
-          Scanner un code
+          Scanner un QR code
         </button>
       </div>
     </div>

@@ -40,6 +40,18 @@ pub struct Provisioning {
     /// that a scanned pairing code really came from this deployment.
     #[serde(default)]
     pub authority_pem: Option<String>,
+    /// Par quel chemin ce code fait passer : `local`, `public` ou `tunnel`.
+    ///
+    /// Les trois n'ont pas les mêmes propriétés, et le téléphone doit le
+    /// savoir avant de s'en servir. Une adresse de réseau local ne vaut que
+    /// chez soi ; un port ouvert reste joignable mais expose la machine ; un
+    /// tunnel passe par un relais et son adresse **expire**, ce qui donne des
+    /// pannes incompréhensibles si on ne l'a pas dit à l'avance.
+    ///
+    /// Absent dans les codes produits avant que ce champ existe : dans ce cas
+    /// on ne suppose rien plutôt que de deviner mal.
+    #[serde(default)]
+    pub access_mode: Option<String>,
     /// Optional note displayed under the sign-in form.
     #[serde(default)]
     pub note: String,
@@ -338,6 +350,7 @@ mod tests {
             certificate_fingerprint: Some("AB:CD:EF".into()),
             note: "Identifiants fournis par le service informatique.".into(),
             authority_pem: None,
+            access_mode: Some("local".into()),
         };
         let path = write(&dir, &p).expect("écriture");
         let back: Provisioning =
