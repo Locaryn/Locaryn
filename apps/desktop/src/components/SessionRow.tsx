@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "../lib/core";
 
@@ -5,8 +6,8 @@ type Props = {
   session: Session;
   label: string;
   active: boolean;
-  /** Icône de tête : « 💬 » pour une conversation libre, « • » dans un projet. */
-  bullet: string;
+  /** Icône de tête : `chat` pour une conversation libre, rien dans un projet. */
+  bullet: "chat" | "";
   onSelect: () => void;
   onRename: (title: string) => void;
   onArchive: () => void;
@@ -104,7 +105,7 @@ export function SessionRow({
           onDoubleClick={() => setEditing(true)}
           title={label}
         >
-          {bullet} {label}
+          {bullet === "chat" ? <Icon name="chat" size={14} /> : null} {label}
           {session.ephemeral && <span className="locaryn-ephemeral-dot" title="Éphémère" />}
         </button>
       )}

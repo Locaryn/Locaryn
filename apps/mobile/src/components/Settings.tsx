@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { type MobileStatus, api } from "../lib/core";
-import { Icon } from "./Icon";
+import { Icon } from "@locaryn/ui-core";
 import { Screen } from "./Screen";
 import { UpdateButton } from "./UpdateButton";
 

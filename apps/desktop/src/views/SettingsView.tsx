@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { AboutSettings } from "../components/AboutSettings";
 import { CautionSettings } from "../components/CautionSettings";
@@ -44,65 +45,70 @@ type Props = {
   onOpenMarketplace?: () => void;
 };
 
-const SECTIONS: { id: Section; icon: string; label: string; desc: string }[] = [
+const SECTIONS: { id: Section; icon: IconName; label: string; desc: string }[] = [
   {
     id: "engine",
-    icon: "⚙",
+    icon: "settings",
     label: "Moteur IA",
     desc: "Runtime llama.cpp, capacités, adaptateurs LoRA",
   },
-  { id: "performance", icon: "⚡", label: "Performance", desc: "GPU, cache KV, contexte, offload" },
+  {
+    id: "performance",
+    icon: "speed",
+    label: "Performance",
+    desc: "GPU, cache KV, contexte, offload",
+  },
   {
     id: "image",
-    icon: "🎨",
+    icon: "studio",
     label: "Image",
     desc: "Qualité et résolution par défaut des générations",
   },
   {
     id: "huggingface",
-    icon: "🤗",
+    icon: "marketplace",
     label: "HuggingFace",
     desc: "Token pour les dépôts restreints (modèles gated)",
   },
   {
     id: "projects",
-    icon: "📁",
+    icon: "project",
     label: "Projets",
     desc: "Autorisations, base de connaissances, archivage",
   },
   {
     id: "extensions",
-    icon: "🧩",
+    icon: "extensions",
     label: "Extensions",
     desc: "Plugins Claude Code, Gemini CLI, OpenCode, MCP",
   },
   {
     id: "connectors",
-    icon: "🔌",
+    icon: "server",
     label: "Connecteurs",
     desc: "Serveurs SSH et MCP ajoutés à la main",
   },
   {
     id: "memory",
-    icon: "🧠",
+    icon: "memory",
     label: "Mémoire",
     desc: "Ce que Locaryn retient de vous, à lire et à corriger",
   },
-  { id: "appearance", icon: "🎨", label: "Apparence", desc: "Couleur d'accentuation, thème" },
-  { id: "language", icon: "🌍", label: "Langue", desc: "Langue de l'interface" },
+  { id: "appearance", icon: "studio", label: "Apparence", desc: "Couleur d'accentuation, thème" },
+  { id: "language", icon: "chat", label: "Langue", desc: "Langue de l'interface" },
   {
     id: "server",
-    icon: "🌐",
+    icon: "server",
     label: "Partage réseau",
     desc: "Rendre cette machine accessible aux autres postes",
   },
   {
     id: "storage",
-    icon: "💾",
+    icon: "models",
     label: "Stockage",
     desc: "Emplacement des modèles, espace disque, nettoyage",
   },
-  { id: "about", icon: "ℹ", label: "À propos", desc: "Version, licences, système" },
+  { id: "about", icon: "warning", label: "À propos", desc: "Version, licences, système" },
 ];
 
 /**
@@ -162,7 +168,9 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
               className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
               onClick={() => setSection(s.id)}
             >
-              <span className="locaryn-settings-full-icon">{s.icon}</span>
+              <span className="locaryn-settings-full-icon">
+                <Icon name={s.icon} />
+              </span>
               <span className="locaryn-settings-full-text">
                 <span className="locaryn-settings-full-label">{s.label}</span>
                 <span className="locaryn-settings-full-desc">{s.desc}</span>
@@ -173,7 +181,7 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
 
         <div className="locaryn-settings-full-pane">
           <h3 className="locaryn-settings-full-title">
-            {current.icon} {current.label}
+            <Icon name={current.icon} size={18} /> {current.label}
           </h3>
 
           {section === "engine" && <EngineSettings />}
@@ -209,7 +217,9 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
                     onClick={() => updateAccent(p.hex)}
                   >
                     {settings.accentHex === p.hex && (
-                      <span className="locaryn-swatch-check">✓</span>
+                      <span className="locaryn-swatch-check">
+                        <Icon name="check" size={14} />
+                      </span>
                     )}
                   </button>
                 ))}
@@ -265,7 +275,11 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
                   >
                     <span className="locaryn-lang-flag">{l.flag}</span>
                     <span>{l.label}</span>
-                    {lang === l.id && <span className="locaryn-lang-check">✓</span>}
+                    {lang === l.id && (
+                      <span className="locaryn-lang-check">
+                        <Icon name="check" size={14} />
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

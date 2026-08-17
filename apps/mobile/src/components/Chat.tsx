@@ -7,7 +7,7 @@ import {
   api,
 } from "../lib/core";
 import { Drawer } from "./Drawer";
-import { Icon } from "./Icon";
+import { Icon } from "@locaryn/ui-core";
 import { type Destination, MainMenu } from "./MainMenu";
 import { UpdateButton } from "./UpdateButton";
 

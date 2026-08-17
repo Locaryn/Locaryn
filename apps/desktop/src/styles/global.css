@@ -7002,3 +7002,43 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   background: rgba(var(--danger-rgb), 0.08);
   border-bottom: 1px solid rgba(var(--danger-rgb), 0.25);
 }
+
+/* ---------------------------------------------------------------------------
+   Icônes.
+
+   Le même jeu que sur le téléphone : tracées, d'une seule épaisseur, sans
+   couleur propre. Elles prennent celle du texte qu'elles accompagnent — c'est
+   ce qui les fait tenir dans une interface sobre là où un émoji, coloré et
+   arrondi, se poserait par-dessus.
+   --------------------------------------------------------------------------- */
+
+/* Un trait aligné sur une ligne de texte se centre optiquement, pas
+   typographiquement : `vertical-align: middle` sur une boîte de la hauteur du
+   cadratin fait le travail sans décaler la ligne. */
+.locaryn-tree-item svg,
+.locaryn-ctx-item svg,
+.locaryn-btn-ghost svg,
+.locaryn-settings-tab svg {
+  vertical-align: -0.18em;
+}
+
+.locaryn-nav-drawer-icon,
+.locaryn-settings-full-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+/* Une entrée choisie prend la couleur pleine : l'icône suit, puisqu'elle
+   hérite. */
+.locaryn-nav-drawer-item[aria-current="true"] .locaryn-nav-drawer-icon,
+.locaryn-settings-tab-on .locaryn-settings-full-icon {
+  color: var(--text);
+}
+
+.locaryn-swatch-check,
+.locaryn-lang-check {
+  display: inline-flex;
+  align-items: center;
+}

@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { SessionRow } from "../components/SessionRow";
 import { type Project, type Session, core } from "../lib/core";
@@ -164,7 +165,7 @@ export function LeftPanel({
               key={s.id}
               session={s}
               label={sessionLabel(s, i)}
-              bullet="💬"
+              bullet="chat"
               active={s.id === activeSession?.id}
               leaving={leaving === s.id}
               projects={projects.map((p) => ({ id: p.id, name: p.name }))}
@@ -214,7 +215,8 @@ export function LeftPanel({
                     if (s && s.project_id !== p.id) partirPuis(s, () => onSessionMoved?.(s, p.id));
                   }}
                 >
-                  <span className="locaryn-caret">{isActive ? "▾" : "▸"}</span> 📁 {p.name}
+                  <span className="locaryn-caret">{isActive ? "▾" : "▸"}</span>
+                  <Icon name="project" size={15} /> {p.name}
                 </button>
                 <div
                   className="locaryn-proj-menu-wrap"
@@ -249,7 +251,7 @@ export function LeftPanel({
                           onNewSession(p);
                         }}
                       >
-                        💬 Nouvelle conversation
+                        <Icon name="chat" size={15} /> Nouvelle conversation
                       </button>
                       <button
                         type="button"
@@ -259,7 +261,7 @@ export function LeftPanel({
                           core.openModelsFolder(p.path).catch(() => {});
                         }}
                       >
-                        📂 Ouvrir le dossier
+                        <Icon name="project" size={15} /> Ouvrir le dossier
                       </button>
                       <button
                         type="button"
@@ -269,7 +271,7 @@ export function LeftPanel({
                           navigator.clipboard?.writeText(p.path).catch(() => {});
                         }}
                       >
-                        📋 Copier le chemin
+                        <Icon name="check" size={15} /> Copier le chemin
                       </button>
                       {onOpenProjectSettings && (
                         <button
@@ -280,7 +282,7 @@ export function LeftPanel({
                             onOpenProjectSettings(p);
                           }}
                         >
-                          ⚙️ Paramètres du projet
+                          <Icon name="settings" size={15} /> Paramètres du projet
                         </button>
                       )}
                       <div className="locaryn-proj-menu-sep" />
@@ -290,7 +292,7 @@ export function LeftPanel({
                         className="danger"
                         onClick={() => archive(p)}
                       >
-                        🗄️ Archiver le projet
+                        <Icon name="archive" size={15} /> Archiver le projet
                       </button>
                     </div>
                   )}
@@ -304,7 +306,7 @@ export function LeftPanel({
                       key={s.id}
                       session={s}
                       label={sessionLabel(s, i)}
-                      bullet="•"
+                      bullet=""
                       active={s.id === activeSession?.id}
                       leaving={leaving === s.id}
                       projects={projects
@@ -358,7 +360,7 @@ export function LeftPanel({
           if (s) partirPuis(s, () => onSessionArchived?.(s));
         }}
       >
-        🗄 Déposer ici pour archiver
+        <Icon name="archive" size={16} /> Déposer ici pour archiver
       </div>
 
       {onNewEphemeralChat && (

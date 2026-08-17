@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Icon } from "./Icon";
+import { Icon } from "@locaryn/ui-core";
 
 type Props = {
   title: string;

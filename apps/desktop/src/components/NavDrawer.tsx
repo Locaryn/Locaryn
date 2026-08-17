@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import type { ConnectionMode, ProviderSummary } from "../lib/core";
 import { ModalShell } from "./ModalShell";
 
@@ -15,7 +16,7 @@ type Props = {
 type NavItem = {
   id: string;
   label: string;
-  icon: string;
+  icon: IconName;
   desc: string;
   /** If set, item is only rendered when at least one required capability is present. */
   requiredCapabilities?: string[];
@@ -25,13 +26,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
   {
     id: "chat",
     label: "Chat et agent",
-    icon: "💬",
+    icon: "chat",
     desc: "Environnement de chat principal, exécution de code et prompts",
   },
   {
     id: "studio",
     label: "Studio de génération",
-    icon: "🎨",
+    icon: "studio",
     desc: "Image, vidéo, audio, musique, 3D et édition multimodale",
     requiredCapabilities: [
       "image-gen",
@@ -49,39 +50,39 @@ const BASE_NAV_ITEMS: NavItem[] = [
   {
     id: "installed",
     label: "Mes modèles installés",
-    icon: "💾",
+    icon: "models",
     desc: "Gérer vos modèles locaux, ouvrir le dossier et sélection rapide",
   },
   {
     id: "models",
     label: "Catalogue de modèles",
-    icon: "🛒",
+    icon: "marketplace",
     desc: "Découverte et installation de modèles locaux & HuggingFace",
   },
   {
     id: "batch",
     label: "Batch API (-50%)",
-    icon: "⚡",
+    icon: "speed",
     desc: "Traitement par lots asynchrone à moitié prix",
     requiredCapabilities: ["text-analysis", "batch-api"],
   },
   {
     id: "training",
     label: "Entraînement et oblitération",
-    icon: "🔓",
+    icon: "shield",
     desc: "Studio d'entraînement LoRA et oblitération de modèles RepE",
     requiredCapabilities: ["model-training"],
   },
   {
     id: "connectors",
     label: "Extensions et MCP",
-    icon: "🔌",
+    icon: "extensions",
     desc: "Intégrations serveurs distants, plugins et extensions",
   },
   {
     id: "settings",
     label: "Paramètres",
-    icon: "⚙️",
+    icon: "settings",
     desc: "Configuration des moteurs d'inférence, thèmes et gouvernance",
   },
 ];
@@ -133,7 +134,7 @@ export function NavDrawer({
           title="Fermer le menu"
           style={{ fontSize: "16px" }}
         >
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </div>
 
@@ -158,7 +159,9 @@ export function NavDrawer({
                   onClose();
                 }}
               >
-                <span className="locaryn-nav-drawer-icon">{item.icon}</span>
+                <span className="locaryn-nav-drawer-icon">
+                  <Icon name={item.icon} />
+                </span>
                 <div
                   style={{
                     display: "flex",

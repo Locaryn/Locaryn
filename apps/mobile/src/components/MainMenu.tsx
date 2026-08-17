@@ -1,4 +1,4 @@
-import { Icon } from "./Icon";
+import { Icon } from "@locaryn/ui-core";
 
 /** Les grands espaces de l'application, ceux qui méritent leur propre écran. */
 export type Destination = "studio" | "extensions" | "models" | "settings";
