@@ -14,6 +14,7 @@ pub mod error;
 pub mod figures;
 pub mod memory;
 pub mod metrics;
+pub mod rag;
 pub mod repos;
 pub mod users;
 

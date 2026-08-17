@@ -4,6 +4,7 @@
 //! interfaces so other crates can compile against them.
 
 pub mod approval;
+pub mod embeddings;
 pub mod reasoning;
 
 pub mod mcp_tools;

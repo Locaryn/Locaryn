@@ -213,7 +213,9 @@ export function RagPanel({ projectId, onClose }: Props) {
             <span>
               {status
                 ? status.chunk_count > 0
-                  ? `${status.chunk_count} extraits · ${status.sources.length} source(s) · dim ${status.dim}`
+                  ? `${status.chunk_count} extraits · ${status.sources.length} source(s) · dim ${status.dim}${
+                      status.embed_model ? ` · ${status.embed_model}` : ""
+                    }`
                   : "Aucun document indexé"
                 : "…"}
             </span>

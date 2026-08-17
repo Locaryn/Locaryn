@@ -7313,55 +7313,236 @@ pub struct RagHit {
     pub score: f32,
 }
 
-/// Build RAG context for a message: retrieve relevant chunks from the project's
-/// index and format them as a system note prepended to the user's message.
-/// Returns None if no index exists, so the caller skips the RAG step.
-async fn build_rag_context(_core: &Core, _project_id: &str, _query: &str) -> Option<String> {
-    // RAG index lookup will be implemented with an embeddings server.
-    // For now, return None so the message is sent without RAG context.
-    None
+/// Le modèle qui calcule les plongements.
+///
+/// Celui que la personne a désigné pour les micro-tâches quand il en existe un,
+/// sinon celui de conversation. Ce n'est pas indifférent : un modèle de
+/// conversation rend des vecteurs utilisables mais médiocres, parce qu'il a été
+/// entraîné à prédire la suite, pas à rapprocher ce qui se ressemble. L'écran
+/// affiche lequel a servi, pour que la différence ne se devine pas.
+async fn modele_de_plongement(core: &Core) -> Result<(String, String), String> {
+    let providers = core
+        .storage
+        .providers
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
+    let actif = providers
+        .into_iter()
+        .find(|p| {
+            p.is_active
+                && matches!(
+                    p.engine,
+                    locaryn_shared_types::ProviderEngine::LlamaCpp
+                        | locaryn_shared_types::ProviderEngine::OpenAiCompat
+                        | locaryn_shared_types::ProviderEngine::Ollama
+                )
+        })
+        .ok_or_else(|| {
+            "Aucun moteur d'inférence actif. Démarrez-en un : c'est lui qui calcule \
+             les plongements."
+                .to_string()
+        })?;
+
+    let micro = locaryn_config::load(None)
+        .ok()
+        .and_then(|c| c.assistance.micro_model)
+        .filter(|m| !m.trim().is_empty());
+    let modele = micro
+        .or(actif.model)
+        .ok_or_else(|| "Le moteur actif n'annonce aucun modèle.".to_string())?;
+    Ok((actif.endpoint, modele))
 }
 
+/// Traduire l'état du magasin vers ce que l'écran attend.
+///
+/// L'écran compte les extraits par document ; le magasin range les documents
+/// sans les compter. Un appel de plus par document, sur une liste courte.
+async fn etat_pour_l_ecran(core: &Core, project_id: uuid::Uuid) -> Result<RagStatus, String> {
+    let brut = core
+        .storage
+        .rag
+        .status(project_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut sources = Vec::new();
+    for nom in &brut.sources {
+        let combien = core
+            .storage
+            .rag
+            .count_for_source(project_id, nom)
+            .await
+            .unwrap_or(0);
+        sources.push(RagSource {
+            source: nom.clone(),
+            chunks: combien,
+        });
+    }
+    Ok(RagStatus {
+        chunk_count: brut.chunk_count,
+        dim: brut.dim,
+        embed_model: brut.embed_model,
+        sources,
+    })
+}
+
+/// Ce que le projet sait, quand la question touche à ce qu'il contient.
+///
+/// Rend `None` quand rien n'est indexé, quand le moteur ne calcule pas de
+/// plongements, ou quand rien ne ressemble d'assez près à la question. Dans
+/// les trois cas, le message part sans contexte : mieux vaut une réponse sans
+/// documents que trois extraits hors sujet qui égarent le modèle.
+async fn build_rag_context(core: &Core, project_id: &str, query: &str) -> Option<String> {
+    let pid = uuid::Uuid::parse_str(project_id).ok()?;
+    let etat = core.storage.rag.status(pid).await.ok()?;
+    if etat.chunk_count == 0 {
+        return None;
+    }
+    let (endpoint, modele) = modele_de_plongement(core).await.ok()?;
+    let client = reqwest::Client::new();
+    let vecteurs = locaryn_agent_runtime::embeddings::embed(
+        &endpoint,
+        &client,
+        &modele,
+        &[query.to_string()],
+        locaryn_agent_runtime::embeddings::Role::Question,
+    )
+    .await
+    .ok()?;
+    let question = vecteurs.into_iter().next()?;
+    let hits = core.storage.rag.search(pid, &question, 4).await.ok()?;
+
+    // Le tri regarde le détachement du premier, pas un seuil absolu : l'échelle
+    // des cosinus dépend du modèle, et quand aucun document ne répond, tous les
+    // scores se tassent. C'est ce tassement qu'on reconnaît.
+    let scores: Vec<f32> = hits.iter().map(|h| h.score).collect();
+    let gardes = locaryn_storage::rag::retenir(&scores, 3);
+    if gardes.is_empty() {
+        return None;
+    }
+    let retenus: Vec<_> = gardes
+        .into_iter()
+        .filter_map(|i| hits.get(i).cloned())
+        .collect();
+
+    let mut bloc = String::from(
+        "Extraits des documents du projet, à utiliser s'ils répondent à la question. \
+         Cite la source quand tu t'en sers. S'ils ne répondent pas, dis-le et \
+         réponds sans eux.\n\n",
+    );
+    for h in retenus {
+        bloc.push_str(&format!("[{}]\n{}\n\n", h.source, h.text));
+    }
+    Some(bloc)
+}
+
+/// Indexer un texte pour un projet.
+///
+/// Le texte est découpé, chaque morceau est vectorisé par le moteur, et le tout
+/// est rangé sous le nom du document. Réindexer le même nom le remplace : c'est
+/// ce qu'on veut quand un fichier a changé.
 #[tauri::command]
 async fn rag_index_text(
-    _core: State<'_, Core>,
+    core: State<'_, Core>,
     project_id: String,
     source: String,
     text: String,
 ) -> Result<RagStatus, String> {
-    let _ = (project_id, source, text);
-    Ok(RagStatus {
-        chunk_count: 0,
-        dim: 0,
-        embed_model: String::new(),
-        sources: Vec::new(),
-    })
+    let pid = uuid::Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let source = source.trim();
+    if source.is_empty() {
+        return Err("Ce document n'a pas de nom.".into());
+    }
+
+    let morceaux = locaryn_storage::rag::decouper(&text, 1200, 120);
+    if morceaux.is_empty() {
+        return Err("Ce document ne contient aucun texte lisible.".into());
+    }
+
+    let (endpoint, modele) = modele_de_plongement(&core).await?;
+    let client = reqwest::Client::new();
+    let vecteurs = locaryn_agent_runtime::embeddings::embed(
+        &endpoint,
+        &client,
+        &modele,
+        &morceaux,
+        locaryn_agent_runtime::embeddings::Role::Document,
+    )
+    .await?;
+
+    let a_ranger: Vec<locaryn_storage::rag::MorceauAIndexer> = morceaux
+        .into_iter()
+        .zip(vecteurs)
+        .map(|(text, embedding)| locaryn_storage::rag::MorceauAIndexer { text, embedding })
+        .collect();
+
+    core.storage
+        .rag
+        .index(pid, source, &modele, &a_ranger)
+        .await
+        .map_err(|e| e.to_string())?;
+    etat_pour_l_ecran(&core, pid).await
 }
 
+/// Ce que l'index du projet contient.
 #[tauri::command]
-async fn rag_status(_core: State<'_, Core>, _project_id: String) -> Result<RagStatus, String> {
-    Ok(RagStatus {
-        chunk_count: 0,
-        dim: 0,
-        embed_model: String::new(),
-        sources: Vec::new(),
-    })
+async fn rag_status(core: State<'_, Core>, project_id: String) -> Result<RagStatus, String> {
+    let pid = uuid::Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    etat_pour_l_ecran(&core, pid).await
 }
 
+/// Vider l'index du projet.
 #[tauri::command]
-async fn rag_clear(_core: State<'_, Core>, _project_id: String) -> Result<(), String> {
-    Ok(())
+async fn rag_clear(core: State<'_, Core>, project_id: String) -> Result<(), String> {
+    let pid = uuid::Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    core.storage
+        .rag
+        .clear(pid, None)
+        .await
+        .map_err(|e| e.to_string())
 }
 
+/// Chercher dans les documents du projet.
 #[tauri::command]
 async fn rag_search(
-    _core: State<'_, Core>,
-    _project_id: String,
+    core: State<'_, Core>,
+    project_id: String,
     query: String,
-    _k: Option<u32>,
+    k: Option<u32>,
 ) -> Result<Vec<RagHit>, String> {
-    let _ = query;
-    Ok(Vec::new())
+    let pid = uuid::Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    if query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let (endpoint, modele) = modele_de_plongement(&core).await?;
+    let client = reqwest::Client::new();
+    let vecteurs = locaryn_agent_runtime::embeddings::embed(
+        &endpoint,
+        &client,
+        &modele,
+        &[query],
+        locaryn_agent_runtime::embeddings::Role::Question,
+    )
+    .await?;
+    let question = vecteurs
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Le moteur n'a rien rendu pour cette question.".to_string())?;
+
+    let hits = core
+        .storage
+        .rag
+        .search(pid, &question, k.unwrap_or(5) as usize)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(hits
+        .into_iter()
+        .map(|h| RagHit {
+            source: h.source,
+            text: h.text,
+            score: h.score,
+        })
+        .collect())
 }
 
 // ============================================================================
