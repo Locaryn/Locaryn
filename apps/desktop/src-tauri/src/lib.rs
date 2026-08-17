@@ -1685,24 +1685,24 @@ async fn send_message(
         }
     } else {
         match &active_provider {
-        Some(p) => {
-            tracing::info!(endpoint = %p.endpoint, model = ?model, "desktop using OpenAiCompatAgent (llama-server)");
-            let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
-            match agent.run(input.clone()).await {
-                Ok(stream) => stream,
-                Err(e) => {
-                    tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
-                    no_model_stream(&format!(
+            Some(p) => {
+                tracing::info!(endpoint = %p.endpoint, model = ?model, "desktop using OpenAiCompatAgent (llama-server)");
+                let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
+                match agent.run(input.clone()).await {
+                    Ok(stream) => stream,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
+                        no_model_stream(&format!(
                         "Le modèle{} n'a pas pu être atteint. Vérifiez qu'un modèle est bien sélectionné et installé.",
                         model.as_deref().map(|m| format!(" \"{m}\"")).unwrap_or_default()
                     ))
+                    }
                 }
             }
-        }
-        None => {
-            tracing::warn!("no active provider configured");
-            no_model_stream("Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.")
-        }
+            None => {
+                tracing::warn!("no active provider configured");
+                no_model_stream("Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.")
+            }
         }
     };
 

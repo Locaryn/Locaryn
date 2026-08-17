@@ -51,10 +51,7 @@ struct RoundResult {
 }
 
 /// Lance un run `responses` et renvoie le flux d'événements Locaryn.
-pub async fn run(
-    cfg: Arc<CoreAgentConfig>,
-    input: AgentInput,
-) -> Result<EventStream, AgentError> {
+pub async fn run(cfg: Arc<CoreAgentConfig>, input: AgentInput) -> Result<EventStream, AgentError> {
     let url = format!("{}/v1/responses", cfg.base_url.trim_end_matches('/'));
     let session_state = cfg.sessions.entry(input.session_id).await;
     let model = input
@@ -112,15 +109,17 @@ pub async fn run(
                 Some(r) => r,
                 None => {
                     // Tour suivant : items function_call_output + continuité.
-                    let body =
-                        follow_up_body(&cfg, &session_state, &model, &outputs, &tools).await;
+                    let body = follow_up_body(&cfg, &session_state, &model, &outputs, &tools).await;
                     match post_json(&cfg.client, &url, &body, &cfg.bearer).await {
                         Ok(r) if r.status().is_success() => r,
                         Ok(r) => {
                             let _ = tx
                                 .send(StreamEvent::Log {
                                     level: LogLevel::Warn,
-                                    msg: format!("le noyau a répondu {} au tour suivant", r.status()),
+                                    msg: format!(
+                                        "le noyau a répondu {} au tour suivant",
+                                        r.status()
+                                    ),
                                     source: "core.responses".into(),
                                 })
                                 .await;
@@ -180,8 +179,7 @@ pub async fn run(
             // puis renvoi des sorties au noyau pour continuer le tour.
             let mut round_outputs = Vec::new();
             for call in &round_result.calls {
-                let args: Value =
-                    serde_json::from_str(&call.arguments_raw).unwrap_or(json!({}));
+                let args: Value = serde_json::from_str(&call.arguments_raw).unwrap_or(json!({}));
                 let text = match locaryn_agent_runtime::execute_tool_call(
                     &tx,
                     &call.call_id,
@@ -257,8 +255,7 @@ async fn first_body(
     let user_input = if input.images.is_empty() {
         json!(input.message)
     } else {
-        let mut parts: Vec<Value> =
-            vec![json!({ "type": "input_text", "text": input.message })];
+        let mut parts: Vec<Value> = vec![json!({ "type": "input_text", "text": input.message })];
         for b64 in &input.images {
             let (media_type, data) = if let Some(d) = b64.strip_prefix("data:image/png;base64,") {
                 ("image/png", d)
@@ -485,7 +482,9 @@ async fn stream_round(
                     }
                 }
                 "response.output_item.added" | "response.output_item.done" => {
-                    let Some(item) = val.get("item") else { continue };
+                    let Some(item) = val.get("item") else {
+                        continue;
+                    };
                     if item.get("type").and_then(|t| t.as_str()) != Some("function_call") {
                         continue;
                     }
@@ -512,10 +511,7 @@ async fn stream_round(
                 }
                 "response.completed" => {
                     let resp_obj = val.get("response");
-                    if let Some(id) = resp_obj
-                        .and_then(|r| r.get("id"))
-                        .and_then(|i| i.as_str())
-                    {
+                    if let Some(id) = resp_obj.and_then(|r| r.get("id")).and_then(|i| i.as_str()) {
                         out.response_id = Some(id.to_string());
                     }
                     if let Some(usage) = resp_obj.and_then(|r| r.get("usage")) {

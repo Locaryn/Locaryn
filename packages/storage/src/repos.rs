@@ -776,7 +776,8 @@ impl SessionRepo {
         title: Option<String>,
         ephemeral: bool,
     ) -> Result<Session, StorageError> {
-        self.create_with_core(project_id, title, ephemeral, None).await
+        self.create_with_core(project_id, title, ephemeral, None)
+            .await
     }
 
     /// Créer une conversation confiée à un noyau installé (OpenClaw, Hermes…).

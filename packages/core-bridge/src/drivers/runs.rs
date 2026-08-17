@@ -31,10 +31,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 /// Lance un run `runs` et renvoie le flux d'événements Locaryn.
-pub async fn run(
-    cfg: Arc<CoreAgentConfig>,
-    input: AgentInput,
-) -> Result<EventStream, AgentError> {
+pub async fn run(cfg: Arc<CoreAgentConfig>, input: AgentInput) -> Result<EventStream, AgentError> {
     let base = cfg.base_url.trim_end_matches('/').to_string();
     let session_state = cfg.sessions.entry(input.session_id).await;
     let model = input
@@ -47,8 +44,7 @@ pub async fn run(
     // 1. Création du run : synchrone, pour remonter les erreurs de connexion
     //    sans fallback silencieux (D2).
     let body = submit_body(&cfg, &session_state, &input, &model).await;
-    let created = match post_json(&cfg.client, &format!("{base}/v1/runs"), &body, &cfg.bearer)
-        .await
+    let created = match post_json(&cfg.client, &format!("{base}/v1/runs"), &body, &cfg.bearer).await
     {
         Ok(r) if r.status().is_success() => r,
         Ok(r) => {
@@ -62,13 +58,10 @@ pub async fn run(
             return Err(AgentError::ProviderUnavailable);
         }
     };
-    let created: Value = created
-        .json::<Value>()
-        .await
-        .map_err(|e| {
-            tracing::warn!(error = %e, "runs: réponse de création illisible");
-            AgentError::ProviderUnavailable
-        })?;
+    let created: Value = created.json::<Value>().await.map_err(|e| {
+        tracing::warn!(error = %e, "runs: réponse de création illisible");
+        AgentError::ProviderUnavailable
+    })?;
     let run_id = created
         .get("run_id")
         .or_else(|| created.get("id"))
@@ -188,11 +181,7 @@ pub async fn run(
                         if let Some(text) = first_text(&val) {
                             if !text.is_empty() {
                                 emitted += 1;
-                                if tx
-                                    .send(StreamEvent::Token { text })
-                                    .await
-                                    .is_err()
-                                {
+                                if tx.send(StreamEvent::Token { text }).await.is_err() {
                                     client_gone = true;
                                     break;
                                 }
@@ -203,11 +192,7 @@ pub async fn run(
                         // Texte complet : seulement si aucun delta n'est venu.
                         if emitted == 0 {
                             if let Some(text) = first_text(&val) {
-                                if tx
-                                    .send(StreamEvent::Token { text })
-                                    .await
-                                    .is_err()
-                                {
+                                if tx.send(StreamEvent::Token { text }).await.is_err() {
                                     client_gone = true;
                                 }
                             }
@@ -484,9 +469,7 @@ async fn relay_approval(
 
     let (approved, refusal_reason) = match outcome {
         locaryn_agent_runtime::approval::ApprovalOutcome::Allow => (true, None),
-        locaryn_agent_runtime::approval::ApprovalOutcome::Deny { reason } => {
-            (false, Some(reason))
-        }
+        locaryn_agent_runtime::approval::ApprovalOutcome::Deny { reason } => (false, Some(reason)),
     };
 
     let decision = json!({

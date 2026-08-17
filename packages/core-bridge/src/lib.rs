@@ -80,12 +80,7 @@ impl CoreAgent {
 /// ait écrit `http://127.0.0.1:18789` ou `…/v1/responses` (les deux formes
 /// se rencontrent). Défensif : les drivers reconstruisent leurs chemins.
 pub fn base_url_of(api_url: &str) -> String {
-    for suffix in [
-        "/v1/responses",
-        "/v1/chat/completions",
-        "/v1/runs",
-        "/v1",
-    ] {
+    for suffix in ["/v1/responses", "/v1/chat/completions", "/v1/runs", "/v1"] {
         if let Some(base) = api_url.trim_end_matches('/').strip_suffix(suffix) {
             return base.to_string();
         }
@@ -149,8 +144,17 @@ mod tests {
             base_url_of("http://127.0.0.1:18789/v1/chat/completions"),
             "http://127.0.0.1:18789"
         );
-        assert_eq!(base_url_of("http://127.0.0.1:18789"), "http://127.0.0.1:18789");
-        assert_eq!(base_url_of("http://127.0.0.1:8642/v1"), "http://127.0.0.1:8642");
-        assert_eq!(base_url_of("http://127.0.0.1:8642/"), "http://127.0.0.1:8642");
+        assert_eq!(
+            base_url_of("http://127.0.0.1:18789"),
+            "http://127.0.0.1:18789"
+        );
+        assert_eq!(
+            base_url_of("http://127.0.0.1:8642/v1"),
+            "http://127.0.0.1:8642"
+        );
+        assert_eq!(
+            base_url_of("http://127.0.0.1:8642/"),
+            "http://127.0.0.1:8642"
+        );
     }
 }

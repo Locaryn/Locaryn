@@ -117,10 +117,7 @@ pub async fn list_cores(State(s): State<Arc<DaemonState>>) -> Response {
     (StatusCode::OK, Json(out)).into_response()
 }
 
-pub async fn status(
-    State(s): State<Arc<DaemonState>>,
-    AxPath(id): AxPath<String>,
-) -> Response {
+pub async fn status(State(s): State<Arc<DaemonState>>, AxPath(id): AxPath<String>) -> Response {
     let uid = match Uuid::parse_str(&id) {
         Ok(u) => u,
         Err(_) => return mauvaise_requete("id de noyau invalide"),
@@ -153,10 +150,7 @@ pub async fn stop(State(s): State<Arc<DaemonState>>, AxPath(id): AxPath<String>)
     }
 }
 
-pub async fn skills(
-    State(s): State<Arc<DaemonState>>,
-    AxPath(id): AxPath<String>,
-) -> Response {
+pub async fn skills(State(s): State<Arc<DaemonState>>, AxPath(id): AxPath<String>) -> Response {
     let uid = match Uuid::parse_str(&id) {
         Ok(u) => u,
         Err(_) => return mauvaise_requete("id de noyau invalide"),
@@ -182,8 +176,7 @@ pub async fn install_skill(
         Err(_) => return mauvaise_requete("id de noyau invalide"),
     };
     match manager::install_skill(&s.cores, &*s, uid, &body.slug).await {
-        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "message": msg })))
-            .into_response(),
+        Ok(msg) => (StatusCode::OK, Json(serde_json::json!({ "message": msg }))).into_response(),
         Err(e) => erreur(&e),
     }
 }
@@ -203,9 +196,9 @@ pub async fn agent_for_core(
 pub async fn verifier_noyau(s: &DaemonState, id: Uuid) -> Result<bool, String> {
     match s.storage.extensions.get(id).await {
         Ok(Some(row)) => {
-        let Some(root) = plugin_root(Path::new(&row.manifest_path)) else {
-            return Ok(false);
-        };
+            let Some(root) = plugin_root(Path::new(&row.manifest_path)) else {
+                return Ok(false);
+            };
             match locaryn_extensions::manifest::load(&root) {
                 Ok(m) => Ok(m.core.is_some()),
                 Err(_) => Ok(false),

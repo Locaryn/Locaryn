@@ -86,10 +86,7 @@ pub async fn execute_tool_call(
     // Un outil interdit ne se négocie pas : on ne pose pas la question,
     // sinon un « Autoriser » laisserait croire qu'il suffit d'insister.
     let verdict = if decision.hard_blocked {
-        Some(format!(
-            "Tool '{}' was blocked. {}.",
-            tool, decision.reason
-        ))
+        Some(format!("Tool '{}' was blocked. {}.", tool, decision.reason))
     } else if decision.needs_user_consent {
         // L'événement part d'abord : c'est lui qui fait apparaître la
         // fenêtre. L'attente vient ensuite, sinon on demanderait à

@@ -429,8 +429,14 @@ pub async fn skills(
                     .and_then(|n| n.as_str())
                     .unwrap_or(slug)
                     .to_string(),
-                description: item.get("description").and_then(|d| d.as_str()).map(str::to_string),
-                verified: item.get("verified").and_then(|v| v.as_bool()).unwrap_or(false),
+                description: item
+                    .get("description")
+                    .and_then(|d| d.as_str())
+                    .map(str::to_string),
+                verified: item
+                    .get("verified")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             });
         }
     }

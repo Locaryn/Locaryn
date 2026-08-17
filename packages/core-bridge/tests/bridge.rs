@@ -214,7 +214,13 @@ async fn runs_flux_et_relais_d_approbation() {
     let fake = FakeCore::spawn().await;
     let agent = core_agent(&fake, "runs", json!({})).await;
 
-    let events = collect(agent.run(input(uuid::Uuid::new_v4(), "approve")).await.expect("run")).await;
+    let events = collect(
+        agent
+            .run(input(uuid::Uuid::new_v4(), "approve"))
+            .await
+            .expect("run"),
+    )
+    .await;
 
     assert!(text(&events).contains("Préparation"));
     assert!(text(&events).contains("Terminé"));
@@ -225,13 +231,17 @@ async fn runs_flux_et_relais_d_approbation() {
         "la progression d'outil serveur doit devenir une carte d'outil"
     );
     assert!(
-        events.iter().any(|e| matches!(e, StreamEvent::ToolApproval { .. })),
+        events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::ToolApproval { .. })),
         "une approbation en attente doit ouvrir le modal Locaryn"
     );
     let tr = events.iter().find_map(|e| match e {
-        StreamEvent::ToolResult { call_id, ok, output } if call_id == "tool_1" => {
-            Some((*ok, output.clone()))
-        }
+        StreamEvent::ToolResult {
+            call_id,
+            ok,
+            output,
+        } if call_id == "tool_1" => Some((*ok, output.clone())),
         _ => None,
     });
     assert_eq!(tr, Some((true, "approuvé: true".into())));
@@ -258,9 +268,11 @@ async fn runs_refus_d_approbation_relayé() {
     assert_eq!(st.approvals.len(), 1);
     assert_eq!(st.approvals[0]["approved"], false);
     let tr = events.iter().find_map(|e| match e {
-        StreamEvent::ToolResult { call_id, ok, output } if call_id == "tool_1" => {
-            Some((*ok, output.clone()))
-        }
+        StreamEvent::ToolResult {
+            call_id,
+            ok,
+            output,
+        } if call_id == "tool_1" => Some((*ok, output.clone())),
         _ => None,
     });
     assert_eq!(tr, Some((true, "approuvé: false".into())));
@@ -283,12 +295,7 @@ async fn runs_arrêt_demandé_quand_le_client_abandonne() {
     // continuer à agir en arrière-plan.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let st = fake.state().await;
-    let run_id = st
-        .run_inputs
-        .keys()
-        .next()
-        .cloned()
-        .expect("un run soumis");
+    let run_id = st.run_inputs.keys().next().cloned().expect("un run soumis");
     assert!(
         st.stops.contains(&run_id),
         "POST /v1/runs/{{id}}/stop doit être appelé à l'abandon"
@@ -311,10 +318,10 @@ async fn runs_session_id_porte_la_clé_stable() {
         st.run_bodies[0].get("session_id").and_then(|v| v.as_str()),
         Some(expected.as_str())
     );
-    assert!(text(
-        &collect(agent.run(input(session, "bonjour")).await.expect("run")).await
-    )
-    .contains("hello from runs fake core"));
+    assert!(
+        text(&collect(agent.run(input(session, "bonjour")).await.expect("run")).await)
+            .contains("hello from runs fake core")
+    );
 }
 
 // ============================================================================
@@ -326,7 +333,13 @@ async fn chat_completions_délègue_à_la_boucle_existante() {
     let fake = FakeCore::spawn().await;
     let agent = core_agent(&fake, "chat_completions", json!({})).await;
 
-    let events = collect(agent.run(input(uuid::Uuid::new_v4(), "salut")).await.expect("run")).await;
+    let events = collect(
+        agent
+            .run(input(uuid::Uuid::new_v4(), "salut"))
+            .await
+            .expect("run"),
+    )
+    .await;
     assert!(text(&events).contains("chat completions fake"));
 }
 
@@ -352,17 +365,32 @@ async fn real_openclaw_e2e() {
     let session = uuid::Uuid::new_v4();
 
     // Tour 1 : un message simple doit produire des tokens en streaming.
-    let e1 = collect(agent.run(input(session, "Reply with exactly: pong")).await.expect("run 1")).await;
+    let e1 = collect(
+        agent
+            .run(input(session, "Reply with exactly: pong"))
+            .await
+            .expect("run 1"),
+    )
+    .await;
     let t1 = text(&e1);
     eprintln!("tour 1 → {t1:?}");
     assert!(!t1.is_empty(), "le noyau doit répondre en streaming");
 
     // Tour 2 : même session — le noyau doit reprendre le contexte (user
     // stable `locaryn-{uuid}`) et répondre à nouveau.
-    let e2 = collect(agent.run(input(session, "Now reply with exactly: pong bis")).await.expect("run 2")).await;
+    let e2 = collect(
+        agent
+            .run(input(session, "Now reply with exactly: pong bis"))
+            .await
+            .expect("run 2"),
+    )
+    .await;
     let t2 = text(&e2);
     eprintln!("tour 2 → {t2:?}");
-    assert!(!t2.is_empty(), "la continuité de session doit répondre aussi");
+    assert!(
+        !t2.is_empty(),
+        "la continuité de session doit répondre aussi"
+    );
 
     let end = message_end(&e2);
     eprintln!("usage mappé (tokens_in, tokens_out) = {end:?}");
@@ -381,6 +409,12 @@ async fn real_hermes_ping() {
     }))
     .unwrap();
     let agent = CoreAgent::with_defaults(manifest, &url, &token);
-    let events = collect(agent.run(input(uuid::Uuid::new_v4(), "ping")).await.expect("run")).await;
+    let events = collect(
+        agent
+            .run(input(uuid::Uuid::new_v4(), "ping"))
+            .await
+            .expect("run"),
+    )
+    .await;
     assert!(!text(&events).is_empty());
 }

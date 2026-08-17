@@ -209,7 +209,11 @@ pub async fn change_password(
                 .into_response();
         }
     };
-    match state.users.change_password(user_id, &body.current, &body.nouveau).await {
+    match state
+        .users
+        .change_password(user_id, &body.current, &body.nouveau)
+        .await
+    {
         Ok(true) => (StatusCode::OK, Json(serde_json::json!({ "changed": true }))).into_response(),
         Ok(false) => (
             StatusCode::FORBIDDEN,

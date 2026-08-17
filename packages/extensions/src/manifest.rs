@@ -613,7 +613,10 @@ mod tests {
         }"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         let c = m.core.unwrap();
-        assert!(!c.tools.client_tools, "D1 : pas d'outils Locaryn par défaut");
+        assert!(
+            !c.tools.client_tools,
+            "D1 : pas d'outils Locaryn par défaut"
+        );
         assert_eq!(c.tools.approval, "locaryn");
         assert_eq!(c.session.routing, "user");
         assert_eq!(c.session.max_sessions, 0);

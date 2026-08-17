@@ -383,7 +383,11 @@ impl LocarynClient {
     }
 
     /// Installe un skill de l'écosystème du noyau (permission shell requise).
-    pub async fn core_install_skill(&self, id: &str, slug: &str) -> Result<serde_json::Value, SdkError> {
+    pub async fn core_install_skill(
+        &self,
+        id: &str,
+        slug: &str,
+    ) -> Result<serde_json::Value, SdkError> {
         let body = serde_json::json!({ "slug": slug });
         let resp = self
             .add_auth(

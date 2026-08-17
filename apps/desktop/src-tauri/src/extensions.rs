@@ -112,12 +112,9 @@ pub async fn reload(core: &Core) -> Result<(), String> {
         // Les figures du dépôt sont resynchronisées à chaque chargement :
         // une mise à jour de l'extension est reprise au redémarrage, et une
         // figure écrite à la main n'est jamais écrasée.
-        let importees = locaryn_storage::figures_import::importer(
-            &core.storage.figures,
-            &root,
-            &row.name,
-        )
-        .await;
+        let importees =
+            locaryn_storage::figures_import::importer(&core.storage.figures, &root, &row.name)
+                .await;
         if importees > 0 {
             tracing::info!(name = %row.name, importees, "figures du dépôt importées");
         }
@@ -907,9 +904,15 @@ fn manifest_schema(root: &Path) -> serde_json::Value {
             };
             let mut f = serde_json::Map::new();
             f.insert("type".into(), serde_json::Value::String(kind.into()));
-            f.insert("title".into(), serde_json::Value::String(field.label.clone()));
+            f.insert(
+                "title".into(),
+                serde_json::Value::String(field.label.clone()),
+            );
             if let Some(hint) = &field.hint {
-                f.insert("description".into(), serde_json::Value::String(hint.clone()));
+                f.insert(
+                    "description".into(),
+                    serde_json::Value::String(hint.clone()),
+                );
             }
             if !field.options.is_empty() {
                 f.insert("options".into(), serde_json::json!(field.options));
@@ -918,7 +921,10 @@ fn manifest_schema(root: &Path) -> serde_json::Value {
                 f.insert("default".into(), serde_json::Value::String(default.clone()));
             }
             // Le groupe du formulaire, c'est la section.
-            f.insert("group".into(), serde_json::Value::String(section.title.clone()));
+            f.insert(
+                "group".into(),
+                serde_json::Value::String(section.title.clone()),
+            );
             schema.insert(field.key.clone(), serde_json::Value::Object(f));
         }
     }

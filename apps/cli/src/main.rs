@@ -141,13 +141,9 @@ enum CoresCmd {
     /// List installed cores and their state.
     List,
     /// Start a core: launch its process and wait for its health check.
-    Start {
-        id: String,
-    },
+    Start { id: String },
     /// Stop a running core.
-    Stop {
-        id: String,
-    },
+    Stop { id: String },
 }
 
 #[derive(Subcommand)]
@@ -1262,7 +1258,9 @@ async fn cores_cmd(action: CoresCmd, client: &LocarynClient) -> anyhow::Result<(
             let rows = rows.as_array().cloned().unwrap_or_default();
             if rows.is_empty() {
                 println!("Aucun noyau alternatif installé.");
-                println!("Installez-en un depuis Réglages → Extensions → Découvrir (OpenClaw, Hermes).");
+                println!(
+                    "Installez-en un depuis Réglages → Extensions → Découvrir (OpenClaw, Hermes)."
+                );
                 return Ok(());
             }
             println!("{:<38} {:<26} {:<12} DRIVER", "ID", "NOM", "ÉTAT");

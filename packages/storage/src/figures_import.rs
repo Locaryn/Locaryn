@@ -41,7 +41,10 @@ pub async fn importer(depot: &FigureRepo, dir: &Path, source: &str) -> usize {
             continue;
         };
         let Some(f) = parse_figure(&brut) else {
-            refusees.push(format!("{} : en-tête absent ou incomplet", chemin.display()));
+            refusees.push(format!(
+                "{} : en-tête absent ou incomplet",
+                chemin.display()
+            ));
             continue;
         };
         let Some(nom) = f.nom.filter(|n| !n.trim().is_empty()) else {
@@ -184,7 +187,10 @@ mod tests {
         let f = parse_figure(brut).expect("la figure du dépôt se lit");
         assert_eq!(f.nom.as_deref(), Some("relecteur"));
         assert!(f.description.contains("Relit un diff"));
-        assert_eq!(f.consignes, "Tu relis du code. Tu ne signales que ce qui peut casser.");
+        assert_eq!(
+            f.consignes,
+            "Tu relis du code. Tu ne signales que ce qui peut casser."
+        );
         assert_eq!(f.modele, None, "model vide vaut « celui de l'application »");
         assert_eq!(f.ouverture.as_deref(), Some("Colle le diff à relire."));
         assert!(!f.memoire);
@@ -248,7 +254,11 @@ Tu réponds en vocal.
         let n = importer(&d, &dossier, "Locaryn/plugin-figures").await;
         assert_eq!(n, 1);
         let liste = d.list().await.unwrap();
-        assert_eq!(liste.len(), 1, "le nom identifie la figure, pas l'installation");
+        assert_eq!(
+            liste.len(),
+            1,
+            "le nom identifie la figure, pas l'installation"
+        );
         assert_eq!(liste[0].instructions, "Version deux.");
         assert!(liste[0].uses_memory);
 
@@ -279,7 +289,10 @@ Tu réponds en vocal.
         .unwrap();
 
         let n = importer(&d, &dossier, "plugin-figures").await;
-        assert_eq!(n, 1, "la figure invalide est ignorée, la bonne est importée");
+        assert_eq!(
+            n, 1,
+            "la figure invalide est ignorée, la bonne est importée"
+        );
         let _ = std::fs::remove_dir_all(&dossier);
     }
 
@@ -316,7 +329,10 @@ Tu réponds en vocal.
         assert!(secretaire.uses_memory, "le Secrétaire lit la mémoire");
         assert_eq!(secretaire.opening.as_deref(), Some("Colle tes notes."));
         let relecteur = liste.iter().find(|f| f.name == "relecteur").unwrap();
-        assert_eq!(relecteur.model, None, "model vide vaut celui de l'application");
+        assert_eq!(
+            relecteur.model, None,
+            "model vide vaut celui de l'application"
+        );
         let _ = std::fs::remove_dir_all(&dossier);
     }
 }

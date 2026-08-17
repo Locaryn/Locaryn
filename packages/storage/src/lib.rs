@@ -182,15 +182,11 @@ mod tests {
     /// faux — c'est exactement ce qui s'est produit en production.
     #[tokio::test]
     async fn ouvrir_une_base_marquee_du_futur_fonctionne() {
-        let dir = std::env::temp_dir().join(format!(
-            "locaryn_migr_{}_{}",
-            std::process::id(),
-            {
-                use std::sync::atomic::{AtomicU64, Ordering};
-                static N: AtomicU64 = AtomicU64::new(0);
-                N.fetch_add(1, Ordering::Relaxed)
-            }
-        ));
+        let dir = std::env::temp_dir().join(format!("locaryn_migr_{}_{}", std::process::id(), {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static N: AtomicU64 = AtomicU64::new(0);
+            N.fetch_add(1, Ordering::Relaxed)
+        }));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let base = dir.join("locaryn.db");
