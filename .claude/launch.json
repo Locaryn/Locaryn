@@ -6,6 +6,18 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--dir", "apps/desktop", "dev", "--port", "1421", "--strictPort"],
       "port": 1421
+    },
+    {
+      "name": "mobile-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "apps/mobile", "dev", "--port", "1422", "--strictPort"],
+      "port": 1422
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "apps/web", "dev"],
+      "port": 1423
     }
   ]
 }

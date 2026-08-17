@@ -139,6 +139,7 @@ body {
 }
 .lo-input:focus {
   border-color: var(--accent);
+  box-shadow: var(--glow-accent-soft);
 }
 
 .lo-btn {
@@ -213,6 +214,8 @@ body {
   border-radius: 50%;
   background: var(--accent);
   flex: 0 0 auto;
+  /* La pastille vive : un halo vert qui respire à peine. */
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.55);
 }
 .lo-bar-away {
   font-size: var(--text-sm);
@@ -262,6 +265,9 @@ body {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+  /* Chaque message entre doucement — le même geste que sur le web et le
+     bureau : fade + glissade, transform/opacity, rien de plus. */
+  animation: lo-fade-up var(--dur-med) var(--ease-out) both;
 }
 /* Un message et ce qui l'accompagne — image produite, bouton de copie —
    tenus ensemble et du bon côté du fil. */
@@ -427,6 +433,9 @@ body {
   .lo-check path {
     animation: none;
     stroke-dashoffset: 0;
+  }
+  .lo-msg {
+    animation: none;
   }
 }
 
@@ -667,8 +676,11 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   display: flex;
   flex-direction: column;
   width: min(82vw, 320px);
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-2);
   transform: translateX(-100%);
   transition: transform 180ms ease;
   padding-top: env(safe-area-inset-top);
@@ -918,9 +930,12 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   flex-direction: column;
   padding: var(--space-2) var(--space-3);
   padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-top: 1px solid var(--glass-border);
   border-radius: 16px 16px 0 0;
+  box-shadow: var(--shadow-2);
   animation: lo-sheet-up 200ms ease;
 }
 @keyframes lo-sheet-up {

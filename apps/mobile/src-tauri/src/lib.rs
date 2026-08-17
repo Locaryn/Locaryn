@@ -878,6 +878,34 @@ pub struct PhoneExtension {
     pub ui: ExtensionUi,
 }
 
+/// Une figure du serveur, réduite à ce que le téléphone en montre.
+///
+/// Une figure est un rôle et un agencement : ce que le modèle reçoit avant
+/// toute conversation (les consignes), avec quel modèle, quelle phrase
+/// d'ouverture, et si elle lit la mémoire de l'utilisateur.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PhoneFigure {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Ce que le modèle reçoit avant toute conversation. C'est le cœur.
+    pub instructions: String,
+    /// Le modèle qui la fait tourner. Absent : celui de l'application.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Une première phrase, proposée à l'ouverture.
+    #[serde(default)]
+    pub opening: Option<String>,
+    /// Vrai quand la figure lit la mémoire de l'utilisateur.
+    #[serde(default)]
+    pub uses_memory: bool,
+    /// Les outils qu'elle a le droit d'appeler. Absents : tout ce que
+    /// l'application propose.
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
+}
+
 /// Ce qu'une extension ajoute à l'interface du téléphone.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ExtensionUi {
@@ -923,6 +951,167 @@ pub struct SettingsField {
     pub options: Vec<String>,
     #[serde(default)]
     pub default: Option<String>,
+}
+
+// Figures — un rôle, ses consignes, ses conversations. L'écran n'existe que
+// si le serveur a une extension qui apporte la capacité `figures` ; ce qui
+// suit est le pilotage. Les figures vivent sur le serveur : le téléphone ne
+// fait que les lire et les confier à des conversations.
+
+/// Toutes les figures du serveur.
+#[tauri::command]
+async fn list_figures() -> Result<Vec<PhoneFigure>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/figures"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    resp.json::<Vec<PhoneFigure>>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Créer une figure, ou remplacer celle du même nom.
+#[tauri::command]
+async fn save_figure(
+    name: String,
+    description: Option<String>,
+    instructions: String,
+    model: Option<String>,
+    opening: Option<String>,
+    uses_memory: Option<bool>,
+    tools: Option<Vec<String>>,
+) -> Result<PhoneFigure, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/figures"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({
+            "name": name,
+            "description": description.unwrap_or_default(),
+            "instructions": instructions,
+            "model": model,
+            "opening": opening,
+            "uses_memory": uses_memory.unwrap_or(false),
+            "tools": tools,
+        }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    resp.json::<PhoneFigure>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Retirer une figure. Ses conversations restent, détachées.
+#[tauri::command]
+async fn delete_figure(id: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .delete(format!("{base}/v1/figures/{id}"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    Ok(())
+}
+
+/// Ouvrir une conversation tenue par une figure : une session neuve, confiée
+/// d'emblée. Ses consignes seront versées au prompt de chacun de ses tours.
+#[tauri::command]
+async fn start_figure_chat(figure_id: String) -> Result<String, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/').to_string();
+    let project_id = ensure_free_chat_project(&client, &server, &session.token).await?;
+    let session_resp = client
+        .post(format!("{base}/v1/projects/{project_id}/sessions"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "ephemeral": false }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !session_resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            session_resp.status()
+        ));
+    }
+    let body: serde_json::Value = session_resp.json().await.map_err(|e| e.to_string())?;
+    let session_id = body
+        .get("id")
+        .and_then(|x| x.as_str())
+        .ok_or("Le serveur a renvoyé une session sans identifiant.")?
+        .to_string();
+
+    let attach = client
+        .post(format!("{base}/v1/sessions/{session_id}/figure"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "figure_id": figure_id }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !attach.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé d'attacher la figure ({}).",
+            attach.status()
+        ));
+    }
+    Ok(session_id)
+}
+
+/// Une conversation d'une figure, telle que l'écran la liste.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PhoneFigureSession {
+    pub id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub last_message_at: Option<String>,
+}
+
+/// Les conversations d'une figure, la plus récente d'abord.
+#[tauri::command]
+async fn figure_sessions(figure_id: String) -> Result<Vec<PhoneFigureSession>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/figures/{figure_id}/sessions"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    resp.json::<Vec<PhoneFigureSession>>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1425,6 +1614,11 @@ pub fn run() {
             remember,
             forget,
             list_extensions,
+            list_figures,
+            save_figure,
+            delete_figure,
+            start_figure_chat,
+            figure_sessions,
             run_composer_tool,
             extension_config,
             set_extension_config,

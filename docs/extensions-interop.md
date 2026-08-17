@@ -163,7 +163,7 @@ téléphone.
 
 Capacités reconnues à ce jour : `image-gen`, `image-editor`, `voice-tts`,
 `voice-cloning`, `music-gen`, `video-gen`, `3d-gen`, `vision-ocr`,
-`text-analysis`, `translation`, `rag-qa`, `model-training`,
+`text-analysis`, `translation`, `rag-qa`, `model-training`, `figures`,
 `ssh-remote-exec`, `travel-tunnel`.
 
 Une capacité déclarée sans moteur derrière n'apporte aucun outil au modèle :
@@ -203,10 +203,16 @@ d'appeler un outil qui échouera.
 
 | Contribution | Où elle apparaît | Ordinateur | Téléphone |
 | --- | --- | --- | --- |
-| `nav_items` | menu principal | oui | oui |
-| `studio_tabs` | onglets du Studio | oui | oui |
-| `composer_actions` | à côté du champ de saisie | oui | oui |
-| `settings_sections` | réglages, en sous-écran | oui | oui |
+| `nav_items` | menu principal | **oui** | à faire |
+| `studio_tabs` | onglets du Studio | **oui** | à faire |
+| `composer_actions` | à côté du champ de saisie | **oui** | **oui** |
+| `settings_sections` | réglages, en sous-écran | **oui** | **oui** |
+
+« à faire » n'est pas une promesse : c'est l'état du code au moment où ce
+document est écrit. Le téléphone affiche ses propres destinations fixes
+(Studio, Figures, Extensions, Modèles, Réglages) ; il lira les `nav_items`
+et `studio_tabs` quand son menu et son Studio seront pilotés par les
+extensions, comme l'est déjà celui de l'ordinateur.
 
 ### 5.2 bis  Ce que fait un bouton de composeur
 
@@ -227,12 +233,16 @@ du code d'extension dans l'interface reviendrait à lui donner l'écran entier.
 
 `icon` est un nom du jeu partagé (`@locaryn/ui-core`), jamais une image
 fournie par l'extension : le jeu est dessiné d'une seule main, et une icône
-importée jurerait. Les noms disponibles sont listés dans
-`packages-ui/core/src/icons.tsx`.
+importée jurerait. Les noms disponibles sont la liste `ICON_NAMES` exportée
+par `@locaryn/ui-core` (source : `packages-ui/core/src/icons.tsx`), et un nom
+inconnu tombe sur une icône de secours — jamais sur un rendu vide.
 
-**Une contribution ne s'impose pas.** L'utilisateur peut masquer n'importe
-quelle entrée depuis les réglages de l'extension : une extension décrit ce
-qu'elle propose, elle ne décide pas de l'écran de quelqu'un d'autre.
+**Une extension ne recouvre jamais une entrée native.** Le menu et les
+onglets partent du socle de l'application ; ce qu'une extension déclare
+s'ajoute à côté, et un `id` déjà pris par le socle n'est pas doublé — la
+première occurrence gagne. Le masquage individuel d'une contribution par
+l'utilisateur (le promettre était trop tôt) est prévu, pas encore en place :
+ce document dit ce qui marche, pas ce qu'on voudrait.
 
 ### 5.3 Types de champs de réglage
 
@@ -241,12 +251,18 @@ qu'elle propose, elle ne décide pas de l'écran de quelqu'un d'autre.
 | `boolean` | interrupteur | `"true"` / `"false"` |
 | `select` | liste, à partir de `options: ["a", "b"]` | la valeur choisie |
 | `model` | liste des modèles installés sur le serveur | le nom du modèle |
-| `string`, `number`, `prompt` | champ texte | chaîne |
+| `string` | champ texte | chaîne |
+| `number` | champ numérique | nombre |
+| `prompt` | zone multiligne | chaîne |
 
-Quatre rendus pour six mots : `number` et `prompt` s'affichent comme du texte.
-Mieux vaut un champ honnête qu'un rendu promis et absent — le jour où l'écran
-saura montrer un curseur numérique, `number` en profitera sans qu'aucun
-manifeste change.
+Ce sont les six mots du vocabulaire, dessinés **à l'identique sur l'ordinateur
+et sur le téléphone** : un seul mécanisme (`settings_sections`), une seule
+lecture. Les anciens mots `toggle`, `choice` et `text` restent acceptés et
+sont ramenés à `boolean`, `select` et `string`.
+
+Le champ `model` est la seule exception au rendu : il liste les modèles
+installés sur le serveur, parce qu'une extension ne peut pas remplir cette
+liste elle-même.
 
 Les valeurs sont rangées **par le serveur**, dans le dossier de l'extension
 (`.data/config.json`), jamais par le client : un réglage choisi sur
@@ -288,7 +304,7 @@ marche, pas ce qu'on voudrait.
 | Élément | État |
 | --- | --- |
 | Manifeste Locaryn `plugin.json` (nom, version, capacités) | **fait** |
-| `ui_contributions.nav_items` et `studio_tabs` | **fait** (lus, et le Studio suit les capacités) |
+| `ui_contributions.nav_items` et `studio_tabs` | **fait sur l'ordinateur** (menu et onglets construits depuis les extensions actives, socle natif préservé) ; téléphone **à faire** |
 | Installation depuis un dépôt du catalogue (`propriétaire/dépôt`) | **fait** |
 | Installation depuis un dossier local | **fait** |
 | Activation, désactivation, retrait, persistance | **fait** |
@@ -298,7 +314,7 @@ marche, pas ce qu'on voudrait.
 | Lecture de `.claude-plugin/plugin.json` | **à faire** |
 | `agents/`, `commands/`, `hooks/` d'un plugin Claude Code | **à faire** |
 | `composer_actions` (`insert` et `tool`) | **fait**, ordinateur et téléphone |
-| `settings_sections` (`boolean`, `select`, `model`, texte) | **fait**, ordinateur et téléphone |
+| `settings_sections` (`boolean`, `select`, `model`, `string`, `number`, `prompt`) | **fait**, ordinateur et téléphone — mécanisme unique |
 | Masquage d'une contribution par l'utilisateur | **à faire** |
 
 ---

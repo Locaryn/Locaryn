@@ -34,6 +34,9 @@ export interface Session {
   archived_at?: string | null;
   /** Éphémère : rien n'en sera gardé, pas même un titre. */
   ephemeral?: boolean;
+  /** Noyau choisi pour cette conversation (id de l'extension de noyau).
+   *  Absent ou null = noyau Locaryn natif. */
+  core_id?: string | null;
 }
 
 export interface Message {
@@ -412,6 +415,40 @@ export interface ModelMetric {
   last_measured_at: string;
 }
 
+/** Ce qu'une extension de noyau déclare (section `core` du manifeste). */
+export interface ExtensionCoreInfo {
+  /** Dialecte piloté : `responses`, `runs`, `chat_completions`. */
+  driver: string;
+  /** URL de base de l'API du noyau (loopback). */
+  api_url: string;
+  port: number;
+  /** Modèle annoncé par défaut (ex. `hermes-agent`). */
+  model?: string | null;
+  /** Chemin de l'index de skills, relatif au dossier de l'extension. */
+  skills_index?: string | null;
+  /** Commande d'installation d'un skill, avec `{{slug}}` à remplacer. */
+  skills_install?: string | null;
+}
+
+/** État courant d'un noyau, pour sa carte dans les réglages. */
+export type CoreState = "stopped" | "starting" | "running" | "external" | "error";
+
+export interface CoreStatus {
+  id: string;
+  state: CoreState;
+  driver: string;
+  api_url: string;
+  error?: string | null;
+}
+
+/** Un skill de l'index déclaré par le noyau. */
+export interface CoreSkillEntry {
+  slug: string;
+  name: string;
+  description?: string | null;
+  verified: boolean;
+}
+
 export interface InstalledExtension {
   id: string;
   name: string;
@@ -439,6 +476,8 @@ export interface InstalledExtension {
   permissions: ExtensionPermissionState[];
   /** Components that failed to parse. The plugin still runs without them. */
   load_errors: string[];
+  /** Section `core` du manifeste — présent = cette extension est un noyau. */
+  core?: ExtensionCoreInfo | null;
   created_at: string;
   updated_at: string;
 }
@@ -509,7 +548,9 @@ export type ExtensionFieldType =
   | "select"
   | "list"
   | "path"
-  | "secret";
+  | "secret"
+  | "model"
+  | "prompt";
 
 export interface ExtensionField {
   type: ExtensionFieldType;
@@ -832,6 +873,8 @@ export interface Figure {
   opening: string | null;
   /** Fausse : la figure travaille sans rien savoir de son utilisateur. */
   uses_memory: boolean;
+  /** Les outils qu'elle a le droit d'appeler. Vide : tout ce que l'application propose. */
+  tools: string[] | null;
   /** `user` quand elle est écrite à la main ; sinon le dépôt d'où elle vient. */
   source: string;
   created_at: string;
@@ -846,6 +889,8 @@ export interface FigureDraft {
   model: string | null;
   opening: string | null;
   usesMemory: boolean;
+  /** Les outils autorisés, séparés par des virgules. Vide : tout. */
+  tools: string;
 }
 
 /** Travel mode: this machine reachable from elsewhere, through a relay. */
@@ -1266,7 +1311,9 @@ export interface CoreApi {
   planModelRuntime(model: string): Promise<RuntimePlan>;
   listSessions(projectId: string): Promise<Session[]>;
   /** Create a chat; `title` auto-names it (e.g. from the first prompt). */
-  createSession(projectId: string, title?: string): Promise<Session>;
+  /** `coreId` = id de l'extension de noyau (OpenClaw, Hermes…) ; absent =
+   *  noyau Locaryn natif. */
+  createSession(projectId: string, title?: string, coreId?: string | null): Promise<Session>;
   /** Rename a session. */
   updateSessionTitle(sessionId: string, title: string): Promise<void>;
   /** Ask the LLM to generate and persist a concise title for a session. */
@@ -1383,6 +1430,14 @@ export interface CoreApi {
   forgetMemory(id: string): Promise<void>;
   forgetAllMemory(): Promise<number>;
   listExtensions(): Promise<InstalledExtension[]>;
+  // --- Noyaux alternatifs (extensions avec une section `core`) -------------
+  coreStatus(id: string): Promise<CoreStatus>;
+  coreStart(id: string): Promise<CoreStatus>;
+  coreStop(id: string): Promise<CoreStatus>;
+  /** Skills de l'écosystème du noyau, depuis l'index déclaré. */
+  coreSkills(id: string): Promise<CoreSkillEntry[]>;
+  /** Installe un skill via la commande déclarée par l'extension. */
+  coreInstallSkill(id: string, slug: string): Promise<string>;
   /**
    * `source` is `owner/repo`, a git URL, a `github:owner/repo@ref#subdir`
    * spec, or a local directory. Installs disabled: permissions come next.
@@ -1690,8 +1745,8 @@ const tauriCore: CoreApi = {
   getImageDefaults: () => invoke<ImageDefaults>("get_image_defaults"),
   setImageDefaults: (config) => invoke<void>("set_image_defaults", { config }),
   listSessions: (projectId) => invoke<Session[]>("list_sessions", { projectId }),
-  createSession: (projectId, title) =>
-    invoke<Session>("create_session", { projectId, title: title ?? null }),
+  createSession: (projectId, title, coreId) =>
+    invoke<Session>("create_session", { projectId, title: title ?? null, coreId: coreId ?? null }),
   updateSessionTitle: (sessionId, title) =>
     invoke<void>("update_session_title", { sessionId, title }),
   generateSessionTitle: (sessionId, firstPrompt) =>
@@ -1715,6 +1770,7 @@ const tauriCore: CoreApi = {
       model: f.model,
       opening: f.opening,
       usesMemory: f.usesMemory,
+      tools: f.tools.split(",").map((t) => t.trim()).filter(Boolean),
     }),
   deleteFigure: (id) => invoke<void>("delete_figure", { id }),
   attachFigure: (sessionId, figureId) => invoke<void>("attach_figure", { sessionId, figureId }),
@@ -1827,6 +1883,11 @@ const tauriCore: CoreApi = {
   forgetMemory: (id) => invoke<void>("forget_memory", { id }),
   forgetAllMemory: () => invoke<number>("forget_all_memory"),
   listExtensions: () => invoke<InstalledExtension[]>("list_extensions"),
+  coreStatus: (id) => invoke<CoreStatus>("core_status", { id }),
+  coreStart: (id) => invoke<CoreStatus>("core_start", { id }),
+  coreStop: (id) => invoke<CoreStatus>("core_stop", { id }),
+  coreSkills: (id) => invoke<CoreSkillEntry[]>("core_skills", { id }),
+  coreInstallSkill: (id, slug) => invoke<string>("core_install_skill", { id, slug }),
   installExtension: (source, scope) =>
     invoke<InstalledExtension>("install_extension", { source, scope }),
   setExtensionEnabled: (id, enabled) =>
@@ -2532,6 +2593,54 @@ const cloneHealth = (): Health => ({
 // grouping, the compatibility badges and the permission modal are all
 // exercised without a backend.
 let demoExtensions: InstalledExtension[] = [
+  // Un noyau alternatif de démonstration : la carte « Noyau » des réglages
+  // s'exerce comme en vrai, sans backend.
+  {
+    id: "demo-core-openclaw",
+    name: "locaryn-core-openclaw",
+    display_name: "locaryn-core-openclaw",
+    version: "0.1.0",
+    api_version: "0.1",
+    description: "Noyau OpenClaw : mémoire persistante, skills ClawHub, Home Assistant.",
+    author: "Locaryn",
+    homepage: "https://github.com/Locaryn/locaryn-cores",
+    kind: "plugin",
+    scope: "user",
+    ecosystem: "locaryn",
+    source: "github:Locaryn/locaryn-cores#cores/openclaw",
+    install_dir: "~/.locaryn/plugins/locaryn-core-openclaw",
+    enabled: true,
+    components: {
+      skills: 0,
+      commands: 0,
+      agents: 0,
+      rules: 0,
+      hooks: 0,
+      mcp_servers: 0,
+      lsp_adapters: 0,
+    },
+    permissions: [
+      {
+        permission: "network",
+        reason: "Pilote le gateway OpenClaw en local (loopback)",
+        granted: true,
+      },
+      { permission: "shell", reason: "Lance et supervise le processus openclaw", granted: true },
+    ],
+    load_errors: [],
+    capabilities: ["core", "assistant", "memory", "home-assistant", "skills"],
+    ui: { nav_items: [], studio_tabs: [] },
+    core: {
+      driver: "responses",
+      api_url: "http://127.0.0.1:18789/v1/responses",
+      port: 18789,
+      model: "openclaw",
+      skills_index: "skills-index.json",
+      skills_install: "openclaw skills install {{slug}}",
+    },
+    created_at: "2026-08-17T10:00:00Z",
+    updated_at: "2026-08-17T10:00:00Z",
+  },
   {
     id: "demo-1",
     name: "code-review",
@@ -2973,7 +3082,7 @@ const demoCore: CoreApi = {
     n_cpu_moe: 0,
   }),
   listSessions: async (projectId) => demoSessions.filter((s) => s.project_id === projectId),
-  createSession: async (projectId, title) => {
+  createSession: async (projectId, title, coreId) => {
     demoSessionCounter += 1;
     const s: Session = {
       id: `demo-session-${demoSessionCounter}`,
@@ -2984,6 +3093,7 @@ const demoCore: CoreApi = {
       created_at: new Date().toISOString(),
       last_message_at: null,
       closed_at: null,
+      core_id: coreId ?? null,
     };
     demoSessions.push(s);
     return s;
@@ -3010,6 +3120,7 @@ const demoCore: CoreApi = {
     model: f.model,
     opening: f.opening,
     uses_memory: f.usesMemory,
+    tools: f.tools.split(",").map((t) => t.trim()).filter(Boolean),
     source: "user",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -3423,6 +3534,45 @@ const demoCore: CoreApi = {
     return n;
   },
   listExtensions: async () => demoExtensions,
+  coreStatus: async (id) => ({
+    id,
+    state: "running",
+    driver: "responses",
+    api_url: "http://127.0.0.1:18789/v1/responses",
+  }),
+  coreStart: async (id) => ({
+    id,
+    state: "running",
+    driver: "responses",
+    api_url: "http://127.0.0.1:18789/v1/responses",
+  }),
+  coreStop: async (id) => ({
+    id,
+    state: "stopped",
+    driver: "responses",
+    api_url: "http://127.0.0.1:18789/v1/responses",
+  }),
+  coreSkills: async () => [
+    {
+      slug: "home-assistant",
+      name: "Home Assistant",
+      description: "Contrôle de Home Assistant : états, scènes, automatisations.",
+      verified: true,
+    },
+    {
+      slug: "calendar",
+      name: "Calendrier",
+      description: "Lecture et gestion d'agendas.",
+      verified: false,
+    },
+    {
+      slug: "web-search",
+      name: "Recherche web",
+      description: "Recherche sur le web et extraction de contenu.",
+      verified: false,
+    },
+  ],
+  coreInstallSkill: async (_id, slug) => `skill « ${slug} » installé (démo)`,
   getExtensionMcpServers: async () => [],
   setExtensionMcpServers: async () => [],
   installExtension: async (source) => {

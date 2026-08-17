@@ -34,9 +34,20 @@
     "lsp": "lsp/lsp.json"
   },
   "deps": [],
-  "config": {
-    "schema": {
-      "strict_mode": { "type": "boolean", "default": false }
-    }
+  "ui_contributions": {
+    "settings_sections": [
+      {
+        "id": "general",
+        "label": "Général",
+        "fields": [
+          {
+            "id": "strict_mode",
+            "type": "boolean",
+            "label": "Mode strict",
+            "default": "false"
+          }
+        ]
+      }
+    ]
   }
 }

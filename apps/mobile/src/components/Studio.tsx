@@ -1,19 +1,56 @@
-import { useEffect, useState } from "react";
-import { type MediaModel, type MediaResult, api } from "../lib/core";
+import { useEffect, useMemo, useState } from "react";
+import { type MediaModel, type MediaResult, type PhoneExtension, api } from "../lib/core";
 
 type Props = {
   onBack: () => void;
+  /** Extensions actives : leurs `studio_tabs` s'ajoutent aux onglets, sans
+   *  jamais recouvrir un onglet natif. */
+  extensions?: PhoneExtension[];
 };
 
-type Tab = "image" | "audio";
+type Tab = "image" | "audio" | (string & {});
 
 /**
  * Creation studio — image and speech, generated on the machine at the other
  * end. The phone holds a prompt and a model picker; the pixels and the
  * waveforms are made where the weights live, and come back as base64.
  */
-export function Studio({ onBack }: Props) {
+export function Studio({ onBack, extensions = [] }: Props) {
   const [tab, setTab] = useState<Tab>("image");
+
+  // Le socle d'abord : les onglets natifs. Puis ceux que les extensions
+  // actives déclarent, sans jamais recouvrir un id natif.
+  const onglets = useMemo(() => {
+    const natifs: { id: Tab; label: string; icon?: string | null }[] = [
+      { id: "image", label: "Image" },
+      { id: "audio", label: "Voix" },
+    ];
+    const pris = new Set<string>(natifs.map((t) => t.id));
+    const depuisExtensions = extensions.flatMap((ext) =>
+      (ext.ui?.studio_tabs ?? []).flatMap((t) => {
+        if (pris.has(t.id)) return [];
+        pris.add(t.id);
+        return [
+          {
+            id: t.id as Tab,
+            label: t.label,
+            icon: t.icon,
+            source: ext.display_name || ext.name,
+          },
+        ];
+      }),
+    );
+    // Type unifié : `source` n'existe que pour les onglets d'extensions.
+    return [...natifs, ...depuisExtensions] as {
+      id: Tab;
+      label: string;
+      icon?: string | null;
+      source?: string;
+    }[];
+  }, [extensions]);
+
+  const ongletCourant = onglets.find((t) => t.id === tab);
+
   return (
     <div className="lo-screen">
       <div className="lo-bar">
@@ -24,23 +61,37 @@ export function Studio({ onBack }: Props) {
       </div>
 
       <div className="lo-tabs">
-        <button
-          type="button"
-          className={`lo-tab${tab === "image" ? " lo-tab-on" : ""}`}
-          onClick={() => setTab("image")}
-        >
-          Image
-        </button>
-        <button
-          type="button"
-          className={`lo-tab${tab === "audio" ? " lo-tab-on" : ""}`}
-          onClick={() => setTab("audio")}
-        >
-          Voix
-        </button>
+        {onglets.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`lo-tab${tab === t.id ? " lo-tab-on" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      <div className="lo-studio">{tab === "image" ? <ImageGen /> : <AudioGen />}</div>
+      <div className="lo-studio">
+        {tab === "image" ? (
+          <ImageGen />
+        ) : tab === "audio" ? (
+          <AudioGen />
+        ) : ongletCourant?.source ? (
+          <div className="lo-card">
+            <p className="lo-card-title">{ongletCourant.label}</p>
+            <p className="lo-hint">
+              Onglet apporté par {ongletCourant.source} — le contenu vit dans
+              l'extension.
+            </p>
+          </div>
+        ) : (
+          <div className="lo-card">
+            <p className="lo-hint">Onglet inconnu.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

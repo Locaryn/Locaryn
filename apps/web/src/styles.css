@@ -119,6 +119,7 @@ body {
 }
 .lo-input:focus {
   border-color: var(--accent);
+  box-shadow: var(--glow-accent-soft);
 }
 
 .lo-btn {
@@ -178,9 +179,35 @@ body {
   border-radius: 50%;
   background: var(--accent);
   flex: 0 0 auto;
+  /* La pastille vive : un halo vert qui respire à peine. */
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.55);
+}
+.lo-bar-menu {
+  flex: none;
+  min-width: 40px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.lo-bar-menu:hover {
+  color: var(--text);
+}
+.lo-bar-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.lo-bar-spacer {
+  flex: 1;
 }
 .lo-bar-away {
-  margin-left: auto;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-dim);
@@ -189,6 +216,60 @@ body {
   padding: 3px 10px;
   background: none;
   font-family: inherit;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.lo-bar-away:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+.lo-bar-away:active {
+  transform: scale(0.97);
+}
+
+/* ── Chat — l'effet liquide ──────────────────────────────────
+   La barre et la zone de saisie flottent au-dessus du fil, qui défile
+   dessous : un verre translucide et flouté les sépare du contenu, au lieu
+   d'une ligne dure. Rien ne bouge dans le flux — c'est le même flex, la
+   barre et le composeur deviennent simplement absolus. */
+.lo-chat {
+  position: relative;
+}
+.lo-chat .lo-thread {
+  position: absolute;
+  inset: 0;
+  padding-top: calc(46px + var(--space-3));
+  padding-bottom: calc(84px + var(--space-2));
+}
+.lo-chat .lo-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
+}
+.lo-chat .lo-compose {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  margin-inline: auto;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-top: 1px solid var(--glass-border);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lo-chat .lo-bar,
+  .lo-chat .lo-compose {
+    background: var(--surface);
+  }
 }
 
 /* ── Conversation ────────────────────────────────────────── */
@@ -203,6 +284,10 @@ body {
   width: 100%;
   margin: 0 auto;
 }
+.lo-empty {
+  margin-top: var(--space-6);
+  text-align: center;
+}
 .lo-msg {
   max-width: 86%;
   padding: 10px 13px;
@@ -211,6 +296,9 @@ body {
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+  /* Chaque message entre doucement : fade + glissade. Le délai en cascade
+     pour un historique est posé en ligne par le composant. */
+  animation: lo-fade-up var(--dur-med) var(--ease-out) both;
 }
 .lo-msg-me {
   align-self: flex-end;
@@ -220,6 +308,39 @@ body {
 .lo-msg-ai {
   align-self: flex-start;
   color: var(--text);
+}
+
+/* Le modèle réfléchit : trois points qui respirent, rien de plus. */
+.lo-typing {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 12px 14px;
+}
+.lo-typing i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  animation: lo-typing-dot 1.2s var(--ease) infinite;
+}
+.lo-typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.lo-typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes lo-typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
 }
 .lo-compose {
   display: flex;
@@ -242,6 +363,17 @@ body {
   background: var(--accent);
   border: none;
   border-radius: var(--radius);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease), filter
+    var(--dur-fast) var(--ease);
+}
+.lo-send:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: var(--glow-accent-soft);
+}
+.lo-send:active:not(:disabled) {
+  transform: scale(0.96);
 }
 .lo-send:disabled {
   opacity: 0.4;
@@ -327,6 +459,221 @@ body {
   background: var(--surface);
 }
 
+/* ── Menu principal — une feuille qui monte du bas, comme sur le téléphone ── */
+.lo-sheet-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  cursor: pointer;
+  animation: lo-fade-in var(--dur-fast) var(--ease) both;
+}
+.lo-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-3);
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-top: 1px solid var(--glass-border);
+  border-radius: 16px 16px 0 0;
+  box-shadow: var(--shadow-2);
+  animation: lo-sheet-up 200ms ease;
+}
+@keyframes lo-sheet-up {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-sheet {
+    animation: none;
+  }
+}
+.lo-sheet-grip {
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  margin: 4px 0 10px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.lo-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 0 var(--space-2);
+  font-family: inherit;
+  font-size: 15px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.lo-sheet-item:hover {
+  background: var(--bg);
+}
+.lo-sheet-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lo-sheet-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ── Tiroir d'historique — le même que sur le téléphone ──────
+   Mêmes classes, mêmes noms : personne ne devrait réapprendre l'interface
+   en changeant d'écran. */
+.lo-pad {
+  padding: var(--space-5);
+}
+.lo-drawer-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  cursor: pointer;
+  animation: lo-fade-in var(--dur-fast) var(--ease) both;
+}
+.lo-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  width: min(82vw, 320px);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-2);
+  transform: translateX(-100%);
+  transition: transform var(--dur-med) var(--ease-out);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.lo-drawer-open {
+  transform: translateX(0);
+}
+.lo-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 46px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.lo-drawer-title {
+  flex: 1;
+  font-size: var(--text-base);
+  font-weight: 800;
+  color: var(--text);
+}
+.lo-drawer-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+.lo-drawer-cta {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: #12140f;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+}
+.lo-drawer-cta:hover {
+  filter: brightness(1.06);
+}
+.lo-drawer-cta:active {
+  transform: scale(0.98);
+}
+.lo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lo-drawer-item {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.lo-drawer-item:hover {
+  background: var(--bg);
+}
+.lo-drawer-item-on {
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* Un intitulé de groupe dans l'historique — le même que sur le téléphone. */
+.lo-drawer-group-label {
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.lo-drawer-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.lo-list-nested {
+  padding-left: var(--space-4);
+}
+
+.lo-drawer-caret {
+  display: inline-block;
+  width: 10px;
+}
+
 /* ── Prompt d'installation PWA ───────────────────────────────
    A quiet bottom sheet, once per visitor: the answer is remembered in
    localStorage, so it never comes back after a dismiss or an install. */
@@ -394,6 +741,14 @@ body {
   .pwa-backdrop {
     animation: none;
   }
+  .lo-msg,
+  .lo-typing i,
+  .lo-drawer-veil {
+    animation: none;
+  }
+  .lo-drawer {
+    transition: none;
+  }
 }
 
 /* Wide screens: the interface was made for a phone, so cap the reading
@@ -402,4 +757,197 @@ body {
   .lo-center {
     max-width: 520px;
   }
+}
+
+/* ── Écrans du menu — les mêmes formes que sur le téléphone ───
+   Sections, cartes, listes : les écrans du web réutilisent les classes du
+   mobile, avec les mêmes noms et les mêmes valeurs. */
+.lo-screen-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+.lo-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.lo-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+.lo-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+.lo-section-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.lo-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lo-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.lo-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lo-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.lo-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.lo-btn-small {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.lo-btn-small:disabled {
+  opacity: 0.5;
+}
+.lo-btn-small-on {
+  color: #12140f;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.lo-tag {
+  align-self: flex-start;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-radius: var(--radius-pill);
+}
+.lo-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+.lo-list-text {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+}
+.lo-msg-copy {
+  flex: none;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.lo-toggle {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.lo-toggle-on {
+  color: #12140f;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.lo-bar-action {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.lo-row-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.lo-row-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.lo-row-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.lo-row-go {
+  color: var(--text-faint);
+  font-size: 18px;
+}
+.lo-figure-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2) 0;
+}
+.lo-figure-session {
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
 }

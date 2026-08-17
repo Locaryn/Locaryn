@@ -2,7 +2,7 @@
 
 // Un seul jeu d'icônes pour l'ordinateur et le téléphone : deux dessins pour
 // la même idée, ce sont deux applications qui se contredisent de près.
-export { Icon, type IconName } from "./icons";
+export { Icon, isIconName, type IconName } from "./icons";
 
 export const tokens = {
   /** Sen (Google Fonts) — UI font for all Locaryn interfaces. Bundled

@@ -315,6 +315,91 @@ impl LocarynClient {
         }
     }
 
+    // ---- Noyaux alternatifs ------------------------------------------------
+
+    /// Les noyaux installés (extensions avec section `core`) et leur état.
+    pub async fn list_cores(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/cores")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// État d'un noyau (par id d'extension).
+    pub async fn core_status(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url(&format!("/v1/cores/{id}"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// Lance le processus du noyau et attend sa sonde de santé.
+    pub async fn core_start(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url(&format!("/v1/cores/{id}/start"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// Arrête le processus du noyau.
+    pub async fn core_stop(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url(&format!("/v1/cores/{id}/stop"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// L'index de skills déclaré par le noyau.
+    pub async fn core_skills(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url(&format!("/v1/cores/{id}/skills"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// Installe un skill de l'écosystème du noyau (permission shell requise).
+    pub async fn core_install_skill(&self, id: &str, slug: &str) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({ "slug": slug });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/cores/{id}/skills/install")))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
     // ---- Sessions ---------------------------------------------------------
 
     pub async fn list_sessions(&self, project_id: &str) -> Result<Vec<Session>, SdkError> {
@@ -337,6 +422,29 @@ impl LocarynClient {
             .add_auth(
                 self.http
                     .post(self.url(&format!("/v1/projects/{project_id}/sessions"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// Crée une session confiée à un noyau alternatif (OpenClaw, Hermes…),
+    /// ou à `None` pour le noyau Locaryn natif.
+    pub async fn create_session_with_core(
+        &self,
+        project_id: &str,
+        core_id: Option<&str>,
+    ) -> Result<Session, SdkError> {
+        let body = serde_json::json!({ "core_id": core_id });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/projects/{project_id}/sessions")))
+                    .json(&body),
             )
             .send()
             .await?;

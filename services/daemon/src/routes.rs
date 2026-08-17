@@ -1,5 +1,6 @@
 //! Daemon route handlers, organized by domain.
 
+pub mod cores;
 pub mod extensions;
 pub mod mcp;
 pub mod memory;

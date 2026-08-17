@@ -100,7 +100,10 @@ impl ApprovalGate for DenyAll {
 }
 
 /// Interroge la porte quand il y en a une, refuse sinon.
-pub(crate) async fn ask(gate: Option<&ApprovalHandle>, req: ApprovalRequest) -> ApprovalOutcome {
+///
+/// Publique : le pont de noyaux alternatifs (`core-bridge`) relaye les
+/// approbations du noyau par le même chemin que la boucle locale.
+pub async fn ask(gate: Option<&ApprovalHandle>, req: ApprovalRequest) -> ApprovalOutcome {
     match gate {
         Some(g) => g.0.request(req).await,
         None => ApprovalOutcome::no_one_to_ask(),

@@ -51,6 +51,7 @@ struct SessionRow {
     closed_at: Option<String>,
     archived_at: Option<String>,
     ephemeral: i64,
+    core_id: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -215,6 +216,7 @@ impl TryFrom<SessionRow> for Session {
             closed_at: opt_dt(r.closed_at.as_deref())?,
             archived_at: opt_dt(r.archived_at.as_deref())?,
             ephemeral: r.ephemeral != 0,
+            core_id: r.core_id,
         })
     }
 }
@@ -744,7 +746,7 @@ impl SessionRepo {
     pub async fn list_for_project(&self, project_id: Uuid) -> Result<Vec<Session>, StorageError> {
         let rows = sqlx::query_as::<_, SessionRow>(
             "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
-             closed_at, archived_at, ephemeral \
+             closed_at, archived_at, ephemeral, core_id \
              FROM sessions \
              WHERE project_id = ? AND closed_at IS NULL AND archived_at IS NULL \
              ORDER BY COALESCE(last_message_at, created_at) DESC",
@@ -774,18 +776,34 @@ impl SessionRepo {
         title: Option<String>,
         ephemeral: bool,
     ) -> Result<Session, StorageError> {
+        self.create_with_core(project_id, title, ephemeral, None).await
+    }
+
+    /// Créer une conversation confiée à un noyau installé (OpenClaw, Hermes…).
+    ///
+    /// `core_id` est l'id de l'extension de noyau ; `None` = noyau Locaryn
+    /// natif. Le choix se fait à la naissance et ne change pas ensuite : la
+    /// mémoire du noyau est liée à cette session.
+    pub async fn create_with_core(
+        &self,
+        project_id: Uuid,
+        title: Option<String>,
+        ephemeral: bool,
+        core_id: Option<&str>,
+    ) -> Result<Session, StorageError> {
         let id = Uuid::new_v4();
         let now = chrono::Utc::now().to_rfc3339();
         let row = sqlx::query_as::<_, SessionRow>(
-            "INSERT INTO sessions (id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral) \
-             VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, ?) \
-             RETURNING id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral",
+            "INSERT INTO sessions (id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral, core_id) \
+             VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, ?, ?) \
+             RETURNING id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral, core_id",
         )
         .bind(id.to_string())
         .bind(project_id.to_string())
         .bind(title.as_deref())
         .bind(&now)
         .bind(i64::from(ephemeral))
+        .bind(core_id)
         .fetch_one(&self.pool)
         .await?;
         row.try_into()
@@ -813,7 +831,7 @@ impl SessionRepo {
     pub async fn list_archived(&self, project_id: Uuid) -> Result<Vec<Session>, StorageError> {
         let rows = sqlx::query_as::<_, SessionRow>(
             "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
-             closed_at, archived_at, ephemeral \
+             closed_at, archived_at, ephemeral, core_id \
              FROM sessions WHERE project_id = ? AND archived_at IS NOT NULL \
              ORDER BY archived_at DESC",
         )
@@ -839,7 +857,7 @@ impl SessionRepo {
     pub async fn get(&self, id: Uuid) -> Result<Session, StorageError> {
         let row = sqlx::query_as::<_, SessionRow>(
             "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
-             closed_at, archived_at, ephemeral \
+             closed_at, archived_at, ephemeral, core_id \
              FROM sessions WHERE id = ?",
         )
         .bind(id.to_string())

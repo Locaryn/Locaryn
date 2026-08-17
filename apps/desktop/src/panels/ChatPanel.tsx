@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, isIconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageGenPanel } from "../components/ImageGenPanel";
 import { QuickModelSelector } from "../components/QuickModelSelector";
@@ -12,6 +12,7 @@ import { ToolCard } from "../components/chat/ToolCard";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import {
   type ConnectionMode,
+  type ExtensionComposerAction,
   IMAGE_QUALITIES,
   type ImageIntent,
   type ReasoningLevel,
@@ -96,6 +97,9 @@ type Props = {
   /** La conversation vient d'être rangée dans un projet, sur proposition du
    *  petit modèle : les listes doivent suivre. */
   onSessionMoved?: (projectId: string) => void;
+  /** Nom du noyau alternatif qui pilote cette conversation (OpenClaw,
+   *  Hermes…). Absent = noyau Locaryn natif. */
+  coreName?: string | null;
 };
 
 const SUGGESTIONS = [
@@ -159,6 +163,7 @@ export function ChatPanel({
   onAddSsh,
   connectionMode,
   onSessionMoved,
+  coreName,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -199,6 +204,10 @@ export function ChatPanel({
   // Commandes apportees par les plugins actifs. Rechargees au montage :
   // installer ou desactiver une extension change la palette sans redemarrage.
   const [extCommands, setExtCommands] = useState<SlashCommand[]>([]);
+  /** Boutons posés près du champ par les extensions actives. */
+  const [composerActions, setComposerActions] = useState<ExtensionComposerAction[]>([]);
+  const [composerBusy, setComposerBusy] = useState<string | null>(null);
+  const [composerError, setComposerError] = useState<string | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
   /** Resolution requested through a slash argument (e.g. "/image max"). */
   const [slashSize, setSlashSize] = useState<number | null>(null);
@@ -730,6 +739,44 @@ export function ChatPanel({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const relire = () => {
+      core
+        .listExtensions()
+        .then((exts) => {
+          if (cancelled) return;
+          setComposerActions(exts.flatMap((e) => e.ui?.composer_actions ?? []));
+        })
+        .catch(() => {
+          if (!cancelled) setComposerActions([]);
+        });
+    };
+    relire();
+    window.addEventListener("locaryn:extensions-changed", relire);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("locaryn:extensions-changed", relire);
+    };
+  }, []);
+
+  async function agirComposer(a: ExtensionComposerAction) {
+    if (a.action === "insert") {
+      setInput((prev) => (prev ? `${prev} ${a.value}` : a.value));
+      return;
+    }
+    setComposerBusy(a.id);
+    setComposerError(null);
+    try {
+      const texte = await core.runComposerTool(a.value, input);
+      if (texte) setInput(texte);
+    } catch (e) {
+      setComposerError(String(e));
+    } finally {
+      setComposerBusy(null);
+    }
+  }
+
   function runSlash(cmd: SlashCommand, size?: number | null) {
     // Capture avant vidage : une commande de plugin a besoin de ce qui a ete
     // tape apres son nom pour resoudre ses arguments.
@@ -946,15 +993,23 @@ export function ChatPanel({
             {items.map((it, i) => {
               if (it.kind === "msg") {
                 return (
-                  <MessageBubble
+                  // Une entrée en cascade, comme sur le web et le téléphone :
+                  // un historique chargé arrive d'un bloc, chaque message entre
+                  // un court instant après le précédent.
+                  <div
                     key={it.id}
-                    role={it.role}
-                    text={it.text}
-                    images={it.images}
-                    canEdit={i === lastUserIdx && !streaming}
-                    onEdit={editLastUserMessage}
-                    onRunCode={it.role === "assistant" ? handleRunCode : undefined}
-                  />
+                    className="locaryn-msg-anim"
+                    style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
+                  >
+                    <MessageBubble
+                      role={it.role}
+                      text={it.text}
+                      images={it.images}
+                      canEdit={i === lastUserIdx && !streaming}
+                      onEdit={editLastUserMessage}
+                      onRunCode={it.role === "assistant" ? handleRunCode : undefined}
+                    />
+                  </div>
                 );
               }
               if (it.kind === "intent") {
@@ -1196,6 +1251,35 @@ export function ChatPanel({
             onKeyDown={handleComposerKeyDown}
           />
           <div className="locaryn-composer-bar">
+            {composerActions.length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-2)",
+                  flex: "none",
+                }}
+              >
+                {composerActions.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className="locaryn-chip-btn"
+                    title={a.hint ?? a.label}
+                    disabled={!canCompose || composerBusy === a.id}
+                    onClick={() => void agirComposer(a)}
+                  >
+                    <span style={{ display: "inline-flex" }}>
+                      <Icon
+                        name={isIconName(a.icon) ? a.icon : "extensions"}
+                        size={15}
+                      />
+                    </span>
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <input
               ref={fileRef}
               type="file"
@@ -1236,6 +1320,15 @@ export function ChatPanel({
               <Icon name="models" size={15} /> Documents
               {ragCount > 0 && <span className="locaryn-chip-state">{ragCount}</span>}
             </button>
+            {composerError && (
+              <span
+                className="locaryn-composer-hint"
+                style={{ color: "var(--danger)", flex: "none" }}
+                title={composerError}
+              >
+                {composerError.length > 60 ? `${composerError.slice(0, 57)}…` : composerError}
+              </span>
+            )}
             <span className="locaryn-composer-hint">
               Entrée pour envoyer · Shift+Entrée pour saut de ligne
             </span>
@@ -1261,33 +1354,57 @@ export function ChatPanel({
               paddingRight: "4px",
             }}
           >
-            {/* Model Quick Picker pill */}
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              style={{
-                fontSize: "11px",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "2px 8px",
-                color: "var(--text)",
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-xs)",
-              }}
-              onClick={() => {
-                refreshActiveModel();
-                setQuickModelOpen(true);
-              }}
-              title="Changer rapidement parmi vos modèles installés"
-            >
-              <span style={{ display: "inline-flex" }}>
-                <Icon name={isLocalModel ? "cpu" : "cloud"} size={14} />
+            {/* Noyau alternatif : le modèle Locaryn n'a pas la main sur cette
+                conversation — le badge le dit, à la place du sélecteur. */}
+            {coreName ? (
+              <span
+                style={{
+                  fontSize: "11px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "2px 8px",
+                  color: "var(--text)",
+                  background: "var(--bg)",
+                  border: "1px solid var(--accent)",
+                  borderRadius: "var(--radius-xs)",
+                }}
+                title="Cette conversation est confiée à un noyau alternatif : sa mémoire, ses skills et son fournisseur lui appartiennent."
+              >
+                <span style={{ display: "inline-flex" }}>
+                  <Icon name="extensions" size={14} />
+                </span>
+                <span style={{ fontWeight: 700 }}>Noyau : {coreName}</span>
               </span>
-              <span style={{ fontWeight: 700 }}>{activeModel}</span>
-              <span style={{ fontSize: "9px", color: "var(--text-faint)" }}>▾</span>
-            </button>
+            ) : (
+              /* Model Quick Picker pill */
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                style={{
+                  fontSize: "11px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "2px 8px",
+                  color: "var(--text)",
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-xs)",
+                }}
+                onClick={() => {
+                  refreshActiveModel();
+                  setQuickModelOpen(true);
+                }}
+                title="Changer rapidement parmi vos modèles installés"
+              >
+                <span style={{ display: "inline-flex" }}>
+                  <Icon name={isLocalModel ? "cpu" : "cloud"} size={14} />
+                </span>
+                <span style={{ fontWeight: 700 }}>{activeModel}</span>
+                <span style={{ fontSize: "9px", color: "var(--text-faint)" }}>▾</span>
+              </button>
+            )}
 
             {/* Context gauge */}
             <div

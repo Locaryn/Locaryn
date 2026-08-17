@@ -16,6 +16,7 @@ import { useTheme } from "./hooks/useTheme";
 import { FREE_CHAT_PATH } from "./lib/constants";
 import {
   type Health,
+  type InstalledExtension,
   type Project,
   type Provisioning,
   type Session,
@@ -74,6 +75,13 @@ export function App() {
    * catalogue de modèles suivent la même liste.
    */
   const [activeCapabilities, setActiveCapabilities] = useState<string[]>([]);
+  /** Noyaux alternatifs installés (extensions avec une section `core`). */
+  const [installedCores, setInstalledCores] = useState<InstalledExtension[]>([]);
+  /** Les extensions actives : la navigation et le Studio en tirent leurs
+   *  contributions (nav_items, studio_tabs) sans jamais les nommer. */
+  const [activeExtensions, setActiveExtensions] = useState<InstalledExtension[]>([]);
+  /** Projet pour lequel le choix du noyau est ouvert (création de session). */
+  const [corePickerFor, setCorePickerFor] = useState<Project | null>(null);
 
   const theme = useTheme();
 
@@ -161,10 +169,15 @@ export function App() {
         for (const c of ext.capabilities ?? []) caps.add(c);
       }
       setActiveCapabilities([...caps]);
+      // Les noyaux installés alimentent le choix à la création de session.
+      setInstalledCores(installed.filter((e) => e.core != null && e.enabled));
+      setActiveExtensions(installed.filter((e) => e.enabled));
     } catch {
       // Registre illisible : on n'invente pas de capacités. L'interface se
       // réduit à ce qui marche sans extension.
       setActiveCapabilities([]);
+      setInstalledCores([]);
+      setActiveExtensions([]);
     }
   }, []);
 
@@ -319,8 +332,19 @@ export function App() {
   }
 
   async function handleNewSession(proj: Project) {
+    // Des noyaux alternatifs sont installés : on demande lequel pilotera la
+    // conversation. Le noyau Locaryn reste le défaut, en tête de liste.
+    if (installedCores.length > 0) {
+      setCorePickerFor(proj);
+      return;
+    }
+    await createSessionWithCore(proj, null);
+  }
+
+  /** Créer une session, noyau Locaryn (`coreId = null`) ou alternatif. */
+  async function createSessionWithCore(proj: Project, coreId: string | null) {
     try {
-      const newS = await core.createSession(proj.id);
+      const newS = await core.createSession(proj.id, undefined, coreId);
       setSessions((prev) => [newS, ...prev]);
       setActiveSession(newS);
       setActiveView("chat");
@@ -678,6 +702,97 @@ export function App() {
         }}
       />
 
+      {/* Choix du noyau à la création d'une conversation : Locaryn reste le
+          défaut ; un noyau installé (OpenClaw, Hermes…) prend la main sur la
+          mémoire, les skills et le fournisseur de cette session. */}
+      {corePickerFor && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,.45)",
+            backdropFilter: "blur(4px)",
+          }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setCorePickerFor(null);
+          }}
+        >
+          {/* biome-ignore lint/a11y/useSemanticElements: la fenêtre est montée et démontée par React (jamais showModal), sur un fond assombri fait maison ; un <dialog> natif imposerait son ::backdrop et son positionnement */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Noyau de la conversation"
+            className="locaryn-card"
+            style={{ width: 460, maxWidth: "92vw", padding: 20 }}
+          >
+            <h3 style={{ fontSize: "var(--text-lg)", margin: "0 0 4px" }}>
+              Noyau de la conversation
+            </h3>
+            <p className="locaryn-field-hint" style={{ marginBottom: 16 }}>
+              Le noyau décide de la mémoire, des skills et du fournisseur de cette conversation.
+              Vous pouvez changer d'avis à chaque nouvelle conversation — le noyau Locaryn n'est
+              jamais remplacé.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                type="button"
+                className="locaryn-box-card"
+                style={{
+                  textAlign: "left",
+                  padding: 12,
+                  cursor: "pointer",
+                  borderColor: "var(--accent)",
+                }}
+                onClick={() => {
+                  setCorePickerFor(null);
+                  void createSessionWithCore(corePickerFor, null);
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>Noyau Locaryn (défaut)</strong>
+                <span className="locaryn-field-hint" style={{ display: "block" }}>
+                  Le noyau natif : vos providers Locaryn, vos règles, vos outils.
+                </span>
+              </button>
+              {installedCores.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="locaryn-box-card"
+                  style={{ textAlign: "left", padding: 12, cursor: "pointer" }}
+                  onClick={() => {
+                    setCorePickerFor(null);
+                    void createSessionWithCore(corePickerFor, c.id);
+                  }}
+                >
+                  <strong style={{ fontSize: 13 }}>{c.name}</strong>
+                  {c.core?.driver && (
+                    <span className="locaryn-tag" style={{ marginLeft: 8 }}>
+                      {c.core.driver}
+                    </span>
+                  )}
+                  <span className="locaryn-field-hint" style={{ display: "block" }}>
+                    {c.description ?? "Noyau alternatif installé."}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                onClick={() => setCorePickerFor(null)}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ProjectSettingsModal
         project={projectSettings}
         isOpen={projectSettings !== null}
@@ -709,6 +824,7 @@ export function App() {
         activeView={activeView}
         onSelectView={(v) => setActiveView(v)}
         activeCapabilities={activeCapabilities}
+        extensions={activeExtensions}
       />
 
       <div
@@ -772,6 +888,12 @@ export function App() {
             sessionId={activeSession?.id ?? null}
             projectId={activeProject?.id ?? null}
             connectionMode={health?.mode}
+            coreName={
+              activeSession?.core_id
+                ? (installedCores.find((c) => c.id === activeSession.core_id)?.name ??
+                  activeSession.core_id)
+                : null
+            }
             onCreateSessionForPrompt={handleCreateSessionForPrompt}
             onSessionMoved={(projectId) => {
               if (activeSession) void handleMoveSession(activeSession, projectId);
@@ -908,6 +1030,7 @@ export function App() {
           <StudioView
             installedModels={installedModels}
             installedImageModels={installedModels}
+            extensions={activeExtensions}
             onOpenImageGen={() => {
               setActiveView("chat");
               setShowImageGen(true);

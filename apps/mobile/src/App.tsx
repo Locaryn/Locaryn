@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
 import { ConfirmServer, type ProvisioningApercu, lireApercu } from "./components/ConfirmServer";
 import { Extensions } from "./components/Extensions";
+import { FiguresScreen } from "./components/FiguresScreen";
 import type { Destination } from "./components/MainMenu";
 import { MemoryScreen } from "./components/MemoryScreen";
 import { Models } from "./components/Models";
@@ -11,12 +12,12 @@ import { ScanOverlay } from "./components/ScanOverlay";
 import { Settings } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
-import { type MobileStatus, type PairingResult, api, coreMode } from "./lib/core";
+import { type MobileStatus, type PairingResult, type PhoneExtension, api, coreMode } from "./lib/core";
 import { useNavigation } from "./lib/navigation";
 import { surEchecReseau } from "./lib/reachability";
 import { annulerScan, isScannerAvailable, scan } from "./lib/scanner";
 
-type Screen = "signin" | "chat" | "memory" | Destination;
+type Screen = "signin" | "chat" | "memory" | Destination | (string & {});
 
 export function App() {
   const [status, setStatus] = useState<MobileStatus | null>(null);
@@ -46,10 +47,17 @@ export function App() {
   /** Ce que les extensions actives du serveur apportent. Lu une fois, relu
    *  quand une extension bouge : c'est ce qui décide des écrans disponibles. */
   const [capabilities, setCapabilities] = useState<string[]>([]);
+  /** Les extensions actives : le menu et le Studio en tirent leurs
+   *  contributions (nav_items, studio_tabs) sans jamais les nommer. */
+  const [activeExtensions, setActiveExtensions] = useState<PhoneExtension[]>([]);
+  /** Une conversation neuve tenue par une figure, à ouvrir dans le chat. */
+  const [figureChatId, setFigureChatId] = useState<string | null>(null);
 
   const refreshCapabilities = useCallback(async () => {
     try {
-      setCapabilities(await api.serverCapabilities());
+      const [caps, exts] = await Promise.all([api.serverCapabilities(), api.listExtensions()]);
+      setCapabilities(caps);
+      setActiveExtensions(exts.filter((e) => e.enabled));
     } catch {
       // Un serveur muet ne doit pas vider l'interface : on garde ce qu'on a.
     }
@@ -267,9 +275,24 @@ export function App() {
   return (
     <>
       {screen === "chat" ? (
-        <Chat status={status} capabilities={capabilities} onGo={aller} />
+        <Chat
+          status={status}
+          capabilities={capabilities}
+          onGo={aller}
+          extensions={activeExtensions}
+          key={figureChatId ?? "chat"}
+          initialId={figureChatId}
+        />
+      ) : screen === "figures" ? (
+        <FiguresScreen
+          onBack={revenir}
+          onOpenChat={(sessionId) => {
+            setFigureChatId(sessionId);
+            aller("chat");
+          }}
+        />
       ) : screen === "studio" ? (
-        <Studio onBack={revenir} />
+        <Studio onBack={revenir} extensions={activeExtensions} />
       ) : screen === "extensions" ? (
         <Extensions
           onBack={revenir}
@@ -291,7 +314,7 @@ export function App() {
           }}
           onMemory={() => aller("memory")}
         />
-      ) : (
+      ) : screen === "signin" ? (
         <SignIn
           status={status}
           onSignedIn={(s) => {
@@ -302,6 +325,26 @@ export function App() {
           onScan={openScanner}
           onSettings={() => aller("settings")}
         />
+      ) : (
+        // Une entrée de menu apportée par une extension, que l'application ne
+        // sait pas dessiner : elle le dit plutôt que d'afficher la page de
+        // connexion. Le contenu vit dans l'extension ; l'application n'en
+        // garde aucune trace.
+        <div className="lo-screen">
+          <div className="lo-bar">
+            <button type="button" className="lo-back" onClick={revenir}>
+              ← Retour
+            </button>
+            <span>Extension</span>
+          </div>
+          <div className="lo-card">
+            <p className="lo-card-title">{screen}</p>
+            <p className="lo-hint">
+              Cette entrée est apportée par une extension installée sur le
+              serveur. Son contenu vit dans l'extension.
+            </p>
+          </div>
+        </div>
       )}
       {/*
         Posé par-dessus l'écran, pas à la suite : les écrans font toute la

@@ -55,6 +55,10 @@ pub struct Session {
     /// Éphémère : rien de ce qui s'y dit ne doit rester.
     #[serde(default)]
     pub ephemeral: bool,
+    /// Noyau choisi pour cette conversation (id de l'extension de noyau
+    /// installée, ex. OpenClaw ou Hermes). NULL = noyau Locaryn natif.
+    #[serde(default)]
+    pub core_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,6 +411,28 @@ pub struct ExtensionUiEntry {
     pub icon: Option<String>,
 }
 
+/// Ce qu'une extension de noyau déclare (section `core` du manifeste) :
+/// comment Locaryn la pilote. `None` pour une extension ordinaire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionCoreInfo {
+    /// Dialecte piloté : `responses` (OpenClaw), `runs` (Hermes),
+    /// `chat_completions` (générique OpenAI-compatible).
+    pub driver: String,
+    /// URL de base de l'API du noyau (loopback obligatoire).
+    pub api_url: String,
+    /// Port local attendu.
+    pub port: u16,
+    /// Modèle annoncé par défaut (nom libre, ex. `hermes-agent`).
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Chemin (relatif au dossier de l'extension) de l'index de skills.
+    #[serde(default)]
+    pub skills_index: Option<String>,
+    /// Commande d'installation d'un skill, avec `{{slug}}` à remplacer.
+    #[serde(default)]
+    pub skills_install: Option<String>,
+}
+
 /// An installed extension as the UI sees it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledExtension {
@@ -443,6 +469,9 @@ pub struct InstalledExtension {
     /// enabled with a broken skill file; the UI surfaces why that skill is
     /// missing instead of silently dropping it.
     pub load_errors: Vec<String>,
+    /// Section `core` du manifeste, quand l'extension est un noyau.
+    #[serde(default)]
+    pub core: Option<ExtensionCoreInfo>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

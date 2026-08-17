@@ -11,6 +11,7 @@
 mod airllm;
 mod approval_gate;
 mod client_cert;
+mod core_engines;
 mod extensions;
 mod hooks;
 mod mcp_servers;
@@ -86,6 +87,9 @@ struct Core {
     /// La porte d'approbation : une seule pour toute l'application, sinon un
     /// « toujours » ne vaudrait que pour la conversation en cours.
     approval_gate: approval_gate::GateBureau,
+    /// Noyaux alternatifs (OpenClaw, Hermes…) : processus supervisés, jetons,
+    /// statut. Le noyau Locaryn, lui, n'est jamais remplacé.
+    cores: Arc<core_engines::CoreManager>,
 }
 
 /// One in-flight approval prompt, parked on the runtime until the user
@@ -327,6 +331,7 @@ async fn init_core() -> anyhow::Result<Core> {
         pull_cancels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         embed_server: Arc::new(tokio::sync::Mutex::new(None)),
         pending_approvals: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        cores: core_engines::CoreManager::new(),
     })
 }
 
@@ -1012,6 +1017,7 @@ async fn save_figure(
     model: Option<String>,
     opening: Option<String>,
     uses_memory: bool,
+    tools: Option<Vec<String>>,
 ) -> Result<locaryn_storage::figures::Figure, String> {
     core.storage
         .figures
@@ -1022,6 +1028,7 @@ async fn save_figure(
             model: model.as_deref().filter(|m| !m.trim().is_empty()),
             opening: opening.as_deref().filter(|o| !o.trim().is_empty()),
             uses_memory,
+            tools: tools.as_deref(),
             // Écrite depuis l'interface : c'est le travail de quelqu'un, et
             // aucune mise à jour d'extension ne l'écrasera.
             source: "user",
@@ -1181,6 +1188,7 @@ async fn create_session(
     core: State<'_, Core>,
     project_id: Uuid,
     title: Option<String>,
+    core_id: Option<String>,
 ) -> Result<Session, String> {
     let title = title.and_then(|t| {
         let t = t.trim().to_string();
@@ -1193,7 +1201,7 @@ async fn create_session(
     let session = core
         .storage
         .sessions
-        .create(project_id, title)
+        .create_with_core(project_id, title, false, core_id.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1450,6 +1458,15 @@ async fn send_message(
     }
 
     // 2. Resolve session → project context (path + trust) for the tool loop.
+    //    La session peut être confiée à un noyau alternatif : on le retient
+    //    avant de construire l'agent, c'est lui qui décidera du routage.
+    let session_core_id = core
+        .storage
+        .sessions
+        .get(session_id)
+        .await
+        .ok()
+        .and_then(|s| s.core_id);
     let (project_id, project_path, trust) = match core.storage.sessions.get(session_id).await {
         Ok(session) => match core.storage.projects.get(session.project_id).await {
             Ok(project) => {
@@ -1599,7 +1616,18 @@ async fn send_message(
         None => content,
     };
 
-    let input = AgentInput {
+    // Une figure peut restreindre les outils du modèle à ceux qu'elle nomme.
+    let figure_tools = core
+        .storage
+        .figures
+        .for_session(session_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|f| f.tools)
+        .filter(|t| !t.is_empty());
+
+    let mut input = AgentInput {
         session_id,
         message: agent_message,
         mode: core.mode,
@@ -1623,15 +1651,40 @@ async fn send_message(
         // Ce que les extensions actives apportent, d'après ce que le service
         // en dit : c'est la liste qui décide des outils offerts au modèle.
         capabilities: extensions::active_capabilities(&core).await,
+        // Les outils que la figure de cette conversation autorise.
+        tools: figure_tools,
         // Sans elle, tout appel exigeant un accord serait refusé faute
         // d'interlocuteur — le comportement voulu pour un service sans
         // interface, pas pour l'application de bureau.
         approval: Some(locaryn_agent_runtime::approval::ApprovalHandle(Arc::new(
             core.approval_gate.clone(),
         ))),
+        // Renseigné plus bas si la session est confiée à un noyau alternatif.
+        bearer_token: None,
     };
 
-    let mut event_stream: EventStream = match &active_provider {
+    let mut event_stream: EventStream = if let Some(core_id) = &session_core_id {
+        // Session confiée à un noyau alternatif (OpenClaw, Hermes…). Pas de
+        // fallback silencieux vers le noyau Locaryn : si le noyau choisi ne
+        // répond pas, on le dit, et on propose l'action qui le répare.
+        match core_engines::agent_for_core(&core, core_id).await {
+            Ok((agent, token)) => {
+                input.bearer_token = token;
+                match agent.run(input.clone()).await {
+                    Ok(stream) => stream,
+                    Err(e) => {
+                        tracing::warn!(core = %core_id, error = %e, "noyau alternatif injoignable");
+                        no_model_stream(&format!(
+                            "Le noyau de cette conversation ne répond pas ({e}). \
+                             Ouvrez Réglages → Extensions et démarrez-le."
+                        ))
+                    }
+                }
+            }
+            Err(e) => no_model_stream(&e),
+        }
+    } else {
+        match &active_provider {
         Some(p) => {
             tracing::info!(endpoint = %p.endpoint, model = ?model, "desktop using OpenAiCompatAgent (llama-server)");
             let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
@@ -1649,6 +1702,7 @@ async fn send_message(
         None => {
             tracing::warn!("no active provider configured");
             no_model_stream("Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.")
+        }
         }
     };
 
@@ -7949,6 +8003,11 @@ pub fn run() {
             memory::forget_memory,
             memory::forget_all_memory,
             extensions::list_extensions,
+            core_engines::core_status,
+            core_engines::core_start,
+            core_engines::core_stop,
+            core_engines::core_skills,
+            core_engines::core_install_skill,
             extensions::install_extension,
             extensions::update_extension,
             extensions::update_extension_source,

@@ -46,7 +46,7 @@ export function Studio({ onBack }: Props) {
 }
 
 function ImageGen() {
-  const [models, setModels] = useState<string[] | null>(null);
+  const [models, setModels] = useState<{ name: string }[] | null>(null);
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState<"512" | "1024">("1024");
@@ -62,7 +62,7 @@ function ImageGen() {
         if (cancelled) return;
         const list = Array.isArray(m) ? m : [];
         setModels(list);
-        if (list.length && !model) setModel(list[0]);
+        if (list.length && !model) setModel(list[0].name);
       })
       .catch((e) => !cancelled && setError(String(e)));
     return () => {
@@ -104,8 +104,8 @@ function ImageGen() {
         disabled={busy}
       >
         {models?.map((m) => (
-          <option key={m} value={m}>
-            {m}
+          <option key={m.name} value={m.name}>
+            {m.name}
           </option>
         ))}
       </select>
@@ -157,7 +157,7 @@ function ImageGen() {
 }
 
 function AudioGen() {
-  const [models, setModels] = useState<string[] | null>(null);
+  const [models, setModels] = useState<{ name: string }[] | null>(null);
   const [model, setModel] = useState("");
   const [text, setText] = useState("");
   const [speed, setSpeed] = useState("1.0");
@@ -173,7 +173,7 @@ function AudioGen() {
         if (cancelled) return;
         const list = Array.isArray(m) ? m : [];
         setModels(list);
-        if (list.length && !model) setModel(list[0]);
+        if (list.length && !model) setModel(list[0].name);
       })
       .catch((e) => !cancelled && setError(String(e)));
     return () => {
@@ -213,8 +213,8 @@ function AudioGen() {
         disabled={busy}
       >
         {models?.map((m) => (
-          <option key={m} value={m}>
-            {m}
+          <option key={m.name} value={m.name}>
+            {m.name}
           </option>
         ))}
       </select>

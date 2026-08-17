@@ -12,6 +12,7 @@ use std::str::FromStr;
 
 pub mod error;
 pub mod figures;
+pub mod figures_import;
 pub mod memory;
 pub mod metrics;
 pub mod rag;

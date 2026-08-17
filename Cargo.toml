@@ -23,6 +23,7 @@ members = [
     "packages/hook-runtime",
     "packages/skill-runtime",
     "packages/agent-runtime",
+    "packages/core-bridge",
     "packages/rules-runtime",
     "packages/lsp-adapters",
     "packages/ssh",
@@ -55,6 +56,7 @@ locaryn-command-runtime   = { path = "packages/command-runtime", version = "0.3.
 locaryn-hook-runtime      = { path = "packages/hook-runtime", version = "0.3.7" }
 locaryn-skill-runtime     = { path = "packages/skill-runtime", version = "0.3.7" }
 locaryn-agent-runtime     = { path = "packages/agent-runtime", version = "0.3.7" }
+locaryn-core-bridge       = { path = "packages/core-bridge", version = "0.3.7" }
 locaryn-rules-runtime     = { path = "packages/rules-runtime", version = "0.3.7" }
 locaryn-lsp-adapters      = { path = "packages/lsp-adapters", version = "0.3.7" }
 locaryn-ssh               = { path = "packages/ssh", version = "0.3.7" }

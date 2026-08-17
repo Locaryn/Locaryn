@@ -108,6 +108,19 @@ pub async fn reload(core: &Core) -> Result<(), String> {
                 tracing::warn!(name = %row.name, error = %e, "extension activée illisible");
             }
         }
+
+        // Les figures du dépôt sont resynchronisées à chaque chargement :
+        // une mise à jour de l'extension est reprise au redémarrage, et une
+        // figure écrite à la main n'est jamais écrasée.
+        let importees = locaryn_storage::figures_import::importer(
+            &core.storage.figures,
+            &root,
+            &row.name,
+        )
+        .await;
+        if importees > 0 {
+            tracing::info!(name = %row.name, importees, "figures du dépôt importées");
+        }
     }
     next.system_prompt = prompt;
 
@@ -195,7 +208,7 @@ fn sanitize_server(s: &str) -> String {
         .collect()
 }
 
-fn plugin_root(manifest_path: &str) -> Option<PathBuf> {
+pub(crate) fn plugin_root(manifest_path: &str) -> Option<PathBuf> {
     let p = Path::new(manifest_path);
     if p.is_dir() {
         return Some(p.to_path_buf());
@@ -396,6 +409,18 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
                 .unwrap_or_default(),
             permissions,
             load_errors,
+            // Une extension de noyau expose sa section `core` : c'est ce qui
+            // fait apparaître la carte « Noyau » dans les réglages.
+            core: manifest.as_ref().and_then(|m| m.core.as_ref()).map(|c| {
+                locaryn_shared_types::ExtensionCoreInfo {
+                    driver: c.driver.clone(),
+                    api_url: c.api_url.clone(),
+                    port: c.port,
+                    model: c.model.clone(),
+                    skills_index: c.skills.index.clone(),
+                    skills_install: c.skills.install.clone(),
+                }
+            }),
             created_at: row.created_at,
             updated_at: row.updated_at,
         });
@@ -483,6 +508,19 @@ pub async fn install_extension(
         })
         .await
         .map_err(|e| e.to_string())?;
+
+    // Les figures du dépôt entrent en base dès l'installation : l'écran
+    // Figures les montre aussitôt, et réinstaller les met à jour sans
+    // toucher à celles écrites à la main.
+    let importees = locaryn_storage::figures_import::importer(
+        &core.storage.figures,
+        &outcome.root,
+        &outcome.manifest.name,
+    )
+    .await;
+    if importees > 0 {
+        tracing::info!(name = %outcome.manifest.name, importees, "figures du dépôt importées");
+    }
 
     tracing::info!(
         name = %outcome.manifest.name,
@@ -583,6 +621,16 @@ async fn reinstall_from_source(
         })
         .await
         .map_err(|e| e.to_string())?;
+
+    let importees = locaryn_storage::figures_import::importer(
+        &core.storage.figures,
+        &outcome.root,
+        &outcome.manifest.name,
+    )
+    .await;
+    if importees > 0 {
+        tracing::info!(name = %outcome.manifest.name, importees, "figures du dépôt importées");
+    }
 
     tracing::info!(
         name = %outcome.manifest.name,
@@ -833,12 +881,56 @@ fn read_values(root: &Path, schema: &serde_json::Value) -> serde_json::Value {
     serde_json::Value::Object(values)
 }
 
+/// Le formulaire d'une extension, tel qu'elle le déclare dans
+/// `ui_contributions.settings_sections` — le mécanisme unique de réglages,
+/// sur l'ordinateur comme sur le téléphone.
+///
+/// Une section devient un groupe du formulaire ; un champ y est converti au
+/// vocabulaire canonique (`boolean`, `select`, `model`, `string`, `number`,
+/// `prompt`). L'ancien `config.schema` reste lu en secours, pour ne pas
+/// casser une extension qui ne connaît que lui.
 fn manifest_schema(root: &Path) -> serde_json::Value {
-    locaryn_extensions::manifest::load(root)
-        .ok()
-        .and_then(|m| m.config)
-        .map(|c| c.schema)
-        .unwrap_or(serde_json::Value::Null)
+    let Ok(m) = locaryn_extensions::manifest::load(root) else {
+        return serde_json::Value::Null;
+    };
+
+    let mut schema = serde_json::Map::new();
+    for section in &m.ui.settings_sections {
+        for field in &section.fields {
+            let kind = match field.kind.as_str() {
+                "boolean" | "toggle" => "boolean",
+                "select" | "choice" => "select",
+                "model" => "model",
+                "number" => "number",
+                "prompt" => "prompt",
+                _ => "string",
+            };
+            let mut f = serde_json::Map::new();
+            f.insert("type".into(), serde_json::Value::String(kind.into()));
+            f.insert("title".into(), serde_json::Value::String(field.label.clone()));
+            if let Some(hint) = &field.hint {
+                f.insert("description".into(), serde_json::Value::String(hint.clone()));
+            }
+            if !field.options.is_empty() {
+                f.insert("options".into(), serde_json::json!(field.options));
+            }
+            if let Some(default) = &field.default {
+                f.insert("default".into(), serde_json::Value::String(default.clone()));
+            }
+            // Le groupe du formulaire, c'est la section.
+            f.insert("group".into(), serde_json::Value::String(section.title.clone()));
+            schema.insert(field.key.clone(), serde_json::Value::Object(f));
+        }
+    }
+
+    if schema.is_empty() {
+        // Aucune section déclarée : secours sur l'ancien `config.schema`.
+        if let Some(c) = m.config {
+            return c.schema;
+        }
+        return serde_json::Value::Null;
+    }
+    serde_json::Value::Object(schema)
 }
 
 async fn config_for(core: &Core, id: Uuid) -> Result<(PathBuf, ExtensionConfig), String> {

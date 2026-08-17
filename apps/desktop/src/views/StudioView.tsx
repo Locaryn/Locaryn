@@ -1,4 +1,4 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon, isIconName, type IconName } from "@locaryn/ui-core";
 import { useMemo, useState } from "react";
 import { AudioGenPanel } from "../components/AudioGenPanel";
 import { ImageGenPanel } from "../components/ImageGenPanel";
@@ -6,7 +6,7 @@ import { Model3DPanel } from "../components/Model3DPanel";
 import { MusicGenPanel } from "../components/MusicGenPanel";
 import { RegionEditPanel } from "../components/RegionEditPanel";
 import { VideoGenPanel } from "../components/VideoGenPanel";
-import { core } from "../lib/core";
+import { core, type InstalledExtension } from "../lib/core";
 import { taskCenter, useTasks } from "../lib/taskCenter";
 
 type StudioTab =
@@ -41,6 +41,9 @@ type Props = {
   onCloseAudioGen?: () => void;
   /** Send an image from the gallery to the active chat session. */
   onSendImageToChat?: (url: string, label: string) => void;
+  /** Extensions actives : leurs `studio_tabs` s'ajoutent aux onglets, sans
+   *  jamais recouvrir un onglet natif. */
+  extensions?: InstalledExtension[];
 };
 
 /**
@@ -54,8 +57,38 @@ export function StudioView({
   onOpenImageGen,
   onCloseAudioGen,
   onSendImageToChat,
+  extensions = [],
 }: Props) {
-  const [active, setActive] = useState<StudioTab>("image");
+  const [active, setActive] = useState<string>("image");
+
+  // Le socle d'abord : les onglets natifs. Puis ceux que les extensions
+  // actives déclarent, sans jamais recouvrir un id natif.
+  const onglets = useMemo(() => {
+    const natifs = TABS;
+    const pris = new Set<string>(natifs.map((t) => t.id));
+    const depuisExtensions = extensions.flatMap((ext) =>
+      (ext.ui?.studio_tabs ?? []).flatMap((t) => {
+        if (pris.has(t.id)) return [];
+        pris.add(t.id);
+        return [
+          {
+            id: t.id,
+            label: t.label,
+            icon: (isIconName(t.icon) ? t.icon : "extensions") as IconName,
+            source: ext.display_name || ext.name,
+          },
+        ];
+      }),
+    );
+    // Le type unifié : `source` n'existe que pour les onglets d'extensions,
+    // le switch le lit en optionnel.
+    return [...natifs, ...depuisExtensions] as {
+      id: string;
+      label: string;
+      icon: IconName;
+      source?: string;
+    }[];
+  }, [extensions]);
 
   // ── Galleries par type ───────────────────────────────────────────────
   const tasks = useTasks();
@@ -506,8 +539,18 @@ export function StudioView({
           "Question-réponse",
           "Réponses précises à partir d'un corpus de documents ou d'un contexte donné.",
         );
-      default:
-        return null;
+      default: {
+        // Un onglet qu'aucune extension active n'apporte, ou un id inconnu :
+        // l'application ne sait pas dessiner ce que l'extension ferait — elle
+        // le dit plutôt que d'afficher un panneau vide.
+        const onglet = onglets.find((t) => t.id === active);
+        return renderPlaceholder(
+          onglet?.label ?? active,
+          onglet?.source
+            ? `Onglet apporté par ${onglet.source} — le contenu vit dans l'extension.`
+            : "Onglet inconnu.",
+        );
+      }
     }
   }
 
@@ -531,7 +574,7 @@ export function StudioView({
           flexShrink: 0,
         }}
       >
-        {TABS.map((tab) => {
+        {onglets.map((tab) => {
           const isActive = active === tab.id;
           return (
             <button

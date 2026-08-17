@@ -16,6 +16,7 @@ const VIDE = {
   model: "",
   opening: "",
   usesMemory: false,
+  tools: "",
 };
 
 /**
@@ -62,6 +63,7 @@ export function FiguresView({ onOpenSession, onNewWithFigure }: Props) {
       model: f.model ?? "",
       opening: f.opening ?? "",
       usesMemory: f.uses_memory,
+      tools: (f.tools ?? []).join(", "),
     });
     try {
       setSessions(await core.figureSessions(f.id));
@@ -91,6 +93,7 @@ export function FiguresView({ onOpenSession, onNewWithFigure }: Props) {
         model: draft.model.trim() || null,
         opening: draft.opening.trim() || null,
         usesMemory: draft.usesMemory,
+        tools: draft.tools,
       });
       await reload();
       setSelected(f.id);
@@ -194,6 +197,21 @@ export function FiguresView({ onOpenSession, onNewWithFigure }: Props) {
             value={draft.opening}
             placeholder="Colle le diff à relire."
             onChange={(e) => setDraft({ ...draft, opening: e.target.value })}
+          />
+        </div>
+
+        <div className="locaryn-field">
+          <div className="locaryn-field-label">Outils</div>
+          <p className="locaryn-field-hint">
+            Les outils qu'elle a le droit d'appeler, séparés par des virgules
+            (generate_image, generate_speech, read_file…). Vide : tout ce que l'application
+            propose.
+          </p>
+          <input
+            className="locaryn-input"
+            value={draft.tools}
+            placeholder="generate_image, generate_speech"
+            onChange={(e) => setDraft({ ...draft, tools: e.target.value })}
           />
         </div>
 

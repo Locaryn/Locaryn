@@ -55,6 +55,192 @@ pub struct PluginManifest {
     /// Ce que l'extension ajoute à l'interface.
     #[serde(default, rename = "ui_contributions", alias = "uiContributions")]
     pub ui: UiContributions,
+    /// Quand elle est présente, l'extension est un **noyau** : Locaryn la
+    /// pilote (cycle de vie, healthcheck, sessions) au lieu d'utiliser son
+    /// propre agent. Le noyau Locaryn n'est jamais remplacé — une session
+    /// choisit le sien via `sessions.core_id`.
+    #[serde(default)]
+    pub core: Option<CoreManifest>,
+}
+
+/// Section `core` d'un manifeste de noyau.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CoreManifest {
+    /// Dialecte piloté : `responses` (OpenResponses d'OpenClaw), `runs`
+    /// (Runs API d'Hermes), `chat_completions` (générique).
+    #[serde(default)]
+    pub driver: String,
+    /// URL de base de l'API du noyau (loopback obligatoire).
+    #[serde(default)]
+    pub api_url: String,
+    /// Port local attendu.
+    #[serde(default)]
+    pub port: u16,
+    /// Modèle annoncé par défaut (ex. `hermes-agent`, `openclaw`).
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Comment démarrer, superviser et sonder le noyau.
+    #[serde(default)]
+    pub lifecycle: CoreLifecycle,
+    /// Skills de l'écosystème du noyau (ClawHub, Hermes…).
+    #[serde(default)]
+    pub skills: CoreSkills,
+    /// Partage des outils entre Locaryn et le noyau.
+    #[serde(default)]
+    pub tools: CoreTools,
+    /// Routage des sessions Locaryn → sessions du noyau.
+    #[serde(default)]
+    pub session: CoreSession,
+}
+
+/// Cycle de vie : commande de lancement, environnement, sonde de santé.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CoreLifecycle {
+    /// Liste d'arguments, jamais un shell. `{{port}}` et `{{token}}` y sont
+    /// remplacés à l'exécution.
+    #[serde(default)]
+    pub start: Vec<String>,
+    /// Variables d'environnement injectées au lancement (`{{port}}`,
+    /// `{{token}}` remplacés).
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
+    /// Sonde de santé : attendue avant de déclarer le noyau « en marche ».
+    #[serde(default)]
+    pub health: Option<CoreHealth>,
+}
+
+/// Sonde de santé HTTP.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CoreHealth {
+    #[serde(default = "methode_par_defaut")]
+    pub method: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default = "essais_par_defaut")]
+    pub retries: u32,
+    #[serde(default = "intervalle_par_defaut")]
+    pub interval_ms: u64,
+}
+
+fn methode_par_defaut() -> String {
+    "GET".to_string()
+}
+
+fn essais_par_defaut() -> u32 {
+    30
+}
+
+fn intervalle_par_defaut() -> u64 {
+    1000
+}
+
+/// Partage des outils entre Locaryn et le noyau.
+///
+/// Décision D1 (doc 14 §9) : par défaut le pont ne déclare **aucun** outil
+/// Locaryn au noyau — OpenClaw et Hermes ont déjà leurs propres outils
+/// terminal/fichiers, et déclarer les deux donnerait au modèle deux chemins
+/// pour la même action avec deux politiques. `client_tools: true` reste
+/// possible en opt-in (ex. exposer un MCP serveur Locaryn au noyau).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CoreTools {
+    /// Déclarer les outils Locaryn (read_file, write_file, search,
+    /// run_command, outils MCP) au noyau comme outils **client**.
+    /// `false` par défaut (D1).
+    #[serde(default)]
+    pub client_tools: bool,
+    /// Qui arbitre les appels d'outils en attente : `locaryn` (le gating
+    /// existant, modal d'approbation) ou `core` (le noyau décide, Locaryn
+    /// n'affiche que la progression).
+    #[serde(default = "approbation_par_defaut")]
+    pub approval: String,
+    /// Noms des événements de progression du noyau à traduire en cartes
+    /// d'outil (ex. `hermes.tool.progress`).
+    #[serde(default)]
+    pub progress_events: Vec<String>,
+}
+
+fn approbation_par_defaut() -> String {
+    "locaryn".to_string()
+}
+
+// `#[derive(Default)]` est piégé ici : quand la clé `tools` est absente du
+// JSON, serde construit `CoreTools::default()` — et le derive mettrait
+// `approval = ""` au lieu de `"locaryn"`. Le `Default` manuel garde les
+// mêmes valeurs que les attributs serde, dans les deux chemins.
+impl Default for CoreTools {
+    fn default() -> Self {
+        Self {
+            client_tools: false,
+            approval: "locaryn".to_string(),
+            progress_events: Vec::new(),
+        }
+    }
+}
+
+/// Routage des sessions Locaryn vers les sessions du noyau.
+///
+/// Chaque session Locaryn reçoit une clé stable `locaryn-{uuid}` ; le champ
+/// du protocole qui la porte dépend du dialecte :
+///
+/// - `user` : champ `user` (OpenResponses) ou `session_id` (Runs) ;
+/// - `conversation` : nom de conversation stable (Runs API d'Hermes) ;
+/// - `response` : chaînage par `previous_response_id` (état porté par le
+///   pont, pas par le client).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CoreSession {
+    /// `user` (défaut), `conversation` ou `response`.
+    #[serde(default = "routage_par_defaut")]
+    pub routing: String,
+    /// Nombre maximal de sessions noyau simultanées par noyau.
+    #[serde(default)]
+    pub max_sessions: u32,
+    /// Sessions éphémères par défaut (clé jetable, D9) — les conversations
+    /// sans projet ne laissent pas de trace chez le noyau.
+    #[serde(default)]
+    pub stateless_by_default: bool,
+}
+
+fn routage_par_defaut() -> String {
+    "user".to_string()
+}
+
+// Même piège que `CoreTools` : sans la clé `session` dans le JSON, serde
+// appelle `CoreSession::default()` — le derive mettrait `routing = ""` et
+// le pont basculerait silencieusement sur `conversation`. Le `Default`
+// manuel garantit `user` dans tous les chemins.
+impl Default for CoreSession {
+    fn default() -> Self {
+        Self {
+            routing: "user".to_string(),
+            max_sessions: 0,
+            stateless_by_default: false,
+        }
+    }
+}
+
+/// Skills de l'écosystème du noyau.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CoreSkills {
+    /// Registre d'origine (`clawhub`, `hermes`, `folder`).
+    #[serde(default)]
+    pub registry: String,
+    /// Chemin (relatif au dossier de l'extension) d'un index JSON de skills
+    /// (`{ "skills": [{ "slug", "name", "description", "verified" }] }`).
+    #[serde(default)]
+    pub index: Option<String>,
+    /// Commande d'installation d'un skill, `{{slug}}` à remplacer. Exécutée
+    /// sans shell, avec la permission `shell` de l'extension.
+    #[serde(default)]
+    pub install: Option<String>,
+    /// Dossier où le noyau lit ses skills (affiché dans l'interface).
+    #[serde(default)]
+    pub install_dir: Option<String>,
 }
 
 /// Entrées d'interface apportées par une extension.
@@ -393,5 +579,43 @@ mod tests {
         }"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         assert_eq!(m.ui.composer_actions[0].action, "insert");
+    }
+
+    /// La section `core` d'un noyau : tools et session ont des défauts
+    /// sûrs — pas d'outils client déclarés (D1), approbation Locaryn,
+    /// routage `user`.
+    #[test]
+    fn une_section_core_avec_tools_et_session_se_lit() {
+        let json = r#"{
+            "schema": "x", "apiVersion": "0.1", "name": "noyau", "version": "1",
+            "core": {
+                "driver": "runs",
+                "api_url": "http://127.0.0.1:8642",
+                "port": 8642,
+                "tools": { "client_tools": false, "approval": "core" },
+                "session": { "routing": "conversation", "max_sessions": 20 }
+            }
+        }"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        let c = m.core.expect("la section core doit être lue");
+        assert_eq!(c.driver, "runs");
+        assert!(!c.tools.client_tools);
+        assert_eq!(c.tools.approval, "core");
+        assert_eq!(c.session.routing, "conversation");
+        assert_eq!(c.session.max_sessions, 20);
+    }
+
+    #[test]
+    fn les_defauts_d_une_section_core_sont_surs() {
+        let json = r#"{
+            "schema": "x", "apiVersion": "0.1", "name": "noyau", "version": "1",
+            "core": { "driver": "responses", "api_url": "http://127.0.0.1:1", "port": 1 }
+        }"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        let c = m.core.unwrap();
+        assert!(!c.tools.client_tools, "D1 : pas d'outils Locaryn par défaut");
+        assert_eq!(c.tools.approval, "locaryn");
+        assert_eq!(c.session.routing, "user");
+        assert_eq!(c.session.max_sessions, 0);
     }
 }

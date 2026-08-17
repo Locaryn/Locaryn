@@ -3,10 +3,12 @@
 
    Minimal, near-monochrome, calm. One warm-neutral scale carries
    the whole interface; a single muted green accent is used
-   sparingly (active state, focus, primary action, health). No
-   glass blur, no gradients, no glows — flat surfaces separated by
-   hairline borders. Hierarchy comes from text weight and
-   lightness, not colour.
+   sparingly (active state, focus, primary action, health). Flat
+   surfaces separated by hairline borders, with a restrained liquid
+   layer on top: translucency and a light blur on floating chrome
+   (bars, drawers, sheets), a soft green glow on whatever is alive
+   (focus, hover, the health dot). Hierarchy comes from text weight
+   and lightness, not colour.
 
    Lives here rather than in one application so the phone and the
    desktop cannot drift apart.
@@ -71,13 +73,95 @@
   --layout-right: 340px;
   --layout-bottom: 200px;
 
-  /* Motion — short, calm, no bounce */
-  --ease: cubic-bezier(0.33, 0, 0.2, 1);
+  /* Motion — the shared rhythm of every client. Ease-out on the way in,
+     ease-in on the way out, nothing bouncy; durations stay short so the
+     interface feels alive without making anyone wait. Transitions move
+     transform/opacity only — the compositor does the work, and the UI stays
+     light on a phone as on a desk machine. */
+  --ease: cubic-bezier(0.33, 0, 0.2, 1); /* in-out, calm */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* entrances */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exits */
   --dur-fast: 0.12s;
   --dur-med: 0.2s;
+  --dur-slow: 0.3s;
+
+  /* Depth — soft, diffuse, never a hard drop shadow. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.35);
+
+  /* Glass — the liquid layer. Used sparingly, on floating surfaces
+     (bars, drawers, sheets) where content can pass beneath; blur is
+     compositor work, so it never lands on cards inside long lists. */
+  --glass-bg: rgba(28, 30, 32, 0.72);
+  --glass-bg-strong: rgba(28, 30, 32, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-blur: blur(18px) saturate(160%);
+  --glass-blur-soft: blur(12px) saturate(140%);
+
+  /* Glow — the accent breathing around what is alive: focus rings,
+     hovered primary actions, the health dot. Always subtle. */
+  --glow-accent: 0 0 0 1px rgba(var(--accent-rgb), 0.5), 0 0 18px rgba(var(--accent-rgb), 0.3);
+  --glow-accent-soft: 0 0 12px rgba(var(--accent-rgb), 0.22);
 
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: dark;
+}
+
+/* ── Shared motion primitives ─────────────────────────────────
+   The same entrance, the same exit, on every client. Keyframes are
+   prefixed `lo-` so they can never collide with app-level ones;
+   `.lo-motion` is the one-shot entrance for anything hand-rolled.
+   Reduced motion: the person asked for calm, they get calm. */
+@keyframes lo-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lo-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes lo-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lo-motion {
+  animation: lo-fade-up var(--dur-med) var(--ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-motion {
+    animation: none;
+  }
+}
+
+/* The liquid surface — translucent, blurred, hairline-bordered. Apply to
+   floating chrome (bars, drawers, sheets), never to list items. Falls back
+   to a plain surface where backdrop-filter does not exist. */
+.lo-glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lo-glass {
+    background: var(--surface);
+  }
 }

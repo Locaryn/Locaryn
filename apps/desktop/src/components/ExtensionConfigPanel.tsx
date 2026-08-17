@@ -49,6 +49,8 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  /** Modèles installés, pour les champs `model`. */
+  const [modeles, setModeles] = useState<string[]>([]);
 
   // Les serveurs MCP déclarés par l'extension : env + auto-start éditables,
   // à côté du formulaire de schéma. La commande/URL et le transport viennent
@@ -69,6 +71,12 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
     } catch (e) {
       setError(String(e));
     }
+    // Non-fatal : un champ `model` sans liste n'est qu'un select vide — le
+    // reste du formulaire vit sans lui.
+    core
+      .listModels("127.0.0.1")
+      .then(setModeles)
+      .catch(() => setModeles([]));
     // Non-fatal : le formulaire de schéma fonctionne même si la lecture des
     // serveurs MCP échoue (extension sans serveur, fichier illisible…).
     try {
@@ -278,6 +286,49 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                 </option>
               ))}
             </select>
+          </div>
+        );
+
+      case "model": {
+        const options = modeles.length > 0 ? modeles : (field.options ?? []);
+        return (
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
+              {fieldLabel(key, field)}
+            </label>
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
+            <select
+              id={id}
+              className="locaryn-select"
+              value={String(value ?? "")}
+              onChange={(e) => set(key, e.target.value)}
+            >
+              <option value="">Aucun</option>
+              {options.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      }
+
+      case "prompt":
+        return (
+          <div className="locaryn-field">
+            <label className="locaryn-field-label" htmlFor={id}>
+              {fieldLabel(key, field)}
+            </label>
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
+            <textarea
+              id={id}
+              className="locaryn-input"
+              rows={6}
+              style={{ resize: "vertical", fontFamily: "inherit" }}
+              value={String(value ?? "")}
+              onChange={(e) => set(key, e.target.value)}
+            />
           </div>
         );
 

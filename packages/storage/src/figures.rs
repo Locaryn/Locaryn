@@ -28,6 +28,9 @@ pub struct Figure {
     pub uses_memory: bool,
     /// `user` pour une figure écrite à la main, sinon le dépôt d'où elle vient.
     pub source: String,
+    /// Les outils qu'elle a le droit d'appeler. Absents : tout ce que
+    /// l'application propose.
+    pub tools: Option<Vec<String>>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -48,6 +51,9 @@ pub struct NouvelleFigure<'a> {
     pub uses_memory: bool,
     /// `user` pour une figure écrite à la main, sinon le dépôt d'où elle vient.
     pub source: &'a str,
+    /// Les outils qu'elle a le droit d'appeler. Absents : tout ce que
+    /// l'application propose.
+    pub tools: Option<&'a [String]>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -60,6 +66,7 @@ struct FigureRow {
     opening: Option<String>,
     uses_memory: i64,
     source: String,
+    tools: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -75,6 +82,7 @@ impl From<FigureRow> for Figure {
             opening: r.opening,
             uses_memory: r.uses_memory != 0,
             source: r.source,
+            tools: r.tools.and_then(|t| serde_json::from_str(&t).ok()),
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
@@ -82,7 +90,7 @@ impl From<FigureRow> for Figure {
 }
 
 const COLONNES: &str = "id, name, description, instructions, model, opening, \
-                        uses_memory, source, created_at, updated_at";
+                        uses_memory, source, tools, created_at, updated_at";
 
 #[derive(Clone)]
 pub struct FigureRepo {
@@ -126,6 +134,7 @@ impl FigureRepo {
             opening,
             uses_memory,
             source,
+            tools,
             ..
         } = neuve;
         let name = neuve.name.trim();
@@ -147,6 +156,7 @@ impl FigureRepo {
         .await?;
 
         let maintenant = chrono::Utc::now().to_rfc3339();
+        let outils_json = tools.map(|t| serde_json::to_string(t).unwrap_or_default());
         if let Some(ex) = existante {
             if ex.source == "user" && source != "user" {
                 // Une extension ne réécrit pas ce qu'une personne a écrit.
@@ -154,7 +164,8 @@ impl FigureRepo {
             }
             sqlx::query(
                 "UPDATE figures SET description = ?, instructions = ?, model = ?, \
-                 opening = ?, uses_memory = ?, source = ?, updated_at = ? WHERE id = ?",
+                 opening = ?, uses_memory = ?, source = ?, tools = ?, updated_at = ? \
+                 WHERE id = ?",
             )
             .bind(description)
             .bind(instructions)
@@ -162,6 +173,7 @@ impl FigureRepo {
             .bind(opening)
             .bind(i64::from(uses_memory))
             .bind(source)
+            .bind(&outils_json)
             .bind(&maintenant)
             .bind(&ex.id)
             .execute(&self.pool)
@@ -171,7 +183,7 @@ impl FigureRepo {
 
         let id = Uuid::new_v4().to_string();
         sqlx::query(&format!(
-            "INSERT INTO figures ({COLONNES}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO figures ({COLONNES}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ))
         .bind(&id)
         .bind(name)
@@ -181,6 +193,7 @@ impl FigureRepo {
         .bind(opening)
         .bind(i64::from(uses_memory))
         .bind(source)
+        .bind(&outils_json)
         .bind(&maintenant)
         .bind(&maintenant)
         .execute(&self.pool)
@@ -217,7 +230,7 @@ impl FigureRepo {
     pub async fn for_session(&self, session_id: Uuid) -> Result<Option<Figure>, StorageError> {
         let row = sqlx::query_as::<_, FigureRow>(
             "SELECT f.id, f.name, f.description, f.instructions, f.model, f.opening, \
-             f.uses_memory, f.source, f.created_at, f.updated_at \
+             f.uses_memory, f.source, f.tools, f.created_at, f.updated_at \
              FROM figures f JOIN sessions s ON s.figure_id = f.id WHERE s.id = ?",
         )
         .bind(session_id.to_string())
@@ -261,6 +274,7 @@ mod tests {
                 opening: None,
                 uses_memory: false,
                 source: "user",
+                tools: None,
             })
             .await
             .is_err());
@@ -273,6 +287,7 @@ mod tests {
                 opening: None,
                 uses_memory: false,
                 source: "user",
+                tools: None,
             })
             .await
             .is_err());
@@ -290,6 +305,7 @@ mod tests {
                 opening: None,
                 uses_memory: false,
                 source: "Locaryn/plugin-figures",
+                tools: None,
             })
             .await
             .unwrap();
@@ -302,12 +318,36 @@ mod tests {
                 opening: None,
                 uses_memory: false,
                 source: "Locaryn/plugin-figures",
+                tools: None,
             })
             .await
             .unwrap();
         assert_eq!(a.id, b.id, "le nom identifie la figure");
         assert_eq!(b.instructions, "v2");
         assert_eq!(d.list().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn les_outils_d_une_figure_sont_gardes() {
+        let d = depot().await;
+        let outils = vec!["generate_speech".to_string(), "generate_image".to_string()];
+        let f = d
+            .upsert(NouvelleFigure {
+                name: "Jarvis",
+                description: "",
+                instructions: "Réponds en vocal.",
+                model: None,
+                opening: None,
+                uses_memory: false,
+                tools: Some(&outils),
+                source: "user",
+            })
+            .await
+            .unwrap();
+        assert_eq!(f.tools.as_deref(), Some(outils.as_slice()));
+        // Relue depuis la base, la liste est intacte.
+        let relue = d.get(&f.id).await.unwrap();
+        assert_eq!(relue.tools, f.tools);
     }
 
     #[tokio::test]
@@ -321,6 +361,7 @@ mod tests {
             opening: None,
             uses_memory: false,
             source: "user",
+            tools: None,
         })
         .await
         .unwrap();
@@ -333,6 +374,7 @@ mod tests {
                 opening: None,
                 uses_memory: false,
                 source: "Locaryn/plugin-figures",
+                tools: None,
             })
             .await
             .unwrap();

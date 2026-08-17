@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
+import { Extensions } from "./components/Extensions";
+import { FiguresScreen } from "./components/FiguresScreen";
+import type { Destination } from "./components/MainMenu";
+import { MemoryScreen } from "./components/MemoryScreen";
+import { Models } from "./components/Models";
+import { Settings } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
 import { type WebStatus, api } from "./lib/core";
 import { isIOS, isStandalone, rememberDismissed, rememberInstalled, shouldPrompt } from "./lib/pwa";
 
-type Screen = "loading" | "signin" | "chat" | "studio";
+type Screen = "loading" | "signin" | "chat" | Destination | "memory";
 
 /** Android's install event, captured so we can call prompt() on demand. */
 interface BeforeInstallPromptEvent extends Event {
@@ -18,6 +24,10 @@ export function App() {
   const [screen, setScreen] = useState<Screen>("loading");
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
+  /** Ce que les extensions actives du serveur apportent, relu quand elles bougent. */
+  const [capabilities, setCapabilities] = useState<string[]>([]);
+  /** Une conversation neuve tenue par une figure, à ouvrir dans le chat. */
+  const [figureChatId, setFigureChatId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const s = await api.status();
@@ -29,6 +39,22 @@ export function App() {
     setScreen(s.signed_in || !(await api.authRequired()) ? "chat" : "signin");
     return s;
   }, []);
+
+  const refreshCapabilities = useCallback(async () => {
+    try {
+      setCapabilities(await api.serverCapabilities());
+    } catch {
+      // Un serveur muet ne doit pas vider l'interface : on garde ce qu'on a.
+    }
+  }, []);
+
+  // Les capacités sont lues dès que le statut est connu : sans session,
+  // `serverCapabilities` renvoie déjà une liste vide plutôt que d'échouer,
+  // et sur loopback (pas de compte exigé) elles sont tout de suite là.
+  useEffect(() => {
+    if (!status) return;
+    void refreshCapabilities();
+  }, [status, refreshCapabilities]);
 
   useEffect(() => {
     void refresh();
@@ -81,20 +107,51 @@ export function App() {
     setShowPrompt(false);
   }
 
+  function go(d: Destination) {
+    setScreen(d);
+  }
+
   return (
     <>
       {screen === "chat" && status ? (
         <Chat
           status={status}
-          onStudio={() => setScreen("studio")}
-          onSignOut={async () => {
-            const s = await api.signOut();
-            setStatus(s);
-            setScreen("signin");
-          }}
+          onGo={go}
+          capabilities={capabilities}
+          key={figureChatId ?? "chat"}
+          initialId={figureChatId}
         />
       ) : screen === "studio" ? (
         <Studio onBack={() => setScreen("chat")} />
+      ) : screen === "figures" ? (
+        <FiguresScreen
+          onBack={() => setScreen("chat")}
+          onOpenChat={(sessionId) => {
+            setFigureChatId(sessionId);
+            setScreen("chat");
+          }}
+        />
+      ) : screen === "extensions" ? (
+        <Extensions
+          onBack={() => setScreen("chat")}
+          // Une extension retirée doit faire disparaître ce qu'elle apportait,
+          // pas rester à l'écran jusqu'au prochain démarrage.
+          onChanged={() => void refreshCapabilities()}
+        />
+      ) : screen === "models" ? (
+        <Models onBack={() => setScreen("chat")} />
+      ) : screen === "memory" ? (
+        <MemoryScreen onBack={() => setScreen("chat")} />
+      ) : screen === "settings" && status ? (
+        <Settings
+          status={status}
+          onBack={() => setScreen("chat")}
+          onSignedOut={(s) => {
+            setStatus(s);
+            setScreen("signin");
+          }}
+          onMemory={() => setScreen("memory")}
+        />
       ) : (
         status && (
           <SignIn

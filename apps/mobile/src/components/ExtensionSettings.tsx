@@ -67,8 +67,18 @@ export function ExtensionSettings() {
   function champ(extension: string, f: SettingsField) {
     const plein = `${extension}.${f.key}`;
     const valeur = valeurs[plein] ?? f.default ?? "";
+    // Le vocabulaire canonique : boolean, select, model, string, number,
+    // prompt. Les anciens mots (toggle, choice, text) restent acceptés.
+    const kind =
+      f.kind === "toggle"
+        ? "boolean"
+        : f.kind === "choice"
+          ? "select"
+          : f.kind === "text"
+            ? "string"
+            : f.kind;
 
-    if (f.kind === "toggle") {
+    if (kind === "boolean") {
       return (
         <button
           type="button"
@@ -81,8 +91,8 @@ export function ExtensionSettings() {
       );
     }
 
-    const choix = f.kind === "model" ? modeles : (f.options ?? []);
-    if (choix.length > 0) {
+    const choix = kind === "model" ? modeles : (f.options ?? []);
+    if (kind === "select" || kind === "model") {
       return (
         <select
           className="lo-select"
@@ -96,6 +106,18 @@ export function ExtensionSettings() {
             </option>
           ))}
         </select>
+      );
+    }
+
+    if (kind === "prompt") {
+      return (
+        <textarea
+          className="lo-textarea"
+          rows={4}
+          value={valeur}
+          onChange={(e) => setValeurs((v) => ({ ...v, [plein]: e.target.value }))}
+          onBlur={(e) => void ecrire(extension, f.key, e.target.value)}
+        />
       );
     }
 

@@ -99,6 +99,72 @@ extension parfaitement valable.
 
 ---
 
+## Modeler l'interface : poser ses boutons, son onglet, ses réglages
+
+Une extension peut décrire ce qu'elle veut voir apparaître à l'écran, sans
+qu'aucune ligne de l'application soit écrite pour elle. C'est la seule chose
+que Locaryn ajoute aux formats d'ailleurs — les outils en ligne de commande
+ne savent pas dire « mets un bouton ici ».
+
+```json
+{
+  "ui_contributions": {
+    "nav_items":     [{ "id": "mon-espace", "label": "Mon espace", "icon": "cube" }],
+    "studio_tabs":   [{ "id": "mon-onglet", "label": "Mon onglet", "icon": "star" }],
+    "composer_actions": [
+      {
+        "id": "dicter",
+        "label": "Dicter",
+        "icon": "mic",
+        "action": "tool",
+        "value": "transcribe_audio",
+        "hint": "Dicter au lieu d'écrire"
+      }
+    ],
+    "settings_sections": [
+      {
+        "id": "voix",
+        "label": "Voix",
+        "fields": [
+          { "id": "modele", "type": "model", "label": "Modèle de voix" },
+          { "id": "debit", "type": "select", "label": "Débit", "options": ["lent", "normal", "rapide"], "default": "normal" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+| Contribution | Où elle apparaît |
+|---|---|
+| `nav_items` | une entrée du menu principal (ordinateur) |
+| `studio_tabs` | un onglet du Studio de génération (ordinateur) |
+| `composer_actions` | un bouton à côté du champ de saisie, ordinateur **et** téléphone |
+| `settings_sections` | une section des réglages, ordinateur **et** téléphone |
+
+Deux comportements pour un bouton de composeur, pas plus : `insert` écrit
+`value` dans le champ, `tool` appelle l'outil nommé avec ce que le champ
+contient et met la réponse à la place. L'outil est cherché parmi les serveurs
+MCP de toutes les extensions actives — le manifeste nomme un outil, pas un
+serveur.
+
+Les champs de réglage ont six types, dessinés à l'identique des deux côtés :
+`boolean` (interrupteur), `select` (liste, à partir de `options`), `model`
+(liste des modèles installés), `string` (texte), `number` (nombre), `prompt`
+(zone multiligne). Les valeurs sont rangées par le serveur, dans le dossier
+de l'extension : un réglage choisi sur l'ordinateur vaut sur le téléphone.
+
+`icon` est un nom du jeu partagé `@locaryn/ui-core` — jamais une image. Un
+nom inconnu tombe sur une icône de secours, donc vérifiez le vôtre dans la
+liste `ICON_NAMES`.
+
+Une extension ne recouvre jamais une entrée native : le menu et les onglets
+de l'application restent le socle, vos contributions s'ajoutent à côté. Le
+détail du format et son état de mise en œuvre exact sont dans
+[`extensions-interop.md`](extensions-interop.md#52-contributions-dinterface).
+
+---
+
 ## Permissions : demandez peu, expliquez pourquoi
 
 ```json

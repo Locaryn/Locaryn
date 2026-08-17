@@ -44,6 +44,11 @@ enum Cmd {
         #[command(subcommand)]
         action: SessionsCmd,
     },
+    /// Manage alternate cores (OpenClaw, Hermes Agent…).
+    Cores {
+        #[command(subcommand)]
+        action: CoresCmd,
+    },
     /// Plain conversation, with no access to your files.
     Chat {
         /// Resume an existing session.
@@ -123,7 +128,26 @@ enum ProjectsCmd {
 #[derive(Subcommand)]
 enum SessionsCmd {
     List,
-    New,
+    New {
+        /// Confier la conversation à un noyau alternatif (id d'extension,
+        /// tel que `locaryn cores list` l'affiche).
+        #[arg(long)]
+        core: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CoresCmd {
+    /// List installed cores and their state.
+    List,
+    /// Start a core: launch its process and wait for its health check.
+    Start {
+        id: String,
+    },
+    /// Stop a running core.
+    Stop {
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -356,13 +380,22 @@ async fn main() -> anyhow::Result<()> {
                     }
                     Ok(())
                 }
-                SessionsCmd::New => {
-                    let s = client.create_session(&project.id.to_string()).await?;
-                    println!("session créée dans {} : {}", project.name, s.id);
+                SessionsCmd::New { core } => {
+                    let s = client
+                        .create_session_with_core(&project.id.to_string(), core.as_deref())
+                        .await?;
+                    match &core {
+                        Some(c) => println!(
+                            "session créée dans {} (noyau {}) : {}",
+                            project.name, c, s.id
+                        ),
+                        None => println!("session créée dans {} : {}", project.name, s.id),
+                    }
                     Ok(())
                 }
             }
         }
+        Cmd::Cores { action } => cores_cmd(action, &client).await,
         Cmd::Chat { resume, agent } => converse(&client, resume, agent, false).await,
         Cmd::Provider { action } => match action {
             ProviderCmd::List => {
@@ -1212,6 +1245,53 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
         McpCmd::Stop { name } => {
             client.stop_mcp(&name).await?;
             println!("« {name} » arrêté.");
+            Ok(())
+        }
+    }
+}
+
+/// Noyaux alternatifs (OpenClaw, Hermes…).
+///
+/// Tout passe par le daemon : c'est lui qui supervise les processus (D4), le
+/// desktop garde l'installation. `sessions new --core` s'appuie sur les mêmes
+/// routes pour confier une conversation à un noyau.
+async fn cores_cmd(action: CoresCmd, client: &LocarynClient) -> anyhow::Result<()> {
+    match action {
+        CoresCmd::List => {
+            let rows = client.list_cores().await?;
+            let rows = rows.as_array().cloned().unwrap_or_default();
+            if rows.is_empty() {
+                println!("Aucun noyau alternatif installé.");
+                println!("Installez-en un depuis Réglages → Extensions → Découvrir (OpenClaw, Hermes).");
+                return Ok(());
+            }
+            println!("{:<38} {:<26} {:<12} DRIVER", "ID", "NOM", "ÉTAT");
+            for r in rows {
+                let etat = r["state"].as_str().unwrap_or("?");
+                println!(
+                    "{:<38} {:<26} {:<12} {}",
+                    r["id"].as_str().unwrap_or("?"),
+                    r["name"].as_str().unwrap_or("?"),
+                    etat,
+                    r["driver"].as_str().unwrap_or("?")
+                );
+                if let Some(e) = r["error"].as_str().filter(|e| !e.is_empty()) {
+                    println!("  {e}");
+                }
+            }
+            Ok(())
+        }
+        CoresCmd::Start { id } => {
+            let out = client.core_start(&id).await?;
+            println!("noyau {id} : {}", out["state"].as_str().unwrap_or("?"));
+            if let Some(e) = out["error"].as_str().filter(|e| !e.is_empty()) {
+                println!("  {e}");
+            }
+            Ok(())
+        }
+        CoresCmd::Stop { id } => {
+            let out = client.core_stop(&id).await?;
+            println!("noyau {id} : {}", out["state"].as_str().unwrap_or("?"));
             Ok(())
         }
     }

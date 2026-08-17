@@ -253,8 +253,7 @@ pub async fn install_update(
         // Écriture d'abord à côté, puis renommage : un fichier partiel ne doit
         // jamais passer pour un paquet complet si le téléchargement casse.
         let partiel = cible.with_extension("apk.part");
-        let mut fichier =
-            std::fs::File::create(&partiel).map_err(|e| format!("écriture : {e}"))?;
+        let mut fichier = std::fs::File::create(&partiel).map_err(|e| format!("écriture : {e}"))?;
 
         let mut recu: u64 = 0;
         let mut flux = resp.bytes_stream();

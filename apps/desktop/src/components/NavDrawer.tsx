@@ -1,5 +1,5 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
-import type { ConnectionMode, ProviderSummary } from "../lib/core";
+import { Icon, isIconName, type IconName } from "@locaryn/ui-core";
+import type { ConnectionMode, InstalledExtension, ProviderSummary } from "../lib/core";
 import { ModalShell } from "./ModalShell";
 
 type Props = {
@@ -11,6 +11,9 @@ type Props = {
   provider?: ProviderSummary | null;
   /** Active extension capabilities currently installed/enabled. */
   activeCapabilities?: string[];
+  /** Extensions actives : leurs `nav_items` s'ajoutent au menu, sans jamais
+   *  recouvrir une entrée native (une extension ne s'impose pas). */
+  extensions?: InstalledExtension[];
 };
 
 type NavItem = {
@@ -118,15 +121,36 @@ export function NavDrawer({
   activeView,
   onSelectView,
   activeCapabilities = [],
+  extensions = [],
 }: Props) {
   if (!isOpen) return null;
 
+  // Le socle d'abord : les entrées natives, filtrées par capacités. Puis ce
+  // que les extensions actives déclarent — une extension ne recouvre jamais
+  // un id natif, elle s'ajoute à côté.
   const visibleItems = BASE_NAV_ITEMS.filter((item) => {
     if (!item.requiredCapabilities || item.requiredCapabilities.length === 0) {
       return true;
     }
     return item.requiredCapabilities.some((cap) => activeCapabilities.includes(cap));
   });
+
+  const pris = new Set(visibleItems.map((i) => i.id));
+  const depuisExtensions: NavItem[] = extensions.flatMap((ext) =>
+    (ext.ui?.nav_items ?? []).flatMap((ni) => {
+      if (pris.has(ni.id)) return [];
+      pris.add(ni.id);
+      return [
+        {
+          id: ni.id,
+          label: ni.label,
+          icon: isIconName(ni.icon) ? ni.icon : "extensions",
+          desc: `Apporté par ${ext.display_name || ext.name}`,
+        },
+      ];
+    }),
+  );
+  const itemsAffiches = [...visibleItems, ...depuisExtensions];
 
   return (
     <ModalShell
@@ -160,7 +184,7 @@ export function NavDrawer({
         </span>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {visibleItems.map((item) => {
+          {itemsAffiches.map((item) => {
             const isActive = activeView === item.id;
             return (
               <button

@@ -5,6 +5,7 @@
 
 pub mod approval;
 pub mod embeddings;
+pub mod exec;
 pub mod reasoning;
 
 pub mod mcp_tools;
@@ -16,6 +17,7 @@ pub mod titling;
 pub mod tool_loop;
 pub mod tools;
 
+pub use exec::execute_tool_call;
 pub use ollama::OllamaAgent;
 pub use openai_compat::OpenAiCompatAgent;
 pub use profile::{AgentProfile, AgentRegistry};
@@ -64,11 +66,19 @@ pub struct AgentInput {
     /// d'images, `generate_image` n'existe pas dans sa liste, et il répond
     /// qu'il ne sait pas le faire — au lieu de l'appeler puis d'échouer.
     pub capabilities: Vec<String>,
+    /// Les outils que la figure de cette conversation a le droit d'appeler,
+    /// par nom (`generate_image`, `generate_speech`, `read_file`,
+    /// `mcp__serveur__outil`…). `None` ou vide : tout ce que l'application
+    /// propose.
+    pub tools: Option<Vec<String>>,
     /// Comment demander son accord à l'utilisateur avant un appel d'outil
     /// sensible. `None` — le cas d'un hôte sans interface — vaut refus : un
     /// service qui tourne sans personne devant ne doit pas s'autoriser une
     /// opération que l'on aurait voulu arbitrer.
     pub approval: Option<approval::ApprovalHandle>,
+    /// Jeton Bearer envoyé à l'endpoint (noyaux alternatifs : OpenClaw,
+    /// Hermes…). `None` = pas d'en-tête d'authentification.
+    pub bearer_token: Option<String>,
 }
 
 /// Append `extra` to a base system prompt, under a heading that tells the
@@ -105,6 +115,10 @@ pub enum AgentError {
     Cancelled,
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    /// Le driver déclaré par le manifeste d'un noyau n'existe pas
+    /// (`responses`, `runs`, `chat_completions` sont les trois connus).
+    #[error("unknown core driver: {0}")]
+    UnknownDriver(String),
 }
 
 /// The trait every provider-facing agent implements.

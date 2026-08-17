@@ -56,6 +56,11 @@ struct DaemonState {
     pub extensions: Arc<ExtensionRegistry>,
     /// MCP server registry + running clients. Arc so DaemonState stays Clone.
     pub mcp_state: Arc<McpState>,
+    /// Client HTTP partagé (sondes de santé des noyaux, pont).
+    pub http: reqwest::Client,
+    /// Noyaux alternatifs (OpenClaw, Hermes…) : superviseur de processus
+    /// partagé avec le desktop (D4).
+    pub cores: Arc<locaryn_core_bridge::manager::CoreManager>,
     pub travel: Arc<travel::TravelState>,
     /// Port actually being served, so a pairing link names the right one.
     pub port: u16,
@@ -188,6 +193,11 @@ async fn main() -> anyhow::Result<()> {
         supervisor,
         extensions,
         mcp_state,
+        http: reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(600))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new()),
+        cores: locaryn_core_bridge::manager::CoreManager::new(),
         travel: travel_state.clone(),
         port,
         auth_required: exposed,
@@ -297,6 +307,16 @@ async fn main() -> anyhow::Result<()> {
             get(routes::extensions::get_extension_permissions)
                 .post(routes::extensions::set_extension_permission),
         )
+        // Noyaux alternatifs : processus supervisés par le daemon (D4).
+        .route("/v1/cores", get(routes::cores::list_cores))
+        .route("/v1/cores/:id", get(routes::cores::status))
+        .route("/v1/cores/:id/start", post(routes::cores::start))
+        .route("/v1/cores/:id/stop", post(routes::cores::stop))
+        .route("/v1/cores/:id/skills", get(routes::cores::skills))
+        .route(
+            "/v1/cores/:id/skills/install",
+            post(routes::cores::install_skill),
+        )
         // MCP routes
         .route(
             "/v1/travel",
@@ -359,6 +379,7 @@ async fn main() -> anyhow::Result<()> {
             Router::new()
                 .route("/v1/auth/login", post(auth::login))
                 .route("/v1/auth/me", get(auth::me))
+                .route("/v1/auth/password", post(auth::change_password))
                 .with_state(auth_state.clone()),
         )
         // Applied last so it wraps every route above, including ones added later.
@@ -644,6 +665,10 @@ struct CreateSessionBody {
     /// listes. Le corps est optionnel — sans lui, la conversation est normale.
     #[serde(default)]
     ephemeral: bool,
+    /// Le noyau auquel confier la conversation (id d'extension de noyau).
+    /// Absent : le noyau Locaryn natif, comportement historique.
+    #[serde(default)]
+    core_id: Option<String>,
 }
 
 async fn create_session(
@@ -651,7 +676,8 @@ async fn create_session(
     Path(pid): Path<String>,
     body: Option<Json<CreateSessionBody>>,
 ) -> Response {
-    let ephemeral = body.map(|Json(b)| b.ephemeral).unwrap_or(false);
+    let b = body.map(|Json(b)| b).unwrap_or_default();
+    let ephemeral = b.ephemeral;
     let project_id = match Uuid::parse_str(&pid) {
         Ok(u) => u,
         Err(_) => {
@@ -674,11 +700,52 @@ async fn create_session(
         )
             .into_response();
     }
+
+    // Un noyau choisi doit exister et être un vrai noyau : une conversation
+    // confiée à une extension quelconque s'ouvrirait puis échouerait à la
+    // première phrase. On refuse au lieu de laisser faire (D2, pas de
+    // fallback silencieux).
+    if let Some(core_id) = &b.core_id {
+        let uid = match Uuid::parse_str(core_id) {
+            Ok(u) => u,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": { "code": "bad_request", "message": "core_id invalide" }
+                    })),
+                )
+                    .into_response();
+            }
+        };
+        match routes::cores::verifier_noyau(&s, uid).await {
+            Ok(true) => {}
+            Ok(false) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": { "code": "bad_request", "message": "cette extension n'est pas un noyau installé" }
+                    })),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": { "code": "bad_request", "message": e }
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
+
     let title = None;
     match s
         .storage
         .sessions
-        .create_with(project_id, title, ephemeral)
+        .create_with_core(project_id, title, ephemeral, b.core_id.as_deref())
         .await
     {
         Ok(session) => (StatusCode::CREATED, Json(session)).into_response(),
@@ -852,6 +919,15 @@ async fn send_message(
     spawn_titre_du_modele(s.clone(), session_uuid, body.content.clone());
 
     // 2. Look up the session → project to get trust level and project path.
+    //    La session peut être confiée à un noyau alternatif : on le retient
+    //    avant de construire l'agent, c'est lui qui décidera du routage.
+    let session_core_id = s
+        .storage
+        .sessions
+        .get(session_uuid)
+        .await
+        .ok()
+        .and_then(|sess| sess.core_id);
     let (project_id, project_path, trust) = match s.storage.sessions.get(session_uuid).await {
         Ok(session) => {
             match s.storage.projects.get(session.project_id).await {
@@ -926,7 +1002,7 @@ async fn send_message(
     };
 
     let mcp_state = Some(s.mcp_state.clone());
-    let input = AgentInput {
+    let mut input = AgentInput {
         session_id: session_uuid,
         message: body.content,
         mode: s.mode,
@@ -954,15 +1030,48 @@ async fn send_message(
             .filter(|e| e.enabled)
             .flat_map(|e| e.capabilities)
             .collect(),
+        // Les outils que la figure de cette conversation autorise.
+        // Absents : tout ce que l'application propose.
+        tools: s
+            .storage
+            .figures
+            .for_session(session_uuid)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|f| f.tools)
+            .filter(|t| !t.is_empty()),
         // Le démon tourne sans interface : personne ne peut arbitrer, donc
         // tout appel exigeant un accord est refusé. C'est le comportement
         // voulu pour un service, pas un oubli.
         approval: None,
+        // Renseigné plus bas si la session est confiée à un noyau alternatif.
+        bearer_token: None,
     };
 
     // 4. Run the agent: OpenAiCompatAgent (llama-server) when one answers,
-    //    otherwise a response that names what is missing.
-    let event_stream: EventStream = {
+    //    otherwise a response that names what is missing. Une session confiée
+    //    à un noyau alternatif passe par le pont — sans fallback silencieux
+    //    vers le noyau Locaryn (D2) : noyau choisi mais injoignable = message
+    //    clair et action de réparation.
+    let event_stream: EventStream = if let Some(core_id) = &session_core_id {
+        match routes::cores::agent_for_core(&s, core_id).await {
+            Ok((agent, token)) => {
+                input.bearer_token = token;
+                match agent.run(input.clone()).await {
+                    Ok(stream) => stream,
+                    Err(e) => {
+                        tracing::warn!(core = %core_id, error = %e, "noyau alternatif injoignable");
+                        no_model_stream(&format!(
+                            "Le noyau de cette conversation ne répond pas ({e}). \
+                             Ouvrez Réglages → Extensions et démarrez-le."
+                        ))
+                    }
+                }
+            }
+            Err(e) => no_model_stream(&e),
+        }
+    } else {
         match &active_provider {
             Some(p)
                 if (p.engine == ProviderEngine::LlamaCpp
@@ -1956,6 +2065,10 @@ struct FigureBody {
     opening: Option<String>,
     #[serde(default)]
     uses_memory: bool,
+    /// Les outils qu'elle a le droit d'appeler. Absents : tout ce que
+    /// l'application propose.
+    #[serde(default)]
+    tools: Option<Vec<String>>,
     /// `user` par défaut : une figure écrite depuis l'interface est le
     /// travail de quelqu'un, et aucune mise à jour d'extension ne l'écrase.
     #[serde(default)]
@@ -1974,6 +2087,7 @@ async fn save_figure(State(s): State<Arc<DaemonState>>, Json(b): Json<FigureBody
             model: b.model.as_deref().filter(|m| !m.trim().is_empty()),
             opening: b.opening.as_deref().filter(|o| !o.trim().is_empty()),
             uses_memory: b.uses_memory,
+            tools: b.tools.as_deref(),
             source: b.source.as_deref().unwrap_or("user"),
         })
         .await
@@ -1991,12 +2105,39 @@ async fn remove_figure(State(s): State<Arc<DaemonState>>, Path(id): Path<String>
     }
 }
 
+/// Une conversation d'une figure, telle que l'écran la liste :
+/// l'identifiant pour la reprendre, le titre, la dernière activité.
+#[derive(serde::Serialize)]
+struct FigureSessionView {
+    id: String,
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_message_at: Option<String>,
+}
+
 /// GET /v1/figures/{id}/sessions — ce que cette figure a conversé.
+///
+/// La liste porte les titres, pas seulement les identifiants : l'écran
+/// affiche chaque conversation et la reprend d'un geste.
 async fn figure_sessions(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> Response {
-    match s.storage.figures.session_ids(&id).await {
-        Ok(v) => Json(v).into_response(),
-        Err(e) => introuvable(&e.to_string()),
+    let ids = match s.storage.figures.session_ids(&id).await {
+        Ok(v) => v,
+        Err(e) => return introuvable(&e.to_string()),
+    };
+    let mut vues = Vec::with_capacity(ids.len());
+    for sid in ids {
+        let Ok(uuid) = Uuid::parse_str(&sid) else {
+            continue;
+        };
+        if let Ok(session) = s.storage.sessions.get(uuid).await {
+            vues.push(FigureSessionView {
+                id: session.id.to_string(),
+                title: session.title,
+                last_message_at: session.last_message_at.map(|t| t.to_rfc3339()),
+            });
+        }
     }
+    Json(vues).into_response()
 }
 
 #[derive(serde::Deserialize)]

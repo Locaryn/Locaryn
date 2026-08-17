@@ -37,6 +37,8 @@ locaryn-storage = { workspace = true }
 locaryn-events = { workspace = true }
 locaryn-agent-runtime = { workspace = true }
 locaryn-provider-supervisor = { workspace = true }
+async-trait = { workspace = true }
+locaryn-core-bridge = { workspace = true }
 locaryn-extensions = { workspace = true }
 locaryn-mcp = { workspace = true }
 locaryn-travel = { workspace = true }

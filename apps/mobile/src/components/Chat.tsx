@@ -10,14 +10,19 @@ import {
 import { ComposerActions } from "./ComposerActions";
 import { Drawer } from "./Drawer";
 import { type Destination, MainMenu } from "./MainMenu";
+import { type PhoneExtension } from "../lib/core";
 import { UpdateButton } from "./UpdateButton";
 
 type Props = {
   status: MobileStatus;
   /** Chaque grand espace a son écran ; le tiroir dit lequel ouvrir. */
-  onGo: (d: Destination) => void;
+  onGo: (d: Destination | string) => void;
   /** Ce que les extensions actives du serveur apportent, déjà lu par l'app. */
   capabilities: string[];
+  /** Une conversation précise à ouvrir au montage — venue de l'écran Figures. */
+  initialId?: string | null;
+  /** Extensions actives : le menu en tire ses `nav_items`. */
+  extensions?: PhoneExtension[];
 };
 
 /**
@@ -28,7 +33,7 @@ type Props = {
  * serveur, donc celles de l'ordinateur : une phrase écrite ici se lit là-bas,
  * et une conversation commencée là-bas se continue ici.
  */
-export function Chat({ status, onGo, capabilities }: Props) {
+export function Chat({ status, onGo, capabilities, initialId, extensions = [] }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -45,6 +50,7 @@ export function Chat({ status, onGo, capabilities }: Props) {
    * extensions bougent.
    */
   const canCreate = capabilities.some((c) => c.endsWith("-gen") || c === "voice-tts");
+  const canFigures = capabilities.includes("figures");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +107,14 @@ export function Chat({ status, onGo, capabilities }: Props) {
     setMessages([]);
     setError(null);
   }
+
+  // Une conversation venue d'ailleurs (l'écran Figures en a ouvert une) se
+  // charge au montage. `key` sur le composant force le remontage à chaque
+  // figure : le premier rendu suffit.
+  useEffect(() => {
+    if (initialId) void open(initialId);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: l'ouverture ne se fait qu'au montage.
+  }, []);
 
   /** Reprendre une conversation gardée quitte le mode éphémère. */
   function openKept(id: string) {
@@ -230,6 +244,8 @@ export function Chat({ status, onGo, capabilities }: Props) {
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         canCreate={canCreate}
+        canFigures={canFigures}
+        extensions={extensions}
         onGo={(d) => {
           setMenuOpen(false);
           onGo(d);

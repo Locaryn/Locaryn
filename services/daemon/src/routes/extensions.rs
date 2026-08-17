@@ -122,11 +122,16 @@ fn to_composer_action(
 /// un réglage. `number` et `prompt` deviennent du texte : mieux vaut un champ
 /// honnête qu'un rendu promis et absent.
 fn rendu_du_champ(declare: &str) -> String {
+    // Le vocabulaire canonique est celui de la documentation : boolean,
+    // select, model, string, number, prompt. Les anciens mots (toggle,
+    // choice, text) restent acceptés et sont ramenés à leur équivalent.
     match declare {
-        "boolean" | "toggle" => "toggle",
-        "select" | "choice" => "choice",
+        "boolean" | "toggle" => "boolean",
+        "select" | "choice" => "select",
         "model" => "model",
-        _ => "text",
+        "number" => "number",
+        "prompt" => "prompt",
+        _ => "string",
     }
     .to_string()
 }
@@ -231,6 +236,18 @@ fn entry_to_installed(
             })
             .collect(),
         load_errors: Vec::new(),
+        // Une extension de noyau expose sa section `core` : c'est ce qui
+        // fait apparaître la carte « Noyau » dans les réglages.
+        core: manifest.as_ref().and_then(|m| m.core.as_ref()).map(|c| {
+            locaryn_shared_types::ExtensionCoreInfo {
+                driver: c.driver.clone(),
+                api_url: c.api_url.clone(),
+                port: c.port,
+                model: c.model.clone(),
+                skills_index: c.skills.index.clone(),
+                skills_install: c.skills.install.clone(),
+            }
+        }),
         created_at: now,
         updated_at: now,
     }
@@ -270,6 +287,18 @@ pub async fn restore_from_storage(state: &DaemonState) {
             Ok(entry) => {
                 if rec.enabled {
                     let _ = state.extensions.enable(&entry.name);
+                }
+                // Les figures du dépôt sont versées en base à chaque démarrage :
+                // une réinstallation les met à jour par le nom, sans jamais
+                // toucher à une figure écrite à la main.
+                let importees = locaryn_storage::figures_import::importer(
+                    &state.storage.figures,
+                    &dir,
+                    &entry.name,
+                )
+                .await;
+                if importees > 0 {
+                    tracing::info!(name = %entry.name, importees, "figures du dépôt importées");
                 }
                 restored += 1;
             }
@@ -410,6 +439,14 @@ pub async fn install_extension(
     match s.extensions.install_from_dir(dir, scope) {
         Ok(entry) => {
             persist(&s, &entry).await;
+            // Ce que l'extension transporte comme figures entre en base dès
+            // l'installation : l'écran Figures les montre aussitôt, sur
+            // l'ordinateur comme sur le téléphone.
+            let importees =
+                locaryn_storage::figures_import::importer(&s.storage.figures, dir, &entry.name).await;
+            if importees > 0 {
+                tracing::info!(name = %entry.name, importees, "figures du dépôt importées");
+            }
             (StatusCode::CREATED, Json(entry_to_installed(&entry))).into_response()
         }
         Err(e) => registry_error_response(e).into_response(),

@@ -161,6 +161,10 @@ Lancer-Banc-SnapMCP.bat
 # Les extensions sont des produits distincts, avec leur propre dépôt.
 plugins/
 
+# Les noyaux alternatifs (OpenClaw, Hermes...) suivent le même principe —
+# leur propre dépôt (github.com/Locaryn/locaryn-cores), pas un sous-module.
+locaryn-cores/
+
 # Sortie de compilation Gradle du greffon vendored — se régénère à chaque
 # build, ne doit jamais être commitée.
 vendor/*/android/build/

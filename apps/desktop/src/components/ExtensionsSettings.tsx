@@ -3,6 +3,8 @@ import {
   type CatalogEntry,
   type CatalogSnapshot,
   type CatalogSource,
+  type CoreSkillEntry,
+  type CoreStatus,
   ECOSYSTEM_LABELS,
   type ExtensionEcosystem,
   type ExtensionPermission,
@@ -140,6 +142,16 @@ export function ExtensionsSettings() {
     /** Vrai quand l'utilisateur a annulé en cours de route. */
     cancelled: boolean;
   } | null>(null);
+  // --- Noyaux alternatifs --------------------------------------------------
+  /** État courant de chaque noyau installé (carte Démarrer/Arrêter). */
+  const [coreStatuses, setCoreStatuses] = useState<Record<string, CoreStatus>>({});
+  /** Onglet Skills ouvert pour un noyau (par id), et son index chargé. */
+  const [skillsOpen, setSkillsOpen] = useState<string | null>(null);
+  const [coreSkills, setCoreSkills] = useState<Record<string, CoreSkillEntry[]>>({});
+  /** Noyau en cours d'action (démarrer/arrêter/installer un skill). */
+  const [coreBusy, setCoreBusy] = useState<string | null>(null);
+  const [coreError, setCoreError] = useState<string | null>(null);
+  const [skillNotice, setSkillNotice] = useState<string | null>(null);
   // Drapeau d'annulation du lot : vérifié entre chaque extension, jamais
   // pendant une mise à jour — l'itération en cours va jusqu'au bout.
   const batchCancelRef = useRef(false);
@@ -230,6 +242,82 @@ export function ExtensionsSettings() {
       .then(setSources)
       .catch(() => setSources([]));
   }, [loadInstalled, refreshUpdates]);
+
+  /** Les noyaux installés, pour leur carte et pour la création de session. */
+  const installedCores = useMemo(() => installed.filter((e) => e.core != null), [installed]);
+
+  /** Rafraîchit le statut des noyaux installés (silencieux, en parallèle). */
+  const refreshCoreStatuses = useCallback(async () => {
+    const cores = installed.filter((e) => e.core != null);
+    if (cores.length === 0) return;
+    const entries = await Promise.all(
+      cores.map(async (c) => {
+        try {
+          return [c.id, await core.coreStatus(c.id)] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    setCoreStatuses(Object.fromEntries(entries.filter(Boolean) as [string, CoreStatus][]));
+  }, [installed]);
+
+  useEffect(() => {
+    void refreshCoreStatuses();
+  }, [refreshCoreStatuses]);
+
+  /** Ouvre/ferme l'onglet Skills d'un noyau (index chargé à la première ouverture). */
+  async function toggleSkills(id: string) {
+    setCoreError(null);
+    if (skillsOpen === id) {
+      setSkillsOpen(null);
+      return;
+    }
+    setSkillsOpen(id);
+    if (!coreSkills[id]) {
+      try {
+        const list = await core.coreSkills(id);
+        setCoreSkills((prev) => ({ ...prev, [id]: list }));
+      } catch (e) {
+        setCoreError(`Skills illisibles : ${String(e)}`);
+      }
+    }
+  }
+
+  async function runCoreAction(id: string, action: "start" | "stop") {
+    setCoreBusy(id);
+    setCoreError(null);
+    setSkillNotice(null);
+    try {
+      const st = await (action === "start" ? core.coreStart(id) : core.coreStop(id));
+      setCoreStatuses((prev) => ({ ...prev, [id]: st }));
+    } catch (e) {
+      setCoreError(String(e));
+    } finally {
+      setCoreBusy(null);
+    }
+  }
+
+  async function installSkill(ext: InstalledExtension, slug: string) {
+    setCoreBusy(`${ext.id}:${slug}`);
+    setCoreError(null);
+    try {
+      setSkillNotice(await core.coreInstallSkill(ext.id, slug));
+    } catch (e) {
+      setCoreError(String(e));
+    } finally {
+      setCoreBusy(null);
+    }
+  }
+
+  /** Libellé et couleur de l'état d'un noyau. */
+  const CORE_STATE_LABEL: Record<string, { label: string; ok: boolean; waiting: boolean }> = {
+    stopped: { label: "Arrêté", ok: false, waiting: false },
+    starting: { label: "Démarrage…", ok: false, waiting: true },
+    running: { label: "En marche", ok: true, waiting: false },
+    external: { label: "Externe (non supervisé)", ok: false, waiting: false },
+    error: { label: "Erreur", ok: false, waiting: false },
+  };
 
   useEffect(() => {
     if (tab !== "browse") return;
@@ -723,155 +811,338 @@ export function ExtensionsSettings() {
       )}
 
       {tab === "installed" ? (
-        installed.length === 0 ? (
-          <p className="locaryn-field-hint">
-            Aucune extension installée. Ouvrez « Découvrir » pour parcourir les catalogues Claude
-            Code, Gemini CLI, OpenCode et MCP, ou installez directement depuis un dépôt GitHub.
-          </p>
-        ) : (
-          grouped.map(([eco, list]) => (
-            <div key={eco} style={{ marginBottom: 24 }}>
-              <h4 style={{ fontSize: "var(--text-md)", marginBottom: 10 }}>
-                {ECOSYSTEM_LABELS[eco]}
-              </h4>
+        <>
+          {installedCores.length > 0 && (
+            <section className="locaryn-card" style={{ padding: 16, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <h4 style={{ fontSize: "var(--text-md)", margin: 0 }}>Noyaux alternatifs</h4>
+                <span className="locaryn-tag">OpenClaw · Hermes · …</span>
+              </div>
+              <p className="locaryn-field-hint" style={{ marginBottom: 12 }}>
+                Un noyau change le cerveau de l'agent (mémoire, skills, Home Assistant…) pour les
+                conversations qui l'utilisent — le noyau Locaryn n'est jamais remplacé. Les messages
+                d'une session à noyau partent chez <em>son</em> fournisseur, pas chez le vôtre.
+              </p>
+              {coreError && (
+                <p
+                  className="locaryn-field-hint"
+                  style={{ color: "var(--danger)", marginBottom: 8 }}
+                >
+                  {coreError}
+                </p>
+              )}
+              {skillNotice && (
+                <p className="locaryn-field-hint" style={{ marginBottom: 8 }}>
+                  {skillNotice}
+                </p>
+              )}
               <div className="locaryn-model-grid">
-                {list.map((e) => (
-                  <div key={e.id} className="locaryn-box-card">
-                    <div className="locaryn-box-head">
-                      <div>
-                        <h3 className="locaryn-box-name">{e.name}</h3>
-                        <span className="locaryn-box-brand">
-                          v{e.version}
-                          {e.author ? ` · ${e.author}` : ""}
-                        </span>
-                      </div>
-                      <span className={`locaryn-tag${e.enabled ? " locaryn-tag-installed" : ""}`}>
-                        {e.enabled ? "actif" : "inactif"}
-                      </span>
-                      {updates[e.id]?.update_available && (
+                {installedCores.map((e) => {
+                  const st = coreStatuses[e.id];
+                  const meta = CORE_STATE_LABEL[st?.state ?? "stopped"] ?? CORE_STATE_LABEL.stopped;
+                  return (
+                    <div key={e.id} className="locaryn-box-card">
+                      <div className="locaryn-box-head">
+                        <div style={{ minWidth: 0 }}>
+                          <h3 className="locaryn-box-name">{e.name}</h3>
+                          <span className="locaryn-box-brand">
+                            v{e.version} · driver {e.core?.driver}
+                          </span>
+                        </div>
                         <span
-                          className="locaryn-tag"
-                          style={{ color: "var(--accent)" }}
-                          title={`v${updates[e.id]?.latest_version ?? ""} disponible sur la branche par défaut du dépôt`}
+                          className={`locaryn-health-dot ${
+                            meta.ok ? "locaryn-health-ok" : "locaryn-health-off"
+                          }`}
+                          title={st?.error ?? undefined}
+                        />
+                        <span className="locaryn-tag">{meta.label}</span>
+                      </div>
+                      <p className="locaryn-box-desc">
+                        {e.description ?? "Pas de description fournie."}
+                      </p>
+                      <p className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
+                        {e.core?.api_url}
+                      </p>
+                      {st?.state === "error" && st.error && (
+                        <p
+                          className="locaryn-field-hint"
+                          style={{ color: "var(--danger)", marginTop: 4 }}
                         >
-                          Mise à jour dispo · v{updates[e.id]?.latest_version}
-                        </span>
+                          {st.error}
+                        </p>
+                      )}
+                      {st?.state === "external" && (
+                        <p className="locaryn-field-hint" style={{ marginTop: 4 }}>
+                          Aucune commande de lancement déclarée : démarrez le noyau vous-même,
+                          Locaryn s'y connectera ensuite.
+                        </p>
+                      )}
+                      <div
+                        style={{
+                          marginTop: "auto",
+                          paddingTop: 12,
+                          borderTop: "1px solid var(--border)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 8,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="locaryn-btn-ghost"
+                          style={{ fontSize: 12 }}
+                          disabled={coreBusy === e.id}
+                          onClick={() => toggleSkills(e.id)}
+                        >
+                          {skillsOpen === e.id ? "Masquer les skills" : "Skills"}
+                        </button>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          {st?.state === "running" ? (
+                            <button
+                              type="button"
+                              className="locaryn-btn-ghost"
+                              style={{ fontSize: 12, color: "var(--danger)" }}
+                              disabled={coreBusy === e.id}
+                              onClick={() => runCoreAction(e.id, "stop")}
+                            >
+                              {coreBusy === e.id ? "…" : "Arrêter"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="locaryn-btn-primary"
+                              style={{ fontSize: 12 }}
+                              disabled={coreBusy === e.id || st?.state === "external"}
+                              onClick={() => runCoreAction(e.id, "start")}
+                            >
+                              {coreBusy === e.id
+                                ? "…"
+                                : st?.state === "starting"
+                                  ? "Démarrage…"
+                                  : "Démarrer"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {skillsOpen === e.id && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            paddingTop: 12,
+                            borderTop: "1px solid var(--border)",
+                          }}
+                        >
+                          {e.core?.skills_install && (
+                            <p className="locaryn-field-hint" style={{ marginBottom: 8 }}>
+                              Installation :{" "}
+                              <code>
+                                {e.core.skills_install.replace("{{slug}}", "@owner/skill")}
+                              </code>
+                            </p>
+                          )}
+                          {(coreSkills[e.id] ?? []).length === 0 ? (
+                            <p className="locaryn-field-hint">Aucun skill indexé pour ce noyau.</p>
+                          ) : (
+                            <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                              {(coreSkills[e.id] ?? []).map((sk) => (
+                                <li
+                                  key={sk.slug}
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                    alignItems: "flex-start",
+                                    padding: "8px 0",
+                                    borderBottom: "1px solid var(--border)",
+                                  }}
+                                >
+                                  <div style={{ minWidth: 0 }}>
+                                    <strong style={{ fontSize: 13 }}>{sk.name}</strong>
+                                    {!sk.verified && (
+                                      <span className="locaryn-tag" style={{ marginLeft: 6 }}>
+                                        non vérifié
+                                      </span>
+                                    )}
+                                    {sk.description && (
+                                      <span
+                                        className="locaryn-field-hint"
+                                        style={{ display: "block" }}
+                                      >
+                                        {sk.description}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="locaryn-btn-ghost"
+                                    style={{ fontSize: 12, flexShrink: 0 }}
+                                    disabled={coreBusy === `${e.id}:${sk.slug}`}
+                                    onClick={() => installSkill(e, sk.slug)}
+                                  >
+                                    {coreBusy === `${e.id}:${sk.slug}` ? "…" : "Installer"}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
                       )}
                     </div>
-
-                    <p className="locaryn-box-desc">
-                      {e.description ?? "Pas de description fournie."}
-                    </p>
-                    <p className="locaryn-field-hint">{componentSummary(e)}</p>
-                    {updates[e.id]?.error && (
-                      <p
-                        className="locaryn-field-hint"
-                        style={{ color: "var(--text-faint)", marginTop: 4 }}
-                      >
-                        Vérification de mise à jour impossible : {updates[e.id]?.error}
-                      </p>
-                    )}
-
-                    {e.permissions.length > 0 && (
-                      <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
-                        Permissions :{" "}
-                        {e.permissions
-                          .map(
-                            (p) =>
-                              `${PERMISSION_LABELS[p.permission]}${p.granted ? "" : " (refusée)"}`,
-                          )
-                          .join(", ")}
-                      </p>
-                    )}
-
-                    {e.load_errors.length > 0 && (
-                      <p
-                        className="locaryn-field-hint"
-                        style={{ color: "var(--danger)", marginTop: 6 }}
-                      >
-                        {e.load_errors.length} composant(s) illisible(s) : {e.load_errors[0]}
-                      </p>
-                    )}
-
-                    <div
-                      style={{
-                        marginTop: "auto",
-                        paddingTop: 12,
-                        borderTop: "1px solid var(--border)",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          className="locaryn-btn-ghost"
-                          style={{ fontSize: 12 }}
-                          disabled={updatingAll || busy === e.id || !e.source}
-                          title={
-                            e.source
-                              ? "Réinstalle depuis la même source (github:…, dossier ou zip)"
-                              : "Aucune source enregistrée — impossible de mettre à jour."
-                          }
-                          onClick={() => update(e)}
-                        >
-                          {busy === e.id ? "…" : "Mettre à jour"}
-                        </button>
-                        <button
-                          type="button"
-                          className="locaryn-btn-ghost"
-                          style={{ fontSize: 12 }}
-                          disabled={updatingAll}
-                          onClick={() => setConfiguring(e)}
-                        >
-                          Régler
-                        </button>
-                        <button
-                          type="button"
-                          className="locaryn-btn-ghost"
-                          style={{ fontSize: 12 }}
-                          onClick={() =>
-                            setPermissionExt({
-                              ext: e,
-                              grants: new Set(
-                                e.permissions.filter((p) => p.granted).map((p) => p.permission),
-                              ),
-                              ctx: "edit",
-                            })
-                          }
-                          disabled={updatingAll || e.permissions.length === 0}
-                        >
-                          Permissions
-                        </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+          {installed.length === 0 ? (
+            <p className="locaryn-field-hint">
+              Aucune extension installée. Ouvrez « Découvrir » pour parcourir les catalogues Claude
+              Code, Gemini CLI, OpenCode et MCP, ou installez directement depuis un dépôt GitHub.
+            </p>
+          ) : (
+            grouped.map(([eco, list]) => (
+              <div key={eco} style={{ marginBottom: 24 }}>
+                <h4 style={{ fontSize: "var(--text-md)", marginBottom: 10 }}>
+                  {ECOSYSTEM_LABELS[eco]}
+                </h4>
+                <div className="locaryn-model-grid">
+                  {list.map((e) => (
+                    <div key={e.id} className="locaryn-box-card">
+                      <div className="locaryn-box-head">
+                        <div>
+                          <h3 className="locaryn-box-name">{e.name}</h3>
+                          <span className="locaryn-box-brand">
+                            v{e.version}
+                            {e.author ? ` · ${e.author}` : ""}
+                          </span>
+                        </div>
+                        <span className={`locaryn-tag${e.enabled ? " locaryn-tag-installed" : ""}`}>
+                          {e.enabled ? "actif" : "inactif"}
+                        </span>
+                        {updates[e.id]?.update_available && (
+                          <span
+                            className="locaryn-tag"
+                            style={{ color: "var(--accent)" }}
+                            title={`v${updates[e.id]?.latest_version ?? ""} disponible sur la branche par défaut du dépôt`}
+                          >
+                            Mise à jour dispo · v{updates[e.id]?.latest_version}
+                          </span>
+                        )}
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          type="button"
-                          className={e.enabled ? "locaryn-btn-ghost" : "locaryn-btn-primary"}
-                          style={{ fontSize: 12 }}
-                          disabled={updatingAll || busy === e.id}
-                          onClick={() => toggleEnabled(e)}
+
+                      <p className="locaryn-box-desc">
+                        {e.description ?? "Pas de description fournie."}
+                      </p>
+                      <p className="locaryn-field-hint">{componentSummary(e)}</p>
+                      {updates[e.id]?.error && (
+                        <p
+                          className="locaryn-field-hint"
+                          style={{ color: "var(--text-faint)", marginTop: 4 }}
                         >
-                          {busy === e.id ? "…" : e.enabled ? "Désactiver" : "Activer"}
-                        </button>
-                        <button
-                          type="button"
-                          className="locaryn-btn-ghost"
-                          style={{ fontSize: 12, color: "var(--danger)" }}
-                          disabled={updatingAll || busy === e.id}
-                          onClick={() => remove(e)}
+                          Vérification de mise à jour impossible : {updates[e.id]?.error}
+                        </p>
+                      )}
+
+                      {e.permissions.length > 0 && (
+                        <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
+                          Permissions :{" "}
+                          {e.permissions
+                            .map(
+                              (p) =>
+                                `${PERMISSION_LABELS[p.permission]}${p.granted ? "" : " (refusée)"}`,
+                            )
+                            .join(", ")}
+                        </p>
+                      )}
+
+                      {e.load_errors.length > 0 && (
+                        <p
+                          className="locaryn-field-hint"
+                          style={{ color: "var(--danger)", marginTop: 6 }}
                         >
-                          Désinstaller
-                        </button>
+                          {e.load_errors.length} composant(s) illisible(s) : {e.load_errors[0]}
+                        </p>
+                      )}
+
+                      <div
+                        style={{
+                          marginTop: "auto",
+                          paddingTop: 12,
+                          borderTop: "1px solid var(--border)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className="locaryn-btn-ghost"
+                            style={{ fontSize: 12 }}
+                            disabled={updatingAll || busy === e.id || !e.source}
+                            title={
+                              e.source
+                                ? "Réinstalle depuis la même source (github:…, dossier ou zip)"
+                                : "Aucune source enregistrée — impossible de mettre à jour."
+                            }
+                            onClick={() => update(e)}
+                          >
+                            {busy === e.id ? "…" : "Mettre à jour"}
+                          </button>
+                          <button
+                            type="button"
+                            className="locaryn-btn-ghost"
+                            style={{ fontSize: 12 }}
+                            disabled={updatingAll}
+                            onClick={() => setConfiguring(e)}
+                          >
+                            Régler
+                          </button>
+                          <button
+                            type="button"
+                            className="locaryn-btn-ghost"
+                            style={{ fontSize: 12 }}
+                            onClick={() =>
+                              setPermissionExt({
+                                ext: e,
+                                grants: new Set(
+                                  e.permissions.filter((p) => p.granted).map((p) => p.permission),
+                                ),
+                                ctx: "edit",
+                              })
+                            }
+                            disabled={updatingAll || e.permissions.length === 0}
+                          >
+                            Permissions
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            className={e.enabled ? "locaryn-btn-ghost" : "locaryn-btn-primary"}
+                            style={{ fontSize: 12 }}
+                            disabled={updatingAll || busy === e.id}
+                            onClick={() => toggleEnabled(e)}
+                          >
+                            {busy === e.id ? "…" : e.enabled ? "Désactiver" : "Activer"}
+                          </button>
+                          <button
+                            type="button"
+                            className="locaryn-btn-ghost"
+                            style={{ fontSize: 12, color: "var(--danger)" }}
+                            disabled={updatingAll || busy === e.id}
+                            onClick={() => remove(e)}
+                          >
+                            Désinstaller
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))
-        )
+            ))
+          )}
+        </>
       ) : (
         <>
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>

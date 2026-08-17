@@ -65,6 +65,72 @@ export type IconName =
   | "calendar"
   | "clock";
 
+/**
+ * Les noms du jeu, dans l'ordre de la déclaration ci-dessus.
+ *
+ * Une extension nomme une icône dans son manifeste ; l'application la
+ * dessine. Cette liste est la source de vérité pour savoir si un nom existe —
+ * un nom inconnu doit tomber sur une icône de secours plutôt que sur un
+ * rendu vide.
+ */
+export const ICON_NAMES: readonly string[] = [
+  // Navigation et chrome
+  "menu",
+  "more",
+  "back",
+  "forward",
+  "chevron",
+  "close",
+  "check",
+  "plus",
+  // Espaces
+  "chat",
+  "studio",
+  "extensions",
+  "models",
+  "settings",
+  "memory",
+  "project",
+  "marketplace",
+  // États et actions
+  "private",
+  "archive",
+  "trash",
+  "download",
+  "speed",
+  "warning",
+  "image",
+  "sound",
+  "server",
+  "shield",
+  // Studio et catalogue
+  "mic",
+  "music",
+  "video",
+  "cube",
+  "edit",
+  "target",
+  "translate",
+  "chart",
+  "question",
+  "cloud",
+  "cpu",
+  "star",
+  "refresh",
+  "lock",
+  "figures",
+  "search",
+  "calendar",
+  "clock",
+];
+
+/** Vrai si `name` est une icône du jeu partagé. Une extension nomme un nom du
+ *  jeu ; un nom inconnu n'est pas une icône, et vaut alors une icône de
+ *  secours côté appelant. */
+export function isIconName(name: string | null | undefined): name is IconName {
+  return !!name && (ICON_NAMES as readonly string[]).includes(name);
+}
+
 type Props = {
   name: IconName;
   /** Taille en pixels ; carré. */

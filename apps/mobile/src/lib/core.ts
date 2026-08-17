@@ -20,8 +20,17 @@ export interface PhoneExtension {
   ui?: ExtensionUi;
 }
 
+/** Une entrée de menu ou un onglet que l'extension pose dans l'interface. */
+export interface ExtensionUiEntry {
+  id: string;
+  label: string;
+  icon: string | null;
+}
+
 /** Ce qu'une extension ajoute à l'interface du téléphone. */
 export interface ExtensionUi {
+  nav_items?: ExtensionUiEntry[];
+  studio_tabs?: ExtensionUiEntry[];
   composer_actions?: ComposerAction[];
   settings_sections?: SettingsSection[];
 }
@@ -34,6 +43,42 @@ export interface ExtensionUi {
  * contient. Rien d'autre : faire tourner du code d'extension dans l'interface
  * reviendrait à lui donner l'écran entier.
  */
+/** Une figure du serveur, vue du téléphone. */
+export interface PhoneFigure {
+  id: string;
+  name: string;
+  description: string;
+  /** Ce que le modèle reçoit avant toute conversation. C'est le cœur. */
+  instructions: string;
+  /** Le modèle qui la fait tourner. Absent : celui de l'application. */
+  model: string | null;
+  /** Une première phrase, proposée à l'ouverture. */
+  opening: string | null;
+  /** Vrai quand la figure lit la mémoire de l'utilisateur. */
+  uses_memory: boolean;
+  /** Les outils qu'elle a le droit d'appeler. Absents : tout ce que l'application propose. */
+  tools: string[] | null;
+}
+
+/** Ce qu'on envoie pour créer ou corriger une figure. */
+export interface FigureDraft {
+  name: string;
+  description: string;
+  instructions: string;
+  model: string | null;
+  opening: string | null;
+  usesMemory: boolean;
+  /** Les outils autorisés, séparés par des virgules. Vide : tout. */
+  tools: string;
+}
+
+/** Une conversation d'une figure, telle que l'écran la liste. */
+export interface PhoneFigureSession {
+  id: string;
+  title: string | null;
+  last_message_at: string | null;
+}
+
 export interface ComposerAction {
   id: string;
   label: string;
@@ -54,7 +99,8 @@ export interface SettingsSection {
 export interface SettingsField {
   key: string;
   label: string;
-  /** `model`, `text`, `toggle` ou `choice`. */
+  /** `boolean`, `select`, `model`, `string`, `number` ou `prompt`.
+   *  Les anciens mots `toggle`, `choice`, `text` sont acceptés. */
   kind: string;
   hint?: string | null;
   options?: string[];
@@ -181,6 +227,9 @@ export interface MediaResult {
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+/** Pour rythmer les simulations du mode démo — jamais utilisé hors de lui. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * Un seul endroit par lequel passe chaque commande, donc un seul endroit où
  * reconnaître un serveur devenu injoignable — plutôt que de le refaire dans
@@ -250,6 +299,23 @@ export const core = {
   listMediaModels: (kind: "image" | "audio") => invoke<MediaModel[]>("list_media_models", { kind }),
   /** Les extensions installées sur le serveur, et leur pilotage. */
   listExtensions: () => invoke<PhoneExtension[]>("list_extensions"),
+  /** Les figures du serveur, et leur pilotage. */
+  listFigures: () => invoke<PhoneFigure[]>("list_figures"),
+  saveFigure: (f: FigureDraft) =>
+    invoke<PhoneFigure>("save_figure", {
+      name: f.name,
+      description: f.description,
+      instructions: f.instructions,
+      model: f.model,
+      opening: f.opening,
+      usesMemory: f.usesMemory,
+      tools: f.tools.split(",").map((t) => t.trim()).filter(Boolean),
+    }),
+  deleteFigure: (id: string) => invoke<void>("delete_figure", { id }),
+  startFigureChat: (figureId: string) => invoke<string>("start_figure_chat", { figureId }),
+  figureSessions: (figureId: string) =>
+    invoke<PhoneFigureSession[]>("figure_sessions", { figureId }),
+
   installExtension: (source: string) => invoke<PhoneExtension>("install_extension", { source }),
   setExtensionEnabled: (name: string, enabled: boolean) =>
     invoke<void>("set_extension_enabled", { name, enabled }),
@@ -304,19 +370,28 @@ export const demoCore: typeof core = {
   // Sans serveur enregistré, le navigateur montre le Studio : c'est
   // l'interface qu'on met au point, pas une machine réelle.
   serverCapabilities: async () => ["image-gen"],
-  // Dans un navigateur il n'y a pas d'APK à remplacer : la vérification dit
-  // simplement qu'il n'y a rien à faire, et le bouton ne s'affiche pas.
+  // Il n'y a pas de vrai APK à remplacer dans un navigateur, mais une mise à
+  // jour disponible et simulée : sans elle, tout l'écran — bouton, barre de
+  // progression, tailles — resterait du code mort, invérifiable autrement
+  // qu'avec un téléphone et une release plus récente déjà publiée.
   checkUpdate: async () => ({
     current: "0.0.0-dev",
-    latest: null,
-    available: false,
-    download_url: null,
-    notes: null,
-    size: null,
+    latest: "0.0.0-dev+1",
+    available: true,
+    download_url: "https://example.invalid/demo.apk",
+    notes: "Aperçu de démonstration : rien n'est réellement téléchargé ni installé.",
+    size: 42 * 1024 * 1024,
     downloaded: false,
     error: null,
   }),
-  installUpdate: async () => "/tmp/demo.apk",
+  installUpdate: async (_url, _size, onProgress) => {
+    const total = 42 * 1024 * 1024;
+    for (const pct of [8, 27, 51, 74, 92, 100]) {
+      await sleep(180);
+      onProgress({ downloaded: Math.round((pct / 100) * total), total, percentage: pct });
+    }
+    return "/tmp/demo.apk";
+  },
   resumeInstall: async () => {},
   registerServer: async () => ({
     server_name: "Atelier Vasseur",
@@ -373,6 +448,20 @@ export const demoCore: typeof core = {
     },
   ],
   saveImage: async (img) => `/sdcard/Pictures/${img.name}`,
+  listFigures: async () => [],
+  saveFigure: async (f: FigureDraft) => ({
+    id: "demo",
+    name: f.name,
+    description: f.description,
+    instructions: f.instructions,
+    model: f.model,
+    opening: f.opening,
+    uses_memory: f.usesMemory,
+    tools: f.tools.split(",").map((t) => t.trim()).filter(Boolean),
+  }),
+  deleteFigure: async () => {},
+  startFigureChat: async (figureId: string) => `demo-${figureId}`,
+  figureSessions: async () => [],
   listExtensions: async () => [
     {
       name: "plugin-image-gen",

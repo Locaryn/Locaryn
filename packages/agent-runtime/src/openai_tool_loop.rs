@@ -13,9 +13,7 @@
 //!   assistant message we echo back carries the assembled `tool_calls` with
 //!   `arguments` as a JSON **string** (OpenAI convention).
 
-use crate::tools::{
-    approval_decision, builtin_tools, dispatch_tool, ollama_tools_json, ApprovalInput, ToolContext,
-};
+use crate::tools::{builtin_tools, ollama_tools_json, ToolContext};
 use crate::{AgentError, AgentInput, EventStream};
 use futures::StreamExt as _;
 use locaryn_events::{LogLevel, StreamEvent};
@@ -84,6 +82,15 @@ pub async fn run_openai_tool_loop(
         .chain(extension_tools)
         .chain(mcp_tools.clone())
         .collect();
+    // Une figure peut limiter les outils : seuls ceux qu'elle nomme restent
+    // dans la liste offerte au modèle. Vide ou absent, tout passe.
+    let all_tools = match &input.tools {
+        Some(autorises) if !autorises.is_empty() => all_tools
+            .into_iter()
+            .filter(|t| autorises.iter().any(|a| a == &t.name))
+            .collect(),
+        _ => all_tools,
+    };
     let tools_json = if all_tools.is_empty() {
         None
     } else {
@@ -174,11 +181,9 @@ pub async fn run_openai_tool_loop(
 
     // First round runs BEFORE we return the stream so connection errors are
     // reported synchronously (the caller falls back to a helpful message).
+    let bearer = input.bearer_token.clone();
     let first_body = make_body(&messages, &tools_json);
-    let first_resp = client
-        .post(&chat_url)
-        .json(&first_body)
-        .send()
+    let first_resp = post_json(client, &chat_url, &first_body, bearer.as_deref())
         .await
         .map_err(|e| {
             tracing::warn!(error = %e, "openai-compat connection failed");
@@ -229,7 +234,7 @@ pub async fn run_openai_tool_loop(
                 Some(r) => r,
                 None => {
                     let body = make_body(&messages, &tools_json);
-                    match client.post(&chat_url).json(&body).send().await {
+                    match post_json(&client, &chat_url, &body, bearer.as_deref()).await {
                         Ok(r) if r.status().is_success() => r,
                         Ok(r) => {
                             let _ = tx
@@ -295,156 +300,31 @@ pub async fn run_openai_tool_loop(
             }));
 
             // Dispatch each call (with approval gating), feed results back.
+            // Le chemin d'exécution (décision, refus, dispatch, événements)
+            // est partagé avec le pont de noyaux alternatifs : une seule
+            // implémentation de la politique d'approbation, où que l'appel
+            // vienne.
             for call in &round_result.calls {
                 let args: serde_json::Value =
                     serde_json::from_str(&call.arguments_raw).unwrap_or(serde_json::json!({}));
 
-                if tx
-                    .send(StreamEvent::ToolCall {
-                        call_id: call.id.clone(),
-                        tool: call.name.clone(),
-                        args: args.clone(),
-                    })
-                    .await
-                    .is_err()
-                {
-                    return;
-                }
-
-                let tool_spec = tools_for_dispatch.iter().find(|t| t.name == call.name);
-
-                let decision = match tool_spec {
-                    Some(spec) => approval_decision(&ApprovalInput {
-                        spec,
-                        args: &args,
+                let result_content = match crate::execute_tool_call(
+                    &tx,
+                    &call.id,
+                    &call.name,
+                    args,
+                    &crate::exec::ToolDispatchContext {
+                        tools: &tools_for_dispatch,
                         ctx: &ctx,
-                        agent_reason: None,
-                    }),
-                    None => crate::tools::ApprovalDecision {
-                        call_id: call.id.clone(),
-                        tool: call.name.clone(),
-                        effective_risk: crate::tools::Risk::High,
-                        declared_risk: crate::tools::Risk::High,
-                        escalated_to_critical: false,
-                        needs_user_consent: true,
-                        reason: "Unknown tool — not in the built-in tool set.".into(),
-                        diff: None,
-                        min_scope: locaryn_shared_types::RiskScope::Once,
-                        hard_blocked: true,
-                        debug_trace: "tool not found in builtin_tools()".into(),
+                        mcp: mcp_state_for_dispatch.as_deref(),
+                        approval: approval.as_ref(),
                     },
-                };
-
-                // Un outil interdit ne se négocie pas : on ne pose pas la
-                // question, sinon un « Autoriser » laisserait croire qu'il
-                // suffit d'insister.
-                let verdict = if decision.hard_blocked {
-                    Some(format!(
-                        "Tool '{}' was blocked. {}.",
-                        call.name, decision.reason
-                    ))
-                } else if decision.needs_user_consent {
-                    // L'événement part d'abord : c'est lui qui fait apparaître
-                    // la fenêtre. L'attente vient ensuite, sinon on
-                    // demanderait à quelqu'un qui n'a encore rien vu.
-                    let _ = tx
-                        .send(StreamEvent::ToolApproval {
-                            call_id: call.id.clone(),
-                            tool: call.name.clone(),
-                            args: args.clone(),
-                            risk: decision.effective_risk,
-                            reason: decision.reason.clone(),
-                            diff: decision.diff.clone(),
-                            is_remote: ctx.remote_target.is_some(),
-                        })
-                        .await;
-
-                    let outcome = crate::approval::ask(
-                        approval.as_ref(),
-                        crate::approval::ApprovalRequest {
-                            call_id: call.id.clone(),
-                            tool: call.name.clone(),
-                            args: args.clone(),
-                            risk: decision.effective_risk,
-                            reason: decision.reason.clone(),
-                            diff: decision.diff.clone(),
-                            is_remote: ctx.remote_target.is_some(),
-                            project_id: ctx.project_id,
-                        },
-                    )
-                    .await;
-
-                    match outcome {
-                        crate::approval::ApprovalOutcome::Allow => None,
-                        crate::approval::ApprovalOutcome::Deny { reason } => Some(format!(
-                            "Tool '{}' was denied by the user. {}.",
-                            call.name, reason
-                        )),
-                    }
-                } else {
-                    None
-                };
-
-                let result_content = if let Some(denial) = verdict {
-                    if tx
-                        .send(StreamEvent::ToolResult {
-                            call_id: call.id.clone(),
-                            ok: false,
-                            output: denial.clone(),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        return;
-                    }
-                    denial
-                } else {
-                    let result = if call.name.starts_with(crate::mcp_tools::MCP_PREFIX) {
-                        if let Some(ref mcp) = mcp_state_for_dispatch {
-                            crate::mcp_tools::dispatch_mcp_tool(mcp, &call.name, &args).await
-                        } else {
-                            crate::tools::ToolResult {
-                                ok: false,
-                                output: "MCP state not available".into(),
-                                artifact: None,
-                            }
-                        }
-                    } else {
-                        dispatch_tool(&call.name, &args, &ctx).await
-                    };
-                    // Un outil qui produit un fichier le fait savoir ici. Sans
-                    // cet événement, une image générée restait un chemin dans
-                    // une phrase : le fichier existait sur le serveur, et aucun
-                    // client ne pouvait le montrer.
-                    if let Some(art) = &result.artifact {
-                        if tx
-                            .send(StreamEvent::Artifact {
-                                artifact_id: uuid::Uuid::new_v4().to_string(),
-                                kind: art.kind,
-                                path: art.path.clone(),
-                            })
-                            .await
-                            .is_err()
-                        {
-                            return;
-                        }
-                    }
-                    if tx
-                        .send(StreamEvent::ToolResult {
-                            call_id: call.id.clone(),
-                            ok: result.ok,
-                            output: result.output.clone(),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        return;
-                    }
-                    if result.ok {
-                        result.output
-                    } else {
-                        format!("ERROR: {}", result.output)
-                    }
+                )
+                .await
+                {
+                    Some(text) => text,
+                    // Client gone — nobody is listening, stop the loop.
+                    None => return,
                 };
 
                 messages.as_array_mut().unwrap().push(serde_json::json!({
@@ -486,6 +366,22 @@ pub async fn run_openai_tool_loop(
     });
 
     Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)))
+}
+
+/// POST JSON, with the optional Bearer header used by alternate cores
+/// (OpenClaw, Hermes…). `None` keeps the exact behaviour of a plain provider
+/// call — no header at all.
+async fn post_json(
+    client: &reqwest::Client,
+    url: &str,
+    body: &serde_json::Value,
+    bearer: Option<&str>,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let mut req = client.post(url);
+    if let Some(t) = bearer {
+        req = req.bearer_auth(t);
+    }
+    req.json(body).send().await
 }
 
 /// Consume one streamed response: emit `Token` events live for text deltas,

@@ -199,6 +199,51 @@ impl UserRepo {
         Ok(Some(row.to_user()?))
     }
 
+    /// Change an account's password, after checking the current one.
+    ///
+    /// `Ok(false)` means the current password is wrong — the caller must not
+    /// tell a remote user anything more specific. The new password goes
+    /// through the same minimum-length rule as `create`.
+    pub async fn change_password(
+        &self,
+        user_id: Uuid,
+        current: &str,
+        nouveau: &str,
+    ) -> Result<bool, StorageError> {
+        if nouveau.chars().count() < 8 {
+            return Err(StorageError::Conflict(
+                "mot de passe trop court (8 caractères minimum)".into(),
+            ));
+        }
+        let row = sqlx::query_as::<_, UserRow>(
+            "SELECT id, username, password_hash, role, disabled_at FROM users WHERE id = ?",
+        )
+        .bind(user_id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else {
+            return Ok(false);
+        };
+        let ok = locaryn_auth::verify_token(
+            current,
+            &locaryn_auth::TokenHash {
+                hash: row.password_hash.clone(),
+            },
+        );
+        if !ok {
+            return Ok(false);
+        }
+        let hash = locaryn_auth::hash_token(nouveau).hash;
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+            .bind(&hash)
+            .bind(&now)
+            .bind(user_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(true)
+    }
+
     /// Issue an API token for a user. The plaintext is returned once.
     pub async fn issue_token(
         &self,
@@ -318,6 +363,49 @@ mod tests {
     async fn repo() -> (UserRepo, sqlx::SqlitePool) {
         let pool = crate::open_in_memory().await.expect("base en mémoire");
         (UserRepo::new(pool.clone()), pool)
+    }
+
+    #[tokio::test]
+    async fn a_password_changes_only_with_the_current_one() {
+        let (repo, _pool) = repo().await;
+
+        let u = repo
+            .create("Marie", "un-mot-de-passe-solide", Role::Admin)
+            .await
+            .expect("création");
+
+        // Le mauvais mot de passe actuel est refusé, sans rien changer.
+        assert!(!repo
+            .change_password(u.id, "mauvais", "tout-neuf-et-solide")
+            .await
+            .unwrap());
+        assert!(repo
+            .authenticate("Marie", "un-mot-de-passe-solide")
+            .await
+            .unwrap()
+            .is_some());
+
+        // Le bon mot de passe change, et le nouveau prend effet aussitôt.
+        assert!(repo
+            .change_password(u.id, "un-mot-de-passe-solide", "tout-neuf-et-solide")
+            .await
+            .unwrap());
+        assert!(repo
+            .authenticate("Marie", "tout-neuf-et-solide")
+            .await
+            .unwrap()
+            .is_some());
+        assert!(repo
+            .authenticate("Marie", "un-mot-de-passe-solide")
+            .await
+            .unwrap()
+            .is_none());
+
+        // Un nouveau mot de passe trop court est refusé.
+        assert!(repo
+            .change_password(u.id, "tout-neuf-et-solide", "court")
+            .await
+            .is_err());
     }
 
     #[tokio::test]

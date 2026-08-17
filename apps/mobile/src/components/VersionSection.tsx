@@ -30,7 +30,6 @@ export function VersionSection() {
   const demande = useRef(false);
 
   const verifier = useCallback(async () => {
-    if (coreMode !== "tauri") return;
     setBusy(true);
     setPhase("verifie");
     setError(null);

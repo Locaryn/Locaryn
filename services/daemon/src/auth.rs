@@ -181,9 +181,101 @@ pub async fn me(user: Option<axum::extract::Extension<User>>) -> Response {
     }
 }
 
+#[derive(Deserialize)]
+pub struct ChangePasswordBody {
+    pub current: String,
+    pub nouveau: String,
+}
+
+/// Change the caller's own password.
+///
+/// The caller must know the current password: on a loopback-only daemon there
+/// is no token, and the request arrives from the web client itself — the
+/// person at the keyboard. A wrong current password answers 403, indistinct
+/// from a rejected token, so an attacker cannot tell the two apart.
+pub async fn change_password(
+    State(state): State<Arc<AuthState>>,
+    user: Option<axum::extract::Extension<User>>,
+    Json(body): Json<ChangePasswordBody>,
+) -> Response {
+    let user_id = match user {
+        Some(axum::extract::Extension(u)) => u.id,
+        None => {
+            // Loopback without auth: there is no account to change.
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({ "error": "no_account" })),
+            )
+                .into_response();
+        }
+    };
+    match state.users.change_password(user_id, &body.current, &body.nouveau).await {
+        Ok(true) => (StatusCode::OK, Json(serde_json::json!({ "changed": true }))).into_response(),
+        Ok(false) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "current_password_wrong" })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": "password_refused", "detail": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use locaryn_storage::users::Role;
+
+    #[tokio::test]
+    async fn password_changes_only_for_the_caller_with_the_right_current_password() {
+        let pool = locaryn_storage::open_in_memory().await.unwrap();
+        let repo = UserRepo::new(pool);
+        let user = repo
+            .create("Marie", "un-mot-de-passe-solide", Role::Admin)
+            .await
+            .unwrap();
+        let state = Arc::new(AuthState {
+            users: repo.clone(),
+            required: true,
+        });
+
+        // Mauvais mot de passe actuel : 403, et le compte n'a pas bougé.
+        let resp = change_password(
+            State(state.clone()),
+            Some(axum::extract::Extension(user.clone())),
+            Json(ChangePasswordBody {
+                current: "mauvais".into(),
+                nouveau: "tout-neuf-et-solide".into(),
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert!(repo
+            .authenticate("Marie", "un-mot-de-passe-solide")
+            .await
+            .unwrap()
+            .is_some());
+
+        // Bon mot de passe : 200, et le nouveau prend effet.
+        let resp = change_password(
+            State(state),
+            Some(axum::extract::Extension(user.clone())),
+            Json(ChangePasswordBody {
+                current: "un-mot-de-passe-solide".into(),
+                nouveau: "tout-neuf-et-solide".into(),
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(repo
+            .authenticate("Marie", "tout-neuf-et-solide")
+            .await
+            .unwrap()
+            .is_some());
+    }
 
     #[test]
     fn only_health_and_login_are_public() {
