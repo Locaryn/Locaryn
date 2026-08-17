@@ -44,7 +44,22 @@ export type IconName =
   | "image"
   | "sound"
   | "server"
-  | "shield";
+  | "shield"
+  // Studio et catalogue
+  | "mic"
+  | "music"
+  | "video"
+  | "cube"
+  | "edit"
+  | "target"
+  | "translate"
+  | "chart"
+  | "question"
+  | "cloud"
+  | "cpu"
+  | "star"
+  | "refresh"
+  | "lock";
 
 type Props = {
   name: IconName;
@@ -269,6 +284,115 @@ export function Icon({ name, size = 20, title }: Props) {
         <svg {...common}>
           {label}
           <path d="M12 3l7 3v6c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6l7-3z" />
+        </svg>
+      );
+    case "mic":
+      return (
+        <svg {...common}>
+          {label}
+          <rect x="9" y="3" width="6" height="11" rx="3" />
+          <path d="M5 11a7 7 0 0014 0M12 18v3" />
+        </svg>
+      );
+    case "music":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M9 18V6l10-2v12" />
+          <circle cx="6.5" cy="18" r="2.5" />
+          <circle cx="16.5" cy="16" r="2.5" />
+        </svg>
+      );
+    case "video":
+      return (
+        <svg {...common}>
+          {label}
+          <rect x="3" y="6" width="12" height="12" rx="2" />
+          <path d="M15 10.5l6-3.5v10l-6-3.5" />
+        </svg>
+      );
+    case "cube":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
+        </svg>
+      );
+    case "edit":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M4 20h4L19 9a2.1 2.1 0 00-3-3L5 17v3z" />
+          <path d="M14.5 6.5l3 3" />
+        </svg>
+      );
+    case "target":
+      return (
+        <svg {...common}>
+          {label}
+          <circle cx="12" cy="12" r="8" />
+          <circle cx="12" cy="12" r="3.2" />
+        </svg>
+      );
+    case "translate":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M4 6h9M8.5 4v2M10.5 6c-.6 4-3 7-6.5 8.5M7 9.5c1 2.4 3 4.2 5.5 5" />
+          <path d="M12 20l4-10 4 10M13.4 17h5.2" />
+        </svg>
+      );
+    case "chart":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M4 20V4M4 20h16" />
+          <path d="M8 17v-5M12 17V7M16 17v-8" />
+        </svg>
+      );
+    case "question":
+      return (
+        <svg {...common}>
+          {label}
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M9.6 9.4A2.5 2.5 0 0114.5 10c0 1.7-2.5 2-2.5 3.6M12 16.6v.1" />
+        </svg>
+      );
+    case "cloud":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M7 18a4 4 0 01-.4-8A5.5 5.5 0 0117.4 10 3.6 3.6 0 0117 18H7z" />
+        </svg>
+      );
+    case "cpu":
+      return (
+        <svg {...common}>
+          {label}
+          <rect x="7" y="7" width="10" height="10" rx="1.5" />
+          <path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" />
+        </svg>
+      );
+    case "star":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M12 4l2.4 5 5.6.8-4 3.9 1 5.5-5-2.7-5 2.7 1-5.5-4-3.9 5.6-.8L12 4z" />
+        </svg>
+      );
+    case "refresh":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M20 12a8 8 0 11-2.6-5.9M20 4v4h-4" />
+        </svg>
+      );
+    case "lock":
+      return (
+        <svg {...common}>
+          {label}
+          <rect x="5" y="10" width="14" height="10" rx="2" />
+          <path d="M8.5 10V7.5a3.5 3.5 0 017 0V10" />
         </svg>
       );
   }

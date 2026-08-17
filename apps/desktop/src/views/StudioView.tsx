@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useMemo, useState } from "react";
 import { AudioGenPanel } from "../components/AudioGenPanel";
 import { ImageGenPanel } from "../components/ImageGenPanel";
@@ -20,17 +21,17 @@ type StudioTab =
   | "text-analysis"
   | "question-answering";
 
-const TABS: { id: StudioTab; label: string; icon: string }[] = [
-  { id: "image", label: "Image", icon: "🎨" },
-  { id: "audio", label: "Synthèse vocale", icon: "🎙️" },
-  { id: "music", label: "Musique", icon: "🎵" },
-  { id: "video", label: "Vidéo", icon: "🎬" },
-  { id: "3d", label: "3D", icon: "🧩" },
-  { id: "image-editing", label: "Édition image", icon: "✏️" },
-  { id: "object-detection", label: "Détection", icon: "🎯" },
-  { id: "translation", label: "Traduction", icon: "🌐" },
-  { id: "text-analysis", label: "Analyse texte", icon: "📊" },
-  { id: "question-answering", label: "Q&R", icon: "❓" },
+const TABS: { id: StudioTab; label: string; icon: IconName }[] = [
+  { id: "image", label: "Image", icon: "studio" },
+  { id: "audio", label: "Synthèse vocale", icon: "mic" },
+  { id: "music", label: "Musique", icon: "music" },
+  { id: "video", label: "Vidéo", icon: "video" },
+  { id: "3d", label: "3D", icon: "cube" },
+  { id: "image-editing", label: "Édition image", icon: "edit" },
+  { id: "object-detection", label: "Détection", icon: "target" },
+  { id: "translation", label: "Traduction", icon: "translate" },
+  { id: "text-analysis", label: "Analyse texte", icon: "chart" },
+  { id: "question-answering", label: "Q&R", icon: "question" },
 ];
 
 type Props = {
@@ -166,13 +167,13 @@ export function StudioView({
   }
 
   /** Shared gallery card rendering for all media types. */
-  function renderGallery(items: GalleryItem[], icon: string, title: string) {
+  function renderGallery(items: GalleryItem[], icon: IconName, title: string) {
     if (items.length === 0) return null;
     return (
       <div className="locaryn-card" style={{ marginTop: 24, padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, flex: 1 }}>
-            {icon} {title} ({items.length})
+            <Icon name={icon} size={16} /> {title} ({items.length})
           </h4>
           <button
             type="button"
@@ -186,7 +187,7 @@ export function StudioView({
             onClick={() => taskCenter.clearGallery()}
             title="Supprimer toutes les entrées de la galerie"
           >
-            🗑️ Tout effacer
+            <Icon name="trash" size={15} /> Tout effacer
           </button>
         </div>
         <div
@@ -333,7 +334,7 @@ export function StudioView({
               <div className="locaryn-card" style={{ marginTop: 24, padding: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, flex: 1 }}>
-                    🖼️ Galerie ({galleryItems.length})
+                    <Icon name="image" size={15} /> Galerie ({galleryItems.length})
                   </h4>
                   <button
                     type="button"
@@ -347,7 +348,7 @@ export function StudioView({
                     onClick={() => taskCenter.clearGallery()}
                     title="Supprimer toutes les entrées de la galerie"
                   >
-                    🗑️ Tout effacer
+                    <Icon name="trash" size={15} /> Tout effacer
                   </button>
                 </div>
                 <div
@@ -429,7 +430,7 @@ export function StudioView({
                           }}
                           className="img-gallery-send-btn"
                         >
-                          💬 Chat
+                          <Icon name="chat" size={15} /> Chat
                         </button>
                       )}
                     </div>
@@ -447,7 +448,7 @@ export function StudioView({
               onClose={onCloseAudioGen ?? (() => {})}
               inline
             />
-            {renderGallery(audioItems, "🎙️", "Synthèses vocales")}
+            {renderGallery(audioItems, "mic", "Synthèses vocales")}
           </>
         );
       case "video":
@@ -458,7 +459,7 @@ export function StudioView({
               onClose={onCloseAudioGen ?? (() => {})}
               inline
             />
-            {renderGallery(videoItems, "🎬", "Vidéos générées")}
+            {renderGallery(videoItems, "video", "Vidéos générées")}
           </>
         );
       case "music":
@@ -469,7 +470,7 @@ export function StudioView({
               onClose={onCloseAudioGen ?? (() => {})}
               inline
             />
-            {renderGallery(musicItems, "🎵", "Musiques générées")}
+            {renderGallery(musicItems, "music", "Musiques générées")}
           </>
         );
       case "3d":
@@ -480,7 +481,7 @@ export function StudioView({
               onClose={onCloseAudioGen ?? (() => {})}
               inline
             />
-            {renderGallery(model3dItems, "🧊", "Modèles 3D")}
+            {renderGallery(model3dItems, "cube", "Modèles 3D")}
           </>
         );
       case "image-editing":
@@ -546,7 +547,9 @@ export function StudioView({
                   : {}),
               }}
             >
-              <span style={{ marginRight: 4 }}>{tab.icon}</span>
+              <span style={{ marginRight: 4, display: "inline-flex" }}>
+                <Icon name={tab.icon} size={15} />
+              </span>
               {tab.label}
             </button>
           );

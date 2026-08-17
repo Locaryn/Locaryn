@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { SpeedBadge, findMetric } from "../components/SpeedBadge";
 import { type ModelMetric, core } from "../lib/core";
@@ -146,7 +147,9 @@ export function InstalledModelsView({
       <div className="locaryn-view-header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h2>💾 Mes Modèles Installés ({dedupedModels.length})</h2>
+            <h2>
+              <Icon name="models" size={18} /> Mes Modèles Installés ({dedupedModels.length})
+            </h2>
             <p className="locaryn-view-desc">
               Gérez vos modèles d'IA stockés localement sur votre disque. Ouvrez leur emplacement ou
               sélectionnez-les directement pour vos chats et générations.
@@ -159,7 +162,7 @@ export function InstalledModelsView({
               style={{ fontSize: "12px", border: "1px solid var(--border-strong)" }}
               onClick={() => handleOpenFolder(modelsDir)}
             >
-              📁 Ouvrir le dossier des modèles
+              <Icon name="project" size={15} /> Ouvrir le dossier des modèles
             </button>
             {onOpenMarketplace && (
               <button
@@ -168,7 +171,7 @@ export function InstalledModelsView({
                 style={{ fontSize: "12px" }}
                 onClick={onOpenMarketplace}
               >
-                🛒 Explorer le Marketplace
+                <Icon name="marketplace" size={15} /> Explorer le Marketplace
               </button>
             )}
           </div>
@@ -199,14 +202,14 @@ export function InstalledModelsView({
             className={`locaryn-chip${filterType === "text" ? " locaryn-chip-on" : ""}`}
             onClick={() => setFilterType("text")}
           >
-            💬 LLM Texte
+            <Icon name="chat" size={15} /> LLM Texte
           </button>
           <button
             type="button"
             className={`locaryn-chip${filterType === "image" ? " locaryn-chip-on" : ""}`}
             onClick={() => setFilterType("image")}
           >
-            🎨 Modèles Image
+            <Icon name="studio" size={15} /> Modèles Image
           </button>
         </div>
         <div style={{ display: "flex", gap: "4px" }}>
@@ -215,21 +218,21 @@ export function InstalledModelsView({
             className={`locaryn-chip${riskFilter === "safe" ? " locaryn-chip-on" : ""}`}
             onClick={() => setRiskFilter((prev) => (prev === "safe" ? "all" : "safe"))}
           >
-            🛡️ Safe
+            <Icon name="shield" size={14} /> Safe
           </button>
           <button
             type="button"
             className={`locaryn-chip${riskFilter === "uncensored" ? " locaryn-chip-on" : ""}`}
             onClick={() => setRiskFilter((prev) => (prev === "uncensored" ? "all" : "uncensored"))}
           >
-            🔓 Sans limite
+            <Icon name="lock" size={14} /> Sans limite
           </button>
           <button
             type="button"
             className={`locaryn-chip${riskFilter === "nsfw" ? " locaryn-chip-on" : ""}`}
             onClick={() => setRiskFilter((prev) => (prev === "nsfw" ? "all" : "nsfw"))}
           >
-            🔞 NSFW
+            <Icon name="warning" size={14} /> NSFW
           </button>
         </div>
       </div>
@@ -249,7 +252,7 @@ export function InstalledModelsView({
             gap: "12px",
           }}
         >
-          <span style={{ fontSize: "36px" }}>💾</span>
+          <Icon name="models" size={36} />
           <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
             {installedModels.length === 0
               ? "Aucun modèle installé localement"
@@ -262,7 +265,7 @@ export function InstalledModelsView({
           </p>
           {onOpenMarketplace && (
             <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}>
-              🛒 Télécharger un modèle depuis le Marketplace
+              <Icon name="marketplace" size={15} /> Télécharger un modèle depuis le Marketplace
             </button>
           )}
         </div>
@@ -302,7 +305,7 @@ export function InstalledModelsView({
               <div style={{ minWidth: 0, flex: 1 }}>
                 {" "}
                 <span className="locaryn-box-brand" style={{ fontSize: "10px" }}>
-                  {m.isImage ? "🎨 IMAGE MODEL" : "💬 TEXT LLM"} · {m.engine}
+                  {m.isImage ? "IMAGE" : "TEXTE"} · {m.engine}
                 </span>
                 <SpeedBadge metric={findMetric(metrics, m.rawTag, m.isImage ? "image" : "chat")} />
                 {(() => {
@@ -340,7 +343,7 @@ export function InstalledModelsView({
                 className="locaryn-tag locaryn-tag-installed"
                 style={{ fontSize: "10px", padding: "2px 6px" }}
               >
-                Stocké localement ✓
+                Stocké localement
               </span>
             </div>
 
@@ -357,7 +360,7 @@ export function InstalledModelsView({
                 fontFamily: "var(--font-mono)",
               }}
             >
-              📂 {m.fullPath}
+              <Icon name="project" size={14} /> {m.fullPath}
             </div>
 
             {/* Actions Bar */}
@@ -377,7 +380,7 @@ export function InstalledModelsView({
                   style={{ flex: 1, fontSize: "12px", whiteSpace: "nowrap" }}
                   onClick={() => onOpenImageGen?.()}
                 >
-                  🎨 Générer des images
+                  <Icon name="studio" size={15} /> Générer des images
                 </button>
               ) : (
                 <button
@@ -387,7 +390,7 @@ export function InstalledModelsView({
                   disabled={activatingModel === m.rawTag}
                   onClick={() => handleUseForChat(m.rawTag)}
                 >
-                  {activatingModel === m.rawTag ? "Sélection…" : "💬 Utiliser dans le Chat"}
+                  {activatingModel === m.rawTag ? "Sélection…" : "Utiliser dans le Chat"}
                 </button>
               )}
 
@@ -398,7 +401,7 @@ export function InstalledModelsView({
                 onClick={() => handleOpenFolder(m.fullPath)}
                 title="Ouvrir l'emplacement de ce fichier sur le disque"
               >
-                📁 Emplacement
+                <Icon name="project" size={15} /> Emplacement
               </button>
 
               {onDeleteModel && (
@@ -409,7 +412,7 @@ export function InstalledModelsView({
                   onClick={() => onDeleteModel(m.rawTag)}
                   title="Supprimer ce modèle pour libérer de l'espace disque"
                 >
-                  🗑 Supprimer
+                  <Icon name="trash" size={15} /> Supprimer
                 </button>
               )}
             </div>
