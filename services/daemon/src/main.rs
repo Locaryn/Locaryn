@@ -239,6 +239,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/sessions/:id/archive", post(archive_session))
         .route("/v1/sessions/:id/project", post(move_session))
         .route("/v1/projects/:pid/archived", get(list_archived_sessions))
+        // Les figures : un rôle, ses consignes, ses conversations.
+        .route("/v1/figures", get(list_figures).post(save_figure))
+        .route("/v1/figures/:id", delete(remove_figure))
+        .route("/v1/figures/:id/sessions", get(figure_sessions))
+        .route("/v1/sessions/:id/figure", post(attach_figure))
         // Le modèle des micro-tâches : lequel, et lesquels sont disponibles.
         .route(
             "/v1/assistance/micro-model",
@@ -924,7 +929,7 @@ async fn send_message(
         // Ce que le service retient de la personne, versé au prompt système.
         // C'est le même texte que montre l'écran de réglages : personne ne
         // doit avoir à deviner ce que le modèle sait de lui.
-        extra_system: s.storage.memory.as_system_block(None).await.unwrap_or(None),
+        extra_system: bloc_systeme(&s, session_uuid).await,
         // Ce que les extensions actives apportent : c'est ce qui décide des
         // outils offerts au modèle. Sans l'extension d'images, il n'a aucun
         // moyen d'en générer une, et le dit.
@@ -1733,6 +1738,96 @@ async fn list_archived_sessions(
     }
 }
 
+/// GET /v1/figures — toutes les figures.
+async fn list_figures(State(s): State<Arc<DaemonState>>) -> Response {
+    match s.storage.figures.list().await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => introuvable(&e.to_string()),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct FigureBody {
+    name: String,
+    #[serde(default)]
+    description: String,
+    instructions: String,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    opening: Option<String>,
+    #[serde(default)]
+    uses_memory: bool,
+    /// `user` par défaut : une figure écrite depuis l'interface est le
+    /// travail de quelqu'un, et aucune mise à jour d'extension ne l'écrase.
+    #[serde(default)]
+    source: Option<String>,
+}
+
+/// POST /v1/figures — créer, ou remplacer celle du même nom.
+async fn save_figure(State(s): State<Arc<DaemonState>>, Json(b): Json<FigureBody>) -> Response {
+    match s
+        .storage
+        .figures
+        .upsert(
+            &b.name,
+            &b.description,
+            &b.instructions,
+            b.model.as_deref().filter(|m| !m.trim().is_empty()),
+            b.opening.as_deref().filter(|o| !o.trim().is_empty()),
+            b.uses_memory,
+            b.source.as_deref().unwrap_or("user"),
+        )
+        .await
+    {
+        Ok(f) => (StatusCode::CREATED, Json(f)).into_response(),
+        Err(e) => mauvaise_requete(&e.to_string()),
+    }
+}
+
+/// DELETE /v1/figures/{id}
+async fn remove_figure(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> Response {
+    match s.storage.figures.delete(&id).await {
+        Ok(()) => Json(serde_json::json!({ "id": id, "deleted": true })).into_response(),
+        Err(e) => introuvable(&e.to_string()),
+    }
+}
+
+/// GET /v1/figures/{id}/sessions — ce que cette figure a conversé.
+async fn figure_sessions(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> Response {
+    match s.storage.figures.session_ids(&id).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => introuvable(&e.to_string()),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct AttachBody {
+    /// `null` détache la conversation de sa figure.
+    #[serde(default)]
+    figure_id: Option<String>,
+}
+
+/// POST /v1/sessions/{id}/figure — confier une conversation à une figure.
+async fn attach_figure(
+    State(s): State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+    Json(b): Json<AttachBody>,
+) -> Response {
+    let Ok(session_id) = Uuid::parse_str(&id) else {
+        return mauvaise_requete("identifiant de session invalide");
+    };
+    match s
+        .storage
+        .figures
+        .attach_session(session_id, b.figure_id.as_deref())
+        .await
+    {
+        Ok(()) => Json(serde_json::json!({ "id": id, "figure_id": b.figure_id })).into_response(),
+        Err(e) => introuvable(&e.to_string()),
+    }
+}
+
 fn mauvaise_requete(message: &str) -> Response {
     (
         StatusCode::BAD_REQUEST,
@@ -1796,6 +1891,38 @@ async fn rename_session(
             })),
         )
             .into_response(),
+    }
+}
+
+/// Ce qui s'ajoute au prompt système, avant toute réponse.
+///
+/// Deux sources, et l'ordre compte : les consignes de la figure d'abord —
+/// c'est le rôle qu'on lui a donné, il prime — puis ce que le service retient
+/// de la personne. Une figure qui ne veut pas de cette mémoire le dit, et
+/// travaille alors sans rien savoir de son utilisateur : c'est le sens de
+/// « travailler à part ».
+async fn bloc_systeme(s: &Arc<DaemonState>, session_id: Uuid) -> Option<String> {
+    let figure = s
+        .storage
+        .figures
+        .for_session(session_id)
+        .await
+        .ok()
+        .flatten();
+    let memoire = match &figure {
+        Some(f) if !f.uses_memory => None,
+        _ => s.storage.memory.as_system_block(None).await.unwrap_or(None),
+    };
+
+    match (figure, memoire) {
+        (None, m) => m,
+        (Some(f), None) => Some(f.instructions),
+        (Some(f), Some(m)) => Some(format!(
+            "{}
+
+{m}",
+            f.instructions
+        )),
     }
 }
 

@@ -11,6 +11,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 pub mod error;
+pub mod figures;
 pub mod memory;
 pub mod metrics;
 pub mod repos;

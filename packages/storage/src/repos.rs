@@ -2136,6 +2136,8 @@ pub struct Storage {
     pub memory: crate::memory::MemoryRepo,
     /// Vitesses mesurées des modèles sur cette machine.
     pub metrics: crate::metrics::MetricsRepo,
+    /// Les figures : un rôle, ses consignes, ses conversations.
+    pub figures: crate::figures::FigureRepo,
     #[cfg(feature = "ssh-connector")]
     pub ssh_servers: SshServerRepo,
 }
@@ -2152,6 +2154,7 @@ impl Storage {
             extensions: ExtensionRepo::new(pool.clone()),
             memory: crate::memory::MemoryRepo::new(pool.clone()),
             metrics: crate::metrics::MetricsRepo::new(pool.clone()),
+            figures: crate::figures::FigureRepo::new(pool.clone()),
             #[cfg(feature = "ssh-connector")]
             ssh_servers: SshServerRepo::new(pool),
         }
