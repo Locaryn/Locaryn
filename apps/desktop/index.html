@@ -9,8 +9,15 @@
         Peint avant tout le reste, sans attendre le CSS de l'application ni
         React : sans ça, la fenêtre s'ouvrait en blanc le temps que la feuille
         de style arrive, puis basculait d'un coup vers le fond sombre — un
-        flash visible à chaque lancement. La couleur reprend --bg de
-        packages-ui/tokens/tokens.css ; les deux doivent rester d'accord.
+        flash visible à chaque lancement.
+
+        Ceci ne couvre que le document. Avant lui, la fenêtre native et la vue
+        web ont leur propre fond, blanc par défaut, et aucune feuille de style
+        ne les atteint : c'est « backgroundColor » dans
+        apps/desktop/src-tauri/tauri.conf.json qui s'en charge.
+
+        La couleur reprend --bg de packages-ui/tokens/tokens.css ; les trois
+        doivent rester d'accord.
       */
       html,
       body {

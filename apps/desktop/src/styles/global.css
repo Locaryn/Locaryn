@@ -6568,6 +6568,33 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-connect-wait {
   background: var(--bg);
   height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+/* Le nom, pendant que l'application s'éveille.
+   Il n'apparaît qu'au bout d'une demi-seconde : un démarrage rapide ne doit
+   rien montrer du tout, car une marque qui clignote quatre-vingts
+   millisecondes est pire que l'écran nu. Passé ce délai l'attente est réelle,
+   et une fenêtre vide plusieurs secondes se lit comme un blocage. */
+.locaryn-eveil {
+  opacity: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  animation: locaryn-eveil var(--dur-slow) var(--ease) 500ms forwards;
+}
+@keyframes locaryn-eveil {
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Le délai reste — c'est lui qui évite le clignotement, pas le fondu. */
+  .locaryn-eveil {
+    animation-duration: 1ms;
+  }
 }
 .locaryn-connect-card {
   width: 100%;

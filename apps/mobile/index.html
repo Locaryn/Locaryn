@@ -11,6 +11,23 @@
     />
     <meta name="color-scheme" content="dark" />
     <title>Locaryn</title>
+    <style>
+      /*
+        Peint avant le CSS de l'application et avant React, sinon l'écran
+        s'ouvre en blanc le temps que la feuille de style arrive.
+
+        Ceci ne couvre que le document ; la vue web a son propre fond, blanc
+        par défaut, qu'aucune feuille de style n'atteint — c'est
+        « backgroundColor » dans apps/mobile/src-tauri/tauri.conf.json.
+
+        La couleur reprend --bg de packages-ui/tokens/tokens.css ; les trois
+        doivent rester d'accord.
+      */
+      html,
+      body {
+        background: #17191a;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

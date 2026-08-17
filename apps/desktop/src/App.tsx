@@ -655,7 +655,11 @@ export function App() {
   }
 
   if (gate === "checking") {
-    return <div className="locaryn-app locaryn-connect-wait" />;
+    return (
+      <div className="locaryn-app locaryn-connect-wait">
+        <span className="locaryn-eveil">Locaryn</span>
+      </div>
+    );
   }
   if (gate === "connect" && provisioning) {
     return <ConnectScreen provisioning={provisioning} onConnected={() => setGate("ready")} />;
