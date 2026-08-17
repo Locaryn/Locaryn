@@ -340,8 +340,12 @@ class BarcodeScannerPlugin(private val activity: Activity) : Plugin(activity),
 
     @Command
     fun cancel(invoke: Invoke) {
-        destroy()
+        // `destroy()` remet `savedInvoke` à zéro : il faut rejeter la lecture en
+        // cours d'abord, refermer la caméra ensuite. Dans l'autre ordre, le
+        // rejet ne portait sur rien et la promesse du scan n'était jamais
+        // réglée — le bouton Annuler ne refermait rien.
         savedInvoke?.reject("cancelled")
+        destroy()
         invoke.resolve()
     }
 

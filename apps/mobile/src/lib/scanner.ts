@@ -16,13 +16,24 @@ export function isScannerAvailable(): boolean {
   return true;
 }
 
+/** Le renoncement en cours : appelé par `annulerScan` pour régler la promesse
+ *  du scan immédiatement, sans attendre que le greffon rende la main. */
+let renoncer: (() => void) | null = null;
+
 /**
  * Refermer la caméra depuis l'extérieur — le bouton « Annuler » de l'écran.
  *
  * Le greffon n'expose pas d'autre sortie que l'annulation : `scan()` rendra
  * `null`, et l'appelant traitera cela comme un renoncement.
+ *
+ * Refermer l'écran ne dépend pas du greffon : `renoncer` règle la promesse du
+ * scan tout de suite, et `mod.cancel()` referme la caméra par-dessus. Sans
+ * cela, un greffon qui ne rendrait jamais la main laisserait le cadre de visée
+ * à l'écran jusqu'au délai de sécurité.
  */
 export async function annulerScan(): Promise<void> {
+  renoncer?.();
+  renoncer = null;
   if (coreMode !== "tauri") return;
   const mod = await import("@tauri-apps/plugin-barcode-scanner");
   await mod.cancel().catch(() => {});
@@ -63,8 +74,11 @@ export async function scan(pendant?: (ouvert: boolean) => void): Promise<string 
   // L'aperçu de la caméra est dessiné par le système *derrière* la vue web :
   // la page doit devenir transparente, sinon on ne voit rien. Le fond de la
   // vue web elle-même est rendu transparent côté Android — le CSS seul n'y
-  // suffit pas, la vue peint son propre fond opaque par-dessus la caméra.
+  // suffit pas, la vue peint son propre fond opaque par-dessus la caméra. La
+  // classe va aussi sur `<html>` : c'est lui qui porte le fond opaque de
+  // l'application, et tant qu'il reste peint, la caméra reste invisible.
   document.body.classList.add("lo-scanning");
+  document.documentElement.classList.add("lo-scanning");
   pendant?.(true);
   try {
     // Sur un appareil sans le module de lecture de codes déjà en cache — vu
@@ -77,6 +91,7 @@ export async function scan(pendant?: (ouvert: boolean) => void): Promise<string 
     const resultat = await Promise.race([
       mod.scan({ windowed: true, formats: [mod.Format.QRCode] }),
       delaiEcoule(),
+      attendreRenoncement(),
     ]);
     if (resultat === EXPIRE) {
       throw new Error("La caméra n'a pas répondu. Réessayez, ou tapez l'adresse du serveur.");
@@ -89,9 +104,18 @@ export async function scan(pendant?: (ouvert: boolean) => void): Promise<string 
     return null;
   } finally {
     document.body.classList.remove("lo-scanning");
+    document.documentElement.classList.remove("lo-scanning");
+    renoncer = null;
     pendant?.(false);
     await mod.cancel().catch(() => {});
   }
+}
+
+/** La promesse que `annulerScan` règle d'un appel : le scan rend alors `null`. */
+function attendreRenoncement(): Promise<null> {
+  return new Promise((resolve) => {
+    renoncer = () => resolve(null);
+  });
 }
 
 const EXPIRE = Symbol("scan expiré");

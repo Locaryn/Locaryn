@@ -525,10 +525,17 @@ body {
 /* ── Scanner ─────────────────────────────────────────────────
    The camera preview is rendered by the system behind the
    webview, so the page itself has to get out of the way. */
+html.lo-scanning,
 body.lo-scanning,
-body.lo-scanning #root,
-body.lo-scanning .lo-screen {
+body.lo-scanning #root {
   background: transparent;
+}
+/* L'écran d'en dessous — titre, champs, boutons — n'a rien à faire par-dessus
+   la caméra : on le rend invisible pendant la lecture. Seul le cadre de
+   visée, enfant direct de #root, reste visible. `visibility` plutôt que
+   `display`, pour que rien ne se rebatte quand la caméra se referme. */
+body.lo-scanning #root > *:not(.lo-scan-overlay) {
+  visibility: hidden;
 }
 .lo-scan-overlay {
   position: fixed;
