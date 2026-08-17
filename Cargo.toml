@@ -88,6 +88,17 @@ parking_lot = "0.12"
 tokio-util  = { version = "0.7", features = ["io", "rt"] }
 keyring     = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 
+# Le greffon publié dessine l'aperçu de la caméra dans un mode qui rend toute
+# la fenêtre Android insensible au tactile pendant un scan — vérifié en
+# testant deux boutons distincts, aucun ne répondait, seul le retour matériel
+# fonctionnait. `vendor/tauri-plugin-barcode-scanner` porte le correctif d'une
+# ligne (voir son commentaire) ; ce `[patch]` fait que chaque construction
+# l'utilise, ici comme sur n'importe quelle autre machine ou en intégration
+# continue — éditer le paquet en cache aurait marché une fois, ici, et nulle
+# part ailleurs.
+[patch.crates-io]
+tauri-plugin-barcode-scanner = { path = "vendor/tauri-plugin-barcode-scanner" }
+
 [profile.release]
 codegen-units = 1
 lto = "thin"

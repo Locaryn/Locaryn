@@ -160,3 +160,9 @@ Lancer-Banc-SnapMCP.bat
 
 # Les extensions sont des produits distincts, avec leur propre dépôt.
 plugins/
+
+# Sortie de compilation Gradle du greffon vendored — se régénère à chaque
+# build, ne doit jamais être commitée.
+vendor/*/android/build/
+vendor/*/android/**/build/
+vendor/*/android/.gradle/

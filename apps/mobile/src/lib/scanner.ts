@@ -67,9 +67,23 @@ export async function scan(pendant?: (ouvert: boolean) => void): Promise<string 
   document.body.classList.add("lo-scanning");
   pendant?.(true);
   try {
-    const result = await mod.scan({ windowed: true, formats: [mod.Format.QRCode] });
-    return result?.content ?? null;
-  } catch {
+    // Sur un appareil sans le module de lecture de codes déjà en cache — vu
+    // en test, sur un émulateur à la connexion lente — la caméra reste
+    // ouverte indéfiniment pendant que le greffon retente son chargement en
+    // boucle, et ces tentatives peuvent occuper le processeur au point que
+    // même le bouton Annuler et le retour matériel cessent de répondre. Un
+    // délai borné rend la main à la personne dans tous les cas plutôt que de
+    // la laisser bloquée sans échappatoire.
+    const resultat = await Promise.race([
+      mod.scan({ windowed: true, formats: [mod.Format.QRCode] }),
+      delaiEcoule(),
+    ]);
+    if (resultat === EXPIRE) {
+      throw new Error("La caméra n'a pas répondu. Réessayez, ou tapez l'adresse du serveur.");
+    }
+    return resultat?.content ?? null;
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("n'a pas répondu")) throw e;
     // La permission est accordée : ce qui reste, c'est le retour arrière. La
     // personne sait ce qu'elle vient de faire, inutile de le lui dire.
     return null;
@@ -78,4 +92,10 @@ export async function scan(pendant?: (ouvert: boolean) => void): Promise<string 
     pendant?.(false);
     await mod.cancel().catch(() => {});
   }
+}
+
+const EXPIRE = Symbol("scan expiré");
+
+function delaiEcoule(): Promise<typeof EXPIRE> {
+  return new Promise((resolve) => window.setTimeout(() => resolve(EXPIRE), 20_000));
 }
