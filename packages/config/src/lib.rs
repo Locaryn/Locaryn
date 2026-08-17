@@ -339,6 +339,14 @@ pub fn hf_cache_dir() -> PathBuf {
     heavy_data_root().join("hf_cache")
 }
 
+/// Where shap-e's own downloader lands its checkpoints. It ignores `HF_HOME`
+/// entirely — left to its default, it writes to the spawning process's
+/// working directory, which for an installed app is wherever it happens to
+/// be launched from. Passed explicitly as `cache_dir=` to `load_model`.
+pub fn shap_e_cache_dir() -> PathBuf {
+    heavy_data_root().join("shap_e_cache")
+}
+
 /// [`temp_dir`], created if missing. Falls back to the OS temp dir if the
 /// configured root is not writable, so a bad setting degrades instead of
 /// breaking generation outright.

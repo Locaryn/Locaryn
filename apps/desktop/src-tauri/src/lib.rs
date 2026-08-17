@@ -6555,6 +6555,12 @@ async fn generate_3d(
     };
     let steps_val = steps;
     let cfg_val = cfg_scale;
+    // shap-e's own downloader ignores HF_HOME and defaults to the spawning
+    // process's cwd — for an installed app that is not on D:. Passed
+    // explicitly to `load_model`/`load_config` below.
+    let shap_e_cache_json =
+        serde_json::to_string(&locaryn_config::shap_e_cache_dir().to_string_lossy())
+            .map_err(|e| format!("encode shap_e_cache_dir: {e}"))?;
 
     on_progress
         .send(serde_json::json!({"progress": 5, "detail": "3DGen : initialisation Python"}))
@@ -6569,6 +6575,7 @@ steps = {steps_val}
 cfg = {cfg_val}
 input_image_path = {input_image_json}
 negative_prompt = {negative_prompt_json}
+shap_e_cache_dir = {shap_e_cache_json}
 
 
 try:
@@ -6584,8 +6591,12 @@ try:
         from shap_e.models.download import load_model, load_config
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = load_model("text300m", device=device)
-        diffusion = diffusion_from_config(load_config("diffusion"))
+        model = load_model("text300M", device=device, cache_dir=shap_e_cache_dir)
+        # The diffusion model only produces latents. Turning a latent into a
+        # mesh is a second, separate model — the transmitter — loaded here so
+        # decode_latent_mesh() below has something to render with.
+        xm = load_model("transmitter", device=device, cache_dir=shap_e_cache_dir)
+        diffusion = diffusion_from_config(load_config("diffusion", cache_dir=shap_e_cache_dir))
 
         latents = sample_latents(
             batch_size=1,
@@ -6604,11 +6615,13 @@ try:
         )
 
         # Export mesh
-        for mesh in latents:
+        for latent in latents:
             from shap_e.util.notebooks import decode_latent_mesh
-            decoded = decode_latent_mesh(mesh, device=device)
-            with open(out_path, 'wb') as f:
-                decoded.write_obj(f)
+            tri_mesh = decode_latent_mesh(xm, latent).tri_mesh()
+            # Despite its BinaryIO type hint, write_obj() joins its lines as
+            # a plain str and writes that — a binary handle raises TypeError.
+            with open(out_path, 'w') as f:
+                tri_mesh.write_obj(f)
             print("OK", file=sys.stderr)
             sys.exit(0)            # Try TripoSR
     elif "tripo" in repo_lower:
