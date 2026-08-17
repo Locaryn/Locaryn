@@ -443,7 +443,8 @@ pub async fn install_extension(
             // l'installation : l'écran Figures les montre aussitôt, sur
             // l'ordinateur comme sur le téléphone.
             let importees =
-                locaryn_storage::figures_import::importer(&s.storage.figures, dir, &entry.name).await;
+                locaryn_storage::figures_import::importer(&s.storage.figures, dir, &entry.name)
+                    .await;
             if importees > 0 {
                 tracing::info!(name = %entry.name, importees, "figures du dépôt importées");
             }

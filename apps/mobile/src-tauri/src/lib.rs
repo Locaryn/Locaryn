@@ -1014,9 +1014,7 @@ async fn save_figure(
             resp.status()
         ));
     }
-    resp.json::<PhoneFigure>()
-        .await
-        .map_err(|e| e.to_string())
+    resp.json::<PhoneFigure>().await.map_err(|e| e.to_string())
 }
 
 /// Retirer une figure. Ses conversations restent, détachées.
