@@ -6330,12 +6330,25 @@ try:
     elif "svd" in repo_lower or "stable.video" in repo_lower:
         from diffusers import StableVideoDiffusionPipeline
         pipe = StableVideoDiffusionPipeline.from_pretrained(repo_dir, torch_dtype=dtype, variant="fp16")
-        pipe = pipe.to(device)
+        # The full pipeline needs well over 10 GB resident on the GPU at
+        # once — more than most consumer cards have (verified: OOM on a
+        # 6 GB card with plain .to(device)). Offloading keeps only the
+        # active submodule on the GPU, trading speed for actually fitting.
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3 if device == "cuda" else 0
+        if device == "cuda" and vram_gb < 12:
+            pipe.enable_model_cpu_offload()
+            chunk_size = 1
+        else:
+            pipe = pipe.to(device)
+            chunk_size = 8
         if input_image_path and input_image_path != "None":
             img = Image.open(input_image_path).convert("RGB")
         else:
             img = Image.new("RGB", (width, height), (0, 0, 0))
-        output = pipe(img, decode_chunk_size=8, num_frames=duration*8, guidance_scale=cfg, num_inference_steps=steps).frames[0]
+        # SVD is image-conditioned, not text/CFG-conditioned like the other
+        # pipelines here — it has no `guidance_scale` parameter at all
+        # (`max_guidance_scale`, defaulting to 3.0, plays that role instead).
+        output = pipe(img, decode_chunk_size=chunk_size, num_frames=14, num_inference_steps=steps).frames[0]
         frames = output
     elif "mochi" in repo_lower or "genmo" in repo_lower:
         from diffusers import MochiPipeline
