@@ -215,12 +215,14 @@ impl CatalogClient {
         &self,
         source: &CatalogSource,
     ) -> Result<Vec<CatalogEntry>, String> {
+        let mut out = Vec::new();
+
+        // Les dépôts `plugin-*` de l'organisation, chacun installé depuis sa
+        // racine.
         let v = self.get_json(&source.url).await?;
         let repos = v
             .as_array()
             .ok_or_else(|| "GitHub API response n'est pas un tableau".to_string())?;
-
-        let mut out = Vec::new();
         for r in repos {
             let Some(name) = r.get("name").and_then(|n| n.as_str()) else {
                 continue;
@@ -256,6 +258,41 @@ impl CatalogClient {
                 compat: CatalogCompat::Native,
                 installed: false,
             });
+        }
+
+        // L'index officiel `Locaryn/locaryn-cores` (catalog.json) : les deux
+        // noyaux alternatifs, installables par sous-chemin `#cores/…` (D13).
+        // Best-effort — si l'index est injoignable ou mal formé, les repos de
+        // l'organisation restent listés ; on ne fait pas échouer la source
+        // entière pour une vitrine.
+        match self.fetch_locaryn_cores_index(source).await {
+            Ok(mut found) => out.append(&mut found),
+            Err(e) => {
+                tracing::warn!(source = %source.id, error = %e, "index locaryn-cores injoignable")
+            }
+        }
+
+        Ok(out)
+    }
+
+    /// `Locaryn/locaryn-cores/catalog.json` — l'index des extensions de noyaux
+    /// publiées par l'organisation, pointant chacune son sous-chemin
+    /// installable (`github:Locaryn/locaryn-cores#cores/openclaw`…).
+    async fn fetch_locaryn_cores_index(
+        &self,
+        source: &CatalogSource,
+    ) -> Result<Vec<CatalogEntry>, String> {
+        let url = "https://raw.githubusercontent.com/Locaryn/locaryn-cores/HEAD/catalog.json";
+        let v = self.get_json(url).await?;
+        let entries = v
+            .get("entries")
+            .and_then(|e| e.as_array())
+            .ok_or_else(|| "catalog.json sans tableau `entries`".to_string())?;
+        let mut out = Vec::new();
+        for e in entries {
+            if let Some(entry) = locaryn_index_entry(e, source) {
+                out.push(entry);
+            }
         }
         Ok(out)
     }
@@ -586,6 +623,61 @@ impl CatalogClient {
 // Helpers
 // ============================================================================
 
+/// Une entrée de l'index officiel `catalog.json` (Locaryn/locaryn-cores) en
+/// `CatalogEntry` prête pour Découvrir. `None` quand l'objet n'a ni nom ni
+/// source d'installation : une entrée muette n'a rien à faire dans la vitrine.
+fn locaryn_index_entry(e: &serde_json::Value, source: &CatalogSource) -> Option<CatalogEntry> {
+    let name = e.get("name").and_then(|n| n.as_str())?;
+    let install_source = e.get("install_source").and_then(|i| i.as_str())?;
+    if name.is_empty() || install_source.is_empty() {
+        return None;
+    }
+    let arr = |k: &str| {
+        e.get(k)
+            .and_then(|a| a.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    Some(CatalogEntry {
+        id: format!("locaryn:core:{name}"),
+        name: name.to_string(),
+        display_name: e
+            .get("display_name")
+            .and_then(|n| n.as_str())
+            .unwrap_or(name)
+            .to_string(),
+        description: e
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(str::to_string),
+        author: e
+            .get("author")
+            .and_then(|a| a.as_str())
+            .map(str::to_string)
+            .or_else(|| Some("Locaryn".to_string())),
+        version: e
+            .get("version")
+            .and_then(|x| x.as_str())
+            .map(str::to_string),
+        homepage: e
+            .get("homepage")
+            .and_then(|h| h.as_str())
+            .map(str::to_string),
+        ecosystem: ExtensionEcosystem::Locaryn,
+        catalog_id: source.id.clone(),
+        catalog_label: source.label.clone(),
+        install_source: install_source.to_string(),
+        keywords: arr("keywords"),
+        advertised: arr("advertised"),
+        compat: CatalogCompat::Native,
+        installed: false,
+    })
+}
+
 /// Turn a marketplace entry's `source` into something `source::parse` accepts.
 fn claude_source_to_install(
     v: Option<&serde_json::Value>,
@@ -730,6 +822,42 @@ pub fn filter(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn locaryn_index_entries_point_at_installable_subpaths() {
+        let source = CatalogSource {
+            id: "locaryn:official".into(),
+            label: "Locaryn Official".into(),
+            ecosystem: ExtensionEcosystem::Locaryn,
+            url: String::new(),
+            builtin: true,
+            enabled: true,
+        };
+        let v = serde_json::json!({
+            "name": "locaryn-core-openclaw",
+            "display_name": "Noyau OpenClaw",
+            "description": "Noyau OpenClaw",
+            "version": "0.1.0",
+            "install_source": "github:Locaryn/locaryn-cores#cores/openclaw",
+            "keywords": ["core", "openclaw"],
+            "advertised": ["noyau alternatif"]
+        });
+        let e = locaryn_index_entry(&v, &source).expect("entrée valide");
+        assert_eq!(e.name, "locaryn-core-openclaw");
+        assert_eq!(e.display_name, "Noyau OpenClaw");
+        assert_eq!(
+            e.install_source,
+            "github:Locaryn/locaryn-cores#cores/openclaw"
+        );
+        assert_eq!(e.compat, CatalogCompat::Native);
+        assert_eq!(e.ecosystem, ExtensionEcosystem::Locaryn);
+        assert_eq!(e.keywords, vec!["core", "openclaw"]);
+
+        // Sans source d'installation, une entrée n'a rien à faire dans la
+        // vitrine : elle est ignorée plutôt que proposée au clic.
+        let sans_source = serde_json::json!({"name": "fantome"});
+        assert!(locaryn_index_entry(&sans_source, &source).is_none());
+    }
 
     #[test]
     fn relative_marketplace_source_becomes_a_github_subdir() {

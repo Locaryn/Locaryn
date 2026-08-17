@@ -3,7 +3,8 @@
 //!
 //! Si `LOCARYN_FAKE_CORE_URL` est défini (CI de `locaryn-cores`), les tests
 //! visent ce serveur externe — `tests/fake-core/fake_core.py` du dépôt
-//! d'extensions expose la même surface, y compris `/__probe/state`.
+//! d'extensions expose la même surface, plus `/__probe/state` et
+//! `/__probe/reset` (état vierge par test, à lancer avec `--test-threads=1`).
 //!
 //! Surface : `/health`, `/v1/models`, `/v1/capabilities`, `POST
 //! /v1/responses`, `POST /v1/runs`, `GET /v1/runs/{id}/events`,
@@ -60,12 +61,21 @@ pub struct FakeCore {
 
 impl FakeCore {
     /// Démarre le serveur embarqué, ou vise `LOCARYN_FAKE_CORE_URL`.
+    ///
+    /// Contre un serveur externe (CI de `locaryn-cores`), l'état est remis à
+    /// zéro à chaque rattachement : les tests comptent leurs requêtes depuis
+    /// zéro. À lancer en séquentiel (`--test-threads=1`) — chaque test
+    /// s'attache et reset, deux tests parallèles se marcheraient dessus.
     pub async fn spawn() -> FakeCore {
         if let Ok(url) = std::env::var("LOCARYN_FAKE_CORE_URL") {
             if !url.trim().is_empty() {
-                return FakeCore {
-                    base_url: url.trim_end_matches('/').to_string(),
-                };
+                let base_url = url.trim_end_matches('/').to_string();
+                let client = reqwest::Client::new();
+                let _ = client
+                    .post(format!("{base_url}/__probe/reset"))
+                    .send()
+                    .await;
+                return FakeCore { base_url };
             }
         }
 
@@ -74,9 +84,7 @@ impl FakeCore {
             .route("/health", get(|| async { Json(json!({"status": "ok"})) }))
             .route(
                 "/v1/models",
-                get(|| async {
-                    Json(json!({"object": "list", "data": [{"id": "fake-core"}]}))
-                }),
+                get(|| async { Json(json!({"object": "list", "data": [{"id": "fake-core"}]})) }),
             )
             .route(
                 "/v1/capabilities",
@@ -168,10 +176,7 @@ async fn probe_state(AxState(state): AxState<Arc<Mutex<FakeState>>>) -> Json<Fak
 // OpenResponses (driver `responses`)
 // ============================================================================
 
-async fn responses(
-    AxState(state): AxState<Arc<Mutex<FakeState>>>,
-    body: String,
-) -> Response<Body> {
+async fn responses(AxState(state): AxState<Arc<Mutex<FakeState>>>, body: String) -> Response<Body> {
     let val: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
     let (is_follow_up, input_str) = {
         let mut st = state.lock().await;
@@ -200,8 +205,14 @@ async fn responses(
     };
 
     let mut blocks = vec![
-        se_ev("response.created", json!({"type": "response.created", "response": {"id": resp_id}})),
-        se_ev("response.in_progress", json!({"type": "response.in_progress"})),
+        se_ev(
+            "response.created",
+            json!({"type": "response.created", "response": {"id": resp_id}}),
+        ),
+        se_ev(
+            "response.in_progress",
+            json!({"type": "response.in_progress"}),
+        ),
     ];
 
     if is_follow_up {
@@ -267,10 +278,7 @@ async fn responses(
 
 async fn chat_completions(body: String) -> Response<Body> {
     let val: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
-    let streamed = val
-        .get("stream")
-        .and_then(|s| s.as_bool())
-        .unwrap_or(false);
+    let streamed = val.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
     if !streamed {
         return Response::builder()
             .header("content-type", "application/json")
@@ -286,8 +294,12 @@ async fn chat_completions(body: String) -> Response<Body> {
             .expect("fake core: body");
     }
     sse_response(vec![
-        se(json!({"id": "chatcmpl-fake", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "chat completions fake"}, "finish_reason": null}]})),
-        se(json!({"id": "chatcmpl-fake", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}})),
+        se(
+            json!({"id": "chatcmpl-fake", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "chat completions fake"}, "finish_reason": null}]}),
+        ),
+        se(
+            json!({"id": "chatcmpl-fake", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}}),
+        ),
         "data: [DONE]".to_string(),
     ])
 }
@@ -329,12 +341,18 @@ async fn run_events(
     let (tx, rx) = tokio::sync::mpsc::channel::<String>(16);
     tokio::spawn(async move {
         let _ = tx
-            .send(se_ev("run.started", json!({"type": "run.started", "run_id": run_id})))
+            .send(se_ev(
+                "run.started",
+                json!({"type": "run.started", "run_id": run_id}),
+            ))
             .await;
 
         if input.contains("approve") {
             let _ = tx
-                .send(se_ev("message.delta", json!({"type": "message.delta", "delta": "Préparation…"})))
+                .send(se_ev(
+                    "message.delta",
+                    json!({"type": "message.delta", "delta": "Préparation…"}),
+                ))
                 .await;
             let _ = tx
                 .send(se_ev(
@@ -364,9 +382,7 @@ async fn run_events(
                         .approvals
                         .iter()
                         .rev()
-                        .find(|a| {
-                            a.get("request_id").and_then(|r| r.as_str()) == Some("req_1")
-                        })
+                        .find(|a| a.get("request_id").and_then(|r| r.as_str()) == Some("req_1"))
                         .cloned();
                 }
                 if decision.is_some() {
@@ -390,7 +406,10 @@ async fn run_events(
                     ))
                     .await;
                 let _ = tx
-                    .send(se_ev("message.delta", json!({"type": "message.delta", "delta": "Terminé"})))
+                    .send(se_ev(
+                        "message.delta",
+                        json!({"type": "message.delta", "delta": "Terminé"}),
+                    ))
                     .await;
             }
             let _ = tx
@@ -416,7 +435,10 @@ async fn run_events(
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
             let _ = tx
-                .send(se_ev("run.completed", json!({"type": "run.completed", "run_id": run_id})))
+                .send(se_ev(
+                    "run.completed",
+                    json!({"type": "run.completed", "run_id": run_id}),
+                ))
                 .await;
         } else {
             let _ = tx
