@@ -12,7 +12,13 @@ import { ScanOverlay } from "./components/ScanOverlay";
 import { Settings } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
-import { type MobileStatus, type PairingResult, type PhoneExtension, api, coreMode } from "./lib/core";
+import {
+  type MobileStatus,
+  type PairingResult,
+  type PhoneExtension,
+  api,
+  coreMode,
+} from "./lib/core";
 import { useNavigation } from "./lib/navigation";
 import { surEchecReseau } from "./lib/reachability";
 import { annulerScan, isScannerAvailable, scan } from "./lib/scanner";
@@ -340,8 +346,8 @@ export function App() {
           <div className="lo-card">
             <p className="lo-card-title">{screen}</p>
             <p className="lo-hint">
-              Cette entrée est apportée par une extension installée sur le
-              serveur. Son contenu vit dans l'extension.
+              Cette entrée est apportée par une extension installée sur le serveur. Son contenu vit
+              dans l'extension.
             </p>
           </div>
         </div>

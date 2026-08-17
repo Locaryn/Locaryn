@@ -1,5 +1,5 @@
 import { Icon, isIconName } from "@locaryn/ui-core";
-import { type PhoneExtension } from "../lib/core";
+import type { PhoneExtension } from "../lib/core";
 
 /** Les grands espaces de l'application, ceux qui méritent leur propre écran. */
 export type Destination = "studio" | "extensions" | "models" | "settings" | "figures";
@@ -25,14 +25,7 @@ type Props = {
  * même colonne. Une feuille qui monte du bas, quatre destinations, chacune sur
  * son écran.
  */
-export function MainMenu({
-  open,
-  onClose,
-  canCreate,
-  canFigures,
-  onGo,
-  extensions = [],
-}: Props) {
+export function MainMenu({ open, onClose, canCreate, canFigures, onGo, extensions = [] }: Props) {
   if (!open) return null;
 
   // Le socle d'abord : les destinations natives. Puis ce que les extensions

@@ -1270,10 +1270,7 @@ export function ChatPanel({
                     onClick={() => void agirComposer(a)}
                   >
                     <span style={{ display: "inline-flex" }}>
-                      <Icon
-                        name={isIconName(a.icon) ? a.icon : "extensions"}
-                        size={15}
-                      />
+                      <Icon name={isIconName(a.icon) ? a.icon : "extensions"} size={15} />
                     </span>
                     {a.label}
                   </button>

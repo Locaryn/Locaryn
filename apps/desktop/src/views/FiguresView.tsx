@@ -203,9 +203,8 @@ export function FiguresView({ onOpenSession, onNewWithFigure }: Props) {
         <div className="locaryn-field">
           <div className="locaryn-field-label">Outils</div>
           <p className="locaryn-field-hint">
-            Les outils qu'elle a le droit d'appeler, séparés par des virgules
-            (generate_image, generate_speech, read_file…). Vide : tout ce que l'application
-            propose.
+            Les outils qu'elle a le droit d'appeler, séparés par des virgules (generate_image,
+            generate_speech, read_file…). Vide : tout ce que l'application propose.
           </p>
           <input
             className="locaryn-input"

@@ -116,8 +116,8 @@ export function FiguresScreen({ onBack, onOpenChat }: Props) {
         onBack={() => setEdit(null)}
       >
         <p className="lo-hint">
-          Le nom et les consignes suffisent. Le reste est facultatif : une figure de trois
-          lignes est une figure valable.
+          Le nom et les consignes suffisent. Le reste est facultatif : une figure de trois lignes
+          est une figure valable.
         </p>
         {error && <p className="lo-error">{error}</p>}
         <ul className="lo-cards">
@@ -240,13 +240,15 @@ export function FiguresScreen({ onBack, onOpenChat }: Props) {
       }
     >
       <p className="lo-hint">
-        Un rôle, ses consignes, ses conversations. Configurées une fois, elles se retrouvent
-        telles quelles à chaque ouverture — sur le téléphone comme sur l'ordinateur.
+        Un rôle, ses consignes, ses conversations. Configurées une fois, elles se retrouvent telles
+        quelles à chaque ouverture — sur le téléphone comme sur l'ordinateur.
       </p>
       {figures === null && !error && <p className="lo-sub">Chargement…</p>}
       {error && <p className="lo-error">{error}</p>}
       {figures?.length === 0 && (
-        <p className="lo-sub">Aucune figure. Écrivez-en une : un nom, et ce que le modèle doit faire.</p>
+        <p className="lo-sub">
+          Aucune figure. Écrivez-en une : un nom, et ce que le modèle doit faire.
+        </p>
       )}
       <ul className="lo-cards">
         {figures?.map((f) => (

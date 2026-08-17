@@ -1,4 +1,4 @@
-import { Icon, isIconName, type IconName } from "@locaryn/ui-core";
+import { Icon, type IconName, isIconName } from "@locaryn/ui-core";
 import { useMemo, useState } from "react";
 import { AudioGenPanel } from "../components/AudioGenPanel";
 import { ImageGenPanel } from "../components/ImageGenPanel";
@@ -6,7 +6,7 @@ import { Model3DPanel } from "../components/Model3DPanel";
 import { MusicGenPanel } from "../components/MusicGenPanel";
 import { RegionEditPanel } from "../components/RegionEditPanel";
 import { VideoGenPanel } from "../components/VideoGenPanel";
-import { core, type InstalledExtension } from "../lib/core";
+import { type InstalledExtension, core } from "../lib/core";
 import { taskCenter, useTasks } from "../lib/taskCenter";
 
 type StudioTab =

@@ -7,10 +7,10 @@ import {
   type MobileStatus,
   api,
 } from "../lib/core";
+import type { PhoneExtension } from "../lib/core";
 import { ComposerActions } from "./ComposerActions";
 import { Drawer } from "./Drawer";
 import { type Destination, MainMenu } from "./MainMenu";
-import { type PhoneExtension } from "../lib/core";
 import { UpdateButton } from "./UpdateButton";
 
 type Props = {
@@ -111,9 +111,9 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
   // Une conversation venue d'ailleurs (l'écran Figures en a ouvert une) se
   // charge au montage. `key` sur le composant force le remontage à chaque
   // figure : le premier rendu suffit.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: l'ouverture ne se fait qu'au montage.
   useEffect(() => {
     if (initialId) void open(initialId);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: l'ouverture ne se fait qu'au montage.
   }, []);
 
   /** Reprendre une conversation gardée quitte le mode éphémère. */

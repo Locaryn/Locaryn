@@ -1770,7 +1770,10 @@ const tauriCore: CoreApi = {
       model: f.model,
       opening: f.opening,
       usesMemory: f.usesMemory,
-      tools: f.tools.split(",").map((t) => t.trim()).filter(Boolean),
+      tools: f.tools
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
     }),
   deleteFigure: (id) => invoke<void>("delete_figure", { id }),
   attachFigure: (sessionId, figureId) => invoke<void>("attach_figure", { sessionId, figureId }),
@@ -3120,7 +3123,10 @@ const demoCore: CoreApi = {
     model: f.model,
     opening: f.opening,
     uses_memory: f.usesMemory,
-    tools: f.tools.split(",").map((t) => t.trim()).filter(Boolean),
+    tools: f.tools
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
     source: "user",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

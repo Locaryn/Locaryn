@@ -82,8 +82,7 @@ export function Studio({ onBack, extensions = [] }: Props) {
           <div className="lo-card">
             <p className="lo-card-title">{ongletCourant.label}</p>
             <p className="lo-hint">
-              Onglet apporté par {ongletCourant.source} — le contenu vit dans
-              l'extension.
+              Onglet apporté par {ongletCourant.source} — le contenu vit dans l'extension.
             </p>
           </div>
         ) : (
