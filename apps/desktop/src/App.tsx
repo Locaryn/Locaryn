@@ -639,7 +639,7 @@ export function App() {
 
   return (
     <div
-      className="locaryn-app"
+      className="locaryn-app locaryn-app-entree"
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}

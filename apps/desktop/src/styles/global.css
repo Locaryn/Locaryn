@@ -7275,3 +7275,27 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
     animation: none;
   }
 }
+
+/* L'ouverture de l'app.
+   Rien n'accompagnait le premier rendu : la fenêtre passait directement de
+   --bg (peint dans index.html, avant tout script) au contenu final, d'un
+   coup. Un fondu bref, sans plus — la direction du projet est sobre, pas
+   démonstrative. */
+.locaryn-app-entree {
+  animation: locaryn-app-entre var(--dur-med) var(--ease);
+}
+@keyframes locaryn-app-entre {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-app-entree {
+    animation: none;
+  }
+}
