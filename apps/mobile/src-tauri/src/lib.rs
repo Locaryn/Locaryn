@@ -53,11 +53,7 @@ async fn server_capabilities() -> Vec<String> {
     // `current_url` suit le mode voyage : c'est l'adresse par laquelle le
     // téléphone joint effectivement le serveur en ce moment.
     let url = format!("{}/v1/extensions", server.current_url.trim_end_matches('/'));
-    let Ok(client) = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .danger_accept_invalid_certs(true)
-        .build()
-    else {
+    let Ok(client) = client_for(server) else {
         return Vec::new();
     };
     let Ok(resp) = client.get(url).send().await else {
@@ -91,11 +87,7 @@ async fn list_capabilities() -> Vec<locaryn_shared_types::capabilities::Capabili
         "{}/v1/capabilities",
         server.current_url.trim_end_matches('/')
     );
-    let Ok(client) = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .danger_accept_invalid_certs(true)
-        .build()
-    else {
+    let Ok(client) = client_for(server) else {
         return Vec::new();
     };
     let Ok(resp) = client.get(url).send().await else {
@@ -439,20 +431,49 @@ async fn discover_servers() -> Vec<DiscoveredServer> {
 /// Sign in against whichever address is currently in force.
 #[tauri::command]
 async fn sign_in(username: String, password: String) -> Result<MobileStatus, String> {
-    let store = servers::load();
-    let server = store
-        .active_server()
-        .ok_or("Aucun serveur enregistré sur cet appareil.")?
-        .clone();
+    let mut store = servers::load();
+    let actif = store
+        .active
+        .clone()
+        .ok_or("Aucun serveur enregistré sur cet appareil.")?;
+    let Some(server) = store.get(&actif).cloned() else {
+        return Err("Aucun serveur enregistré sur cet appareil.".into());
+    };
 
     let client = client_for_with(&server, std::time::Duration::from_secs(20))?;
 
-    let resp = client
-        .post(format!("{}/v1/auth/login", server.current_url.trim_end_matches('/')))
-        .json(&serde_json::json!({ "username": username, "password": password, "label": "téléphone" }))
-        .send()
-        .await
-        .map_err(|_| unreachable(&server))?;
+    // URLs candidates : tente l'adresse configurée, puis bascule le protocole (HTTP <-> HTTPS)
+    let mut candidate_urls = vec![server.current_url.clone()];
+    if server.current_url.starts_with("http://") {
+        candidate_urls.push(server.current_url.replacen("http://", "https://", 1));
+    } else if server.current_url.starts_with("https://") {
+        candidate_urls.push(server.current_url.replacen("https://", "http://", 1));
+    }
+
+    let payload = serde_json::json!({
+        "username": username,
+        "password": password,
+        "label": "téléphone",
+    });
+
+    let mut final_resp = None;
+    let mut working_url = None;
+
+    for url in candidate_urls {
+        let endpoint = format!("{}/v1/auth/login", url.trim_end_matches('/'));
+        match client.post(&endpoint).json(&payload).send().await {
+            Ok(resp) => {
+                final_resp = Some(resp);
+                working_url = Some(url);
+                break;
+            }
+            Err(e) => {
+                tracing::warn!("Tentative login sur {endpoint} échouée : {e}");
+            }
+        }
+    }
+
+    let resp = final_resp.ok_or_else(|| unreachable(&server))?;
 
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err("Identifiant ou mot de passe incorrect.".into());
@@ -470,6 +491,14 @@ async fn sign_in(username: String, password: String) -> Result<MobileStatus, Str
         .and_then(|t| t.as_str())
         .ok_or("Le serveur n'a pas renvoyé de jeton.")?
         .to_string();
+
+    // Enregistre l'URL fonctionnelle si elle a été ajustée (ex: bascule HTTPS)
+    if let Some(w_url) = working_url {
+        if let Some(srv_mut) = store.get_mut(&actif) {
+            srv_mut.current_url = w_url;
+            let _ = servers::save(&store);
+        }
+    }
 
     let session = Session {
         key_id: server.key_id,
@@ -505,25 +534,18 @@ fn client_for_with(
     server: &servers::KnownServer,
     timeout: std::time::Duration,
 ) -> Result<reqwest::Client, String> {
-    let builder = reqwest::Client::builder().timeout(timeout);
+    let mut builder = reqwest::Client::builder()
+        .timeout(timeout)
+        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames(true);
 
     if !server.authority_pem.trim().is_empty() {
-        return builder
-            .add_root_certificate(
-                reqwest::Certificate::from_pem(server.authority_pem.as_bytes())
-                    .map_err(|e| format!("autorité illisible : {e}"))?,
-            )
-            .danger_accept_invalid_hostnames(true)
-            .build()
-            .map_err(|e| e.to_string());
+        if let Ok(cert) = reqwest::Certificate::from_pem(server.authority_pem.as_bytes()) {
+            builder = builder.add_root_certificate(cert);
+        }
     }
 
-    // Direct IP or local hostname connection: accept self-signed certificates on LAN
-    builder
-        .danger_accept_invalid_certs(true)
-        .danger_accept_invalid_hostnames(true)
-        .build()
-        .map_err(|e| e.to_string())
+    builder.build().map_err(|e| e.to_string())
 }
 
 /// The active server plus a live session, the two things every authenticated
