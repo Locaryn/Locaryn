@@ -511,24 +511,33 @@ export function App() {
 
   /** Home screen → first prompt creates the chat. The LLM chooses the title
    *  from the project context; until then it appears as untitled. */
-  async function handleCreateSessionForPrompt(firstPrompt: string): Promise<Session | null> {
+  async function handleCreateSessionForPrompt(
+    firstPrompt: string,
+    targetProjectId?: string | null,
+  ): Promise<Session | null> {
     try {
-      // Chats started from the home screen belong to the active project when
+      // Chats started from the home screen belong to the target or active project when
       // there is one, otherwise to the hidden free-chat project.
-      let project = activeProject;
+      const chosenProject = targetProjectId
+        ? (projects.find((p) => p.id === targetProjectId) ?? null)
+        : activeProject;
+
+      let project = chosenProject;
       if (!project) {
         project = freeProject ?? (await core.freeChatProject());
         if (!freeProject) setFreeProject(project);
       }
       const s = await core.createSession(project.id);
-      if (!activeProject) {
+      if (!chosenProject) {
         setStandaloneSessions((prev) => [s, ...prev]);
       } else {
         setSessionsByProject((prev) => ({
           ...prev,
           [project.id]: [s, ...(prev[project.id] ?? [])],
         }));
-        setSessions((prev) => [s, ...prev]);
+        if (activeProject?.id === project.id) {
+          setSessions((prev) => [s, ...prev]);
+        }
       }
       setActiveSession(s);
 
@@ -537,14 +546,16 @@ export function App() {
         .generateSessionTitle(s.id, firstPrompt)
         .then((title) => {
           const newS = { ...s, title };
-          if (!activeProject) {
+          if (!chosenProject) {
             setStandaloneSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
           } else {
             setSessionsByProject((prev) => ({
               ...prev,
               [project.id]: (prev[project.id] ?? []).map((x) => (x.id === s.id ? newS : x)),
             }));
-            setSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
+            if (activeProject?.id === project.id) {
+              setSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
+            }
           }
           if (activeSession?.id === s.id) {
             setActiveSession(newS);

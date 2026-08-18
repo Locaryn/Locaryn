@@ -12,6 +12,7 @@ import { ToolCard } from "../components/chat/ToolCard";
 import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
+import { FREE_CHAT_PATH } from "../lib/constants";
 import {
   type ConnectionMode,
   type ExtensionComposerAction,
@@ -95,7 +96,10 @@ type Props = {
   forceOpenImageGen?: boolean;
   onImageGenClosed?: () => void;
   /** Home screen: create (and auto-name) a chat from the very first prompt. */
-  onCreateSessionForPrompt?: (firstPrompt: string) => Promise<Session | null>;
+  onCreateSessionForPrompt?: (
+    firstPrompt: string,
+    targetProjectId?: string | null,
+  ) => Promise<Session | null>;
   /** Slash commands: open the application settings. */
   onOpenSettings?: () => void;
   /** Slash commands: start a fresh conversation. */
@@ -244,12 +248,11 @@ export function ChatPanel({
   /** First installed diffusion checkpoint — used when a chat message is
    *  routed to image generation. */
   const [activeImageModel, setActiveImageModel] = useState("");
-  /** Where the agent works: cloud (no files), a local folder, an SSH server,
-   *  or a hidden temp folder for free conversations. */
+  /** Where the agent works: a local folder, an SSH server, a remote environment, or standalone. */
   const [workspace, setWorkspace] = useState<WorkspaceSelection>({
-    kind: "temp",
+    kind: "none",
     id: null,
-    label: "Temporaire",
+    label: "Dossier de travail",
   });
   /** Directory the code runner and terminal should use for this session. */
   const [runCwd, setRunCwd] = useState<string | null>(null);
@@ -340,17 +343,53 @@ export function ChatPanel({
   // A chat inside a project works in that folder — reflect it in the picker.
   useEffect(() => {
     if (!projectId) {
-      setWorkspace({ kind: "temp", id: null, label: "Temporaire" });
+      setWorkspace({ kind: "none", id: null, label: "Dossier de travail" });
       return;
     }
     core
       .listProjects()
       .then((ps) => {
         const p = ps.find((x) => x.id === projectId);
-        if (p) setWorkspace({ kind: "local", id: p.id, label: p.name });
+        if (p) setWorkspace({ kind: "local", id: p.id, label: p.name, path: p.path });
       })
       .catch(() => {});
   }, [projectId]);
+
+  async function handleWorkspaceChange(next: WorkspaceSelection) {
+    setWorkspace(next);
+    if (next.kind === "local" && next.id) {
+      if (sessionId && projectId !== next.id) {
+        try {
+          await core.moveSession(sessionId, next.id);
+          onSessionMoved?.(next.id);
+        } catch (e) {
+          console.warn("moveSession failed:", e);
+        }
+      }
+      if (next.path) {
+        setRunCwd(next.path);
+      } else {
+        const ps = await core.listProjects().catch(() => []);
+        const found = ps.find((p) => p.id === next.id);
+        if (found) setRunCwd(found.path);
+      }
+    } else if (next.kind === "none") {
+      if (sessionId && projectId) {
+        try {
+          await core.moveSession(sessionId, FREE_CHAT_PATH);
+          onSessionMoved?.(FREE_CHAT_PATH);
+        } catch (e) {
+          console.warn("detach session failed:", e);
+        }
+      }
+      if (sessionId) {
+        core
+          .sessionWorkspace(sessionId)
+          .then(setRunCwd)
+          .catch(() => setRunCwd(null));
+      }
+    }
+  }
 
   // Resolve the real workspace directory for this session (project path or a
   // per-session temp folder for free chats).
@@ -634,7 +673,10 @@ export function ChatPanel({
     let sid = sessionId;
     if (!sid) {
       if (!onCreateSessionForPrompt) return;
-      const created = await onCreateSessionForPrompt(text);
+      const created = await onCreateSessionForPrompt(
+        text,
+        workspace.kind === "local" ? workspace.id : null,
+      );
       if (!created) return;
       sid = created.id;
       skipLoadRef.current = created.id;
@@ -1338,18 +1380,15 @@ export function ChatPanel({
           onMoved={onSessionMoved}
         />
 
-        {Boolean(projectId && workspace.kind !== "temp") && (
-          <div className="locaryn-composer-context">
-            <WorkspacePicker
-              value={workspace}
-              onChange={setWorkspace}
-              onAddProject={onAddProject}
-              onAddSsh={onAddSsh}
-              freeChat={!projectId}
-              cloudConnected={connectionMode === "remote"}
-            />
-          </div>
-        )}
+        <div className="locaryn-composer-context">
+          <WorkspacePicker
+            value={workspace}
+            onChange={handleWorkspaceChange}
+            onAddProject={onAddProject}
+            onAddSsh={onAddSsh}
+            cloudConnected={connectionMode === "remote"}
+          />
+        </div>
 
         <div className="locaryn-composer-card">
           {attachments.length > 0 && (

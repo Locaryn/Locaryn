@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import { FREE_CHAT_PATH } from "../../lib/constants";
 import { type Project, type SshServer, core } from "../../lib/core";
 
-export type WorkspaceKind = "cloud" | "local" | "ssh" | "temp";
+export type WorkspaceKind = "local" | "ssh" | "remote" | "none" | "cloud" | "temp";
 
 export interface WorkspaceSelection {
   kind: WorkspaceKind;
-  /** Project (local) or SSH server id; null for cloud/temp. */
+  /** Project (local) or SSH server id; null for none/cloud/temp. */
   id: string | null;
   label: string;
+  path?: string | null;
 }
 
 type Props = {
@@ -19,41 +20,22 @@ type Props = {
   onAddProject?: () => void;
   /** Open the SSH connector form to register a new server. */
   onAddSsh?: () => void;
-  /** True when the current chat is a free conversation (no project).
-   *  Free chats use an auto-created temp folder, so local/SSH options are hidden. */
-  freeChat?: boolean;
-  /** Whether the app is currently connected to a Locaryn cloud server.
-   *  When false, the Cloud workspace is shown as disabled/off. */
+  /** Whether the app is currently connected to a Locaryn remote server or cloud. */
   cloudConnected?: boolean;
-};
-
-const KIND_META: Record<WorkspaceKind, { icon: IconName; label: string; hint: string }> = {
-  cloud: {
-    icon: "cloud",
-    label: "Cloud",
-    hint: "Aucun accès fichier — conversation seule",
-  },
-  local: { icon: "project", label: "Local", hint: "Un dossier de votre machine" },
-  ssh: { icon: "server", label: "SSH", hint: "Un serveur distant enregistré" },
-  temp: {
-    icon: "archive",
-    label: "Temporaire",
-    hint: "Dossier temporaire créé automatiquement pour cette conversation",
-  },
+  remoteServerName?: string | null;
 };
 
 /**
- * Where the agent works: nothing (cloud), a local folder, or a saved SSH
- * server. Sits above the composer because it changes what every message can
- * touch — that context should be visible without opening settings.
+ * Where the agent works: a local folder, an SSH server, a remote environment, or standalone.
+ * Sits above the composer so the active working environment is always visible and configurable.
  */
 export function WorkspacePicker({
   value,
   onChange,
   onAddProject,
   onAddSsh,
-  freeChat,
   cloudConnected,
+  remoteServerName,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -84,13 +66,22 @@ export function WorkspacePicker({
     };
   }, [open]);
 
-  const meta = KIND_META[value.kind];
+  const isCustomSelected =
+    (value.kind === "local" || value.kind === "ssh" || value.kind === "remote") &&
+    Boolean(
+      value.id ||
+        (value.label &&
+          value.label !== "Temporaire" &&
+          value.label !== "Dossier de travail" &&
+          value.label !== "None"),
+    );
 
-  // Les conversations sans dossier de travail explicite utilisent un dossier temporaire.
-  // Ce statut n'est pas affiché pour éviter d'encombrer l'interface.
-  if (freeChat || value.kind === "temp") {
-    return null;
-  }
+  const displayIcon: IconName =
+    value.kind === "ssh" ? "server" : value.kind === "remote" ? "server" : "project";
+  const displayLabel = isCustomSelected ? value.label : "Dossier de travail";
+  const displayTitle = isCustomSelected
+    ? (value.path ?? value.label)
+    : "Sélectionner un dossier local, une connexion SSH ou un environnement distant";
 
   return (
     <div className="locaryn-ws" ref={ref}>
@@ -100,47 +91,23 @@ export function WorkspacePicker({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={meta.hint}
+        title={displayTitle}
+        style={{
+          borderColor: isCustomSelected ? "var(--border-strong)" : undefined,
+          color: isCustomSelected ? "var(--text)" : "var(--text-dim)",
+        }}
       >
         <span style={{ display: "inline-flex" }}>
-          <Icon name={meta.icon} size={15} />
+          <Icon name={displayIcon} size={14} />
         </span>
-        <span className="locaryn-ws-label">{value.label}</span>
+        <span className="locaryn-ws-label">{displayLabel}</span>
         <span className="locaryn-ws-caret">{open ? "▾" : "▸"}</span>
       </button>
 
       {open && (
         <div className="locaryn-ws-menu" role="menu">
-          <button
-            type="button"
-            className={`locaryn-ws-item${value.kind === "cloud" && cloudConnected ? " locaryn-active" : ""}`}
-            disabled={!cloudConnected}
-            onClick={() => {
-              if (!cloudConnected) return;
-              onChange({ kind: "cloud", id: null, label: "Cloud" });
-              setOpen(false);
-            }}
-            title={
-              cloudConnected
-                ? KIND_META.cloud.hint
-                : "Cloud indisponible — connectez l'app à un serveur Locaryn"
-            }
-            style={!cloudConnected ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
-          >
-            <span style={{ display: "inline-flex" }}>
-              <Icon name="cloud" size={15} />
-            </span>
-            <span className="locaryn-ws-item-text">
-              <span>Cloud {cloudConnected ? "" : "(off)"}</span>
-              <span className="locaryn-ws-item-hint">
-                {cloudConnected
-                  ? KIND_META.cloud.hint
-                  : "Connectez l'app à un serveur Locaryn pour activer"}
-              </span>
-            </span>
-          </button>
-
-          <div className="locaryn-ws-sep">
+          {/* ── Dossiers locaux ── */}
+          <div className="locaryn-ws-sep" style={{ marginTop: 0, borderTop: "none" }}>
             <span>
               <Icon name="project" size={14} /> Dossiers locaux
             </span>
@@ -152,37 +119,55 @@ export function WorkspacePicker({
                   setOpen(false);
                   onAddProject();
                 }}
-                title="Ajouter un dossier"
+                title="Ouvrir un dossier local"
               >
                 +
               </button>
             )}
           </div>
-          {projects.length === 0 ? (
-            <div className="locaryn-ws-empty">Aucun projet</div>
-          ) : (
-            projects.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={`locaryn-ws-item${value.kind === "local" && value.id === p.id ? " locaryn-active" : ""}`}
-                onClick={() => {
-                  onChange({ kind: "local", id: p.id, label: p.name });
-                  setOpen(false);
-                }}
-                title={p.path}
-              >
-                <span style={{ display: "inline-flex" }}>
-                  <Icon name="project" size={15} />
-                </span>
-                <span className="locaryn-ws-item-text">
-                  <span>{p.name}</span>
-                  <span className="locaryn-ws-item-hint">{p.path}</span>
-                </span>
-              </button>
-            ))
+
+          {onAddProject && (
+            <button
+              type="button"
+              className="locaryn-ws-item"
+              onClick={() => {
+                setOpen(false);
+                onAddProject();
+              }}
+              style={{ color: "var(--accent)" }}
+            >
+              <span style={{ display: "inline-flex" }}>
+                <Icon name="project" size={15} />
+              </span>
+              <span className="locaryn-ws-item-text">
+                <span>+ Ouvrir un dossier local...</span>
+                <span className="locaryn-ws-item-hint">Choisir un dossier sur cette machine</span>
+              </span>
+            </button>
           )}
 
+          {projects.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`locaryn-ws-item${value.kind === "local" && value.id === p.id ? " locaryn-active" : ""}`}
+              onClick={() => {
+                onChange({ kind: "local", id: p.id, label: p.name, path: p.path });
+                setOpen(false);
+              }}
+              title={p.path}
+            >
+              <span style={{ display: "inline-flex" }}>
+                <Icon name="project" size={15} />
+              </span>
+              <span className="locaryn-ws-item-text">
+                <span>{p.name}</span>
+                <span className="locaryn-ws-item-hint">{p.path}</span>
+              </span>
+            </button>
+          ))}
+
+          {/* ── Serveurs SSH ── */}
           <div className="locaryn-ws-sep">
             <span>
               <Icon name="server" size={14} /> Serveurs SSH
@@ -201,31 +186,128 @@ export function WorkspacePicker({
               </button>
             )}
           </div>
-          {servers.length === 0 ? (
-            <div className="locaryn-ws-empty">Aucun serveur enregistré</div>
-          ) : (
-            servers.map((s) => (
+
+          {onAddSsh && (
+            <button
+              type="button"
+              className="locaryn-ws-item"
+              onClick={() => {
+                setOpen(false);
+                onAddSsh();
+              }}
+              style={{ color: "var(--accent)" }}
+            >
+              <span style={{ display: "inline-flex" }}>
+                <Icon name="server" size={15} />
+              </span>
+              <span className="locaryn-ws-item-text">
+                <span>+ Ajouter une connexion SSH...</span>
+                <span className="locaryn-ws-item-hint">
+                  Configurer un nouvel accès distant par SSH
+                </span>
+              </span>
+            </button>
+          )}
+
+          {servers.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`locaryn-ws-item${value.kind === "ssh" && value.id === s.id ? " locaryn-active" : ""}`}
+              onClick={() => {
+                onChange({
+                  kind: "ssh",
+                  id: s.id,
+                  label: s.name,
+                  path: `${s.username}@${s.host}:${s.port}`,
+                });
+                setOpen(false);
+              }}
+              title={`${s.username}@${s.host}:${s.port}`}
+            >
+              <span style={{ display: "inline-flex" }}>
+                <Icon name="server" size={15} />
+              </span>
+              <span className="locaryn-ws-item-text">
+                <span>{s.name}</span>
+                <span className="locaryn-ws-item-hint">
+                  {s.username}@{s.host}:{s.port}
+                </span>
+              </span>
+            </button>
+          ))}
+
+          {/* ── Serveur distant / Mode client ── */}
+          <div className="locaryn-ws-sep">
+            <span>
+              <Icon name="server" size={14} /> Serveur distant (Mode Client)
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className={`locaryn-ws-item${value.kind === "remote" && cloudConnected ? " locaryn-active" : ""}`}
+            disabled={!cloudConnected}
+            onClick={() => {
+              if (!cloudConnected) return;
+              onChange({
+                kind: "remote",
+                id: "remote",
+                label: remoteServerName ? `Serveur (${remoteServerName})` : "Serveur distant",
+                path: "remote://server",
+              });
+              setOpen(false);
+            }}
+            title={
+              cloudConnected
+                ? "Exécuter et travailler dans l'environnement du serveur distant"
+                : "Connectez l'application à un serveur Locaryn pour activer l'environnement distant"
+            }
+            style={!cloudConnected ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+          >
+            <span style={{ display: "inline-flex" }}>
+              <Icon name="server" size={15} />
+            </span>
+            <span className="locaryn-ws-item-text">
+              <span>
+                {remoteServerName ? `Serveur ${remoteServerName}` : "Serveur distant"}{" "}
+                {cloudConnected ? "(Connecté)" : "(Déconnecté)"}
+              </span>
+              <span className="locaryn-ws-item-hint">
+                {cloudConnected
+                  ? "Environnement de travail du serveur distant"
+                  : "Connectez l'application à un serveur distant pour activer"}
+              </span>
+            </span>
+          </button>
+
+          {/* ── Réinitialiser (Conversation sans dossier) ── */}
+          {isCustomSelected && (
+            <>
+              <div className="locaryn-ws-sep">
+                <span>
+                  <Icon name="close" size={14} /> Réinitialiser
+                </span>
+              </div>
               <button
-                key={s.id}
                 type="button"
-                className={`locaryn-ws-item${value.kind === "ssh" && value.id === s.id ? " locaryn-active" : ""}`}
+                className="locaryn-ws-item"
                 onClick={() => {
-                  onChange({ kind: "ssh", id: s.id, label: s.name });
+                  onChange({ kind: "none", id: null, label: "Dossier de travail", path: null });
                   setOpen(false);
                 }}
-                title={`${s.username}@${s.host}:${s.port}`}
               >
                 <span style={{ display: "inline-flex" }}>
-                  <Icon name="server" size={15} />
+                  <Icon name="close" size={15} />
                 </span>
                 <span className="locaryn-ws-item-text">
-                  <span>{s.name}</span>
+                  <span>Aucun dossier spécifique</span>
                   <span className="locaryn-ws-item-hint">
-                    {s.username}@{s.host}
+                    Conversation libre sans dossier assigné
                   </span>
                 </span>
               </button>
-            ))
+            </>
           )}
         </div>
       )}
