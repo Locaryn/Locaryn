@@ -279,6 +279,46 @@ export function App() {
     return <div className="lo-screen" />;
   }
 
+  // Non connecté : seuls SignIn et Settings (pour version / mise à jour) sont accessibles.
+  // Impossible d'atterrir sur Chat ou un écran nécessitant une session.
+  if (!status.signed_in) {
+    return (
+      <>
+        {screen === "settings" ? (
+          <Settings
+            status={status}
+            onBack={() => {
+              if (screen === "settings") revenir();
+              else aller("signin");
+            }}
+            onSignedOut={(s) => {
+              setStatus(s);
+              remplacer("signin");
+            }}
+            onMemory={() => aller("memory")}
+          />
+        ) : (
+          <SignIn
+            status={status}
+            onSignedIn={(s) => {
+              setStatus(s);
+              remplacer("chat");
+            }}
+            onRegistered={setStatus}
+            onScan={openScanner}
+            onSettings={() => aller("settings")}
+          />
+        )}
+        {scanning && <ScanOverlay onCancel={() => void annulerScan()} />}
+        {scanError && (
+          <div className="lo-toast">
+            <p className="lo-error">{scanError}</p>
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       {screen === "chat" ? (
@@ -320,17 +360,6 @@ export function App() {
             remplacer("signin");
           }}
           onMemory={() => aller("memory")}
-        />
-      ) : screen === "signin" ? (
-        <SignIn
-          status={status}
-          onSignedIn={(s) => {
-            setStatus(s);
-            remplacer("chat");
-          }}
-          onRegistered={setStatus}
-          onScan={openScanner}
-          onSettings={() => aller("settings")}
         />
       ) : (
         <ExtensionView screenId={screen} onBack={revenir} onOpenChat={() => aller("chat")} />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * La navigation du téléphone, adossée à l'historique du navigateur.
@@ -20,34 +20,41 @@ import { useCallback, useEffect, useState } from "react";
  */
 export function useNavigation<T extends string>(racine: T) {
   const [ecran, setEcran] = useState<T>(racine);
+  const racineRef = useRef<T>(racine);
 
   useEffect(() => {
+    racineRef.current = racine;
+  }, [racine]);
+
+  useEffect(() => {
+    // Initialise l'état de l'historique racine s'il est vide
+    if (!window.history.state || typeof window.history.state.ecran === "undefined") {
+      window.history.replaceState({ ecran: racineRef.current, profondeur: 0 }, "");
+    }
+
     function auRetour(e: PopStateEvent) {
       const vers = (e.state as { ecran?: T } | null)?.ecran;
-      setEcran(vers ?? racine);
+      setEcran(vers ?? racineRef.current);
     }
     window.addEventListener("popstate", auRetour);
     return () => window.removeEventListener("popstate", auRetour);
-  }, [racine]);
+  }, []);
 
   /** Ouvrir un écran. Le retour y ramènera. */
-  const aller = useCallback(
-    (vers: T) => {
-      setEcran((actuel) => {
-        // Rouvrir l'écran courant n'empile rien : sinon deux appuis sur le
-        // même bouton demanderaient deux retours pour en sortir.
-        if (vers === actuel) return actuel;
-        if (vers === racine) {
-          // Revenir à la racine, c'est vider la pile, pas l'allonger.
-          window.history.go(-profondeur());
-          return actuel;
-        }
-        window.history.pushState({ ecran: vers, profondeur: profondeur() + 1 }, "");
-        return vers;
-      });
-    },
-    [racine],
-  );
+  const aller = useCallback((vers: T) => {
+    setEcran((actuel) => {
+      // Rouvrir l'écran courant n'empile rien : sinon deux appuis sur le
+      // même bouton demanderaient deux retours pour en sortir.
+      if (vers === actuel) return actuel;
+      if (vers === racineRef.current) {
+        // Revenir à la racine, c'est vider la pile, pas l'allonger.
+        window.history.go(-profondeur());
+        return actuel;
+      }
+      window.history.pushState({ ecran: vers, profondeur: profondeur() + 1 }, "");
+      return vers;
+    });
+  }, []);
 
   /** Reculer d'un cran, comme le ferait le geste système. */
   const revenir = useCallback(() => {
@@ -62,7 +69,8 @@ export function useNavigation<T extends string>(racine: T) {
    * qui ne veut plus rien dire.
    */
   const remplacer = useCallback((vers: T) => {
-    window.history.replaceState({ ecran: vers, profondeur: profondeur() }, "");
+    racineRef.current = vers;
+    window.history.replaceState({ ecran: vers, profondeur: 0 }, "");
     setEcran(vers);
   }, []);
 
