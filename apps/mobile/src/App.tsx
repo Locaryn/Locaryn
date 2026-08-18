@@ -206,12 +206,18 @@ export function App() {
     return () => window.removeEventListener("popstate", auRetour);
   }, [scanning]);
 
+  const [provisioningSuccess, setProvisioningSuccess] = useState(false);
+
   /** La personne a vu à quel serveur elle se connecterait, et a confirmé. */
   async function confirmerProvisioning() {
     if (!pendingProvisioning) return;
     setConnecting(true);
     try {
-      setStatus(await api.registerServer(pendingProvisioning.raw));
+      const nextStatus = await api.registerServer(pendingProvisioning.raw);
+      setProvisioningSuccess(true);
+      await new Promise((r) => setTimeout(r, 850));
+      setStatus(nextStatus);
+      setProvisioningSuccess(false);
       setPendingProvisioning(null);
       await refresh();
     } catch (e) {
@@ -250,6 +256,7 @@ export function App() {
       <ConfirmServer
         apercu={pendingProvisioning.apercu}
         busy={connecting}
+        success={provisioningSuccess}
         onConfirm={() => void confirmerProvisioning()}
         onCancel={() => setPendingProvisioning(null)}
       />

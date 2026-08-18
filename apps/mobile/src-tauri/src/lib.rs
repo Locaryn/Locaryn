@@ -333,7 +333,7 @@ pub struct DiscoveredServer {
 #[tauri::command]
 async fn discover_servers() -> Vec<DiscoveredServer> {
     let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_millis(1600))
+        .timeout(std::time::Duration::from_millis(1500))
         .danger_accept_invalid_certs(true)
         .danger_accept_invalid_hostnames(true)
         .build()
@@ -342,20 +342,41 @@ async fn discover_servers() -> Vec<DiscoveredServer> {
         Err(_) => return Vec::new(),
     };
 
-    let subnets = [
-        "192.168.1",
-        "192.168.0",
-        "192.168.178",
-        "10.0.0",
-        "172.20.10",
-        "192.168.43",
+    let mut subnets: Vec<String> = vec![
+        "192.168.1".to_string(),
+        "192.168.0".to_string(),
+        "192.168.2".to_string(),
+        "192.168.178".to_string(),
+        "10.0.0".to_string(),
+        "10.0.1".to_string(),
+        "10.1.1".to_string(),
+        "172.20.10".to_string(),
+        "192.168.43".to_string(),
+        "192.168.50".to_string(),
+        "192.168.100".to_string(),
+        "192.168.86".to_string(),
     ];
+
+    // Détecte automatiquement le sous-réseau réel de l'appareil
+    if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(local) = socket.local_addr() {
+                if let std::net::IpAddr::V4(ipv4) = local.ip() {
+                    let oct = ipv4.octets();
+                    let prefix = format!("{}.{}.{}", oct[0], oct[1], oct[2]);
+                    if !subnets.contains(&prefix) {
+                        subnets.insert(0, prefix);
+                    }
+                }
+            }
+        }
+    }
 
     let mut ips: Vec<String> = Vec::with_capacity(subnets.len() * 254 + 2);
     ips.push("127.0.0.1".to_string());
     ips.push("localhost".to_string());
 
-    for s in subnets {
+    for s in &subnets {
         for i in 1..=254 {
             ips.push(format!("{s}.{i}"));
         }
@@ -367,11 +388,29 @@ async fn discover_servers() -> Vec<DiscoveredServer> {
         async move {
             for scheme in &["https", "http"] {
                 let url = format!("{scheme}://{ip}:7474");
+                // Tente d'abord /v1/info
                 if let Ok(resp) = client.get(format!("{url}/v1/info")).send().await {
                     if resp.status().is_success() {
                         if let Ok(info) = resp.json::<serde_json::Value>().await {
                             if info["name"].as_str() == Some("locaryn-daemon") {
                                 let version = info["version"].as_str().map(str::to_string);
+                                return Some(DiscoveredServer {
+                                    name: "Serveur Locaryn".to_string(),
+                                    url,
+                                    ip,
+                                    port: 7474,
+                                    version,
+                                });
+                            }
+                        }
+                    }
+                }
+                // Secours sur /health si /v1/info est indisponible
+                if let Ok(resp) = client.get(format!("{url}/health")).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(health) = resp.json::<serde_json::Value>().await {
+                            if health["status"].as_str() == Some("ok") {
+                                let version = health["version"].as_str().map(str::to_string);
                                 return Some(DiscoveredServer {
                                     name: "Serveur Locaryn".to_string(),
                                     url,

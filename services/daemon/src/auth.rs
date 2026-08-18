@@ -27,6 +27,7 @@ use std::sync::Arc;
 /// it must stay reachable before authentication on an exposed server.
 fn is_public(path: &str) -> bool {
     path == "/health"
+        || path == "/v1/info"
         || path == "/v1/auth/login"
         // Le QR ne contient aucun jeton : il porte seulement l'adresse et
         // l'autorité publique du déploiement. Il doit donc être demandable par
@@ -408,6 +409,7 @@ mod tests {
     #[test]
     fn only_discovery_login_and_pairing_are_public() {
         assert!(is_public("/health"));
+        assert!(is_public("/v1/info"));
         assert!(is_public("/v1/auth/login"));
         assert!(is_public("/v1/pairing"));
         for guarded in [

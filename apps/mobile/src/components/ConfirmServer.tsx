@@ -28,6 +28,7 @@ const MODES: Record<string, { label: string; explication: string }> = {
 type Props = {
   apercu: ProvisioningApercu;
   busy: boolean;
+  success?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -40,7 +41,7 @@ type Props = {
  * disait à quel serveur, ni par quel chemin. Cet écran s'interpose : il montre
  * ce qui a été lu, et n'enregistre qu'au geste explicite.
  */
-export function ConfirmServer({ apercu, busy, onConfirm, onCancel }: Props) {
+export function ConfirmServer({ apercu, busy, success = false, onConfirm, onCancel }: Props) {
   const [avance, setAvance] = useState(false);
   const mode = apercu.accessMode ? MODES[apercu.accessMode] : null;
 
@@ -75,13 +76,35 @@ export function ConfirmServer({ apercu, busy, onConfirm, onCancel }: Props) {
           </p>
         )}
 
-        <button type="button" className="lo-btn" disabled={busy} onClick={onConfirm}>
+        <button type="button" className="lo-btn" disabled={busy || success} onClick={onConfirm}>
           {busy ? "Connexion…" : "Se connecter"}
         </button>
-        <button type="button" className="lo-btn-ghost" disabled={busy} onClick={onCancel}>
+        <button
+          type="button"
+          className="lo-btn-ghost"
+          disabled={busy || success}
+          onClick={onCancel}
+        >
           Annuler
         </button>
       </div>
+
+      {success && (
+        <div className="lo-connection-feedback">
+          <div className="lo-success-badge">
+            <svg className="lo-checkmark-svg" viewBox="0 0 52 52">
+              <circle className="lo-checkmark-circle" cx="26" cy="26" r="24" />
+              <path className="lo-checkmark-check" d="M14 27l8 8 16-16" />
+            </svg>
+            <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text)" }}>
+              Serveur enregistré avec succès !
+            </div>
+            <div style={{ fontSize: 14, color: "var(--text-faint)" }}>
+              {apercu.organisation || apercu.serverUrl}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

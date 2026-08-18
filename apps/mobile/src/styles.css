@@ -550,6 +550,8 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-scan-overlay {
   position: fixed;
   inset: 0;
+  z-index: 9999;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -557,18 +559,44 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   gap: var(--space-4);
   padding: var(--space-6);
   padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.15);
 }
 .lo-scan-frame {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 62vw;
-  height: 62vw;
-  max-width: 300px;
-  max-height: 300px;
+  width: 68vw;
+  height: 68vw;
+  max-width: 320px;
+  max-height: 320px;
   transform: translate(-50%, -60%);
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  border-radius: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 20px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.lo-scan-laser {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent, #10b981), transparent);
+  box-shadow: 0 0 12px var(--accent, #10b981);
+  animation: lo-laser-scan 2.2s ease-in-out infinite;
+}
+@keyframes lo-laser-scan {
+  0% {
+    top: 5%;
+    opacity: 0.2;
+  }
+  50% {
+    top: 92%;
+    opacity: 1;
+  }
+  100% {
+    top: 5%;
+    opacity: 0.2;
+  }
 }
 .lo-scan-say {
   color: #fff;
@@ -1217,58 +1245,173 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   color: #fff;
   text-align: center;
   font-size: 15px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  font-weight: 500;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
   margin: 0;
-  max-width: 30ch;
+  max-width: 32ch;
+  z-index: 10000;
 }
 .lo-scan-cancel {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  min-height: 48px;
-  padding: 0 22px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 24px;
-  background: rgba(0, 0, 0, 0.45);
+  min-height: 52px;
+  padding: 0 28px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 26px;
+  background: rgba(18, 20, 15, 0.85);
+  backdrop-filter: blur(12px);
   color: #fff;
   font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 10000;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.lo-scan-cancel:active {
+  transform: scale(0.96);
+  background: rgba(18, 20, 15, 0.95);
 }
 /* Quatre angles plutôt qu'un rectangle plein : le cadre doit dire où viser
    sans masquer ce qu'on vise. */
 .lo-scan-corner {
   position: absolute;
-  width: 30px;
-  height: 30px;
-  border: 3px solid var(--lo-accent);
+  width: 36px;
+  height: 36px;
+  border: 4px solid var(--accent, #10b981);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
 }
 .lo-scan-tl {
-  top: -1px;
-  left: -1px;
+  top: -2px;
+  left: -2px;
   border-right: 0;
   border-bottom: 0;
-  border-radius: 6px 0 0 0;
+  border-radius: 18px 0 0 0;
 }
 .lo-scan-tr {
-  top: -1px;
-  right: -1px;
+  top: -2px;
+  right: -2px;
   border-left: 0;
   border-bottom: 0;
-  border-radius: 0 6px 0 0;
+  border-radius: 0 18px 0 0;
 }
 .lo-scan-bl {
-  bottom: -1px;
-  left: -1px;
+  bottom: -2px;
+  left: -2px;
   border-right: 0;
   border-top: 0;
-  border-radius: 0 0 0 6px;
+  border-radius: 0 0 0 18px;
 }
 .lo-scan-br {
-  bottom: -1px;
-  right: -1px;
+  bottom: -2px;
+  right: -2px;
   border-left: 0;
   border-top: 0;
-  border-radius: 0 0 6px 0;
+  border-radius: 0 0 18px 0;
 }
+
+/* ── Animation de succès de connexion ────────────────────────── */
+.lo-connection-feedback {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  background: rgba(18, 20, 15, 0.92);
+  backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  animation: lo-fade-in 0.25s ease-out;
+}
+
+.lo-success-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  animation: lo-scale-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.lo-checkmark-svg {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  display: block;
+  stroke-width: 3.5;
+  stroke: var(--accent, #10b981);
+  stroke-miterlimit: 10;
+  box-shadow: inset 0px 0px 0px var(--accent, #10b981), 0 0 32px rgba(16, 185, 129, 0.35);
+  animation: lo-fill 0.4s ease-in-out 0.4s forwards, lo-scale-check 0.3s ease-in-out 0.8s both;
+}
+
+.lo-checkmark-circle {
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  stroke-width: 3.5;
+  stroke-miterlimit: 10;
+  stroke: var(--accent, #10b981);
+  fill: none;
+  animation: lo-stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.lo-checkmark-check {
+  transform-origin: 50% 50%;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  stroke: var(--accent, #10b981);
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: lo-stroke 0.35s cubic-bezier(0.65, 0, 0.45, 1) 0.6s forwards;
+}
+
+@keyframes lo-stroke {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes lo-scale-check {
+  0%,
+  100% {
+    transform: none;
+  }
+  50% {
+    transform: scale3d(1.08, 1.08, 1);
+  }
+}
+
+@keyframes lo-fill {
+  100% {
+    box-shadow: inset 0px 0px 0px 4px var(--accent, #10b981), 0 0 40px rgba(16, 185, 129, 0.45);
+  }
+}
+
+@keyframes lo-scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes lo-fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
 .lo-figure-sessions {
   display: flex;
   flex-direction: column;

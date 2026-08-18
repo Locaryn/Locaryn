@@ -10,28 +10,19 @@ type Props = {
   onScan: () => void;
   /**
    * Les réglages, atteignables sans être connecté.
-   *
-   * Un téléphone en retard sur son serveur n'arrive plus à se connecter :
-   * si la mise à jour n'était accessible qu'après la connexion, il n'y aurait
-   * aucune façon d'en sortir depuis l'application.
    */
   onSettings: () => void;
 };
 
-/**
- * Signing in on a phone.
- *
- * Deux écrans en un. Tant qu'aucun serveur n'est connu, il n'y a rien à quoi
- * s'identifier : on demande l'adresse, ou le code qui la porte. Une fois le
- * serveur enregistré, l'adresse redevient un détail — elle suit les codes
- * scannés — et il ne reste que l'identifiant et le mot de passe.
- */
 export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Animation de succès
+  const [successInfo, setSuccessInfo] = useState<{ title: string; subtitle?: string } | null>(null);
 
   // Mode Découverte
   const [discoveryMode, setDiscoveryMode] = useState(false);
@@ -66,7 +57,14 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
     setBusy(true);
     setError(null);
     try {
-      onRegistered(await api.registerAddress(raw));
+      const s = await api.registerAddress(raw);
+      setSuccessInfo({
+        title: "Serveur enregistré !",
+        subtitle: s.server_name ?? raw,
+      });
+      await new Promise((r) => setTimeout(r, 750));
+      setSuccessInfo(null);
+      onRegistered(s);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -84,6 +82,12 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
     try {
       const next = await api.signIn(username.trim(), password);
       setPassword("");
+      setSuccessInfo({
+        title: "Connecté avec succès !",
+        subtitle: next.server_name ?? "Session active",
+      });
+      await new Promise((r) => setTimeout(r, 900));
+      setSuccessInfo(null);
       onSignedIn(next);
     } catch (e) {
       setError(String(e));
@@ -128,13 +132,13 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
                 flexDirection: "column",
                 alignItems: "center",
                 gap: 12,
-                padding: "24px 0",
+                padding: "28px 0",
               }}
             >
               <div
                 style={{
-                  width: 36,
-                  height: 36,
+                  width: 40,
+                  height: 40,
                   borderRadius: "50%",
                   border: "3px solid var(--border)",
                   borderTopColor: "var(--accent)",
@@ -204,12 +208,11 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
             >
               <div style={{ fontWeight: 600, color: "var(--text)" }}>Aucun serveur détecté</div>
               <p className="lo-hint">
-                Certains routeurs ou box Wi-Fi bloquent le broadcast entre appareils (isolation AP /
-                pare-feu).
+                Certains routeurs ou box Wi-Fi bloquent le scan direct (isolation AP / pare-feu).
               </p>
               <p className="lo-hint" style={{ color: "var(--accent)" }}>
-                Taper directement l'adresse IP ou scanner le QR code reste toujours la méthode la
-                plus directe et fiable.
+                Taper directement l'adresse IP ou scanner le QR code reste la méthode la plus
+                directe et fiable.
               </p>
             </div>
           )}
@@ -230,6 +233,25 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
             </button>
           </div>
         </div>
+
+        {successInfo && (
+          <div className="lo-connection-feedback">
+            <div className="lo-success-badge">
+              <svg className="lo-checkmark-svg" viewBox="0 0 52 52">
+                <circle className="lo-checkmark-circle" cx="26" cy="26" r="24" />
+                <path className="lo-checkmark-check" d="M14 27l8 8 16-16" />
+              </svg>
+              <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text)" }}>
+                {successInfo.title}
+              </div>
+              {successInfo.subtitle && (
+                <div style={{ fontSize: 14, color: "var(--text-faint)" }}>
+                  {successInfo.subtitle}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -284,15 +306,15 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
           {error && <p className="lo-error">{error}</p>}
 
           <p className="lo-hint">
-            Le code affiché par l'application de bureau (Réglages → Appareils) fait la même chose en
-            une fois, et porte en plus le certificat du serveur.
+            Le QR code affiché sur l'application PC (Réglages → Appareils) transmet l'adresse et le
+            certificat sécurisé en un scan.
           </p>
 
           <button type="button" className="lo-btn-ghost" onClick={onScan}>
             Scanner un QR code
           </button>
 
-          <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 6 }}>
             <button
               type="button"
               className="lo-btn-ghost"
@@ -307,10 +329,30 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
             </button>
           </div>
         </div>
+
+        {successInfo && (
+          <div className="lo-connection-feedback">
+            <div className="lo-success-badge">
+              <svg className="lo-checkmark-svg" viewBox="0 0 52 52">
+                <circle className="lo-checkmark-circle" cx="26" cy="26" r="24" />
+                <path className="lo-checkmark-check" d="M14 27l8 8 16-16" />
+              </svg>
+              <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text)" }}>
+                {successInfo.title}
+              </div>
+              {successInfo.subtitle && (
+                <div style={{ fontSize: 14, color: "var(--text-faint)" }}>
+                  {successInfo.subtitle}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
+  // Écran de connexion (serveur déjà enregistré)
   return (
     <div className="lo-screen">
       <div className="lo-bar">
@@ -367,10 +409,39 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
 
         {error && <p className="lo-error">{error}</p>}
 
-        <button type="button" className="lo-btn-ghost" onClick={onScan}>
-          Scanner un QR code
-        </button>
+        <div style={{ marginTop: 8, textAlign: "center" }}>
+          <button
+            type="button"
+            className="lo-btn-small"
+            style={{
+              fontSize: 12,
+              color: "var(--text-faint)",
+              background: "transparent",
+              border: "none",
+            }}
+            onClick={() => onRegistered({ ...status, servers: 0 })}
+          >
+            Changer de serveur
+          </button>
+        </div>
       </div>
+
+      {successInfo && (
+        <div className="lo-connection-feedback">
+          <div className="lo-success-badge">
+            <svg className="lo-checkmark-svg" viewBox="0 0 52 52">
+              <circle className="lo-checkmark-circle" cx="26" cy="26" r="24" />
+              <path className="lo-checkmark-check" d="M14 27l8 8 16-16" />
+            </svg>
+            <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text)" }}>
+              {successInfo.title}
+            </div>
+            {successInfo.subtitle && (
+              <div style={{ fontSize: 14, color: "var(--text-faint)" }}>{successInfo.subtitle}</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

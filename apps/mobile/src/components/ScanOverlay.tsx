@@ -21,6 +21,7 @@ export function ScanOverlay({ onCancel }: Props) {
   return (
     <div className="lo-scan-overlay">
       <div className="lo-scan-frame">
+        <div className="lo-scan-laser" />
         <span className="lo-scan-corner lo-scan-tl" />
         <span className="lo-scan-corner lo-scan-tr" />
         <span className="lo-scan-corner lo-scan-bl" />
