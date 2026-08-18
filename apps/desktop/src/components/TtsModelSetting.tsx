@@ -7,9 +7,11 @@ function isTtsModel(model: string): boolean {
   if (/tokenizer|config\.json|vocab\.json|merges\.txt|preprocessor_config/i.test(lower)) {
     return false;
   }
-  return /piper|xtts|coqui|melotts|kokoro|parler|chatterbox|voxcpm2|omnivoice|f5[-_.]?tts|qwen3[-_.]?tts|moss[-_.]?tts|higgs[-_.]?tts|vibevoice|pocket[-_.]?tts/.test(
-    lower,
-  ) || lower.endsWith(".onnx");
+  return (
+    /piper|xtts|coqui|melotts|kokoro|parler|chatterbox|voxcpm2|omnivoice|f5[-_.]?tts|qwen3[-_.]?tts|moss[-_.]?tts|higgs[-_.]?tts|vibevoice|pocket[-_.]?tts/.test(
+      lower,
+    ) || lower.endsWith(".onnx")
+  );
 }
 
 /** The model used by the Studio when no voice model was selected in the current task. */
@@ -23,7 +25,10 @@ export function TtsModelSetting() {
     let cancelled = false;
     (async () => {
       try {
-        const [saved, providers] = await Promise.all([core.getModelPreferences(), core.listProviders()]);
+        const [saved, providers] = await Promise.all([
+          core.getModelPreferences(),
+          core.listProviders(),
+        ]);
         const active = providers.find((p) => p.is_active) ?? providers[0];
         const installed = active ? await core.listModels(active.endpoint) : [];
         if (cancelled) return;

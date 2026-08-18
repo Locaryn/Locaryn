@@ -339,10 +339,7 @@ function ConversationHistorySettings({
       sessions: (sessionsByProject[project.id] ?? []).filter((s) => {
         if (!search.trim()) return true;
         const q = search.toLowerCase();
-        return (
-          (s.title ?? "").toLowerCase().includes(q) ||
-          project.name.toLowerCase().includes(q)
-        );
+        return (s.title ?? "").toLowerCase().includes(q) || project.name.toLowerCase().includes(q);
       }),
     }))
     .filter((group) => group.sessions.length > 0);
@@ -367,7 +364,9 @@ function ConversationHistorySettings({
         <div>
           <h4>Historique des conversations</h4>
           <p>
-            Retrouvez et reprenez l'ensemble de vos échanges récents par espace de travail. Cliquez sur une conversation pour l'ouvrir directement dans le Chat. Les conversations archivées sont rangées dans <strong>Compte → Archives</strong>.
+            Retrouvez et reprenez l'ensemble de vos échanges récents par espace de travail. Cliquez
+            sur une conversation pour l'ouvrir directement dans le Chat. Les conversations archivées
+            sont rangées dans <strong>Compte → Archives</strong>.
           </p>
         </div>
         <span className="locaryn-conversation-count">

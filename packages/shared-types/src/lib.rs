@@ -907,7 +907,8 @@ pub fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
         for (j, &c) in chunk.iter().enumerate() {
             v[j] = if c == b'=' { 0 } else { valeur(c)? };
         }
-        let triple = ((v[0] as u32) << 18) | ((v[1] as u32) << 12) | ((v[2] as u32) << 6) | v[3] as u32;
+        let triple =
+            ((v[0] as u32) << 18) | ((v[1] as u32) << 12) | ((v[2] as u32) << 6) | v[3] as u32;
         out.push((triple >> 16) as u8);
         if pad < 2 {
             out.push((triple >> 8) as u8);
@@ -942,7 +943,15 @@ mod base64_tests {
 
     #[test]
     fn le_decodage_est_l_inverse_exact_de_l_encodage() {
-        for original in [b"".as_slice(), b"f", b"fo", b"foo", b"foob", b"fooba", b"foobar"] {
+        for original in [
+            b"".as_slice(),
+            b"f",
+            b"fo",
+            b"foo",
+            b"foob",
+            b"fooba",
+            b"foobar",
+        ] {
             assert_eq!(base64_decode(&base64_encode(original)).unwrap(), original);
         }
     }

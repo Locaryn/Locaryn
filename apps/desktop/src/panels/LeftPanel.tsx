@@ -196,7 +196,9 @@ export function LeftPanel({
               onSelect={() => onSelectSession(activeSession)}
               onRename={(t) => onSessionRenamed?.(activeSession, t)}
               onArchive={() => partirPuis(activeSession, () => onSessionArchived?.(activeSession))}
-              onMove={(pid) => partirPuis(activeSession, () => onSessionMoved?.(activeSession, pid))}
+              onMove={(pid) =>
+                partirPuis(activeSession, () => onSessionMoved?.(activeSession, pid))
+              }
               onMergeInto={
                 onSessionsMerged ? (source) => onSessionsMerged(activeSession, source) : undefined
               }

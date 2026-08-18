@@ -282,10 +282,8 @@ mod win_job {
     type BOOL = i32;
 
     extern "system" {
-        fn CreateJobObjectW(
-            lpJobAttributes: *const std::ffi::c_void,
-            lpName: *const u16,
-        ) -> HANDLE;
+        fn CreateJobObjectW(lpJobAttributes: *const std::ffi::c_void, lpName: *const u16)
+            -> HANDLE;
         fn SetInformationJobObject(
             hJob: HANDLE,
             JobObjectInformationClass: u32,
@@ -313,32 +311,30 @@ mod win_job {
     static JOB: OnceLock<SafeJobHandle> = OnceLock::new();
 
     fn get_job_object() -> Option<HANDLE> {
-        let job = JOB.get_or_init(|| {
-            unsafe {
-                let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-                if handle.is_null() {
-                    tracing::warn!("impossible de créer le Windows Job Object pour le daemon");
-                    return SafeJobHandle(std::ptr::null_mut());
-                }
-
-                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-
-                let res = SetInformationJobObject(
-                    handle,
-                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
-                    &info as *const _ as *const std::ffi::c_void,
-                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-                );
-
-                if res == 0 {
-                    tracing::warn!("impossible de configurer JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE");
-                    CloseHandle(handle);
-                    return SafeJobHandle(std::ptr::null_mut());
-                }
-
-                SafeJobHandle(handle)
+        let job = JOB.get_or_init(|| unsafe {
+            let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if handle.is_null() {
+                tracing::warn!("impossible de créer le Windows Job Object pour le daemon");
+                return SafeJobHandle(std::ptr::null_mut());
             }
+
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+            let res = SetInformationJobObject(
+                handle,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                &info as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+
+            if res == 0 {
+                tracing::warn!("impossible de configurer JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE");
+                CloseHandle(handle);
+                return SafeJobHandle(std::ptr::null_mut());
+            }
+
+            SafeJobHandle(handle)
         });
 
         if job.0.is_null() {

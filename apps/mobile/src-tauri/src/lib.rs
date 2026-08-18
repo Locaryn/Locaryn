@@ -1407,8 +1407,14 @@ async fn pull_model(
                 let _ = on_progress.send(ModelPullProgress {
                     downloaded: ev.get("downloaded").and_then(|v| v.as_u64()).unwrap_or(0),
                     total: ev.get("total").and_then(|v| v.as_u64()),
-                    percentage: ev.get("percentage").and_then(|v| v.as_u64()).map(|v| v as u8),
-                    message: ev.get("message").and_then(|v| v.as_str()).map(str::to_string),
+                    percentage: ev
+                        .get("percentage")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as u8),
+                    message: ev
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
                 });
             }
         }

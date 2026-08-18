@@ -8,7 +8,10 @@
 use axum::{
     extract::State,
     http::StatusCode,
-    response::{sse::{Event, KeepAlive, Sse}, IntoResponse, Response},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse, Response,
+    },
     Json,
 };
 use futures::StreamExt;
@@ -305,7 +308,14 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
             match list_repo_files(&client, &url).await {
                 Ok((repo_id, fichiers)) => {
                     let total: u64 = fichiers.iter().map(|(_, s)| s).sum();
-                    (Preparé::Depot { repo_id, dest_dir, fichiers }, total)
+                    (
+                        Preparé::Depot {
+                            repo_id,
+                            dest_dir,
+                            fichiers,
+                        },
+                        total,
+                    )
                 }
                 Err(msg) => {
                     return err_response(StatusCode::BAD_REQUEST, "download_failed", &msg);
@@ -398,9 +408,9 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
             .await
             .map(|v| (serde_json::to_string(&v).unwrap_or_default(), rx))
     });
-    let sse = Sse::new(stream.map(|ligne| {
-        Ok::<Event, std::convert::Infallible>(Event::default().data(ligne))
-    }))
+    let sse = Sse::new(
+        stream.map(|ligne| Ok::<Event, std::convert::Infallible>(Event::default().data(ligne))),
+    )
     .keep_alive(KeepAlive::default());
     sse.into_response()
 }
@@ -414,7 +424,11 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
 pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>) -> Response {
     let name = name.trim().to_string();
     if !nom_modele_valide(&name) {
-        return err_response(StatusCode::BAD_REQUEST, "bad_request", "Nom de modèle invalide.");
+        return err_response(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "Nom de modèle invalide.",
+        );
     }
     let path = locaryn_config::models_dir().join(&name);
     let meta = match tokio::fs::symlink_metadata(&path).await {
@@ -751,7 +765,9 @@ async fn list_repo_files(
             let size = e.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
             Some((path, size))
         })
-        .filter(|(p, _)| !p.starts_with("eval/") && !p.starts_with("samples/") && p != ".gitattributes")
+        .filter(|(p, _)| {
+            !p.starts_with("eval/") && !p.starts_with("samples/") && p != ".gitattributes"
+        })
         .collect();
     if fichiers.is_empty() {
         return Err(format!("Aucun fichier trouvé dans le dépôt {repo_id}."));

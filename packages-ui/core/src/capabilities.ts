@@ -16,9 +16,7 @@ export interface Capability {
 export const CAPABILITIES: Capability[] = capabilitiesJson as Capability[];
 
 /** Les ids canoniques, pour une recherche en O(1). */
-export const CAPABILITY_IDS: ReadonlySet<string> = new Set(
-  CAPABILITIES.map((c) => c.id),
-);
+export const CAPABILITY_IDS: ReadonlySet<string> = new Set(CAPABILITIES.map((c) => c.id));
 
 /** `true` si `id` est une capacité reconnue. */
 export function isCapability(id: string): boolean {

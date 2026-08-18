@@ -14,10 +14,10 @@ mod client_cert;
 mod core_engines;
 mod extensions;
 mod hooks;
+mod local_profile;
 mod mcp_servers;
 mod memory;
 mod model_residency;
-mod local_profile;
 mod region_edit;
 mod sd_engine;
 mod secure_client;
@@ -712,9 +712,7 @@ fn set_model_preferences(
         .tts_model
         .take()
         .and_then(|model| (!model.trim().is_empty()).then(|| model.trim().to_string()));
-    preferences
-        .save(&core.data_dir)
-        .map_err(|e| e.to_string())
+    preferences.save(&core.data_dir).map_err(|e| e.to_string())
 }
 
 /// A plan produced by the model for a non-trivial request.
@@ -8067,12 +8065,22 @@ pub fn run() {
 
                 let show_item =
                     MenuItem::with_id(app, "show", "Ouvrir Locaryn", true, None::<&str>)?;
-                let status_item =
-                    MenuItem::with_id(app, "daemon_status", "Service : Détection…", false, None::<&str>)?;
+                let status_item = MenuItem::with_id(
+                    app,
+                    "daemon_status",
+                    "Service : Détection…",
+                    false,
+                    None::<&str>,
+                )?;
                 let port_item =
                     MenuItem::with_id(app, "daemon_port", "Port : 7474", false, None::<&str>)?;
-                let restart_item =
-                    MenuItem::with_id(app, "restart_daemon", "Redémarrer le service", true, None::<&str>)?;
+                let restart_item = MenuItem::with_id(
+                    app,
+                    "restart_daemon",
+                    "Redémarrer le service",
+                    true,
+                    None::<&str>,
+                )?;
                 let quit_item =
                     MenuItem::with_id(app, "quit", "Quitter Locaryn", true, None::<&str>)?;
                 let sep1 = PredefinedMenuItem::separator(app)?;

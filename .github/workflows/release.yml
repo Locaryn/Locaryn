@@ -579,14 +579,17 @@ jobs:
           # figure pas : proposer une mise à jour qu'Android refusera
           # d'installer serait pire que ne rien proposer.
           apk = glob.glob(f"artifacts/android-apk/locaryn-{ver}-android.apk")
+          android_data = None
           if apk:
               taille = os.path.getsize(apk[0])
+              android_data = {
+                  "url": f"{base}/{os.path.basename(apk[0])}",
+                  "size": taille,
+              }
               platforms["android"] = {
                   "url": f"{base}/{os.path.basename(apk[0])}",
-                  # La taille sert à afficher une progression honnête pendant
-                  # le téléchargement, et à reconnaître un fichier déjà complet
-                  # pour ne pas le retélécharger.
                   "size": taille,
+                  "signature": "",
               }
 
           # Ce que la version apporte, dit dans l'application plutôt que sur une
@@ -600,6 +603,8 @@ jobs:
               "notes": notes,
               "platforms": platforms,
           }
+          if android_data:
+              manifest["android"] = android_data
           with open("artifacts/latest.json", "w", encoding="utf-8") as f:
               json.dump(manifest, f, indent=2)
           print(json.dumps(manifest, indent=2))

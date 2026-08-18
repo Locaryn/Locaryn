@@ -2358,8 +2358,7 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     id: "qwen2.5-coder-32b-airllm",
     name: "Qwen 2.5 Coder 32B (AirLLM)",
     brand: "Alibaba / Qwen / AirLLM",
-    description:
-      "Le modèle de code 32B spécialisé pour le développement logiciel long-horizon.",
+    description: "Le modèle de code 32B spécialisé pour le développement logiciel long-horizon.",
     license: "Apache-2.0",
     contextWindow: "128k",
     releaseDate: "2024-11",
@@ -2680,7 +2679,7 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
     for (const r of responses) {
       if (r.status === "fulfilled" && Array.isArray(r.value)) {
         for (const item of r.value) {
-          if (item && item.id && !seenIds.has(item.id)) {
+          if (item?.id && !seenIds.has(item.id)) {
             seenIds.add(item.id);
             rawItems.push(item);
           }
@@ -2695,7 +2694,8 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
       const parts = item.id.split("/");
       const author = parts[0] || "HuggingFace";
       const repoName = parts[1] || item.id;
-      const fullText = `${item.id} ${(item.tags || []).join(" ")} ${item.pipeline_tag || ""}`.toLowerCase();
+      const fullText =
+        `${item.id} ${(item.tags || []).join(" ")} ${item.pipeline_tag || ""}`.toLowerCase();
 
       let sizeLabel = "GGUF";
       let paramsNum = 7;

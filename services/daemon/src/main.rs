@@ -309,7 +309,10 @@ async fn main() -> anyhow::Result<()> {
         )
         // La liste canonique des capacités : les clients la rafraîchissent
         // sans recompiler, au lieu de vivre sur leur copie embarquée.
-        .route("/v1/capabilities", get(routes::extensions::list_capabilities))
+        .route(
+            "/v1/capabilities",
+            get(routes::extensions::list_capabilities),
+        )
         // Noyaux alternatifs : processus supervisés par le daemon (D4).
         .route("/v1/cores", get(routes::cores::list_cores))
         .route("/v1/cores/:id", get(routes::cores::status))

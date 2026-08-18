@@ -119,8 +119,11 @@ pub async fn check_update(app: tauri::AppHandle) -> UpdateStatus {
     let latest = manifest["version"].as_str().unwrap_or_default().to_string();
     let url = manifest["platforms"]["android"]["url"]
         .as_str()
+        .or_else(|| manifest["android"]["url"].as_str())
         .map(str::to_string);
-    let size = manifest["platforms"]["android"]["size"].as_u64();
+    let size = manifest["platforms"]["android"]["size"]
+        .as_u64()
+        .or_else(|| manifest["android"]["size"].as_u64());
     let notes = manifest["notes"]
         .as_str()
         .map(str::trim)

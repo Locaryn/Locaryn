@@ -455,7 +455,8 @@ export function ModelBrowser({
       .checkHardware()
       .then((hw) => {
         if (active && hw) {
-          const vram = hw.total_vram_gb > 128 ? Math.round(hw.total_vram_gb / 1024) : hw.total_vram_gb;
+          const vram =
+            hw.total_vram_gb > 128 ? Math.round(hw.total_vram_gb / 1024) : hw.total_vram_gb;
           setHardwareSpec({ total_ram_gb: hw.total_ram_gb, total_vram_gb: vram });
         }
       })
@@ -873,10 +874,13 @@ export function ModelBrowser({
                     cursor: "pointer",
                     textAlign: "left",
                   }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "var(--surface-hover, rgba(255,255,255,0.06))")
-                  }
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background =
+                      "var(--surface-hover, rgba(255,255,255,0.06))";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "none";
+                  }}
                   onClick={() => {
                     setAddMenuOpen(false);
                     setCustomDownloadModalOpen(true);
@@ -906,10 +910,13 @@ export function ModelBrowser({
                     cursor: "pointer",
                     textAlign: "left",
                   }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "var(--surface-hover, rgba(255,255,255,0.06))")
-                  }
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background =
+                      "var(--surface-hover, rgba(255,255,255,0.06))";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "none";
+                  }}
                   onClick={() => {
                     setAddMenuOpen(false);
                     handleFetchLiveApiModels();
@@ -918,7 +925,9 @@ export function ModelBrowser({
                 >
                   <Icon name="refresh" size={15} />
                   <div>
-                    <div>{isFetchingLive ? "Recherche en cours…" : "Chercher sur HuggingFace Hub"}</div>
+                    <div>
+                      {isFetchingLive ? "Recherche en cours…" : "Chercher sur HuggingFace Hub"}
+                    </div>
                     <div style={{ fontSize: "10px", color: "var(--text-faint)" }}>
                       Découvrir les derniers modèles en direct
                     </div>
@@ -1010,7 +1019,10 @@ export function ModelBrowser({
             disabled={isLoadingRegistry}
             title="Vider le cache local et rafraîchir la liste"
           >
-            <span style={{ display: "inline-flex" }} className={isLoadingRegistry ? "locaryn-spin" : undefined}>
+            <span
+              style={{ display: "inline-flex" }}
+              className={isLoadingRegistry ? "locaryn-spin" : undefined}
+            >
               <Icon name="refresh" size={14} />
             </span>
             <span>{isLoadingRegistry ? "Chargement…" : "Rafraîchir le catalogue"}</span>
@@ -2211,11 +2223,16 @@ export function ModelBrowser({
                     lineHeight: 1.4,
                   }}
                 >
-                  Formats acceptés : tag Ollama (<code>gemma4:2b</code>), alias HuggingFace (<code>hf.co/organisation/modele</code>) ou lien HTTP direct vers un fichier <code>.gguf</code>.
+                  Formats acceptés : tag Ollama (<code>gemma4:2b</code>), alias HuggingFace (
+                  <code>hf.co/organisation/modele</code>) ou lien HTTP direct vers un fichier{" "}
+                  <code>.gguf</code>.
                 </div>
               </div>
 
-              <div className="locaryn-field-actions" style={{ justifyContent: "flex-end", gap: "8px" }}>
+              <div
+                className="locaryn-field-actions"
+                style={{ justifyContent: "flex-end", gap: "8px" }}
+              >
                 <button
                   type="button"
                   className="locaryn-btn-ghost"

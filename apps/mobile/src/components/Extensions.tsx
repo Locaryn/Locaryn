@@ -28,7 +28,9 @@ export function Extensions({ onBack, onChanged }: Props) {
       const [exts, caps] = await Promise.all([
         api.listExtensions(),
         // Le serveur fait foi ; la copie embarquée ne sert que de repli.
-        api.listCapabilities().catch(() => []),
+        api
+          .listCapabilities()
+          .catch(() => []),
       ]);
       setInstalled(exts);
       setCanonique(caps);
@@ -82,11 +84,7 @@ export function Extensions({ onBack, onChanged }: Props) {
                   <span className="lo-hint">
                     Capacités :{" "}
                     {on.capabilities
-                      .map(
-                        (id) =>
-                          canonique.find((c) => c.id === id)?.label ??
-                          capabilityLabel(id),
-                      )
+                      .map((id) => canonique.find((c) => c.id === id)?.label ?? capabilityLabel(id))
                       .join(" · ")}
                   </span>
                 )}

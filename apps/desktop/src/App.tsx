@@ -37,7 +37,7 @@ import { AccountView } from "./views/AccountView";
 import { FiguresView } from "./views/FiguresView";
 import { InstalledModelsView } from "./views/InstalledModelsView";
 import { ModelStudioView } from "./views/ModelStudioView";
-import { SettingsView, type Section } from "./views/SettingsView";
+import { type Section, SettingsView } from "./views/SettingsView";
 import { StudioView } from "./views/StudioView";
 
 /** Les trois séparations déplaçables de la fenêtre. */
@@ -96,7 +96,9 @@ export function App() {
 
   // Active top-level view: "chat" | "models" | "studio" | "training" | "connectors" | "settings" | "account"
   const [activeView, setActiveView] = useState<string>("chat");
-  const [settingsInitialSection, setSettingsInitialSection] = useState<Section | undefined>(undefined);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<Section | undefined>(
+    undefined,
+  );
 
   // Toggleable panels & drawers
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
