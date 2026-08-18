@@ -86,7 +86,9 @@ export function MainMenu({ open, onClose, canCreate, canFigures, onGo, extension
           return (
             <button key={d.id} type="button" className="lo-sheet-item" onClick={() => onGo(d.id)}>
               <span className="lo-sheet-icon">
-                <Icon name={icon && isIconName(icon) ? icon : isIconName(d.id) ? d.id : "extensions"} />
+                <Icon
+                  name={icon && isIconName(icon) ? icon : isIconName(d.id) ? d.id : "extensions"}
+                />
               </span>
               <span className="lo-sheet-text">
                 <span className="lo-sheet-label">{d.label}</span>

@@ -101,13 +101,24 @@ export function ConnectionSettings() {
           </div>
         </>
       ) : (
-        <div style={{ marginTop: 12, padding: "12px", background: "var(--locaryn-bg-subtle, rgba(255,255,255,0.03))", borderRadius: 8 }}>
+        <div
+          style={{
+            marginTop: 12,
+            padding: "12px",
+            background: "var(--locaryn-bg-subtle, rgba(255,255,255,0.03))",
+            borderRadius: 8,
+          }}
+        >
           <p className="locaryn-field-hint" style={{ margin: 0, marginBottom: 12 }}>
             Connectez cette application à un serveur ou supercalculateur IA distant (ex: DGX Spark).
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div>
-              <label htmlFor="conn-server-url" className="locaryn-field-label" style={{ fontSize: "0.85rem" }}>
+              <label
+                htmlFor="conn-server-url"
+                className="locaryn-field-label"
+                style={{ fontSize: "0.85rem" }}
+              >
                 Adresse du serveur (ex: https://192.168.1.50:7474)
               </label>
               <input
@@ -122,7 +133,11 @@ export function ConnectionSettings() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
-                <label htmlFor="conn-username" className="locaryn-field-label" style={{ fontSize: "0.85rem" }}>
+                <label
+                  htmlFor="conn-username"
+                  className="locaryn-field-label"
+                  style={{ fontSize: "0.85rem" }}
+                >
                   Identifiant
                 </label>
                 <input
@@ -136,7 +151,11 @@ export function ConnectionSettings() {
                 />
               </div>
               <div>
-                <label htmlFor="conn-password" className="locaryn-field-label" style={{ fontSize: "0.85rem" }}>
+                <label
+                  htmlFor="conn-password"
+                  className="locaryn-field-label"
+                  style={{ fontSize: "0.85rem" }}
+                >
                   Mot de passe
                 </label>
                 <input

@@ -62,7 +62,9 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
       if (context?.onNavigate) {
         context.onNavigate(dest);
       } else {
-        window.dispatchEvent(new CustomEvent("locaryn:navigate", { detail: { destination: dest } }));
+        window.dispatchEvent(
+          new CustomEvent("locaryn:navigate", { detail: { destination: dest } }),
+        );
       }
       return;
     }

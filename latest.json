@@ -1,35 +1,10 @@
 {
-  "version": "0.3.10",
-  "pub_date": "2026-08-18T17:31:29Z",
-  "notes": "Locaryn v0.3.10 - Architecture modulaire, gestionnaire d'environnement et moteur d'images",
+  "version": "0.3.11",
+  "pub_date": "2026-08-18T17:57:00Z",
+  "notes": "Locaryn v0.3.11 - Mode serveur, toggle \u00e9ph\u00e9m\u00e8re et s\u00e9lecteur de dossier de travail",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.10/Locaryn_0.3.10_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQ0x1QlRNd2E4NlFNR3p2ZjQzVjd6OTNadFFvQ0tIZGRMakdvbXFaVFA0OXdLSEZXM1h1NE9yMzk0cTVkVEQvWnU4Z3dsN0JKWUdpaWVBY2szQWVYRnhLZXRzbE53cGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MDczNzExCWZpbGU6TG9jYXJ5bl8wLjMuMTBfeDY0LXNldHVwLmV4ZQpNUjFzUlZ2TVg0NVEwNU5zQ2I5K3NPL0VSVFdQcEduMWRxMEJhYjNCNGFyeG11blF5TUUvNzlqVXp1QTQ5VExSSjRkOHR1YjFEZUZKMktpc2lvd1RDUT09Cg=="
-    },
-    "windows-x86_64-nsis": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.10/Locaryn_0.3.10_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQ0x1QlRNd2E4NlFNR3p2ZjQzVjd6OTNadFFvQ0tIZGRMakdvbXFaVFA0OXdLSEZXM1h1NE9yMzk0cTVkVEQvWnU4Z3dsN0JKWUdpaWVBY2szQWVYRnhLZXRzbE53cGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MDczNzExCWZpbGU6TG9jYXJ5bl8wLjMuMTBfeDY0LXNldHVwLmV4ZQpNUjFzUlZ2TVg0NVEwNU5zQ2I5K3NPL0VSVFdQcEduMWRxMEJhYjNCNGFyeG11blF5TUUvNzlqVXp1QTQ5VExSSjRkOHR1YjFEZUZKMktpc2lvd1RDUT09Cg=="
-    },
-    "x86_64-pc-windows-msvc": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.10/Locaryn_0.3.10_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQ0x1QlRNd2E4NlFNR3p2ZjQzVjd6OTNadFFvQ0tIZGRMakdvbXFaVFA0OXdLSEZXM1h1NE9yMzk0cTVkVEQvWnU4Z3dsN0JKWUdpaWVBY2szQWVYRnhLZXRzbE53cGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MDczNzExCWZpbGU6TG9jYXJ5bl8wLjMuMTBfeDY0LXNldHVwLmV4ZQpNUjFzUlZ2TVg0NVEwNU5zQ2I5K3NPL0VSVFdQcEduMWRxMEJhYjNCNGFyeG11blF5TUUvNzlqVXp1QTQ5VExSSjRkOHR1YjFEZUZKMktpc2lvd1RDUT09Cg=="
-    },
-    "x86_64-pc-windows-msvc-nsis": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.10/Locaryn_0.3.10_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQ0x1QlRNd2E4NlFNR3p2ZjQzVjd6OTNadFFvQ0tIZGRMakdvbXFaVFA0OXdLSEZXM1h1NE9yMzk0cTVkVEQvWnU4Z3dsN0JKWUdpaWVBY2szQWVYRnhLZXRzbE53cGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MDczNzExCWZpbGU6TG9jYXJ5bl8wLjMuMTBfeDY0LXNldHVwLmV4ZQpNUjFzUlZ2TVg0NVEwNU5zQ2I5K3NPL0VSVFdQcEduMWRxMEJhYjNCNGFyeG11blF5TUUvNzlqVXp1QTQ5VExSSjRkOHR1YjFEZUZKMktpc2lvd1RDUT09Cg=="
-    },
-    "darwin-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.10/Locaryn.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQ0x1QlRNd2E4NlZQRXJiU1JIWGh2T0h3ajA5aERDNDh2VGpvZjFxbk42NmxKeE9YYStpRzdBTVVnWkVKK284eG9mVFdmUCs4QWpjZXl6c3JDYXJOcWJoTVBMVy9xWVFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MDczODg2CWZpbGU6TG9jYXJ5bi5hcHAudGFyLmd6Ckdjc0pYd0crbmloWEw4YnBjNWY5K2t2dDlpeXhTMktCeklZWDEzc1lFVnZHTUZxeFNUVlplMHJJblp4OWM5RlBvT1VRazNCb2VnSlpxSEw2SjhIcURBPT0K"
-    },
-    "darwin-aarch64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.10/Locaryn.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQ0x1QlRNd2E4NlZQRXJiU1JIWGh2T0h3ajA5aERDNDh2VGpvZjFxbk42NmxKeE9YYStpRzdBTVVnWkVKK284eG9mVFdmUCs4QWpjZXl6c3JDYXJOcWJoTVBMVy9xWVFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MDczODg2CWZpbGU6TG9jYXJ5bi5hcHAudGFyLmd6Ckdjc0pYd0crbmloWEw4YnBjNWY5K2t2dDlpeXhTMktCeklZWDEzc1lFVnZHTUZxeFNUVlplMHJJblp4OWM5RlBvT1VRazNCb2VnSlpxSEw2SjhIcURBPT0K"
-    },
-    "android": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.10/locaryn-0.3.10-android.apk",
-      "size": 30530521,
+      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.11/Locaryn_0.3.11_x64-setup.exe",
       "signature": ""
     }
   }

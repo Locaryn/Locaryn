@@ -333,11 +333,7 @@ export function App() {
           onSettings={() => aller("settings")}
         />
       ) : (
-        <ExtensionView
-          screenId={screen}
-          onBack={revenir}
-          onOpenChat={() => aller("chat")}
-        />
+        <ExtensionView screenId={screen} onBack={revenir} onOpenChat={() => aller("chat")} />
       )}
       {/*
         Posé par-dessus l'écran, pas à la suite : les écrans font toute la

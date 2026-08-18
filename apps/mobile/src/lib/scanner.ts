@@ -89,16 +89,16 @@ export async function scan(pendant?: (ouvert: boolean) => void): Promise<string 
     // délai borné rend la main à la personne dans tous les cas plutôt que de
     // la laisser bloquée sans échappatoire.
     const resultat = await Promise.race([
-      mod.scan({ windowed: true, formats: [mod.Format.QRCode] }),
+      mod.scan({ windowed: false, formats: [mod.Format.QRCode] }),
       delaiEcoule(),
       attendreRenoncement(),
     ]);
     if (resultat === EXPIRE) {
-      throw new Error("La caméra n'a pas répondu. Réessayez, ou tapez l'adresse du serveur.");
+      throw new Error("Délai de scan dépassé. Réessayez ou tapez l'adresse du serveur.");
     }
     return resultat?.content ?? null;
   } catch (e) {
-    if (e instanceof Error && e.message.includes("n'a pas répondu")) throw e;
+    if (e instanceof Error && e.message.includes("Délai de scan")) throw e;
     // La permission est accordée : ce qui reste, c'est le retour arrière. La
     // personne sait ce qu'elle vient de faire, inutile de le lui dire.
     return null;
@@ -121,5 +121,5 @@ function attendreRenoncement(): Promise<null> {
 const EXPIRE = Symbol("scan expiré");
 
 function delaiEcoule(): Promise<typeof EXPIRE> {
-  return new Promise((resolve) => window.setTimeout(() => resolve(EXPIRE), 20_000));
+  return new Promise((resolve) => window.setTimeout(() => resolve(EXPIRE), 60_000));
 }

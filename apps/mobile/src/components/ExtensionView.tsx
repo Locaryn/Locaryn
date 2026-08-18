@@ -84,7 +84,8 @@ export function ExtensionView({ screenId, onBack, onOpenChat }: Props) {
         <div className="lo-card" style={{ flexDirection: "column", alignItems: "stretch" }}>
           <span className="lo-card-title">{screenId}</span>
           <p className="lo-hint">
-            Cette vue correspond à une extension qui n'est actuellement pas active ou introuvable sur le serveur.
+            Cette vue correspond à une extension qui n'est actuellement pas active ou introuvable
+            sur le serveur.
           </p>
           <button type="button" className="lo-btn-ghost" style={{ marginTop: 12 }} onClick={onBack}>
             Revenir au menu
@@ -96,7 +97,9 @@ export function ExtensionView({ screenId, onBack, onOpenChat }: Props) {
         <>
           {/* Carte d'information de l'extension */}
           <div className="lo-card" style={{ flexDirection: "column", alignItems: "stretch" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}
+            >
               <div>
                 <span className="lo-card-title">{extension.display_name || extension.name}</span>
                 <span style={{ fontSize: 11, color: "var(--text-faint)", marginLeft: 6 }}>
@@ -113,7 +116,9 @@ export function ExtensionView({ screenId, onBack, onOpenChat }: Props) {
                   fontSize: 11,
                   padding: "2px 8px",
                   borderRadius: 10,
-                  background: extension.enabled ? "rgba(var(--accent-rgb), 0.2)" : "rgba(255, 255, 255, 0.08)",
+                  background: extension.enabled
+                    ? "rgba(var(--accent-rgb), 0.2)"
+                    : "rgba(255, 255, 255, 0.08)",
                   color: extension.enabled ? "var(--accent)" : "var(--text-faint)",
                   fontWeight: 600,
                   flex: "none",
@@ -168,7 +173,10 @@ export function ExtensionView({ screenId, onBack, onOpenChat }: Props) {
                       disabled={busyTool !== null || !toolInput.trim()}
                       onClick={() => void handleRunTool(act.value)}
                     >
-                      <Icon name={act.icon && isIconName(act.icon) ? act.icon : "extensions"} size={14} />
+                      <Icon
+                        name={act.icon && isIconName(act.icon) ? act.icon : "extensions"}
+                        size={14}
+                      />
                       <span>{busyTool === act.value ? "Exécution…" : act.label}</span>
                     </button>
                   ))}
@@ -186,8 +194,17 @@ export function ExtensionView({ screenId, onBack, onOpenChat }: Props) {
                       borderRadius: "var(--radius)",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>Résultat</span>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>
+                        Résultat
+                      </span>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button type="button" className="lo-btn-small" onClick={copyOutput}>
                           Copier
@@ -213,7 +230,9 @@ export function ExtensionView({ screenId, onBack, onOpenChat }: Props) {
             <button
               type="button"
               className="lo-btn"
-              onClick={() => onOpenChat(`Utiliser l'extension ${extension.display_name || extension.name} : `)}
+              onClick={() =>
+                onOpenChat(`Utiliser l'extension ${extension.display_name || extension.name} : `)
+              }
             >
               Ouvrir dans le Chat
             </button>

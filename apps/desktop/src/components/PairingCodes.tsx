@@ -148,6 +148,8 @@ export function PairingCodes({ remoteEnabled = false }: { remoteEnabled?: boolea
     setCode(null);
   }
 
+  const [enlarged, setEnlarged] = useState(false);
+
   return (
     <aside className="locaryn-pairing-panel" aria-label="Codes QR d'appairage">
       <div className="locaryn-pairing-head">
@@ -248,30 +250,156 @@ export function PairingCodes({ remoteEnabled = false }: { remoteEnabled?: boolea
         >
           <div
             className="locaryn-travel-qr"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: le SVG est produit par le démon local et ne contient pas de script.
-            dangerouslySetInnerHTML={{ __html: code.qr_svg }}
-          />
+            onClick={() => setEnlarged(true)}
+            title="Cliquer pour agrandir le code QR"
+            style={{ cursor: "zoom-in", position: "relative" }}
+          >
+            {/* biome-ignore lint/security/noDangerouslySetInnerHtml: le SVG est produit par le démon local et ne contient pas de script. */}
+            <div dangerouslySetInnerHTML={{ __html: code.qr_svg }} />
+            <span
+              style={{
+                position: "absolute",
+                bottom: 4,
+                right: 4,
+                background: "rgba(0, 0, 0, 0.75)",
+                color: "#fff",
+                fontSize: 10,
+                padding: "2px 6px",
+                borderRadius: 4,
+                pointerEvents: "none",
+                fontWeight: 600,
+              }}
+            >
+              🔍 Agrandir
+            </span>
+          </div>
           <div className="locaryn-travel-say">
             <p className="locaryn-travel-title">Scannez avec le téléphone</p>
             <p className="locaryn-travel-sub">
               Le code contient l'adresse et le certificat de cette machine. Rien à saisir sur le
-              téléphone.
+              téléphone. Cliquez sur le QR code pour l'afficher en grand.
             </p>
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(code.url)
-                  .then(() => {
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1500);
-                  })
-                  .catch(() => {})
-              }
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className="locaryn-btn-ghost" onClick={() => setEnlarged(true)}>
+                Plein écran
+              </button>
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(code.url)
+                    .then(() => {
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 1500);
+                    })
+                    .catch(() => {})
+                }
+              >
+                {copied ? "Adresse copiée" : "Copier l'adresse"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {enlarged && code?.qr_svg && (
+        <div
+          className="locaryn-modal-overlay"
+          onClick={() => setEnlarged(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.75)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 20,
+          }}
+        >
+          <div
+            className="locaryn-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--bg-card, #1a1a1a)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 460,
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 16,
+              boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
             >
-              {copied ? "Adresse copiée" : "Copier l'adresse"}
-            </button>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.1rem" }}>Code QR d'Appairage</h3>
+                <span className="locaryn-field-hint">{choisi.label}</span>
+              </div>
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                style={{ padding: "4px 8px" }}
+                onClick={() => setEnlarged(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                background: "#ffffff",
+                padding: 16,
+                borderRadius: 8,
+                width: 320,
+                height: 320,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG local
+              dangerouslySetInnerHTML={{ __html: code.qr_svg }}
+            />
+
+            <p className="locaryn-field-hint" style={{ textAlign: "center", margin: 0 }}>
+              Pointez la caméra de votre téléphone vers ce code pour vous connecter automatiquement.
+            </p>
+
+            <div style={{ display: "flex", gap: 10, width: "100%", marginTop: 4 }}>
+              <input
+                className="locaryn-input"
+                value={code.url}
+                readOnly
+                style={{ flex: 1, fontSize: 12 }}
+              />
+              <button
+                type="button"
+                className="locaryn-btn-primary"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(code.url)
+                    .then(() => {
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 1500);
+                    })
+                    .catch(() => {})
+                }
+              >
+                {copied ? "Copié !" : "Copier"}
+              </button>
+            </div>
           </div>
         </div>
       )}

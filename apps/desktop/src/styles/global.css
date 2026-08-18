@@ -7792,12 +7792,17 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   border-radius: 8px;
 }
 .locaryn-travel-qr {
-  flex: 0 0 168px;
-  width: 168px;
-  padding: 8px;
+  flex: 0 0 195px;
+  width: 195px;
+  padding: 10px;
   background: #fff;
-  border-radius: 6px;
+  border-radius: 8px;
   line-height: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.locaryn-travel-qr:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 .locaryn-travel-qr svg {
   width: 100%;

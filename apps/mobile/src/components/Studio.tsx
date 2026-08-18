@@ -235,7 +235,12 @@ function ImageGen() {
             className="lo-result"
             src={`data:${result.mime};base64,${result.data_base64}`}
             alt={prompt}
-            style={{ width: "100%", borderRadius: "var(--radius)", maxHeight: 380, objectFit: "contain" }}
+            style={{
+              width: "100%",
+              borderRadius: "var(--radius)",
+              maxHeight: 380,
+              objectFit: "contain",
+            }}
           />
           <button type="button" className="lo-btn-small" onClick={keep}>
             Enregistrer dans la galerie
@@ -405,9 +410,20 @@ function CustomStudioTab({
       {busy && <p className="lo-sub">Traitement sur le serveur…</p>}
       {error && <p className="lo-error">{error}</p>}
       {output && (
-        <div style={{ padding: 12, background: "rgba(0, 0, 0, 0.3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>Résultat produit</span>
-          <pre className="lo-code-block" style={{ marginTop: 6 }}>{output}</pre>
+        <div
+          style={{
+            padding: 12,
+            background: "rgba(0, 0, 0, 0.3)",
+            borderRadius: "var(--radius)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>
+            Résultat produit
+          </span>
+          <pre className="lo-code-block" style={{ marginTop: 6 }}>
+            {output}
+          </pre>
         </div>
       )}
     </div>
