@@ -1,10 +1,10 @@
 {
-  "version": "0.3.11",
-  "pub_date": "2026-08-18T17:57:00Z",
-  "notes": "Locaryn v0.3.11 - Mode serveur, toggle \u00e9ph\u00e9m\u00e8re et s\u00e9lecteur de dossier de travail",
+  "version": "0.3.12",
+  "pub_date": "2026-08-18T19:19:00Z",
+  "notes": "Locaryn v0.3.12 - Scan QR agrandi, Mode Découverte réseau local, support TLS auto-signé IP directe et correctifs de navigation mobile",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.11/Locaryn_0.3.11_x64-setup.exe",
+      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.12/Locaryn_0.3.12_x64-setup.exe",
       "signature": ""
     }
   }
