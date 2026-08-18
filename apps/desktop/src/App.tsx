@@ -309,10 +309,10 @@ export function App() {
     try {
       const p = await core.listProviders();
       const active = p.find((pr) => pr.is_active) ?? p[0];
-      if (active) {
-        const models = await core.listModels(active.endpoint);
-        setInstalledModels(models);
-      }
+      const chatModels = active ? await core.listModels(active.endpoint).catch(() => []) : [];
+      const imageModels = await core.listImageModels().catch(() => []);
+      const allInstalled = Array.from(new Set([...chatModels, ...imageModels]));
+      setInstalledModels(allInstalled);
     } catch {
       setInstalledModels([]);
     }

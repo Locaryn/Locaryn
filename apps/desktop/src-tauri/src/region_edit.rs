@@ -403,7 +403,7 @@ pub async fn edit_region(
 
         let model = args.model.as_deref().unwrap_or_default();
         let models_dir = locaryn_config::models_dir();
-        let model_path = models_dir.join(model);
+        let model_path = crate::resolve_model_path(&models_dir, model);
         if model.is_empty() || !model_path.exists() {
             return Err("Choisissez un modèle d'image installé pour un remplacement.".into());
         }

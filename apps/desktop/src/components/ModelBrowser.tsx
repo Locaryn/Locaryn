@@ -301,25 +301,28 @@ function fmtTokPerSec(t: number): string {
 }
 
 function isVariantInstalled(tag: string, installedSet: Set<string>): boolean {
+  if (!tag) return false;
   if (installedSet.has(tag)) return true;
   if (installedSet.has(`${tag}:latest`)) return true;
   const fileName = tag.startsWith("http") ? tag.split("/").pop()! : tag;
   if (installedSet.has(fileName)) return true;
 
-  // HuggingFace repo URLs (e.g. https://huggingface.co/coqui/XTTS-v2) are
-  // downloaded as ZIP archives and extracted into a subdirectory named
-  // "author__repo". list_models reports files inside as "author__repo/file".
-  // Detect that format so repo-based TTS models show as installed.
+  // HuggingFace repo URLs (e.g. https://huggingface.co/coqui/XTTS-v2, deliberate-v2, etc.)
   if (tag.startsWith("https://huggingface.co/")) {
     const repoPart = tag.replace("https://huggingface.co/", "").replace(/\/+$/, "");
     const dirName = repoPart.replace("/", "__");
+    if (installedSet.has(dirName)) return true;
     for (const inst of installedSet) {
-      if (inst.startsWith(`${dirName}/`)) return true;
+      if (inst.startsWith(`${dirName}/`) || inst === dirName) return true;
     }
   }
 
+  // Exact or normalized filename match (case-insensitive)
+  const tagLower = tag.toLowerCase();
+  const fileLower = fileName.toLowerCase();
   for (const inst of installedSet) {
-    if (inst === fileName || inst === tag || inst.startsWith(`${tag}-`)) {
+    const instLower = inst.toLowerCase();
+    if (instLower === fileLower || instLower === tagLower) {
       return true;
     }
   }

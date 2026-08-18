@@ -2126,6 +2126,51 @@ fn is_diffusion_checkpoint(file_name: &str) -> bool {
     is_image_asset(file_name) && !AUX.iter().any(|p| n.contains(p))
 }
 
+/// Resolve a model specification (filename, HuggingFace repo tag, URL) to its actual file/dir path in `models_dir`.
+pub(crate) fn resolve_model_path(models_dir: &std::path::Path, raw_name: &str) -> std::path::PathBuf {
+    let direct = models_dir.join(raw_name);
+    if direct.exists() {
+        return direct;
+    }
+    // Extract base filename if raw_name is a URL or has path separators
+    let cleaned = raw_name
+        .split('/')
+        .last()
+        .unwrap_or(raw_name)
+        .split('\\')
+        .last()
+        .unwrap_or(raw_name);
+    let candidate = models_dir.join(cleaned);
+    if candidate.exists() {
+        return candidate;
+    }
+    // If it was a HF repo URL (e.g. https://huggingface.co/stablediffusionapi/deliberate-v2)
+    let repo_dir = raw_name
+        .trim_start_matches("https://huggingface.co/")
+        .trim_start_matches("http://huggingface.co/")
+        .trim_matches('/')
+        .replace('/', "__");
+    let dir_candidate = models_dir.join(&repo_dir);
+    if dir_candidate.exists() {
+        return dir_candidate;
+    }
+    // Search case-insensitively for any file matching cleaned name
+    if let Ok(entries) = std::fs::read_dir(models_dir) {
+        let cleaned_lower = cleaned.to_ascii_lowercase();
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(n) = p.file_name().and_then(|x| x.to_str()) {
+                    if n.to_ascii_lowercase() == cleaned_lower {
+                        return p;
+                    }
+                }
+            }
+        }
+    }
+    candidate
+}
+
 /// Text chat model (GGUF/Safetensors LLM), excluding TTS, audio, embeddings,
 /// image diffusion and non-chat models.
 pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
@@ -3504,7 +3549,7 @@ async fn generate_image(
     // ── Real generation via stable-diffusion.cpp ────────────────────────
     let sd_bin = sd_bin.ok_or("moteur d'images introuvable")?;
     let models_dir = locaryn_config::models_dir();
-    let model_path = models_dir.join(model);
+    let model_path = resolve_model_path(&models_dir, model);
     if !model_path.exists() {
         return Err(format!("modèle introuvable : {}", model_path.display()));
     }
@@ -3986,15 +4031,23 @@ async fn list_image_models(_core: State<'_, Core>) -> Result<Vec<String>, String
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                let lower = name.to_ascii_lowercase();
-                let is_partial = lower.ends_with(".part") || lower.ends_with(".tmp");
-                // Same classifier as the chat listing, so a model is never in both.
-                if is_diffusion_checkpoint(name) && !is_partial {
-                    names.push(name.to_string());
+            if path.is_file() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    let lower = name.to_ascii_lowercase();
+                    let is_partial = lower.ends_with(".part") || lower.ends_with(".tmp");
+                    // Same classifier as the chat listing, so a model is never in both.
+                    if is_diffusion_checkpoint(name) && !is_partial {
+                        names.push(name.to_string());
+                    }
+                }
+            } else if path.is_dir() {
+                if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                    let has_model_index = path.join("model_index.json").exists();
+                    let has_unet = path.join("unet").exists();
+                    let lower = dir_name.to_ascii_lowercase();
+                    if has_model_index || has_unet || lower.contains("diffusion") || lower.contains("deliberate") {
+                        names.push(dir_name.to_string());
+                    }
                 }
             }
         }
@@ -7374,21 +7427,28 @@ fn check_hardware() -> Result<HardwareSpec, String> {
 #[tauri::command]
 fn delete_model_cmd(_endpoint: String, model: String) -> Result<(), String> {
     let models_dir = locaryn_config::models_dir();
-    let path = models_dir.join(&model);
+    let resolved = resolve_model_path(&models_dir, &model);
 
-    if path.is_dir() {
-        std::fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    if resolved.is_dir() {
+        std::fs::remove_dir_all(&resolved).map_err(|e| e.to_string())?;
         tracing::info!(model = %model, "deleted model directory");
         return Ok(());
     }
-    if path.is_file() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    if resolved.is_file() {
+        std::fs::remove_file(&resolved).map_err(|e| e.to_string())?;
         tracing::info!(model = %model, "deleted model file");
         return Ok(());
     }
 
     // Fuzzy fallback: walk models_dir and match by exact or substring.
-    let lower_tag = model.to_lowercase();
+    let cleaned = model
+        .split('/')
+        .last()
+        .unwrap_or(&model)
+        .split('\\')
+        .last()
+        .unwrap_or(&model);
+    let lower_tag = cleaned.to_lowercase();
     let mut deleted_any = false;
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
         for entry in entries.flatten() {

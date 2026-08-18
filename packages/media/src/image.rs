@@ -78,6 +78,47 @@ pub fn is_diffusion_checkpoint(file_name: &str) -> bool {
     is_image_asset(file_name) && !AUX.iter().any(|p| n.contains(p))
 }
 
+pub fn resolve_model_path(models_dir: &std::path::Path, raw_name: &str) -> std::path::PathBuf {
+    let direct = models_dir.join(raw_name);
+    if direct.exists() {
+        return direct;
+    }
+    let cleaned = raw_name
+        .split('/')
+        .last()
+        .unwrap_or(raw_name)
+        .split('\\')
+        .last()
+        .unwrap_or(raw_name);
+    let candidate = models_dir.join(cleaned);
+    if candidate.exists() {
+        return candidate;
+    }
+    let repo_dir = raw_name
+        .trim_start_matches("https://huggingface.co/")
+        .trim_start_matches("http://huggingface.co/")
+        .trim_matches('/')
+        .replace('/', "__");
+    let dir_candidate = models_dir.join(&repo_dir);
+    if dir_candidate.exists() {
+        return dir_candidate;
+    }
+    if let Ok(entries) = std::fs::read_dir(models_dir) {
+        let cleaned_lower = cleaned.to_ascii_lowercase();
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(n) = p.file_name().and_then(|x| x.to_str()) {
+                    if n.to_ascii_lowercase() == cleaned_lower {
+                        return p;
+                    }
+                }
+            }
+        }
+    }
+    candidate
+}
+
 fn is_image_asset(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
     const DIFFUSION: &[&str] = &[
@@ -498,7 +539,7 @@ pub async fn generate_image(
     ));
 
     let models_dir = locaryn_config::models_dir();
-    let model_path = models_dir.join(&req.model);
+    let model_path = resolve_model_path(&models_dir, &req.model);
     if !model_path.exists() {
         return Err(format!("modèle introuvable : {}", model_path.display()));
     }
