@@ -1,184 +1,202 @@
-# Locaryn
+<div align="center">
 
-> Open-core agentic coding platform — native desktop + CLI + secured remote server, sharing one Rust core.
+# 🌟 LOCARYN
 
-Locaryn is an open-source, LLM-assisted development platform built around a single
-shared core that powers both a native desktop application (Tauri v2 + React/TS) and
-a lightweight CLI. A secured remote server acts as an authenticated gateway to
-distant providers, while a local daemon and provider supervisor handle local
-runtimes (Ollama, llama.cpp, LM Studio, vLLM) on loopback only.
+**The Universal Open-Core AI Development, Agentic Platform & Model Studio**
 
-The platform is **extension-first**: MCP servers, plugins, slash commands, hooks,
-skills, specialized agents, workspace rules, and LSP adapters are first-class
-citizens with a unified manifest, scoped loading (global / user / workspace),
-permission gating, and hot-reload. A compatibility layer can import bundles in
-the spirit of Claude Code, Cursor, Continue.dev, Cline, and Antigravity.
+*Fast, Private, Native, and Deeply Extensible — Powered by a Single Shared Rust Core.*
 
-## License (open-core)
+[![GitHub Release](https://img.shields.io/github/v/release/Locaryn/locaryn?color=10b981&label=release&logo=github)](https://github.com/Locaryn/Locaryn/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg?logo=rust)](https://www.rust-lang.org)
+[![Tauri v2](https://img.shields.io/badge/tauri-v2-24c8db.svg?logo=tauri)](https://tauri.app)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20Web-purple.svg)](https://github.com/Locaryn/locaryn/releases)
+[![Stars](https://img.shields.io/github/stars/Locaryn/locaryn?style=flat&color=yellow)](https://github.com/Locaryn/locaryn)
 
-| Component | License |
-| --- | --- |
-| `apps/*`, `services/daemon`, `services/provider-supervisor`, `packages/*`, `examples/*`, `migrations/*`, `docs/*` | **Apache-2.0** |
-| `services/remote-server` core (auth, gateway, collaboration) | **Apache-2.0** |
-| `services/remote-server/enterprise` (team context sharing, DGX Spark orchestration, concurrent-client gate) | **BSL 1.1** (converts to Apache-2.0 after 4 years) |
+[✨ Points Forts](#-pourquoi-locaryn--points-forts-et-avantages-clés) •
+[🏛 Architecture](#-architecture-unifiée) •
+[🧩 Extensions & Noyau](#-écosystème-dextensions--plugins-qui-modifient-le-noyau) •
+[🧠 Modèles & Oblitération](#-studio-de-modèles-entraînement--oblitération-repe) •
+[🚀 Démarrage Rapide](#-démarrage-rapide) •
+[📥 Téléchargements](#-téléchargements--releases)
 
-See [LICENSES.md](LICENSES.md) for the full breakdown and the rationale in
-[docs/adr/ADR-0003-open-core-license.md](docs/adr/ADR-0003-open-core-license.md).
+</div>
 
-## Repository layout
+---
+
+## 📖 Présentation
+
+**Locaryn** est une plateforme complète d'intelligence artificielle locale et distribuée, conçue pour unifier le développement assisté par IA, la gestion et modification de modèles (GGUF, Ollama, API distantes), l'orchestration multi-agents et la collaboration multi-appareils.
+
+Bâtie autour d'un **noyau partagé 100% Rust**, Locaryn combine une application de bureau native ultra-rapide (Tauri v2 + React), une CLI ergonomique, un serveur sécurisé (daemon headless) et une application mobile compagne (Android/iOS).
+
+---
+
+## ⚡ Pourquoi Locaryn ? — Points Forts et Avantages Clés
+
+Contrairement aux solutions cloisonnées ou dépendantes du cloud propriétaire, Locaryn apporte une flexibilité inédite :
+
+### 1. 🔄 Rôle Dual Client ⇄ Serveur Universel
+- **Chaque client peut être serveur, et chaque serveur peut être client** : Utilisez votre PC fixe équipé d'un GPU comme serveur local ou distant, et pilotez-le en toute transparence depuis votre PC portable, votre tablette ou votre smartphone.
+- **Appairage Instantané et Sécurisé** : Rejoignez une machine en scannant un QR code ou via le **Mode Découverte** sur le réseau local Wi-Fi, avec chiffrement de bout en bout (mTLS avec certificats auto-générés ou tunnels distants chiffrés).
+- **Mode Éphémère & Vie Privée** : Vos échanges et sessions peuvent être basculés en mode éphémère d'un clic pour garantir une confidentialité totale sans enregistrement résiduel.
+
+### 2. 🧩 Extensibilité Totale du Noyau (Core Extensibility)
+- Les plugins dans Locaryn ne sont pas de simples gadgets : ils ont la capacité de **modifier le comportement même du noyau (core runtime)**, d'enregistrer des serveurs MCP natifs, d'intercepter les événements du système (hooks) et d'injecter des **vues et menus complets dans l'interface graphique** (ex: *Figures Académiques*, *Studio de Création*, *Fine-tuning & Oblitération*).
+- **Compatibilité Universelle Cross-Écosystème** : Locaryn exécute et adapte nativement les extensions et skills provenant de **Locaryn**, **Claude Code**, **Gemini CLI**, **OpenCode** et du **Model Context Protocol (MCP)**. Un simple lien GitHub (`github:owner/repo`) installe n'importe quel plugin ou skill en un clic.
+
+### 3. 🧠 Du Débutant au Chercheur / Power-User
+- **Pour tous les utilisateurs** : Une interface moderne, épurée et réactive avec auto-détection des modèles locaux (GGUF, Ollama, vLLM, LM Studio) et des clés API (Claude, OpenAI, Gemini, DeepSeek, Mistral, OpenRouter).
+- **Pour les créateurs et chercheurs** :
+  - **Fine-Tuning & LoRA** : Entraînement et adaptation de modèles locaux.
+  - **Oblitération RepE (Representation Engineering)** : Analyse et ablation directionnelle des couches de refus pour tester et dé-aligner les modèles de recherche en toute souveraineté (avec avertissement explicite de responsabilité).
+  - **Figures & Visualisation** : Génération de diagrammes académiques et figures scientifiques de haute qualité.
+  - **Espaces de travail distants (SSH)** : Connexion à des clusters et serveurs distants directement depuis vos conversations.
+
+### 4. 🚀 Performance & Sobriété
+- **100% Rust** : Zéro surcharge Electron, empreinte mémoire minimale, démarrage instantané et zéro télémétrie non sollicitée.
+
+---
+
+## 📊 Matrice Comparative
+
+| Fonctionnalité | Locaryn | LM Studio / Ollama | Claude Desktop | Cursor / OpenCode |
+| :--- | :---: | :---: | :---: | :---: |
+| **Noyau Natif Rust ultra-léger** | ✅ Oui | ❌ Non / Partiel | ❌ Non (Electron) | ❌ Non |
+| **Client ⇄ Serveur Interchangeable** | ✅ Oui (Desktop/Mobile/CLI) | ⚠️ Serveur local seul | ❌ Non | ❌ Non |
+| **Appairage Mobile (QR / Découverte Wi-Fi)** | ✅ Oui | ❌ Non | ❌ Non | ❌ Non |
+| **Plugins modifiant l'UI & le Noyau** | ✅ Oui (Deep Extensibility) | ❌ Non | ⚠️ MCP seul | ⚠️ Extensions limitées |
+| **Compatibilité Claude / Gemini / MCP / OpenCode** | ✅ 100% universel | ❌ Non | ⚠️ MCP seul | ⚠️ Partiel |
+| **Fine-Tuning & Oblitération RepE intégrée** | ✅ Oui (via plugin) | ❌ Non | ❌ Non | ❌ Non |
+| **Génération Multimédia (Image, TTS, 3D, Figures)** | ✅ Oui (Plugins dédiés) | ❌ Non | ❌ Non | ❌ Non |
+| **Mode Éphémère instantané** | ✅ Oui | ❌ Non | ❌ Non | ❌ Non |
+
+---
+
+## 🏛 Architecture Unifiée
 
 ```
-locaryn/
-├── apps/
-│   ├── cli/                 # Rust CLI (clap) — thin client over the daemon
-│   └── desktop/             # Tauri v2 + React + TS (Monaco, xterm.js, preview)
-├── services/
-│   ├── daemon/              # Local daemon (Rust) — loopback HTTP/SSE API
-│   ├── remote-server/       # Secured remote gateway (Rust) — TLS, auth, audit
-│   └── provider-supervisor/ # Auto-starts/supervises local LLM runtimes
-├── packages/                # Shared Rust crates (the single core)
-│   ├── shared-types/ sdk/ auth/ config/ storage/ events/
-│   ├── preview/ extensions/ mcp/ plugin-sdk/
-│   └── command-runtime/ hook-runtime/ skill-runtime/ agent-runtime/
-│       rules-runtime/ lsp-adapters/
-├── packages-ui/             # Shared React/TS UI (Tauri frontend reuse)
-├── docs/
-│   ├── architecture/        # Product spec, architecture, API, persistence, UX,
-│   │                        #   roadmap, server mode & deployment
-│   └── adr/                 # Architecture Decision Records
-├── examples/                # Plugin/MCP/skill/command/agent/hooks/rules samples
-├── migrations/              # SQLite migrations
-└── .github/workflows/       # CI
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           INTERFACES LOCARYN                            │
+│   Desktop (Tauri v2 / React) │ Mobile App (Android/iOS) │ CLI │ Web UI  │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │ (mTLS / HTTP / SSE / WebSocket)
+┌────────────────────────────────────▼────────────────────────────────────┐
+│                        NOYAU PARTAGÉ (RUST CORE)                        │
+│ ┌──────────────────────┐ ┌─────────────────────┐ ┌───────────────────┐  │
+│ │ locaryn-agent-runtime│ │ locaryn-extensions  │ │  locaryn-mcp      │  │
+│ └──────────────────────┘ └─────────────────────┘ └───────────────────┘  │
+│ ┌──────────────────────┐ ┌─────────────────────┐ ┌───────────────────┐  │
+│ │ locaryn-skill-runtime│ │ locaryn-hook-runtime│ │ locaryn-travel    │  │
+│ └──────────────────────┘ └─────────────────────┘ └───────────────────┘  │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼────────────────────────────────────┐
+│                      MOTEURS & FOURNISSEURS IA                          │
+│   GGUF / Llama.cpp │ Ollama │ LM Studio │ Claude │ OpenAI │ Gemini │ SSH │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Quick start
+---
+
+## 🧩 Écosystème d'Extensions & Plugins Officiels
+
+Locaryn dispose d'une collection d'extensions officielles modulaires prêtes à l'emploi :
+
+| Plugin | Description | Capacités injectées |
+| :--- | :--- | :--- |
+| **`plugin-model-training`** | Fine-tuning LoRA, quantification GGUF et **Oblitération RepE (Décensure)** | Menu principal *Entraînement & Oblitération* |
+| **`plugin-figures`** | Création de diagrammes, schémas vectoriels et figures scientifiques | Menu *Figures* & Rôles spécialisés |
+| **`plugin-image-gen`** | Génération et édition d'images locales et distantes (Stable Diffusion, FLUX) | Studio d'images, commandes `/image` |
+| **`plugin-image-editor`** | Retouche visuelle, inpainting et masquage d'images | Outils de manipulation d'images |
+| **`plugin-3d-gen`** | Modélisation et génération d'objets et scènes 3D | Studio 3D, export GLB/OBJ |
+| **`plugin-voice-tts`** | Synthèse vocale réaliste et lecture audio des réponses | Voix off, lecture vocale |
+| **`plugin-dictaphone`** | Transcription vocale automatique (Whisper) et dictée | Saisie vocale, transcription audio |
+| **`plugin-vision-ocr`** | Reconnaissance optique de caractères et analyse de documents | Extraction de texte, analyse visuelle |
+| **`plugin-rag-qa`** | Indexation vectorielle, recherche sémantique et RAG local | Indexation de documents, Q&R |
+| **`plugin-ssh`** | Gestionnaire de terminaux et connexions serveurs distants | Navigation SSH, exécution distante |
+| **`plugin-travel-tunnel`** | Tunnels chiffrés pour accès extérieur (Cloudflare, ngrok, devtunnel) | Mode Voyage / Remote |
+| **`plugin-translation`** | Traduction neuronale multi-langues de haute fidélité | Outils de traduction |
+
+---
+
+## 🧠 Studio de Modèles : Entraînement & Oblitération RepE
+
+Le plugin **`plugin-model-training`** intègre une suite d'outils avancés pour les ingénieurs et chercheurs :
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     ENTRAÎNEMENT & OBLITÉRATION                         │
+├────────────────────────────────────┬────────────────────────────────────┤
+│ 🚀 Fine-Tuning LoRA / QLoRA        │ 🔓 Oblitération de Refus (RepE)    │
+│ • Datasets JSONL / Parquet         │ • Méthode RepE (Ablation vecteur)  │
+│ • Taux d'apprentissage & Epochs    │ • Ciblage des couches de tenseurs  │
+│ • Merge & Export GGUF immédiat     │ • Dé-alignement de recherche       │
+└────────────────────────────────────┴────────────────────────────────────┘
+```
+
+> [!IMPORTANT]
+> **Avertissement de responsabilité** : L'oblitération de refus est destinée aux chercheurs et praticiens en IA pour étudier l'alignement des modèles. Une modale de consentement explicite rappelle que l'utilisateur est seul responsable de l'usage des poids modifiés.
+
+---
+
+## 🚀 Démarrage Rapide
+
+### Prérequis
+- **Rust** 1.88+
+- **Node.js** 22+ & **pnpm** 9+
+
+### Installation & Lancement en Développement
 
 ```bash
-# Rust toolchain (1.83+), Node 22+, pnpm 9+
-pnpm install
-cargo check --workspace
-cargo build -p locaryn-daemon -p locaryn-cli
+# 1. Cloner le dépôt
+git clone https://github.com/Locaryn/Locaryn.git
+cd Locaryn
 
-# Run the local daemon (loopback :7474)
+# 2. Installer les dépendances
+pnpm install
+
+# 3. Lancer le service local (Daemon)
 cargo run -p locaryn-daemon
 
-# In another shell — the agent, working in the current directory
-cargo run -p locaryn-cli
-
-# …or a plain conversation with no access to your files
-cargo run -p locaryn-cli -- chat
-
-# Desktop app (dev)
-cd apps/desktop && pnpm tauri dev
+# 4. Dans un second terminal : lancer l'application Desktop
+pnpm tauri:dev
 ```
 
-### One-shot dev launcher (Windows)
-
-For Windows, a batch launcher is provided in [`scripts/dev.bat`](scripts/dev.bat).
-macOS and Linux users should follow the manual steps in Quick start above.
-It builds the daemon and CLI, starts the daemon (or reuses an already-running
-healthy one), then launches the Tauri desktop in dev mode. When the desktop dev
-server exits, the launcher stops only the daemon it started.
-
-```batch
+### Lanceur 1-Clic sous Windows
+Un script complet prêt à l'emploi est disponible dans [`scripts/dev.bat`](scripts/dev.bat) :
+```cmd
 scripts\dev.bat
 ```
 
-The script automatically changes to the repository root, so it can be launched
-from any directory.
+---
 
-> **Note:** closing the terminal window skips cleanup and leaves the daemon
-> running. Stop it manually with `taskkill /IM locaryn-daemon.exe /F`.
+## 📥 Téléchargements & Releases
 
-## Running as a shared server
+Retrouvez tous les paquets précompilés sur la page **[GitHub Releases](https://github.com/Locaryn/Locaryn/releases)** :
 
-The desktop application and `locaryn-daemon` expose the same HTTP API, so a
-machine with a GPU can serve a whole team. Security follows the listening
-address rather than a setting:
+| Plateforme | Format | Description |
+| :--- | :--- | :--- |
+| **Windows x64** | `Locaryn_0.3.12_x64-setup.exe` | Installeur NSIS (Recommandé avec auto-update) |
+| **Linux x64** | `Locaryn_0.3.12_amd64.deb` / `.AppImage` | Paquets Debian, Ubuntu et exécutable autonome |
+| **macOS** | `Locaryn_0.3.12_universal.dmg` | Binaire universel (Apple Silicon M1/M2/M3 & Intel) |
+| **Android** | `Locaryn_0.3.12_android.apk` | Application mobile compagne |
+| **Serveur Headless** | `locaryn-daemon` & `locaryn-cli` | Démon et CLI pour serveurs Linux/Windows |
 
-| Listening on | Authentication | Encryption |
-| --- | --- | --- |
-| `127.0.0.1` | not required | none — traffic never leaves the machine |
-| anything else | **required** | **required (TLS)** |
+---
 
-A server that is reachable but unprotected therefore cannot exist because a
-checkbox was missed — the daemon refuses to start exposed with no account.
+## 🤝 Contribution & Communauté
 
-```bash
-# 1. Create the first administrator (reads the password from stdin)
-locaryn users add patron --admin
+Les contributions sont les bienvenues ! Pour proposer une fonctionnalité, un plugin ou un correctif :
+1. Forkez le dépôt.
+2. Créez votre branche (`git checkout -b feature/ma-fonctionnalite`).
+3. Vérifiez la qualité avec `pnpm format && cargo test --workspace`.
+4. Ouvrez une **Pull Request**.
 
-# 2. Expose the daemon. TLS is set up automatically on first start;
-#    the certificate fingerprint is printed for clients to verify.
-LOCARYN_DAEMON_BIND=0.0.0.0 locaryn-daemon
+---
 
-# 3. Produce the settings employees will need
-locaryn provision 192.168.1.188 --org "Your Company"
-```
+<div align="center">
 
-Step 3 writes `locaryn-connect.json`. Put it next to the `.msi` or in
-`C:\ProgramData\Locaryn\`, and staff only have to install the app and type the
-credentials they were given — no address, no port, no certificate to copy. The
-file holds no secret and can be distributed freely.
+Licence **Apache-2.0** • Conçu et développé avec passion par la communauté Locaryn.
 
-Full details, and the reasoning behind each choice, in
-[docs/architecture/12-server-and-deployment.md](docs/architecture/12-server-and-deployment.md).
-
-## Installation et mises à jour
-
-Les binaires sont publiés sur la page **Releases** de GitHub :
-<https://github.com/Locaryn/locaryn/releases>.
-
-### Quel fichier télécharger ?
-
-Application de bureau — elle embarque le service Locaryn et la commande `locaryn`,
-donc elle sait aussi servir le réseau local et se piloter depuis un terminal :
-
-| Plateforme | Fichier | Remarque |
-| --- | --- | --- |
-| Windows x64 | `Locaryn_<version>_x64-setup.exe` | installeur NSIS — recommandé |
-| Windows x64 | `locaryn-<version>-desktop-windows-x64-portable.zip` | portable, sans auto-update |
-| macOS | `Locaryn_<version>_universal.dmg` | universel — Intel et Apple Silicon |
-| Linux x64 | `Locaryn_<version>_amd64.deb` | Debian / Ubuntu |
-| Linux x64 | `Locaryn_<version>_amd64.AppImage` | portable, sans installation |
-| Linux x64 | `locaryn-<version>-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
-| Android | `locaryn-<version>-android.apk` | signé si le dépôt fournit un keystore ; sinon publié `-unsigned` et à signer soi-même (`scripts/android-keystore.ps1`) |
-
-Serveur seul, pour une machine sans session graphique — `locaryn-daemon` + la CLI :
-
-| Plateforme | Fichier | Remarque |
-| --- | --- | --- |
-| Windows x64 | `locaryn-<version>-server-windows-x64.msi` | installe le service et la CLI, les ajoute au PATH — à lancer en administrateur |
-| Windows x64 | `locaryn-<version>-server-windows-x64.zip` | portable |
-| Linux x64 | `locaryn-<version>-server-linux-x64.deb` | Debian / Ubuntu — incompatible avec le paquet de bureau, qui contient déjà le service |
-| Linux x64 · macOS | `locaryn-<version>-server-<plateforme>.tar.gz` | portable |
-
-Règle simple : prenez l'**installeur** de votre plateforme. L'installeur reçoit les
-**mises à jour automatiques** ; une archive portable doit être retéléchargée à la main.
-Les noms `Locaryn_<version>_<arch>…` sont la convention attendue par le système de mise
-à jour — ne les renommez pas.
-
-### Depuis un terminal
-
-```bash
-locaryn daemon start   # démarre le service en arrière-plan, attend qu'il réponde
-locaryn status         # mode, fournisseur actif, version
-locaryn                # l'agent, dans le dossier courant
-locaryn daemon logs    # ce que le service a écrit
-locaryn daemon stop
-```
-
-### Mises à jour automatiques
-
-Windows et macOS embarquent un client de mise à jour qui interroge la release la plus
-récente sur GitHub (`Réglages → À propos → Vérifier les mises à jour`). La vérification
-se fait aussi au démarrage. Sous Linux, l'updater Tauri n'est pas supporté : il faut
-télécharger le nouveau paquet depuis la page Releases.
-
-Pour que ce mécanisme fonctionne, le dépôt doit être **public** (c'est le cas) et les
-releases doivent être **publiées** avec leurs installeurs signés. Les artefacts macOS ne
-sont pas notarisés : la première ouverture peut demander une confirmation manuelle.
-
-## Status
-
-MVP target: 6–8 weeks. See [docs/architecture/10-roadmap.md](docs/architecture/10-roadmap.md).
+</div>
