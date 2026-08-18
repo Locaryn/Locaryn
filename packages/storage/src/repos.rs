@@ -749,6 +749,7 @@ impl SessionRepo {
              closed_at, archived_at, ephemeral, core_id \
              FROM sessions \
              WHERE project_id = ? AND closed_at IS NULL AND archived_at IS NULL \
+             AND (ephemeral = 0 OR ephemeral IS NULL) \
              ORDER BY COALESCE(last_message_at, created_at) DESC",
         )
         .bind(project_id.to_string())

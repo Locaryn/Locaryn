@@ -117,9 +117,9 @@ export function LeftPanel({
   // groupes, pas seulement celles du projet actuellement ouvert.
   const allKnownSessions = Array.from(
     new Map(
-      [...standaloneSessions, ...Object.values(sessionsByProject ?? {}).flat(), ...sessions].map(
-        (s) => [s.id, s],
-      ),
+      [...standaloneSessions, ...Object.values(sessionsByProject ?? {}).flat(), ...sessions]
+        .filter((s) => !s.ephemeral)
+        .map((s) => [s.id, s]),
     ).values(),
   );
 
@@ -154,11 +154,11 @@ export function LeftPanel({
     function onEsc(e: KeyboardEvent) {
       if (e.key === "Escape") setMenuFor(null);
     }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onEsc);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onEsc);
     return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onEsc);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onEsc);
     };
   }, [menuFor]);
 
@@ -245,7 +245,9 @@ export function LeftPanel({
       <div className="locaryn-history-groups">
         {projects.map((p) => {
           const isActive = p.id === activeProject?.id;
-          const projectSessions = sessionsByProject?.[p.id] ?? (isActive ? sessions : []);
+          const projectSessions = (sessionsByProject?.[p.id] ?? (isActive ? sessions : [])).filter(
+            (s) => !s.ephemeral,
+          );
           return (
             <section key={p.id} className="locaryn-history-group" style={{ marginBottom: "4px" }}>
               <div className="locaryn-history-group-head">
@@ -413,16 +415,16 @@ export function LeftPanel({
         + Ajouter un projet
       </button>
 
-      {/* ── Conversations Libres (affichées sous les projets) ── */}
+      {/* ── Conversations (affichées sous les projets) ── */}
       <div className="locaryn-history-title" style={{ marginTop: "16px" }}>
-        Conversations libres ({standaloneSessions.length})
+        Conversations ({standaloneSessions.filter((s) => !s.ephemeral).length})
       </div>
 
       <div
         className="locaryn-history-standalone"
         style={{ display: "flex", flexDirection: "column", gap: "2px", marginBottom: "16px" }}
       >
-        {standaloneSessions.length === 0 ? (
+        {standaloneSessions.filter((s) => !s.ephemeral).length === 0 ? (
           <div
             style={{
               fontSize: "11px",
@@ -431,26 +433,30 @@ export function LeftPanel({
               padding: "4px 8px",
             }}
           >
-            Aucune conversation libre
+            Aucune conversation
           </div>
         ) : (
           <ul className="locaryn-tree" style={{ margin: 0, padding: 0 }}>
-            {standaloneSessions.map((s, idx) => (
-              <SessionRow
-                key={s.id}
-                session={s}
-                label={sessionLabel(s, idx)}
-                bullet="chat"
-                active={activeSession?.id === s.id}
-                leaving={leaving === s.id}
-                projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-                onSelect={() => onSelectSession(s)}
-                onRename={(t) => onSessionRenamed?.(s, t)}
-                onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
-                onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
-                onMergeInto={onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined}
-              />
-            ))}
+            {standaloneSessions
+              .filter((s) => !s.ephemeral)
+              .map((s, idx) => (
+                <SessionRow
+                  key={s.id}
+                  session={s}
+                  label={sessionLabel(s, idx)}
+                  bullet="chat"
+                  active={activeSession?.id === s.id}
+                  leaving={leaving === s.id}
+                  projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                  onSelect={() => onSelectSession(s)}
+                  onRename={(t) => onSessionRenamed?.(s, t)}
+                  onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
+                  onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+                  onMergeInto={
+                    onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
+                  }
+                />
+              ))}
           </ul>
         )}
       </div>

@@ -352,6 +352,7 @@ function ConversationHistorySettings({
     .map((project) => ({
       project,
       sessions: (sessionsByProject[project.id] ?? []).filter((s) => {
+        if (s.ephemeral) return false;
         if (!search.trim()) return true;
         const q = search.toLowerCase();
         return (s.title ?? "").toLowerCase().includes(q) || project.name.toLowerCase().includes(q);
@@ -360,9 +361,10 @@ function ConversationHistorySettings({
     .filter((group) => group.sessions.length > 0);
 
   const filteredStandalone = standaloneSessions.filter((s) => {
+    if (s.ephemeral) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    return (s.title ?? "").toLowerCase().includes(q) || "libre non groupé".includes(q);
+    return (s.title ?? "").toLowerCase().includes(q);
   });
 
   const total =
@@ -411,7 +413,7 @@ function ConversationHistorySettings({
         <div className="locaryn-conversation-groups">
           {filteredStandalone.length > 0 && (
             <ConversationHistoryGroup
-              label="Conversations libres (non groupées)"
+              label="Conversations"
               sessions={filteredStandalone}
               onOpenSession={onOpenSession}
             />
