@@ -45,17 +45,29 @@ pub struct ServerStatus {
 }
 
 fn daemon_binary() -> Option<std::path::PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
     let name = if cfg!(windows) {
         "locaryn-daemon.exe"
     } else {
         "locaryn-daemon"
     };
-    // Beside the app when installed; in the build output during development.
-    [dir.join(name), dir.join("..").join(name)]
-        .into_iter()
-        .find(|candidate| candidate.is_file())
+    let mut candidates = Vec::new();
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(name));
+            candidates.push(dir.join("..").join(name));
+            candidates.push(dir.join("..").join("..").join("target").join("debug").join(name));
+            candidates.push(dir.join("..").join("..").join("target").join("release").join(name));
+        }
+    }
+
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("target").join("debug").join(name));
+        candidates.push(cwd.join("target").join("release").join(name));
+        candidates.push(cwd.join("..").join("..").join("target").join("debug").join(name));
+    }
+
+    candidates.into_iter().find(|candidate| candidate.is_file())
 }
 
 /// Le journal du service, partagé avec `locaryn daemon logs`.

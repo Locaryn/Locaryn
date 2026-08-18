@@ -356,6 +356,9 @@ pub struct ExtensionPermissionState {
 /// Ce qu'une extension ajoute à l'interface.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ExtensionUi {
+    /// Points d'extension et composants dynamiques (Slots universels).
+    #[serde(default)]
+    pub slots: Vec<ExtensionUiSlotContribution>,
     #[serde(default)]
     pub nav_items: Vec<ExtensionUiEntry>,
     #[serde(default)]
@@ -367,6 +370,41 @@ pub struct ExtensionUi {
     /// Sections ajoutées aux réglages, avec leurs champs.
     #[serde(default)]
     pub settings_sections: Vec<ExtensionSettingsSection>,
+}
+
+/// Contribution d'un composant ou d'une action à un point d'extension (Slot).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExtensionUiSlotContribution {
+    pub id: String,
+    pub slot: String,
+    #[serde(default = "ordre_slot_defaut")]
+    pub order: i32,
+    #[serde(default = "type_slot_defaut", rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub hint: Option<String>,
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub value: Option<String>,
+    #[serde(default)]
+    pub entry: Option<String>,
+    #[serde(default)]
+    pub tag: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+}
+
+fn ordre_slot_defaut() -> i32 {
+    100
+}
+
+fn type_slot_defaut() -> String {
+    "button".to_string()
 }
 
 /// Un bouton posé à côté du champ de saisie.

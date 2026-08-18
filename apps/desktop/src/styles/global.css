@@ -1256,12 +1256,14 @@ body.locaryn-resizing .locaryn-resizer::after {
    BOTTOM PANEL — terminal / logs
    ═══════════════════════════════════════════════════════════ */
 .locaryn-bottom {
-  flex: none;
-  height: var(--layout-bottom);
+  flex: 1;
+  width: 100%;
+  height: 100%;
   background: var(--bg);
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 .locaryn-tab-btn {
   background: none;
@@ -4173,6 +4175,15 @@ pre.md-code {
 }
 .locaryn-account-page > .locaryn-view-header {
   flex: none;
+}
+.locaryn-account-embedded {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.locaryn-account-embedded .locaryn-account-layout {
+  overflow: visible;
 }
 .locaryn-account-layout {
   display: grid;
@@ -7941,6 +7952,8 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 /* Une carte qui sert de fenêtre : plus haute que large sur un petit écran,
    et jamais plus grande que la fenêtre elle-même. */
 .locaryn-modal-card {
+  position: relative;
+  z-index: 10;
   width: min(680px, 92vw);
   max-height: 86vh;
   overflow-y: auto;
@@ -8203,6 +8216,35 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   padding: 6px 10px 2px;
   font-size: 11px;
   color: var(--text-faint);
+}
+.locaryn-ctx-submenu-parent {
+  position: relative;
+}
+.locaryn-ctx-item-has-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.locaryn-ctx-arrow {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.locaryn-ctx-sub {
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  margin-left: 4px;
+  min-width: 170px;
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 70;
+}
+.locaryn-ctx-sub-left {
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-right: 4px;
 }
 
 /* Conversation éphémère : un liseré et une bande, pour qu'on le sache sans

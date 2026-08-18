@@ -150,7 +150,17 @@ export function ImageGenPanel({
     core
       .listImageModels()
       .then((list) => {
-        if (!cancelled) setLocalInstalledModels(list);
+        if (!cancelled) {
+          setLocalInstalledModels(list);
+          core
+            .getModelPreferences()
+            .then((prefs) => {
+              if (prefs.image_model && list.includes(prefs.image_model)) {
+                setSelectedModel(prefs.image_model);
+              }
+            })
+            .catch(() => {});
+        }
       })
       .catch(() => {
         // Fall back to the prop (older backend) if the command is missing.

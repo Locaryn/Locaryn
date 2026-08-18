@@ -2,13 +2,13 @@
   "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
   "apiVersion": "0.1",
   "name": "plugin-image-gen",
-  "version": "1.0.0",
-  "description": "Image generation extension (Stable Diffusion, Flux, Z-Image, Krea).",
+  "version": "1.1.0",
+  "description": "Extension de génération et modification d'images (Stable Diffusion, Flux, Z-Image, Krea).",
   "author": "Locaryn Team",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Locaryn/plugin-image-gen",
   "repository": "https://github.com/Locaryn/plugin-image-gen",
-  "keywords": ["image-generation", "stable-diffusion", "flux", "text-to-image"],
+  "keywords": ["image-generation", "stable-diffusion", "flux", "text-to-image", "diffusion"],
   "permissions": {
     "files_read": true,
     "files_write": true,
@@ -16,6 +16,39 @@
   },
   "capabilities": ["image-gen"],
   "ui_contributions": {
+    "slots": [
+      {
+        "id": "studio-image-tab",
+        "slot": "studio.tabs",
+        "order": 10,
+        "label": "Génération Image",
+        "icon": "image",
+        "type": "custom-element",
+        "entry": "dist/ui.js",
+        "tag": "locaryn-image-gen-panel",
+        "hint": "Studio de génération et retouche d'images locales"
+      },
+      {
+        "id": "composer-image-btn",
+        "slot": "composer.toolbar",
+        "order": 20,
+        "label": "Image",
+        "icon": "image",
+        "action": "event",
+        "value": "locaryn:open-image-gen",
+        "hint": "Générer une image depuis le prompt"
+      },
+      {
+        "id": "sd-engine",
+        "slot": "engines.runtimes",
+        "order": 20,
+        "label": "stable-diffusion.cpp",
+        "icon": "image",
+        "category": "Génération d'images",
+        "hint": "Moteur de diffusion locale pour modèles SD 1.5, SDXL, Flux et retouche",
+        "value": "sd-server / pipeline stable-diffusion"
+      }
+    ],
     "nav_items": [
       {
         "id": "studio",

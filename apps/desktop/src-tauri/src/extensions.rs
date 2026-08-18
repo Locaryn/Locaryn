@@ -235,6 +235,26 @@ pub async fn active_capabilities(core: &Core) -> Vec<String> {
     out.dedup();
     out
 }
+/// Une contribution de slot d'interface apportée par une extension.
+fn slot_contribution(
+    s: &locaryn_extensions::manifest::UiSlotContribution,
+) -> locaryn_shared_types::ExtensionUiSlotContribution {
+    locaryn_shared_types::ExtensionUiSlotContribution {
+        id: s.id.clone(),
+        slot: s.slot.clone(),
+        order: s.order,
+        kind: s.kind.clone(),
+        label: s.label.clone(),
+        icon: s.icon.clone(),
+        hint: s.hint.clone(),
+        action: s.action.clone(),
+        value: s.value.clone(),
+        entry: s.entry.clone(),
+        tag: s.tag.clone(),
+        category: s.category.clone(),
+    }
+}
+
 /// Un bouton de composeur apporté par une extension.
 fn action_composeur(
     a: &locaryn_extensions::manifest::ComposerAction,
@@ -384,6 +404,11 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
             ui: manifest
                 .as_ref()
                 .map(|m| locaryn_shared_types::ExtensionUi {
+                    slots: if row.enabled {
+                        m.ui.slots.iter().map(slot_contribution).collect()
+                    } else {
+                        Vec::new()
+                    },
                     nav_items: m.ui.nav_items.iter().map(ui_entry).collect(),
                     studio_tabs: m.ui.studio_tabs.iter().map(ui_entry).collect(),
                     // Une extension éteinte ne pose plus rien près du champ de
@@ -491,6 +516,39 @@ pub async fn resolve_extension_command(
         .ok_or_else(|| format!("« {name} » n'est pas une commande d'extension."))?;
     let parts: Vec<String> = args.split_whitespace().map(str::to_string).collect();
     Ok(locaryn_command_runtime::resolve(&def.body, &parts))
+}
+
+/// Lit un asset textuel ou script d'une extension installée (ex. `dist/ui.js`).
+#[tauri::command]
+pub async fn read_extension_asset(
+    core: State<'_, Core>,
+    extension_id: String,
+    asset_path: String,
+) -> Result<String, String> {
+    let rows = core
+        .storage
+        .extensions
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
+    let row = rows
+        .into_iter()
+        .find(|r| r.id.to_string() == extension_id || r.name == extension_id)
+        .ok_or_else(|| format!("extension « {extension_id} » introuvable"))?;
+
+    let root_opt = plugin_root(&row.manifest_path);
+    let root_dir = match root_opt {
+        Some(p) => p,
+        None => std::path::PathBuf::from(&row.manifest_path),
+    };
+
+    let clean_path = asset_path.trim_start_matches(['/', '\\']);
+    let target = root_dir.join(clean_path);
+    if !target.exists() {
+        return Err(format!("asset introuvable : {}", target.display()));
+    }
+
+    std::fs::read_to_string(&target).map_err(|e| format!("lecture asset impossible : {e}"))
 }
 
 #[tauri::command]

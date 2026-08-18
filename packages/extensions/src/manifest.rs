@@ -246,6 +246,9 @@ pub struct CoreSkills {
 /// Entrées d'interface apportées par une extension.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UiContributions {
+    /// Points d'extension et composants dynamiques (Slots universels).
+    #[serde(default)]
+    pub slots: Vec<UiSlotContribution>,
     /// Entrées de navigation de premier niveau.
     #[serde(default, rename = "nav_items", alias = "navItems")]
     pub nav_items: Vec<UiEntry>,
@@ -261,6 +264,50 @@ pub struct UiContributions {
     /// qu'une extension fait choisir son modèle, sa langue, sa voix.
     #[serde(default, rename = "settings_sections", alias = "settingsSections")]
     pub settings_sections: Vec<SettingsSection>,
+}
+
+/// Contribution d'un composant ou d'une action à un point d'extension (Slot) de l'interface.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UiSlotContribution {
+    pub id: String,
+    /// Nom du slot cible (ex: `composer.before_send`, `composer.toolbar`, `topbar.actions`,
+    /// `studio.tabs`, `marketplace.categories`, `engines.runtimes`, `nav.drawer`).
+    pub slot: String,
+    /// Priorité d'ordre d'affichage (ex: 10, 50, 100).
+    #[serde(default = "ordre_par_defaut")]
+    pub order: i32,
+    /// Type de rendu : `button`, `action`, `custom-element`, `iframe`, `modal`.
+    #[serde(default = "type_slot_par_defaut", rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub hint: Option<String>,
+    /// Action : `insert`, `tool`, `event`, `view`, `script`.
+    #[serde(default)]
+    pub action: Option<String>,
+    /// Valeur associée à l'action.
+    #[serde(default)]
+    pub value: Option<String>,
+    /// Fichier d'entrée pour les scripts ou interfaces personnalisées (ex: `dist/ui.js`).
+    #[serde(default)]
+    pub entry: Option<String>,
+    /// Nom de balise custom-element (ex: `locaryn-dictaphone-btn`).
+    #[serde(default)]
+    pub tag: Option<String>,
+    /// Catégorie ou domaine (ex: `image`, `audio`, `video`).
+    #[serde(default)]
+    pub category: Option<String>,
+}
+
+fn ordre_par_defaut() -> i32 {
+    100
+}
+
+fn type_slot_par_defaut() -> String {
+    "button".to_string()
 }
 
 /// Un bouton à côté du champ de saisie.

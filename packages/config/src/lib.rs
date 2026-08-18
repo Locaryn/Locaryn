@@ -526,6 +526,9 @@ fn parse_json_or_toml(raw: &str) -> Result<Config, ConfigError> {
                     cfg.daemon.port = p;
                 }
             }
+            "micro_model" => {
+                cfg.assistance.micro_model = if v.is_empty() { None } else { Some(v.to_string()) };
+            }
             _ => {}
         }
     }
@@ -559,6 +562,9 @@ fn merge(into: &mut Config, other: Config) {
         into.logging.level = other.logging.level;
     }
     into.logging.json |= other.logging.json;
+    if other.assistance.micro_model.is_some() {
+        into.assistance.micro_model = other.assistance.micro_model;
+    }
 }
 
 fn apply_env(cfg: &mut Config) {

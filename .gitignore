@@ -159,7 +159,7 @@ Lancer-Banc-SnapMCP.bat
 .android-keys/
 
 # Les extensions sont des produits distincts, avec leur propre dépôt.
-plugins/
+/plugins/
 
 # Les noyaux alternatifs (OpenClaw, Hermes...) suivent le même principe —
 # leur propre dépôt (github.com/Locaryn/locaryn-cores), pas un sous-module.

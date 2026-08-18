@@ -149,28 +149,71 @@ pub struct MicroModel {
 /// Quel modèle nomme les conversations, et lesquels sont installés.
 #[tauri::command]
 pub async fn micro_model() -> Result<MicroModel, String> {
-    let req = daemon("/v1/assistance/micro-model").await?;
-    let resp = req.send().await.map_err(|_| not_running())?;
-    resp.json::<MicroModel>().await.map_err(|e| e.to_string())
+    let cfg = locaryn_config::load(None).ok();
+    let current_model = cfg.and_then(|c| c.assistance.micro_model);
+
+    // Scanner directement les modèles locaux installés
+    let mut available = Vec::new();
+    let models_dir = locaryn_config::models_dir();
+    if let Ok(entries) = std::fs::read_dir(&models_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if crate::is_text_chat_model(name) {
+                        available.push(name.to_string());
+                    }
+                }
+            } else if path.is_dir() {
+                let dir_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                    for sub in sub_entries.flatten() {
+                        let sub_path = sub.path();
+                        if sub_path.is_file() {
+                            if let Some(sub_name) = sub_path.file_name().and_then(|n| n.to_str()) {
+                                let full_name = format!("{dir_name}/{sub_name}");
+                                if crate::is_text_chat_model(&full_name) {
+                                    available.push(full_name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    available.sort();
+    available.dedup();
+
+    Ok(MicroModel {
+        model: current_model,
+        available,
+    })
 }
 
 /// Choisir le modèle des micro-tâches, ou n'en choisir aucun.
 #[tauri::command]
 pub async fn set_micro_model(model: Option<String>) -> Result<MicroModel, String> {
-    let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
-    let port = cfg.daemon.port;
-    let client = crate::secure_client::build(None, None, None, std::time::Duration::from_secs(30))?;
-    let resp = client
-        .post(format!(
-            "https://127.0.0.1:{port}/v1/assistance/micro-model"
-        ))
-        .json(&serde_json::json!({ "model": model }))
-        .send()
-        .await
-        .map_err(|_| not_running())?;
-    if !resp.status().is_success() {
-        return Err(format!("Le service a refusé ({}).", resp.status()));
+    let choix = model.filter(|m| !m.trim().is_empty());
+    locaryn_config::set_global("assistance", serde_json::json!({ "micro_model": choix }))
+        .map_err(|e| e.to_string())?;
+
+    // Si un démon tourne, le notifier sans bloquer en cas d'erreur
+    if let Ok(cfg) = locaryn_config::load(None) {
+        let port = cfg.daemon.port;
+        if let Ok(client) = crate::secure_client::build(None, None, None, std::time::Duration::from_millis(500)) {
+            let _ = client
+                .post(format!("https://127.0.0.1:{port}/v1/assistance/micro-model"))
+                .json(&serde_json::json!({ "model": choix }))
+                .send()
+                .await;
+        }
     }
+
     micro_model().await
 }
 

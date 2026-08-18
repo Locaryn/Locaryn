@@ -159,7 +159,15 @@ export function ExtensionInstallDialog({
           className="locaryn-card locaryn-modal-card"
           aria-modal="true"
           aria-label="Installer une extension"
-          style={{ width: 520, margin: "100px auto", padding: 20 }}
+          style={{
+            width: 520,
+            margin: "100px auto",
+            padding: 20,
+            position: "relative",
+            zIndex: 10,
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           <h3 style={{ marginBottom: 4 }}>
             {kind === "marketplace"

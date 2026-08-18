@@ -76,6 +76,9 @@ const AIRLLM_MODELS: Record<string, { repo: string; sizeGb: number }> = {
   "command-r-airllm": { repo: "CohereForAI/c4ai-command-r-v01", sizeGb: 70 },
   "qwen2.5-coder-32b-airllm": { repo: "Qwen/Qwen2.5-Coder-32B-Instruct", sizeGb: 65 },
   mistral: { repo: "mistralai/Mistral-7B-Instruct-v0.3", sizeGb: 30 },
+  "gemini-2-5-flash": { repo: "google/gemini-2.5-flash-distill-gguf", sizeGb: 28 },
+  "gemini-nano": { repo: "google/gemini-nano-2", sizeGb: 16 },
+  gemma4: { repo: "google/gemma-4-31b-it", sizeGb: 62 },
 };
 
 /** Find the AirLLM HuggingFace repo & size metadata for a model family. */
@@ -543,7 +546,11 @@ export function ModelBrowser({
 
   const allBrands = useMemo(() => {
     const combined = [...registryModels, ...liveApiModels];
-    return Array.from(new Set(combined.map((f) => f.brand))).sort();
+    return Array.from(new Set(combined.map((f) => f.brand)))
+      .filter(
+        (b) => b && !b.toLowerCase().includes("claude") && !b.toLowerCase().includes("anthropic"),
+      )
+      .sort();
   }, [registryModels, liveApiModels]);
 
   const years = useMemo(() => {
@@ -559,10 +566,13 @@ export function ModelBrowser({
 
     return catalogSource
       .map((f) => {
-        // Exclude any cloud-only or remote-hosted model entirely.
+        // Exclude any cloud-only or remote-hosted model entirely, as well as Claude / Anthropic.
         if (
           isCloudOnlyFamily(f) ||
-          f.variants.some((v) => v.quants.includes("cloud") || v.tag.includes(":cloud"))
+          f.variants.some((v) => v.quants.includes("cloud") || v.tag.includes(":cloud")) ||
+          f.brand.toLowerCase().includes("claude") ||
+          f.brand.toLowerCase().includes("anthropic") ||
+          f.name.toLowerCase().includes("claude")
         ) {
           return null;
         }
@@ -1349,10 +1359,6 @@ export function ModelBrowser({
                       <span className="locaryn-dot" style={{ background: "#a78bfa" }} />{" "}
                       {counts.airllm} via AirLLM
                     </span>
-                    <span style={{ color: "#60a5fa" }}>
-                      <span className="locaryn-dot" style={{ background: "#60a5fa" }} />{" "}
-                      {counts.cloud} cloud
-                    </span>
                     <span style={{ color: "#5aa86a" }}>
                       <span className="locaryn-dot" style={{ background: "#5aa86a" }} />{" "}
                       {counts.gpu} fluides GPU
@@ -1362,15 +1368,11 @@ export function ModelBrowser({
                       {counts.offload} via RAM
                     </span>
                     <span className="locaryn-hw-banner-note">
-                      — AirLLM actif : chaque modèle est exécutable (local ou cloud)
+                      — AirLLM actif : chaque modèle est exécutable en local
                     </span>
                   </>
                 ) : (
                   <>
-                    <span style={{ color: "#60a5fa" }}>
-                      <span className="locaryn-dot" style={{ background: "#60a5fa" }} />{" "}
-                      {counts.cloud} cloud
-                    </span>
                     <span style={{ color: "#5aa86a" }}>
                       <span className="locaryn-dot" style={{ background: "#5aa86a" }} />{" "}
                       {counts.gpu} fluides GPU

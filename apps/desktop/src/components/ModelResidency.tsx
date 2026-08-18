@@ -28,6 +28,40 @@ function minutes(seconds: number): string {
   return m <= 1 ? "1 min" : `${m} min`;
 }
 
+function isChatModel(name: string): boolean {
+  const n = name.toLowerCase();
+  if (n.endsWith(".pth") || n.endsWith(".pt") || n.endsWith(".onnx") || n.endsWith(".bin"))
+    return false;
+  if (
+    n.includes("tts") ||
+    n.includes("kokoro") ||
+    n.includes("piper") ||
+    n.includes("whisper") ||
+    n.includes("customvoice") ||
+    n.includes("speech")
+  ) {
+    return false;
+  }
+  if (
+    n.includes("embed") ||
+    n.includes("embedding") ||
+    n.includes("bge-") ||
+    n.includes("minilm") ||
+    n.includes("rerank")
+  ) {
+    return false;
+  }
+  if (
+    n.includes("stable-diffusion") ||
+    n.includes("sdxl") ||
+    n.includes("flux") ||
+    n.includes("vae")
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function ModelResidency() {
   const [status, setStatus] = useState<ResidencyStatus | null>(null);
   const [open, setOpen] = useState(false);
@@ -71,7 +105,8 @@ export function ModelResidency() {
     setFit(null);
     try {
       const endpoint = status?.endpoint ?? "http://127.0.0.1:8080";
-      setModels(await core.listModels(endpoint));
+      const all = await core.listModels(endpoint);
+      setModels(all.filter(isChatModel));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -109,7 +144,9 @@ export function ModelResidency() {
     setBusy("eject");
     setError(null);
     try {
-      setStatus(await core.ejectChatModel());
+      const res = await core.ejectChatModel();
+      setStatus(res);
+      window.dispatchEvent(new Event("locaryn:model-ejected"));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

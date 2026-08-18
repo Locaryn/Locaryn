@@ -41,12 +41,114 @@ const QUANTS_BIG = ["q4_K_M", "q5_K_M", "q6_K", "q8_0"];
 
 export const MODEL_CATALOG: ModelFamily[] = [
   // ═══════════════════════════════════════════════════════════════════════════
-  // GOOGLE
+  // GOOGLE / GEMINI
   // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: "gemini-nano",
+    name: "Gemini Nano",
+    brand: "Google / Gemini",
+    description:
+      "Modèle multimodal local optimisé pour l'exécution directe sur appareil (desktop/edge). Prise en charge du résumé, de la vision et du raisonnement rapide.",
+    license: "Custom / Google",
+    contextWindow: "32k",
+    releaseDate: "2025-02",
+    releaseYear: 2025,
+    vision: true,
+    instruct: true,
+    variants: [
+      {
+        size: "2B",
+        params: 2,
+        tag: "gemini-nano:2b",
+        quants: QUANTS_SMALL,
+        storageGb: 1.6,
+        instruct: true,
+      },
+      {
+        size: "3.8B",
+        params: 4,
+        tag: "gemini-nano:3.8b",
+        quants: QUANTS_SMALL,
+        storageGb: 2.7,
+        instruct: true,
+      },
+      {
+        size: "8B",
+        params: 8,
+        tag: "gemini-nano:8b",
+        quants: QUANTS_BIG,
+        storageGb: 5.2,
+        instruct: true,
+      },
+    ],
+  },
+  {
+    id: "gemini-2-5-flash",
+    name: "Gemini 2.5 Flash (Edge)",
+    brand: "Google / Gemini",
+    description:
+      "Modèle local haute vitesse de Google pour la programmation, l'analyse multimodale et l'exécution d'outils (function calling).",
+    license: "Custom / Google",
+    contextWindow: "128k",
+    releaseDate: "2025-06",
+    releaseYear: 2025,
+    vision: true,
+    code: true,
+    instruct: true,
+    variants: [
+      {
+        size: "8B",
+        params: 8,
+        tag: "gemini-2.5-flash:8b",
+        quants: QUANTS_BIG,
+        storageGb: 5.1,
+        instruct: true,
+      },
+      {
+        size: "14B",
+        params: 14,
+        tag: "gemini-2.5-flash:14b",
+        quants: QUANTS_BIG,
+        storageGb: 8.9,
+        instruct: true,
+      },
+    ],
+  },
+  {
+    id: "gemini-coder",
+    name: "Gemini Coder",
+    brand: "Google / Gemini",
+    description:
+      "Spécialisation locale de Google pour la programmation, l'analyse syntaxique et le refactoring d'architectures complètes.",
+    license: "Custom / Google",
+    contextWindow: "64k",
+    releaseDate: "2025-04",
+    releaseYear: 2025,
+    code: true,
+    instruct: true,
+    variants: [
+      {
+        size: "7B",
+        params: 7,
+        tag: "gemini-coder:7b",
+        quants: QUANTS_SMALL,
+        storageGb: 4.8,
+        instruct: true,
+      },
+      {
+        size: "14B",
+        params: 14,
+        tag: "gemini-coder:14b",
+        quants: QUANTS_BIG,
+        storageGb: 9.1,
+        instruct: true,
+      },
+    ],
+  },
   {
     id: "gemma4",
     name: "Gemma 4",
-    brand: "Google",
+    brand: "Google / Gemini",
     description:
       "Famille multimodale de dernière génération (texte, image, audio). Architecture encoder-free unifiée avec function calling natif.",
     license: "Apache-2.0",
@@ -103,7 +205,7 @@ export const MODEL_CATALOG: ModelFamily[] = [
   {
     id: "gemma2",
     name: "Gemma 2",
-    brand: "Google",
+    brand: "Google / Gemini",
     description:
       "Modèles légers ultra-performants de Google (variantes officielles 2B, 9B et 27B).",
     license: "Gemma Terms",
@@ -142,7 +244,7 @@ export const MODEL_CATALOG: ModelFamily[] = [
   {
     id: "codegemma",
     name: "CodeGemma",
-    brand: "Google",
+    brand: "Google / Gemini",
     description:
       "Modèles officiels Google spécialisés pour la complétion et la génération de code.",
     license: "Gemma Terms",

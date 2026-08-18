@@ -60,9 +60,7 @@ pub fn default_sampling(file_name: &str) -> (u32, f32) {
 /// d'images là où il faut un modèle de conversation.
 pub fn is_diffusion_checkpoint(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
-    // Only GGUF checkpoints are selectable; a stray test PNG whose name
-    // matches a family (z_image_test.png) must not appear as a model.
-    if !n.ends_with(".gguf") {
+    if !n.ends_with(".gguf") && !n.ends_with(".safetensors") && !n.ends_with(".ckpt") {
         return false;
     }
     const AUX: &[&str] = &[
@@ -75,6 +73,7 @@ pub fn is_diffusion_checkpoint(file_name: &str) -> bool {
         "text-encoder",
         "abliterat",
         "qwen",
+        "embed",
     ];
     is_image_asset(file_name) && !AUX.iter().any(|p| n.contains(p))
 }

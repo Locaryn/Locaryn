@@ -1,5 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
 import type { ConnectionMode, ProviderSummary } from "../lib/core";
+import { ExtensionSlot } from "./extensions/ExtensionSlot";
 
 type Props = {
   activeView: string;
@@ -123,6 +124,9 @@ export function TopBar({
           </span>
 
           <div className="locaryn-topbar-toggles">
+            {/* Slot pour les actions ajoutées par les extensions en haut à droite */}
+            <ExtensionSlot name="topbar.actions" />
+
             {/* Terminal / Logs icon */}
             <button
               type="button"

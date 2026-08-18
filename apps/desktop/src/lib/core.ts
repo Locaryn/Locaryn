@@ -382,7 +382,23 @@ export interface ExtensionUiEntry {
   icon: string | null;
 }
 
+export interface ExtensionUiSlotContribution {
+  id: string;
+  slot: string;
+  order?: number;
+  type?: "button" | "action" | "custom-element" | "iframe" | "modal" | string;
+  label?: string;
+  icon?: string | null;
+  hint?: string | null;
+  action?: "insert" | "tool" | "event" | "view" | "script" | string;
+  value?: string | null;
+  entry?: string | null;
+  tag?: string | null;
+  category?: string | null;
+}
+
 export interface ExtensionUi {
+  slots?: ExtensionUiSlotContribution[];
   nav_items: ExtensionUiEntry[];
   studio_tabs: ExtensionUiEntry[];
   /** Boutons près du champ de saisie. Vide quand l'extension est éteinte. */
@@ -1046,6 +1062,8 @@ export interface ImageDefaults {
 export interface ModelPreferences {
   /** Null means the Studio chooses the first installed TTS model. */
   tts_model: string | null;
+  /** Null means the first installed image diffusion model. */
+  image_model?: string | null;
 }
 
 /** Named quality presets → pixels. Shared by the settings UI and slash args. */
@@ -1502,6 +1520,8 @@ export interface CoreApi {
   setExtensionMcpServers(id: string, servers: ExtensionMcpServer[]): Promise<ExtensionMcpServer[]>;
   listExtensionCommands(): Promise<ExtensionCommand[]>;
   resolveExtensionCommand(name: string, args: string): Promise<string>;
+  /** Lit le contenu textuel d'un asset d'extension (script, html, style). */
+  readExtensionAsset(extensionId: string, assetPath: string): Promise<string>;
   /** Reads the last refresh. Filtering happens in Rust. */
   browseExtensionCatalog(opts?: {
     query?: string;
@@ -1954,6 +1974,8 @@ const tauriCore: CoreApi = {
   listExtensionCommands: () => invoke<ExtensionCommand[]>("list_extension_commands"),
   resolveExtensionCommand: (name, args) =>
     invoke<string>("resolve_extension_command", { name, args }),
+  readExtensionAsset: (extensionId, assetPath) =>
+    invoke<string>("read_extension_asset", { extensionId, assetPath }),
   browseExtensionCatalog: (opts) =>
     invoke<CatalogSnapshot>("browse_extension_catalog", {
       query: opts?.query ?? null,
@@ -2752,6 +2774,50 @@ let demoExtensions: InstalledExtension[] = [
     ui: { nav_items: [], studio_tabs: [] },
     created_at: "2026-07-22T09:00:00Z",
     updated_at: "2026-07-22T09:00:00Z",
+  },
+  {
+    id: "demo-dictaphone",
+    name: "plugin-dictaphone",
+    display_name: "plugin-dictaphone",
+    version: "1.0.0",
+    api_version: "0.1",
+    description: "Dictaphone et transcription vocale en temps réel pour le chat",
+    author: "Locaryn Contributor",
+    homepage: "https://github.com/Locaryn/plugin-dictaphone",
+    kind: "plugin",
+    scope: "user",
+    ecosystem: "locaryn",
+    source: "github:Locaryn/plugin-dictaphone",
+    install_dir: "~/.locaryn/plugins/plugin-dictaphone",
+    enabled: true,
+    components: {
+      skills: 0,
+      commands: 0,
+      agents: 0,
+      rules: 0,
+      hooks: 0,
+      mcp_servers: 0,
+      lsp_adapters: 0,
+    },
+    permissions: [],
+    load_errors: [],
+    capabilities: ["voice-tts"],
+    ui: {
+      nav_items: [],
+      studio_tabs: [],
+      slots: [
+        {
+          id: "dictaphone-mic-btn",
+          slot: "composer.before_send",
+          order: 10,
+          type: "custom-element",
+          tag: "locaryn-dictaphone-btn",
+          hint: "Dicter votre message (cliquer pour écouter)",
+        },
+      ],
+    },
+    created_at: "2026-08-18T05:00:00Z",
+    updated_at: "2026-08-18T05:00:00Z",
   },
 ];
 
@@ -3765,6 +3831,7 @@ const demoCore: CoreApi = {
         { name: `${e.name}:review`, plugin: e.name, description: "Relire le diff", arguments: [] },
       ]),
   resolveExtensionCommand: async (name, args) => `[${name}] ${args}`.trim(),
+  readExtensionAsset: async (_extensionId, _assetPath) => "",
   browseExtensionCatalog: async (opts) => {
     const q = (opts?.query ?? "").toLowerCase();
     const entries = demoCatalog

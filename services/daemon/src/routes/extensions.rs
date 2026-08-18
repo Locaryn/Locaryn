@@ -97,6 +97,26 @@ fn registry_error_response(e: RegistryError) -> (StatusCode, Json<serde_json::Va
     )
 }
 
+/// Une contribution de slot d'interface.
+fn to_slot_contribution(
+    s: &locaryn_extensions::manifest::UiSlotContribution,
+) -> locaryn_shared_types::ExtensionUiSlotContribution {
+    locaryn_shared_types::ExtensionUiSlotContribution {
+        id: s.id.clone(),
+        slot: s.slot.clone(),
+        order: s.order,
+        kind: s.kind.clone(),
+        label: s.label.clone(),
+        icon: s.icon.clone(),
+        hint: s.hint.clone(),
+        action: s.action.clone(),
+        value: s.value.clone(),
+        entry: s.entry.clone(),
+        tag: s.tag.clone(),
+        category: s.category.clone(),
+    }
+}
+
 /// Un bouton de composeur, tel que l'interface l'attend.
 fn to_composer_action(
     a: &locaryn_extensions::manifest::ComposerAction,
@@ -114,6 +134,16 @@ fn to_composer_action(
         },
         value: a.value.clone(),
         hint: a.hint.clone(),
+    }
+}
+
+fn to_ui_entry(
+    e: &locaryn_extensions::manifest::UiEntry,
+) -> locaryn_shared_types::ExtensionUiEntry {
+    locaryn_shared_types::ExtensionUiEntry {
+        id: e.id.clone(),
+        label: e.label.clone(),
+        icon: e.icon.clone(),
     }
 }
 
@@ -204,6 +234,11 @@ fn entry_to_installed(
             Vec::new()
         },
         ui: locaryn_shared_types::ExtensionUi {
+            slots: if e.enabled {
+                e.ui.slots.iter().map(to_slot_contribution).collect()
+            } else {
+                Vec::new()
+            },
             nav_items: e.ui.nav_items.iter().map(to_ui_entry).collect(),
             studio_tabs: e.ui.studio_tabs.iter().map(to_ui_entry).collect(),
             // Une extension éteinte ne pose plus rien : ni bouton près du
@@ -260,16 +295,6 @@ fn entry_to_installed(
         }),
         created_at: now,
         updated_at: now,
-    }
-}
-
-fn to_ui_entry(
-    e: &locaryn_extensions::manifest::UiEntry,
-) -> locaryn_shared_types::ExtensionUiEntry {
-    locaryn_shared_types::ExtensionUiEntry {
-        id: e.id.clone(),
-        label: e.label.clone(),
-        icon: e.icon.clone(),
     }
 }
 

@@ -17,9 +17,11 @@ import { ACCENT_PRESETS } from "../hooks/useTheme";
 import { type AppInfo, type Project, type Session, core } from "../lib/core";
 import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
+import { AccountView } from "./AccountView";
 import { ProjectSettings } from "./ProjectSettings";
 
 export type Section =
+  | "account"
   | "engine"
   | "performance"
   | "conversation"
@@ -48,6 +50,12 @@ type Props = {
 };
 
 const SECTIONS: { id: Section; icon: IconName; label: string; desc: string }[] = [
+  {
+    id: "account",
+    icon: "private",
+    label: "Compte",
+    desc: "Profil local, identité, préférences et mémoire",
+  },
   {
     id: "engine",
     icon: "settings",
@@ -195,6 +203,13 @@ export function SettingsView({
             <Icon name={current.icon} size={18} /> {current.label}
           </h3>
 
+          {section === "account" && (
+            <AccountView
+              embedded
+              activeCapabilities={activeCapabilities}
+              onOpenSession={(session) => onOpenSession?.(session)}
+            />
+          )}
           {section === "engine" && <EngineSettings activeCapabilities={activeCapabilities} />}
           {section === "performance" && (
             <>

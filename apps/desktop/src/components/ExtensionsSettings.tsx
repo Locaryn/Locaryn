@@ -16,6 +16,7 @@ import {
   core,
 } from "../lib/core";
 import { consumePendingInstall, subscribeDeepLink } from "../lib/deepLink";
+import { pickAnyFile } from "../lib/dialog";
 import { ExtensionConfigPanel } from "./ExtensionConfigPanel";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
 import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
@@ -33,7 +34,6 @@ import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
 const ECOSYSTEM_FILTERS: { id: ExtensionEcosystem | "all"; label: string }[] = [
   { id: "all", label: "Tous" },
   { id: "locaryn", label: "Officiel Locaryn (Certifié)" },
-  { id: "claude_code", label: ECOSYSTEM_LABELS.claude_code },
   { id: "gemini_cli", label: ECOSYSTEM_LABELS.gemini_cli },
   { id: "opencode", label: ECOSYSTEM_LABELS.opencode },
 ];
@@ -587,7 +587,20 @@ export function ExtensionsSettings() {
 
   // Les serveurs MCP ont leur propre espace dans Connecteurs : ne pas les
   // mélanger avec les extensions et plugins dans ce catalogue.
-  const entries = (snapshot?.entries ?? []).filter((entry) => entry.ecosystem !== "mcp");
+  const entries = useMemo(() => {
+    const raw = (snapshot?.entries ?? []).filter((entry) => entry.ecosystem !== "mcp");
+    const q = query.trim().toLowerCase();
+    return raw.filter((entry) => {
+      if (ecosystem !== "all" && entry.ecosystem !== ecosystem) return false;
+      if (!q) return true;
+      return (
+        entry.name.toLowerCase().includes(q) ||
+        entry.display_name.toLowerCase().includes(q) ||
+        (entry.description ?? "").toLowerCase().includes(q) ||
+        entry.keywords.some((k) => k.toLowerCase().includes(q))
+      );
+    });
+  }, [snapshot, ecosystem, query]);
   // Entrées du catalogue déjà installées, par nom — pour repérer une version
   // plus récente que le contrôle GitHub ne voit pas (source locale, etc.).
   const catalogByName = useMemo(() => {
@@ -710,6 +723,20 @@ export function ExtensionsSettings() {
             onClick={() => setSourcesOpen((v) => !v)}
           >
             Sources ({sources.filter((s) => s.enabled).length})
+          </button>
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            style={{ fontSize: 12 }}
+            onClick={async () => {
+              const zipPath = await pickAnyFile("Archive ZIP", ["zip"]);
+              if (zipPath) {
+                setInstallDialog({ open: true, kind: "extension", initialSource: zipPath });
+              }
+            }}
+            title="Importer une extension ou un plugin directement depuis une archive ZIP"
+          >
+            📦 Importer ZIP…
           </button>
           <button
             type="button"

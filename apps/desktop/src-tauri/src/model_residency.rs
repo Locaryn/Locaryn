@@ -332,9 +332,18 @@ pub struct ResidencyStatus {
 
 #[tauri::command]
 pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, String> {
-    let engine = ProviderEngine::LlamaCpp;
-    let loaded = core.supervisor.is_healthy(engine).await;
     let active = core.storage.providers.active().await.ok().flatten();
+    let engine = active.as_ref().map(|p| p.engine).unwrap_or(ProviderEngine::LlamaCpp);
+
+    let is_managed = matches!(engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm);
+    let loaded = if is_managed {
+        core.supervisor.is_healthy(engine).await
+            && active.as_ref().and_then(|p| p.model.as_ref()).is_some()
+    } else {
+        core.supervisor.is_healthy(engine).await
+            && active.as_ref().and_then(|p| p.model.as_ref()).is_some()
+    };
+
     let (idle_seconds, pinned) = match core.supervisor.residency(engine).await {
         Some((idle, pinned, _)) => (idle, pinned),
         None => (0, false),
@@ -342,7 +351,11 @@ pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, S
 
     Ok(ResidencyStatus {
         loaded,
-        model: active.as_ref().and_then(|p| p.model.clone()),
+        model: if loaded {
+            active.as_ref().and_then(|p| p.model.clone())
+        } else {
+            None
+        },
         pinned,
         idle_seconds,
         idle_timeout_seconds: core.supervisor.idle_timeout_secs(),
@@ -423,12 +436,44 @@ pub async fn load_chat_model(
 /// Décharger le modèle et rendre la mémoire.
 #[tauri::command]
 pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, String> {
-    let engine = ProviderEngine::LlamaCpp;
+    let active = core.storage.providers.active().await.ok().flatten();
+    let engine = active.as_ref().map(|p| p.engine).unwrap_or(ProviderEngine::LlamaCpp);
+    let endpoint = active
+        .as_ref()
+        .map(|p| p.endpoint.clone())
+        .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
+
+    // 1. Décharger le moteur supervisé (LlamaCpp, AirLLM, etc.)
     core.supervisor.set_pinned(engine, false).await;
-    core.supervisor
-        .shutdown(engine)
-        .await
-        .map_err(|e| e.to_string())?;
+    core.supervisor.set_pinned(ProviderEngine::LlamaCpp, false).await;
+    core.supervisor.set_pinned(ProviderEngine::AirLlm, false).await;
+
+    let _ = core.supervisor.shutdown(engine).await;
+    let _ = core.supervisor.shutdown(ProviderEngine::LlamaCpp).await;
+    let _ = core.supervisor.shutdown(ProviderEngine::AirLlm).await;
+
+    // 2. Si Ollama ou API externe, envoyer la commande de déchargement immédiat
+    if let Some(model_name) = active.as_ref().and_then(|p| p.model.as_deref()) {
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+            .unwrap_or_default();
+
+        let url = format!("{}/api/generate", endpoint.trim_end_matches('/'));
+        let _ = http
+            .post(url)
+            .json(&serde_json::json!({
+                "model": model_name,
+                "keep_alive": 0
+            }))
+            .send()
+            .await;
+    }
+
+    // 3. Réinitialiser le modèle actif dans le stockage local
+    let _ = core.storage.providers.upsert_local(engine, &endpoint, None).await;
+
+    crate::refresh_mcp_runtime_env(&core).await;
     tracing::info!("modèle de chat déchargé à la demande");
     model_residency(core).await
 }

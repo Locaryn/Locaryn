@@ -42,3 +42,7 @@ if (Test-Path $BundleDir) {
 } else {
     Write-Warning "No desktop bundles found. Run build-desktop.ps1 first."
 }
+
+# Package extensions
+& (Join-Path $Root "scripts\package-plugins.ps1")
+

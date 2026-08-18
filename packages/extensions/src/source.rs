@@ -134,8 +134,9 @@ pub fn parse(spec: &str) -> Result<InstallSource, SourceError> {
         || spec.starts_with('/')
         || spec.starts_with('~')
         || spec.starts_with('\\')
-        || (spec.len() > 2 && spec.as_bytes()[1] == b':');
-    if looks_like_path || Path::new(spec).is_dir() {
+        || (spec.len() > 2 && spec.as_bytes()[1] == b':')
+        || spec.to_lowercase().ends_with(".zip");
+    if looks_like_path || Path::new(spec).is_dir() || Path::new(spec).is_file() {
         return Ok(InstallSource::Local {
             path: PathBuf::from(spec),
         });

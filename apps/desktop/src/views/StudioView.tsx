@@ -6,6 +6,11 @@ import { Model3DPanel } from "../components/Model3DPanel";
 import { MusicGenPanel } from "../components/MusicGenPanel";
 import { RegionEditPanel } from "../components/RegionEditPanel";
 import { VideoGenPanel } from "../components/VideoGenPanel";
+import { DynamicPluginWidget } from "../components/extensions/DynamicPluginWidget";
+import {
+  type ResolvedSlotContribution,
+  getSlotContributions,
+} from "../components/extensions/SlotRegistry";
 import { type InstalledExtension, core } from "../lib/core";
 import { taskCenter, useTasks } from "../lib/taskCenter";
 
@@ -82,6 +87,7 @@ export function StudioView({
   // onglet natif ; dans ce cas sa déclaration suffit à l'afficher. Les onglets
   // personnalisés sont ensuite ajoutés sans jamais recouvrir un id natif.
   const onglets = useMemo(() => {
+    const slotContributions = getSlotContributions(extensions, "studio.tabs");
     const extensionTabIds = new Set(
       extensions.flatMap((ext) => (ext.ui?.studio_tabs ?? []).map((t) => t.id)),
     );
@@ -91,27 +97,26 @@ export function StudioView({
       return !required || capabilities.has(required) || extensionTabIds.has(tab.id);
     });
     const pris = new Set<string>(natifs.map((t) => t.id));
-    const depuisExtensions = extensions.flatMap((ext) =>
-      (ext.ui?.studio_tabs ?? []).flatMap((t) => {
-        if (pris.has(t.id)) return [];
-        pris.add(t.id);
-        return [
-          {
-            id: t.id,
-            label: t.label,
-            icon: (isIconName(t.icon) ? t.icon : "extensions") as IconName,
-            source: ext.display_name || ext.name,
-          },
-        ];
-      }),
-    );
-    // Le type unifié : `source` n'existe que pour les onglets d'extensions,
-    // le switch le lit en optionnel.
-    return [...natifs, ...depuisExtensions] as {
+    const depuisSlots = slotContributions.flatMap((t) => {
+      if (pris.has(t.id)) return [];
+      pris.add(t.id);
+      return [
+        {
+          id: t.id,
+          label: t.label || t.id,
+          icon: (isIconName(t.icon) ? t.icon : "extensions") as IconName,
+          source: t.extensionName,
+          contribution: t,
+        },
+      ];
+    });
+
+    return [...natifs, ...depuisSlots] as {
       id: string;
       label: string;
       icon: IconName;
       source?: string;
+      contribution?: ResolvedSlotContribution;
     }[];
   }, [extensions]);
 
@@ -573,10 +578,19 @@ export function StudioView({
           "Réponses précises à partir d'un corpus de documents ou d'un contexte donné.",
         );
       default: {
-        // Un onglet qu'aucune extension active n'apporte, ou un id inconnu :
-        // l'application ne sait pas dessiner ce que l'extension ferait — elle
-        // le dit plutôt que d'afficher un panneau vide.
         const onglet = onglets.find((t) => t.id === active);
+        if (
+          onglet?.contribution &&
+          (onglet.contribution.entry ||
+            onglet.contribution.tag ||
+            onglet.contribution.type === "custom-element")
+        ) {
+          return (
+            <div className="locaryn-card" style={{ padding: "24px" }}>
+              <DynamicPluginWidget contribution={onglet.contribution} />
+            </div>
+          );
+        }
         return renderPlaceholder(
           onglet?.label ?? active,
           onglet?.source

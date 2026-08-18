@@ -638,7 +638,7 @@ export function App() {
 
       if (health?.active_provider?.model === tag) {
         const remaining = installedModels.filter((m) => m !== tag);
-        await core.configureProvider(active.endpoint, remaining[0] ?? "gemma2:2b");
+        await core.configureProvider(active.endpoint, remaining[0]);
       }
 
       await refreshHealth();
@@ -927,10 +927,6 @@ export function App() {
                 onSessionRenamed={handleRenameSession}
                 onSessionsMerged={handleMergeSessions}
                 onNewEphemeralChat={handleNewEphemeralChat}
-                onOpenHistory={() => {
-                  setSettingsInitialSection("conversation");
-                  setActiveView("settings");
-                }}
                 onOpenProjectSettings={(p) => setProjectSettings(p)}
                 onProjectArchived={(p) => {
                   // Drop it from the sidebar and fall back to another project.
@@ -1149,11 +1145,25 @@ export function App() {
         )}
 
         {activeView === "account" && (
-          <AccountView
+          <SettingsView
+            theme={theme}
+            projects={projects}
+            sessionsByProject={sessionsByProject}
+            standaloneSessions={standaloneSessions}
             activeCapabilities={activeCapabilities}
+            initialSection="account"
             onOpenSession={(session) => {
               void handleSelectSession(session);
               setActiveView("chat");
+            }}
+            onOpenMarketplace={() => setActiveView("models")}
+            onProjectArchived={(p) => {
+              setProjects((prev) => prev.filter((x) => x.id !== p.id));
+              setSessionsByProject((prev) => {
+                const next = { ...prev };
+                delete next[p.id];
+                return next;
+              });
             }}
           />
         )}
@@ -1243,7 +1253,9 @@ export function App() {
             aria-valuemax={PANEL_LIMITS.bottomH.max}
             tabIndex={0}
           />
-          <div style={{ height: bottomH, flex: "none", display: "flex", minHeight: 0 }}>
+          <div
+            style={{ height: bottomH, width: "100%", flex: "none", display: "flex", minHeight: 0 }}
+          >
             <BottomPanel cwd={activeProject?.path ?? null} sessionId={activeSession?.id ?? null} />
           </div>
         </>

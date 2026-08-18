@@ -1,6 +1,7 @@
 import { Icon, type IconName, isCapability, isIconName } from "@locaryn/ui-core";
 import type { ConnectionMode, InstalledExtension, ProviderSummary } from "../lib/core";
 import { ModalShell } from "./ModalShell";
+import { getSlotContributions } from "./extensions/SlotRegistry";
 
 type Props = {
   isOpen: boolean;
@@ -96,12 +97,6 @@ const BASE_NAV_ITEMS: NavItem[] = [
     desc: "Connexions SSH, bases de données et serveurs MCP",
   },
   {
-    id: "account",
-    label: "Compte",
-    icon: "private",
-    desc: "Profil local, connexion distante et archives",
-  },
-  {
     id: "settings",
     label: "Paramètres",
     icon: "settings",
@@ -155,6 +150,20 @@ export function NavDrawer({
   });
 
   const pris = new Set(visibleItems.map((i) => i.id));
+  const slotNavItems = getSlotContributions(extensions, "nav.drawer");
+  const depuisSlots: NavItem[] = slotNavItems.flatMap((ni) => {
+    if (pris.has(ni.id)) return [];
+    pris.add(ni.id);
+    return [
+      {
+        id: ni.id,
+        label: ni.label || ni.id,
+        icon: (isIconName(ni.icon) ? ni.icon : "extensions") as IconName,
+        desc: ni.hint || `Apporté par ${ni.extensionName}`,
+      },
+    ];
+  });
+
   const depuisExtensions: NavItem[] = extensions.flatMap((ext) =>
     (ext.ui?.nav_items ?? []).flatMap((ni) => {
       if (pris.has(ni.id)) return [];
@@ -169,7 +178,7 @@ export function NavDrawer({
       ];
     }),
   );
-  const itemsAffiches = [...visibleItems, ...depuisExtensions];
+  const itemsAffiches = [...visibleItems, ...depuisSlots, ...depuisExtensions];
 
   return (
     <ModalShell

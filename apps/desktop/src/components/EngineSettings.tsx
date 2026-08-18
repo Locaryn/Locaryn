@@ -1,14 +1,16 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon, type IconName, isIconName } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import {
   type AppInfo,
   type InferenceConfig,
+  type InstalledExtension,
   type LlamaRuntimeStatus,
   type LoraAdapter,
   type RuntimeCapabilities,
   core,
 } from "../lib/core";
 import { isNsfwLora } from "../lib/modelSafety";
+import { getSlotContributions } from "./extensions/SlotRegistry";
 
 interface EngineSpec {
   id: string;
@@ -223,10 +225,36 @@ export function EngineSettings({
     }
   }
 
-  const visibleEngines = ALL_ENGINES.filter((e) => {
+  const [extensions, setExtensions] = useState<InstalledExtension[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    core
+      .listExtensions()
+      .then((exts) => {
+        if (!cancelled) setExtensions(exts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const slotEngines = getSlotContributions(extensions, "engines.runtimes").map((s) => ({
+    id: s.id,
+    name: s.label || s.id,
+    category: s.category || `Extension ${s.extensionName}`,
+    desc: s.hint || `Moteur runtime apporté par l'extension ${s.extensionName}.`,
+    backend: s.value || "Runtime externe",
+    icon: (isIconName(s.icon) ? s.icon : "server") as IconName,
+  }));
+
+  const nativeVisible = ALL_ENGINES.filter((e) => {
     if (!e.requiredCapability) return true;
     return e.requiredCapability.some((cap) => activeCapabilities.includes(cap));
   });
+
+  const visibleEngines = [...nativeVisible, ...slotEngines];
 
   return (
     <div className="locaryn-engine-tab">

@@ -1,11 +1,30 @@
 import { useEffect, useState } from "react";
-import { IMAGE_QUALITIES, type ImageDefaults, core } from "../lib/core";
+import { IMAGE_QUALITIES, type ImageDefaults, type ModelPreferences, core } from "../lib/core";
 
 const VRAM_MODES: { id: string; label: string; hint: string }[] = [
   { id: "gpu", label: "GPU", hint: "Tout en VRAM — le plus rapide" },
   { id: "auto", label: "Auto", hint: "Réparti selon la VRAM libre (recommandé)" },
   { id: "lowvram", label: "Low VRAM", hint: "Poids en RAM — tourne sur petit GPU" },
 ];
+
+function formatImageModelLabel(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.includes("flux1-schnell") || lower.includes("flux-schnell"))
+    return `FLUX.1 Schnell (${fileName})`;
+  if (
+    lower.includes("stable-diffusion-v1-5") ||
+    lower.includes("sd-v1-5") ||
+    lower.includes("sd15")
+  )
+    return `Stable Diffusion 1.5 (${fileName})`;
+  if (lower.includes("sd_xl_turbo") || lower.includes("sdxl-turbo"))
+    return `SDXL Turbo (${fileName})`;
+  if (lower.includes("z_image_turbo") || lower.includes("z-image-turbo"))
+    return `Z-Image Turbo (${fileName})`;
+  if (lower.includes("z_image") || lower.includes("z-image")) return `Z-Image Base (${fileName})`;
+  if (lower.includes("deliberate")) return `Deliberate v2 (${fileName})`;
+  return fileName;
+}
 
 /**
  * Defaults used by every image generation that doesn't override them —
@@ -16,6 +35,9 @@ const VRAM_MODES: { id: string; label: string; hint: string }[] = [
 export function ImageSettings() {
   const [cfg, setCfg] = useState<ImageDefaults | null>(null);
   const [saved, setSaved] = useState(false);
+  const [preferences, setPreferences] = useState<ModelPreferences | null>(null);
+  const [installedModels, setInstalledModels] = useState<string[]>([]);
+  const [busyModel, setBusyModel] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,6 +45,18 @@ export function ImageSettings() {
       .getImageDefaults()
       .then((c) => {
         if (!cancelled) setCfg(c);
+      })
+      .catch(() => {});
+    core
+      .getModelPreferences()
+      .then((p) => {
+        if (!cancelled) setPreferences(p);
+      })
+      .catch(() => {});
+    core
+      .listImageModels()
+      .then((m) => {
+        if (!cancelled) setInstalledModels(m);
       })
       .catch(() => {});
     return () => {
@@ -50,20 +84,66 @@ export function ImageSettings() {
     }
   }
 
+  async function chooseModel(model: string | null) {
+    if (!preferences) return;
+    setBusyModel(true);
+    const next: ModelPreferences = {
+      ...preferences,
+      image_model: model,
+    };
+    setPreferences(next);
+    try {
+      await core.setModelPreferences(next);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1400);
+    } catch {
+      // Keep the optimistic value
+    } finally {
+      setBusyModel(false);
+    }
+  }
+
   if (!cfg) return <p className="locaryn-field-hint">Chargement…</p>;
 
   return (
     <div>
       <div className="locaryn-field">
-        {/* Intitulé d'un groupe de boutons, pas d'un champ de saisie : d'où le div. */}
         <div className="locaryn-field-label">
-          Qualité par défaut
+          Modèle d'image par défaut
           {saved && (
             <span style={{ marginLeft: 8, color: "var(--accent)", fontSize: "var(--text-xs)" }}>
               enregistré
             </span>
           )}
         </div>
+        <p className="locaryn-field-hint">
+          Le modèle de diffusion utilisé pour les créations d'images (commande <code>/image</code>,
+          chat et studio).
+        </p>
+        <select
+          className="locaryn-select"
+          style={{ marginTop: 8 }}
+          value={preferences?.image_model ?? ""}
+          disabled={busyModel}
+          onChange={(e) => void chooseModel(e.target.value || null)}
+        >
+          <option value="">Automatique — premier modèle de diffusion installé</option>
+          {installedModels.map((m) => (
+            <option key={m} value={m}>
+              {formatImageModelLabel(m)}
+            </option>
+          ))}
+        </select>
+        {installedModels.length === 0 && (
+          <p className="locaryn-field-hint" style={{ marginTop: 6, color: "var(--warning)" }}>
+            Aucun modèle de diffusion détecté dans votre dossier de modèles.
+          </p>
+        )}
+      </div>
+
+      <div className="locaryn-field" style={{ marginTop: 20 }}>
+        {/* Intitulé d'un groupe de boutons, pas d'un champ de saisie : d'où le div. */}
+        <div className="locaryn-field-label">Qualité par défaut</div>
         <p className="locaryn-field-hint">
           Appliquée à <code>/image</code> et au bouton Créer quand aucune valeur n'est précisée.
         </p>

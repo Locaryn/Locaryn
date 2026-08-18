@@ -678,6 +678,9 @@ struct ModelPreferences {
     /// None means the Studio chooses the first installed TTS model.
     #[serde(default)]
     pub tts_model: Option<String>,
+    /// None means the first installed image diffusion model.
+    #[serde(default)]
+    pub image_model: Option<String>,
 }
 
 impl ModelPreferences {
@@ -710,6 +713,10 @@ fn set_model_preferences(
 ) -> Result<(), String> {
     preferences.tts_model = preferences
         .tts_model
+        .take()
+        .and_then(|model| (!model.trim().is_empty()).then(|| model.trim().to_string()));
+    preferences.image_model = preferences
+        .image_model
         .take()
         .and_then(|model| (!model.trim().is_empty()).then(|| model.trim().to_string()));
     preferences.save(&core.data_dir).map_err(|e| e.to_string())
@@ -2100,6 +2107,10 @@ fn is_image_asset(file_name: &str) -> bool {
 /// to a companion file (VAE, text encoder, projector) that cannot be selected.
 fn is_diffusion_checkpoint(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
+    let is_valid_ext = n.ends_with(".gguf") || n.ends_with(".safetensors") || n.ends_with(".ckpt");
+    if !is_valid_ext {
+        return false;
+    }
     const AUX: &[&str] = &[
         "mmproj-",
         "ae.safetensors",
@@ -2110,8 +2121,84 @@ fn is_diffusion_checkpoint(file_name: &str) -> bool {
         "text-encoder",
         "abliterat",
         "qwen",
+        "embed",
     ];
     is_image_asset(file_name) && !AUX.iter().any(|p| n.contains(p))
+}
+
+/// Text chat model (GGUF/Safetensors LLM), excluding TTS, audio, embeddings,
+/// image diffusion and non-chat models.
+pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
+    let n = file_name.to_ascii_lowercase();
+
+    // 1. Must be GGUF or Safetensors (llama.cpp and chat inference engines).
+    // Standalone .pth, .pt, .onnx, .bin are Piper/Kokoro/Audio/Vision weights.
+    let is_valid_ext = n.ends_with(".gguf") || n.ends_with(".safetensors");
+    if !is_valid_ext {
+        return false;
+    }
+
+    // 2. Exclude image diffusion checkpoints, VAE, CLIP, etc.
+    if is_image_asset(&n) {
+        return false;
+    }
+
+    // 3. Exclude TTS, Voice, Speech, Audio checkpoints
+    const AUDIO_TTS: &[&str] = &[
+        "-tts",
+        "_tts",
+        "tts-",
+        "/tts",
+        "tts.",
+        "tts_",
+        "xtts",
+        "piper",
+        "kokoro",
+        "parler",
+        "bark",
+        "whisper",
+        "musicgen",
+        "audioldm",
+        "audiocraft",
+        "customvoice",
+        "speech",
+        "vocoder",
+    ];
+    if AUDIO_TTS.iter().any(|p| n.contains(p)) {
+        return false;
+    }
+
+    // 4. Exclude Embedding & Reranking models
+    const EMBEDDING: &[&str] = &[
+        "embed",
+        "embedding",
+        "nomic-embed",
+        "bge-",
+        "bge_",
+        "all-minilm",
+        "e5-small",
+        "e5-base",
+        "e5-large",
+        "rerank",
+    ];
+    if EMBEDDING.iter().any(|p| n.contains(p)) {
+        return false;
+    }
+
+    // 5. Exclude Vision-only / Segmentation / OCR models
+    const VISION_ONLY: &[&str] = &[
+        "clipseg",
+        "segformer",
+        "yolo",
+        "depth-anything",
+        "sam-",
+        "segment-anything",
+    ];
+    if VISION_ONLY.iter().any(|p| n.contains(p)) {
+        return false;
+    }
+
+    true
 }
 
 /// List the models actually installed on the Ollama runtime at `endpoint`.
@@ -2217,9 +2304,8 @@ async fn list_models(_core: State<'_, Core>, _endpoint: String) -> Result<Vec<St
         }
     }
 
-    // Image-pipeline files are not chat models: a diffusion checkpoint or a
-    // VAE selected as "the model" makes llama-server fail to load.
-    names.retain(|n| !is_image_asset(n));
+    // Only text chat models: exclude diffusion, TTS, embeddings, and non-LLM weights.
+    names.retain(|n| is_text_chat_model(n));
 
     names.sort();
     names.dedup();
@@ -2279,14 +2365,16 @@ async fn pull_model(
     let url = model.trim().to_string();
     let url = if url.starts_with("hf.co/") {
         url.replace("hf.co/", "https://huggingface.co/")
+    } else if !url.starts_with("http") && url.contains('/') && !url.contains('\\') && !url.contains(' ') {
+        format!("https://huggingface.co/{url}")
     } else {
         url
     };
     let hf_token = hf_token.unwrap_or_default();
     if !url.starts_with("http") {
         return Err(
-            "Pour installer un modèle, utilisez une URL directe vers un fichier .gguf \
-             (ex: https://huggingface.co/.../resolve/main/model-Q4_K_M.gguf)"
+            "Pour installer un modèle, utilisez un identifiant HuggingFace (ex: stablediffusionapi/deliberate-v2) \
+             ou une URL directe vers un fichier .safetensors / .gguf."
                 .into(),
         );
     }
@@ -8357,6 +8445,7 @@ pub fn run() {
             extensions::set_extension_mcp_servers,
             extensions::list_extension_commands,
             extensions::resolve_extension_command,
+            extensions::read_extension_asset,
             extensions::browse_extension_catalog,
             extensions::refresh_extension_catalog,
             extensions::catalog_entry_details,

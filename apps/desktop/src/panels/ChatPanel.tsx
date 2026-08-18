@@ -11,6 +11,7 @@ import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { ToolCard } from "../components/chat/ToolCard";
 import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
+import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import {
   type ConnectionMode,
   type ExtensionComposerAction,
@@ -28,6 +29,7 @@ import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { setImageResultHandler, startImageGeneration, toImageUrl } from "../lib/imageJobs";
 import { loadMediaObjectUrl } from "../lib/media";
+import { pluginBridge } from "../lib/pluginBridge";
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
   type SlashAction,
@@ -231,7 +233,7 @@ export function ChatPanel({
   const [reasoning, setReasoning] = useState<ReasoningLevel>("auto");
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
-  const [activeModel, setActiveModel] = useState<string>("gemma2:2b");
+  const [activeModel, setActiveModel] = useState<string>("");
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [quickModelOpen, setQuickModelOpen] = useState(false);
   const [imageGenOpen, setImageGenOpen] = useState(false);
@@ -261,9 +263,6 @@ export function ChatPanel({
   // Commandes apportees par les plugins actifs. Rechargees au montage :
   // installer ou desactiver une extension change la palette sans redemarrage.
   const [extCommands, setExtCommands] = useState<SlashCommand[]>([]);
-  /** Boutons posés près du champ par les extensions actives. */
-  const [composerActions, setComposerActions] = useState<ExtensionComposerAction[]>([]);
-  const [composerBusy, setComposerBusy] = useState<string | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
   /** Resolution requested through a slash argument (e.g. "/image max"). */
@@ -286,28 +285,31 @@ export function ChatPanel({
   // l'effet de montage peut la citer sans se relancer à chaque rendu.
   const refreshActiveModel = useCallback(async () => {
     try {
-      const h = await core.health();
       const providers = await core.listProviders();
       const active = providers.find((p) => p.is_active) ?? providers[0];
+      const endpoint = active?.endpoint ?? "http://127.0.0.1:8080";
 
-      if (active) {
-        if (active.model) {
-          setActiveModel(active.model);
-        }
-        const isRemote =
-          active.kind === "remote" || (active.model?.includes("openrouter") ?? false);
-        setIsLocalModel(!isRemote);
-
-        try {
-          const list = await core.listModels(active.endpoint);
-          setInstalledModels(list);
-        } catch {
-          setInstalledModels(active.model ? [active.model] : []);
-        }
-      } else if (h.active_provider?.model) {
-        setActiveModel(h.active_provider.model);
-        setIsLocalModel(h.mode === "local");
+      let list: string[] = [];
+      try {
+        list = await core.listModels(endpoint);
+        setInstalledModels(list);
+      } catch {
+        list = active?.model ? [active.model] : [];
+        setInstalledModels(list);
       }
+
+      let targetModel = active?.model ?? "";
+      // Si le modèle enregistré n'existe pas dans les modèles installés, on sélectionne le premier installé
+      if ((!targetModel || (list.length > 0 && !list.includes(targetModel))) && list.length > 0) {
+        targetModel = list[0];
+        if (active) {
+          void core.configureProvider(active.endpoint, targetModel);
+        }
+      }
+
+      setActiveModel(targetModel);
+      const isRemote = active?.kind === "remote" || (targetModel.includes("openrouter") ?? false);
+      setIsLocalModel(!isRemote);
     } catch {
       // keep fallback
     }
@@ -316,9 +318,23 @@ export function ChatPanel({
   useEffect(() => {
     refreshActiveModel();
     core
-      .listImageModels()
-      .then((l) => setActiveImageModel(l[0] ?? ""))
-      .catch(() => {});
+      .getModelPreferences()
+      .then((prefs) => {
+        if (prefs.image_model) {
+          setActiveImageModel(prefs.image_model);
+        } else {
+          core
+            .listImageModels()
+            .then((l) => setActiveImageModel(l[0] ?? ""))
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        core
+          .listImageModels()
+          .then((l) => setActiveImageModel(l[0] ?? ""))
+          .catch(() => {});
+      });
   }, [refreshActiveModel]);
 
   // A chat inside a project works in that folder — reflect it in the picker.
@@ -862,44 +878,6 @@ export function ChatPanel({
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const relire = () => {
-      core
-        .listExtensions()
-        .then((exts) => {
-          if (cancelled) return;
-          setComposerActions(exts.flatMap((e) => e.ui?.composer_actions ?? []));
-        })
-        .catch(() => {
-          if (!cancelled) setComposerActions([]);
-        });
-    };
-    relire();
-    window.addEventListener("locaryn:extensions-changed", relire);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("locaryn:extensions-changed", relire);
-    };
-  }, []);
-
-  async function agirComposer(a: ExtensionComposerAction) {
-    if (a.action === "insert") {
-      setInput((prev) => (prev ? `${prev} ${a.value}` : a.value));
-      return;
-    }
-    setComposerBusy(a.id);
-    setComposerError(null);
-    try {
-      const texte = await core.runComposerTool(a.value, input);
-      if (texte) setInput(texte);
-    } catch (e) {
-      setComposerError(String(e));
-    } finally {
-      setComposerBusy(null);
-    }
-  }
-
   function runSlash(cmd: SlashCommand, size?: number | null) {
     // Capture avant vidage : une commande de plugin a besoin de ce qui a ete
     // tape apres son nom pour resoudre ses arguments.
@@ -1043,6 +1021,28 @@ export function ChatPanel({
   // On the home screen there is no session yet — sending creates one.
   const canCompose = !!sessionId || !!onCreateSessionForPrompt;
   const canSend = canCompose && (!!input.trim() || attachments.length > 0);
+
+  const sendRef = useRef(send);
+  sendRef.current = send;
+
+  useEffect(() => {
+    pluginBridge.registerChatContext(
+      () => input,
+      (txt) => {
+        setInput(txt);
+        if (inputRef.current) {
+          inputRef.current.style.height = "auto";
+          inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 240)}px`;
+        }
+      },
+      () => {
+        if (canSend) sendRef.current();
+      },
+    );
+    return () => {
+      pluginBridge.unregisterChatContext();
+    };
+  }, [input, canSend]);
 
   // Context calculations
   const usedTokens = items.reduce((acc, it) => {
@@ -1387,32 +1387,12 @@ export function ChatPanel({
             onKeyDown={handleComposerKeyDown}
           />
           <div className="locaryn-composer-bar">
-            {composerActions.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-2)",
-                  flex: "none",
-                }}
-              >
-                {composerActions.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    className="locaryn-chip-btn"
-                    title={a.hint ?? a.label}
-                    disabled={!canCompose || composerBusy === a.id}
-                    onClick={() => void agirComposer(a)}
-                  >
-                    <span style={{ display: "inline-flex" }}>
-                      <Icon name={isIconName(a.icon) ? a.icon : "extensions"} size={15} />
-                    </span>
-                    {a.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Slot toolbar pour les extensions (boutons personnalisés, raccourcis) */}
+            <ExtensionSlot
+              name="composer.toolbar"
+              context={{ input, setInput, send, canCompose }}
+            />
+
             <input
               ref={fileRef}
               type="file"
@@ -1455,6 +1435,13 @@ export function ChatPanel({
             <span className="locaryn-composer-hint">
               Entrée pour envoyer · Shift+Entrée pour saut de ligne
             </span>
+
+            {/* Slot avant envoi (ex: dictaphone / micro, actions rapides de validation) */}
+            <ExtensionSlot
+              name="composer.before_send"
+              context={{ input, setInput, send, canCompose }}
+            />
+
             <button
               type="button"
               className="locaryn-send"
@@ -1524,7 +1511,7 @@ export function ChatPanel({
                 <span style={{ display: "inline-flex" }}>
                   <Icon name={isLocalModel ? "cpu" : "cloud"} size={14} />
                 </span>
-                <span style={{ fontWeight: 700 }}>{activeModel}</span>
+                <span style={{ fontWeight: 700 }}>{activeModel || "Choisir un modèle"}</span>
                 <span style={{ fontSize: "9px", color: "var(--text-faint)" }}>▾</span>
               </button>
             )}

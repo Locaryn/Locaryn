@@ -43,6 +43,7 @@ export function SessionRow({
   onMergeInto,
 }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showSubmenu, setShowSubmenu] = useState(false);
   /** Une conversation survole celle-ci, prête à y être versée. */
   const [accueille, setAccueille] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -81,8 +82,16 @@ export function SessionRow({
   // reste posé sur l'écran pendant qu'on fait autre chose.
   useEffect(() => {
     if (!menu) return;
-    const close = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenu(null);
+    const close = () => {
+      setMenu(null);
+      setShowSubmenu(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenu(null);
+        setShowSubmenu(false);
+      }
+    };
     window.addEventListener("click", close);
     window.addEventListener("keydown", onKey);
     return () => {
@@ -145,6 +154,7 @@ export function SessionRow({
       }}
       onContextMenu={(e) => {
         e.preventDefault();
+        setShowSubmenu(false);
         setMenu({ x: e.clientX, y: e.clientY });
       }}
     >
@@ -198,6 +208,7 @@ export function SessionRow({
             className="locaryn-ctx-item"
             onClick={() => {
               setMenu(null);
+              setShowSubmenu(false);
               setDraft(label);
               setEditing(true);
             }}
@@ -205,28 +216,69 @@ export function SessionRow({
             Renommer
           </button>
           {projects.length > 0 && (
-            <>
-              <div className="locaryn-ctx-label">Ranger dans</div>
-              {projects.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="locaryn-ctx-item"
-                  onClick={() => {
-                    setMenu(null);
-                    onMove(p.id);
-                  }}
+            <div
+              className="locaryn-ctx-submenu-parent"
+              onMouseEnter={() => setShowSubmenu(true)}
+              onMouseLeave={() => setShowSubmenu(false)}
+            >
+              <button
+                type="button"
+                className={`locaryn-ctx-item locaryn-ctx-item-has-sub${showSubmenu ? " locaryn-active" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowSubmenu((prev) => !prev);
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Icon name="project" size={14} />
+                  <span>Ranger dans</span>
+                </span>
+                <span className="locaryn-ctx-arrow">▸</span>
+              </button>
+              {showSubmenu && (
+                <div
+                  className={`locaryn-ctx locaryn-ctx-sub${menu.x + 360 > window.innerWidth ? " locaryn-ctx-sub-left" : ""}`}
+                  role="menu"
                 >
-                  {p.name}
-                </button>
-              ))}
-            </>
+                  <div className="locaryn-ctx-label" style={{ paddingBottom: "4px" }}>
+                    Choisir un projet
+                  </div>
+                  {projects.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="locaryn-ctx-item"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenu(null);
+                        setShowSubmenu(false);
+                        onMove(p.id);
+                      }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <Icon name="project" size={13} />
+                        <span
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {p.name}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           <button
             type="button"
             className="locaryn-ctx-item"
             onClick={() => {
               setMenu(null);
+              setShowSubmenu(false);
               onArchive();
             }}
           >
