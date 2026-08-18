@@ -6060,7 +6060,14 @@ except ImportError:
         pipe = AudioLDM2Pipeline.from_pretrained(
             repo_dir,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32)
-        pipe = pipe.to(device)
+        # Same reasoning as the SVD branch of generate_video: the full
+        # pipeline (CLAP + GPT-2 + VAE + UNet + vocoder) doesn't fit
+        # resident on a consumer-sized GPU. Offloading keeps only the
+        # active submodule on the GPU.
+        if device == "cuda" and torch.cuda.get_device_properties(0).total_memory / 1024**3 < 12:
+            pipe.enable_model_cpu_offload()
+        else:
+            pipe = pipe.to(device)
         engine = "audioldm2"
         if melody_path:
             report(-1, "AudioLDM2 n'accepte pas de melodie de reference — ignoree.")
