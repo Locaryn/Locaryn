@@ -1849,16 +1849,18 @@ dialog:where([open]) {
 .locaryn-approval-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
-  background: rgba(0, 0, 0, 0.55);
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px;
   animation: lo-fade-in var(--dur-med) var(--ease) both;
 }
 .locaryn-approval {
   width: min(600px, calc(100vw - 48px));
   max-height: calc(100vh - 64px);
+  margin: auto;
   display: flex;
   flex-direction: column;
   background: var(--bg);

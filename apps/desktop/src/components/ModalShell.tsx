@@ -10,6 +10,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 type Props = {
   onClose: () => void;
@@ -45,7 +46,7 @@ export function ModalShell({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     // Comparer la cible au conteneur remplace le `stopPropagation` que chaque
     // modale plaçait sur sa carte : un clic né à l'intérieur a une autre
     // cible, donc ne ferme rien. Un gestionnaire de moins, et plus aucune
@@ -75,6 +76,7 @@ export function ModalShell({
       >
         {children}
       </dialog>
-    </div>
+    </div>,
+    document.body,
   );
 }
