@@ -40,7 +40,10 @@ pub enum ModelFamily {
 
 pub fn classify(file_name: &str) -> ModelFamily {
     let n = file_name.to_ascii_lowercase();
-    if n.contains("z_image") || n.contains("z-image") {
+    // Community GGUF bundles use both `z_image` and the older abbreviated
+    // `z_img` spelling. Both are diffusion-only files and must never go
+    // through `-m` (the metadata-less GGUF then triggers the reported error).
+    if n.contains("z_image") || n.contains("z-image") || n.contains("z_img") || n.contains("zimg") {
         ModelFamily::ZImage
     } else if n.contains("flux") {
         ModelFamily::Flux
@@ -131,7 +134,16 @@ pub fn discover_companions(models_dir: &Path, family: ModelFamily) -> Companions
     if family == ModelFamily::FullCheckpoint {
         return c;
     }
-    c.vae = find_companion(models_dir, &["ae.safetensors", "vae"], &["taesd"]);
+    // stable-diffusion.cpp expects the FLUX/Z-Image VAE in safetensors
+    // format. In particular, do not pick the ONNX decoder that some older
+    // installers downloaded: it is not a valid `--vae` companion and makes
+    // sd.cpp fail later with the misleading "get sd version from file failed"
+    // message.
+    c.vae = find_companion(
+        models_dir,
+        &["ae.safetensors", "ae.sft", "vae.safetensors", "vae.sft"],
+        &["taesd", ".onnx"],
+    );
     match family {
         ModelFamily::ZImage => {
             // Z-Image conditions on Qwen3. The abliterated encoder is the same
@@ -424,6 +436,7 @@ mod tests {
     #[test]
     fn z_image_is_recognised_as_diffusion_only() {
         assert_eq!(classify("z_image_turbo-Q8_0.gguf"), ModelFamily::ZImage);
+        assert_eq!(classify("z_img_turbo-Q4_K_M.gguf"), ModelFamily::ZImage);
         assert_eq!(
             classify("Z-Image-AbliteratedV1.Q4_K_M.gguf"),
             ModelFamily::ZImage
@@ -479,6 +492,44 @@ mod tests {
         );
         assert!(args.contains(&"--vae".to_string()));
         assert!(args.contains(&"--llm".to_string()));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn an_onnx_decoder_is_not_selected_as_the_sd_cpp_vae() {
+        let dir = scratch("vae-format");
+        let model = touch(&dir, "z_image_turbo-Q8_0.gguf", 64);
+        touch(&dir, "decoder_fp32_fix.onnx", 128);
+        touch(&dir, "ae.safetensors", 32);
+        touch(&dir, "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", 48);
+        let args = build_args(&SdRequest {
+            model_path: &model,
+            models_dir: &dir,
+            prompt: "x",
+            negative_prompt: None,
+            width: 512,
+            height: 512,
+            steps: 8,
+            cfg_scale: 1.0,
+            seed: 1,
+            out_file: &dir.join("out.png"),
+            init_image: None,
+            mask: None,
+            strength: 0.8,
+            vram_gb: 24.0,
+            uncensored: false,
+            batch_count: 1,
+        })
+        .unwrap();
+        let vae = args
+            .windows(2)
+            .find(|pair| pair[0] == "--vae")
+            .map(|pair| pair[1].as_str());
+        assert_eq!(
+            vae.and_then(|p| Path::new(p).file_name())
+                .and_then(|n| n.to_str()),
+            Some("ae.safetensors")
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

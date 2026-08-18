@@ -71,7 +71,9 @@ pub async fn airllm_status() -> Result<AirllmStatus, String> {
     let python_path = python.clone();
     let (torch, airllm_installed) = match &python {
         Some(py) => {
-            let check = tokio::process::Command::new(py)
+            let mut command = tokio::process::Command::new(py);
+            crate::hide_tokio_console(&mut command);
+            let check = command
                 .args(["-c", "import importlib.util; print(1 if importlib.util.find_spec('airllm') else 0, 1 if importlib.util.find_spec('torch') else 0)"])
                 .output()
                 .await;
@@ -103,7 +105,9 @@ pub async fn airllm_status() -> Result<AirllmStatus, String> {
 #[tauri::command]
 pub async fn airllm_setup(on_event: Channel<SetupEvent>) -> Result<(), String> {
     let python = crate::find_python().ok_or("Python introuvable — installez Python 3.10+.")?;
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    crate::hide_tokio_console(&mut command);
+    let mut child = command
         .args(["-m", "pip", "install", "--upgrade", "airllm"])
         .envs(crate::python_env())
         .stdout(std::process::Stdio::piped())
@@ -162,7 +166,9 @@ pub async fn airllm_install(
         "p=snapshot_download(repo_id=sys.argv[1]);\n",
         "print('DONE:'+p, flush=True)"
     );
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    crate::hide_tokio_console(&mut command);
+    let mut child = command
         .args(["-c", script, &repo, &hf.to_string_lossy()])
         .envs(crate::python_env())
         .stdout(std::process::Stdio::piped())

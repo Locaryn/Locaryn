@@ -37,13 +37,14 @@ export async function pickAnyFile(label: string, extensions: string[]): Promise<
 export async function pickSaveFile(
   defaultPath: string,
   extensions: string[],
+  label = "Fichier",
 ): Promise<string | null> {
   try {
     return await save({
       defaultPath,
-      filters: [{ name: "Audio", extensions }],
+      filters: [{ name: label, extensions }],
     });
   } catch {
-    return window.prompt("Enregistrer la note vocale sous :", defaultPath);
+    return window.prompt(`Enregistrer ${label.toLowerCase()} sous :`, defaultPath);
   }
 }

@@ -25,9 +25,10 @@ let resultHandler: ((r: ImageJobResult) => void) | null = null;
  *  normalizing Windows backslashes. */
 export function toImageUrl(path: string): string {
   if (path.startsWith("data:")) return path;
-  // Normalize Windows backslashes and encode spaces / special characters so
-  // the Tauri asset protocol can resolve the file correctly.
-  return convertFileSrc(encodeURI(path.replace(/\\/g, "/")));
+  // Normalize Windows backslashes and let convertFileSrc perform the one
+  // required encoding step. Pre-encoding with encodeURI double-encoded `%`
+  // characters and made otherwise valid generated images fail to load.
+  return convertFileSrc(path.replace(/\\/g, "/"));
 }
 
 /** ChatPanel registers this so finished images land in the current chat. */

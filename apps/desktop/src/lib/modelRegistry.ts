@@ -434,6 +434,8 @@ export function looksLikeImageModel(tagOrName: string): boolean {
     "sd3",
     "z_image",
     "z-image",
+    "z_img",
+    "zimg",
     "flux",
     "krea",
     "dreamshaper",

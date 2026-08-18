@@ -1,10 +1,10 @@
 {
-  "version": "0.3.13",
-  "pub_date": "2026-08-18T19:19:00Z",
-  "notes": "Locaryn v0.3.13 - Scan QR agrandi, Mode Découverte réseau local, support TLS auto-signé IP directe et correctifs de navigation mobile",
+  "version": "0.3.14",
+  "pub_date": "2026-08-18T21:50:00Z",
+  "notes": "Locaryn v0.3.14 - génération d’images stable, fenêtres CMD masquées, erreurs copiables et aperçu des images dans le chat",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.13/Locaryn_0.3.13_x64-setup.exe",
+      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.14/Locaryn_0.3.14_x64-setup.exe",
       "signature": ""
     }
   }

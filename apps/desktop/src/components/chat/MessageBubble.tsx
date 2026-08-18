@@ -1,4 +1,7 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
+import { core } from "../../lib/core";
+import { pickSaveFile } from "../../lib/dialog";
 import { renderMarkdown } from "../../lib/markdown";
 import { splitReasoning } from "../../lib/reasoning";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -6,8 +9,10 @@ import { ReasoningBlock } from "./ReasoningBlock";
 type Props = {
   role: "user" | "assistant";
   text: string;
-  /** data-URL images attached to a user message. */
+  /** data-URL or asset URLs rendered in the message. */
   images?: string[];
+  /** Native source paths for generated images, when available. */
+  imagePaths?: Array<string | undefined>;
   /** Show the Edit action (last user message, not streaming). */
   canEdit?: boolean;
   onEdit?: () => void;
@@ -33,8 +38,31 @@ const RUNNABLE: Record<string, string> = {
   svg: "Aperçu",
 };
 
-export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }: Props) {
+function sourcePathFromAssetUrl(src: string): string | null {
+  try {
+    const url = new URL(src);
+    if (url.protocol !== "asset:") return null;
+    const decoded = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    // convertFileSrc encodes the complete Windows path as one URL segment;
+    // POSIX paths need their leading slash restored after URL parsing.
+    return /^[A-Za-z]:[\\/]/.test(decoded) || decoded.startsWith("/") ? decoded : `/${decoded}`;
+  } catch {
+    return null;
+  }
+}
+
+export function MessageBubble({
+  role,
+  text,
+  images,
+  imagePaths,
+  canEdit,
+  onEdit,
+  onRunCode,
+}: Props) {
   const [copied, setCopied] = useState(false);
+  const [lightbox, setLightbox] = useState<{ src: string; path?: string } | null>(null);
+  const [imageFeedback, setImageFeedback] = useState<string | null>(null);
   const mdRef = useRef<HTMLDivElement | null>(null);
 
   // Reasoning models stream their scratchpad inline with the reply. Split it
@@ -43,6 +71,103 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
     role === "assistant"
       ? splitReasoning(text)
       : { reasoning: "", answer: text, reasoningInProgress: false };
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLightbox(null);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [lightbox]);
+
+  async function saveImage() {
+    if (!lightbox) return;
+    const destination = await pickSaveFile("image.png", ["png", "jpg", "jpeg", "webp"], "Image");
+    if (!destination) return;
+    try {
+      const sourcePath = lightbox.path ?? sourcePathFromAssetUrl(lightbox.src);
+      if (sourcePath) {
+        await core.saveImageAs(sourcePath, destination);
+      } else {
+        // Browser/demo fallback for a data URL or a remote image.
+        const link = document.createElement("a");
+        link.href = lightbox.src;
+        link.download = destination.split(/[\\\\/]/).pop() || "image.png";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      setImageFeedback("Image enregistrée");
+    } catch (error) {
+      setImageFeedback(`Enregistrement impossible : ${String(error)}`);
+    }
+  }
+
+  async function copyImage() {
+    if (!lightbox) return;
+    try {
+      const response = await fetch(lightbox.src);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        throw new Error("presse-papier image indisponible");
+      }
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+      setImageFeedback("Image copiée");
+    } catch (error) {
+      setImageFeedback(`Copie impossible : ${String(error)}`);
+    }
+  }
+
+  function imageViewer() {
+    if (!lightbox) return null;
+    return (
+      <div
+        className="locaryn-image-lightbox"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setLightbox(null);
+        }}
+      >
+        <div
+          className="locaryn-image-lightbox-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image agrandie"
+        >
+          <div className="locaryn-image-lightbox-toolbar">
+            <button type="button" className="locaryn-image-lightbox-action" onClick={saveImage}>
+              <Icon name="download" size={14} /> Enregistrer sous
+            </button>
+            <button type="button" className="locaryn-image-lightbox-action" onClick={copyImage}>
+              Copier l'image
+            </button>
+            <button
+              type="button"
+              className="locaryn-image-lightbox-close"
+              onClick={() => setLightbox(null)}
+              aria-label="Fermer l'image agrandie"
+              title="Fermer"
+            >
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+          <img className="locaryn-image-lightbox-image" src={lightbox.src} alt="Image agrandie" />
+          {imageFeedback && (
+            <div className="locaryn-image-lightbox-feedback" role="status">
+              {imageFeedback}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // The markdown renderer emits raw <pre class="md-code">; enhance each block
   // with a Copy (and, for runnable languages, an Exec) toolbar. Done on the DOM
@@ -130,8 +255,13 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
           {images && images.length > 0 && (
             <div className="locaryn-msg-images">
               {images.map((src, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: les pièces jointes sont figées au moment de l'envoi, jamais réordonnées ni insérées ; la data-URL ne peut pas servir de clé car deux fois la même image donnerait deux clés identiques.
-                <img key={i} src={src} alt="attachment" className="locaryn-msg-image" />
+                <img
+                  key={src}
+                  src={src}
+                  alt="attachment"
+                  className="locaryn-msg-image locaryn-msg-image-clickable"
+                  onClick={() => setLightbox({ src, path: imagePaths?.[i] })}
+                />
               ))}
             </div>
           )}
@@ -147,6 +277,7 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
             )}
           </div>
         </div>
+        {imageViewer()}
       </div>
     );
   }
@@ -170,11 +301,17 @@ export function MessageBubble({ role, text, images, canEdit, onEdit, onRunCode }
       {images && images.length > 0 && (
         <div className="locaryn-msg-images">
           {images.map((src, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: images d'un message déjà émis, liste immuable ; la data-URL ne peut pas servir de clé car deux générations identiques la partageraient.
-            <img key={i} src={src} alt="génération" className="locaryn-msg-image" />
+            <img
+              key={src}
+              src={src}
+              alt="génération"
+              className="locaryn-msg-image locaryn-msg-image-clickable"
+              onClick={() => setLightbox({ src, path: imagePaths?.[i] })}
+            />
           ))}
         </div>
       )}
+      {imageViewer()}
     </div>
   );
 }

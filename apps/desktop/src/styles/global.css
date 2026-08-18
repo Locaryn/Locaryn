@@ -6031,6 +6031,132 @@ pre.md-code {
   color: var(--danger);
   font-size: 10px;
   margin-top: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.locaryn-notif-copy-feedback {
+  margin-top: 5px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Generated/attached images in the chat open a real viewer instead of being
+   reduced to an unreadable thumbnail. */
+.locaryn-msg-image-clickable {
+  cursor: zoom-in;
+}
+.locaryn-msg-image-clickable:hover {
+  filter: brightness(1.06);
+}
+.locaryn-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.82);
+  animation: locaryn-image-lightbox-in 140ms ease-out;
+}
+.locaryn-image-lightbox-dialog {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(96vw, 1500px);
+  height: min(94vh, 1000px);
+  min-width: 0;
+  min-height: 0;
+}
+.locaryn-image-lightbox-toolbar {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-sm);
+  background: rgba(18, 20, 20, 0.86);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.locaryn-image-lightbox-action,
+.locaryn-image-lightbox-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.locaryn-image-lightbox-action:hover,
+.locaryn-image-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.locaryn-image-lightbox-close {
+  width: 30px;
+  padding: 5px;
+  border-color: rgba(204, 125, 114, 0.65);
+  color: #ffd8d2;
+}
+.locaryn-image-lightbox-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.62);
+  cursor: zoom-out;
+}
+.locaryn-image-lightbox-feedback {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  max-width: min(80vw, 500px);
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-xs);
+  background: rgba(18, 20, 20, 0.9);
+  color: #fff;
+  font-size: 11px;
+}
+@keyframes locaryn-image-lightbox-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (max-width: 620px) {
+  .locaryn-image-lightbox {
+    padding: 8px;
+  }
+  .locaryn-image-lightbox-dialog {
+    width: 100vw;
+    height: 100vh;
+    align-items: center;
+  }
+  .locaryn-image-lightbox-toolbar {
+    left: 0;
+    right: 0;
+    justify-content: flex-end;
+  }
+  .locaryn-image-lightbox-action {
+    font-size: 10px;
+    padding-inline: 6px;
+  }
 }
 .locaryn-notif-bar {
   height: 4px;

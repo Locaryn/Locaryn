@@ -4,9 +4,32 @@ import { type AppTask, TASK_META, taskCenter, useTasks } from "../lib/taskCenter
 
 type Props = {
   onOpenResult?: (t: AppTask) => void;
-  /** Reopen the image-generation popup (clicking a generation/edit task). */
+  /** Reopen the image-generation panel for a live/completed generation. */
   onReopenImageGen?: () => void;
 };
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Tauri/WebView permissions can reject navigator.clipboard. Keep the same
+    // fallback as the chat copy action so an error is never trapped in the UI.
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      return copied;
+    } catch {
+      return false;
+    }
+  }
+}
 
 /**
  * Footer status bar + expandable notification center (bottom-right). Shows every
@@ -18,6 +41,7 @@ type Props = {
 export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
   const tasks = useTasks();
   const [open, setOpen] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<{ id: string; text: string } | null>(null);
   const panelRef = useRef<HTMLDialogElement | null>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -105,13 +129,27 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
             ) : (
               tasks.map((t) => {
                 const m = TASK_META[t.type];
-                // Toutes les notifications ne mènent nulle part : un
-                // téléchargement n'a rien à rouvrir. Les attributs interactifs
-                // ne sont donc posés que sur celles qui agissent vraiment —
-                // annoncer un bouton qui ne fait rien est pire que se taire.
+                // Une erreur est une action de copie, pas une route vers un
+                // panneau de génération qui n'a plus de sens. Les autres
+                // notifications restent interactives uniquement si elles ont
+                // réellement une destination.
+                const isError = t.status === "error" && Boolean(t.error);
                 const actionable =
-                  t.type === "generation" || t.type === "edit" || Boolean(t.resultImageUrl);
-                const activate = () => {
+                  isError ||
+                  (t.status !== "error" &&
+                    (t.type === "generation" || t.type === "edit" || Boolean(t.resultImageUrl)));
+                const activate = async () => {
+                  if (isError && t.error) {
+                    const copied = await copyText(t.error);
+                    setCopyFeedback({
+                      id: t.id,
+                      text: copied ? "Erreur copiée" : "Copie impossible",
+                    });
+                    window.setTimeout(() => {
+                      setCopyFeedback((current) => (current?.id === t.id ? null : current));
+                    }, 1800);
+                    return;
+                  }
                   if (t.type === "generation" || t.type === "edit") {
                     onReopenImageGen?.();
                     setOpen(false);
@@ -141,9 +179,11 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                         }
                       : {})}
                     title={
-                      t.type === "generation" || t.type === "edit"
-                        ? "Rouvrir la génération d'images"
-                        : undefined
+                      isError
+                        ? "Copier le détail de l'erreur"
+                        : t.type === "generation" || t.type === "edit"
+                          ? "Rouvrir la génération d'images"
+                          : undefined
                     }
                   >
                     <div className="locaryn-notif-item-head">
@@ -237,6 +277,11 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                       />
                     )}
                     {t.error && <div className="locaryn-notif-error">{t.error}</div>}
+                    {copyFeedback?.id === t.id && (
+                      <div className="locaryn-notif-copy-feedback" role="status">
+                        {copyFeedback.text}
+                      </div>
+                    )}
                   </div>
                 );
               })

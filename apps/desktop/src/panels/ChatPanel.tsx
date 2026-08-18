@@ -44,7 +44,14 @@ import { runWorkflow } from "../lib/workflow";
 import { DEFAULT_MODEL_PARAMS } from "./ModelConfigPanel";
 
 type ChatItem =
-  | { id: string; kind: "msg"; role: "user" | "assistant"; text: string; images?: string[] }
+  | {
+      id: string;
+      kind: "msg";
+      role: "user" | "assistant";
+      text: string;
+      images?: string[];
+      imagePaths?: Array<string | undefined>;
+    }
   | {
       id: string;
       kind: "audio";
@@ -450,6 +457,7 @@ export function ChatPanel({
           role: "assistant",
           text: `${r.simulated ? "(simulation) " : ""}Image générée — « ${r.prompt} »`,
           images: [r.url],
+          imagePaths: [r.path],
         },
       ]);
     });
@@ -1170,6 +1178,7 @@ export function ChatPanel({
                       role={it.role}
                       text={it.text}
                       images={it.images}
+                      imagePaths={it.imagePaths}
                       canEdit={i === lastUserIdx && !streaming}
                       onEdit={editLastUserMessage}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}

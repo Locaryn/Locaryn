@@ -430,7 +430,11 @@ pub async fn edit_region(
             vram_gb: crate::HARDWARE_CACHE
                 .get()
                 .map(|h| h.total_vram_gb as f32)
-                .unwrap_or_else(|| crate::probe_hardware().map(|h| h.total_vram_gb as f32).unwrap_or(0.0)),
+                .unwrap_or_else(|| {
+                    crate::probe_hardware()
+                        .map(|h| h.total_vram_gb as f32)
+                        .unwrap_or(0.0)
+                }),
             uncensored: false,
             batch_count: 1,
         })?;
@@ -438,7 +442,9 @@ pub async fn edit_region(
         on_progress
             .send(serde_json::json!({"progress": 40, "detail": "génération de la zone"}))
             .ok();
-        let status = tokio::process::Command::new(&sd_bin)
+        let mut command = tokio::process::Command::new(&sd_bin);
+        crate::hide_tokio_console(&mut command);
+        let status = command
             .args(&sd_args)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -525,7 +531,9 @@ async fn run_python(
     mask_only: bool,
 ) -> Result<(f32, f32, u32, f32), String> {
     let python = crate::find_python().ok_or("Python non trouvé. Installez Python 3.10+.")?;
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    crate::hide_tokio_console(&mut command);
+    let mut child = command
         .envs(crate::python_env())
         .arg("-c")
         .arg(script)

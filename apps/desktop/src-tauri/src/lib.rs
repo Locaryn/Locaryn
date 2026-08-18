@@ -51,6 +51,31 @@ use uuid::Uuid;
 /// explicit tray quit action is allowed to terminate the process.
 static TRAY_QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+/// Console processes inherit a new visible console from a GUI parent on
+/// Windows unless this flag is set. Keep every implementation subprocess
+/// private to the desktop window: generation, Python helpers and the terminal
+/// still stream their output through Tauri channels.
+pub(crate) fn hide_tokio_console(command: &mut tokio::process::Command) {
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
+}
+
+pub(crate) fn hide_std_console(command: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
+}
+
 /// The in-process core shared by all Tauri commands.
 struct Core {
     storage: Storage,
@@ -484,6 +509,43 @@ fn save_audio_as(source_path: String, destination_path: String) -> Result<(), St
     std::fs::copy(&source, &destination)
         .map(|_| ())
         .map_err(|e| format!("copie de la note vocale impossible : {e}"))
+}
+
+/// Copy a generated image after the user explicitly selected a destination.
+/// Restrict the source to Locaryn's generated-image directory so exposing this
+/// command cannot turn the chat action into an arbitrary file-copy primitive.
+#[tauri::command]
+fn save_image_as(source_path: String, destination_path: String) -> Result<(), String> {
+    let source = std::fs::canonicalize(&source_path)
+        .map_err(|e| format!("image générée introuvable : {e}"))?;
+    let generated_root = std::fs::canonicalize(locaryn_config::generated_images_dir()).ok();
+    // Older frontend builds used `<data_dir>/generated_images`; accept that
+    // legacy location as well so their already displayed images remain
+    // saveable after the storage-root correction.
+    let legacy_root = std::fs::canonicalize(
+        locaryn_config::default_data_dir().join("generated_images"),
+    )
+    .ok();
+    if ![generated_root.as_deref(), legacy_root.as_deref()]
+        .into_iter()
+        .flatten()
+        .any(|root| source.starts_with(root))
+    {
+        return Err("ce fichier n'est pas une image générée par Locaryn".into());
+    }
+
+    let destination = std::path::PathBuf::from(destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("destination image vide".into());
+    }
+    if let Some(parent) = destination.parent() {
+        if !parent.exists() {
+            return Err("le dossier de destination n'existe pas".into());
+        }
+    }
+    std::fs::copy(&source, &destination)
+        .map(|_| ())
+        .map_err(|e| format!("copie de l'image impossible : {e}"))
 }
 
 // ============================================================================
@@ -2035,6 +2097,7 @@ async fn run_terminal(
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         cmd.current_dir(dir);
     }
+    hide_tokio_console(&mut cmd);
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -2171,6 +2234,8 @@ fn is_image_asset(file_name: &str) -> bool {
         "sd3.5",
         "z_image",
         "z-image",
+        "z_img",
+        "zimg",
         "flux",
         "krea",
         "dreamshaper",
@@ -3310,9 +3375,12 @@ struct Companion {
 }
 
 const Z_IMAGE_VAE: Companion = Companion {
-    url: "https://huggingface.co/onnx-community/z_image-vae-fp32-fix/resolve/main/decoder_fp32_fix.onnx",
-    file: "z_image-vae-fp32-fix.onnx",
-    label: "decodeur VAE",
+    // Z-Image uses the FLUX VAE. The ONNX decoder that was previously
+    // downloaded here cannot be read by stable-diffusion.cpp's `--vae` flag
+    // and ends in the opaque "get sd version from file failed" error.
+    url: "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors",
+    file: "ae.safetensors",
+    label: "VAE compatible stable-diffusion.cpp",
 };
 
 const Z_IMAGE_ENCODER: Companion = Companion {
@@ -3327,6 +3395,92 @@ const HERETIC_ENCODER: Companion = Companion {
     label: "encodeur ablitere (heretic)",
 };
 
+/// Replace the invalid ONNX VAE emitted by older builds with the official
+/// safetensors companion, but only when that legacy file is actually present.
+/// New installations use `install_image_companions`; this path is a one-time
+/// migration for users who already had a Z-Image checkpoint.
+async fn migrate_legacy_z_image_vae(
+    core: &Core,
+    on_progress: &Channel<serde_json::Value>,
+) -> Result<(), String> {
+    let models_dir = locaryn_config::models_dir();
+    let target = models_dir.join(Z_IMAGE_VAE.file);
+    if target.exists() {
+        return Ok(());
+    }
+
+    let legacy = std::fs::read_dir(&models_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .any(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("onnx"))
+                && path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().to_ascii_lowercase().contains("vae"))
+        });
+    if !legacy {
+        return Ok(());
+    }
+
+    on_progress
+        .send(serde_json::json!({
+            "progress": 2,
+            "detail": "migration du VAE Z-Image (format stable-diffusion.cpp)"
+        }))
+        .ok();
+    let response = core
+        .http
+        .get(Z_IMAGE_VAE.url)
+        .send()
+        .await
+        .map_err(|e| format!("téléchargement du VAE Z-Image : {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "téléchargement du VAE Z-Image : HTTP {}",
+            response.status()
+        ));
+    }
+
+    let part = target.with_extension("safetensors.part");
+    let total = response.content_length().unwrap_or(0);
+    let mut received = 0u64;
+    let mut stream = response.bytes_stream();
+    let mut file = tokio::fs::File::create(&part)
+        .await
+        .map_err(|e| format!("écriture du VAE Z-Image : {e}"))?;
+    use tokio::io::AsyncWriteExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("téléchargement du VAE Z-Image : {e}"))?;
+        received += chunk.len() as u64;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("écriture du VAE Z-Image : {e}"))?;
+        if total > 0 {
+            let pct = 2 + ((received as f64 / total as f64) * 8.0).round() as u32;
+            on_progress
+                .send(serde_json::json!({
+                    "progress": pct,
+                    "detail": "téléchargement du VAE Z-Image"
+                }))
+                .ok();
+        }
+    }
+    file.flush()
+        .await
+        .map_err(|e| format!("écriture du VAE Z-Image : {e}"))?;
+    drop(file);
+    tokio::fs::rename(&part, &target)
+        .await
+        .map_err(|e| format!("installation du VAE Z-Image : {e}"))?;
+    Ok(())
+}
+
 /// Download the companions a freshly installed image model needs.
 async fn install_image_companions(
     core: &Core,
@@ -3336,11 +3490,15 @@ async fn install_image_companions(
     hf_token: &str,
 ) -> Result<(), String> {
     let lower = installed_file.to_ascii_lowercase();
-    let is_z_image = lower.contains("z_image") || lower.contains("z-image");
-    let is_sd =
-        lower.contains("stable-diffusion") || lower.contains("sd_xl") || lower.contains("sd15");
+    let is_z_image =
+        lower.contains("z_image") || lower.contains("z-image") || lower.contains("z_img");
 
-    if !is_z_image && !is_sd {
+    // The old code installed the Z-Image/FLUX VAE for every Stable Diffusion
+    // checkpoint as well. Apart from wasting a large download, that companion
+    // is the wrong architecture for SD 1.5/SDXL. Only Z-Image needs this
+    // automatic pair; other families are validated by `sd_engine` instead of
+    // silently receiving an incompatible VAE.
+    if !is_z_image {
         return Ok(());
     }
 
@@ -3734,6 +3892,14 @@ async fn generate_image(
         return Err(format!("modèle introuvable : {}", model_path.display()));
     }
 
+    // Older Locaryn builds installed an ONNX decoder under the VAE slot. It
+    // cannot be passed to sd.cpp, but existing users should not have to delete
+    // and redownload their checkpoint manually: migrate that one companion on
+    // the first generation after the update.
+    if sd_engine::classify(model) == sd_engine::ModelFamily::ZImage {
+        migrate_legacy_z_image_vae(&core, &on_progress).await?;
+    }
+
     // The caller's steps/cfg come from generic defaults that suit Stable
     // Diffusion. Flow-matching models diverge into noise at CFG 7, so when the
     // request still carries those defaults, use what the family actually wants.
@@ -3752,7 +3918,11 @@ async fn generate_image(
     let vram_gb = HARDWARE_CACHE
         .get()
         .map(|h| h.total_vram_gb as f32)
-        .unwrap_or_else(|| probe_hardware().map(|h| h.total_vram_gb as f32).unwrap_or(0.0));
+        .unwrap_or_else(|| {
+            probe_hardware()
+                .map(|h| h.total_vram_gb as f32)
+                .unwrap_or(0.0)
+        });
 
     // An init image arrives as a base64 data URL from the webview, which has
     // no access to disk paths; decode it to scratch space first.
@@ -3788,7 +3958,9 @@ async fn generate_image(
         .send(serde_json::json!({"progress": 5, "detail": "chargement du modèle"}))
         .ok();
 
-    let mut child = tokio::process::Command::new(&sd_bin)
+    let mut command = tokio::process::Command::new(&sd_bin);
+    hide_tokio_console(&mut command);
+    let mut child = command
         .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -4131,7 +4303,9 @@ print(output_path, flush=True)
         .send(serde_json::json!({"progress": 10, "detail": "InstructPix2Pix : chargement modele"}))
         .ok();
 
-    let child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    hide_tokio_console(&mut command);
+    let child = command
         .envs(python_env())
         .kill_on_drop(true)
         .arg("-c")
@@ -4400,10 +4574,9 @@ fn find_python() -> Option<String> {
         }
     }
     // Try `python` on PATH next.
-    if let Ok(out) = std::process::Command::new("python")
-        .arg("--version")
-        .output()
-    {
+    let mut python_probe = std::process::Command::new("python");
+    hide_std_console(&mut python_probe);
+    if let Ok(out) = python_probe.arg("--version").output() {
         if out.status.success() {
             return Some("python".to_string());
         }
@@ -4575,7 +4748,9 @@ fn detect_language(text: &str) -> &'static str {
 
 /// Find `piper` (piper-tts) on PATH.
 fn find_piper() -> Option<String> {
-    if let Ok(out) = std::process::Command::new("piper").arg("--help").output() {
+    let mut piper_probe = std::process::Command::new("piper");
+    hide_std_console(&mut piper_probe);
+    if let Ok(out) = piper_probe.arg("--help").output() {
         if out.status.success() {
             return Some("piper".to_string());
         }
@@ -4614,6 +4789,7 @@ async fn run_tts_piper(
     let noise_scale = 0.3 + (pitch - 0.5) * 0.467;
 
     let mut cmd = tokio::process::Command::new(&piper_bin);
+    hide_tokio_console(&mut cmd);
     cmd.arg("-m")
         .arg(model_path)
         .arg("-f")
@@ -4962,7 +5138,9 @@ except ImportError:
         .send(serde_json::json!({"progress": 10, "detail": "Kokoro : initialisation"}))
         .ok();
 
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    hide_tokio_console(&mut command);
+    let mut child = command
         .envs(python_env())
         .arg("-c")
         .arg(&script)
@@ -5087,7 +5265,9 @@ except Exception as e:
         .send(serde_json::json!({"progress": 10, "detail": "Parler-TTS : chargement du modele"}))
         .ok();
 
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    hide_tokio_console(&mut command);
+    let mut child = command
         .envs(python_env())
         .arg("-c")
         .arg(&script)
@@ -5245,7 +5425,9 @@ print("OK")
         .send(serde_json::json!({"progress": 10, "detail": "XTTS : chargement du modele"}))
         .ok();
 
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    hide_tokio_console(&mut command);
+    let mut child = command
         .envs(python_env())
         .arg("-c")
         .arg(&script)
@@ -5853,7 +6035,9 @@ except Exception as e:
         .send(serde_json::json!({"progress": 15, "detail": "Qwen3-TTS : preparation"}))
         .ok();
 
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    hide_tokio_console(&mut command);
+    let mut child = command
         .envs(python_env())
         .arg("-c")
         .arg(&script)
@@ -6576,7 +6760,9 @@ print("OK", file=sys.stderr)
         )
         .ok();
 
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    hide_tokio_console(&mut command);
+    let mut child = command
         .envs(python_env())
         .arg("-c")
         .arg(&script)
@@ -6919,7 +7105,9 @@ try:
         )
         .ok();
 
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    hide_tokio_console(&mut command);
+    let mut child = command
         .envs(python_env())
         .arg("-c")
         .arg(&script)
@@ -7273,7 +7461,9 @@ except Exception as e:
         .send(serde_json::json!({"progress": 15, "detail": "3DGen : lancement du script Python"}))
         .ok();
 
-    let mut child = tokio::process::Command::new(&python)
+    let mut command = tokio::process::Command::new(&python);
+    hide_tokio_console(&mut command);
+    let mut child = command
         .envs(python_env())
         .arg("-c")
         .arg(&script)
@@ -7566,7 +7756,9 @@ async fn check_hardware() -> Result<HardwareSpec, String> {
 pub(crate) fn probe_hardware() -> Result<HardwareSpec, String> {
     // RAM: use sysinfo-like approach via system commands.
     let ram_gb = if cfg!(target_os = "windows") {
-        std::process::Command::new("wmic")
+        let mut command = std::process::Command::new("wmic");
+        hide_std_console(&mut command);
+        command
             .args(["computersystem", "get", "TotalPhysicalMemory"])
             .output()
             .ok()
@@ -7584,10 +7776,14 @@ pub(crate) fn probe_hardware() -> Result<HardwareSpec, String> {
     };
 
     // VRAM: best-effort via nvidia-smi in MiB converted to GB; fallback to WMI or 0.
-    let vram_gb = std::process::Command::new("nvidia-smi")
-        .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
-        .output()
-        .ok()
+    let vram_gb = {
+        let mut command = std::process::Command::new("nvidia-smi");
+        hide_std_console(&mut command);
+        command
+            .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
+            .output()
+    }
+    .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .and_then(|s| {
             s.lines()
@@ -7597,7 +7793,9 @@ pub(crate) fn probe_hardware() -> Result<HardwareSpec, String> {
         })
         .or_else(|| {
             if cfg!(target_os = "windows") {
-                std::process::Command::new("wmic")
+                let mut command = std::process::Command::new("wmic");
+                hide_std_console(&mut command);
+                command
                     .args(["path", "win32_VideoController", "get", "AdapterRAM"])
                     .output()
                     .ok()
@@ -8758,6 +8956,7 @@ pub fn run() {
             write_test_audio,
             remove_test_audio,
             save_audio_as,
+            save_image_as,
             list_ssh_servers,
             test_ssh_connection,
             confirm_ssh_host_key,

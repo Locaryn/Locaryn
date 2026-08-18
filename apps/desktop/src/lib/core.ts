@@ -1589,6 +1589,8 @@ export interface CoreApi {
   removeTestAudio(path: string): Promise<void>;
   /** Copy a generated voice note to a user-selected destination. */
   saveAudioAs(sourcePath: string, destinationPath: string): Promise<void>;
+  /** Copy a generated image to a user-selected destination. */
+  saveImageAs(sourcePath: string, destinationPath: string): Promise<void>;
   listSshServers(): Promise<SshServer[]>;
   testSshConnection(
     draft: SshServerDraft,
@@ -2045,6 +2047,8 @@ const tauriCore: CoreApi = {
   removeTestAudio: (path) => invoke<void>("remove_test_audio", { path }),
   saveAudioAs: (sourcePath, destinationPath) =>
     invoke<void>("save_audio_as", { sourcePath, destinationPath }),
+  saveImageAs: (sourcePath, destinationPath) =>
+    invoke<void>("save_image_as", { sourcePath, destinationPath }),
   listSshServers: () => invoke<SshServer[]>("list_ssh_servers"),
   testSshConnection(draft, secret, onEvent) {
     const chan = new Channel<SshTestEvent>();
@@ -4034,6 +4038,14 @@ const demoCore: CoreApi = {
     const link = document.createElement("a");
     link.href = sourcePath;
     link.download = destinationPath.split(/[\\/]/).pop() || "note-vocale.wav";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  },
+  saveImageAs: async (sourcePath, destinationPath) => {
+    const link = document.createElement("a");
+    link.href = sourcePath;
+    link.download = destinationPath.split(/[\\/]/).pop() || "image.png";
     document.body.appendChild(link);
     link.click();
     link.remove();
