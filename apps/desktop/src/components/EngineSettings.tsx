@@ -1,3 +1,4 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import {
   type AppInfo,
@@ -8,6 +9,90 @@ import {
   core,
 } from "../lib/core";
 import { isNsfwLora } from "../lib/modelSafety";
+
+interface EngineSpec {
+  id: string;
+  name: string;
+  category: string;
+  desc: string;
+  backend: string;
+  icon: IconName;
+  requiredCapability?: string[];
+}
+
+const ALL_ENGINES: EngineSpec[] = [
+  {
+    id: "llama-cpp",
+    name: "llama.cpp (Core Engine)",
+    category: "LLM, Code, Raisonnement & Vision",
+    desc: "Moteur principal d'inférence GGUF local pour le chat, la programmation assistée, l'agentique et les modèles multimodaux.",
+    backend: "llama-server.exe (Vulkan / CPU / GPU)",
+    icon: "cpu",
+  },
+  {
+    id: "stable-diffusion",
+    name: "stable-diffusion.cpp",
+    category: "Génération & Édition d'images",
+    desc: "Moteur de diffusion locale pour modèles SD 1.5, SDXL, Flux et retouche inpaint/outpaint sans dépendance cloud.",
+    backend: "sd-server / pipeline stable-diffusion",
+    icon: "image",
+    requiredCapability: ["image-gen", "image-editor"],
+  },
+  {
+    id: "tts-engine",
+    name: "Kokoro & Piper TTS Engine",
+    category: "Synthèse vocale & Voix",
+    desc: "Moteur de synthèse vocale temps réel haute fidélité (80M/100M) et clonage vocal hors-ligne.",
+    backend: "kokoro-runtime / piper-tts",
+    icon: "mic",
+    requiredCapability: ["voice-tts", "voice-cloning"],
+  },
+  {
+    id: "music-engine",
+    name: "AudioCraft / MusicGen",
+    category: "Génération musicale",
+    desc: "Moteur de composition musicale et génération audio par diffusion sonore temporelle.",
+    backend: "audiocraft-runtime",
+    icon: "music",
+    requiredCapability: ["music-gen"],
+  },
+  {
+    id: "video-engine",
+    name: "Wan2.1 / LTX-Video Diffusion",
+    category: "Génération & Animation vidéo",
+    desc: "Moteur de diffusion spatio-temporelle pour la génération et l'animation de vidéos locales.",
+    backend: "video-diffusion-runtime",
+    icon: "video",
+    requiredCapability: ["video-gen"],
+  },
+  {
+    id: "3d-engine",
+    name: "TripoSR / Shap-E 3D",
+    category: "Modélisation 3D",
+    desc: "Moteur de reconstruction et génération de maillages 3D et textures volumétriques.",
+    backend: "triposr-runtime",
+    icon: "cube",
+    requiredCapability: ["3d-gen"],
+  },
+  {
+    id: "airllm-engine",
+    name: "AirLLM Layer Streaming",
+    category: "Inférence Très Grands Modèles (70B+)",
+    desc: "Moteur de streaming couche par couche permettant d'exécuter des modèles géants sur GPU modeste (4 Go VRAM).",
+    backend: "airllm-runtime",
+    icon: "speed",
+    requiredCapability: ["airllm"],
+  },
+  {
+    id: "training-engine",
+    name: "RepE / Unsloth Training & Obliteration",
+    category: "Entraînement & Oblitération",
+    desc: "Moteur d'apprentissage LoRA local et manipulation de représentations (RepE) pour décensurer ou orienter les poids.",
+    backend: "training-runtime (Python / PEFT / Unsloth)",
+    icon: "shield",
+    requiredCapability: ["model-training"],
+  },
+];
 
 /** Capabilities shown as chips — shared by the engine panel and the About page. */
 export const CAPS: { key: keyof RuntimeCapabilities; label: string; hint: string }[] = [
@@ -45,7 +130,11 @@ export const CAPS: { key: keyof RuntimeCapabilities; label: string; hint: string
  * Local AI engine: managed llama.cpp runtime, what it can do, and LoRA adapters.
  * Shared by the chat settings popup and the full general-settings view.
  */
-export function EngineSettings() {
+export function EngineSettings({
+  activeCapabilities = [],
+}: {
+  activeCapabilities?: string[];
+}) {
   const [runtime, setRuntime] = useState<LlamaRuntimeStatus | null>(null);
   const [caps, setCaps] = useState<RuntimeCapabilities | null>(null);
   const [installing, setInstalling] = useState(false);
@@ -134,10 +223,101 @@ export function EngineSettings() {
     }
   }
 
+  const visibleEngines = ALL_ENGINES.filter((e) => {
+    if (!e.requiredCapability) return true;
+    return e.requiredCapability.some((cap) => activeCapabilities.includes(cap));
+  });
+
   return (
     <div className="locaryn-engine-tab">
+      {/* ── Moteurs IA actifs selon les plugins installés ── */}
       <div className="locaryn-field">
-        <div className="locaryn-field-label">Runtime IA (llama.cpp)</div>
+        <div className="locaryn-field-label">
+          Moteurs IA & Runtimes actifs ({visibleEngines.length})
+        </div>
+        <p className="locaryn-field-hint">
+          Les moteurs d'exécution s'adaptent automatiquement aux plugins et extensions installés.
+          Chaque modalité (image, vidéo, voix, musique, 3D, LLM) est portée par son moteur dédié.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: "12px",
+            marginTop: "12px",
+          }}
+        >
+          {visibleEngines.map((engine) => (
+            <div
+              key={engine.id}
+              className="locaryn-card"
+              style={{
+                padding: "12px 14px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                borderRadius: "var(--radius-sm)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Icon name={engine.icon} size={16} />
+                  <strong style={{ fontSize: "13px", color: "var(--text)" }}>{engine.name}</strong>
+                </div>
+                <span
+                  style={{
+                    fontSize: "10px",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    background: "rgba(16, 185, 129, 0.15)",
+                    color: "#10b981",
+                    fontWeight: 600,
+                  }}
+                >
+                  Actif
+                </span>
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-faint)", fontWeight: 500 }}>
+                {engine.category}
+              </div>
+              <p
+                style={{
+                  margin: "2px 0 0",
+                  fontSize: "11px",
+                  color: "var(--text-dim)",
+                  lineHeight: "1.4",
+                }}
+              >
+                {engine.desc}
+              </p>
+              <div
+                style={{
+                  marginTop: "auto",
+                  paddingTop: "6px",
+                  fontSize: "10px",
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--text-faint)",
+                }}
+              >
+                {engine.backend}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="locaryn-field" style={{ marginTop: 24 }}>
+        <div className="locaryn-field-label">Runtime IA Core (llama.cpp)</div>
         <p className="locaryn-field-hint">
           Le moteur unique qui exécute vos modèles GGUF en local. Locaryn le télécharge et le
           maintient à jour ({runtime?.pinned ?? "…"}, build Vulkan — GPU NVIDIA/AMD/Intel). Pas de

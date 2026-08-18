@@ -86,26 +86,10 @@ export function WorkspacePicker({
 
   const meta = KIND_META[value.kind];
 
-  // Free conversations get an auto-created temp folder. The user doesn't need
-  // to pick or even see a path, so the picker is reduced to a read-only label.
-  if (freeChat) {
-    const meta = value.kind === "temp" ? KIND_META[value.kind] : KIND_META.temp;
-    return (
-      <div className="locaryn-ws">
-        <button
-          type="button"
-          className="locaryn-ws-trigger"
-          disabled
-          title={meta.hint}
-          style={{ cursor: "default" }}
-        >
-          <span style={{ display: "inline-flex" }}>
-            <Icon name={meta.icon} size={15} />
-          </span>
-          <span className="locaryn-ws-label">{meta.label}</span>
-        </button>
-      </div>
-    );
+  // Les conversations sans dossier de travail explicite utilisent un dossier temporaire.
+  // Ce statut n'est pas affiché pour éviter d'encombrer l'interface.
+  if (freeChat || value.kind === "temp") {
+    return null;
   }
 
   return (

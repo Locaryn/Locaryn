@@ -12,6 +12,7 @@ type Props = {
   onOpenImageGen?: () => void;
   onDeleteModel?: (modelTag: string) => Promise<void> | void;
   onOpenMarketplace?: () => void;
+  activeCapabilities?: string[];
 };
 
 export function InstalledModelsView({
@@ -20,6 +21,7 @@ export function InstalledModelsView({
   onOpenImageGen,
   onDeleteModel,
   onOpenMarketplace,
+  activeCapabilities = [],
 }: Props) {
   const [query, setQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "text" | "image">("all");
@@ -204,13 +206,15 @@ export function InstalledModelsView({
           >
             <Icon name="chat" size={15} /> LLM Texte
           </button>
-          <button
-            type="button"
-            className={`locaryn-chip${filterType === "image" ? " locaryn-chip-on" : ""}`}
-            onClick={() => setFilterType("image")}
-          >
-            <Icon name="studio" size={15} /> Modèles Image
-          </button>
+          {activeCapabilities.some((c) => c === "image-gen" || c === "image-editor") && (
+            <button
+              type="button"
+              className={`locaryn-chip${filterType === "image" ? " locaryn-chip-on" : ""}`}
+              onClick={() => setFilterType("image")}
+            >
+              <Icon name="studio" size={15} /> Modèles Image
+            </button>
+          )}
         </div>
         <div style={{ display: "flex", gap: "4px" }}>
           <button

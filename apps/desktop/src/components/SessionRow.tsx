@@ -48,10 +48,34 @@ export function SessionRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const holdTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
   }, [editing]);
+
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+    };
+  }, []);
+
+  function startHoldTimer() {
+    if (editing) return;
+    if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = window.setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("locaryn:session-drag-start", { detail: { id: session.id } }),
+      );
+    }, 280);
+  }
+
+  function clearHoldTimer() {
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }
 
   // Un menu ouvert se ferme au premier clic ailleurs, ou sur Échap : sinon il
   // reste posé sur l'écran pendant qu'on fait autre chose.
@@ -80,9 +104,22 @@ export function SessionRow({
         accueille ? " locaryn-session-merge" : ""
       }`}
       draggable={!editing}
+      onPointerDown={startHoldTimer}
+      onPointerUp={clearHoldTimer}
+      onPointerCancel={clearHoldTimer}
+      onMouseDown={startHoldTimer}
+      onMouseUp={clearHoldTimer}
       onDragStart={(e) => {
+        clearHoldTimer();
         e.dataTransfer.setData("application/locaryn-session", session.id);
         e.dataTransfer.effectAllowed = "move";
+        window.dispatchEvent(
+          new CustomEvent("locaryn:session-drag-start", { detail: { id: session.id } }),
+        );
+      }}
+      onDragEnd={() => {
+        clearHoldTimer();
+        window.dispatchEvent(new CustomEvent("locaryn:session-drag-end"));
       }}
       // Déposer une conversation sur une autre les réunit. Le geste dit ce
       // qu'il fait : on met l'une dans l'autre, littéralement. Une ligne ne

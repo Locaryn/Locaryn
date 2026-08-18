@@ -76,6 +76,32 @@ export function LeftPanel({
   const [overBin, setOverBin] = useState(false);
   /** Le projet survolé pendant un glisser, pour montrer où ça va tomber. */
   const [overProject, setOverProject] = useState<string | null>(null);
+  /** Indique si une session est en cours de glisser/maintien pour transformer le bouton du haut. */
+  const [isDraggingSession, setIsDraggingSession] = useState(false);
+
+  useEffect(() => {
+    const onDragStart = () => setIsDraggingSession(true);
+    const onDragEnd = () => {
+      window.setTimeout(() => {
+        setIsDraggingSession(false);
+        setOverBin(false);
+      }, 100);
+    };
+
+    window.addEventListener("locaryn:session-drag-start", onDragStart);
+    window.addEventListener("locaryn:session-drag-end", onDragEnd);
+    window.addEventListener("dragend", onDragEnd);
+    window.addEventListener("pointerup", onDragEnd);
+    window.addEventListener("mouseup", onDragEnd);
+
+    return () => {
+      window.removeEventListener("locaryn:session-drag-start", onDragStart);
+      window.removeEventListener("locaryn:session-drag-end", onDragEnd);
+      window.removeEventListener("dragend", onDragEnd);
+      window.removeEventListener("pointerup", onDragEnd);
+      window.removeEventListener("mouseup", onDragEnd);
+    };
+  }, []);
 
   function partirPuis(s: Session, action: () => void) {
     setLeaving(s.id);
@@ -169,15 +195,51 @@ export function LeftPanel({
 
   return (
     <aside className="locaryn-left">
-      <button
-        type="button"
-        className="locaryn-newchat-full"
-        onClick={onNewStandaloneChat}
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
-      >
-        <Icon name="chat" size={15} />
-        <span>+ Nouveau Chat Libre</span>
-      </button>
+      {/* ── Bouton Nouveau / Zone de dépôt pour archiver en cas de glisser/maintien ── */}
+      {isDraggingSession ? (
+        <div
+          className={`locaryn-newchat-full locaryn-bin${overBin ? " locaryn-bin-hot" : ""}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "6px",
+            background: overBin ? "rgba(239, 68, 68, 0.25)" : "rgba(239, 68, 68, 0.12)",
+            borderColor: overBin ? "var(--danger)" : "rgba(239, 68, 68, 0.4)",
+            color: "var(--danger)",
+            cursor: "copy",
+            transition: "all 0.15s ease",
+          }}
+          onDragOver={(e) => {
+            if (!e.dataTransfer.types.includes("application/locaryn-session")) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            setOverBin(true);
+          }}
+          onDragLeave={() => setOverBin(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setOverBin(false);
+            setIsDraggingSession(false);
+            const id = sessionDeposee(e);
+            const s = allKnownSessions.find((x) => x.id === id);
+            if (s) partirPuis(s, () => onSessionArchived?.(s));
+          }}
+        >
+          <Icon name="archive" size={15} />
+          <span>Déposer ici pour archiver</span>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="locaryn-newchat-full"
+          onClick={onNewStandaloneChat}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+        >
+          <Icon name="chat" size={15} />
+          <span>+ Nouveau</span>
+        </button>
+      )}
 
       {/* Conversation active en cours pour un accès rapide */}
       {activeSession && (
@@ -382,42 +444,47 @@ export function LeftPanel({
         + Ajouter un projet
       </button>
 
-      {/*
-        La corbeille archive, elle ne supprime pas. Retirer une conversation
-        d'une liste n'est presque jamais vouloir la perdre : elle part aux
-        archives, où elle reste consultable, et la suppression devient un
-        second geste, pris là-bas.
-      */}
-      <div
-        className={`locaryn-bin${overBin ? " locaryn-bin-hot" : ""}`}
-        onDragOver={(e) => {
-          if (!e.dataTransfer.types.includes("application/locaryn-session")) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-          setOverBin(true);
-        }}
-        onDragLeave={() => setOverBin(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setOverBin(false);
-          const id = sessionDeposee(e);
-          const s = allKnownSessions.find((x) => x.id === id);
-          if (s) partirPuis(s, () => onSessionArchived?.(s));
-        }}
-      >
-        <Icon name="archive" size={16} /> Déposer ici pour archiver
+      {/* ── Conversations Libres (affichées sous les projets) ── */}
+      <div className="locaryn-history-title" style={{ marginTop: "16px" }}>
+        Conversations libres ({standaloneSessions.length})
       </div>
 
-      {onNewEphemeralChat && (
-        <button
-          type="button"
-          className="locaryn-ephemeral-btn"
-          onClick={onNewEphemeralChat}
-          title="Rien de cette conversation ne sera gardé"
-        >
-          Conversation éphémère
-        </button>
-      )}
+      <div
+        className="locaryn-history-standalone"
+        style={{ display: "flex", flexDirection: "column", gap: "2px", marginBottom: "16px" }}
+      >
+        {standaloneSessions.length === 0 ? (
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--text-faint)",
+              fontStyle: "italic",
+              padding: "4px 8px",
+            }}
+          >
+            Aucune conversation libre
+          </div>
+        ) : (
+          <ul className="locaryn-tree" style={{ margin: 0, padding: 0 }}>
+            {standaloneSessions.map((s, idx) => (
+              <SessionRow
+                key={s.id}
+                session={s}
+                label={sessionLabel(s, idx)}
+                bullet="chat"
+                active={activeSession?.id === s.id}
+                leaving={leaving === s.id}
+                projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                onSelect={() => onSelectSession(s)}
+                onRename={(t) => onSessionRenamed?.(s, t)}
+                onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
+                onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+                onMergeInto={onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
     </aside>
   );
 }

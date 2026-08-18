@@ -587,6 +587,41 @@ export function StudioView({
     }
   }
 
+  if (onglets.length === 0) {
+    return (
+      <div className="locaryn-view-container">
+        <div className="locaryn-view-header" style={{ flexShrink: 0 }}>
+          <h2>Studio de génération</h2>
+          <p className="locaryn-view-desc">
+            Le mode Studio regroupe les outils de génération multimodale (images, voix, musique,
+            vidéo, 3D).
+          </p>
+        </div>
+        <div
+          className="locaryn-card"
+          style={{
+            padding: "48px 24px",
+            textAlign: "center",
+            maxWidth: "540px",
+            margin: "40px auto",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "16px" }}>
+            <Icon name="studio" size={40} />
+          </div>
+          <h3 style={{ marginBottom: "8px", fontSize: "16px", fontWeight: 600 }}>
+            Aucun module de Studio installé
+          </h3>
+          <p className="locaryn-field-hint" style={{ margin: "0 auto", lineHeight: 1.5 }}>
+            Le Studio s'active automatiquement dès qu'un plugin multimodal est installé (Génération
+            d'images, Synthèse vocale, Musique, Vidéo ou 3D). Rendez-vous dans la section{" "}
+            <strong>Extensions</strong> pour en ajouter un.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="locaryn-view-container">
       <div className="locaryn-view-header" style={{ flexShrink: 0 }}>

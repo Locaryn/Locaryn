@@ -41,6 +41,8 @@ type Props = {
   onOpenImageGen?: () => void;
   /** Launch an AirLLM model: activates the AirLlm provider and opens Chat. */
   onLaunchAirllm?: (repo: string) => void;
+  /** Active extension capabilities currently installed/enabled. */
+  activeCapabilities?: string[];
 };
 
 /**
@@ -83,6 +85,21 @@ function getAirllmEntry(f: ModelFamily): { repo: string; sizeGb: number } | unde
   if (v) return { repo: v.tag.replace(/^airllm:/, ""), sizeGb: v.storageGb };
   return undefined;
 }
+
+/** Required capabilities for specialized categories in the model catalogue. */
+const CATEGORY_CAPABILITIES: Record<string, string[]> = {
+  "image-gen": ["image-gen"],
+  "image-editing": ["image-editor", "image-gen"],
+  "speech-synthesis": ["voice-tts", "voice-cloning"],
+  audio: ["voice-tts", "voice-cloning", "music-gen"],
+  "video-generation": ["video-gen"],
+  "3d-modeling": ["3d-gen"],
+  "music-generation": ["music-gen"],
+  "object-detection": ["vision-ocr"],
+  "text-analysis": ["text-analysis"],
+  "question-answering": ["rag-qa"],
+  "language-translation": ["translation"],
+};
 
 /** Une capacité annoncée : son icône et son nom. */
 type Pastille = { icon: IconName; label: string };
@@ -315,6 +332,7 @@ export function ModelBrowser({
   onOpenImageGen,
   onLaunchAirllm,
   installed = [],
+  activeCapabilities = [],
 }: Props) {
   const [query, setQuery] = useState("");
   /**
@@ -345,7 +363,23 @@ export function ModelBrowser({
     return () => document.removeEventListener("mousedown", onDocDown);
   }, [addMenuOpen]);
 
+  // Filtrer les onglets de catégories selon les plugins actifs
+  const visibleCategories = useMemo(() => {
+    return MODEL_CATEGORIES.filter((cat) => {
+      const required = CATEGORY_CAPABILITIES[cat.id];
+      if (!required) return true;
+      return required.some((cap) => activeCapabilities.includes(cap));
+    });
+  }, [activeCapabilities]);
+
   const [category, setCategory] = useState<ModelCategory>("all");
+
+  useEffect(() => {
+    if (category !== "all" && !visibleCategories.some((c) => c.id === category)) {
+      setCategory("all");
+    }
+  }, [visibleCategories, category]);
+
   const [brand, setBrand] = useState("all");
   const [size, setSize] = useState("all");
   const [yearFilter, setYearFilter] = useState("all");
@@ -548,6 +582,29 @@ export function ModelBrowser({
 
         if (matchingVariants.length === 0) return null;
 
+        // Exclure les modèles des modalités spécialisées si le plugin correspondant n'est pas installé
+        const hasImage =
+          activeCapabilities.includes("image-gen") || activeCapabilities.includes("image-editor");
+        const hasTts =
+          activeCapabilities.includes("voice-tts") || activeCapabilities.includes("voice-cloning");
+        const hasMusic = activeCapabilities.includes("music-gen");
+        const hasVideo = activeCapabilities.includes("video-gen");
+        const has3d = activeCapabilities.includes("3d-gen");
+        const hasOcr = activeCapabilities.includes("vision-ocr");
+        const hasTextAnalysis = activeCapabilities.includes("text-analysis");
+        const hasQa = activeCapabilities.includes("rag-qa");
+        const hasTranslation = activeCapabilities.includes("translation");
+
+        if ((f.imageGen || f.imageEditing) && !hasImage) return null;
+        if (f.tts && !hasTts) return null;
+        if (f.videoGen && !hasVideo) return null;
+        if (f.musicGen && !hasMusic) return null;
+        if (f.model3d && !has3d) return null;
+        if (f.objectDetection && !f.instruct && !hasOcr) return null;
+        if (f.textAnalysis && !f.instruct && !hasTextAnalysis) return null;
+        if (f.questionAnswering && !f.instruct && !hasQa) return null;
+        if (f.translation && !f.instruct && !hasTranslation) return null;
+
         if (category === "code" && !f.code) return null;
         if (category === "vision" && !f.vision) return null;
         if (category === "reasoning" && !f.reasoning) return null;
@@ -624,6 +681,7 @@ export function ModelBrowser({
     liveApiModels,
     hardwareSpec,
     airllmEnabled,
+    activeCapabilities,
   ]);
 
   function toggleCardExpand(id: string) {
@@ -987,7 +1045,7 @@ export function ModelBrowser({
 
         {/* Category Filter Bar */}
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
-          {MODEL_CATEGORIES.map((cat) => (
+          {visibleCategories.map((cat) => (
             <button
               key={cat.id}
               type="button"

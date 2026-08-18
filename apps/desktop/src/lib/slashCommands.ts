@@ -35,6 +35,8 @@ export interface SlashCommand {
   action: SlashAction;
   /** Optional arguments proposed once the user types a space. */
   args?: SlashArg[];
+  /** Required capability for this command to be available. */
+  requiredCapability?: string;
   /**
    * Present uniquement pour `action: "extension"`. Nom qualifie
    * `<plugin>:<commande>` a passer a `resolve_extension_command`.
@@ -82,6 +84,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "Générer une image",
     hint: "Ouvre le studio d'image",
     action: "image",
+    requiredCapability: "image-gen",
     args: QUALITY_ARGS,
   },
   {
@@ -91,6 +94,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "Éditer une image",
     hint: "Transformer une image existante",
     action: "edit-image",
+    requiredCapability: "image-editor",
     args: QUALITY_ARGS,
   },
   {
@@ -108,6 +112,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "Base de connaissances",
     hint: "Indexer des documents (RAG)",
     action: "documents",
+    requiredCapability: "rag-qa",
   },
   {
     name: "json",
@@ -173,7 +178,11 @@ export type SlashSuggestion =
   | { kind: "args"; command: SlashCommand; items: SlashArg[] };
 
 /** Parse the composer text into palette suggestions (null = not a slash query). */
-export function matchSlashInput(input: string, extra: SlashCommand[] = []): SlashSuggestion | null {
+export function matchSlashInput(
+  input: string,
+  extra: SlashCommand[] = [],
+  activeCapabilities: string[] = [],
+): SlashSuggestion | null {
   if (!input.startsWith("/")) return null;
   const rest = input.slice(1);
   const spaceAt = rest.indexOf(" ");
@@ -184,7 +193,10 @@ export function matchSlashInput(input: string, extra: SlashCommand[] = []): Slas
       .slice(spaceAt + 1)
       .trim()
       .toLowerCase();
-    const pool = extra.length ? [...SLASH_COMMANDS, ...extra] : SLASH_COMMANDS;
+    const rawPool = extra.length ? [...SLASH_COMMANDS, ...extra] : SLASH_COMMANDS;
+    const pool = rawPool.filter(
+      (c) => !c.requiredCapability || activeCapabilities.includes(c.requiredCapability),
+    );
     const cmd = pool.find((c) => c.name === name || c.aliases.includes(name));
     if (!cmd?.args) return null;
     const items = partial
@@ -194,7 +206,7 @@ export function matchSlashInput(input: string, extra: SlashCommand[] = []): Slas
       : cmd.args;
     return items.length ? { kind: "args", command: cmd, items } : null;
   }
-  const items = matchSlash(input, extra) ?? [];
+  const items = matchSlash(input, extra, activeCapabilities) ?? [];
   return items.length ? { kind: "commands", items } : null;
 }
 
@@ -205,14 +217,21 @@ export function matchSlashInput(input: string, extra: SlashCommand[] = []): Slas
  * fournies par l'appelant plutot que codees ici : la liste change a chaque
  * installation, et ce module doit rester une fonction pure.
  */
-export function matchSlash(input: string, extra: SlashCommand[] = []): SlashCommand[] | null {
+export function matchSlash(
+  input: string,
+  extra: SlashCommand[] = [],
+  activeCapabilities: string[] = [],
+): SlashCommand[] | null {
   if (!input.startsWith("/")) return null;
   // Only a single leading token counts as a command query.
   const q = input.slice(1);
   if (/\s/.test(q)) return null;
   const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const nq = norm(q);
-  const all = extra.length ? [...SLASH_COMMANDS, ...extra] : SLASH_COMMANDS;
+  const rawAll = extra.length ? [...SLASH_COMMANDS, ...extra] : SLASH_COMMANDS;
+  const all = rawAll.filter(
+    (c) => !c.requiredCapability || activeCapabilities.includes(c.requiredCapability),
+  );
   if (!nq) return all;
   return all.filter(
     (c) =>

@@ -111,6 +111,7 @@ type Props = {
   /** Nom du noyau alternatif qui pilote cette conversation (OpenClaw,
    *  Hermes…). Absent = noyau Locaryn natif. */
   coreName?: string | null;
+  activeCapabilities?: string[];
 };
 
 const SUGGESTIONS = [
@@ -219,6 +220,7 @@ export function ChatPanel({
   connectionMode,
   onSessionMoved,
   coreName,
+  activeCapabilities = [],
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -1002,7 +1004,7 @@ export function ChatPanel({
           if (e.key === "Tab" && cmd.args && cmd.args.length) {
             const next = `/${cmd.name} `;
             setInput(next);
-            setSlash(matchSlashInput(next, extCommands));
+            setSlash(matchSlashInput(next, extCommands, activeCapabilities));
             setSlashIndex(0);
             return;
           }
@@ -1224,7 +1226,7 @@ export function ChatPanel({
                       // A suggestion may be a slash command (e.g. "/image brouillon"
                       // for a throwaway icon) — run it instead of sending it as text.
                       if (f.startsWith("/")) {
-                        const sug = matchSlashInput(f.trim(), extCommands);
+                        const sug = matchSlashInput(f.trim(), extCommands, activeCapabilities);
                         if (sug?.kind === "args") {
                           runSlash(sug.command, argToSize(sug.items[0].value));
                           return;
@@ -1336,16 +1338,18 @@ export function ChatPanel({
           onMoved={onSessionMoved}
         />
 
-        <div className="locaryn-composer-context">
-          <WorkspacePicker
-            value={workspace}
-            onChange={setWorkspace}
-            onAddProject={onAddProject}
-            onAddSsh={onAddSsh}
-            freeChat={!projectId}
-            cloudConnected={connectionMode === "remote"}
-          />
-        </div>
+        {Boolean(projectId && workspace.kind !== "temp") && (
+          <div className="locaryn-composer-context">
+            <WorkspacePicker
+              value={workspace}
+              onChange={setWorkspace}
+              onAddProject={onAddProject}
+              onAddSsh={onAddSsh}
+              freeChat={!projectId}
+              cloudConnected={connectionMode === "remote"}
+            />
+          </div>
+        )}
 
         <div className="locaryn-composer-card">
           {attachments.length > 0 && (
@@ -1377,7 +1381,7 @@ export function ChatPanel({
             onChange={(e) => {
               setInput(e.target.value);
               autoGrow();
-              setSlash(matchSlashInput(e.target.value, extCommands));
+              setSlash(matchSlashInput(e.target.value, extCommands, activeCapabilities));
               setSlashIndex(0);
             }}
             onKeyDown={handleComposerKeyDown}

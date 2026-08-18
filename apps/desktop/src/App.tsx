@@ -758,6 +758,7 @@ export function App() {
         onToggleModelConfig={() => setShowModelConfig(!showModelConfig)}
         onSettingsClick={() => setPermissionsOpen(true)}
         onChatSettingsClick={() => theme.setSettingsOpen(true)}
+        onNewEphemeralChat={handleNewEphemeralChat}
       />
 
       <ChatPermissionsModal
@@ -1002,6 +1003,7 @@ export function App() {
             onOpenMarketplace={() => setActiveView("models")}
             forceOpenImageGen={showImageGen}
             onImageGenClosed={() => setShowImageGen(false)}
+            activeCapabilities={activeCapabilities}
           />
         )}
 
@@ -1019,6 +1021,7 @@ export function App() {
               onCancelInstall={handleCancelDownload}
               onDelete={handleDeleteModel}
               installed={installedModels}
+              activeCapabilities={activeCapabilities}
               onOpenTraining={() => setActiveView("training")}
               onSelectModelForChat={async (tag) => {
                 try {
@@ -1070,6 +1073,7 @@ export function App() {
             }}
             onDeleteModel={handleDeleteModel}
             onOpenMarketplace={() => setActiveView("models")}
+            activeCapabilities={activeCapabilities}
           />
         )}
 
@@ -1146,6 +1150,7 @@ export function App() {
 
         {activeView === "account" && (
           <AccountView
+            activeCapabilities={activeCapabilities}
             onOpenSession={(session) => {
               void handleSelectSession(session);
               setActiveView("chat");

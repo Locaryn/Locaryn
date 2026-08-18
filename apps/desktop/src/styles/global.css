@@ -8115,6 +8115,27 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   background: rgba(var(--accent-rgb), 0.1);
 }
 
+.locaryn-ephemeral-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border-radius: var(--radius-xs);
+  border: 1px dashed rgba(204, 125, 114, 0.45);
+  background: rgba(204, 125, 114, 0.08);
+  color: var(--danger);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-right: 4px;
+}
+.locaryn-ephemeral-topbar-btn:hover {
+  background: rgba(204, 125, 114, 0.18);
+  border-color: var(--danger);
+}
+
 .locaryn-ephemeral-btn {
   width: calc(100% - 16px);
   margin: 0 8px 10px;

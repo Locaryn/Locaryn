@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import type { ConnectionMode, ProviderSummary } from "../lib/core";
 
 type Props = {
@@ -17,6 +18,8 @@ type Props = {
   onSettingsClick?: () => void;
   /** Chat-scoped settings popup (model, performance). */
   onChatSettingsClick?: () => void;
+  /** Start an ephemeral conversation. */
+  onNewEphemeralChat?: () => void;
 };
 
 const MODE_LABEL: Record<ConnectionMode, string> = {
@@ -51,6 +54,7 @@ export function TopBar({
   onToggleModelConfig,
   onSettingsClick,
   onChatSettingsClick,
+  onNewEphemeralChat,
 }: Props) {
   const isChatView = activeView === "chat";
 
@@ -94,6 +98,18 @@ export function TopBar({
       {/* Render chat-specific right controls ONLY when in Chat view */}
       {isChatView && (
         <div className="locaryn-topbar-right">
+          {onNewEphemeralChat && (
+            <button
+              type="button"
+              className="locaryn-ephemeral-topbar-btn"
+              onClick={onNewEphemeralChat}
+              title="Démarrer une conversation éphémère (rien ne sera conservé)"
+            >
+              <Icon name="private" size={13} />
+              <span>Éphémère</span>
+            </button>
+          )}
+
           <span className="locaryn-provider-badge" title={provider?.endpoint ?? "no model"}>
             <span
               className={`locaryn-health-dot ${provider ? "locaryn-health-ok" : "locaryn-health-off"}`}

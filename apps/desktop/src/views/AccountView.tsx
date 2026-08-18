@@ -10,6 +10,7 @@ import { ArchivesView } from "./ArchivesView";
 type Props = {
   /** Ouvre une conversation sortie des archives dans le chat principal. */
   onOpenSession: (session: Session) => void;
+  activeCapabilities?: string[];
 };
 
 type AccountSection = "profile" | "models" | "memory" | "archives";
@@ -22,7 +23,7 @@ type AccountSection = "profile" | "models" | "memory" | "archives";
  * connexion à un gateway reste une option, rangée dans le profil plutôt qu'au
  * premier plan de la navigation.
  */
-export function AccountView({ onOpenSession }: Props) {
+export function AccountView({ onOpenSession, activeCapabilities = [] }: Props) {
   const [section, setSection] = useState<AccountSection>("profile");
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
@@ -182,7 +183,7 @@ export function AccountView({ onOpenSession }: Props) {
           {section === "archives" ? (
             <ArchivesView onOpenSession={onOpenSession} />
           ) : section === "models" ? (
-            <ModelPreferencesSettings />
+            <ModelPreferencesSettings activeCapabilities={activeCapabilities} />
           ) : section === "memory" ? (
             <MemorySettings />
           ) : (

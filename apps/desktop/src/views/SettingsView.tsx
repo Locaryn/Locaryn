@@ -195,7 +195,7 @@ export function SettingsView({
             <Icon name={current.icon} size={18} /> {current.label}
           </h3>
 
-          {section === "engine" && <EngineSettings />}
+          {section === "engine" && <EngineSettings activeCapabilities={activeCapabilities} />}
           {section === "performance" && (
             <>
               <PerformancePanel />

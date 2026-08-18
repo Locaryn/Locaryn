@@ -4,7 +4,16 @@ import { MicroModelSetting } from "./MicroModelSetting";
 import { TtsModelSetting } from "./TtsModelSetting";
 
 /** Central preferences for every default model used outside ordinary chat. */
-export function ModelPreferencesSettings() {
+export function ModelPreferencesSettings({
+  activeCapabilities = [],
+}: {
+  activeCapabilities?: string[];
+}) {
+  const hasTts =
+    activeCapabilities.includes("voice-tts") || activeCapabilities.includes("voice-cloning");
+  const hasImage =
+    activeCapabilities.includes("image-gen") || activeCapabilities.includes("image-editor");
+
   return (
     <div className="locaryn-model-preferences">
       <div className="locaryn-model-preferences-intro">
@@ -31,27 +40,31 @@ export function ModelPreferencesSettings() {
           <MicroModelSetting />
         </section>
 
-        <section className="locaryn-model-preference-card">
-          <div className="locaryn-model-preference-heading">
-            <Icon name="mic" size={17} />
-            <div>
-              <h4>Synthèse vocale</h4>
-              <p>Modèle TTS par défaut pour les notes vocales et le Studio audio.</p>
+        {hasTts && (
+          <section className="locaryn-model-preference-card">
+            <div className="locaryn-model-preference-heading">
+              <Icon name="mic" size={17} />
+              <div>
+                <h4>Synthèse vocale</h4>
+                <p>Modèle TTS par défaut pour les notes vocales et le Studio audio.</p>
+              </div>
             </div>
-          </div>
-          <TtsModelSetting />
-        </section>
+            <TtsModelSetting />
+          </section>
+        )}
 
-        <section className="locaryn-model-preference-card">
-          <div className="locaryn-model-preference-heading">
-            <Icon name="studio" size={17} />
-            <div>
-              <h4>Génération d'images</h4>
-              <p>Qualité, résolution et mémoire utilisés par défaut pour les images.</p>
+        {hasImage && (
+          <section className="locaryn-model-preference-card">
+            <div className="locaryn-model-preference-heading">
+              <Icon name="studio" size={17} />
+              <div>
+                <h4>Génération d'images</h4>
+                <p>Qualité, résolution et mémoire utilisés par défaut pour les images.</p>
+              </div>
             </div>
-          </div>
-          <ImageSettings />
-        </section>
+            <ImageSettings />
+          </section>
+        )}
       </div>
     </div>
   );
