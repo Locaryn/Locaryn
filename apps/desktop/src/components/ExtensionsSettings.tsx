@@ -34,8 +34,10 @@ import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
 const ECOSYSTEM_FILTERS: { id: ExtensionEcosystem | "all"; label: string }[] = [
   { id: "all", label: "Tous" },
   { id: "locaryn", label: "Officiel Locaryn (Certifié)" },
+  { id: "claude_code", label: ECOSYSTEM_LABELS.claude_code },
   { id: "gemini_cli", label: ECOSYSTEM_LABELS.gemini_cli },
   { id: "opencode", label: ECOSYSTEM_LABELS.opencode },
+  { id: "mcp", label: ECOSYSTEM_LABELS.mcp },
 ];
 
 /** Combien d'extensions mises à jour en même temps pendant le lot. */
@@ -1343,33 +1345,110 @@ export function ExtensionsSettings() {
                 const compat = COMPAT[c.compat] ?? COMPAT.unsupported;
                 const canInstall = c.compat !== "unsupported" && !!c.install_source;
                 return (
-                  <div key={c.id} className="locaryn-box-card">
-                    <div className="locaryn-box-head">
-                      <div style={{ minWidth: 0 }}>
-                        <h3 className="locaryn-box-name">{c.display_name}</h3>
-                        <span className="locaryn-box-brand">{c.catalog_label}</span>
+                  <div
+                    key={c.id}
+                    className="locaryn-box-card"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div className="locaryn-box-head">
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <h3
+                            className="locaryn-box-name"
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={c.display_name}
+                          >
+                            {c.display_name}
+                          </h3>
+                          <span className="locaryn-box-brand">
+                            {c.author ? `${c.author} · ` : ""}
+                            {c.version ? `v${c.version} · ` : ""}
+                            {c.catalog_label}
+                          </span>
+                        </div>
+                        <span
+                          className="locaryn-tag"
+                          style={{
+                            flexShrink: 0,
+                            background:
+                              c.ecosystem === "locaryn"
+                                ? "rgba(var(--accent-rgb), 0.15)"
+                                : undefined,
+                            color: c.ecosystem === "locaryn" ? "var(--accent)" : undefined,
+                          }}
+                        >
+                          {ECOSYSTEM_LABELS[c.ecosystem]}
+                        </span>
                       </div>
-                      <span className="locaryn-tag">{ECOSYSTEM_LABELS[c.ecosystem]}</span>
+
+                      <p
+                        className="locaryn-box-desc"
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                          minHeight: 48,
+                        }}
+                      >
+                        {c.description ?? "Pas de description fournie."}
+                      </p>
+
+                      <p
+                        className="locaryn-field-hint"
+                        title={compat.hint}
+                        style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}
+                      >
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            color:
+                              c.compat === "native"
+                                ? "var(--success, #10b981)"
+                                : c.compat === "adapted"
+                                  ? "var(--accent)"
+                                  : "var(--text-faint)",
+                          }}
+                        >
+                          {compat.label}
+                        </span>
+                        {c.advertised.length > 0 && <span>· {c.advertised.join(" · ")}</span>}
+                      </p>
                     </div>
-
-                    <p className="locaryn-box-desc">
-                      {c.description ?? "Pas de description fournie."}
-                    </p>
-
-                    <p className="locaryn-field-hint" title={compat.hint}>
-                      {compat.label}
-                      {c.advertised.length > 0 && ` · ${c.advertised.join(" · ")}`}
-                    </p>
 
                     <div
                       style={{
-                        marginTop: "auto",
-                        paddingTop: 12,
+                        marginTop: 12,
+                        paddingTop: 10,
                         borderTop: "1px solid var(--border)",
                         display: "flex",
-                        justifyContent: "flex-end",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
                       }}
                     >
+                      {c.homepage ? (
+                        <a
+                          href={c.homepage}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="locaryn-btn-ghost"
+                          style={{ fontSize: 11, padding: "3px 8px", textDecoration: "none" }}
+                          title="Ouvrir le dépôt GitHub"
+                        >
+                          GitHub ↗
+                        </a>
+                      ) : (
+                        <div />
+                      )}
                       {c.installed ? (
                         <span className="locaryn-tag locaryn-tag-installed">installée</span>
                       ) : (

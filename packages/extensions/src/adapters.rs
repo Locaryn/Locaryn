@@ -80,6 +80,8 @@ pub fn detect(dir: &Path) -> Option<ExtensionEcosystem> {
         || dir.join("agents").is_dir()
         || dir.join("skills").is_dir()
         || dir.join("hooks").is_dir()
+        || dir.join("SKILL.md").is_file()
+        || dir.join("skill.md").is_file()
     {
         return Some(ExtensionEcosystem::ClaudeCode);
     }

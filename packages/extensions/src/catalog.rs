@@ -391,10 +391,15 @@ impl CatalogClient {
                 .get("fullName")
                 .and_then(|x| x.as_str())
                 .unwrap_or_default();
-            let name = e
+            let raw_name = e
                 .get("extensionName")
                 .and_then(|x| x.as_str())
                 .unwrap_or(full_name);
+            let display_name = if raw_name.starts_with('@') && raw_name.contains('/') {
+                raw_name.split('/').nth(1).unwrap_or(raw_name).to_string()
+            } else {
+                raw_name.to_string()
+            };
             let mut advertised = Vec::new();
             for (key, label) in [
                 ("hasMCP", "mcp"),
@@ -408,7 +413,9 @@ impl CatalogClient {
                 }
             }
             if let Some(stars) = e.get("stars").and_then(|x| x.as_u64()) {
-                advertised.push(format!("★{stars}"));
+                if stars > 0 {
+                    advertised.push(format!("★{stars}"));
+                }
             }
             // Hooks and skills convert cleanly; a Policy Engine bundle does not,
             // and neither does an MCP server that needs its own npm install.
@@ -417,16 +424,26 @@ impl CatalogClient {
             } else {
                 CatalogCompat::Adapted
             };
+
+            let description = e
+                .get("extensionDescription")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .or_else(|| e.get("repoDescription").and_then(|x| x.as_str()))
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_string);
+
+            let author = full_name
+                .split('/')
+                .next()
+                .map(|a| a.trim_start_matches('@').to_string());
+
             out.push(CatalogEntry {
                 id: format!("gemini_cli:{}:{full_name}", source.id),
-                name: crate::adapters::sanitize_name(name),
-                display_name: name.to_string(),
-                description: e
-                    .get("extensionDescription")
-                    .and_then(|x| x.as_str())
-                    .or_else(|| e.get("repoDescription").and_then(|x| x.as_str()))
-                    .map(str::to_string),
-                author: full_name.split('/').next().map(str::to_string),
+                name: crate::adapters::sanitize_name(&display_name),
+                display_name,
+                description,
+                author,
                 version: e
                     .get("extensionVersion")
                     .and_then(|x| x.as_str())
@@ -810,12 +827,41 @@ pub fn filter(
         })
         .collect();
 
-    // Installable first, then by name — a page of things you cannot install is
-    // not a useful first impression.
+    // Prioritize:
+    // 1. Installable first
+    // 2. Official Locaryn certified
+    // 3. Claude Code official
+    // 4. Starred / popular extensions
+    // 5. Alphabetical by display_name
     hits.sort_by(|a, b| {
         b.compat
             .installable()
             .cmp(&a.compat.installable())
+            .then_with(|| {
+                let a_official = a.ecosystem == ExtensionEcosystem::Locaryn;
+                let b_official = b.ecosystem == ExtensionEcosystem::Locaryn;
+                b_official.cmp(&a_official)
+            })
+            .then_with(|| {
+                let a_claude = a.ecosystem == ExtensionEcosystem::ClaudeCode;
+                let b_claude = b.ecosystem == ExtensionEcosystem::ClaudeCode;
+                b_claude.cmp(&a_claude)
+            })
+            .then_with(|| {
+                let a_stars = a
+                    .advertised
+                    .iter()
+                    .find_map(|s| s.strip_prefix('★'))
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0);
+                let b_stars = b
+                    .advertised
+                    .iter()
+                    .find_map(|s| s.strip_prefix('★'))
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0);
+                b_stars.cmp(&a_stars)
+            })
             .then_with(|| {
                 a.display_name
                     .to_lowercase()
