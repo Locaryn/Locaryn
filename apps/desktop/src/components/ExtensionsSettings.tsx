@@ -1,5 +1,7 @@
+import { capabilityLabel } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type Capability,
   type CatalogEntry,
   type CatalogSnapshot,
   type CatalogSource,
@@ -34,7 +36,6 @@ const ECOSYSTEM_FILTERS: { id: ExtensionEcosystem | "all"; label: string }[] = [
   { id: "claude_code", label: ECOSYSTEM_LABELS.claude_code },
   { id: "gemini_cli", label: ECOSYSTEM_LABELS.gemini_cli },
   { id: "opencode", label: ECOSYSTEM_LABELS.opencode },
-  { id: "mcp", label: ECOSYSTEM_LABELS.mcp },
 ];
 
 /** Combien d'extensions mises à jour en même temps pendant le lot. */
@@ -79,6 +80,25 @@ const COMPAT: Record<string, { label: string; hint: string }> = {
   },
 };
 
+type InstalledExtensionFilter = "all" | "extensions" | "plugins" | "cores";
+
+function installedExtensionKind(e: InstalledExtension): InstalledExtensionFilter {
+  if (e.core) return "cores";
+  if (e.kind === "plugin" || e.ecosystem !== "locaryn") return "plugins";
+  return "extensions";
+}
+
+function installedExtensionKindLabel(e: InstalledExtension): string {
+  switch (installedExtensionKind(e)) {
+    case "cores":
+      return "Noyau";
+    case "plugins":
+      return "Plugin compatible";
+    default:
+      return "Extension Locaryn";
+  }
+}
+
 function componentSummary(e: InstalledExtension): string {
   const c = e.components;
   const parts: string[] = [];
@@ -93,8 +113,19 @@ function componentSummary(e: InstalledExtension): string {
 }
 
 export function ExtensionsSettings() {
+  // Le daemon fait foi pour les labels ; en cas de silence (daemon arrêté),
+  // on garde la copie embarquée à la compilation.
+  useEffect(() => {
+    void core
+      .listCapabilities()
+      .then(setCanonique)
+      .catch(() => setCanonique(null));
+  }, []);
   const [tab, setTab] = useState<"installed" | "browse">("installed");
   const [installed, setInstalled] = useState<InstalledExtension[]>([]);
+  const [installedFilter, setInstalledFilter] = useState<InstalledExtensionFilter>("all");
+  /** La liste canonique du daemon : les labels vivants, sans recompiler. */
+  const [canonique, setCanonique] = useState<Capability[] | null>(null);
   const [snapshot, setSnapshot] = useState<CatalogSnapshot | null>(null);
   const [sources, setSources] = useState<CatalogSource[]>([]);
   const [ecosystem, setEcosystem] = useState<ExtensionEcosystem | "all">("all");
@@ -244,7 +275,36 @@ export function ExtensionsSettings() {
   }, [loadInstalled, refreshUpdates]);
 
   /** Les noyaux installés, pour leur carte et pour la création de session. */
-  const installedCores = useMemo(() => installed.filter((e) => e.core != null), [installed]);
+  const installedCores = useMemo(
+    () => installed.filter((e) => installedExtensionKind(e) === "cores"),
+    [installed],
+  );
+  const visibleInstalled = useMemo(
+    () =>
+      installed.filter(
+        (e) => installedFilter === "all" || installedExtensionKind(e) === installedFilter,
+      ),
+    [installed, installedFilter],
+  );
+  // Les noyaux ont une carte dédiée (pilotage et skills). Ils ne doivent pas
+  // réapparaître dans la liste générique des extensions, sinon un même noyau
+  // semble installé deux fois et mélange les modèles mentaux de l'utilisateur.
+  const visibleNonCoreInstalled = useMemo(
+    () => visibleInstalled.filter((e) => installedExtensionKind(e) !== "cores"),
+    [visibleInstalled],
+  );
+  const installedCounts = useMemo(
+    () => ({
+      all: installed.length,
+      extensions: installed.filter((e) => installedExtensionKind(e) === "extensions").length,
+      plugins: installed.filter((e) => installedExtensionKind(e) === "plugins").length,
+      cores: installedCores.length,
+    }),
+    [installed, installedCores],
+  );
+
+  const showCoreSection =
+    (installedFilter === "all" || installedFilter === "cores") && installedCores.length > 0;
 
   /** Rafraîchit le statut des noyaux installés (silencieux, en parallèle). */
   const refreshCoreStatuses = useCallback(async () => {
@@ -517,15 +577,17 @@ export function ExtensionsSettings() {
 
   const grouped = useMemo(() => {
     const map = new Map<ExtensionEcosystem, InstalledExtension[]>();
-    for (const e of installed) {
+    for (const e of visibleNonCoreInstalled) {
       const list = map.get(e.ecosystem) ?? [];
       list.push(e);
       map.set(e.ecosystem, list);
     }
     return [...map.entries()];
-  }, [installed]);
+  }, [visibleNonCoreInstalled]);
 
-  const entries = snapshot?.entries ?? [];
+  // Les serveurs MCP ont leur propre espace dans Connecteurs : ne pas les
+  // mélanger avec les extensions et plugins dans ce catalogue.
+  const entries = (snapshot?.entries ?? []).filter((entry) => entry.ecosystem !== "mcp");
   // Entrées du catalogue déjà installées, par nom — pour repérer une version
   // plus récente que le contrôle GitHub ne voit pas (source locale, etc.).
   const catalogByName = useMemo(() => {
@@ -575,6 +637,28 @@ export function ExtensionsSettings() {
 
   return (
     <div className="locaryn-ext-settings">
+      <div className="locaryn-extension-intro">
+        <div>
+          <h3>Extensions</h3>
+          <p>
+            Les extensions Locaryn ajoutent des capacités ou des écrans. Les plugins compatibles
+            viennent d'autres écosystèmes (Claude Code, Gemini CLI, OpenCode) et les noyaux sont
+            regroupés à part car ils pilotent une conversation entière. Les connexions SSH, bases de
+            données et serveurs MCP se gèrent dans « Connecteurs &amp; MCP ».
+          </p>
+        </div>
+        <div className="locaryn-extension-legend" aria-label="Types de paquets">
+          <span>
+            <strong>Extension</strong> · capacité Locaryn
+          </span>
+          <span>
+            <strong>Plugin</strong> · paquet compatible
+          </span>
+          <span>
+            <strong>Noyau</strong> · mémoire et agent alternatifs
+          </span>
+        </div>
+      </div>
       <div
         style={{
           display: "flex",
@@ -591,7 +675,7 @@ export function ExtensionsSettings() {
             className={`locaryn-tab-btn${tab === "installed" ? " locaryn-active" : ""}`}
             onClick={() => setTab("installed")}
           >
-            Installées ({installed.length})
+            Paquets installés ({installedCounts.all})
           </button>
           <button
             type="button"
@@ -632,11 +716,35 @@ export function ExtensionsSettings() {
             className="locaryn-btn-primary"
             style={{ fontSize: 12, padding: "4px 12px" }}
             onClick={() => setInstallDialog({ open: true, kind: "extension" })}
+            title="Installer une extension ou un plugin depuis un dépôt, un dossier ou une archive"
           >
-            + Depuis un dépôt GitHub
+            + Installer une extension ou un plugin
           </button>
         </div>
       </div>
+
+      {tab === "installed" && (
+        <div className="locaryn-extension-filters" aria-label="Filtrer les paquets installés">
+          <span className="locaryn-field-hint">Afficher :</span>
+          {(
+            [
+              ["all", `Tout (${installedCounts.all})`],
+              ["extensions", `Extensions Locaryn (${installedCounts.extensions})`],
+              ["plugins", `Plugins compatibles (${installedCounts.plugins})`],
+              ["cores", `Noyaux (${installedCounts.cores})`],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`locaryn-chip${installedFilter === id ? " locaryn-chip-on" : ""}`}
+              onClick={() => setInstalledFilter(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {batchProgress && (
         <div className="locaryn-card" style={{ marginBottom: 12, padding: "10px 14px" }}>
@@ -812,191 +920,197 @@ export function ExtensionsSettings() {
 
       {tab === "installed" ? (
         <>
-          {installedCores.length > 0 && (
-            <section className="locaryn-card" style={{ padding: 16, marginBottom: 20 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                <h4 style={{ fontSize: "var(--text-md)", margin: 0 }}>Noyaux alternatifs</h4>
-                <span className="locaryn-tag">OpenClaw · Hermes · …</span>
-              </div>
-              <p className="locaryn-field-hint" style={{ marginBottom: 12 }}>
-                Un noyau change le cerveau de l'agent (mémoire, skills, Home Assistant…) pour les
-                conversations qui l'utilisent — le noyau Locaryn n'est jamais remplacé. Les messages
-                d'une session à noyau partent chez <em>son</em> fournisseur, pas chez le vôtre.
-              </p>
-              {coreError && (
-                <p
-                  className="locaryn-field-hint"
-                  style={{ color: "var(--danger)", marginBottom: 8 }}
-                >
-                  {coreError}
+          {(installedFilter === "all" || installedFilter === "cores") &&
+            installedCores.length > 0 && (
+              <section className="locaryn-card" style={{ padding: 16, marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <h4 style={{ fontSize: "var(--text-md)", margin: 0 }}>Noyaux alternatifs</h4>
+                  <span className="locaryn-tag">OpenClaw · Hermes · …</span>
+                </div>
+                <p className="locaryn-field-hint" style={{ marginBottom: 12 }}>
+                  Un noyau change le cerveau de l'agent (mémoire, skills, Home Assistant…) pour les
+                  conversations qui l'utilisent — le noyau Locaryn n'est jamais remplacé. Les
+                  messages d'une session à noyau partent chez <em>son</em> fournisseur, pas chez le
+                  vôtre.
                 </p>
-              )}
-              {skillNotice && (
-                <p className="locaryn-field-hint" style={{ marginBottom: 8 }}>
-                  {skillNotice}
-                </p>
-              )}
-              <div className="locaryn-model-grid">
-                {installedCores.map((e) => {
-                  const st = coreStatuses[e.id];
-                  const meta = CORE_STATE_LABEL[st?.state ?? "stopped"] ?? CORE_STATE_LABEL.stopped;
-                  return (
-                    <div key={e.id} className="locaryn-box-card">
-                      <div className="locaryn-box-head">
-                        <div style={{ minWidth: 0 }}>
-                          <h3 className="locaryn-box-name">{e.name}</h3>
-                          <span className="locaryn-box-brand">
-                            v{e.version} · driver {e.core?.driver}
-                          </span>
+                {coreError && (
+                  <p
+                    className="locaryn-field-hint"
+                    style={{ color: "var(--danger)", marginBottom: 8 }}
+                  >
+                    {coreError}
+                  </p>
+                )}
+                {skillNotice && (
+                  <p className="locaryn-field-hint" style={{ marginBottom: 8 }}>
+                    {skillNotice}
+                  </p>
+                )}
+                <div className="locaryn-model-grid">
+                  {installedCores.map((e) => {
+                    const st = coreStatuses[e.id];
+                    const meta =
+                      CORE_STATE_LABEL[st?.state ?? "stopped"] ?? CORE_STATE_LABEL.stopped;
+                    return (
+                      <div key={e.id} className="locaryn-box-card">
+                        <div className="locaryn-box-head">
+                          <div style={{ minWidth: 0 }}>
+                            <h3 className="locaryn-box-name">{e.name}</h3>
+                            <span className="locaryn-box-brand">
+                              v{e.version} · driver {e.core?.driver}
+                            </span>
+                          </div>
+                          <span
+                            className={`locaryn-health-dot ${
+                              meta.ok ? "locaryn-health-ok" : "locaryn-health-off"
+                            }`}
+                            title={st?.error ?? undefined}
+                          />
+                          <span className="locaryn-tag">{meta.label}</span>
                         </div>
-                        <span
-                          className={`locaryn-health-dot ${
-                            meta.ok ? "locaryn-health-ok" : "locaryn-health-off"
-                          }`}
-                          title={st?.error ?? undefined}
-                        />
-                        <span className="locaryn-tag">{meta.label}</span>
-                      </div>
-                      <p className="locaryn-box-desc">
-                        {e.description ?? "Pas de description fournie."}
-                      </p>
-                      <p className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
-                        {e.core?.api_url}
-                      </p>
-                      {st?.state === "error" && st.error && (
-                        <p
-                          className="locaryn-field-hint"
-                          style={{ color: "var(--danger)", marginTop: 4 }}
-                        >
-                          {st.error}
+                        <p className="locaryn-box-desc">
+                          {e.description ?? "Pas de description fournie."}
                         </p>
-                      )}
-                      {st?.state === "external" && (
-                        <p className="locaryn-field-hint" style={{ marginTop: 4 }}>
-                          Aucune commande de lancement déclarée : démarrez le noyau vous-même,
-                          Locaryn s'y connectera ensuite.
+                        <p className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
+                          {e.core?.api_url}
                         </p>
-                      )}
-                      <div
-                        style={{
-                          marginTop: "auto",
-                          paddingTop: 12,
-                          borderTop: "1px solid var(--border)",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 8,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          className="locaryn-btn-ghost"
-                          style={{ fontSize: 12 }}
-                          disabled={coreBusy === e.id}
-                          onClick={() => toggleSkills(e.id)}
-                        >
-                          {skillsOpen === e.id ? "Masquer les skills" : "Skills"}
-                        </button>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          {st?.state === "running" ? (
-                            <button
-                              type="button"
-                              className="locaryn-btn-ghost"
-                              style={{ fontSize: 12, color: "var(--danger)" }}
-                              disabled={coreBusy === e.id}
-                              onClick={() => runCoreAction(e.id, "stop")}
-                            >
-                              {coreBusy === e.id ? "…" : "Arrêter"}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="locaryn-btn-primary"
-                              style={{ fontSize: 12 }}
-                              disabled={coreBusy === e.id || st?.state === "external"}
-                              onClick={() => runCoreAction(e.id, "start")}
-                            >
-                              {coreBusy === e.id
-                                ? "…"
-                                : st?.state === "starting"
-                                  ? "Démarrage…"
-                                  : "Démarrer"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {skillsOpen === e.id && (
+                        {st?.state === "error" && st.error && (
+                          <p
+                            className="locaryn-field-hint"
+                            style={{ color: "var(--danger)", marginTop: 4 }}
+                          >
+                            {st.error}
+                          </p>
+                        )}
+                        {st?.state === "external" && (
+                          <p className="locaryn-field-hint" style={{ marginTop: 4 }}>
+                            Aucune commande de lancement déclarée : démarrez le noyau vous-même,
+                            Locaryn s'y connectera ensuite.
+                          </p>
+                        )}
                         <div
                           style={{
-                            marginTop: 12,
+                            marginTop: "auto",
                             paddingTop: 12,
                             borderTop: "1px solid var(--border)",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 8,
                           }}
                         >
-                          {e.core?.skills_install && (
-                            <p className="locaryn-field-hint" style={{ marginBottom: 8 }}>
-                              Installation :{" "}
-                              <code>
-                                {e.core.skills_install.replace("{{slug}}", "@owner/skill")}
-                              </code>
-                            </p>
-                          )}
-                          {(coreSkills[e.id] ?? []).length === 0 ? (
-                            <p className="locaryn-field-hint">Aucun skill indexé pour ce noyau.</p>
-                          ) : (
-                            <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                              {(coreSkills[e.id] ?? []).map((sk) => (
-                                <li
-                                  key={sk.slug}
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                    alignItems: "flex-start",
-                                    padding: "8px 0",
-                                    borderBottom: "1px solid var(--border)",
-                                  }}
-                                >
-                                  <div style={{ minWidth: 0 }}>
-                                    <strong style={{ fontSize: 13 }}>{sk.name}</strong>
-                                    {!sk.verified && (
-                                      <span className="locaryn-tag" style={{ marginLeft: 6 }}>
-                                        non vérifié
-                                      </span>
-                                    )}
-                                    {sk.description && (
-                                      <span
-                                        className="locaryn-field-hint"
-                                        style={{ display: "block" }}
-                                      >
-                                        {sk.description}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="locaryn-btn-ghost"
-                                    style={{ fontSize: 12, flexShrink: 0 }}
-                                    disabled={coreBusy === `${e.id}:${sk.slug}`}
-                                    onClick={() => installSkill(e, sk.slug)}
-                                  >
-                                    {coreBusy === `${e.id}:${sk.slug}` ? "…" : "Installer"}
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                          <button
+                            type="button"
+                            className="locaryn-btn-ghost"
+                            style={{ fontSize: 12 }}
+                            disabled={coreBusy === e.id}
+                            onClick={() => toggleSkills(e.id)}
+                          >
+                            {skillsOpen === e.id ? "Masquer les skills" : "Skills"}
+                          </button>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            {st?.state === "running" ? (
+                              <button
+                                type="button"
+                                className="locaryn-btn-ghost"
+                                style={{ fontSize: 12, color: "var(--danger)" }}
+                                disabled={coreBusy === e.id}
+                                onClick={() => runCoreAction(e.id, "stop")}
+                              >
+                                {coreBusy === e.id ? "…" : "Arrêter"}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="locaryn-btn-primary"
+                                style={{ fontSize: 12 }}
+                                disabled={coreBusy === e.id || st?.state === "external"}
+                                onClick={() => runCoreAction(e.id, "start")}
+                              >
+                                {coreBusy === e.id
+                                  ? "…"
+                                  : st?.state === "starting"
+                                    ? "Démarrage…"
+                                    : "Démarrer"}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-          {installed.length === 0 ? (
+                        {skillsOpen === e.id && (
+                          <div
+                            style={{
+                              marginTop: 12,
+                              paddingTop: 12,
+                              borderTop: "1px solid var(--border)",
+                            }}
+                          >
+                            {e.core?.skills_install && (
+                              <p className="locaryn-field-hint" style={{ marginBottom: 8 }}>
+                                Installation :{" "}
+                                <code>
+                                  {e.core.skills_install.replace("{{slug}}", "@owner/skill")}
+                                </code>
+                              </p>
+                            )}
+                            {(coreSkills[e.id] ?? []).length === 0 ? (
+                              <p className="locaryn-field-hint">
+                                Aucun skill indexé pour ce noyau.
+                              </p>
+                            ) : (
+                              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                                {(coreSkills[e.id] ?? []).map((sk) => (
+                                  <li
+                                    key={sk.slug}
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      gap: 10,
+                                      alignItems: "flex-start",
+                                      padding: "8px 0",
+                                      borderBottom: "1px solid var(--border)",
+                                    }}
+                                  >
+                                    <div style={{ minWidth: 0 }}>
+                                      <strong style={{ fontSize: 13 }}>{sk.name}</strong>
+                                      {!sk.verified && (
+                                        <span className="locaryn-tag" style={{ marginLeft: 6 }}>
+                                          non vérifié
+                                        </span>
+                                      )}
+                                      {sk.description && (
+                                        <span
+                                          className="locaryn-field-hint"
+                                          style={{ display: "block" }}
+                                        >
+                                          {sk.description}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="locaryn-btn-ghost"
+                                      style={{ fontSize: 12, flexShrink: 0 }}
+                                      disabled={coreBusy === `${e.id}:${sk.slug}`}
+                                      onClick={() => installSkill(e, sk.slug)}
+                                    >
+                                      {coreBusy === `${e.id}:${sk.slug}` ? "…" : "Installer"}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          {!showCoreSection && visibleNonCoreInstalled.length === 0 ? (
             <p className="locaryn-field-hint">
-              Aucune extension installée. Ouvrez « Découvrir » pour parcourir les catalogues Claude
-              Code, Gemini CLI, OpenCode et MCP, ou installez directement depuis un dépôt GitHub.
+              {installed.length === 0
+                ? "Aucune extension, plugin ou noyau installé. Ouvrez « Découvrir » pour parcourir les catalogues, ou installez un paquet depuis un dépôt."
+                : "Aucun paquet de cette famille ne correspond au filtre sélectionné."}
             </p>
           ) : (
             grouped.map(([eco, list]) => (
@@ -1015,6 +1129,7 @@ export function ExtensionsSettings() {
                             {e.author ? ` · ${e.author}` : ""}
                           </span>
                         </div>
+                        <span className="locaryn-tag">{installedExtensionKindLabel(e)}</span>
                         <span className={`locaryn-tag${e.enabled ? " locaryn-tag-installed" : ""}`}>
                           {e.enabled ? "actif" : "inactif"}
                         </span>
@@ -1033,6 +1148,17 @@ export function ExtensionsSettings() {
                         {e.description ?? "Pas de description fournie."}
                       </p>
                       <p className="locaryn-field-hint">{componentSummary(e)}</p>
+                      {e.capabilities.length > 0 && (
+                        <p className="locaryn-field-hint" style={{ marginTop: 6 }}>
+                          Capacités :{" "}
+                          {e.capabilities
+                            .map(
+                              (id) =>
+                                canonique?.find((c) => c.id === id)?.label ?? capabilityLabel(id),
+                            )
+                            .join(" · ")}
+                        </p>
+                      )}
                       {updates[e.id]?.error && (
                         <p
                           className="locaryn-field-hint"
@@ -1179,8 +1305,8 @@ export function ExtensionsSettings() {
           {snapshot?.fetched_at == null ? (
             <p className="locaryn-field-hint">
               Aucun catalogue en cache. Lancez « Actualiser » pour lire les marketplaces Claude
-              Code, l'index Gemini CLI, le registre MCP officiel et les plugins OpenCode publiés sur
-              npm.
+              Code, l'index Gemini CLI et les plugins OpenCode publiés sur npm. Les serveurs MCP
+              sont classés dans « Connecteurs & MCP ».
             </p>
           ) : entries.length === 0 ? (
             <p className="locaryn-field-hint">Aucun résultat pour cette recherche.</p>

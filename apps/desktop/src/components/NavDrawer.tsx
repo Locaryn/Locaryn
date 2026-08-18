@@ -1,4 +1,4 @@
-import { Icon, type IconName, isIconName } from "@locaryn/ui-core";
+import { Icon, type IconName, isCapability, isIconName } from "@locaryn/ui-core";
 import type { ConnectionMode, InstalledExtension, ProviderSummary } from "../lib/core";
 import { ModalShell } from "./ModalShell";
 
@@ -58,12 +58,6 @@ const BASE_NAV_ITEMS: NavItem[] = [
     requiredCapabilities: ["figures"],
   },
   {
-    id: "archives",
-    label: "Archives",
-    icon: "archive",
-    desc: "Les conversations rangées, à ressortir ou à supprimer pour de bon",
-  },
-  {
     id: "installed",
     label: "Mes modèles installés",
     icon: "models",
@@ -90,10 +84,22 @@ const BASE_NAV_ITEMS: NavItem[] = [
     requiredCapabilities: ["model-training"],
   },
   {
-    id: "connectors",
-    label: "Extensions et MCP",
+    id: "extensions",
+    label: "Extensions",
     icon: "extensions",
-    desc: "Intégrations serveurs distants, plugins et extensions",
+    desc: "Extensions Locaryn, plugins compatibles et noyaux",
+  },
+  {
+    id: "connectors",
+    label: "Connecteurs & MCP",
+    icon: "server",
+    desc: "Connexions SSH, bases de données et serveurs MCP",
+  },
+  {
+    id: "account",
+    label: "Compte",
+    icon: "private",
+    desc: "Profil local, connexion distante et archives",
   },
   {
     id: "settings",
@@ -102,6 +108,19 @@ const BASE_NAV_ITEMS: NavItem[] = [
     desc: "Configuration des moteurs d'inférence, thèmes et gouvernance",
   },
 ];
+
+// Garde-fou : le socle ne référence que des capacités de la liste canonique
+// (`packages/shared-types/capabilities.json`). Une entrée qui exigerait un mot
+// inconnu ne pourrait jamais apparaître — autant le voir tout de suite.
+const CAPACITES_HORS_CANONIQUE = BASE_NAV_ITEMS.flatMap((i) => i.requiredCapabilities ?? []).filter(
+  (c) => !isCapability(c),
+);
+if (CAPACITES_HORS_CANONIQUE.length > 0) {
+  console.warn(
+    "capacités référencées par la navigation mais absentes de la liste canonique :",
+    CAPACITES_HORS_CANONIQUE,
+  );
+}
 
 /**
  * Les écrans qui n'existent que si une extension les apporte, et ce qu'ils

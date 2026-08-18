@@ -4,7 +4,7 @@
 //! Trois façons de joindre une machine, donc trois codes. Ils ne diffèrent que
 //! par l'adresse qu'ils portent, et ce qu'ils portent d'autre est identique :
 //! l'autorité du déploiement. C'est elle qui permet ensuite au téléphone de
-//! vérifier un certificat renouvelé et de reconnaître un lien de mode voyage —
+//! vérifier un certificat renouvelé et de reconnaître un lien de mode Remote —
 //! une adresse tapée à la main ne l'apporte pas, et l'interface le dit.
 
 use crate::DaemonState;
@@ -51,7 +51,7 @@ pub async fn qr(State(s): State<Arc<DaemonState>>, Query(q): Query<QrQuery>) -> 
             let Some(u) = s.travel.tunnel_url().await.filter(|u| !u.is_empty()) else {
                 return erreur(
                     StatusCode::CONFLICT,
-                    "Le mode voyage n'est pas actif : il n'y a pas encore d'adresse extérieure \
+                    "Le mode Remote n'est pas actif : il n'y a pas encore d'adresse extérieure \
                      à mettre dans un code."
                         .into(),
                 );
@@ -85,7 +85,7 @@ pub async fn qr(State(s): State<Arc<DaemonState>>, Query(q): Query<QrQuery>) -> 
         }
     };
 
-    // Le mode voyage avec le code : sans lui, le téléphone ne sait pas s'il
+    // Le mode Remote avec le code : sans lui, le téléphone ne sait pas s'il
     // reçoit une adresse de réseau local, un port ouvert, ou un tunnel dont
     // l'adresse expirera. Les trois se comportent différemment, et la
     // différence se voit le jour où ça ne marche plus.

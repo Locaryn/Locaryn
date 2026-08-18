@@ -255,5 +255,6 @@ pub async fn configure_airllm_provider(
         tracing::info!("AirLLM model changed — restarting AirLLM server");
         let _ = core.supervisor.shutdown(ProviderEngine::AirLlm).await;
     }
+    crate::refresh_mcp_runtime_env(&core).await;
     Ok(provider)
 }

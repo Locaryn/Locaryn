@@ -12,6 +12,18 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
+/// Stop the daemon owned by the desktop shell. This is intentionally the only
+/// owner-facing shutdown path: closing or quitting Locaryn must not leave a
+/// server behind listening on the user's machine.
+pub fn stop_daemon() {
+    if let Ok(mut guard) = CHILD.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 /// The supervised daemon, if we started one.
 static CHILD: Mutex<Option<std::process::Child>> = Mutex::new(None);
 
@@ -165,13 +177,7 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
     if !args.enabled {
         // The guard is dropped before the await: a std MutexGuard held across
         // one makes the whole future non-Send, which Tauri commands must be.
-        {
-            let mut guard = CHILD.lock().map_err(|_| "état du serveur illisible")?;
-            if let Some(mut child) = guard.take() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-        }
+        stop_daemon();
         return server_status().await;
     }
 
@@ -187,7 +193,8 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
 
     let bin = daemon_binary().ok_or("service Locaryn introuvable")?;
     let port = args.port.unwrap_or(status.port);
-    let child = std::process::Command::new(&bin)
+    let mut command = std::process::Command::new(&bin);
+    command
         // Exposing it is what makes the daemon demand authentication and TLS.
         .env("LOCARYN_DAEMON_BIND", "0.0.0.0")
         .env("LOCARYN_DAEMON_PORT", port.to_string())
@@ -197,10 +204,26 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
                 .to_string_lossy()
                 .to_string(),
         )
+        .stdin(std::process::Stdio::null())
         .stdout(daemon_log().unwrap_or_else(std::process::Stdio::null))
-        .stderr(daemon_log().unwrap_or_else(std::process::Stdio::null))
+        .stderr(daemon_log().unwrap_or_else(std::process::Stdio::null));
+
+    // `locaryn-daemon` is a console binary. When the desktop starts it, the
+    // child must stay a private implementation detail rather than opening a
+    // second foreground CMD window on Windows.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let child = command
         .spawn()
         .map_err(|e| format!("démarrage du service : {e}"))?;
+
+    #[cfg(windows)]
+    win_job::attach_child_to_job(&child);
 
     {
         let mut guard = CHILD.lock().map_err(|_| "état du serveur illisible")?;
@@ -209,6 +232,152 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
     // Give it a moment to bind, so the first status reflects reality.
     tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
     server_status().await
+}
+
+#[cfg(windows)]
+mod win_job {
+    use std::os::windows::io::AsRawHandle;
+    use std::sync::OnceLock;
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct IO_COUNTERS {
+        ReadOperationCount: u64,
+        WriteOperationCount: u64,
+        OtherOperationCount: u64,
+        ReadTransferCount: u64,
+        WriteTransferCount: u64,
+        OtherTransferCount: u64,
+    }
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+        PerProcessUserTimeLimit: i64,
+        PerJobUserTimeLimit: i64,
+        LimitFlags: u32,
+        MinimumWorkingSetSize: usize,
+        MaximumWorkingSetSize: usize,
+        ActiveProcessLimit: u32,
+        Affinity: usize,
+        PriorityClass: u32,
+        SchedulingClass: u32,
+    }
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+        BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION,
+        IoInfo: IO_COUNTERS,
+        ProcessMemoryLimit: usize,
+        JobMemoryLimit: usize,
+        PeakProcessMemoryLimit: usize,
+        PeakJobMemoryLimit: usize,
+    }
+
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: u32 = 9;
+
+    type HANDLE = *mut std::ffi::c_void;
+    type BOOL = i32;
+
+    extern "system" {
+        fn CreateJobObjectW(
+            lpJobAttributes: *const std::ffi::c_void,
+            lpName: *const u16,
+        ) -> HANDLE;
+        fn SetInformationJobObject(
+            hJob: HANDLE,
+            JobObjectInformationClass: u32,
+            lpJobObjectInformation: *const std::ffi::c_void,
+            cbJobObjectInformationLength: u32,
+        ) -> BOOL;
+        fn AssignProcessToJobObject(hJob: HANDLE, hProcess: HANDLE) -> BOOL;
+        fn CloseHandle(hObject: HANDLE) -> BOOL;
+    }
+
+    struct SafeJobHandle(HANDLE);
+    unsafe impl Send for SafeJobHandle {}
+    unsafe impl Sync for SafeJobHandle {}
+
+    impl Drop for SafeJobHandle {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe {
+                    CloseHandle(self.0);
+                }
+            }
+        }
+    }
+
+    static JOB: OnceLock<SafeJobHandle> = OnceLock::new();
+
+    fn get_job_object() -> Option<HANDLE> {
+        let job = JOB.get_or_init(|| {
+            unsafe {
+                let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if handle.is_null() {
+                    tracing::warn!("impossible de créer le Windows Job Object pour le daemon");
+                    return SafeJobHandle(std::ptr::null_mut());
+                }
+
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+                let res = SetInformationJobObject(
+                    handle,
+                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                    &info as *const _ as *const std::ffi::c_void,
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                );
+
+                if res == 0 {
+                    tracing::warn!("impossible de configurer JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE");
+                    CloseHandle(handle);
+                    return SafeJobHandle(std::ptr::null_mut());
+                }
+
+                SafeJobHandle(handle)
+            }
+        });
+
+        if job.0.is_null() {
+            None
+        } else {
+            Some(job.0)
+        }
+    }
+
+    /// Associe le processus enfant au Windows Job Object.
+    ///
+    /// Grâce au flag `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, le noyau Windows tue
+    /// automatiquement tous les processus rattachés dès que le processus parent
+    /// se termine ou plante brutalement.
+    pub fn attach_child_to_job(child: &std::process::Child) {
+        if let Some(job) = get_job_object() {
+            let process_handle = child.as_raw_handle() as HANDLE;
+            unsafe {
+                let res = AssignProcessToJobObject(job, process_handle);
+                if res == 0 {
+                    tracing::warn!("échec de l'assignation du daemon au Windows Job Object");
+                }
+            }
+        }
+    }
+}
+
+/// Restarts the daemon server. If stopped, starts it up.
+#[tauri::command]
+pub async fn restart_server() -> Result<ServerStatus, String> {
+    let status = server_status().await?;
+    let port = status.port;
+    stop_daemon();
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    set_server_mode(SetServerArgs {
+        enabled: true,
+        port: Some(port),
+    })
+    .await
 }
 
 /// Settings an administrator hands to their users, if this machine has some.

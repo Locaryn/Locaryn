@@ -381,13 +381,19 @@ body {
 
 /* ── Studio de création ───────────────────────────────────── */
 .lo-back {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
   background: none;
   border: none;
   color: var(--text-dim);
   font-family: inherit;
   font-size: var(--text-base);
   font-weight: 600;
-  padding: 0;
+  /* Le même interligne que le titre de la barre : sans cela, le bouton garde
+     le line-height: normal du navigateur, sa boîte de ligne est plus courte
+     que celle du titre et le texte flotte décalé de quelques pixels. */
+  line-height: inherit;
   cursor: pointer;
 }
 .lo-tabs {
@@ -950,4 +956,38 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+
+/* ── La barre de progression, comme celle de la mise à jour mobile ── */
+.lo-progress {
+  position: relative;
+  height: 6px;
+  margin-top: var(--space-3);
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.lo-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 120ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-progress-fill {
+    transition: none;
+  }
+}
+/* Indéterminé : un reflet qui glisse, et aucune largeur qui prétend savoir. */
+.lo-progress-indeterminate .lo-progress-fill {
+  width: 40%;
+  animation: lo-progress-glisse 1.2s ease-in-out infinite;
+}
+@keyframes lo-progress-glisse {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
 }

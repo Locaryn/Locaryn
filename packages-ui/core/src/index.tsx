@@ -4,6 +4,17 @@
 // la même idée, ce sont deux applications qui se contredisent de près.
 export { Icon, isIconName, type IconName } from "./icons";
 
+// Un seul vocabulaire de capacités pour le daemon et les deux clients : la
+// liste canonique de `packages/shared-types/capabilities.json`, lue ici et
+// embarquée côté Rust. La documentation n'en tient plus de copie.
+export {
+  CAPABILITIES,
+  CAPABILITY_IDS,
+  isCapability,
+  capabilityLabel,
+  type Capability,
+} from "./capabilities";
+
 export const tokens = {
   /** Sen (Google Fonts) — UI font for all Locaryn interfaces. Bundled
    *  locally in the desktop app; falls back to system sans-serif. */

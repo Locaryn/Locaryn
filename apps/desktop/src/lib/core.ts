@@ -94,6 +94,13 @@ export interface AppInfo {
   arch: string;
 }
 
+/** Persistent identity of the local account shown in the desktop profile. */
+export interface LocalProfile {
+  display_name: string;
+  /** Copied into Locaryn's data directory; null means initials are shown. */
+  avatar_path: string | null;
+}
+
 // ── Storage location ───────────────────────────────────────────────────
 // Weights and engines run to tens of gigabytes, so where they live is a
 // user setting rather than a fixed path under the home directory.
@@ -1035,6 +1042,12 @@ export interface ImageDefaults {
   variants: number;
 }
 
+/** Defaults for model-backed features outside the main conversation. */
+export interface ModelPreferences {
+  /** Null means the Studio chooses the first installed TTS model. */
+  tts_model: string | null;
+}
+
 /** Named quality presets → pixels. Shared by the settings UI and slash args. */
 export const IMAGE_QUALITIES: { id: string; label: string; px: number; hint: string }[] = [
   { id: "draft", label: "Brouillon", px: 256, hint: "Le plus rapide — icônes, essais" },
@@ -1282,6 +1295,13 @@ export interface RagHit {
   score: number;
 }
 
+/** Une capacité reconnue par le serveur : id, label français, description. */
+export interface Capability {
+  id: string;
+  label: string;
+  description: string;
+}
+
 export interface CoreApi {
   health(): Promise<Health>;
   bootstrap(): Promise<Bootstrap>;
@@ -1307,6 +1327,9 @@ export interface CoreApi {
   /** Saved image-generation defaults (quality, resolution, VRAM mode). */
   getImageDefaults(): Promise<ImageDefaults>;
   setImageDefaults(config: ImageDefaults): Promise<void>;
+  /** Defaults for secondary model-backed features in the account profile. */
+  getModelPreferences(): Promise<ModelPreferences>;
+  setModelPreferences(preferences: ModelPreferences): Promise<void>;
   /** How this machine should run a model (auto GPU / RAM-offload routing). */
   planModelRuntime(model: string): Promise<RuntimePlan>;
   listSessions(projectId: string): Promise<Session[]>;
@@ -1366,6 +1389,10 @@ export interface CoreApi {
   configureProvider(endpoint: string, model: string | null): Promise<Provider>;
   listModels(endpoint: string): Promise<string[]>;
   appInfo(): Promise<AppInfo>;
+  getLocalProfile(): Promise<LocalProfile>;
+  setLocalProfile(displayName: string): Promise<LocalProfile>;
+  setLocalAvatar(sourcePath: string): Promise<LocalProfile>;
+  clearLocalAvatar(): Promise<LocalProfile>;
 
   // --- AirLLM (low-VRAM inference engine) --------------------------------
   airllmStatus(): Promise<{
@@ -1398,6 +1425,7 @@ export interface CoreApi {
 
   serverStatus(): Promise<ServerStatus>;
   setServerMode(enabled: boolean, port?: number): Promise<ServerStatus>;
+  restartServer(): Promise<ServerStatus>;
   /** Deployment settings dropped next to the installer, if any. */
   provisioning(): Promise<Provisioning | null>;
 
@@ -1430,6 +1458,8 @@ export interface CoreApi {
   forgetMemory(id: string): Promise<void>;
   forgetAllMemory(): Promise<number>;
   listExtensions(): Promise<InstalledExtension[]>;
+  /** La liste canonique des capacités, telle que le serveur la connaît. */
+  listCapabilities(): Promise<Capability[]>;
   // --- Noyaux alternatifs (extensions avec une section `core`) -------------
   coreStatus(id: string): Promise<CoreStatus>;
   coreStart(id: string): Promise<CoreStatus>;
@@ -1527,6 +1557,8 @@ export interface CoreApi {
   /** Save a browser-recorded audio blob for tools that require a local path. */
   writeTestAudio(audioBase64: string, mimeType: string): Promise<string>;
   removeTestAudio(path: string): Promise<void>;
+  /** Copy a generated voice note to a user-selected destination. */
+  saveAudioAs(sourcePath: string, destinationPath: string): Promise<void>;
   listSshServers(): Promise<SshServer[]>;
   testSshConnection(
     draft: SshServerDraft,
@@ -1744,6 +1776,8 @@ const tauriCore: CoreApi = {
   planModelRuntime: (model) => invoke<RuntimePlan>("plan_model_runtime", { model }),
   getImageDefaults: () => invoke<ImageDefaults>("get_image_defaults"),
   setImageDefaults: (config) => invoke<void>("set_image_defaults", { config }),
+  getModelPreferences: () => invoke<ModelPreferences>("get_model_preferences"),
+  setModelPreferences: (preferences) => invoke<void>("set_model_preferences", { preferences }),
   listSessions: (projectId) => invoke<Session[]>("list_sessions", { projectId }),
   createSession: (projectId, title, coreId) =>
     invoke<Session>("create_session", { projectId, title: title ?? null, coreId: coreId ?? null }),
@@ -1841,6 +1875,10 @@ const tauriCore: CoreApi = {
   configureAirllmProvider: (repo) => invoke<Provider>("configure_airllm_provider", { repo }),
   listModels: (endpoint) => invoke<string[]>("list_models", { endpoint }),
   appInfo: () => invoke<AppInfo>("app_info"),
+  getLocalProfile: () => invoke<LocalProfile>("get_local_profile"),
+  setLocalProfile: (displayName) => invoke<LocalProfile>("set_local_profile", { displayName }),
+  setLocalAvatar: (sourcePath) => invoke<LocalProfile>("set_local_avatar", { sourcePath }),
+  clearLocalAvatar: () => invoke<LocalProfile>("clear_local_avatar"),
 
   listVoicePresets: () => invoke<VoicePreset[]>("list_voice_presets"),
   saveVoicePreset: (args) => invoke<VoicePreset>("save_voice_preset", { args }),
@@ -1856,6 +1894,7 @@ const tauriCore: CoreApi = {
   serverStatus: () => invoke<ServerStatus>("server_status"),
   setServerMode: (enabled, port) =>
     invoke<ServerStatus>("set_server_mode", { args: { enabled, port: port ?? null } }),
+  restartServer: () => invoke<ServerStatus>("restart_server"),
   provisioning: () => invoke<Provisioning | null>("provisioning"),
 
   signIn: (serverUrl, username, password) =>
@@ -1886,6 +1925,7 @@ const tauriCore: CoreApi = {
   forgetMemory: (id) => invoke<void>("forget_memory", { id }),
   forgetAllMemory: () => invoke<number>("forget_all_memory"),
   listExtensions: () => invoke<InstalledExtension[]>("list_extensions"),
+  listCapabilities: () => invoke<Capability[]>("list_capabilities"),
   coreStatus: (id) => invoke<CoreStatus>("core_status", { id }),
   coreStart: (id) => invoke<CoreStatus>("core_start", { id }),
   coreStop: (id) => invoke<CoreStatus>("core_stop", { id }),
@@ -1965,6 +2005,8 @@ const tauriCore: CoreApi = {
   writeTestAudio: (audioBase64, mimeType) =>
     invoke<string>("write_test_audio", { audioBase64, mimeType }),
   removeTestAudio: (path) => invoke<void>("remove_test_audio", { path }),
+  saveAudioAs: (sourcePath, destinationPath) =>
+    invoke<void>("save_audio_as", { sourcePath, destinationPath }),
   listSshServers: () => invoke<SshServer[]>("list_ssh_servers"),
   testSshConnection(draft, secret, onEvent) {
     const chan = new Channel<SshTestEvent>();
@@ -2234,6 +2276,8 @@ let demoImageDefaults: ImageDefaults = {
   negative_prompt: "",
   variants: 1,
 };
+let demoModelPreferences: ModelPreferences = { tts_model: null };
+let demoLocalProfile: LocalProfile = { display_name: "", avatar_path: null };
 
 const now = Date.now();
 const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
@@ -3074,6 +3118,23 @@ const demoCore: CoreApi = {
     // Stateful like the real backend, so the settings UI behaves identically.
     demoImageDefaults = { ...config };
   },
+  getModelPreferences: async () => demoModelPreferences,
+  setModelPreferences: async (preferences) => {
+    demoModelPreferences = { ...preferences };
+  },
+  getLocalProfile: async () => demoLocalProfile,
+  setLocalProfile: async (displayName) => {
+    demoLocalProfile = { ...demoLocalProfile, display_name: displayName.trim().slice(0, 80) };
+    return demoLocalProfile;
+  },
+  setLocalAvatar: async (sourcePath) => {
+    demoLocalProfile = { ...demoLocalProfile, avatar_path: sourcePath };
+    return demoLocalProfile;
+  },
+  clearLocalAvatar: async () => {
+    demoLocalProfile = { ...demoLocalProfile, avatar_path: null };
+    return demoLocalProfile;
+  },
   planModelRuntime: async (model) => ({
     model,
     size_gb: 4.2,
@@ -3407,6 +3468,15 @@ const demoCore: CoreApi = {
     fingerprint: enabled ? "BD:E9:FA:13:1A:62:B6:93" : null,
     blocker: null,
   }),
+  restartServer: async () => ({
+    running: true,
+    bind: "0.0.0.0",
+    port: 7474,
+    url: "https://192.168.1.188:7474",
+    accounts: 1,
+    fingerprint: "BD:E9:FA:13:1A:62:B6:93",
+    blocker: null,
+  }),
   provisioning: async () => null,
 
   signIn: async (serverUrl, username) => ({
@@ -3540,6 +3610,7 @@ const demoCore: CoreApi = {
     return n;
   },
   listExtensions: async () => demoExtensions,
+  listCapabilities: async () => [],
   coreStatus: async (id) => ({
     id,
     state: "running",
@@ -3853,6 +3924,16 @@ const demoCore: CoreApi = {
   },
   writeTestAudio: async () => "demo://audio",
   removeTestAudio: async () => {},
+  saveAudioAs: async (sourcePath, destinationPath) => {
+    // Browser preview fallback: trigger a normal download when no native
+    // filesystem command is available.
+    const link = document.createElement("a");
+    link.href = sourcePath;
+    link.download = destinationPath.split(/[\\/]/).pop() || "note-vocale.wav";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  },
   listSshServers: async () => demoSshServers,
   async testSshConnection(draft, _secret, onEvent) {
     onEvent({ type: "connecting" });

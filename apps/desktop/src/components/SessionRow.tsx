@@ -6,8 +6,8 @@ type Props = {
   session: Session;
   label: string;
   active: boolean;
-  /** Icône de tête : `chat` pour une conversation libre, rien dans un projet. */
-  bullet: "chat" | "";
+  /** Marqueur de tête : icône pour une conversation libre, point pour l'historique groupé. */
+  bullet: "chat" | "dot" | "";
   onSelect: () => void;
   onRename: (title: string) => void;
   onArchive: () => void;
@@ -135,7 +135,12 @@ export function SessionRow({
           onDoubleClick={() => setEditing(true)}
           title={label}
         >
-          {bullet === "chat" ? <Icon name="chat" size={14} /> : null} {label}
+          {bullet === "chat" ? (
+            <Icon name="chat" size={14} />
+          ) : bullet === "dot" ? (
+            <span className="locaryn-history-session-bullet" aria-hidden="true" />
+          ) : null}{" "}
+          {label}
           {session.ephemeral && <span className="locaryn-ephemeral-dot" title="Éphémère" />}
         </button>
       )}

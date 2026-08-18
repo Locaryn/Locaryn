@@ -9,6 +9,7 @@ import { MessageBubble } from "../components/chat/MessageBubble";
 import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { ToolCard } from "../components/chat/ToolCard";
+import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import {
   type ConnectionMode,
@@ -23,8 +24,10 @@ import {
   core,
   reasoningPayload,
 } from "../lib/core";
+import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { setImageResultHandler, startImageGeneration, toImageUrl } from "../lib/imageJobs";
+import { loadMediaObjectUrl } from "../lib/media";
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
   type SlashAction,
@@ -39,6 +42,14 @@ import { DEFAULT_MODEL_PARAMS } from "./ModelConfigPanel";
 
 type ChatItem =
   | { id: string; kind: "msg"; role: "user" | "assistant"; text: string; images?: string[] }
+  | {
+      id: string;
+      kind: "audio";
+      path: string;
+      url: string | null;
+      status: "loading" | "ready" | "error";
+      error?: string;
+    }
   | {
       id: string;
       kind: "tool";
@@ -133,6 +144,50 @@ function splitInlineImages(content: string): { text: string; images?: string[] }
     })
     .trim();
   return images.length ? { text, images } : { text: content };
+}
+
+/** Audio artifacts are persisted as transparent HTML comments so a session
+ *  can restore the playable note without showing a filesystem path to the
+ *  model or the user. */
+function splitInlineAudio(content: string): { text: string; paths: string[] } {
+  const paths: string[] = [];
+  const text = content
+    .replace(/<!--locaryn-audio:([\s\S]*?)-->/g, (_m, encoded: string) => {
+      try {
+        const path = JSON.parse(encoded);
+        if (typeof path === "string" && path) paths.push(path);
+      } catch {
+        // Ignore a malformed marker rather than exposing implementation data.
+      }
+      return "";
+    })
+    .trim();
+  return { text, paths };
+}
+
+function storedMessageItems(m: { id: string; role: string; content: string }): ChatItem[] {
+  const audio = splitInlineAudio(m.content);
+  const parsed = splitInlineImages(audio.text);
+  const result: ChatItem[] = [];
+  if (parsed.text || parsed.images?.length) {
+    result.push({
+      id: m.id,
+      kind: "msg",
+      role: m.role as "user" | "assistant",
+      text: parsed.text,
+      images: parsed.images,
+    });
+  }
+  audio.paths.forEach((path, index) => {
+    result.push({
+      id: `${m.id}:audio:${index}`,
+      kind: "audio",
+      path,
+      url: null,
+      status: "loading",
+    });
+  });
+  return result;
 }
 
 function readFile(file: File): Promise<Attachment> {
@@ -365,14 +420,34 @@ export function ChatPanel({
     (async () => {
       try {
         const msgs = await core.listMessages(sessionId);
-        setItems(
-          msgs.map((m) => ({
-            id: m.id,
-            kind: "msg",
-            role: m.role as "user" | "assistant",
-            ...splitInlineImages(m.content),
-          })),
-        );
+        const restored = msgs.flatMap(storedMessageItems);
+        setItems(restored);
+        for (const item of restored) {
+          if (item.kind !== "audio") continue;
+          void loadMediaObjectUrl(item.path)
+            .then((url) => {
+              setItems((prev) =>
+                prev.map((current) =>
+                  current.kind === "audio" && current.id === item.id
+                    ? { ...current, url, status: "ready", error: undefined }
+                    : current,
+                ),
+              );
+            })
+            .catch((error) => {
+              setItems((prev) =>
+                prev.map((current) =>
+                  current.kind === "audio" && current.id === item.id
+                    ? {
+                        ...current,
+                        status: "error",
+                        error: error instanceof Error ? error.message : String(error),
+                      }
+                    : current,
+                ),
+              );
+            });
+        }
       } catch (e) {
         setItems([{ id: nextId("log"), kind: "log", text: `(error loading session: ${e})` }]);
       }
@@ -442,8 +517,54 @@ export function ChatPanel({
         diff: ev.diff,
         is_remote: ev.is_remote,
       });
+    } else if (ev.type === "artifact" && ev.kind === "audio_wav") {
+      const audioId = nextId("audio");
+      setItems((prev) => [
+        ...prev,
+        { id: audioId, kind: "audio", path: ev.path, url: null, status: "loading" },
+      ]);
+      void loadMediaObjectUrl(ev.path)
+        .then((url) => {
+          setItems((prev) =>
+            prev.map((item) =>
+              item.kind === "audio" && item.id === audioId
+                ? { ...item, url, status: "ready", error: undefined }
+                : item,
+            ),
+          );
+        })
+        .catch((error) => {
+          setItems((prev) =>
+            prev.map((item) =>
+              item.kind === "audio" && item.id === audioId
+                ? {
+                    ...item,
+                    status: "error",
+                    error: error instanceof Error ? error.message : String(error),
+                  }
+                : item,
+            ),
+          );
+        });
     } else if (ev.type === "log") {
       setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `[Log: ${ev.msg}]` }]);
+    }
+  }
+
+  async function handleSaveAudio(path: string) {
+    const destination = await pickSaveFile("note-vocale.wav", ["wav", "mp3", "ogg", "m4a"]);
+    if (!destination) return;
+    try {
+      await core.saveAudioAs(path, destination);
+    } catch (error) {
+      setItems((prev) => [
+        ...prev,
+        {
+          id: nextId("log"),
+          kind: "log",
+          text: `Enregistrement de la note vocale impossible : ${String(error)}`,
+        },
+      ]);
     }
   }
 
@@ -1052,6 +1173,17 @@ export function ChatPanel({
                   />
                 );
               }
+              if (it.kind === "audio") {
+                return (
+                  <VoiceNote
+                    key={it.id}
+                    url={it.url}
+                    status={it.status}
+                    error={it.error}
+                    onSave={() => handleSaveAudio(it.path)}
+                  />
+                );
+              }
               if (it.kind === "tool") {
                 return (
                   <ToolCard
@@ -1295,16 +1427,6 @@ export function ChatPanel({
             >
               <Icon name="plus" size={15} /> Joindre
             </button>
-            <button
-              type="button"
-              className="locaryn-chip-btn"
-              title="Générer ou éditer une image avec l'IA locale"
-              disabled={!canCompose}
-              onClick={() => setImageGenOpen(true)}
-            >
-              <Icon name="studio" size={15} /> Créer
-            </button>
-
             <ReasoningPicker value={reasoning} onChange={setReasoning} disabled={!canCompose} />
 
             <button

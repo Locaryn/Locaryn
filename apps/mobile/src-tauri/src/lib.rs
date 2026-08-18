@@ -12,6 +12,7 @@ mod pairing;
 mod servers;
 mod update;
 
+use futures::StreamExt as _;
 use locaryn_shared_types::base64_encode;
 use serde::{Deserialize, Serialize};
 
@@ -75,6 +76,34 @@ async fn server_capabilities() -> Vec<String> {
     caps.sort();
     caps.dedup();
     caps
+}
+
+/// La liste canonique des capacités du serveur, telle que ce build la
+/// reconnaît. La récupérer ici permet au téléphone d'afficher les labels du
+/// serveur sans être recompilé quand de nouvelles capacités sont ajoutées.
+#[tauri::command]
+async fn list_capabilities() -> Vec<locaryn_shared_types::capabilities::Capability> {
+    let store = servers::load();
+    let Some(server) = store.active_server() else {
+        return Vec::new();
+    };
+    let url = format!(
+        "{}/v1/capabilities",
+        server.current_url.trim_end_matches('/')
+    );
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .danger_accept_invalid_certs(true)
+        .build()
+    else {
+        return Vec::new();
+    };
+    let Ok(resp) = client.get(url).send().await else {
+        return Vec::new();
+    };
+    resp.json::<Vec<locaryn_shared_types::capabilities::Capability>>()
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -1301,6 +1330,124 @@ async fn remove_extension(name: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Un point d'avancement du téléchargement d'un modèle, envoyé à l'écran au
+/// fil de l'eau — comme celui de la mise à jour, par un canal, pas une
+/// promesse.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ModelPullProgress {
+    pub downloaded: u64,
+    /// Absent quand le serveur n'a pas annoncé de taille : barre indéterminée.
+    pub total: Option<u64>,
+    pub percentage: Option<u8>,
+    /// Une phase en cours : « Installation des compagnons… ».
+    pub message: Option<String>,
+}
+
+/// Installer un modèle du catalogue : le serveur télécharge le fichier (ou
+/// le dépôt HuggingFace) dans son dossier de modèles, et répond par un flux
+/// d'événements dont on transmet chaque avancement à l'écran.
+#[tauri::command]
+async fn pull_model(
+    url: String,
+    on_progress: tauri::ipc::Channel<ModelPullProgress>,
+) -> Result<serde_json::Value, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/models/pull"))
+        .bearer_auth(&session.token)
+        // Les poids font des centaines de Mo à plusieurs Go : on laisse le
+        // temps au serveur de les télécharger.
+        .timeout(std::time::Duration::from_secs(3600))
+        .json(&serde_json::json!({ "url": url }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let corps = resp.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&corps)
+            .ok()
+            .and_then(|v| {
+                v.pointer("/error/message")
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| format!("Le serveur a refusé l'installation ({status})."));
+        return Err(message);
+    }
+
+    // Le serveur répond en événements (`data: {...}`), comme pour le chat ;
+    // on garde les points d'avancement et le dernier, qui porte le résultat.
+    let mut flux = resp.bytes_stream();
+    let mut tampon = String::new();
+    let mut resultat: Option<serde_json::Value> = None;
+    while let Some(morceau) = flux.next().await {
+        let morceau = morceau.map_err(|e| format!("téléchargement interrompu : {e}"))?;
+        tampon.push_str(&String::from_utf8_lossy(&morceau));
+        while let Some(sep) = tampon.find("\n\n") {
+            let bloc = tampon[..sep].to_string();
+            tampon.drain(..=sep + 1);
+            let Some(donnees) = bloc
+                .lines()
+                .find_map(|l| l.strip_prefix("data:").map(str::trim))
+            else {
+                continue;
+            };
+            let ev: serde_json::Value = match serde_json::from_str(donnees) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            if ev.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
+                resultat = Some(ev);
+            } else if let Some(msg) = ev.get("error").and_then(|e| e.as_str()) {
+                return Err(msg.to_string());
+            } else {
+                let _ = on_progress.send(ModelPullProgress {
+                    downloaded: ev.get("downloaded").and_then(|v| v.as_u64()).unwrap_or(0),
+                    total: ev.get("total").and_then(|v| v.as_u64()),
+                    percentage: ev.get("percentage").and_then(|v| v.as_u64()).map(|v| v as u8),
+                    message: ev.get("message").and_then(|v| v.as_str()).map(str::to_string),
+                });
+            }
+        }
+    }
+    resultat.ok_or_else(|| "Le serveur n'a pas confirmé la fin du téléchargement.".to_string())
+}
+
+/// Retirer un modèle installé : le serveur efface ses fichiers (le fichier,
+/// ou le dossier entier pour un dépôt). Les compagnons partagés (VAE,
+/// encodeur) restent, pour ne pas casser les autres modèles.
+#[tauri::command]
+async fn remove_model(name: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .delete(format!("{base}/v1/models/{name}"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Votre session a expiré. Reconnectez-vous.".into());
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let corps = resp.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&corps)
+            .ok()
+            .and_then(|v| {
+                v.pointer("/error/message")
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| format!("Le serveur a refusé le retrait ({status})."));
+        return Err(message);
+    }
+    Ok(())
+}
+
 // ============================================================================
 // Mémoire de l'utilisateur — elle vit sur le serveur, parce que c'est là que
 // le modèle la lit. Le téléphone ne fait que la montrer et la corriger.
@@ -1624,11 +1771,14 @@ pub fn run() {
             install_extension,
             set_extension_enabled,
             remove_extension,
+            pull_model,
+            remove_model,
             save_image,
             generate_image,
             generate_audio,
             pairing::apply_pairing_link,
             server_capabilities,
+            list_capabilities,
             update::check_update,
             update::install_update,
             update::resume_install,

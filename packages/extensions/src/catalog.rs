@@ -241,10 +241,16 @@ impl CatalogClient {
                 .and_then(|h| h.as_str())
                 .map(str::to_string);
 
+            let display_name = match name {
+                // The repository is kept under its historical slug until the
+                // GitHub rename is completed, but the product name is Remote.
+                "plugin-travel-tunnel" | "plugin-remote" => "Remote".to_string(),
+                _ => name.replace("plugin-", "").replace('-', " "),
+            };
             out.push(CatalogEntry {
                 id: format!("locaryn:{name}"),
                 name: name.to_string(),
-                display_name: name.replace("plugin-", "").replace('-', " "),
+                display_name,
                 description,
                 author: Some("Locaryn".to_string()),
                 version: Some("1.0.0".to_string()),

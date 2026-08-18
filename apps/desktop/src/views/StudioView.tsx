@@ -1,5 +1,5 @@
 import { Icon, type IconName, isIconName } from "@locaryn/ui-core";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AudioGenPanel } from "../components/AudioGenPanel";
 import { ImageGenPanel } from "../components/ImageGenPanel";
 import { Model3DPanel } from "../components/Model3DPanel";
@@ -34,6 +34,22 @@ const TABS: { id: StudioTab; label: string; icon: IconName }[] = [
   { id: "question-answering", label: "Q&R", icon: "question" },
 ];
 
+/** Capacité requise par chaque panneau natif du Studio. Un onglet n'est pas
+ * une promesse générale de l'application : il apparaît seulement si une
+ * extension active fournit réellement cette capacité. */
+const TAB_CAPABILITIES: Record<string, string> = {
+  image: "image-gen",
+  audio: "voice-tts",
+  music: "music-gen",
+  video: "video-gen",
+  "3d": "3d-gen",
+  "image-editing": "image-editor",
+  "object-detection": "vision-ocr",
+  translation: "translation",
+  "text-analysis": "text-analysis",
+  "question-answering": "rag-qa",
+};
+
 type Props = {
   installedModels: string[];
   installedImageModels: string[];
@@ -59,12 +75,21 @@ export function StudioView({
   onSendImageToChat,
   extensions = [],
 }: Props) {
-  const [active, setActive] = useState<string>("image");
+  const [active, setActive] = useState<string>("");
 
-  // Le socle d'abord : les onglets natifs. Puis ceux que les extensions
-  // actives déclarent, sans jamais recouvrir un id natif.
+  // Le socle d'abord : les onglets natifs sont filtrés par les capacités des
+  // extensions actives. Une extension peut aussi déclarer explicitement un
+  // onglet natif ; dans ce cas sa déclaration suffit à l'afficher. Les onglets
+  // personnalisés sont ensuite ajoutés sans jamais recouvrir un id natif.
   const onglets = useMemo(() => {
-    const natifs = TABS;
+    const extensionTabIds = new Set(
+      extensions.flatMap((ext) => (ext.ui?.studio_tabs ?? []).map((t) => t.id)),
+    );
+    const capabilities = new Set(extensions.flatMap((ext) => ext.capabilities ?? []));
+    const natifs = TABS.filter((tab) => {
+      const required = TAB_CAPABILITIES[tab.id];
+      return !required || capabilities.has(required) || extensionTabIds.has(tab.id);
+    });
     const pris = new Set<string>(natifs.map((t) => t.id));
     const depuisExtensions = extensions.flatMap((ext) =>
       (ext.ui?.studio_tabs ?? []).flatMap((t) => {
@@ -89,6 +114,14 @@ export function StudioView({
       source?: string;
     }[];
   }, [extensions]);
+
+  // Si l'extension active change, ne pas rester sur un panneau retiré : on
+  // sélectionne le premier onglet encore disponible.
+  useEffect(() => {
+    setActive((current) =>
+      onglets.some((t) => t.id === current) ? current : (onglets[0]?.id ?? ""),
+    );
+  }, [onglets]);
 
   // ── Galleries par type ───────────────────────────────────────────────
   const tasks = useTasks();

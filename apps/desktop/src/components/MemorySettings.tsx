@@ -1,29 +1,52 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { type MemoryEntry, core } from "../lib/core";
 
-/**
- * Ce que Locaryn retient de vous.
- *
- * L'écran montre le texte exact qui est versé au modèle à chaque message —
- * pas un résumé, pas une reformulation. Une mémoire qu'on ne peut pas lire est
- * une mémoire qu'on ne peut pas corriger, et une mémoire fausse coûte plus
- * cher qu'une mémoire vide.
- */
-const CATEGORIES: { id: string; label: string; hint: string }[] = [
-  { id: "preference", label: "Préférence", hint: "Réponds-moi en français, va droit au but…" },
-  { id: "habitude", label: "Habitude", hint: "Je code le soir, sur Windows avec un GPU NVIDIA…" },
-  { id: "projet", label: "Projet", hint: "Je développe Locaryn, une plateforme d'IA locale…" },
-  { id: "fait", label: "Fait", hint: "Une chose utile à savoir sur moi…" },
-];
+type MemoryGroup = {
+  id: string;
+  label: string;
+  entries: MemoryEntry[];
+};
 
+const CATEGORY_LABELS: Record<string, string> = {
+  preference: "Préférences",
+  préférence: "Préférences",
+  habit: "Habitudes",
+  habitude: "Habitudes",
+  project: "Projets",
+  projet: "Projets",
+  fact: "Informations personnelles",
+  fait: "Informations personnelles",
+};
+
+function labelFor(category: string): string {
+  const key = category.trim().toLowerCase();
+  return CATEGORY_LABELS[key] ?? (category.trim() || "Autres informations");
+}
+
+function groupMemories(entries: MemoryEntry[]): MemoryGroup[] {
+  const groups = new Map<string, MemoryGroup>();
+  for (const entry of entries) {
+    const id = entry.category.trim().toLowerCase() || "autres";
+    const current = groups.get(id);
+    if (current) current.entries.push(entry);
+    else groups.set(id, { id, label: labelFor(entry.category), entries: [entry] });
+  }
+  return [...groups.values()];
+}
+
+/**
+ * La mémoire est un document, pas une liste de formulaires.
+ *
+ * Les entrées restent séparées dans la base pour pouvoir être oubliées
+ * proprement, mais l'interface les rassemble en quelques zones de texte. Un
+ * survol révèle le détail du groupe sans transformer mille souvenirs en mille
+ * lignes visibles.
+ */
 export function MemorySettings() {
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
-  const [category, setCategory] = useState("preference");
-  const [draft, setDraft] = useState("");
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -38,198 +61,108 @@ export function MemorySettings() {
     void load();
   }, [load]);
 
-  async function add() {
-    if (!draft.trim()) return;
+  const groups = useMemo(() => groupMemories(entries), [entries]);
+  const documentText = useMemo(
+    () =>
+      groups
+        .map((group) => `${group.label}\n${group.entries.map((entry) => entry.content).join(" ")}`)
+        .join("\n\n"),
+    [groups],
+  );
+
+  async function forgetAll() {
     setBusy(true);
     try {
-      await core.remember(category, draft.trim());
-      setDraft("");
-      await load();
+      await core.forgetAllMemory();
+      setEntries([]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
   }
-
-  async function saveEdit(entry: MemoryEntry) {
-    setBusy(true);
-    try {
-      await core.editMemory(entry.id, entry.category, editDraft.trim());
-      setEditing(null);
-      await load();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const hint = CATEGORIES.find((c) => c.id === category)?.hint ?? "";
 
   return (
-    <section className="locaryn-view-container">
-      <div className="locaryn-view-header">
-        <h2>Mémoire</h2>
-        <p className="locaryn-view-desc">
-          Ce que Locaryn retient de vous d'une conversation à l'autre. Ces phrases sont envoyées au
-          modèle avec chaque message : il n'y a rien d'autre, et rien de caché. Elles vivent sur le
-          service — donc partagées avec votre téléphone, et hébergées par votre serveur quand vous
-          en utilisez un.
-        </p>
-      </div>
-
-      {error && <p className="locaryn-error">{error}</p>}
-
-      <div className="locaryn-card" style={{ maxWidth: "760px" }}>
-        <h3>Retenir quelque chose</h3>
-        <div className="locaryn-field">
-          <label className="locaryn-field-label" htmlFor="memory-category">
-            Nature
-          </label>
-          <select
-            id="memory-category"
-            className="locaryn-input"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="locaryn-field">
-          <label className="locaryn-field-label" htmlFor="memory-content">
-            Formulez-le comme vous le diriez
-          </label>
-          <input
-            id="memory-content"
-            className="locaryn-input"
-            placeholder={hint}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void add();
-            }}
-          />
-        </div>
-        <button
-          type="button"
-          className="locaryn-btn"
-          disabled={busy || !draft.trim()}
-          onClick={add}
-        >
-          Retenir
-        </button>
-      </div>
-
-      <div className="locaryn-card" style={{ maxWidth: "760px" }}>
-        <h3>Ce qui est retenu {entries.length > 0 && <span>({entries.length})</span>}</h3>
-        {entries.length === 0 ? (
-          <p className="locaryn-view-desc">
-            Rien pour l'instant. Le modèle ne sait de vous que ce que dit la conversation en cours.
+    <div className="locaryn-memory-settings">
+      <div className="locaryn-memory-intro">
+        <div>
+          <span className="locaryn-account-eyebrow">MÉMOIRE DU COMPTE</span>
+          <h3>Ce que Locaryn retient de vous</h3>
+          <p>
+            Une vue compacte de tout ce qui est envoyé au modèle avec vos messages. Les souvenirs
+            sont regroupés par zone pour rester lisibles, même quand la mémoire grandit.
           </p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {entries.map((e) => (
-              <li
-                key={e.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  padding: "10px 0",
-                  borderBottom: "1px solid var(--border)",
-                }}
-              >
-                <span className="locaryn-badge" title={`Écrit par : ${e.source}`}>
-                  {CATEGORIES.find((c) => c.id === e.category)?.label ?? e.category}
-                </span>
-                {editing === e.id ? (
-                  <>
-                    <input
-                      className="locaryn-input"
-                      style={{ flex: 1 }}
-                      value={editDraft}
-                      onChange={(ev) => setEditDraft(ev.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="locaryn-btn"
-                      disabled={busy}
-                      onClick={() => void saveEdit(e)}
-                    >
-                      Enregistrer
-                    </button>
-                    <button
-                      type="button"
-                      className="locaryn-btn-ghost"
-                      onClick={() => setEditing(null)}
-                    >
-                      Annuler
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span style={{ flex: 1 }}>{e.content}</span>
-                    <button
-                      type="button"
-                      className="locaryn-btn-ghost"
-                      onClick={() => {
-                        setEditing(e.id);
-                        setEditDraft(e.content);
-                      }}
-                    >
-                      Corriger
-                    </button>
-                    <button
-                      type="button"
-                      className="locaryn-btn-ghost"
-                      disabled={busy}
-                      onClick={async () => {
-                        setBusy(true);
-                        try {
-                          await core.forgetMemory(e.id);
-                          await load();
-                        } catch (err) {
-                          setError(String(err));
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                    >
-                      Oublier
-                    </button>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {entries.length > 0 && (
-          <button
-            type="button"
-            className="locaryn-btn-ghost"
-            style={{ marginTop: "14px" }}
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await core.forgetAllMemory();
-                await load();
-              } catch (err) {
-                setError(String(err));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Tout oublier
-          </button>
-        )}
+        </div>
+        <span className="locaryn-memory-count">
+          {entries.length} élément{entries.length === 1 ? "" : "s"}
+        </span>
       </div>
-    </section>
+
+      {error && <div className="locaryn-vp-error">{error}</div>}
+
+      {groups.length === 0 ? (
+        <div className="locaryn-memory-empty">
+          <strong>La mémoire est vide.</strong>
+          <span>Locaryn ne conserve encore aucune information durable sur vous.</span>
+        </div>
+      ) : (
+        <>
+          <div className="locaryn-memory-document-shell">
+            <div className="locaryn-memory-document-toolbar">
+              <span>Mémoire globale</span>
+              <span>
+                {groups.length} zone{groups.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <article className="locaryn-memory-document" aria-label="Résumé de la mémoire">
+              {groups.map((group) => (
+                <section
+                  key={group.id}
+                  className={`locaryn-memory-block${hoveredGroup === group.id ? " is-hovered" : ""}`}
+                  onMouseEnter={() => setHoveredGroup(group.id)}
+                  onMouseLeave={() => setHoveredGroup(null)}
+                >
+                  <h4>{group.label}</h4>
+                  <p>{group.entries.map((entry) => entry.content).join(" ")}</p>
+                  {hoveredGroup === group.id && (
+                    <div className="locaryn-memory-popover" role="tooltip">
+                      <strong>{group.label}</strong>
+                      <span>
+                        {group.entries.length} souvenir{group.entries.length === 1 ? "" : "s"}
+                      </span>
+                      <div>
+                        {group.entries.map((entry) => (
+                          <p key={entry.id}>{entry.content}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              ))}
+            </article>
+          </div>
+
+          <details className="locaryn-memory-technical">
+            <summary>Voir le texte exact envoyé au modèle</summary>
+            <pre>{documentText}</pre>
+          </details>
+
+          <div className="locaryn-memory-actions">
+            <span>
+              Pour modifier une information, demandez à Locaryn de corriger ou d'oublier ce point
+              dans le chat.
+            </span>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              disabled={busy}
+              onClick={() => void forgetAll()}
+            >
+              Tout oublier
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

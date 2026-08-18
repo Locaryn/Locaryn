@@ -1,0 +1,82 @@
+[
+  {
+    "id": "image-gen",
+    "label": "Génération d'images",
+    "description": "Créer des images à partir d'un prompt texte."
+  },
+  {
+    "id": "image-editor",
+    "label": "Édition d'images",
+    "description": "Modifier ou retoucher des images existantes."
+  },
+  {
+    "id": "voice-tts",
+    "label": "Synthèse vocale",
+    "description": "Lire un texte à voix haute avec une voix synthétique."
+  },
+  {
+    "id": "voice-cloning",
+    "label": "Clonage de voix",
+    "description": "Reproduire une voix à partir d'un échantillon."
+  },
+  {
+    "id": "music-gen",
+    "label": "Génération de musique",
+    "description": "Composer de la musique à partir d'un prompt."
+  },
+  {
+    "id": "video-gen",
+    "label": "Génération de vidéo",
+    "description": "Créer des vidéos à partir d'un prompt."
+  },
+  {
+    "id": "3d-gen",
+    "label": "Génération 3D",
+    "description": "Générer des modèles 3D."
+  },
+  {
+    "id": "vision-ocr",
+    "label": "Vision et OCR",
+    "description": "Lire du texte dans des images, décrire des visuels."
+  },
+  {
+    "id": "text-analysis",
+    "label": "Analyse de texte",
+    "description": "Analyser, résumer ou classer des textes."
+  },
+  {
+    "id": "translation",
+    "label": "Traduction",
+    "description": "Traduire d'une langue à l'autre."
+  },
+  {
+    "id": "rag-qa",
+    "label": "RAG et questions-réponses",
+    "description": "Répondre à partir d'une base de documents."
+  },
+  {
+    "id": "model-training",
+    "label": "Entraînement de modèles",
+    "description": "Entraîner ou affiner des modèles (LoRA, oblitération)."
+  },
+  {
+    "id": "figures",
+    "label": "Figures",
+    "description": "Des rôles préconfigurés : consignes, outils et conversations."
+  },
+  {
+    "id": "ssh-remote-exec",
+    "label": "Exécution SSH distante",
+    "description": "Exécuter des commandes sur des serveurs distants."
+  },
+  {
+    "id": "travel-tunnel",
+    "label": "Accès Remote et tunnel",
+    "description": "Joindre le serveur depuis l'extérieur du réseau local via le plugin Remote."
+  },
+  {
+    "id": "batch-api",
+    "label": "API batch",
+    "description": "Traitement asynchrone par lots."
+  }
+]

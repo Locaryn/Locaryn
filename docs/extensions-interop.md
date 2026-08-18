@@ -161,10 +161,18 @@ d'un écran : le Studio n'existe que si une extension installée sait générer
 quelque chose ; la retirer retire l'écran, sur l'ordinateur **et** sur le
 téléphone.
 
-Capacités reconnues à ce jour : `image-gen`, `image-editor`, `voice-tts`,
-`voice-cloning`, `music-gen`, `video-gen`, `3d-gen`, `vision-ocr`,
-`text-analysis`, `translation`, `rag-qa`, `model-training`, `figures`,
-`ssh-remote-exec`, `travel-tunnel`.
+La liste canonique fait foi dans `packages/shared-types/capabilities.json` :
+le daemon la valide au chargement (une capacité hors liste n'apporte aucun
+écran et remonte comme erreur de chargement non bloquante), et l'ordinateur
+comme le téléphone la lisent via `@locaryn/ui-core`. **Cette documentation
+n'en tient pas de copie** — ajouter une capacité se fait au seul endroit du
+fichier, et le code comme la doc suivent.
+
+Capacités reconnues par ce build (miroir du fichier canonique) :
+`image-gen`, `image-editor`, `voice-tts`, `voice-cloning`, `music-gen`,
+`video-gen`, `3d-gen`, `vision-ocr`, `text-analysis`, `translation`,
+`rag-qa`, `model-training`, `figures`, `ssh-remote-exec`, `travel-tunnel`,
+`batch-api`.
 
 Une capacité déclarée sans moteur derrière n'apporte aucun outil au modèle :
 mieux vaut que le modèle dise honnêtement qu'il ne sait pas faire que

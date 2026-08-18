@@ -1,5 +1,6 @@
+import { capabilityLabel } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
-import { CATALOGUE, type PhoneExtension, api } from "../lib/core";
+import { CATALOGUE, type Capability, type PhoneExtension, api } from "../lib/core";
 import { Screen } from "./Screen";
 
 type Props = {
@@ -18,11 +19,19 @@ type Props = {
 export function Extensions({ onBack, onChanged }: Props) {
   const [installed, setInstalled] = useState<PhoneExtension[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** La liste canonique du serveur : les labels vivants, sans recompiler. */
+  const [canonique, setCanonique] = useState<Capability[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      setInstalled(await api.listExtensions());
+      const [exts, caps] = await Promise.all([
+        api.listExtensions(),
+        // Le serveur fait foi ; la copie embarquée ne sert que de repli.
+        api.listCapabilities().catch(() => []),
+      ]);
+      setInstalled(exts);
+      setCanonique(caps);
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -69,6 +78,18 @@ export function Extensions({ onBack, onChanged }: Props) {
               <div className="lo-card-text">
                 <span className="lo-card-title">{c.label}</span>
                 <span className="lo-hint">{c.note}</span>
+                {on && on.capabilities.length > 0 && (
+                  <span className="lo-hint">
+                    Capacités :{" "}
+                    {on.capabilities
+                      .map(
+                        (id) =>
+                          canonique.find((c) => c.id === id)?.label ??
+                          capabilityLabel(id),
+                      )
+                      .join(" · ")}
+                  </span>
+                )}
                 {on && !on.enabled && <span className="lo-tag">désactivée</span>}
               </div>
               <div className="lo-card-actions">

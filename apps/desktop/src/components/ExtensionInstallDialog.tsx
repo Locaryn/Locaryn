@@ -307,7 +307,7 @@ export function ExtensionInstallDialog({
                         { icon: "server", label: "SSH", repo: "Locaryn/plugin-ssh" },
                         {
                           icon: "cloud",
-                          label: "Mode voyage",
+                          label: "Plugin Remote",
                           repo: "Locaryn/plugin-travel-tunnel",
                         },
                         {

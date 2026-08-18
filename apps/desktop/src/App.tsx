@@ -5,6 +5,7 @@ import { BatchStudio } from "./components/BatchStudio";
 import { ChatPermissionsModal } from "./components/ChatPermissionsModal";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
+import { ExtensionsSettings } from "./components/ExtensionsSettings";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
 import { CAPABILITY_GATED_VIEWS, NavDrawer } from "./components/NavDrawer";
@@ -32,11 +33,11 @@ import { ChatPanel } from "./panels/ChatPanel";
 import { LeftPanel } from "./panels/LeftPanel";
 import { ModelConfigPanel } from "./panels/ModelConfigPanel";
 import { RunPanel } from "./panels/RunPanel";
-import { ArchivesView } from "./views/ArchivesView";
+import { AccountView } from "./views/AccountView";
 import { FiguresView } from "./views/FiguresView";
 import { InstalledModelsView } from "./views/InstalledModelsView";
 import { ModelStudioView } from "./views/ModelStudioView";
-import { SettingsView } from "./views/SettingsView";
+import { SettingsView, type Section } from "./views/SettingsView";
 import { StudioView } from "./views/StudioView";
 
 /** Les trois séparations déplaçables de la fenêtre. */
@@ -60,6 +61,8 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
+  /** Toutes les conversations, indexées par projet, pour l'historique groupé. */
+  const [sessionsByProject, setSessionsByProject] = useState<Record<string, Session[]>>({});
   const [standaloneSessions, setStandaloneSessions] = useState<Session[]>([]);
   /** Hidden project that owns free (project-less) chats. */
   const [freeProject, setFreeProject] = useState<Project | null>(null);
@@ -93,6 +96,7 @@ export function App() {
 
   // Active top-level view: "chat" | "models" | "studio" | "training" | "connectors" | "settings" | "account"
   const [activeView, setActiveView] = useState<string>("chat");
+  const [settingsInitialSection, setSettingsInitialSection] = useState<Section | undefined>(undefined);
 
   // Toggleable panels & drawers
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
@@ -169,6 +173,12 @@ export function App() {
         for (const c of ext.capabilities ?? []) caps.add(c);
       }
       setActiveCapabilities([...caps]);
+      // Un tunnel est une capacité du plugin Remote, pas du socle local. Si le
+      // plugin a été désactivé ou retiré, on coupe aussi un tunnel qui aurait
+      // été laissé actif par la session précédente.
+      if (!caps.has("travel-tunnel")) {
+        void core.setTravelMode(null).catch(() => {});
+      }
       // Les noyaux installés alimentent le choix à la création de session.
       setInstalledCores(installed.filter((e) => e.core != null && e.enabled));
       setActiveExtensions(installed.filter((e) => e.enabled));
@@ -267,17 +277,24 @@ export function App() {
       const projs = await core.listProjects();
       const realProjects = projs.filter((p) => p.id !== free?.id && p.path !== FREE_CHAT_PATH);
       setProjects(realProjects);
-      if (realProjects.length > 0 && !activeProject) {
-        setActiveProject(realProjects[0]);
-      }
+
+      // Charger chaque projet dès le départ : l'historique reste organisé comme
+      // un arbre de travail, même quand un autre projet est ouvert au centre.
+      const groupedEntries = await Promise.all(
+        realProjects.map(
+          async (p) => [p.id, await core.listSessions(p.id).catch(() => [])] as const,
+        ),
+      );
+      const groupedSessions = Object.fromEntries(groupedEntries) as Record<string, Session[]>;
+      setSessionsByProject(groupedSessions);
+
+      const initialProject =
+        b.project && b.project.id !== free?.id ? b.project : (realProjects[0] ?? null);
+      setActiveProject(initialProject);
+      setSessions(initialProject ? (groupedSessions[initialProject.id] ?? []) : []);
 
       if (free) {
         setStandaloneSessions(await core.listSessions(free.id).catch(() => []));
-      }
-
-      if (b.project && b.project.id !== free?.id) {
-        const sList = await core.listSessions(b.project.id);
-        setSessions(sList);
       }
 
       await refreshInstalledModels();
@@ -311,14 +328,19 @@ export function App() {
 
   async function handleSelectProject(proj: Project | null) {
     setActiveProject(proj);
-    if (!proj) return;
+    if (!proj) {
+      setSessions([]);
+      return;
+    }
     try {
       const sList = await core.listSessions(proj.id);
+      setSessionsByProject((prev) => ({ ...prev, [proj.id]: sList }));
       setSessions(sList);
       if (sList.length > 0) {
         setActiveSession(sList[0]);
       } else {
         const newS = await core.createSession(proj.id);
+        setSessionsByProject((prev) => ({ ...prev, [proj.id]: [newS] }));
         setSessions([newS]);
         setActiveSession(newS);
       }
@@ -328,6 +350,14 @@ export function App() {
   }
 
   async function handleSelectSession(session: Session) {
+    const project = projects.find((p) => p.id === session.project_id);
+    if (project) {
+      setActiveProject(project);
+      setSessions(sessionsByProject[project.id] ?? []);
+    } else if (session.project_id === freeProject?.id) {
+      setActiveProject(null);
+      setSessions([]);
+    }
     setActiveSession(session);
   }
 
@@ -345,7 +375,12 @@ export function App() {
   async function createSessionWithCore(proj: Project, coreId: string | null) {
     try {
       const newS = await core.createSession(proj.id, undefined, coreId);
-      setSessions((prev) => [newS, ...prev]);
+      setSessionsByProject((prev) => ({
+        ...prev,
+        [proj.id]: [newS, ...(prev[proj.id] ?? [])],
+      }));
+      setActiveProject(proj);
+      setSessions((prev) => (activeProject?.id === proj.id ? [newS, ...prev] : [newS]));
       setActiveSession(newS);
       setActiveView("chat");
     } catch (e) {
@@ -367,6 +402,10 @@ export function App() {
       return;
     }
     setStandaloneSessions((prev) => prev.filter((x) => x.id !== s.id));
+    setSessionsByProject((prev) => ({
+      ...prev,
+      [s.project_id]: (prev[s.project_id] ?? []).filter((x) => x.id !== s.id),
+    }));
     setSessions((prev) => prev.filter((x) => x.id !== s.id));
     if (activeSession?.id === s.id) setActiveSession(null);
   }
@@ -379,11 +418,16 @@ export function App() {
       console.error(e);
       return;
     }
+    const moved = { ...s, project_id: projectId };
     setStandaloneSessions((prev) => prev.filter((x) => x.id !== s.id));
+    setSessionsByProject((prev) => ({
+      ...prev,
+      [s.project_id]: (prev[s.project_id] ?? []).filter((x) => x.id !== s.id),
+      [projectId]: [moved, ...(prev[projectId] ?? []).filter((x) => x.id !== s.id)],
+    }));
     setSessions((prev) => prev.filter((x) => x.id !== s.id));
-    // Elle réapparaîtra sous son nouveau projet à la prochaine sélection.
     if (activeProject?.id === projectId) {
-      setSessions((prev) => [{ ...s, project_id: projectId }, ...prev]);
+      setSessions((prev) => [moved, ...prev]);
     }
   }
 
@@ -408,6 +452,14 @@ export function App() {
       await core.mergeSessions(accueil.id, sourceId);
       taskCenter.done(tache, { detail: "Conversations réunies" });
       setStandaloneSessions((prev) => prev.filter((x) => x.id !== sourceId));
+      setSessionsByProject((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).map(([projectId, list]) => [
+            projectId,
+            list.filter((x) => x.id !== sourceId),
+          ]),
+        ),
+      );
       setSessions((prev) => prev.filter((x) => x.id !== sourceId));
       // Rouvrir celle d'accueil : le récit vient d'y être écrit.
       if (activeSession?.id === accueil.id) handleSelectSession(accueil);
@@ -426,6 +478,9 @@ export function App() {
     }
     const rename = (list: Session[]) => list.map((x) => (x.id === s.id ? { ...x, title } : x));
     setStandaloneSessions(rename);
+    setSessionsByProject((prev) =>
+      Object.fromEntries(Object.entries(prev).map(([id, list]) => [id, rename(list)])),
+    );
     setSessions(rename);
     if (activeSession?.id === s.id) setActiveSession({ ...activeSession, title });
   }
@@ -467,6 +522,10 @@ export function App() {
       if (!activeProject) {
         setStandaloneSessions((prev) => [s, ...prev]);
       } else {
+        setSessionsByProject((prev) => ({
+          ...prev,
+          [project.id]: [s, ...(prev[project.id] ?? [])],
+        }));
         setSessions((prev) => [s, ...prev]);
       }
       setActiveSession(s);
@@ -479,6 +538,10 @@ export function App() {
           if (!activeProject) {
             setStandaloneSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
           } else {
+            setSessionsByProject((prev) => ({
+              ...prev,
+              [project.id]: (prev[project.id] ?? []).map((x) => (x.id === s.id ? newS : x)),
+            }));
             setSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
           }
           if (activeSession?.id === s.id) {
@@ -590,6 +653,10 @@ export function App() {
     }
 
     setStandaloneSessions((prev) => prev.filter((item) => item.id !== s.id));
+    setSessionsByProject((prev) => ({
+      ...prev,
+      [s.project_id]: (prev[s.project_id] ?? []).filter((item) => item.id !== s.id),
+    }));
     setSessions((prev) => prev.filter((item) => item.id !== s.id));
 
     if (activeSession?.id === s.id) {
@@ -598,6 +665,7 @@ export function App() {
         setActiveSession(remaining[0]);
       } else if (activeProject) {
         const newS = await core.createSession(activeProject.id);
+        setSessionsByProject((prev) => ({ ...prev, [activeProject.id]: [newS] }));
         setSessions([newS]);
         setActiveSession(newS);
       } else {
@@ -841,6 +909,7 @@ export function App() {
               <LeftPanel
                 projects={projects}
                 sessions={sessions}
+                sessionsByProject={sessionsByProject}
                 standaloneSessions={standaloneSessions}
                 activeProject={activeProject}
                 activeSession={activeSession}
@@ -855,6 +924,10 @@ export function App() {
                 onSessionRenamed={handleRenameSession}
                 onSessionsMerged={handleMergeSessions}
                 onNewEphemeralChat={handleNewEphemeralChat}
+                onOpenHistory={() => {
+                  setSettingsInitialSection("conversation");
+                  setActiveView("settings");
+                }}
                 onOpenProjectSettings={(p) => setProjectSettings(p)}
                 onProjectArchived={(p) => {
                   // Drop it from the sidebar and fall back to another project.
@@ -867,6 +940,11 @@ export function App() {
                       setActiveSession(null);
                       if (fallback) handleSelectProject(fallback);
                     }
+                    return next;
+                  });
+                  setSessionsByProject((prev) => {
+                    const next = { ...prev };
+                    delete next[p.id];
                     return next;
                   });
                 }}
@@ -995,15 +1073,6 @@ export function App() {
 
         {activeView === "batch" && <BatchStudio />}
 
-        {activeView === "archives" && (
-          <ArchivesView
-            onOpenSession={(sess) => {
-              handleSelectSession(sess);
-              setActiveView("chat");
-            }}
-          />
-        )}
-
         {activeView === "figures" && (
           <FiguresView
             onOpenSession={(sess) => {
@@ -1061,19 +1130,47 @@ export function App() {
           />
         )}
 
+        {activeView === "extensions" && (
+          <div className="locaryn-view-container">
+            <ExtensionsSettings />
+          </div>
+        )}
+
         {activeView === "connectors" && (
           <div className="locaryn-view-container">
             <ConnectorsSettings />
           </div>
         )}
 
+        {activeView === "account" && (
+          <AccountView
+            onOpenSession={(session) => {
+              void handleSelectSession(session);
+              setActiveView("chat");
+            }}
+          />
+        )}
+
         {activeView === "settings" && (
           <SettingsView
             theme={theme}
             projects={projects}
+            sessionsByProject={sessionsByProject}
+            standaloneSessions={standaloneSessions}
+            activeCapabilities={activeCapabilities}
+            initialSection={settingsInitialSection}
+            onOpenSession={(session) => {
+              void handleSelectSession(session);
+              setActiveView("chat");
+            }}
             onOpenMarketplace={() => setActiveView("models")}
             onProjectArchived={(p) => {
               setProjects((prev) => prev.filter((x) => x.id !== p.id));
+              setSessionsByProject((prev) => {
+                const next = { ...prev };
+                delete next[p.id];
+                return next;
+              });
               if (activeProject?.id === p.id) {
                 setActiveProject(null);
                 setSessions([]);

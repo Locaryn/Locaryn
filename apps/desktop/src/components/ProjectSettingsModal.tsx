@@ -52,14 +52,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
     <ModalShell
       onClose={onClose}
       label="Paramètres du projet"
-      style={{
-        width: "650px",
-        maxHeight: "85vh",
-        overflowY: "auto",
-        margin: "50px auto",
-        border: "1px solid var(--border-strong)",
-        boxShadow: "0 16px 40px rgba(0,0,0,0.7)",
-      }}
+      className="locaryn-card locaryn-modal-card locaryn-project-settings-modal"
     >
       <div
         style={{
@@ -77,7 +70,12 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
             {project.path}
           </span>
         </div>
-        <button type="button" className="locaryn-icon-btn" onClick={onClose}>
+        <button
+          type="button"
+          className="locaryn-icon-btn locaryn-modal-close"
+          onClick={onClose}
+          aria-label="Fermer les paramètres du projet"
+        >
           <Icon name="close" size={16} />
         </button>
       </div>

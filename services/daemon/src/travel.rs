@@ -71,7 +71,7 @@ impl TravelState {
         authenticated: bool,
     ) -> Result<TravelStatus, String> {
         if !authenticated {
-            let msg = "Le mode voyage exposerait ce serveur à Internet alors qu'il \
+            let msg = "Le mode Remote exposerait ce serveur à Internet alors qu'il \
                        n'exige aucune authentification. Écoutez sur une adresse réseau \
                        (0.0.0.0) plutôt qu'en local, ce qui rend l'authentification \
                        obligatoire, puis réessayez."
@@ -140,7 +140,7 @@ impl TravelState {
     #[allow(dead_code)]
     pub async fn refresh_link(&self, data_dir: &std::path::Path) -> Result<TravelStatus, String> {
         let guard = self.inner.lock().await;
-        let running = guard.as_ref().ok_or("Le mode voyage n'est pas actif.")?;
+        let running = guard.as_ref().ok_or("Le mode Remote n'est pas actif.")?;
         self.publish(data_dir, &running.tunnel.url, running.provider)
     }
 
@@ -218,7 +218,7 @@ pub fn announce(uri: &str, provider: Provider) {
     match qr::terminal(uri) {
         Ok(code) => {
             println!();
-            println!("  Mode voyage actif via {}.", provider.label());
+            println!("  Mode Remote actif via {}.", provider.label());
             println!("  Scannez ce code avec l'appareil photo du téléphone :");
             println!();
             for line in code.lines() {

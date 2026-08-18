@@ -91,7 +91,7 @@ Travaux réalisés en dehors du découpage S1–S10, documentés dans
 | mTLS (certificats clients) | OK | Optionnel ; autorité locale, serveur signé par elle |
 | Ouverture de port UPnP | OK | Refusée si mTLS inactif ; bail d'une heure renouvelé |
 | Écran de connexion (fichier de déploiement) | OK | Certificat installable depuis l'app ; empreinte du serveur vérifiée |
-| Mode voyage (tunnel sortant + QR signé) | OK | cloudflare / ngrok / devtunnel |
+| Plugin Remote (tunnel sortant + QR signé) | OK | cloudflare / ngrok / devtunnel |
 | Application Android | OK | Tauri v2 ; appairage par QR, jetons graphiques partagés ; APK non signé (clé = décision du client) |
 | Client mobile | à faire | |
 | Répartition de charge | à faire | Invariant : uniquement sur les machines du demandeur |

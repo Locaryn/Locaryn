@@ -543,7 +543,7 @@ jobs:
           from datetime import datetime, timezone
 
           ver = sys.argv[1]
-          base = f"https://github.com/Locaryn/locaryn/releases/download/v{ver}"
+          base = f"https://github.com/Locaryn/Locaryn/releases/download/v{ver}"
           platforms = {}
 
           def sig(path):

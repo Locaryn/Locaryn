@@ -1,8 +1,8 @@
 [package]
-name = "locaryn-plugin-travel-tunnel"
+name = "locaryn-plugin-remote"
 version = "1.0.0"
 edition = "2021"
-description = "Official Locaryn Extension: Travel Mode & Outbound Tunnels (Cloudflare, ngrok, devtunnel) with QR Pairing"
+description = "Official Locaryn Extension: Remote access and outbound tunnels (Cloudflare, ngrok, devtunnel) with QR pairing"
 license = "Apache-2.0"
 authors = ["Locaryn Team"]
 

@@ -9,6 +9,13 @@ export interface MobileStatus {
 }
 
 /** Une extension installée sur le serveur, vue du téléphone. */
+/** Une capacité reconnue par le serveur : id, label français, description. */
+export interface Capability {
+  id: string;
+  label: string;
+  description: string;
+}
+
 export interface PhoneExtension {
   name: string;
   display_name: string;
@@ -134,6 +141,98 @@ export const CATALOGUE: { repo: string; label: string; note: string }[] = [
   { repo: "Locaryn/plugin-travel-tunnel", label: "Mode voyage", note: "Joindre depuis dehors" },
 ];
 
+/** Un modèle proposé à l'installation, comme les extensions du catalogue. */
+export interface CatalogueModel {
+  /** URL directe vers un fichier de poids, ou dépôt HuggingFace complet. */
+  url: string;
+  kind: "image" | "audio";
+  /** Le nom sous lequel il apparaîtra dans « Modèles ». */
+  name: string;
+  label: string;
+  note: string;
+  /** Taille approximative sur disque, en Go. */
+  sizeGb: number;
+}
+
+/**
+ * Le catalogue de modèles — les mêmes poids que le marketplace du bureau.
+ * Ils s'installent sur le serveur ; le téléphone ne fait que désigner lequel.
+ */
+export const MODEL_CATALOGUE: CatalogueModel[] = [
+  {
+    url: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf",
+    kind: "image",
+    name: "z_image_turbo-Q8_0.gguf",
+    label: "Z-Image Turbo",
+    note: "Ultra-rapide (1 à 4 étapes), 6B",
+    sizeGb: 6.5,
+  },
+  {
+    url: "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
+    kind: "image",
+    name: "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
+    label: "Stable Diffusion 1.5",
+    note: "Léger et rapide, tourne partout",
+    sizeGb: 1.5,
+  },
+  {
+    url: "https://huggingface.co/second-state/SDXL-Turbo-GGUF/resolve/main/sdxl-turbo-Q4_0.gguf",
+    kind: "image",
+    name: "sdxl-turbo-Q4_0.gguf",
+    label: "SDXL Turbo",
+    note: "Temps réel, 1 étape, 1024²",
+    sizeGb: 3.1,
+  },
+  {
+    url: "https://huggingface.co/city96/SDXL-1.0-gguf/resolve/main/sdxl-1.0-Q4_0.gguf",
+    kind: "image",
+    name: "sdxl-1.0-Q4_0.gguf",
+    label: "Stable Diffusion XL 1.0",
+    note: "Le modèle phare 1024²",
+    sizeGb: 3.8,
+  },
+  {
+    url: "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_0.gguf",
+    kind: "image",
+    name: "flux1-schnell-Q4_0.gguf",
+    label: "FLUX.1 Schnell",
+    note: "Haute résolution, 4 étapes",
+    sizeGb: 6.7,
+  },
+  {
+    url: "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf",
+    kind: "image",
+    name: "flux1-dev-Q4_0.gguf",
+    label: "FLUX.1 Dev",
+    note: "Fidélité photoréaliste",
+    sizeGb: 7.2,
+  },
+  {
+    url: "https://huggingface.co/city96/stable-diffusion-3.5-medium-gguf/resolve/main/sd3.5_medium-Q4_0.gguf",
+    kind: "image",
+    name: "sd3.5_medium-Q4_0.gguf",
+    label: "Stable Diffusion 3.5 Medium",
+    note: "Texte dans l'image corrigé",
+    sizeGb: 2.1,
+  },
+  {
+    url: "https://huggingface.co/hexgrad/Kokoro-82M",
+    kind: "audio",
+    name: "hexgrad__Kokoro-82M",
+    label: "Kokoro-82M",
+    note: "Voix naturelle, 82M",
+    sizeGb: 0.3,
+  },
+  {
+    url: "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    kind: "audio",
+    name: "Qwen__Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    label: "Qwen3-TTS 1.7B",
+    note: "Clonage de voix, multilingue",
+    sizeGb: 3.4,
+  },
+];
+
 /** Une chose que le serveur retient de son utilisateur. */
 export interface MemoryEntry {
   id: string;
@@ -215,6 +314,16 @@ export interface ProgressionTelechargement {
   /** Absent dans le même cas — une barre indéterminée vaut mieux qu'un
    *  pourcentage inventé. */
   percentage: number | null;
+}
+
+/** Un point d'avancement du téléchargement d'un modèle, comme la mise à jour. */
+export interface ModelPullProgress {
+  downloaded: number;
+  /** Absent quand le serveur n'a pas annoncé de taille : barre indéterminée. */
+  total: number | null;
+  percentage: number | null;
+  /** Une phase en cours : « Installation des compagnons… ». */
+  message: string | null;
 }
 
 /** A file generated on the machine at the other end, ready to show. */
@@ -299,6 +408,8 @@ export const core = {
   listMediaModels: (kind: "image" | "audio") => invoke<MediaModel[]>("list_media_models", { kind }),
   /** Les extensions installées sur le serveur, et leur pilotage. */
   listExtensions: () => invoke<PhoneExtension[]>("list_extensions"),
+  /** La liste canonique des capacités, telle que le serveur la connaît. */
+  listCapabilities: () => invoke<Capability[]>("list_capabilities"),
   /** Les figures du serveur, et leur pilotage. */
   listFigures: () => invoke<PhoneFigure[]>("list_figures"),
   saveFigure: (f: FigureDraft) =>
@@ -322,6 +433,19 @@ export const core = {
   installExtension: (source: string) => invoke<PhoneExtension>("install_extension", { source }),
   setExtensionEnabled: (name: string, enabled: boolean) =>
     invoke<void>("set_extension_enabled", { name, enabled }),
+  /**
+   * Installer un modèle du catalogue sur le serveur.
+   *
+   * `onProgress` reçoit l'avancement au fil de l'eau — un canal, pas une
+   * promesse : la barre se dessine sans attendre la fin du téléchargement.
+   */
+  pullModel: (url: string, onProgress: (p: ModelPullProgress) => void) => {
+    const canal = new Channel<ModelPullProgress>();
+    canal.onmessage = onProgress;
+    return invoke<{ name: string; size: number }>("pull_model", { url, onProgress: canal });
+  },
+  /** Retirer un modèle installé du serveur : ses fichiers sont effacés. */
+  removeModel: (name: string) => invoke<void>("remove_model", { name }),
   removeExtension: (name: string) => invoke<void>("remove_extension", { name }),
   /** Appeler l'outil qu'un bouton d'extension désigne, avec le texte du champ. */
   runComposerTool: (tool: string, text: string) =>
@@ -478,6 +602,7 @@ export const demoCore: typeof core = {
       capabilities: ["image-gen"],
     },
   ],
+  listCapabilities: async () => [],
   installExtension: async (source) => ({
     name: source.split("/").pop() ?? source,
     display_name: source,
@@ -488,6 +613,20 @@ export const demoCore: typeof core = {
   }),
   setExtensionEnabled: async () => {},
   removeExtension: async () => {},
+  pullModel: async (_url, onProgress) => {
+    const total = 250 * 1024 * 1024;
+    for (const pct of [3, 12, 27, 46, 68, 87, 100]) {
+      await sleep(160);
+      onProgress({
+        downloaded: Math.round((pct / 100) * total),
+        total,
+        percentage: pct,
+        message: null,
+      });
+    }
+    return { name: _url.split("/").pop() ?? _url, size: total };
+  },
+  removeModel: async () => {},
   runComposerTool: async (_tool: string, text: string) => text,
   extensionConfig: async () => ({}) as Record<string, string>,
   setExtensionConfig: async () => {},

@@ -187,39 +187,11 @@ export interface ModelClassification {
 export function classifyModel(modelName: string): ModelClassification {
   const lower = modelName.toLowerCase();
 
-  // 1. Check registries with dedicated flags
-  const allRegistries = [
-    ...IMAGE_GEN_MODELS.map((f) => ({
-      family: f,
-      flag: f.imageGen ? ("image-gen" as const) : null,
-    })),
-    ...TTS_MODELS.map((f) => ({ family: f, flag: f.tts ? ("tts" as const) : null })),
-    ...MUSIC_MODELS.map((f) => ({ family: f, flag: f.musicGen ? ("music-gen" as const) : null })),
-    ...VIDEO_MODELS.map((f) => ({ family: f, flag: f.videoGen ? ("video-gen" as const) : null })),
-    ...MODEL3D_MODELS.map((f) => ({ family: f, flag: f.model3d ? ("3d-gen" as const) : null })),
-    ...SEED_CATALOG.map((f) => {
-      let flag: ModelKind | null = null;
-      if (f.code) flag = "code";
-      else if (f.reasoning) flag = "reasoning";
-      else if (f.vision) flag = "vision";
-      else if (f.instruct) flag = "chat";
-      return { family: f, flag };
-    }),
-  ];
-
-  for (const { family, flag } of allRegistries) {
-    if (!flag) continue;
-    if (lower.includes(family.id.toLowerCase())) {
-      return { kind: flag, family };
-    }
-    for (const variant of family.variants) {
-      if (lower.includes(variant.tag.toLowerCase().replace(/^https:\/\/huggingface.co\//, ""))) {
-        return { kind: flag, family };
-      }
-    }
+  // 1. Check heuristics for specialized modalities FIRST
+  // (Prevents generic LLM family ids like "qwen3" from incorrectly capturing "qwen3-tts" or "nomic-embed")
+  if (/embed|embedding|bge-|all-minilm|text2vec|gte-|e5-/i.test(lower)) {
+    return { kind: "unknown", family: null };
   }
-
-  // 2. Heuristic fallback by filename / path keywords
   if (
     /shap.?e|point.?e|triposr|tripo.?sr|zero.?1.?to.?3|zero123|threestudio|3d.*model|mesh/i.test(
       lower,
@@ -238,14 +210,14 @@ export function classifyModel(modelName: string): ModelClassification {
     return { kind: "music-gen", family: null };
   }
   if (
-    /piper|kokoro|xtts|tts|coqui|chatterbox|qwen3.?tts|voxcpm|omnivoice|parler|vibevoice|moss.?tts|higgs.?tts|melotts|voice.?clone|voice.?design|text.?to.?speech/i.test(
+    /piper|kokoro|xtts|tts|coqui|chatterbox|qwen.*tts|voxcpm|omnivoice|parler|vibevoice|moss.?tts|higgs.?tts|melotts|voice.?clone|voice.?design|text.?to.?speech|f5.?tts|e2.?tts/i.test(
       lower,
     )
   ) {
     return { kind: "tts", family: null };
   }
   if (
-    /flux|stable.?diffusion|sdxl|sd-|z.?image|krea|dreamshaper|realistic|inpainting|controlnet|image.?gen/i.test(
+    /flux|stable.?diffusion|sdxl|sd-|\bsd15\b|\bsd3\b|z.?image|krea|dreamshaper|realistic|inpainting|controlnet|image.?gen/i.test(
       lower,
     )
   ) {
@@ -258,34 +230,88 @@ export function classifyModel(modelName: string): ModelClassification {
     return { kind: "translation", family: null };
   }
 
-  // 3. Everything that ends with .gguf or is a standard LLM name → chat
-  //    (image models are .gguf too, but those are caught above by flux/sd etc.)
-  if (/\.gguf$/i.test(lower)) {
-    return { kind: "chat", family: null };
-  }
+  // 2. Check specialized registries (TTS, Image, Video, Music, 3D)
+  const specializedRegistries = [
+    ...IMAGE_GEN_MODELS.map((f) => ({ family: f, flag: "image-gen" as const })),
+    ...TTS_MODELS.map((f) => ({ family: f, flag: "tts" as const })),
+    ...MUSIC_MODELS.map((f) => ({ family: f, flag: "music-gen" as const })),
+    ...VIDEO_MODELS.map((f) => ({ family: f, flag: "video-gen" as const })),
+    ...MODEL3D_MODELS.map((f) => ({ family: f, flag: "3d-gen" as const })),
+  ];
 
-  // 4. Seed-catalog heuristics: name-based
-  for (const family of SEED_CATALOG) {
-    if (lower.includes(family.id.toLowerCase()) || lower.includes(family.name.toLowerCase())) {
-      let kind: ModelKind = "chat";
-      if (family.code) kind = "code";
-      else if (family.reasoning) kind = "reasoning";
-      else if (family.vision) kind = "vision";
-      return { kind, family };
+  for (const { family, flag } of specializedRegistries) {
+    if (lower.includes(family.id.toLowerCase())) {
+      return { kind: flag, family };
+    }
+    for (const variant of family.variants) {
+      if (lower.includes(variant.tag.toLowerCase().replace(/^https:\/\/huggingface.co\//, ""))) {
+        return { kind: flag, family };
+      }
     }
   }
 
-  // 5. Generic fallback: assume chat for any unknown model that looks like an LLM
-  //    (exclude known non-chat file types)
+  // 3. Exclude non-GGUF weights that aren't LLMs (safetensors / onnx / pt files)
   if (/\.onnx$|\.safetensors$|\.pth$|\.bin$|\.pt$/i.test(lower)) {
     return { kind: "unknown", family: null };
+  }
+
+  // 4. Match SEED_CATALOG variants & families
+  for (const family of SEED_CATALOG) {
+    let flag: ModelKind = "chat";
+    if (family.code) flag = "code";
+    else if (family.reasoning) flag = "reasoning";
+    else if (family.vision) flag = "vision";
+    else if (family.instruct) flag = "chat";
+
+    for (const variant of family.variants) {
+      if (lower.includes(variant.tag.toLowerCase().replace(/^https:\/\/huggingface.co\//, ""))) {
+        return { kind: flag, family };
+      }
+    }
+
+    if (lower.includes(family.id.toLowerCase())) {
+      return { kind: flag, family };
+    }
+  }
+
+  // 5. LLM Heuristic Sub-classification
+  if (
+    /deepseek-r1|r1-distill|qwq|deepseek.?reasoner|marco-o1|\bo1-|\bo3-|skywork-o1|reasoning/i.test(
+      lower,
+    )
+  ) {
+    return { kind: "reasoning", family: null };
+  }
+  if (/coder|starcoder|codellama|deepseek-coder|codegeex|qwen.*coder/i.test(lower)) {
+    return { kind: "code", family: null };
+  }
+  if (/vl|vision|llava|minicpm-v|qwen.*vl|pixtral|molmo|florence|paligemma/i.test(lower)) {
+    return { kind: "vision", family: null };
+  }
+
+  if (/\.gguf$/i.test(lower)) {
+    return { kind: "chat", family: null };
   }
 
   return { kind: "chat", family: null };
 }
 
-/** True when a model is suitable for the chat model picker (not TTS/image/video/music/3D). */
+/** True when a model is suitable for the chat model picker (not TTS/image/video/music/3D/embedding). */
 export function isChatModel(name: string): boolean {
+  const lower = name.toLowerCase();
+  // Exclude embedding models
+  if (/embed|embedding|bge-|all-minilm|text2vec|gte-|e5-/i.test(lower)) return false;
+  // Exclude audio / TTS / music / video / image diffusion files
+  if (
+    /tts|voice|kokoro|piper|parler|chatterbox|coqui|speech|music|video|diffusion|flux|inpainting/i.test(
+      lower,
+    )
+  ) {
+    return false;
+  }
+  // Exclude raw safetensors/onnx/pth non-chat files
+  if (/\.onnx$|\.safetensors$|\.pth$|\.bin$|\.pt$/i.test(lower)) return false;
+
   const { kind } = classifyModel(name);
   return kind === "chat" || kind === "vision" || kind === "code" || kind === "reasoning";
 }
@@ -2181,81 +2207,173 @@ export const SEED_CATALOG: ModelFamily[] = [
       },
     ],
   },
-  // Moonshot AI — release dates sourced from Moonshot AI official announcements
-  // (K2.6: 2026-04, K2.7 Code: 2026-06, K3: 2026-07). These seed entries ensure
-  // Ollama-fetched Kimi families display accurate metadata instead of the default 2025-01.
+];
+
+// ── Curated AirLLM-ready large models (layer-by-layer low VRAM inference) ──
+
+export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
   {
-    id: "kimi-k2.6",
-    name: "Kimi K2.6",
-    brand: "Moonshot AI",
-    description: "MoE 1T paramètres sparse, 32B actifs, multimodal natif et contexte long 256k.",
-    license: "Kimi License",
-    contextWindow: "256k",
-    releaseDate: "2026-04",
-    releaseYear: 2026,
+    id: "deepseek-r1-70b-airllm",
+    name: "DeepSeek-R1 Distill Llama 70B (AirLLM)",
+    brand: "DeepSeek / AirLLM",
+    description:
+      "Modèle de raisonnement 70B exécutable sur petit GPU (4 Go VRAM) grâce au chargement couche par couche AirLLM.",
+    license: "MIT",
+    contextWindow: "128k",
+    releaseDate: "2025-01",
+    releaseYear: 2025,
     reasoning: true,
-    vision: true,
-    audio: true,
     instruct: true,
-    source: "seed",
+    source: "airllm",
     variants: [
       {
-        size: "1T MoE (Cloud)",
-        params: 1000,
-        tag: "kimi-k2.6:cloud",
-        quants: ["cloud"],
-        storageGb: 0,
+        size: "70B (fp16 AirLLM)",
+        params: 70,
+        tag: "airllm:deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        quants: ["airllm"],
+        storageGb: 140,
         instruct: true,
       },
     ],
   },
   {
-    id: "kimi-k2.7-code",
-    name: "Kimi K2.7 Code",
-    brand: "Moonshot AI",
+    id: "llama-3.3-70b-airllm",
+    name: "Llama 3.3 70B Instruct (AirLLM)",
+    brand: "Meta / AirLLM",
     description:
-      "Modèle agentic coding-focalisé construit sur Kimi K2.6, optimisé pour les tâches d'ingénierie long-horizon.",
-    license: "Kimi License",
-    contextWindow: "256k",
-    releaseDate: "2026-06",
-    releaseYear: 2026,
+      "Flagship 70B de Meta exécutable en local sur machine modeste via le streaming de couches AirLLM.",
+    license: "Llama 3.3 Community",
+    contextWindow: "128k",
+    releaseDate: "2024-12",
+    releaseYear: 2024,
+    instruct: true,
+    reasoning: true,
+    source: "airllm",
+    variants: [
+      {
+        size: "70B (fp16 AirLLM)",
+        params: 70,
+        tag: "airllm:meta-llama/Llama-3.3-70B-Instruct",
+        quants: ["airllm"],
+        storageGb: 140,
+        instruct: true,
+      },
+    ],
+  },
+  {
+    id: "qwen2.5-72b-airllm",
+    name: "Qwen 2.5 72B Instruct (AirLLM)",
+    brand: "Alibaba / Qwen / AirLLM",
+    description:
+      "Le plus puissant modèle Qwen 2.5 de 72B exécutable localement avec ~4 Go de VRAM.",
+    license: "Apache-2.0",
+    contextWindow: "128k",
+    releaseDate: "2024-09",
+    releaseYear: 2024,
+    instruct: true,
+    reasoning: true,
+    source: "airllm",
+    variants: [
+      {
+        size: "72B (fp16 AirLLM)",
+        params: 72,
+        tag: "airllm:Qwen/Qwen2.5-72B-Instruct",
+        quants: ["airllm"],
+        storageGb: 145,
+        instruct: true,
+      },
+    ],
+  },
+  {
+    id: "mistral-nemo-airllm",
+    name: "Mistral NeMo 24B (AirLLM)",
+    brand: "Mistral AI / AirLLM",
+    description:
+      "Modèle compact et rapide 24B pour le code et le chat, ultra-fluide avec AirLLM sur GPU 2-4 Go.",
+    license: "Apache-2.0",
+    contextWindow: "128k",
+    releaseDate: "2024-07",
+    releaseYear: 2024,
+    instruct: true,
     code: true,
-    reasoning: true,
-    instruct: true,
-    source: "seed",
+    source: "airllm",
     variants: [
       {
-        size: "1T MoE (Cloud)",
-        params: 1000,
-        tag: "kimi-k2.7-code:cloud",
-        quants: ["cloud"],
-        storageGb: 0,
+        size: "24B (fp16 AirLLM)",
+        params: 24,
+        tag: "airllm:mistralai/Mistral-Nemo-Instruct-2407",
+        quants: ["airllm"],
+        storageGb: 27,
         instruct: true,
       },
     ],
   },
   {
-    id: "kimi-k3",
-    name: "Kimi K3",
-    brand: "Moonshot AI",
+    id: "mixtral-8x7b-airllm",
+    name: "Mixtral 8x7B Instruct (AirLLM)",
+    brand: "Mistral AI / AirLLM",
     description:
-      "MoE 2,8T paramètres, fenêtre de contexte 1M tokens, multimodal natif. Nécessite un compte Ollama cloud (Pro/Max).",
-    license: "Kimi License",
-    contextWindow: "1M",
-    releaseDate: "2026-07",
-    releaseYear: 2026,
-    reasoning: true,
-    vision: true,
-    audio: true,
+      "Architecture MoE 47B paramètres (8 experts) tournant couche par couche sur 4 Go de VRAM.",
+    license: "Apache-2.0",
+    contextWindow: "32k",
+    releaseDate: "2024-01",
+    releaseYear: 2024,
     instruct: true,
-    source: "seed",
+    source: "airllm",
     variants: [
       {
-        size: "2,8T MoE (Cloud)",
-        params: 2800,
-        tag: "kimi-k3:cloud",
-        quants: ["cloud"],
-        storageGb: 0,
+        size: "8x7B MoE (AirLLM)",
+        params: 47,
+        tag: "airllm:mistralai/Mixtral-8x7B-Instruct-v0.1",
+        quants: ["airllm"],
+        storageGb: 90,
+        instruct: true,
+      },
+    ],
+  },
+  {
+    id: "command-r-airllm",
+    name: "Command R 35B (AirLLM)",
+    brand: "Cohere / AirLLM",
+    description:
+      "Modèle conversationnel et RAG 35B de Cohere exécutable via AirLLM en streaming de couches.",
+    license: "CC-BY-NC-4.0",
+    contextWindow: "128k",
+    releaseDate: "2024-03",
+    releaseYear: 2024,
+    instruct: true,
+    source: "airllm",
+    variants: [
+      {
+        size: "35B (AirLLM)",
+        params: 35,
+        tag: "airllm:CohereForAI/c4ai-command-r-v01",
+        quants: ["airllm"],
+        storageGb: 70,
+        instruct: true,
+      },
+    ],
+  },
+  {
+    id: "qwen2.5-coder-32b-airllm",
+    name: "Qwen 2.5 Coder 32B (AirLLM)",
+    brand: "Alibaba / Qwen / AirLLM",
+    description:
+      "Le modèle de code 32B spécialisé pour le développement logiciel long-horizon.",
+    license: "Apache-2.0",
+    contextWindow: "128k",
+    releaseDate: "2024-11",
+    releaseYear: 2024,
+    code: true,
+    instruct: true,
+    source: "airllm",
+    variants: [
+      {
+        size: "32B (AirLLM)",
+        params: 32,
+        tag: "airllm:Qwen/Qwen2.5-Coder-32B-Instruct",
+        quants: ["airllm"],
+        storageGb: 65,
         instruct: true,
       },
     ],
@@ -2516,52 +2634,108 @@ function guessBrand(name: string): string {
 
 export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamily[]> {
   try {
-    const res = await fetch(
-      `https://huggingface.co/api/models?search=${encodeURIComponent(query)}&filter=gguf&sort=downloads&direction=-1&limit=30`,
+    const urls: string[] = [];
+    const qLower = query.trim().toLowerCase();
+
+    if (!query || qLower === "gguf" || qLower === "all") {
+      // Parallel queries across major open families, trending, and latest releases
+      urls.push(
+        "https://huggingface.co/api/models?search=qwen&filter=gguf&sort=downloads&direction=-1&limit=40",
+        "https://huggingface.co/api/models?search=deepseek&filter=gguf&sort=downloads&direction=-1&limit=30",
+        "https://huggingface.co/api/models?search=llama&filter=gguf&sort=downloads&direction=-1&limit=30",
+        "https://huggingface.co/api/models?search=mistral&filter=gguf&sort=downloads&direction=-1&limit=30",
+        "https://huggingface.co/api/models?search=gemma&filter=gguf&sort=downloads&direction=-1&limit=20",
+        "https://huggingface.co/api/models?filter=gguf&sort=trending&direction=-1&limit=40",
+        "https://huggingface.co/api/models?filter=gguf&sort=lastModified&direction=-1&limit=40",
+        "https://huggingface.co/api/models?filter=gguf&sort=downloads&direction=-1&limit=40",
+      );
+    } else {
+      urls.push(
+        `https://huggingface.co/api/models?search=${encodeURIComponent(query)}&filter=gguf&sort=downloads&direction=-1&limit=40`,
+        `https://huggingface.co/api/models?search=${encodeURIComponent(query)}&filter=gguf&sort=trending&direction=-1&limit=40`,
+        `https://huggingface.co/api/models?search=${encodeURIComponent(query)}&filter=gguf&sort=lastModified&direction=-1&limit=40`,
+      );
+    }
+
+    const responses = await Promise.allSettled(
+      urls.map((u) =>
+        fetch(u)
+          .then((r) => (r.ok ? r.json() : []))
+          .catch(() => []),
+      ),
     );
-    if (!res.ok) return [];
-    const items: Array<{ id: string; downloads?: number; lastModified?: string }> =
-      await res.json();
+
+    const rawItems: Array<{
+      id: string;
+      downloads?: number;
+      likes?: number;
+      lastModified?: string;
+      createdAt?: string;
+      tags?: string[];
+      pipeline_tag?: string;
+      gated?: string | boolean;
+    }> = [];
+
+    const seenIds = new Set<string>();
+    for (const r of responses) {
+      if (r.status === "fulfilled" && Array.isArray(r.value)) {
+        for (const item of r.value) {
+          if (item && item.id && !seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            rawItems.push(item);
+          }
+        }
+      }
+    }
 
     const familyMap: Record<string, ModelFamily> = {};
 
-    for (const item of items) {
+    for (const item of rawItems) {
+      if (item.gated === "true" || item.gated === true) continue;
       const parts = item.id.split("/");
       const author = parts[0] || "HuggingFace";
       const repoName = parts[1] || item.id;
+      const fullText = `${item.id} ${(item.tags || []).join(" ")} ${item.pipeline_tag || ""}`.toLowerCase();
 
       let sizeLabel = "GGUF";
       let paramsNum = 7;
-      const paramMatch = repoName.match(/(\d+\.?\d*)[bB]/);
+      const paramMatch = repoName.match(/(\d+(?:\.\d+)?)\s*[bB]\b/);
       if (paramMatch) {
         paramsNum = Number.parseFloat(paramMatch[1]);
         sizeLabel = `${paramsNum}B`;
       }
 
-      const isInstruct = /instruct|chat/i.test(repoName);
-      const isVision = /vision|vl|multimodal/i.test(repoName);
-      const isAudio = /audio|voice|speech/i.test(repoName);
-      const isCode = /code|coder/i.test(repoName);
+      const isInstruct = /instruct|chat|conversational/i.test(fullText);
+      const isVision = /vision|vl|multimodal|image-text-to-text/i.test(fullText);
+      const isAudio = /audio|voice|speech/i.test(fullText);
+      const isCode = /code|coder/i.test(fullText);
+      const isReasoning = /reason|thinking|r1|qwq/i.test(fullText);
+      const isUncensored = /uncensored|abliterated|heretic|decensored/i.test(fullText);
 
+      const guessed = guessBrand(repoName);
+      const brand = guessed !== "Community" ? `${guessed} / ${author}` : author;
       const familyId = `hf-${author}-${repoName.toLowerCase()}`;
-      const yearMatch = item.lastModified ? new Date(item.lastModified).getFullYear() : 2026;
-      const dateStr = item.lastModified ? item.lastModified.slice(0, 7) : "2026-01";
+      const dateRaw = item.createdAt || item.lastModified;
+      const yearMatch = dateRaw ? new Date(dateRaw).getFullYear() : 2026;
+      const dateStr = dateRaw ? dateRaw.slice(0, 7) : "2026-08";
 
       if (!familyMap[familyId]) {
         familyMap[familyId] = {
           id: familyId,
           name: repoName.replace(/-GGUF$/i, ""),
-          brand: author,
-          description: `GGUF HuggingFace Hub (${(item.downloads || 0).toLocaleString()} téléchargements).`,
+          brand,
+          description: `GGUF HuggingFace Hub (${(item.downloads || item.likes || 0).toLocaleString()} téléchargements / likes).`,
           license: "Open Weights",
           contextWindow: "128k",
           releaseDate: dateStr,
           releaseYear: yearMatch,
           finetunable: true,
-          instruct: isInstruct,
+          instruct: isInstruct || !isVision,
           vision: isVision,
           audio: isAudio,
           code: isCode,
+          reasoning: isReasoning,
+          uncensored: isUncensored,
           variants: [
             {
               size: sizeLabel + (isInstruct ? " Instruct" : ""),
@@ -2572,6 +2746,7 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
               instruct: isInstruct,
             },
           ],
+          pulls: item.downloads || 0,
           source: "huggingface",
         };
       }
@@ -2763,6 +2938,7 @@ export async function fetchFullRegistry(
     const all = mergeFamilies(
       SEED_CATALOG,
       LARGE_LOCAL_MODELS,
+      AIRLLM_CATALOG_MODELS,
       IMAGE_GEN_MODELS,
       TTS_MODELS,
       cached.families,
@@ -2792,10 +2968,11 @@ export async function fetchFullRegistry(
   // 3. Convert ollama library results
   const ollamaFamilies = ollamaLibraryToFamilies(ollamaModels);
 
-  // 4. Merge all sources: seed + image gen + tts + ollama + HF (GGUF + TTS)
+  // 4. Merge all sources: seed + large local + airllm + image gen + tts + ollama + HF (GGUF + TTS)
   const allFamilies = mergeFamilies(
     SEED_CATALOG,
     LARGE_LOCAL_MODELS,
+    AIRLLM_CATALOG_MODELS,
     IMAGE_GEN_MODELS,
     TTS_MODELS,
     ollamaFamilies,
@@ -2842,5 +3019,10 @@ export function findInstalledImageGenModel(installedTags: string[]): string | nu
 // ── Re-export for backward compat ───────────────────────────────────────────
 
 /** @deprecated Use fetchFullRegistry() instead */
-export const MODEL_CATALOG = [...SEED_CATALOG, ...IMAGE_GEN_MODELS];
+export const MODEL_CATALOG = [
+  ...SEED_CATALOG,
+  ...LARGE_LOCAL_MODELS,
+  ...AIRLLM_CATALOG_MODELS,
+  ...IMAGE_GEN_MODELS,
+];
 export const BRANDS = Array.from(new Set(MODEL_CATALOG.map((f) => f.brand))).sort();

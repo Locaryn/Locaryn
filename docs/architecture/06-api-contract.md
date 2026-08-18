@@ -157,6 +157,7 @@ data: {"message_id":"...","tokens_in":120,"tokens_out":450,"duration_ms":8200}
 | GET | `/v1/extensions/{id}/permissions` | Permissions demandées vs accordées | both |
 | POST | `/v1/extensions/{id}/permissions` | Approuve/refuse permissions | both |
 | POST | `/v1/extensions/reload` | Hot-reload (ou automatique via fs watcher) | both |
+| GET | `/v1/capabilities` | Liste canonique des capacités reconnues par ce serveur | both |
 
 ### MCP servers
 

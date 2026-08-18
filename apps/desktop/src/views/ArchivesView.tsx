@@ -1,5 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Project, type Session, core } from "../lib/core";
 
 type Props = {
@@ -24,6 +24,7 @@ export function ArchivesView({ onOpenSession }: Props) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [occupe, setOccupe] = useState<string | null>(null);
   const [aSupprimer, setASupprimer] = useState<string | null>(null);
+  const [recherche, setRecherche] = useState("");
 
   const recharger = useCallback(async () => {
     try {
@@ -50,6 +51,25 @@ export function ArchivesView({ onOpenSession }: Props) {
   useEffect(() => {
     void recharger();
   }, [recharger]);
+
+  const rangeesFiltrees = useMemo(() => {
+    if (!rangees) return [];
+    const terme = normaliser(recherche.trim());
+    if (!terme) return rangees;
+    return rangees.filter((r) => {
+      const texte = normaliser(
+        [
+          r.session.title ?? "",
+          r.projet.name,
+          r.session.archived_at ? dateCourte(r.session.archived_at) : "",
+        ].join(" "),
+      );
+      return texte.includes(terme);
+    });
+  }, [rangees, recherche]);
+
+  const totalArchives = rangees?.length ?? 0;
+  const rechercheActive = recherche.trim().length > 0;
 
   async function ressortir(r: Rangee) {
     setOccupe(r.session.id);
@@ -91,16 +111,58 @@ export function ArchivesView({ onOpenSession }: Props) {
 
       {erreur && <p className="locaryn-error">{erreur}</p>}
 
+      {rangees !== null && (
+        <div className="locaryn-archives-toolbar">
+          <label className="locaryn-archives-search" htmlFor="locaryn-archives-search">
+            <span className="locaryn-archives-search-icon" aria-hidden="true">
+              <Icon name="search" size={15} />
+            </span>
+            <span className="sr-only">Rechercher dans les archives</span>
+            <input
+              id="locaryn-archives-search"
+              className="locaryn-input"
+              type="search"
+              value={recherche}
+              placeholder="Rechercher une conversation ou un projet…"
+              onChange={(e) => setRecherche(e.target.value)}
+            />
+            {recherche && (
+              <button
+                type="button"
+                className="locaryn-archives-search-clear"
+                aria-label="Effacer la recherche"
+                onClick={() => setRecherche("")}
+              >
+                <Icon name="close" size={14} />
+              </button>
+            )}
+          </label>
+          <span className="locaryn-archives-counter" aria-live="polite">
+            {rechercheActive
+              ? `${rangeesFiltrees.length} résultat${rangeesFiltrees.length === 1 ? "" : "s"} sur ${totalArchives} archive${totalArchives === 1 ? "" : "s"}`
+              : `${totalArchives} archive${totalArchives === 1 ? "" : "s"}`}
+          </span>
+        </div>
+      )}
+
       {rangees === null && <p className="locaryn-archives-empty">Lecture des archives…</p>}
 
       {rangees?.length === 0 && (
         <p className="locaryn-archives-empty">
-          Aucune conversation archivée. Glissez-en une sur la corbeille pour la ranger ici.
+          {rechercheActive
+            ? "Aucune archive à rechercher pour le moment."
+            : "Aucune conversation archivée. Glissez-en une sur la corbeille pour la ranger ici."}
+        </p>
+      )}
+
+      {rangees && rangees.length > 0 && rangeesFiltrees.length === 0 && (
+        <p className="locaryn-archives-empty">
+          Aucune archive ne correspond à « {recherche.trim()} ».
         </p>
       )}
 
       <ul className="locaryn-archives-list">
-        {rangees?.map((r) => (
+        {rangeesFiltrees.map((r) => (
           <li key={r.session.id} className="locaryn-archives-row">
             <div className="locaryn-archives-text">
               <span className="locaryn-archives-title">{r.session.title || "Sans titre"}</span>
@@ -154,6 +216,10 @@ export function ArchivesView({ onOpenSession }: Props) {
 }
 
 /** « 14 mars » plutôt qu'un horodatage : on cherche un souvenir, pas une trace. */
+function normaliser(value: string): string {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
+}
+
 function dateCourte(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;

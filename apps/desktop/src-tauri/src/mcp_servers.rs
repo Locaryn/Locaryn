@@ -11,7 +11,7 @@
 //! later, with nothing pointing at the cause.
 
 use base64::Engine as _;
-use locaryn_mcp::{build_client, McpClient, McpServerEntry, McpState, Transport};
+use locaryn_mcp::{McpClient, McpServerEntry, McpState, Transport};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -230,7 +230,7 @@ pub async fn start_mcp_server(core: State<'_, Core>, name: String) -> Result<Vec
     }
     .ok_or_else(|| format!("« {name} » n'est pas enregistré."))?;
 
-    let client: Arc<dyn McpClient> = Arc::from(build_client(&entry));
+    let client: Arc<dyn McpClient> = Arc::from(core.mcp.build_client(&entry));
 
     // Discover before publishing it: a client left in the running map after a
     // failed handshake would be retried on every message of every chat.
@@ -274,7 +274,7 @@ pub async fn invoke_mcp_tool(
             cfg.mcp_servers.get(&name).cloned()
         }
         .ok_or_else(|| format!("« {name} » n'est pas enregistré."))?;
-        let client: Arc<dyn McpClient> = Arc::from(build_client(&entry));
+        let client: Arc<dyn McpClient> = Arc::from(core.mcp.build_client(&entry));
         client
             .discover()
             .await
@@ -307,7 +307,7 @@ pub async fn start_automatic(state: &McpState) {
             .collect()
     };
     for (name, entry) in entries {
-        let client: Arc<dyn McpClient> = Arc::from(build_client(&entry));
+        let client: Arc<dyn McpClient> = Arc::from(state.build_client(&entry));
         match client.discover().await {
             Ok(caps) => {
                 tracing::info!(server = %name, tools = caps.tools.len(), "serveur MCP démarré automatiquement");

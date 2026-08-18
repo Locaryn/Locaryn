@@ -67,6 +67,16 @@ export interface MediaModel {
   missing: string[];
 }
 
+/** Un point d'avancement du téléchargement d'un modèle, comme la mise à jour. */
+export interface ModelPullProgress {
+  downloaded: number;
+  /** Absent quand la taille n'est pas connue : barre indéterminée. */
+  total: number | null;
+  percentage: number | null;
+  /** Une phase en cours : « Installation des compagnons… ». */
+  message: string | null;
+}
+
 /** Une figure du serveur, vue du navigateur. */
 export interface PhoneFigure {
   id: string;
@@ -120,6 +130,98 @@ export const CATALOGUE: { repo: string; label: string; note: string }[] = [
   },
   { repo: "Locaryn/plugin-ssh", label: "Machine distante (SSH)", note: "Exécuter ailleurs" },
   { repo: "Locaryn/plugin-travel-tunnel", label: "Mode voyage", note: "Joindre depuis dehors" },
+];
+
+/** Un modèle proposé à l'installation, comme les extensions du catalogue. */
+export interface CatalogueModel {
+  /** URL directe vers un fichier de poids, ou dépôt HuggingFace complet. */
+  url: string;
+  kind: "image" | "audio";
+  /** Le nom sous lequel il apparaîtra dans « Modèles ». */
+  name: string;
+  label: string;
+  note: string;
+  /** Taille approximative sur disque, en Go. */
+  sizeGb: number;
+}
+
+/**
+ * Le catalogue de modèles — les mêmes poids que le marketplace du bureau.
+ * Ils s'installent sur le serveur ; le navigateur ne fait que désigner lequel.
+ */
+export const MODEL_CATALOGUE: CatalogueModel[] = [
+  {
+    url: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf",
+    kind: "image",
+    name: "z_image_turbo-Q8_0.gguf",
+    label: "Z-Image Turbo",
+    note: "Ultra-rapide (1 à 4 étapes), 6B",
+    sizeGb: 6.5,
+  },
+  {
+    url: "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
+    kind: "image",
+    name: "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
+    label: "Stable Diffusion 1.5",
+    note: "Léger et rapide, tourne partout",
+    sizeGb: 1.5,
+  },
+  {
+    url: "https://huggingface.co/second-state/SDXL-Turbo-GGUF/resolve/main/sdxl-turbo-Q4_0.gguf",
+    kind: "image",
+    name: "sdxl-turbo-Q4_0.gguf",
+    label: "SDXL Turbo",
+    note: "Temps réel, 1 étape, 1024²",
+    sizeGb: 3.1,
+  },
+  {
+    url: "https://huggingface.co/city96/SDXL-1.0-gguf/resolve/main/sdxl-1.0-Q4_0.gguf",
+    kind: "image",
+    name: "sdxl-1.0-Q4_0.gguf",
+    label: "Stable Diffusion XL 1.0",
+    note: "Le modèle phare 1024²",
+    sizeGb: 3.8,
+  },
+  {
+    url: "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_0.gguf",
+    kind: "image",
+    name: "flux1-schnell-Q4_0.gguf",
+    label: "FLUX.1 Schnell",
+    note: "Haute résolution, 4 étapes",
+    sizeGb: 6.7,
+  },
+  {
+    url: "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf",
+    kind: "image",
+    name: "flux1-dev-Q4_0.gguf",
+    label: "FLUX.1 Dev",
+    note: "Fidélité photoréaliste",
+    sizeGb: 7.2,
+  },
+  {
+    url: "https://huggingface.co/city96/stable-diffusion-3.5-medium-gguf/resolve/main/sd3.5_medium-Q4_0.gguf",
+    kind: "image",
+    name: "sd3.5_medium-Q4_0.gguf",
+    label: "Stable Diffusion 3.5 Medium",
+    note: "Texte dans l'image corrigé",
+    sizeGb: 2.1,
+  },
+  {
+    url: "https://huggingface.co/hexgrad/Kokoro-82M",
+    kind: "audio",
+    name: "hexgrad__Kokoro-82M",
+    label: "Kokoro-82M",
+    note: "Voix naturelle, 82M",
+    sizeGb: 0.3,
+  },
+  {
+    url: "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    kind: "audio",
+    name: "Qwen__Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    label: "Qwen3-TTS 1.7B",
+    note: "Clonage de voix, multilingue",
+    sizeGb: 3.4,
+  },
 ];
 
 /** Les lignes telles que le daemon les renvoie. */
@@ -329,6 +431,112 @@ export const api = {
 
   async removeExtension(name: string): Promise<void> {
     await http(`/v1/extensions/${encodeURIComponent(name)}`, { method: "DELETE" });
+  },
+
+  /**
+   * Installer un modèle du catalogue sur le serveur : le fichier (ou le dépôt
+   * HuggingFace) tombe dans le dossier des modèles de la machine d'en face.
+   *
+   * Le serveur répond par un flux d'événements : `onProgress` reçoit chaque
+   * point d'avancement au fil de l'eau, comme la barre de mise à jour, et la
+   * promesse se résout quand le dernier événement (`done`) est arrivé.
+   */
+  async pullModel(
+    url: string,
+    onProgress: (p: ModelPullProgress) => void,
+  ): Promise<{ name: string; size: number }> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const resp = await fetch("/v1/models/pull", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ url }),
+    });
+    if (resp.status === 401) {
+      clearSession();
+      throw new Error("Votre session a expiré. Reconnectez-vous.");
+    }
+    if (!resp.ok) {
+      // Les refus qui précèdent tout octet reçu (adresse invalide, déjà
+      // installé) sont des réponses JSON ordinaires.
+      const text = await resp.text();
+      let message = `Le serveur a répondu ${resp.status}.`;
+      try {
+        const parsed = JSON.parse(text) as {
+          error?: string | { message?: string };
+        };
+        const e = parsed.error;
+        message = typeof e === "string" ? e : (e?.message ?? message);
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+    if (!resp.body) throw new Error("Le serveur n'a renvoyé aucun flux.");
+
+    // Le daemon répond en événements (`data: {...}`), comme pour le chat : on
+    // en garde les points d'avancement, et le dernier, qui porte le résultat.
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: { name: string; size: number } | null = null;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      for (;;) {
+        const sep = buffer.indexOf("\n\n");
+        if (sep === -1) break;
+        const block = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        for (const line of block.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (!data) continue;
+          let ev: {
+            done?: boolean;
+            error?: string;
+            name?: string;
+            size?: number;
+            downloaded?: number;
+            total?: number | null;
+            percentage?: number | null;
+            message?: string | null;
+          };
+          try {
+            ev = JSON.parse(data);
+          } catch {
+            // Un événement mal formé ne vaut pas la peine de faire échouer
+            // tout le téléchargement.
+            continue;
+          }
+          if (ev.done) {
+            result = { name: String(ev.name ?? ""), size: Number(ev.size ?? 0) };
+          } else if (ev.error) {
+            throw new Error(ev.error);
+          } else {
+            onProgress({
+              downloaded: ev.downloaded ?? 0,
+              total: ev.total ?? null,
+              percentage: ev.percentage ?? null,
+              message: ev.message ?? null,
+            });
+          }
+        }
+      }
+    }
+    if (!result) throw new Error("Le serveur n'a pas confirmé la fin du téléchargement.");
+    return result;
+  },
+
+  /**
+   * Retirer un modèle installé du serveur : ses fichiers sont effacés de la
+   * machine d'en face (le fichier, ou le dossier entier pour un dépôt).
+   */
+  async removeModel(name: string): Promise<void> {
+    await http(`/v1/models/${encodeURIComponent(name)}`, { method: "DELETE" });
   },
 
   /** Ce que le serveur retient de son utilisateur. */

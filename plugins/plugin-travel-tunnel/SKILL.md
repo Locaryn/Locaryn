@@ -1,8 +1,8 @@
 ---
-name: travel-mode
-description: Launch encrypted tunnels and generate mobile pairing QR codes.
+name: remote-mode
+description: Launch encrypted remote tunnels and generate mobile pairing QR codes.
 ---
 
-# Travel Mode Skill
+# Remote Mode Skill
 
-Use `start_travel_tunnel` when connecting mobile clients over the internet.
+Use `start_remote_tunnel` when connecting mobile clients over the internet.

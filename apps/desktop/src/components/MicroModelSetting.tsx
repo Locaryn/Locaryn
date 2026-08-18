@@ -35,7 +35,7 @@ export function MicroModelSetting() {
   }
 
   return (
-    <div className="locaryn-field" style={{ marginTop: 28 }}>
+    <div className="locaryn-field locaryn-micro-model-setting">
       <div className="locaryn-field-label">Modèle des petites tâches</div>
       <p className="locaryn-field-hint">
         Il nomme les conversations d'après leur sujet, pour qu'une liste se lise. Prenez un petit

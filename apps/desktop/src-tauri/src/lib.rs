@@ -17,6 +17,7 @@ mod hooks;
 mod mcp_servers;
 mod memory;
 mod model_residency;
+mod local_profile;
 mod region_edit;
 mod sd_engine;
 mod secure_client;
@@ -32,16 +33,23 @@ use locaryn_events::StreamEvent;
 use locaryn_preview::{PreviewOrigin, PreviewRender};
 use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
 use locaryn_shared_types::{
-    ConnectionMode, Health, Message, MessageRole, Project, Provider, ProviderEngine,
+    ArtifactKind, ConnectionMode, Health, Message, MessageRole, Project, Provider, ProviderEngine,
     ProviderSummary, Session, SshAiAccess, SshServer, TrustLevel,
 };
 use locaryn_storage::Storage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tauri::ipc::Channel;
 use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
+
+/// The window close button hides the desktop shell into the tray. Only the
+/// explicit tray quit action is allowed to terminate the process.
+static TRAY_QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 /// The in-process core shared by all Tauri commands.
 struct Core {
@@ -422,6 +430,34 @@ fn remove_test_audio(path: String) -> Result<(), String> {
     std::fs::remove_file(candidate).map_err(|e| e.to_string())
 }
 
+/// Copy a generated voice note only after the user explicitly chose a
+/// destination in the native Save As dialog. The source is confined to the
+/// application's generated-audio directory so this command cannot become an
+/// arbitrary file-copy primitive.
+#[tauri::command]
+fn save_audio_as(source_path: String, destination_path: String) -> Result<(), String> {
+    let source = std::fs::canonicalize(&source_path)
+        .map_err(|e| format!("note vocale introuvable : {e}"))?;
+    let generated_root = std::fs::canonicalize(locaryn_config::generated_audio_dir())
+        .map_err(|e| format!("dossier audio introuvable : {e}"))?;
+    if !source.starts_with(&generated_root) {
+        return Err("ce fichier audio n'est pas une note générée par Locaryn".into());
+    }
+
+    let destination = std::path::PathBuf::from(destination_path);
+    if destination.as_os_str().is_empty() {
+        return Err("destination audio vide".into());
+    }
+    if let Some(parent) = destination.parent() {
+        if !parent.exists() {
+            return Err("le dossier de destination n'existe pas".into());
+        }
+    }
+    std::fs::copy(&source, &destination)
+        .map(|_| ())
+        .map_err(|e| format!("copie de la note vocale impossible : {e}"))
+}
+
 // ============================================================================
 // Projects / sessions / messages
 // ============================================================================
@@ -630,6 +666,55 @@ fn set_image_defaults(core: State<'_, Core>, config: ImageDefaults) -> Result<()
         cfg.height = px;
     }
     cfg.save(&core.data_dir).map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// Account model preferences
+// ============================================================================
+
+/// Defaults for model-backed features that are not the main chat runtime.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct ModelPreferences {
+    /// None means the Studio chooses the first installed TTS model.
+    #[serde(default)]
+    pub tts_model: Option<String>,
+}
+
+impl ModelPreferences {
+    fn path(data_dir: &std::path::Path) -> std::path::PathBuf {
+        data_dir.join("model_preferences.json")
+    }
+
+    fn load(data_dir: &std::path::Path) -> Self {
+        std::fs::read_to_string(Self::path(data_dir))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    fn save(&self, data_dir: &std::path::Path) -> anyhow::Result<()> {
+        std::fs::write(Self::path(data_dir), serde_json::to_string_pretty(self)?)?;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn get_model_preferences(core: State<'_, Core>) -> ModelPreferences {
+    ModelPreferences::load(&core.data_dir)
+}
+
+#[tauri::command]
+fn set_model_preferences(
+    core: State<'_, Core>,
+    mut preferences: ModelPreferences,
+) -> Result<(), String> {
+    preferences.tts_model = preferences
+        .tts_model
+        .take()
+        .and_then(|model| (!model.trim().is_empty()).then(|| model.trim().to_string()));
+    preferences
+        .save(&core.data_dir)
+        .map_err(|e| e.to_string())
 }
 
 /// A plan produced by the model for a non-trivial request.
@@ -1585,7 +1670,9 @@ async fn send_message(
                     MessageRole::Assistant => "assistant".to_string(),
                     _ => "user".to_string(),
                 },
-                content: m.content,
+                // The audio marker is a UI persistence detail, not part of the
+                // conversation the model should answer from.
+                content: strip_audio_markers(&m.content),
             })
             .collect();
         // The message we just persisted is the current one — it is sent separately.
@@ -1710,9 +1797,15 @@ async fn send_message(
     let mut full_text = String::new();
     let mut tokens_in = 0u64;
     let mut tokens_out = 0u64;
+    let mut audio_artifacts: Vec<String> = Vec::new();
     while let Some(ev) = event_stream.next().await {
         match &ev {
             StreamEvent::Token { text } => full_text.push_str(text),
+            StreamEvent::Artifact {
+                kind: ArtifactKind::AudioWav,
+                path,
+                ..
+            } => audio_artifacts.push(path.clone()),
             StreamEvent::MessageEnd {
                 tokens_in: ti,
                 tokens_out: to,
@@ -1728,15 +1821,22 @@ async fn send_message(
         let _ = on_event.send(ev);
     }
 
-    // 5. Persist the assistant reply.
-    if !full_text.is_empty() {
+    // 5. Persist the assistant reply and transparent audio-artifact markers.
+    // The frontend turns those markers back into playable notes; history strips
+    // them before the next model request.
+    let mut persisted_text = full_text;
+    for path in audio_artifacts {
+        persisted_text.push('\n');
+        persisted_text.push_str(&audio_marker(&path));
+    }
+    if !persisted_text.is_empty() {
         if let Err(e) = core
             .storage
             .messages
             .append_full(
                 session_id,
                 MessageRole::Assistant,
-                &full_text,
+                &persisted_text,
                 None,
                 None,
                 tokens_in,
@@ -1759,6 +1859,26 @@ async fn send_message(
     .await;
 
     Ok(())
+}
+
+/// Marker stored alongside an assistant message for a generated audio note.
+/// JSON escaping keeps Windows paths and quotes unambiguous.
+fn audio_marker(path: &str) -> String {
+    let encoded = serde_json::to_string(path).unwrap_or_else(|_| "\"\"".to_string());
+    format!("<!--locaryn-audio:{encoded}-->")
+}
+
+/// Remove UI-only audio markers before replaying history to a model.
+fn strip_audio_markers(content: &str) -> String {
+    let mut text = content.to_string();
+    let marker = "<!--locaryn-audio:";
+    while let Some(start) = text.find(marker) {
+        let Some(end_rel) = text[start..].find("-->") else {
+            break;
+        };
+        text.replace_range(start..start + end_rel + 3, "");
+    }
+    text.trim().to_string()
 }
 
 /// When no local model can answer, stream a clear, actionable explanation
@@ -1876,13 +1996,25 @@ async fn list_providers(core: State<'_, Core>) -> Result<Vec<Provider>, String> 
         .map_err(|e| e.to_string())
 }
 
+/// Report the active LLM to the MCP runtime so every stdio server spawned
+/// afterwards inherits `LOCARYN_ACTIVE_MODEL` / `LOCARYN_LLM_ENDPOINT`.
+async fn refresh_mcp_runtime_env(core: &Core) {
+    let active = core.storage.providers.active().await.ok().flatten();
+    let model = active.as_ref().and_then(|p| p.model.clone());
+    let endpoint = active.as_ref().map(|p| p.endpoint.clone());
+    core.mcp.set_runtime_env(model, endpoint);
+}
+
 #[tauri::command]
 async fn set_active_provider(core: State<'_, Core>, id: Uuid) -> Result<Provider, String> {
-    core.storage
+    let provider = core
+        .storage
         .providers
         .set_active(id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    refresh_mcp_runtime_env(&core).await;
+    Ok(provider)
 }
 
 /// Save the local provider's endpoint + model and make it active.
@@ -1920,6 +2052,7 @@ async fn configure_provider(
         tracing::info!("active model changed — restarting llama-server");
         let _ = core.supervisor.shutdown(ProviderEngine::LlamaCpp).await;
     }
+    refresh_mcp_runtime_env(&core).await;
     Ok(provider)
 }
 
@@ -7098,13 +7231,35 @@ fn check_hardware() -> Result<HardwareSpec, String> {
         16
     };
 
-    // VRAM: best-effort via nvidia-smi; fallback to 0.
+    // VRAM: best-effort via nvidia-smi in MiB converted to GB; fallback to WMI or 0.
     let vram_gb = std::process::Command::new("nvidia-smi")
         .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
         .output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| s.trim().parse::<u32>().ok())
+        .and_then(|s| {
+            s.lines()
+                .next()
+                .and_then(|l| l.trim().parse::<f32>().ok())
+                .map(|mb| (mb / 1024.0).round() as u32)
+        })
+        .or_else(|| {
+            if cfg!(target_os = "windows") {
+                std::process::Command::new("wmic")
+                    .args(["path", "win32_VideoController", "get", "AdapterRAM"])
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .and_then(|s| {
+                        s.lines()
+                            .filter_map(|l| l.trim().parse::<u64>().ok())
+                            .max()
+                            .map(|bytes| (bytes / (1024 * 1024 * 1024)) as u32)
+                    })
+            } else {
+                None
+            }
+        })
         .unwrap_or(0);
 
     let cpu_cores = std::thread::available_parallelism()
@@ -7874,12 +8029,26 @@ pub fn run() {
     tracing::info!("Starting Locaryn desktop v{}", env!("CARGO_PKG_VERSION"));
 
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Windows' X is a hide-to-tray action, not a process exit. The
+                // tray's explicit Quit action sets the flag first so its exit
+                // request is allowed through.
+                if !TRAY_QUIT_REQUESTED.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let core = tauri::async_runtime::block_on(init_core())?;
+            // Les serveurs stdio héritent du moteur actif avant tout spawn,
+            // y compris ceux des extensions chargées juste après.
+            tauri::async_runtime::block_on(refresh_mcp_runtime_env(&core));
             // Servers the user marked automatic come up in the background:
             // one that hangs must not hold the window shut.
             let mcp = core.mcp.clone();
@@ -7887,6 +8056,124 @@ pub fn run() {
                 mcp_servers::start_automatic(&mcp).await;
             });
             app.manage(core);
+
+            // Keep Locaryn in the notification area when its window is closed.
+            // The daemon is owned by this application and is stopped only by
+            // the explicit tray quit action or the final Tauri exit event.
+            #[cfg(desktop)]
+            {
+                use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+                use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+                let show_item =
+                    MenuItem::with_id(app, "show", "Ouvrir Locaryn", true, None::<&str>)?;
+                let status_item =
+                    MenuItem::with_id(app, "daemon_status", "Service : Détection…", false, None::<&str>)?;
+                let port_item =
+                    MenuItem::with_id(app, "daemon_port", "Port : 7474", false, None::<&str>)?;
+                let restart_item =
+                    MenuItem::with_id(app, "restart_daemon", "Redémarrer le service", true, None::<&str>)?;
+                let quit_item =
+                    MenuItem::with_id(app, "quit", "Quitter Locaryn", true, None::<&str>)?;
+                let sep1 = PredefinedMenuItem::separator(app)?;
+                let sep2 = PredefinedMenuItem::separator(app)?;
+
+                let menu = Menu::with_items(
+                    app,
+                    &[
+                        &show_item,
+                        &sep1,
+                        &status_item,
+                        &port_item,
+                        &restart_item,
+                        &sep2,
+                        &quit_item,
+                    ],
+                )?;
+                let icon = app
+                    .default_window_icon()
+                    .cloned()
+                    .ok_or("icône Locaryn introuvable")?;
+
+                let status_item_bg = status_item.clone();
+                let port_item_bg = port_item.clone();
+                let restart_item_bg = restart_item.clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        if let Ok(st) = server_mode::server_status().await {
+                            let status_text = if st.running {
+                                "Service : En écoute (Actif)"
+                            } else {
+                                "Service : Arrêté"
+                            };
+                            let port_text = format!("Port : {}", st.port);
+                            let _ = status_item_bg.set_text(status_text);
+                            let _ = port_item_bg.set_text(port_text);
+                            let _ = restart_item_bg.set_enabled(st.blocker.is_none());
+                        }
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    }
+                });
+
+                let status_item_ev = status_item.clone();
+                let port_item_ev = port_item.clone();
+
+                TrayIconBuilder::new()
+                    .icon(icon)
+                    .tooltip("Locaryn — service local")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(move |app, event| match event.id.as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "restart_daemon" => {
+                            let app_handle = app.clone();
+                            let s_item = status_item_ev.clone();
+                            let p_item = port_item_ev.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = s_item.set_text("Service : Redémarrage…");
+                                let res = server_mode::restart_server().await;
+                                if let Ok(st) = res {
+                                    let status_text = if st.running {
+                                        "Service : En écoute (Actif)"
+                                    } else {
+                                        "Service : Arrêté"
+                                    };
+                                    let _ = s_item.set_text(status_text);
+                                    let _ = p_item.set_text(format!("Port : {}", st.port));
+                                    let _ = app_handle.emit("locaryn:server-status-changed", &st);
+                                }
+                            });
+                        }
+                        "quit" => {
+                            TRAY_QUIT_REQUESTED.store(true, Ordering::SeqCst);
+                            server_mode::stop_daemon();
+                            app.exit(0);
+                        }
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    })
+                    .build(app)?;
+            }
 
             // Deep links (locaryn://install?src=…). Registering makes the OS
             // treat this app as the handler for the scheme; the frontend
@@ -7972,6 +8259,7 @@ pub fn run() {
             client_cert::remove_client_certificate,
             server_mode::server_status,
             server_mode::set_server_mode,
+            server_mode::restart_server,
             server_mode::provisioning,
             storage_root::storage_info,
             voice_presets::list_voice_presets,
@@ -8035,7 +8323,12 @@ pub fn run() {
             memory::edit_memory,
             memory::forget_memory,
             memory::forget_all_memory,
+            local_profile::get_local_profile,
+            local_profile::set_local_profile,
+            local_profile::set_local_avatar,
+            local_profile::clear_local_avatar,
             extensions::list_extensions,
+            extensions::list_capabilities,
             core_engines::core_status,
             core_engines::core_start,
             core_engines::core_stop,
@@ -8077,6 +8370,7 @@ pub fn run() {
             mcp_servers::android_screen_action,
             write_test_audio,
             remove_test_audio,
+            save_audio_as,
             list_ssh_servers,
             test_ssh_connection,
             confirm_ssh_host_key,
@@ -8086,10 +8380,20 @@ pub fn run() {
             delete_ssh_server,
             get_image_defaults,
             set_image_defaults,
+            get_model_preferences,
+            set_model_preferences,
             bootstrap
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Locaryn desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building Locaryn desktop")
+        .run(|_app, event| match event {
+            tauri::RunEvent::Exit => {
+                // Covers shutdown paths other than the tray menu as well. The
+                // child is killed before the desktop process disappears.
+                server_mode::stop_daemon();
+            }
+            _ => {}
+        });
 }
 
 // Le module de test ferme le fichier : tout élément placé après lui se lit

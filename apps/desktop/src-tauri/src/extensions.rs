@@ -19,7 +19,7 @@
 use locaryn_extensions::loader::LoadedPlugin;
 use locaryn_extensions::manifest::PluginManifest;
 use locaryn_extensions::{latest_github_version, version_gt, SourceError};
-use locaryn_mcp::{build_client, McpClient, McpConfig, McpServerEntry, Transport};
+use locaryn_mcp::{McpClient, McpConfig, McpServerEntry, Transport};
 use locaryn_shared_types::{
     CatalogEntry, CatalogSnapshot, CatalogSource, ExtensionComponents, ExtensionEcosystem,
     ExtensionKind, ExtensionPermissionState, ExtensionScope, InstalledExtension, Permission,
@@ -174,7 +174,7 @@ pub async fn reload(core: &Core) -> Result<(), String> {
         if core.mcp.running.read().await.contains_key(name) {
             continue;
         }
-        let client: Arc<dyn McpClient> = Arc::from(build_client(entry));
+        let client: Arc<dyn McpClient> = Arc::from(core.mcp.build_client(entry));
         match client.discover().await {
             Ok(caps) => {
                 tracing::info!(server = %name, tools = caps.tools.len(), "serveur MCP d'extension démarré");
@@ -432,6 +432,30 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
 #[tauri::command]
 pub async fn list_extensions(core: State<'_, Core>) -> Result<Vec<InstalledExtension>, String> {
     build_installed(&core).await
+}
+
+/// GET /v1/capabilities du daemon local — la liste canonique des capacités
+/// reconnues par ce serveur. La récupérer ici permet à l'interface
+/// d'afficher les labels du serveur sans être recompilée.
+#[tauri::command]
+pub async fn list_capabilities(
+) -> Result<Vec<locaryn_shared_types::capabilities::Capability>, String> {
+    let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
+    let port = cfg.daemon.port;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("http://127.0.0.1:{port}/v1/capabilities");
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("daemon injoignable : {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("le daemon a répondu {}", resp.status()));
+    }
+    resp.json().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

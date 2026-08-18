@@ -1,5 +1,5 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type ModelMetric, core } from "../lib/core";
 import {
   MODEL_CATEGORIES,
@@ -55,27 +55,44 @@ type Props = {
  * peut être supprimé via `delete_original`).
  */
 const AIRLLM_MODELS: Record<string, { repo: string; sizeGb: number }> = {
-  "kimi-k3": { repo: "moonshotai/Kimi-K3", sizeGb: 1450 }, // 2,8T MoE MXFP4, ~1,4 To — ~3 Go VRAM (expert streaming)
-  qwen3: { repo: "Qwen/Qwen3-235B-A22B-Instruct-2507", sizeGb: 470 }, // 235B MoE, ~3 Go VRAM
-  llama4: { repo: "meta-llama/Llama-4-Scout-17B-16E-Instruct", sizeGb: 34 }, // 109B MoE
-  "llama3.3": { repo: "meta-llama/Llama-3.3-70B-Instruct", sizeGb: 140 }, // gated Meta — token HF requis
-  "llama3.1": { repo: "meta-llama/Llama-3.1-70B-Instruct", sizeGb: 140 }, // gated Meta — token HF requis
-  "qwen2.5": { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
-  qwen2_5: { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
+  "deepseek-r1-70b-airllm": { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
+  "deepseek-r1-70b-gguf": { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
   "deepseek-r1": { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
   deepseek_r1: { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
+  "llama-3.3-70b-airllm": { repo: "meta-llama/Llama-3.3-70B-Instruct", sizeGb: 140 },
+  "llama3.3": { repo: "meta-llama/Llama-3.3-70B-Instruct", sizeGb: 140 },
+  "llama3.1": { repo: "meta-llama/Llama-3.1-70B-Instruct", sizeGb: 140 },
+  llama4: { repo: "meta-llama/Llama-4-Scout-17B-16E-Instruct", sizeGb: 34 },
+  "qwen2.5-72b-airllm": { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
+  "qwen2.5-72b-gguf": { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
+  "qwen2.5": { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
+  qwen2_5: { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
+  qwen3: { repo: "Qwen/Qwen3-235B-A22B-Instruct-2507", sizeGb: 470 },
+  "mistral-nemo-airllm": { repo: "mistralai/Mistral-Nemo-Instruct-2407", sizeGb: 27 },
   "mistral-nemo": { repo: "mistralai/Mistral-Nemo-Instruct-2407", sizeGb: 27 },
+  "mixtral-8x7b-airllm": { repo: "mistralai/Mixtral-8x7B-Instruct-v0.1", sizeGb: 90 },
+  "command-r-airllm": { repo: "CohereForAI/c4ai-command-r-v01", sizeGb: 70 },
+  "qwen2.5-coder-32b-airllm": { repo: "Qwen/Qwen2.5-Coder-32B-Instruct", sizeGb: 65 },
   mistral: { repo: "mistralai/Mistral-7B-Instruct-v0.3", sizeGb: 30 },
 };
+
+/** Find the AirLLM HuggingFace repo & size metadata for a model family. */
+function getAirllmEntry(f: ModelFamily): { repo: string; sizeGb: number } | undefined {
+  if (AIRLLM_MODELS[f.id]) return AIRLLM_MODELS[f.id];
+  const v = f.variants.find((v) => v.tag.startsWith("airllm:"));
+  if (v) return { repo: v.tag.replace(/^airllm:/, ""), sizeGb: v.storageGb };
+  return undefined;
+}
 
 /** Une capacité annoncée : son icône et son nom. */
 type Pastille = { icon: IconName; label: string };
 
 function capBadges(f: ModelFamily, activeCapabilities: string[] = []): Pastille[] {
   const caps: Pastille[] = [];
-  const isCloud = f.variants.length > 0 && f.variants.every((v) => v.quants.includes("cloud"));
   const a = (c: string) => activeCapabilities.includes(c);
-  if (isCloud) caps.push({ icon: "cloud", label: "Cloud" });
+  if (f.source === "airllm" || f.variants.some((v) => v.quants.includes("airllm"))) {
+    caps.push({ icon: "star", label: "AirLLM" });
+  }
   if (f.imageGen && a("image-gen")) caps.push({ icon: "image", label: "Image" });
   if (f.tts && a("voice-tts")) caps.push({ icon: "mic", label: "Voix" });
   if (f.voiceCloning && a("voice-cloning")) caps.push({ icon: "figures", label: "Clonage" });
@@ -163,10 +180,10 @@ const AIRLLM_KEY = "locaryn_model_airllm_v1";
 function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Compat {
   if (storageGb === 0) {
     return {
-      level: "cloud",
-      label: "Modèle cloud — exécution distante, aucun stockage local requis",
-      short: "Cloud",
-      color: "#60a5fa",
+      level: "unknown",
+      label: "Modèle local",
+      short: "Local",
+      color: "#a78bfa",
     };
   }
   if (!hw) {
@@ -312,6 +329,22 @@ export function ModelBrowser({
       .catch(() => setMetrics([]));
   }, []);
   const [customTagInput, setCustomTagInput] = useState("");
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [customDownloadModalOpen, setCustomDownloadModalOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const addMenuBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    function onDocDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (addMenuRef.current?.contains(t) || addMenuBtnRef.current?.contains(t)) return;
+      setAddMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, [addMenuOpen]);
+
   const [category, setCategory] = useState<ModelCategory>("all");
   const [brand, setBrand] = useState("all");
   const [size, setSize] = useState("all");
@@ -320,10 +353,8 @@ export function ModelBrowser({
   const [onlyFinetunable, setOnlyFinetunable] = useState(false);
   const [riskFilter, setRiskFilter] = useState<"all" | "safe" | "uncensored" | "nsfw">("all");
   const [onlyRecommended, setOnlyRecommended] = useState(false);
-  const [showCloud, setShowCloud] = useState(false);
-  // AirLLM : basculer l'affichage pour que les modèles qui ne tourneraient pas
-  // sur ce PC (trop lourds) soient convertis en exécutables via le moteur
-  // AirLLM (inférence basse VRAM, chargement des couches une par une).
+  // AirLLM : basculer l'affichage pour afficher et exécuter les très gros modèles
+  // via le moteur AirLLM (chargement des couches une par une sur petit GPU).
   const [airllmEnabled, setAirllmEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem(AIRLLM_KEY) === "1";
@@ -423,8 +454,10 @@ export function ModelBrowser({
     core
       .checkHardware()
       .then((hw) => {
-        if (active && hw)
-          setHardwareSpec({ total_ram_gb: hw.total_ram_gb, total_vram_gb: hw.total_vram_gb });
+        if (active && hw) {
+          const vram = hw.total_vram_gb > 128 ? Math.round(hw.total_vram_gb / 1024) : hw.total_vram_gb;
+          setHardwareSpec({ total_ram_gb: hw.total_ram_gb, total_vram_gb: vram });
+        }
       })
       .catch(() => {});
     return () => {
@@ -491,7 +524,16 @@ export function ModelBrowser({
 
     return catalogSource
       .map((f) => {
+        // Exclude any cloud-only or remote-hosted model entirely.
+        if (
+          isCloudOnlyFamily(f) ||
+          f.variants.some((v) => v.quants.includes("cloud") || v.tag.includes(":cloud"))
+        ) {
+          return null;
+        }
+
         const matchingVariants = f.variants.filter((v) => {
+          if (v.quants.includes("cloud") || v.tag.includes(":cloud")) return false;
           if (bucket && !bucket.test(v.params)) return false;
           if (onlyRecommended) {
             const ram = hardwareSpec?.total_ram_gb || 16;
@@ -537,11 +579,6 @@ export function ModelBrowser({
           return null;
         }
 
-        // Cloud-only families stay hidden by default, unless AirLLM mode is on
-        // (then everything is presented as runnable) or the user toggled "cloud".
-        if (!airllmEnabled && !showCloud && isCloudOnlyFamily(f)) {
-          return null;
-        }
         if (onlyFavorites && !favorites.has(f.id)) {
           return null;
         }
@@ -580,7 +617,6 @@ export function ModelBrowser({
     onlyFinetunable,
     riskFilter,
     onlyRecommended,
-    showCloud,
     onlyFavorites,
     favorites,
     registryModels,
@@ -691,7 +727,7 @@ export function ModelBrowser({
 
   /** Install (if needed) then launch an AirLLM model. */
   async function handleAirllmInstall(f: ModelFamily) {
-    const entry = AIRLLM_MODELS[f.id];
+    const entry = getAirllmEntry(f);
     if (!entry) {
       setAirllmModalOpen(true);
       return;
@@ -779,6 +815,118 @@ export function ModelBrowser({
             <option value="pulls">Plus populaires</option>
             <option value="name">Nom (A → Z)</option>
           </select>
+
+          {/* Bouton Plus en haut à droite — Menu Ajouter / Dépôt */}
+          <div style={{ position: "relative" }}>
+            <button
+              ref={addMenuBtnRef}
+              type="button"
+              className="locaryn-btn-primary"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                height: "100%",
+                padding: "0 12px",
+                whiteSpace: "nowrap",
+                fontSize: "12px",
+              }}
+              onClick={() => setAddMenuOpen((v) => !v)}
+              title="Ajouter un modèle"
+              aria-label="Ajouter un modèle"
+            >
+              <Icon name="plus" size={15} />
+              <span>Ajouter</span>
+            </button>
+            {addMenuOpen && (
+              <div
+                ref={addMenuRef}
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  right: 0,
+                  minWidth: "250px",
+                  background: "var(--panel, #161816)",
+                  border: "1px solid var(--border-strong)",
+                  borderRadius: "var(--radius-sm)",
+                  boxShadow: "0 10px 28px rgba(0,0,0,0.6)",
+                  padding: "4px",
+                  zIndex: 300,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                }}
+              >
+                <button
+                  type="button"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "8px 10px",
+                    background: "none",
+                    border: "none",
+                    borderRadius: "var(--radius-xs)",
+                    color: "var(--text)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "var(--surface-hover, rgba(255,255,255,0.06))")
+                  }
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    setCustomDownloadModalOpen(true);
+                  }}
+                >
+                  <Icon name="download" size={15} />
+                  <div>
+                    <div>Ajouter depuis un dépôt</div>
+                    <div style={{ fontSize: "10px", color: "var(--text-faint)" }}>
+                      HuggingFace, Ollama ou lien direct .gguf
+                    </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "8px 10px",
+                    background: "none",
+                    border: "none",
+                    borderRadius: "var(--radius-xs)",
+                    color: "var(--text)",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "var(--surface-hover, rgba(255,255,255,0.06))")
+                  }
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    handleFetchLiveApiModels();
+                  }}
+                  disabled={isFetchingLive}
+                >
+                  <Icon name="refresh" size={15} />
+                  <div>
+                    <div>{isFetchingLive ? "Recherche en cours…" : "Chercher sur HuggingFace Hub"}</div>
+                    <div style={{ fontSize: "10px", color: "var(--text-faint)" }}>
+                      Découvrir les derniers modèles en direct
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* AirLLM toggle — converts too-heavy models into low-VRAM executable ones */}
@@ -843,7 +991,14 @@ export function ModelBrowser({
           <button
             type="button"
             className="locaryn-btn-ghost"
-            style={{ fontSize: "11px", marginLeft: "auto", padding: "2px 8px" }}
+            style={{
+              fontSize: "11px",
+              marginLeft: "auto",
+              padding: "4px 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
             onClick={async () => {
               clearRegistryCache();
               setIsLoadingRegistry(true);
@@ -855,7 +1010,10 @@ export function ModelBrowser({
             disabled={isLoadingRegistry}
             title="Vider le cache local et rafraîchir la liste"
           >
-            {isLoadingRegistry ? "Chargement…" : "Rafraîchir le catalogue"}
+            <span style={{ display: "inline-flex" }} className={isLoadingRegistry ? "locaryn-spin" : undefined}>
+              <Icon name="refresh" size={14} />
+            </span>
+            <span>{isLoadingRegistry ? "Chargement…" : "Rafraîchir le catalogue"}</span>
           </button>
           {lastUpdated && (
             <span
@@ -867,47 +1025,9 @@ export function ModelBrowser({
               }}
               title="Le catalogue se met à jour automatiquement toutes les heures"
             >
-              <Icon name="refresh" size={15} /> MAJ {new Date(lastUpdated).toLocaleTimeString()}
+              MAJ {new Date(lastUpdated).toLocaleTimeString()}
             </span>
           )}
-        </div>
-
-        {/* Custom Model Tag & HuggingFace Pull Input + Live API Fetch Button */}
-        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-          <input
-            className="locaryn-input"
-            style={{ flex: 1, fontSize: "12px" }}
-            placeholder="Télécharger un modèle ou un dépôt HuggingFace (ex: gemma4:2b, kimi-k3:8b, mimo:7b, glm5.2:9b, hf.co/user/repo)..."
-            value={customTagInput}
-            onChange={(e) => setCustomTagInput(e.target.value)}
-          />
-          <button
-            type="button"
-            className="locaryn-btn-primary"
-            style={{ fontSize: "12px", whiteSpace: "nowrap" }}
-            disabled={!customTagInput.trim()}
-            onClick={() => {
-              requestInstall(customTagInput.trim(), customTagInput.trim(), false);
-              setCustomTagInput("");
-            }}
-          >
-            Télécharger ce modèle
-          </button>
-          <button
-            type="button"
-            className="locaryn-btn-ghost"
-            style={{
-              fontSize: "12px",
-              border: "1px solid var(--accent)",
-              color: "var(--accent)",
-              whiteSpace: "nowrap",
-            }}
-            onClick={handleFetchLiveApiModels}
-            disabled={isFetchingLive}
-            title="Interroger directement les API HuggingFace Hub pour découvrir les derniers modèles en temps réel"
-          >
-            {isFetchingLive ? "Recherche en cours…" : "Chercher sur HuggingFace"}
-          </button>
         </div>
 
         <div className="locaryn-models-toolbar" style={{ marginTop: "8px" }}>
@@ -1036,23 +1156,6 @@ export function ModelBrowser({
             >
               <Icon name="star" size={15} /> Favoris
               {favorites.size > 0 ? ` (${favorites.size})` : ""}
-            </button>
-            <button
-              type="button"
-              className={`locaryn-chip locaryn-chip-ft${showCloud ? " locaryn-chip-on" : ""}`}
-              style={
-                showCloud
-                  ? {
-                      background: "rgba(96, 165, 250, 0.2)",
-                      borderColor: "#60a5fa",
-                      color: "#60a5fa",
-                    }
-                  : {}
-              }
-              onClick={() => setShowCloud((prev) => !prev)}
-              title="Par défaut, les modèles cloud-only sont masqués pour privilégier les téléchargements locaux"
-            >
-              {showCloud ? "Cloud affiché" : "Cloud masqué"}
             </button>
           </div>
 
@@ -1257,7 +1360,7 @@ export function ModelBrowser({
                     bestVariant.size,
                     // Cloud-only families (storageGb = 0) fall back to the
                     // curated AirLLM repo size (e.g. Kimi K3 ≈ 1,45 To).
-                    AIRLLM_MODELS[f.id]?.sizeGb,
+                    getAirllmEntry(f)?.sizeGb,
                   )
                 : null;
 
@@ -1542,7 +1645,7 @@ export function ModelBrowser({
                                 </button>
                               ) : compatV.level === "airllm" ? (
                                 (() => {
-                                  const entry = AIRLLM_MODELS[f.id];
+                                  const entry = getAirllmEntry(f);
                                   const installed = entry ? airllmInstalled.has(entry.repo) : false;
                                   const busy = entry ? airllmBusy[entry.repo] : false;
                                   if (!entry) {
@@ -1839,7 +1942,7 @@ export function ModelBrowser({
                                 </button>
                               ) : compatV.level === "airllm" ? (
                                 (() => {
-                                  const entry = AIRLLM_MODELS[f.id];
+                                  const entry = getAirllmEntry(f);
                                   const installed = entry ? airllmInstalled.has(entry.repo) : false;
                                   const busy = entry ? airllmBusy[entry.repo] : false;
                                   if (!entry) {
@@ -2025,6 +2128,113 @@ export function ModelBrowser({
           setPendingNsfwInstall(null);
         }}
       />
+
+      {/* Custom Model / HuggingFace download modal */}
+      {customDownloadModalOpen && (
+        <div
+          className="locaryn-settings-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCustomDownloadModalOpen(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setCustomDownloadModalOpen(false);
+          }}
+        >
+          <div
+            className="locaryn-card"
+            style={{
+              width: "520px",
+              maxWidth: "92vw",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              margin: "60px auto",
+              border: "1px solid var(--border-strong)",
+              boxShadow: "0 16px 40px rgba(0,0,0,0.85)",
+            }}
+          >
+            <div className="locaryn-field-head" style={{ marginBottom: "14px" }}>
+              <div>
+                <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Icon name="download" size={16} /> Ajouter depuis un dépôt
+                </h3>
+                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
+                  Téléchargez n'importe quel modèle depuis HuggingFace, Ollama ou une URL directe.
+                </span>
+              </div>
+              <button
+                type="button"
+                className="locaryn-icon-btn"
+                onClick={() => setCustomDownloadModalOpen(false)}
+                aria-label="Fermer"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = customTagInput.trim();
+                if (!trimmed) return;
+                requestInstall(trimmed, trimmed, false);
+                setCustomTagInput("");
+                setCustomDownloadModalOpen(false);
+              }}
+            >
+              <div style={{ marginBottom: "16px" }}>
+                <label
+                  htmlFor="custom-model-tag-input"
+                  style={{
+                    display: "block",
+                    fontSize: "var(--text-xs)",
+                    color: "var(--text-dim)",
+                    marginBottom: "6px",
+                  }}
+                >
+                  Nom du modèle, identifiant HuggingFace ou URL :
+                </label>
+                <input
+                  id="custom-model-tag-input"
+                  className="locaryn-input"
+                  style={{ width: "100%", fontSize: "13px" }}
+                  placeholder="ex: gemma4:2b, kimi-k3:8b, mimo:7b, hf.co/user/repo, https://huggingface.co/..."
+                  value={customTagInput}
+                  onChange={(e) => setCustomTagInput(e.target.value)}
+                  // biome-ignore lint/a11y/noAutofocus: modale utilisateur ouverte sur action explicite
+                  autoFocus
+                />
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-faint)",
+                    marginTop: "6px",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Formats acceptés : tag Ollama (<code>gemma4:2b</code>), alias HuggingFace (<code>hf.co/organisation/modele</code>) ou lien HTTP direct vers un fichier <code>.gguf</code>.
+                </div>
+              </div>
+
+              <div className="locaryn-field-actions" style={{ justifyContent: "flex-end", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  onClick={() => setCustomDownloadModalOpen(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="locaryn-btn-primary"
+                  disabled={!customTagInput.trim()}
+                >
+                  <Icon name="download" size={14} /> Télécharger ce modèle
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Obliterator Studio Modal */}
       <ModelObliterator

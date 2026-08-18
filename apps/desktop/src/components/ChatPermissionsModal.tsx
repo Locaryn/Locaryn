@@ -39,20 +39,18 @@ export function ChatPermissionsModal({
     <ModalShell
       onClose={onClose}
       label="Autorisations et gouvernance du chat"
-      style={{
-        width: "560px",
-        maxHeight: "85vh",
-        overflowY: "auto",
-        margin: "60px auto",
-        border: "1px solid var(--border-strong)",
-        boxShadow: "0 12px 32px rgba(0,0,0,0.6)",
-      }}
+      className="locaryn-card locaryn-chat-permissions-modal"
     >
       <div className="locaryn-field-head" style={{ marginBottom: "16px" }}>
-        <h3 style={{ margin: 0 }}>
+        <h3 className="locaryn-modal-title">
           <Icon name="shield" size={15} /> Autorisations & Gouvernance du Chat
         </h3>
-        <button type="button" className="locaryn-icon-btn" onClick={onClose}>
+        <button
+          type="button"
+          className="locaryn-icon-btn locaryn-modal-close"
+          onClick={onClose}
+          aria-label="Fermer les autorisations du chat"
+        >
           <Icon name="close" size={16} />
         </button>
       </div>
@@ -80,17 +78,15 @@ export function ChatPermissionsModal({
 
       {/* Section 2: Connector AI Access Gating */}
       <div className="locaryn-field">
-        <div className="locaryn-field-label">
-          Autorisations des Connecteurs Actifs (SSH & Extensions)
-        </div>
+        <div className="locaryn-field-label">Autorisations des connecteurs SSH</div>
         <p className="locaryn-field-hint">
-          Définissez si l'agent IA peut accéder à vos serveurs distants configurés et quel est son
-          niveau d'autonomie.
+          Définissez si l'agent IA peut accéder à vos serveurs SSH configurés et quel est son niveau
+          d'autonomie.
         </p>
 
         {sshServers.length === 0 ? (
           <div className="locaryn-field-hint" style={{ fontStyle: "italic", marginTop: "8px" }}>
-            Aucun serveur SSH configuré dans le Store Connecteurs.
+            Aucun serveur SSH configuré dans « Connecteurs & MCP ».
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>

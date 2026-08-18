@@ -240,6 +240,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
   const [selectedModel, setSelectedModel] = useState<string>(
     () => firstTtsModel(installedModels) ?? "piper-voices/en_US-amy-medium.onnx",
   );
+  const [preferredTtsModel, setPreferredTtsModel] = useState<string | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [synthesisLang, setSynthesisLang] = useState<string>("auto");
 
@@ -301,6 +302,25 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
   // ── TTS model filtering ────────────────────────────────────────────────
 
   const ttsModels = useMemo(() => getTtsModels(installedModels), [installedModels]);
+
+  useEffect(() => {
+    let cancelled = false;
+    core
+      .getModelPreferences()
+      .then((preferences) => {
+        if (!cancelled) setPreferredTtsModel(preferences.tts_model);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (preferredTtsModel && ttsModels.includes(preferredTtsModel)) {
+      setSelectedModel(preferredTtsModel);
+    }
+  }, [preferredTtsModel, ttsModels]);
 
   const searchedModels = useMemo(() => {
     if (!modelSearch.trim()) return ttsModels;

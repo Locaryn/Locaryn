@@ -14,6 +14,7 @@
 //!   GET    /v1/extensions/{name}/permissions  — list requested vs granted
 //!   POST   /v1/extensions/{name}/permissions  — approve/deny one permission
 //!   POST   /v1/extensions/reload              — hot-reload one or all
+//!   GET    /v1/capabilities                   — liste canonique des capacités
 
 use axum::{
     extract::{Path, State},
@@ -235,7 +236,16 @@ fn entry_to_installed(
                 granted: e.permissions.granted.contains(p),
             })
             .collect(),
-        load_errors: Vec::new(),
+        // Une capacité hors de la liste canonique ne crée aucun écran : on
+        // le dit plutôt que de laisser croire qu'elle a un effet. Non
+        // bloquant — une extension plus récente peut déclarer un mot que ce
+        // build ne connaît pas encore, et l'interface l'ignore simplement.
+        load_errors: e
+            .capabilities
+            .iter()
+            .filter(|c| !locaryn_shared_types::capabilities::is_known(c))
+            .map(|c| format!("capacité inconnue : {c}"))
+            .collect(),
         // Une extension de noyau expose sa section `core` : c'est ce qui
         // fait apparaître la carte « Noyau » dans les réglages.
         core: manifest.as_ref().and_then(|m| m.core.as_ref()).map(|c| {
@@ -386,6 +396,18 @@ async fn persist_removed(state: &DaemonState, name: &str) {
 pub async fn list_extensions(State(s): State<Arc<DaemonState>>) -> Response {
     let entries = s.extensions.list();
     let json: Vec<_> = entries.iter().map(entry_to_installed).collect();
+    (StatusCode::OK, Json(json)).into_response()
+}
+
+/// GET /v1/capabilities — la liste canonique des capacités reconnues.
+///
+/// C'est la même liste que celle embarquée par les clients à la compilation
+/// (`@locaryn/ui-core`) et validée au chargement des extensions. La consulter
+/// permet à une interface d'afficher les capacités — labels compris — telles
+/// que ce serveur les reconnaît, sans être recompilée quand de nouvelles
+/// capacités sont ajoutées.
+pub async fn list_capabilities() -> Response {
+    let json: Vec<_> = locaryn_shared_types::capabilities::all().to_vec();
     (StatusCode::OK, Json(json)).into_response()
 }
 

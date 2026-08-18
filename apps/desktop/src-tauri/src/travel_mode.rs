@@ -66,7 +66,7 @@ async fn daemon(path: &str) -> Result<reqwest::RequestBuilder, String> {
 }
 
 fn not_running() -> String {
-    "Le partage réseau n'est pas actif. Activez-le d'abord : le mode voyage rend \
+    "Le partage réseau n'est pas actif. Activez-le d'abord : le mode Remote rend \
      accessible ce que cette machine partage."
         .to_string()
 }
@@ -113,7 +113,7 @@ pub async fn set_travel_mode(args: SetTravel) -> Result<TravelStatus, String> {
     Err(body
         .pointer("/error/message")
         .and_then(|m| m.as_str())
-        .unwrap_or("Le mode voyage n'a pas pu démarrer.")
+        .unwrap_or("Le mode Remote n'a pas pu démarrer.")
         .to_string())
 }
 
@@ -176,7 +176,7 @@ pub async fn set_micro_model(model: Option<String>) -> Result<MicroModel, String
 
 /// Un code d'appairage, avec l'adresse qu'il porte.
 ///
-/// L'adresse apparaît ici, contrairement au mode voyage : il s'agit d'un
+/// L'adresse apparaît ici, contrairement au mode Remote : il s'agit d'un
 /// premier appairage, et la personne doit pouvoir vérifier qu'elle donne bien
 /// l'adresse qu'elle croit — surtout celle d'un port ouvert sur l'extérieur.
 #[derive(Debug, Clone, Serialize, Deserialize)]

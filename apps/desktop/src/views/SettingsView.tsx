@@ -7,9 +7,6 @@ import { ConnectorsSettings } from "../components/ConnectorsSettings";
 import { EngineSettings } from "../components/EngineSettings";
 import { ExtensionsSettings } from "../components/ExtensionsSettings";
 import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
-import { ImageSettings } from "../components/ImageSettings";
-import { MemorySettings } from "../components/MemorySettings";
-import { MicroModelSetting } from "../components/MicroModelSetting";
 import { PairingCodes } from "../components/PairingCodes";
 import { PerformancePanel } from "../components/PerformancePanel";
 import { ServerSettings } from "../components/ServerSettings";
@@ -17,16 +14,15 @@ import { StorageSettings } from "../components/StorageSettings";
 import { TravelSettings } from "../components/TravelSettings";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import { ACCENT_PRESETS } from "../hooks/useTheme";
-import { type AppInfo, type Project, core } from "../lib/core";
+import { type AppInfo, type Project, type Session, core } from "../lib/core";
 import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
 import { ProjectSettings } from "./ProjectSettings";
 
-type Section =
-  | "memory"
+export type Section =
   | "engine"
   | "performance"
-  | "image"
+  | "conversation"
   | "huggingface"
   | "projects"
   | "extensions"
@@ -40,6 +36,12 @@ type Section =
 type Props = {
   theme: UseThemeReturn;
   projects: Project[];
+  sessionsByProject: Record<string, Session[]>;
+  standaloneSessions: Session[];
+  /** Capacités des extensions actives ; Remote déverrouille le tunnel. */
+  activeCapabilities?: string[];
+  initialSection?: Section;
+  onOpenSession?: (session: Session) => void;
   onProjectArchived?: (p: Project) => void;
   /** Jump to the model marketplace (models are managed there, not here). */
   onOpenMarketplace?: () => void;
@@ -59,10 +61,10 @@ const SECTIONS: { id: Section; icon: IconName; label: string; desc: string }[] =
     desc: "GPU, cache KV, contexte, offload",
   },
   {
-    id: "image",
-    icon: "studio",
-    label: "Image",
-    desc: "Qualité et résolution par défaut des générations",
+    id: "conversation",
+    icon: "chat",
+    label: "Conversation",
+    desc: "Historique, titres et conversations récentes",
   },
   {
     id: "huggingface",
@@ -80,27 +82,21 @@ const SECTIONS: { id: Section; icon: IconName; label: string; desc: string }[] =
     id: "extensions",
     icon: "extensions",
     label: "Extensions",
-    desc: "Plugins Claude Code, Gemini CLI, OpenCode, MCP",
+    desc: "Extensions Locaryn, plugins compatibles et noyaux",
   },
   {
     id: "connectors",
     icon: "server",
-    label: "Connecteurs",
-    desc: "Serveurs SSH et MCP ajoutés à la main",
-  },
-  {
-    id: "memory",
-    icon: "memory",
-    label: "Mémoire",
-    desc: "Ce que Locaryn retient de vous, à lire et à corriger",
+    label: "Connecteurs & MCP",
+    desc: "Connexions SSH, bases de données et serveurs MCP",
   },
   { id: "appearance", icon: "studio", label: "Apparence", desc: "Couleur d'accentuation, thème" },
   { id: "language", icon: "chat", label: "Langue", desc: "Langue de l'interface" },
   {
     id: "server",
     icon: "server",
-    label: "Partage réseau",
-    desc: "Rendre cette machine accessible aux autres postes",
+    label: "Serveur & fonctions",
+    desc: "Service Locaryn, accès local et appairage",
   },
   {
     id: "storage",
@@ -117,11 +113,25 @@ const SECTIONS: { id: Section; icon: IconName; label: string; desc: string }[] =
  * projects, extensions, appearance, storage) while the popup only carries the
  * chat-scoped knobs. Shared sections are the same components in both.
  */
-export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketplace }: Props) {
+export function SettingsView({
+  theme,
+  projects,
+  sessionsByProject,
+  standaloneSessions,
+  activeCapabilities = [],
+  initialSection,
+  onOpenSession,
+  onProjectArchived,
+  onOpenMarketplace,
+}: Props) {
   const { settings, updateAccent, resetTheme } = theme;
   const { lang, setLang } = useI18n();
-  const [section, setSection] = useState<Section>("engine");
+  const [section, setSection] = useState<Section>(initialSection ?? "engine");
   const [info, setInfo] = useState<AppInfo | null>(null);
+
+  useEffect(() => {
+    if (initialSection) setSection(initialSection);
+  }, [initialSection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,11 +158,12 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
   }, []);
 
   const current = SECTIONS.find((s) => s.id === section)!;
+  const remoteEnabled = activeCapabilities.includes("travel-tunnel");
 
   return (
-    <section className="locaryn-view-container">
+    <section className="locaryn-view-container locaryn-settings-page">
       <div className="locaryn-view-header">
-        <h2>Paramètres de l'application</h2>
+        <h2>Paramètres Système</h2>
         <p className="locaryn-view-desc">
           Tous les réglages de Locaryn. Les options propres à une conversation restent accessibles
           depuis le panneau du chat.
@@ -191,7 +202,14 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
               <CautionSettings />
             </>
           )}
-          {section === "image" && <ImageSettings />}
+          {section === "conversation" && (
+            <ConversationHistorySettings
+              projects={projects}
+              sessionsByProject={sessionsByProject}
+              standaloneSessions={standaloneSessions}
+              onOpenSession={onOpenSession}
+            />
+          )}
           {section === "huggingface" && <HuggingFaceSettings />}
           {section === "projects" && (
             <ProjectSettings projects={projects} onArchived={onProjectArchived} />
@@ -246,16 +264,16 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
           )}
 
           {section === "server" && (
-            <>
-              <ServerSettings />
-              <MicroModelSetting />
-              <PairingCodes />
-              <TravelSettings />
-              <ConnectionSettings />
-            </>
+            <div className="locaryn-network-layout">
+              <div className="locaryn-network-config">
+                <ServerSettings />
+                {remoteEnabled && <TravelSettings />}
+                <ConnectionSettings />
+              </div>
+              <PairingCodes remoteEnabled={remoteEnabled} />
+            </div>
           )}
 
-          {section === "memory" && <MemorySettings />}
           {section === "storage" && <StorageSettings onOpenMarketplace={onOpenMarketplace} />}
 
           {section === "language" && (
@@ -300,4 +318,151 @@ export function SettingsView({ theme, projects, onProjectArchived, onOpenMarketp
       </div>
     </section>
   );
+}
+
+function ConversationHistorySettings({
+  projects,
+  sessionsByProject,
+  standaloneSessions,
+  onOpenSession,
+}: {
+  projects: Project[];
+  sessionsByProject: Record<string, Session[]>;
+  standaloneSessions: Session[];
+  onOpenSession?: (session: Session) => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const projectGroups = projects
+    .map((project) => ({
+      project,
+      sessions: (sessionsByProject[project.id] ?? []).filter((s) => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return (
+          (s.title ?? "").toLowerCase().includes(q) ||
+          project.name.toLowerCase().includes(q)
+        );
+      }),
+    }))
+    .filter((group) => group.sessions.length > 0);
+
+  const filteredStandalone = standaloneSessions.filter((s) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (s.title ?? "").toLowerCase().includes(q) || "libre non groupé".includes(q);
+  });
+
+  const total =
+    filteredStandalone.length +
+    projectGroups.reduce((sum, group) => sum + group.sessions.length, 0);
+
+  const rawTotal =
+    standaloneSessions.length +
+    Object.values(sessionsByProject).reduce((sum, list) => sum + list.length, 0);
+
+  return (
+    <div className="locaryn-conversation-settings">
+      <div className="locaryn-conversation-intro">
+        <div>
+          <h4>Historique des conversations</h4>
+          <p>
+            Retrouvez et reprenez l'ensemble de vos échanges récents par espace de travail. Cliquez sur une conversation pour l'ouvrir directement dans le Chat. Les conversations archivées sont rangées dans <strong>Compte → Archives</strong>.
+          </p>
+        </div>
+        <span className="locaryn-conversation-count">
+          {total} conversation{total > 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {rawTotal > 0 && (
+        <div style={{ marginBottom: "16px" }}>
+          <input
+            className="locaryn-input"
+            style={{ width: "100%", fontSize: "13px" }}
+            placeholder="Rechercher une conversation par titre ou projet…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      )}
+
+      {total === 0 ? (
+        <div className="locaryn-conversation-empty">
+          {search
+            ? "Aucune conversation ne correspond à votre recherche."
+            : "Aucune conversation récente à afficher."}
+        </div>
+      ) : (
+        <div className="locaryn-conversation-groups">
+          {filteredStandalone.length > 0 && (
+            <ConversationHistoryGroup
+              label="Conversations libres (non groupées)"
+              sessions={filteredStandalone}
+              onOpenSession={onOpenSession}
+            />
+          )}
+          {projectGroups.map(({ project, sessions }) => (
+            <ConversationHistoryGroup
+              key={project.id}
+              label={project.name}
+              sessions={sessions}
+              onOpenSession={onOpenSession}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConversationHistoryGroup({
+  label,
+  sessions,
+  onOpenSession,
+}: {
+  label: string;
+  sessions: Session[];
+  onOpenSession?: (session: Session) => void;
+}) {
+  return (
+    <section className="locaryn-conversation-group">
+      <h5>{label}</h5>
+      <div className="locaryn-conversation-list">
+        {sessions.map((session) => (
+          <button
+            key={session.id}
+            type="button"
+            className="locaryn-conversation-row"
+            disabled={!onOpenSession}
+            onClick={() => onOpenSession?.(session)}
+          >
+            <span className="locaryn-conversation-dot" aria-hidden="true" />
+            <span className="locaryn-conversation-row-text">
+              <strong>{session.title || "Nouvelle conversation"}</strong>
+              <small>
+                {session.last_message_at
+                  ? dateCourte(session.last_message_at)
+                  : session.created_at
+                    ? dateCourte(session.created_at)
+                    : "Conversation locale"}
+              </small>
+            </span>
+            <Icon name="forward" size={14} />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function dateCourte(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

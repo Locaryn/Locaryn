@@ -13,7 +13,7 @@ Le daemon est déjà un serveur HTTP (axum) avec :
   `Authorization: Bearer <jeton>` exigé dès que le serveur est exposé
   (`require_token`, `auth.rs`) ;
 - TLS rustls quand il écoute ailleurs que loopback, mTLS optionnel ;
-- un relais « mode voyage » (travel) qui publie déjà le serveur sur une adresse
+- le plugin Remote et son relais qui publient déjà le serveur sur une adresse
   HTTPS stable — c'est lui qui rend les liens de pairing accessibles de
   l'extérieur ;
 - le mobile est déjà un client HTTP pur (chat via projets → sessions → SSE,
@@ -85,7 +85,7 @@ localhost). Conséquences :
 - en LAN sur `http://192.168.x.x:7474`, le site fonctionne comme site web
   normal, mais sans install PWA ;
 - la PWA complète s'active dès que le site est servi en HTTPS — c'est déjà le
-  cas via le **relais travel** existant (adresse HTTPS stable, la même que les
+  cas via le **relais Remote** existant (adresse HTTPS stable, la même que les
   liens de pairing) ; alternative : nom de domaine + Let's Encrypt + redirection
   de port, en réutilisant le TLS du daemon (voir §5 et doc 12 §10).
 
@@ -101,7 +101,7 @@ localhost). Conséquences :
 
 ## 5. HTTPS grand public — domaine + Let's Encrypt
 
-> Option documentée pour sortir du relais travel : servir le site sur un
+> Option documentée pour sortir du relais Remote : servir le site sur un
 > domaine avec un certificat public. La PWA (service worker + manifest)
 > exige HTTPS, et un certificat Let's Encrypt est la manière standard de
 > l'obtenir sans autorité privée.
@@ -114,7 +114,7 @@ Le daemon sait déjà servir HTTPS avec un certificat **fourni** :
   `tls::resolve` les vérifie (fichiers présents, sinon échec bruyant — jamais
   de repli en clair) et `axum_server::bind_rustls` les sert (main.rs ~294-378) ;
 - sans ces deux clés, un certificat auto-signé est généré et réutilisé ;
-- la même config sert déjà le relais travel et le mTLS optionnel.
+- la même config sert déjà le relais Remote et le mTLS optionnel.
 
 Un certificat Let's Encrypt est exactement un « certificat fourni » : il n'y a
 **rien à coder**, juste à obtenir le certificat et à pointer la config dessus.
@@ -153,11 +153,11 @@ Un certificat Let's Encrypt est exactement un « certificat fourni » : il n'y a
 ### Résultat et limites
 
 - site servi en HTTPS public → service worker + manifest actifs → **PWA
-  installable partout, iPhone compris**, sans relais travel et sans compte
+  installable partout, iPhone compris**, sans relais Remote et sans compte
   Apple Developer ;
 - une fois public (`bind` ≠ loopback), `require_token` s'applique : le site web
   reste whitelisté (`is_public`), l'API `/v1/*` exige le jeton — déjà en place ;
-- comparé au relais travel : domaine = contrôle total (latence, disponibilité,
+- comparé au relais Remote : domaine = contrôle total (latence, disponibilité,
   pas de dépendance au relais) mais demande domaine + redirection de port +
   renouvellement ; relais = zéro configuration, adresse HTTPS stable, dépend
   du relais. Les deux coexistent (le relais reste utile pour le pairing
@@ -169,7 +169,7 @@ Un certificat Let's Encrypt est exactement un « certificat fourni » : il n'y a
    audio) contre un daemon réel ;
 2. PWA : Chrome DevTools (Application → Manifest / Service Workers), émulation
    iPhone et Android ;
-3. test réel : daemon exposé via le relais travel → ouvrir l'URL HTTPS depuis
+3. test réel : daemon exposé via le relais Remote → ouvrir l'URL HTTPS depuis
    un iPhone → popup d'installation → mode `standalone` → chat + studio
    fonctionnels ;
 4. non-reproposition : refuser, recharger, vérifier l'absence de popup ;

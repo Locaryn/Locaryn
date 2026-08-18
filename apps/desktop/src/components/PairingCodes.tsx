@@ -1,125 +1,245 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type PairingCode, type PairingMode, core } from "../lib/core";
+import {
+  type PairingCode,
+  type PairingMode,
+  type ServerStatus,
+  type TravelStatus,
+  core,
+} from "../lib/core";
 
 /**
- * Appairer un téléphone.
+ * Panneau des codes d'appairage.
  *
- * Trois façons de joindre cette machine, donc trois codes, et un sélecteur
- * pour passer de l'un à l'autre. Ils portent la même chose — l'autorité du
- * déploiement — et diffèrent par l'adresse : celle du réseau local, celle d'un
- * relais, ou celle d'un port redirigé. Le code est le seul chemin qui apporte
- * le certificat ; une adresse tapée à la main sur le téléphone ne l'apporte
- * pas, et ne permettra pas de joindre la machine de l'extérieur.
+ * Le code local est disponible dès que le serveur est réellement en écoute.
+ * Remote ajoute les deux modes extérieurs, mais ils restent explicitement
+ * indisponibles tant que le tunnel n'est pas démarré : on ne fabrique jamais
+ * un QR valide qui pointe vers une adresse qui ne répond pas.
  */
-const MODES: { id: PairingMode; label: string; explication: string }[] = [
+type QrChoice = PairingMode | "home";
+
+const MODES: { id: PairingMode; label: string; description: string }[] = [
   {
     id: "local",
     label: "Réseau local",
-    explication:
-      "Le téléphone est sur le même Wi-Fi. Rien à ouvrir, rien à traverser : c'est le cas le plus courant, et le plus sûr.",
+    description: "Pour un téléphone connecté au même Wi‑Fi que cette machine.",
   },
   {
     id: "tunnel",
-    label: "Tunnel sortant",
-    explication:
-      "La machine appelle un relais et le téléphone contacte le relais. Rien n'est ouvert sur la box. Demande le mode voyage actif.",
+    label: "Remote · Tunnel sortant",
+    description: "Pour joindre cette machine depuis Internet via le tunnel Remote.",
   },
   {
     id: "public",
-    label: "Port ouvert",
-    explication:
-      "Un port a été redirigé vers cette machine, ou elle a une adresse fixe. C'est le seul cas où quelque chose est joignable depuis Internet : ne l'utilisez que si vous l'avez décidé.",
+    label: "Remote · Port ouvert",
+    description: "Pour une adresse publique ou un port redirigé vers cette machine.",
   },
 ];
 
-export function PairingCodes() {
-  const [mode, setMode] = useState<PairingMode>("local");
+const HOME_MODE = {
+  id: "home" as const,
+  label: "Retour au réseau local",
+  description: "À scanner pour repasser un téléphone sur l'adresse locale.",
+};
+
+export function PairingCodes({ remoteEnabled = false }: { remoteEnabled?: boolean }) {
+  const [mode, setMode] = useState<QrChoice>("local");
   const [adresse, setAdresse] = useState("");
   const [code, setCode] = useState<PairingCode | null>(null);
+  const [server, setServer] = useState<ServerStatus | null>(null);
+  const [remote, setRemote] = useState<TravelStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** De quel côté le code arrive : celui d'où l'on vient. */
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [sens, setSens] = useState<"gauche" | "droite">("droite");
-  const precedent = useRef<PairingMode>("local");
+  const precedent = useRef<QrChoice>("local");
 
-  const charger = useCallback(async (m: PairingMode, url?: string) => {
+  const refreshAvailability = useCallback(async () => {
+    try {
+      const nextServer = await core.serverStatus();
+      setServer(nextServer);
+      setAvailabilityError(null);
+
+      if (remoteEnabled) {
+        setRemote(await core.travelStatus());
+      } else {
+        setRemote(null);
+      }
+    } catch (e) {
+      // Le démon peut être en train de démarrer ou de s'arrêter. Ce n'est pas
+      // encore une erreur de QR : le prochain rafraîchissement tranchera.
+      setAvailabilityError(String(e));
+    }
+  }, [remoteEnabled]);
+
+  useEffect(() => {
+    void refreshAvailability();
+    // ServerSettings démarre un processus séparé. Re-lire l'état ici permet de
+    // produire automatiquement le QR local après l'activation, sans demander
+    // à l'utilisateur de changer d'onglet.
+    const timer = window.setInterval(() => void refreshAvailability(), 2500);
+    return () => window.clearInterval(timer);
+  }, [refreshAvailability]);
+
+  const charger = useCallback(async (m: QrChoice, url?: string) => {
     setBusy(true);
     setError(null);
-    setCode(null);
     try {
-      setCode(await core.pairingCode(m, url));
+      if (m === "home") {
+        const home = await core.travelHomeCode();
+        setCode({ mode: "local", url: home.link ?? "", qr_svg: home.qr_svg ?? "" });
+      } else {
+        setCode(await core.pairingCode(m, url));
+      }
     } catch (e) {
+      setCode(null);
       setError(String(e));
     } finally {
       setBusy(false);
     }
   }, []);
 
-  // « Port ouvert » attend une adresse : la demander avant de la connaître
-  // produirait une erreur à chaque ouverture de l'écran.
+  // Un code local doit apparaître dès que le serveur passe réellement en
+  // écoute. Un code tunnel ou de retour attend que le plugin Remote ait ouvert
+  // le tunnel.
   useEffect(() => {
-    if (mode === "public") return;
+    if (!server?.running) {
+      setCode(null);
+      setError(null);
+      return;
+    }
+    if (
+      mode === "public" ||
+      (mode === "tunnel" && !remote?.active) ||
+      (mode === "home" && !remote?.active)
+    ) {
+      setCode(null);
+      setError(null);
+      return;
+    }
     void charger(mode);
-  }, [mode, charger]);
+  }, [mode, server?.running, remote?.active, charger]);
 
-  const choisi = MODES.find((m) => m.id === mode);
+  useEffect(() => {
+    if (remoteEnabled && (mode !== "home" || remote?.active)) return;
+    if (!remoteEnabled && mode === "local") return;
+    setMode("local");
+    setCode(null);
+    setAdresse("");
+    setError(null);
+    precedent.current = "local";
+  }, [remoteEnabled, mode, remote?.active]);
+
+  const modes: { id: QrChoice; label: string; description: string }[] = remoteEnabled
+    ? [...MODES, ...(remote?.active ? [HOME_MODE] : [])]
+    : MODES.slice(0, 1);
+  const choisi = modes.find((m) => m.id === mode) ?? MODES[0];
+  const serverStopped = server !== null && !server.running;
+  const tunnelStopped = mode === "tunnel" && !remote?.active;
+  const homeUnavailable = mode === "home" && !remote?.active;
+
+  function choisir(next: QrChoice) {
+    const from = modes.findIndex((x) => x.id === precedent.current);
+    const to = modes.findIndex((x) => x.id === next);
+    precedent.current = next;
+    setMode(next);
+    setSens(to >= from ? "droite" : "gauche");
+    setError(null);
+    setCode(null);
+  }
 
   return (
-    <div className="locaryn-field" style={{ marginTop: 28 }}>
-      <div className="locaryn-field-label">Appairer un téléphone</div>
-      <p className="locaryn-field-hint">
-        Installez Locaryn sur le téléphone, puis photographiez le code. Il porte l'adresse et le
-        certificat de cette machine : c'est ce certificat qui permet ensuite de la joindre de
-        l'extérieur en toute confiance.
-      </p>
-
-      <div className="locaryn-segmented" role="tablist" aria-label="Par où joindre la machine">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            role="tab"
-            aria-selected={mode === m.id}
-            className={`locaryn-segment${mode === m.id ? " locaryn-segment-on" : ""}`}
-            onClick={() => {
-              // Le code glisse dans le sens du geste : choisir un onglet à
-              // droite le fait entrer par la droite. Sans cela, l'image change
-              // sans qu'on sache si l'on a avancé ou reculé.
-              const de = MODES.findIndex((x) => x.id === precedent.current);
-              const vers = MODES.findIndex((x) => x.id === m.id);
-              setSens(vers >= de ? "droite" : "gauche");
-              precedent.current = m.id;
-              setMode(m.id);
-            }}
-          >
-            {m.label}
-          </button>
-        ))}
+    <aside className="locaryn-pairing-panel" aria-label="Codes QR d'appairage">
+      <div className="locaryn-pairing-head">
+        <div>
+          <div className="locaryn-pairing-kicker">Appairage</div>
+          <h3 className="locaryn-pairing-title">Code QR à afficher</h3>
+        </div>
+        <span className={`locaryn-pairing-status${server?.running ? " is-on" : ""}`}>
+          {server?.running ? "Serveur actif" : "Serveur arrêté"}
+        </span>
       </div>
 
-      {choisi && <p className="locaryn-field-hint">{choisi.explication}</p>}
+      <p className="locaryn-pairing-intro">
+        Choisissez le chemin par lequel le téléphone rejoindra cette machine, puis faites scanner le
+        code.
+      </p>
 
-      {mode === "public" && (
-        <div className="locaryn-srv-row">
-          <input
-            className="locaryn-input"
-            placeholder="mondomaine.fr:7474 — ou l'adresse fixe de la box"
-            value={adresse}
-            onChange={(e) => setAdresse(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void charger("public", adresse)}
-          />
-          <button
-            type="button"
-            className="locaryn-btn-ghost"
-            disabled={busy || !adresse.trim()}
-            onClick={() => void charger("public", adresse)}
-          >
-            Produire le code
-          </button>
+      <label className="locaryn-pairing-select-label" htmlFor="locaryn-pairing-mode">
+        Code à afficher
+      </label>
+      <select
+        id="locaryn-pairing-mode"
+        className="locaryn-select locaryn-pairing-select"
+        value={mode}
+        onChange={(e) => choisir(e.target.value as QrChoice)}
+      >
+        {modes.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+      <p className="locaryn-pairing-description">{choisi.description}</p>
+
+      {mode === "public" && remoteEnabled && (
+        <div className="locaryn-pairing-public">
+          <label className="locaryn-pairing-select-label" htmlFor="locaryn-pairing-address">
+            Adresse publique
+          </label>
+          <div className="locaryn-pairing-public-row">
+            <input
+              id="locaryn-pairing-address"
+              className="locaryn-input"
+              placeholder="maison.exemple:7474"
+              value={adresse}
+              onChange={(e) => {
+                setAdresse(e.target.value);
+                setError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && server?.running && adresse.trim()) {
+                  void charger("public", adresse);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              disabled={busy || !server?.running || !adresse.trim()}
+              onClick={() => void charger("public", adresse)}
+            >
+              Générer
+            </button>
+          </div>
         </div>
       )}
 
-      {busy && <p className="locaryn-field-hint">…</p>}
+      {serverStopped && (
+        <div className="locaryn-pairing-notice">
+          Activez <strong>Serveur actif</strong> dans la colonne de gauche. Le code local apparaîtra
+          automatiquement dès que le service sera en écoute.
+        </div>
+      )}
+
+      {mode === "tunnel" && remoteEnabled && tunnelStopped && !serverStopped && (
+        <div className="locaryn-pairing-notice">
+          Activez d'abord le mode <strong>Remote</strong> dans la colonne de gauche. Le code tunnel
+          sera généré dès que le relais répondra.
+        </div>
+      )}
+
+      {mode === "home" && remoteEnabled && homeUnavailable && !serverStopped && (
+        <div className="locaryn-pairing-notice">
+          Le code de retour sera disponible tant que le tunnel <strong>Remote</strong> est actif.
+        </div>
+      )}
+
+      {server?.blocker && serverStopped && (
+        <div className="locaryn-pairing-warning">{server.blocker}</div>
+      )}
+
+      {busy && <p className="locaryn-pairing-loading">Génération du code…</p>}
 
       {code?.qr_svg && (
         <div
@@ -128,20 +248,41 @@ export function PairingCodes() {
         >
           <div
             className="locaryn-travel-qr"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: le SVG est dessiné par notre propre démon, sur cette machine, à partir d'une chaîne qu'il vient de composer — il ne traverse jamais le réseau et ne contient pas de script.
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: le SVG est produit par le démon local et ne contient pas de script.
             dangerouslySetInnerHTML={{ __html: code.qr_svg }}
           />
           <div className="locaryn-travel-say">
             <p className="locaryn-travel-title">Scannez avec le téléphone</p>
             <p className="locaryn-travel-sub">
-              Le téléphone enregistrera <strong>{code.url}</strong> et le certificat de cette
-              machine. Rien à taper.
+              Le code contient l'adresse et le certificat de cette machine. Rien à saisir sur le
+              téléphone.
             </p>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(code.url)
+                  .then(() => {
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1500);
+                  })
+                  .catch(() => {})
+              }
+            >
+              {copied ? "Adresse copiée" : "Copier l'adresse"}
+            </button>
           </div>
         </div>
       )}
 
+      {!busy && code && !code.qr_svg && (
+        <div className="locaryn-pairing-warning">Le service n'a pas renvoyé d'image QR.</div>
+      )}
+      {availabilityError && !server && (
+        <div className="locaryn-pairing-warning">{availabilityError}</div>
+      )}
       {error && <div className="locaryn-vp-error">{error}</div>}
-    </div>
+    </aside>
   );
 }

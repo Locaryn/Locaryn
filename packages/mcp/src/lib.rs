@@ -1257,6 +1257,11 @@ fn is_sse_dead(e: &McpError) -> bool {
 // McpState — shared state container for the daemon
 // ============================================================================
 
+/// Env vars Locaryn injecte dans chaque serveur stdio qu'il démarre, pour
+/// qu'une extension puisse joindre le moteur actif sans le coder en dur.
+pub const ACTIVE_MODEL_ENV: &str = "LOCARYN_ACTIVE_MODEL";
+pub const LLM_ENDPOINT_ENV: &str = "LOCARYN_LLM_ENDPOINT";
+
 /// Holds the MCP server configuration (loaded from / saved to `.mcp.json`)
 /// and a map of currently running clients. Used by the daemon and injected
 /// into the agent-runtime so MCP tools are available in the tool loop.
@@ -1269,6 +1274,10 @@ pub struct McpState {
     /// Running clients keyed by server name. Uses tokio::sync::RwLock so
     /// handlers can hold a read lock across .await points.
     pub running: RwLock<HashMap<String, Arc<dyn McpClient>>>,
+    /// Env Locaryn injecte dans chaque serveur stdio qu'il démarre
+    /// (`LOCARYN_ACTIVE_MODEL`, `LOCARYN_LLM_ENDPOINT`). Renseigné depuis le
+    /// provider actif ; jamais persisté dans `mcp.json`.
+    pub runtime_env: std::sync::RwLock<HashMap<String, String>>,
 }
 
 impl std::fmt::Debug for McpState {
@@ -1293,6 +1302,7 @@ impl McpState {
             config: std::sync::Mutex::new(cfg),
             config_path: path,
             running: RwLock::new(HashMap::new()),
+            runtime_env: std::sync::RwLock::new(HashMap::new()),
         }
     }
 
@@ -1302,6 +1312,35 @@ impl McpState {
         if let Err(e) = cfg.save(&self.config_path) {
             tracing::warn!(path = %self.config_path.display(), error = %e, "failed to save MCP config");
         }
+    }
+
+    /// Record the active LLM so every stdio server spawned afterwards can
+    /// discover it. Called by the host (desktop/daemon) at startup and when
+    /// the provider changes.
+    pub fn set_runtime_env(&self, active_model: Option<String>, endpoint: Option<String>) {
+        let mut env = HashMap::new();
+        if let Some(m) = active_model.filter(|s| !s.is_empty()) {
+            env.insert(ACTIVE_MODEL_ENV.to_string(), m);
+        }
+        if let Some(e) = endpoint.filter(|s| !s.is_empty()) {
+            env.insert(LLM_ENDPOINT_ENV.to_string(), e);
+        }
+        if let Ok(mut guard) = self.runtime_env.write() {
+            *guard = env;
+        }
+    }
+
+    /// Like the free `build_client`, but merges the runtime LLM env into the
+    /// entry first. The entry's own declared env wins — Locaryn fills only the
+    /// gaps, never overrides what the user set explicitly.
+    pub fn build_client(&self, entry: &McpServerEntry) -> Box<dyn McpClient> {
+        let mut entry = entry.clone();
+        if let Ok(runtime) = self.runtime_env.read() {
+            for (k, v) in runtime.iter() {
+                entry.env.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+        }
+        build_client(&entry)
     }
 }
 

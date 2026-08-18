@@ -31,6 +31,7 @@ const VIEW_TITLES: Record<string, string> = {
   batch: "Batch API Studio (-50%)",
   training: "Entraînement & Oblitération",
   connectors: "Connecteurs & MCP",
+  extensions: "Extensions",
   settings: "Paramètres Système",
   account: "Compte Utilisateur",
 };
@@ -58,7 +59,7 @@ export function TopBar({
       <div className="locaryn-topbar-left">
         <button
           type="button"
-          className="locaryn-icon-btn locaryn-menu-btn"
+          className="locaryn-icon-btn locaryn-topbar-action locaryn-menu-btn"
           title="Ouvrir le menu de navigation (Marketplace, Batch API, Entraînement...)"
           onClick={onToggleNavDrawer}
         >
@@ -98,17 +99,20 @@ export function TopBar({
               className={`locaryn-health-dot ${provider ? "locaryn-health-ok" : "locaryn-health-off"}`}
               aria-hidden="true"
             />
-            {provider
-              ? `${MODE_LABEL[mode]}${provider.model ? ` · ${provider.model}` : ""}`
-              : "no model"}
+            <span className="locaryn-provider-label">
+              {provider
+                ? `${MODE_LABEL[mode]}${provider.model ? ` · ${provider.model}` : ""}`
+                : "no model"}
+            </span>
           </span>
 
           <div className="locaryn-topbar-toggles">
             {/* Terminal / Logs icon */}
             <button
               type="button"
-              className={`locaryn-icon-btn${showBottom ? " locaryn-icon-btn-active" : ""}`}
+              className={`locaryn-icon-btn locaryn-topbar-action${showBottom ? " locaryn-icon-btn-active" : ""}`}
               title="Terminal / Journaux"
+              aria-label="Ouvrir le terminal et les journaux"
               aria-pressed={showBottom}
               onClick={onToggleBottom}
             >
@@ -129,8 +133,9 @@ export function TopBar({
             {/* Preview / Artifacts icon */}
             <button
               type="button"
-              className={`locaryn-icon-btn${showPreview ? " locaryn-icon-btn-active" : ""}`}
+              className={`locaryn-icon-btn locaryn-topbar-action${showPreview ? " locaryn-icon-btn-active" : ""}`}
               title="Aperçu des Artefacts"
+              aria-label="Ouvrir l'aperçu des artefacts"
               aria-pressed={showPreview}
               onClick={onTogglePreview}
             >
@@ -151,8 +156,9 @@ export function TopBar({
             {/* Model Parameters icon */}
             <button
               type="button"
-              className={`locaryn-icon-btn${showModelConfig ? " locaryn-icon-btn-active" : ""}`}
+              className={`locaryn-icon-btn locaryn-topbar-action${showModelConfig ? " locaryn-icon-btn-active" : ""}`}
               title="Paramètres du modèle et de la conversation"
+              aria-label="Ouvrir les paramètres du modèle et du chat"
               aria-pressed={showModelConfig}
               onClick={onChatSettingsClick ?? onToggleModelConfig}
             >
@@ -180,8 +186,9 @@ export function TopBar({
             {/* Chat Permissions Settings icon */}
             <button
               type="button"
-              className="locaryn-icon-btn"
+              className="locaryn-icon-btn locaryn-topbar-action"
               title="Gouvernance et Autorisations du Chat"
+              aria-label="Ouvrir la gouvernance et les autorisations du chat"
               onClick={onSettingsClick}
             >
               <svg

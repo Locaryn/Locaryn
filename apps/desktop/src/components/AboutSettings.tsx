@@ -1,11 +1,17 @@
 import { open } from "@tauri-apps/plugin-shell";
 import { type Update, check } from "@tauri-apps/plugin-updater";
 import { useEffect, useRef, useState } from "react";
-import { type AppInfo, type LlamaRuntimeStatus, type RuntimeCapabilities, core } from "../lib/core";
+import {
+  type AppInfo,
+  type LlamaRuntimeStatus,
+  type RuntimeCapabilities,
+  core,
+  coreMode,
+} from "../lib/core";
 import { CAPS } from "./EngineSettings";
 
 /** Page GitHub des versions — la référence pour l'installation manuelle. */
-const RELEASES_URL = "https://github.com/Locaryn/locaryn/releases/latest";
+const RELEASES_URL = "https://github.com/Locaryn/Locaryn/releases/latest";
 
 type UpdateState =
   | { kind: "idle" }
@@ -29,6 +35,28 @@ function formatBytes(n: number): string {
 function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   return String(e);
+}
+
+/**
+ * Le plugin renvoie parfois une phrase très courte (« request failed ») alors
+ * que la cause est utile pour la personne : GitHub bloqué, manifeste absent ou
+ * signature invalide. On garde le détail, mais on donne d'abord une action.
+ */
+function updateErrorMessage(e: unknown): string {
+  const raw = errorMessage(e)
+    .replace(/^Error:\s*/i, "")
+    .trim();
+  const lower = raw.toLowerCase();
+  if (/signature|public key|pubkey|verify|verification/.test(lower)) {
+    return `Le manifeste GitHub est accessible, mais sa signature n'est pas acceptée. Installez la dernière version depuis GitHub, puis réessayez. (${raw})`;
+  }
+  if (/404|not found|manifest|json/.test(lower)) {
+    return `Le manifeste de mise à jour est introuvable sur GitHub. La release doit publier « latest.json ». (${raw})`;
+  }
+  if (/network|connect|dns|timeout|timed out|tls|certificate|request failed|offline/.test(lower)) {
+    return `GitHub est inaccessible depuis cette machine. Vérifiez la connexion, le proxy ou le pare-feu, puis réessayez. (${raw})`;
+  }
+  return raw || "La vérification a échoué sans détail fourni par le système.";
 }
 
 /** About page: identity, live capabilities, system paths and licensing. */
@@ -75,7 +103,7 @@ export function AboutSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info]);
 
-  const updaterSupported = info ? info.platform !== "linux" : true;
+  const updaterSupported = coreMode === "tauri" && (info ? info.platform !== "linux" : true);
 
   async function runCheck() {
     setUpdateState({ kind: "checking" });
@@ -89,7 +117,7 @@ export function AboutSettings() {
     } catch (e) {
       setUpdateState({
         kind: "error",
-        message: errorMessage(e),
+        message: updateErrorMessage(e),
       });
     }
   }
@@ -119,7 +147,7 @@ export function AboutSettings() {
     } catch (e) {
       setUpdateState({
         kind: "error",
-        message: errorMessage(e),
+        message: updateErrorMessage(e),
       });
     }
   }
@@ -186,8 +214,9 @@ export function AboutSettings() {
               )
             ) : (
               <span className="locaryn-update-status">
-                Sur Linux, l'application ne se met pas à jour toute seule : téléchargez la dernière
-                version depuis GitHub.
+                {coreMode !== "tauri"
+                  ? "Mode aperçu navigateur : l'updater natif est désactivé."
+                  : "Sur Linux, l'application ne se met pas à jour toute seule : téléchargez la dernière version depuis GitHub."}
               </span>
             )}
             {info && (

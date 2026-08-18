@@ -20,14 +20,18 @@ use std::sync::Arc;
 
 /// Endpoints reachable without a token.
 ///
-/// Health is needed for discovery and reveals nothing; login is how a caller
-/// obtains a token in the first place.
+/// Health is needed for discovery; login issues the first token; pairing is a public onboarding payload without credentials.
+///
 /// Paths a browser may reach without a token. The web client itself (served
 /// by the daemon) holds no secret: it is static assets plus a login form, so
 /// it must stay reachable before authentication on an exposed server.
 fn is_public(path: &str) -> bool {
     path == "/health"
         || path == "/v1/auth/login"
+        // Le QR ne contient aucun jeton : il porte seulement l'adresse et
+        // l'autorité publique du déploiement. Il doit donc être demandable par
+        // le desktop lui-même avant qu'il ait pu obtenir un jeton utilisateur.
+        || path == "/v1/pairing"
         || path == "/"
         || path == "/index.html"
         || path == "/manifest.webmanifest"
@@ -282,9 +286,10 @@ mod tests {
     }
 
     #[test]
-    fn only_health_and_login_are_public() {
+    fn only_discovery_login_and_pairing_are_public() {
         assert!(is_public("/health"));
         assert!(is_public("/v1/auth/login"));
+        assert!(is_public("/v1/pairing"));
         for guarded in [
             "/v1/projects",
             "/v1/sessions",

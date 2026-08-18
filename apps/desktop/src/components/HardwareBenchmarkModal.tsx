@@ -48,7 +48,8 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
       const hw = await core.checkHardware();
       // Snap to closest sensible values for UI dropdowns
       setRamGb(Math.max(4, Math.ceil(hw.total_ram_gb / 4) * 4));
-      const v = Math.round(hw.total_vram_gb);
+      const rawV = Math.round(hw.total_vram_gb);
+      const v = rawV > 128 ? Math.round(rawV / 1024) : rawV;
       setVramGb(v <= 0 ? 0 : v);
       if (hw.cpu_cores) {
         setCpuCores(hw.cpu_cores);

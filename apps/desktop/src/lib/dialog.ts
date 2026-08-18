@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 /** Open the native folder picker. Falls back to a prompt when not running
  *  inside Tauri (e.g. browser dev). */
@@ -30,5 +30,20 @@ export async function pickAnyFile(label: string, extensions: string[]): Promise<
     return typeof picked === "string" ? picked : null;
   } catch {
     return window.prompt(`Chemin du fichier (${label}) :`);
+  }
+}
+
+/** Native Save As picker, with a browser fallback for the UI preview. */
+export async function pickSaveFile(
+  defaultPath: string,
+  extensions: string[],
+): Promise<string | null> {
+  try {
+    return await save({
+      defaultPath,
+      filters: [{ name: "Audio", extensions }],
+    });
+  } catch {
+    return window.prompt("Enregistrer la note vocale sous :", defaultPath);
   }
 }

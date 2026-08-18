@@ -48,10 +48,14 @@ export function ServerSettings() {
 
   return (
     <div className="locaryn-field">
-      <div className="locaryn-field-label">Partager cette machine</div>
+      <div className="locaryn-field-label">Service Locaryn</div>
       <p className="locaryn-field-hint">
-        Rend les modèles de cet ordinateur utilisables depuis d'autres postes et depuis un
-        téléphone. Utile quand une seule machine possède la carte graphique.
+        Démarre le serveur qui expose les fonctions de Locaryn — modèles, conversations et outils —
+        aux appareils autorisés sur votre réseau.
+      </p>
+      <p className="locaryn-field-hint">
+        Fermer la fenêtre la place dans la zone de notification et conserve le service actif.
+        Utilisez <strong>Quitter Locaryn</strong> depuis l'icône du tray pour arrêter les deux.
       </p>
 
       <div className="locaryn-srv-row">

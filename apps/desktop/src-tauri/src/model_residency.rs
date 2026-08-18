@@ -414,6 +414,7 @@ pub async fn load_chat_model(
         .await
         .map_err(|e| e.to_string())?;
     core.supervisor.set_pinned(engine, true).await;
+    crate::refresh_mcp_runtime_env(&core).await;
 
     tracing::info!(%model, "modèle de chat chargé et épinglé");
     model_residency(core).await

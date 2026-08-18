@@ -215,7 +215,7 @@ pub fn capability_tools(capabilities: &[String]) -> Vec<ToolSpec> {
         out.push(ToolSpec {
             name: "generate_speech".into(),
             description:
-                "Read a text out loud with a synthetic voice, on this machine. Use it whenever the                  user asks to hear something, wants an audio version, or asks you to record a                  message. Keep `text` in the language the user wants to hear."
+                "Read a text out loud with a synthetic voice, on this machine. Use it whenever the user asks to hear something or wants an audio version. The interface places a playable voice note in the chat first; do not claim it was saved or recorded by the user unless they explicitly ask for a copy. Keep `text` in the language the user wants to hear."
                     .into(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -813,9 +813,7 @@ async fn exec_generate_speech(args: &serde_json::Value) -> ToolResult {
                 return ToolResult {
                     ok: true,
                     output: format!(
-                        "Voix générée avec {model} : {}
-                         Dis en une phrase ce qui a été enregistré.",
-                        file.path.display()
+                        "Note vocale prête à être écoutée dans le chat avec {model}. Dis simplement qu'elle est prête à l'écoute : ne dis pas qu'elle a été enregistrée ou sauvegardée par l'utilisateur."
                     ),
                     artifact: Some(ToolArtifact {
                         kind: locaryn_shared_types::ArtifactKind::AudioWav,

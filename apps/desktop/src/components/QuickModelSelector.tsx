@@ -116,7 +116,7 @@ export function QuickModelSelector({
           } else if (kind === "vision") {
             category = "vision";
             categoryLabel = "Vision";
-            icon = "search";
+            icon = "image";
           }
 
           const isRemoteTag =
@@ -134,9 +134,9 @@ export function QuickModelSelector({
             icon,
           };
         })
-        // Only offer models suitable for chat (LLM / vision / code / reasoning).
-        // Exclude image-gen, TTS, music, video, 3D, etc.
-        .filter((o) => isChatModel(o.tag))
+        // Only offer models suitable for chat (LLM / vision / code / reasoning) and strictly 100% local.
+        // Exclude image-gen, TTS, music, video, 3D, and remote cloud endpoints.
+        .filter((o) => isChatModel(o.tag) && o.isLocal)
     );
   }, [dedupedModels, isProviderLocal, registry]);
 
@@ -314,7 +314,22 @@ export function QuickModelSelector({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "18px" }}>{item.icon}</span>
+                    <div
+                      style={{
+                        width: "30px",
+                        height: "30px",
+                        borderRadius: "var(--radius-xs)",
+                        background: "rgba(255,255,255,0.05)",
+                        border: "1px solid var(--border)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-dim)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Icon name={item.icon} size={16} />
+                    </div>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text)" }}>
                         {item.name}
@@ -341,7 +356,7 @@ export function QuickModelSelector({
                       {item.categoryLabel}
                     </span>
                     <span className="locaryn-tag" style={{ fontSize: "10px" }}>
-                      {item.isLocal ? "LOCAL" : "CLOUD"}
+                      LOCAL
                     </span>
                     {isActive && (
                       <span

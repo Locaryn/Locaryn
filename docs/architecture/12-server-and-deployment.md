@@ -229,16 +229,26 @@ souvent pas exécuter d'installeur.
 
 ---
 
-## 8. Activer le partage depuis l'application
+## 8. Activer le service depuis l'application
 
-**Paramètres → Partage réseau**, une case à cocher.
+**Paramètres → Serveur & fonctions**, une case à cocher.
 
-L'application ne sert **pas** le HTTP elle-même : elle démarre `locaryn-daemon`
-avec `LOCARYN_DAEMON_BIND=0.0.0.0`. Tout ce que le service garantit s'applique
+L'application ne sert **pas** le HTTP elle-même : elle supervise `locaryn-daemon`
+avec `LOCARYN_DAEMON_BIND=0.0.0.0`. Le processus est un enfant privé du desktop,
+redirigé vers le journal du service et créé avec `CREATE_NO_WINDOW` sous Windows :
+aucune fenêtre CMD ne doit apparaître. Tout ce que le service garantit s'applique
 donc sans duplication — authentification obligatoire, TLS, refus de démarrer
-sans compte. Une seconde implémentation HTTP à l'intérieur de Tauri aurait
-signifié deux endroits à garder corrects, et le plus critique des deux aurait
-été celui que personne ne teste.
+sans compte.
+
+Le daemon lancé depuis cette carte appartient au desktop : l'arrêt explicite
+via le menu du tray le termine avant de quitter Locaryn. La fermeture de la
+fenêtre principale avec la croix Windows ne quitte pas l'application : elle la
+masque dans le tray. Le tray propose **Ouvrir Locaryn** et **Quitter Locaryn** ;
+seule cette seconde action réalise la sortie réelle et arrête le daemon.
+
+Une seconde implémentation HTTP à l'intérieur de Tauri aurait signifié deux
+endroits à garder corrects, et le plus critique des deux aurait été celui que
+personne ne teste.
 
 Ce que l'écran affiche :
 
@@ -426,10 +436,11 @@ n'importe quel réseau sans configuration.
 
 Le tunnel est une commodité pour ce second cas, pas la brique entreprise.
 
-### Le mode voyage
+### Le mode Remote
 
-Optionnel, à installer ou non. Il apporte le tunnel sortant et l'appairage du
-téléphone, et rien d'autre ne change quand il est absent.
+Optionnel : le plugin Remote s'installe ou non. Il apporte le tunnel sortant et
+l'appairage du téléphone ; rien d'autre ne change quand il est absent.
+
 
 ```
 travel = "cloudflare"      (ou LOCARYN_TRAVEL=cloudflare)
@@ -454,7 +465,7 @@ Ouvrir un tunnel publie ce serveur sur Internet. C'est refusé tant que
 l'authentification n'est pas réellement en vigueur :
 
 ```
-Le mode voyage exposerait ce serveur à Internet alors qu'il n'exige aucune
+Le mode Remote exposerait ce serveur à Internet alors qu'il n'exige aucune
 authentification. Écoutez sur une adresse réseau (0.0.0.0) plutôt qu'en local,
 ce qui rend l'authentification obligatoire, puis réessayez.
 ```

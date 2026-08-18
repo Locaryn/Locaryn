@@ -307,6 +307,9 @@ async fn main() -> anyhow::Result<()> {
             get(routes::extensions::get_extension_permissions)
                 .post(routes::extensions::set_extension_permission),
         )
+        // La liste canonique des capacités : les clients la rafraîchissent
+        // sans recompiler, au lieu de vivre sur leur copie embarquée.
+        .route("/v1/capabilities", get(routes::extensions::list_capabilities))
         // Noyaux alternatifs : processus supervisés par le daemon (D4).
         .route("/v1/cores", get(routes::cores::list_cores))
         .route("/v1/cores/:id", get(routes::cores::status))
@@ -352,6 +355,8 @@ async fn main() -> anyhow::Result<()> {
         // engines that only run where the models live.
         // Vitesses mesurées : ce que chaque modèle donne sur cette machine.
         .route("/v1/metrics/models", get(list_model_metrics))
+        .route("/v1/models/pull", post(media::pull_model))
+        .route("/v1/models/:name", delete(media::remove_model))
         .route("/v1/media/models", get(media::list_models))
         .route("/v1/media/image", post(media::generate_image))
         .route("/v1/media/audio", post(media::generate_audio))

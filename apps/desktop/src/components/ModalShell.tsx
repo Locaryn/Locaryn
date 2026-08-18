@@ -33,7 +33,7 @@ export function ModalShell({
   style,
   label,
   role = "dialog",
-  overlayClassName = "locaryn-settings-backdrop",
+  overlayClassName = "locaryn-modal-overlay",
 }: Props) {
   // Écoute au niveau du document : Échap doit fermer quel que soit l'élément
   // qui a le focus, y compris un champ de saisie à l'intérieur de la carte.
