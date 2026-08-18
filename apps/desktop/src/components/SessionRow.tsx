@@ -121,6 +121,7 @@ export function SessionRow({
       onDragStart={(e) => {
         clearHoldTimer();
         e.dataTransfer.setData("application/locaryn-session", session.id);
+        e.dataTransfer.setData("text/plain", session.id);
         e.dataTransfer.effectAllowed = "move";
         window.dispatchEvent(
           new CustomEvent("locaryn:session-drag-start", { detail: { id: session.id } }),
@@ -134,23 +135,35 @@ export function SessionRow({
       // qu'il fait : on met l'une dans l'autre, littéralement. Une ligne ne
       // s'accepte pas elle-même, et le survol se voit avant le lâcher —
       // sinon on découvre la fusion après coup.
+      onDragEnter={(e) => {
+        if (!onMergeInto) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setAccueille(true);
+      }}
       onDragOver={(e) => {
         if (!onMergeInto) return;
-        if (!e.dataTransfer.types.includes("application/locaryn-session")) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
-        setAccueille(true);
+        if (!accueille) setAccueille(true);
       }}
-      onDragLeave={() => setAccueille(false)}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setAccueille(false);
+        }
+      }}
       onDrop={(e) => {
         if (!onMergeInto) return;
-        const source = e.dataTransfer.getData("application/locaryn-session");
-        setAccueille(false);
-        if (!source || source === session.id) return;
         e.preventDefault();
         e.stopPropagation();
-        onMergeInto(source);
+        setAccueille(false);
+        const sourceId =
+          e.dataTransfer.getData("application/locaryn-session") ||
+          e.dataTransfer.getData("text/plain");
+        if (sourceId && sourceId !== session.id) {
+          onMergeInto(sourceId);
+        }
       }}
       onContextMenu={(e) => {
         e.preventDefault();

@@ -73,15 +73,24 @@ export function LeftPanel({
   const [overBin, setOverBin] = useState(false);
   /** Le projet survolé pendant un glisser, pour montrer où ça va tomber. */
   const [overProject, setOverProject] = useState<string | null>(null);
+  const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
   /** Indique si une session est en cours de glisser/maintien pour transformer le bouton du haut. */
   const [isDraggingSession, setIsDraggingSession] = useState(false);
 
   useEffect(() => {
-    const onDragStart = () => setIsDraggingSession(true);
+    const onDragStart = (e: Event) => {
+      const custom = e as CustomEvent<{ id: string }>;
+      setIsDraggingSession(true);
+      if (custom.detail?.id) {
+        setDraggedSessionId(custom.detail.id);
+      }
+    };
     const onDragEnd = () => {
       window.setTimeout(() => {
         setIsDraggingSession(false);
+        setDraggedSessionId(null);
         setOverBin(false);
+        setOverProject(null);
       }, 100);
     };
 
@@ -109,7 +118,10 @@ export function LeftPanel({
   }
 
   function sessionDeposee(e: React.DragEvent): string | null {
-    const id = e.dataTransfer.getData("application/locaryn-session");
+    const id =
+      e.dataTransfer.getData("application/locaryn-session") ||
+      e.dataTransfer.getData("text/plain") ||
+      draggedSessionId;
     return id || null;
   }
 
@@ -207,15 +219,26 @@ export function LeftPanel({
             cursor: "copy",
             transition: "all 0.15s ease",
           }}
-          onDragOver={(e) => {
-            if (!e.dataTransfer.types.includes("application/locaryn-session")) return;
+          onDragEnter={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             e.dataTransfer.dropEffect = "move";
             setOverBin(true);
           }}
-          onDragLeave={() => setOverBin(false)}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = "move";
+            if (!overBin) setOverBin(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setOverBin(false);
+            }
+          }}
           onDrop={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             setOverBin(false);
             setIsDraggingSession(false);
             const id = sessionDeposee(e);
@@ -224,7 +247,7 @@ export function LeftPanel({
           }}
         >
           <Icon name="archive" size={15} />
-          <span>Déposer ici pour archiver</span>
+          <span style={{ pointerEvents: "none" }}>Déposer ici pour archiver</span>
         </div>
       ) : (
         <button
@@ -258,15 +281,26 @@ export function LeftPanel({
                   }`}
                   onClick={() => onSelectProject(p)}
                   title={p.path}
-                  onDragOver={(e) => {
-                    if (!e.dataTransfer.types.includes("application/locaryn-session")) return;
+                  onDragEnter={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     e.dataTransfer.dropEffect = "move";
                     setOverProject(p.id);
                   }}
-                  onDragLeave={() => setOverProject((cur) => (cur === p.id ? null : cur))}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "move";
+                    if (overProject !== p.id) setOverProject(p.id);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setOverProject((cur) => (cur === p.id ? null : cur));
+                    }
+                  }}
                   onDrop={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     setOverProject(null);
                     const id = sessionDeposee(e);
                     const s = allKnownSessions.find((x) => x.id === id);
