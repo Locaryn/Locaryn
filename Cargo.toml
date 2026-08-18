@@ -30,7 +30,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.12"
+version = "0.3.13"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -40,27 +40,27 @@ authors = ["Locaryn Contributors"]
 
 [workspace.dependencies]
 # Internal crates — version pinned to workspace
-locaryn-shared-types      = { path = "packages/shared-types", version = "0.3.12" }
-locaryn-sdk               = { path = "packages/sdk", version = "0.3.12" }
-locaryn-auth              = { path = "packages/auth", version = "0.3.12" }
-locaryn-config            = { path = "packages/config", version = "0.3.12" }
-locaryn-media             = { path = "packages/media", version = "0.3.12" }
-locaryn-storage           = { path = "packages/storage", version = "0.3.12" }
-locaryn-events            = { path = "packages/events", version = "0.3.12" }
-locaryn-preview           = { path = "packages/preview", version = "0.3.12" }
-locaryn-extensions        = { path = "packages/extensions", version = "0.3.12" }
-locaryn-mcp               = { path = "packages/mcp", version = "0.3.12" }
-locaryn-travel            = { path = "packages/travel", version = "0.3.12" }
-locaryn-plugin-sdk        = { path = "packages/plugin-sdk", version = "0.3.12" }
-locaryn-command-runtime   = { path = "packages/command-runtime", version = "0.3.12" }
-locaryn-hook-runtime      = { path = "packages/hook-runtime", version = "0.3.12" }
-locaryn-skill-runtime     = { path = "packages/skill-runtime", version = "0.3.12" }
-locaryn-agent-runtime     = { path = "packages/agent-runtime", version = "0.3.12" }
-locaryn-core-bridge       = { path = "packages/core-bridge", version = "0.3.12" }
-locaryn-rules-runtime     = { path = "packages/rules-runtime", version = "0.3.12" }
-locaryn-lsp-adapters      = { path = "packages/lsp-adapters", version = "0.3.12" }
-locaryn-ssh               = { path = "packages/ssh", version = "0.3.12" }
-locaryn-provider-supervisor = { path = "services/provider-supervisor", version = "0.3.12" }
+locaryn-shared-types      = { path = "packages/shared-types", version = "0.3.13" }
+locaryn-sdk               = { path = "packages/sdk", version = "0.3.13" }
+locaryn-auth              = { path = "packages/auth", version = "0.3.13" }
+locaryn-config            = { path = "packages/config", version = "0.3.13" }
+locaryn-media             = { path = "packages/media", version = "0.3.13" }
+locaryn-storage           = { path = "packages/storage", version = "0.3.13" }
+locaryn-events            = { path = "packages/events", version = "0.3.13" }
+locaryn-preview           = { path = "packages/preview", version = "0.3.13" }
+locaryn-extensions        = { path = "packages/extensions", version = "0.3.13" }
+locaryn-mcp               = { path = "packages/mcp", version = "0.3.13" }
+locaryn-travel            = { path = "packages/travel", version = "0.3.13" }
+locaryn-plugin-sdk        = { path = "packages/plugin-sdk", version = "0.3.13" }
+locaryn-command-runtime   = { path = "packages/command-runtime", version = "0.3.13" }
+locaryn-hook-runtime      = { path = "packages/hook-runtime", version = "0.3.13" }
+locaryn-skill-runtime     = { path = "packages/skill-runtime", version = "0.3.13" }
+locaryn-agent-runtime     = { path = "packages/agent-runtime", version = "0.3.13" }
+locaryn-core-bridge       = { path = "packages/core-bridge", version = "0.3.13" }
+locaryn-rules-runtime     = { path = "packages/rules-runtime", version = "0.3.13" }
+locaryn-lsp-adapters      = { path = "packages/lsp-adapters", version = "0.3.13" }
+locaryn-ssh               = { path = "packages/ssh", version = "0.3.13" }
+locaryn-provider-supervisor = { path = "services/provider-supervisor", version = "0.3.13" }
 
 # External crates — pinned once for the workspace
 tokio       = { version = "1.41", features = ["full"] }
