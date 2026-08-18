@@ -77,7 +77,6 @@ export function VoiceNote({ url, status, error, onSave }: Props) {
       </div>
 
       {status === "ready" && url ? (
-        // biome-ignore lint/a11y/useMediaCaption: une note vocale générée n'a pas de piste de sous-titres séparée
         <audio
           className="locaryn-voice-note-player"
           src={url}

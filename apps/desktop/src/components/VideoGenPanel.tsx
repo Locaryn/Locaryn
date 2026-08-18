@@ -473,7 +473,6 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
           {/* Intitulé de section : coiffe un lecteur vidéo, qui n'est pas un champ à étiqueter. */}
           <div className="locaryn-field-label">Vidéo générée</div>
-          {/* biome-ignore lint/a11y/useMediaCaption: vidéo générée localement à partir d'un prompt, sans dialogue ni fichier de sous-titres associé */}
           <video
             src={generatedResult.url}
             controls

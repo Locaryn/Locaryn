@@ -544,7 +544,6 @@ export function ImageGenPanel({
               « retirer », et imbriquer deux boutons est invalide. */}
           <div
             className={`img-gen-dropzone${sourceImagePreview ? " img-gen-dropzone-filled" : ""}`}
-            // biome-ignore lint/a11y/useSemanticElements: bouton imbriqué dans la vignette, l'élément englobant ne peut pas être un <button>
             role="button"
             tabIndex={0}
             aria-label="Choisir une image source"

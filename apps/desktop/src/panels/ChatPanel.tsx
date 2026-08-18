@@ -1320,7 +1320,6 @@ export function ChatPanel({
           // pour ce cas. `tabIndex={-1}` parce que le focus ne quitte jamais le
           // champ de saisie — ce sont ses flèches qui déplacent la sélection,
           // et un arrêt de tabulation ici piégerait l'utilisateur.
-          // biome-ignore lint/a11y/useSemanticElements: aucun élément natif ne couvre la liste filtrable d'une palette de commandes.
           <div className="locaryn-slash" role="listbox" aria-label="Commandes" tabIndex={-1}>
             {slash.kind === "args" && (
               <div className="locaryn-slash-head">
@@ -1332,7 +1331,6 @@ export function ChatPanel({
                   <button
                     key={c.name}
                     type="button"
-                    // biome-ignore lint/a11y/useSemanticElements: option d'un listbox ARIA ; un <option> natif ne peut pas porter ce contenu ni ce style.
                     role="option"
                     aria-selected={i === slashIndex}
                     className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
@@ -1354,7 +1352,6 @@ export function ChatPanel({
                   <button
                     key={a.value}
                     type="button"
-                    // biome-ignore lint/a11y/useSemanticElements: option d'un listbox ARIA ; un <option> natif ne peut pas porter ce contenu ni ce style.
                     role="option"
                     aria-selected={i === slashIndex}
                     className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}

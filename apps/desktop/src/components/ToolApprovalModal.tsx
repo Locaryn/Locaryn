@@ -156,7 +156,6 @@ export function ToolApprovalModal({
       <div
         ref={dialogRef}
         className={`locaryn-approval locaryn-approval-${approval.risk}${isRemote ? " locaryn-approval-remote" : ""}`}
-        // biome-ignore lint/a11y/useSemanticElements: un <dialog> n'est modal que via showModal(), ce qui le pousse dans la couche supérieure avec son propre ::backdrop et les styles par défaut du navigateur — le fond assombri et la boîte .locaryn-approval ci-dessus cesseraient de s'appliquer
         role="dialog"
         aria-modal="true"
         aria-labelledby="locaryn-approval-title"

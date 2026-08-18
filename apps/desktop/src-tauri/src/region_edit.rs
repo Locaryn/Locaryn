@@ -427,9 +427,10 @@ pub async fn edit_region(
             init_image: Some(&crop_file),
             mask: Some(&crop_mask_file),
             strength: args.strength.unwrap_or(0.85),
-            vram_gb: crate::check_hardware()
+            vram_gb: crate::HARDWARE_CACHE
+                .get()
                 .map(|h| h.total_vram_gb as f32)
-                .unwrap_or(0.0),
+                .unwrap_or_else(|| crate::probe_hardware().map(|h| h.total_vram_gb as f32).unwrap_or(0.0)),
             uncensored: false,
             batch_count: 1,
         })?;

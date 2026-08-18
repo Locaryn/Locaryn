@@ -810,7 +810,6 @@ export function App() {
             if (e.target === e.currentTarget) setCorePickerFor(null);
           }}
         >
-          {/* biome-ignore lint/a11y/useSemanticElements: la fenêtre est montée et démontée par React (jamais showModal), sur un fond assombri fait maison ; un <dialog> natif imposerait son ::backdrop et son positionnement */}
           <div
             role="dialog"
             aria-modal="true"

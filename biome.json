@@ -21,6 +21,7 @@
     "enabled": true,
     "rules": {
       "recommended": true,
+      "a11y": { "recommended": false },
       "style": { "noNonNullAssertion": "off" },
       "suspicious": { "noExplicitAny": "warn" }
     }

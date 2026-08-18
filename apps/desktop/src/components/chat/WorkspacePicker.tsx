@@ -76,12 +76,14 @@ export function WorkspacePicker({
           value.label !== "None"),
     );
 
+  if (!isCustomSelected) {
+    return null;
+  }
+
   const displayIcon: IconName =
     value.kind === "ssh" ? "server" : value.kind === "remote" ? "server" : "project";
-  const displayLabel = isCustomSelected ? value.label : "Dossier de travail";
-  const displayTitle = isCustomSelected
-    ? (value.path ?? value.label)
-    : "Sélectionner un dossier local, une connexion SSH ou un environnement distant";
+  const displayLabel = value.label;
+  const displayTitle = value.path ?? value.label;
 
   return (
     <div className="locaryn-ws" ref={ref}>
@@ -93,8 +95,8 @@ export function WorkspacePicker({
         aria-expanded={open}
         title={displayTitle}
         style={{
-          borderColor: isCustomSelected ? "var(--border-strong)" : undefined,
-          color: isCustomSelected ? "var(--text)" : "var(--text-dim)",
+          borderColor: "var(--border-strong)",
+          color: "var(--text)",
         }}
       >
         <span style={{ display: "inline-flex" }}>

@@ -149,7 +149,6 @@ export function SshServerForm({ onClose, onSaved }: Props) {
         }}
       />
       <div
-        // biome-ignore lint/a11y/useSemanticElements: <dialog> apporte le padding, la marge auto et le positionnement par défaut de l'agent utilisateur, que .locaryn-form-modal (fixe, centré par transform, sans padding) ne réinitialise pas ; la modale est montée et démontée par React, jamais par showModal().
         className="locaryn-form-modal"
         role="dialog"
         aria-modal="true"

@@ -974,7 +974,6 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
               <Icon name="music" size={15} /> Generated Audio
             </div>
             {generatedResult ? (
-              // biome-ignore lint/a11y/useMediaCaption: l'audio vient d'être synthétisé localement, il n'existe aucune piste de sous-titres à lui associer
               <audio
                 key={generatedResult.url}
                 src={generatedResult.url}

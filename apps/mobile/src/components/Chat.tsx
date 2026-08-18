@@ -13,10 +13,10 @@ import type { PhoneExtension } from "../lib/core";
 import { notifyMessageReceived, notifyToolApprovalRequired } from "../lib/notifications";
 import { ComposerActions } from "./ComposerActions";
 import { Drawer } from "./Drawer";
-import { ExtensionSlot } from "./extensions/ExtensionSlot";
 import { type Destination, MainMenu } from "./MainMenu";
 import { ToolApprovalModal } from "./ToolApprovalModal";
 import { UpdateButton } from "./UpdateButton";
+import { ExtensionSlot } from "./extensions/ExtensionSlot";
 
 type Props = {
   status: MobileStatus;

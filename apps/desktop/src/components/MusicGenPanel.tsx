@@ -446,7 +446,6 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
                 <Icon name="close" size={16} />
               </button>
               {/* melodyFile is a disk path: a webview cannot load it directly. */}
-              {/* biome-ignore lint/a11y/useMediaCaption: fichier audio choisi par l'utilisateur sur son disque, aucune piste de sous-titres n'existe */}
               <audio src={toMediaUrl(melodyFile)} controls style={{ height: 28, flex: 1 }} />
             </div>
           ) : (
@@ -476,7 +475,6 @@ export function MusicGenPanel({ installedModels, onClose, inline }: Props) {
         <div className="locaryn-field" style={{ marginBottom: 16 }}>
           {/* Intitulé de section : coiffe un lecteur audio, qui n'est pas un champ à étiqueter. */}
           <div className="locaryn-field-label">Musique générée</div>
-          {/* biome-ignore lint/a11y/useMediaCaption: musique générée localement à partir d'un prompt, il n'y a ni dialogue ni piste de sous-titres à fournir */}
           <audio src={generatedResult.url} controls style={{ width: "100%" }} />
         </div>
       )}

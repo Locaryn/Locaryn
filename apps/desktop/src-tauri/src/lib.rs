@@ -3749,9 +3749,10 @@ async fn generate_image(
         cfg_scale
     };
 
-    let vram_gb = check_hardware()
+    let vram_gb = HARDWARE_CACHE
+        .get()
         .map(|h| h.total_vram_gb as f32)
-        .unwrap_or(0.0);
+        .unwrap_or_else(|| probe_hardware().map(|h| h.total_vram_gb as f32).unwrap_or(0.0));
 
     // An init image arrives as a base64 data URL from the webview, which has
     // no access to disk paths; decode it to scratch space first.
@@ -7546,8 +7547,23 @@ pub struct HardwareSpec {
     pub cpu_cores: u32,
 }
 
+/// Cached hardware spec to avoid re-running slow wmic/nvidia-smi on every call.
+pub(crate) static HARDWARE_CACHE: std::sync::OnceLock<HardwareSpec> = std::sync::OnceLock::new();
+
 #[tauri::command]
-fn check_hardware() -> Result<HardwareSpec, String> {
+async fn check_hardware() -> Result<HardwareSpec, String> {
+    if let Some(cached) = HARDWARE_CACHE.get() {
+        return Ok(cached.clone());
+    }
+    let spec = tokio::task::spawn_blocking(probe_hardware)
+        .await
+        .map_err(|e| format!("hardware probe panicked: {e}"))??;
+    let _ = HARDWARE_CACHE.set(spec.clone());
+    Ok(spec)
+}
+
+/// The actual heavy lifting — runs wmic / nvidia-smi. Called at most once.
+pub(crate) fn probe_hardware() -> Result<HardwareSpec, String> {
     // RAM: use sysinfo-like approach via system commands.
     let ram_gb = if cfg!(target_os = "windows") {
         std::process::Command::new("wmic")
@@ -7774,7 +7790,12 @@ fn plan_model_runtime(_core: State<'_, Core>, model: String) -> Result<RuntimePl
     let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let size_gb = size_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
 
-    let hw = check_hardware()?;
+    let hw = HARDWARE_CACHE.get().cloned().unwrap_or_else(|| probe_hardware().unwrap_or(HardwareSpec {
+        total_ram_gb: 16,
+        total_vram_gb: 0,
+        recommended_size_label: "tiny (1-7B)".to_string(),
+        cpu_cores: 4,
+    }));
     let vram_gb = hw.total_vram_gb as f64;
     let ram_gb = hw.total_ram_gb as f64;
 

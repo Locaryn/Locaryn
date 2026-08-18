@@ -263,7 +263,6 @@ export function VoiceCloneTab({
                 {voiceName || "Audio sélectionné"}
               </div>
               {voiceFileUrl && (
-                // biome-ignore lint/a11y/useMediaCaption: échantillon vocal importé ou enregistré au micro par l'utilisateur, aucune piste de sous-titres n'existe pour ce fichier
                 <audio
                   src={voiceFileUrl}
                   controls

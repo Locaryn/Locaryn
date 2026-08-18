@@ -2275,7 +2275,6 @@ export function ModelBrowser({
                   placeholder="ex: gemma4:2b, kimi-k3:8b, mimo:7b, hf.co/user/repo, https://huggingface.co/..."
                   value={customTagInput}
                   onChange={(e) => setCustomTagInput(e.target.value)}
-                  // biome-ignore lint/a11y/noAutofocus: modale utilisateur ouverte sur action explicite
                   autoFocus
                 />
                 <div

@@ -195,6 +195,8 @@ jobs:
       # produire des installeurs non signés quand l'updater est activé.
       # La clé privée vit dans un secret GitHub, jamais dans le dépôt.
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88
@@ -240,6 +242,9 @@ jobs:
         run: bash scripts/stage-desktop-sidecars.sh
 
       - name: Construire l'application
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm --dir apps/desktop tauri build ${{ matrix.args }}
 
       - name: Rassembler les installeurs

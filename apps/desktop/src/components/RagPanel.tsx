@@ -169,7 +169,6 @@ export function RagPanel({ projectId, onClose }: Props) {
       />
       <div
         className="locaryn-settings-modal"
-        // biome-ignore lint/a11y/useSemanticElements: <dialog> apporte le padding, la marge auto et le positionnement par défaut de l'agent utilisateur, que .locaryn-settings-modal (fixe, centré par transform, taille imposée) ne réinitialise pas ; la modale est montée/démontée par React, jamais par showModal().
         role="dialog"
         aria-modal="true"
         aria-label="Documents (RAG)"

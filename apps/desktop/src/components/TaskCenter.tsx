@@ -229,7 +229,6 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                       />
                     )}
                     {t.resultAudioUrl && (
-                      // biome-ignore lint/a11y/useMediaCaption: audio produit par le modèle sur cette machine ; aucune piste de sous-titres n'existe et en inventer une vide n'aiderait personne.
                       <audio
                         className="locaryn-notif-audio"
                         src={t.resultAudioUrl}

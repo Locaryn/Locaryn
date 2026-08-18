@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
 import { ConfirmServer, type ProvisioningApercu, lireApercu } from "./components/ConfirmServer";
-import { Extensions } from "./components/Extensions";
 import { ExtensionView } from "./components/ExtensionView";
+import { Extensions } from "./components/Extensions";
 import { FiguresScreen } from "./components/FiguresScreen";
 import type { Destination } from "./components/MainMenu";
 import { MemoryScreen } from "./components/MemoryScreen";
