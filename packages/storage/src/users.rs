@@ -348,6 +348,20 @@ impl UserRepo {
             .await?;
         Ok(())
     }
+
+    pub async fn delete(&self, user_id: Uuid) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM auth_tokens WHERE user_id = ?")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        let res = sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected() > 0)
+    }
 }
 
 /// A valid Argon2id encoding of an arbitrary string, used only to spend the

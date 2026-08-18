@@ -66,8 +66,10 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-    env(safe-area-inset-left);
+  padding-top: max(0px, env(safe-area-inset-top, 0px));
+  padding-right: max(0px, env(safe-area-inset-right, 0px));
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(0px, env(safe-area-inset-left, 0px));
 }
 
 .lo-pad {
@@ -191,7 +193,7 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 56px;
+  min-height: 50px;
   padding: 0 var(--space-3);
   border-bottom: 1px solid var(--border);
   font-size: var(--text-base);
@@ -200,13 +202,12 @@ body {
 }
 
 /* Tout ce qui se touche dans la barre : même hauteur, texte centré sur les
-   deux axes. Un bouton dont le texte flotte au-dessus de sa boîte se voit
-   immédiatement, et c'était le cas du retour. */
+   deux axes. */
 .lo-bar button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 40px;
 }
 .lo-dot {
   width: 7px;
@@ -1285,4 +1286,228 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   font-family: inherit;
   font-size: 14px;
   cursor: pointer;
+}
+
+/* ── Onglets mobiles ── */
+.lo-tabs {
+  display: flex;
+  gap: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 9999px);
+  padding: 3px;
+  margin-bottom: var(--space-2);
+}
+.lo-tab {
+  flex: 1;
+  text-align: center;
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill, 9999px);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.lo-tab-active {
+  background: var(--surface-hover);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Filtres / Chips ── */
+.lo-chips {
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.lo-chips::-webkit-scrollbar {
+  display: none;
+}
+.lo-chip {
+  flex: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill, 9999px);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lo-chip-active {
+  background: rgba(var(--accent-rgb), 0.15);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ── Recherche ── */
+.lo-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.lo-search-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+.lo-search-input:focus {
+  border-color: var(--accent);
+}
+
+/* ── Barre de progression ── */
+.lo-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+.lo-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+/* ── Pop-up / Modale ── */
+.lo-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+@media (min-width: 480px) {
+  .lo-modal-backdrop {
+    align-items: center;
+    padding: var(--space-4);
+  }
+}
+.lo-modal {
+  width: 100%;
+  max-width: 500px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-top: 1px solid var(--border-strong);
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.6);
+  animation: loSlideUp 0.2s ease-out;
+}
+@media (min-width: 480px) {
+  .lo-modal {
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  }
+}
+@keyframes loSlideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.lo-modal-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.lo-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.lo-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.lo-modal-footer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* ── Badges de risque d'autorisation ── */
+.lo-risk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 9999px);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.lo-risk-low {
+  background: rgba(111, 156, 127, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(111, 156, 127, 0.3);
+}
+.lo-risk-medium {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.lo-risk-high {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.lo-risk-critical {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.lo-code-block {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: var(--space-3);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }

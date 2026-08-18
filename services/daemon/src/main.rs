@@ -388,6 +388,8 @@ async fn main() -> anyhow::Result<()> {
                 .route("/v1/auth/login", post(auth::login))
                 .route("/v1/auth/me", get(auth::me))
                 .route("/v1/auth/password", post(auth::change_password))
+                .route("/v1/users", get(auth::list_users).post(auth::create_user))
+                .route("/v1/users/:id", delete(auth::delete_user))
                 .with_state(auth_state.clone()),
         )
         // Applied last so it wraps every route above, including ones added later.

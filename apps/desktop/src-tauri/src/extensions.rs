@@ -456,6 +456,11 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
 
 #[tauri::command]
 pub async fn list_extensions(core: State<'_, Core>) -> Result<Vec<InstalledExtension>, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(exts) = client.list_extensions().await {
+            return Ok(exts);
+        }
+    }
     build_installed(&core).await
 }
 
@@ -558,6 +563,19 @@ pub async fn install_extension(
     scope: Option<String>,
     workspace: Option<String>,
 ) -> Result<InstalledExtension, String> {
+    if let Some(client) = core.remote_client() {
+        let sc = scope.as_deref().unwrap_or("global");
+        if let Ok(val) = client.install_extension(&source, sc).await {
+            if let Ok(installed) = serde_json::from_value::<InstalledExtension>(val) {
+                return Ok(installed);
+            }
+            if let Ok(exts) = client.list_extensions().await {
+                if let Some(last) = exts.last() {
+                    return Ok(last.clone());
+                }
+            }
+        }
+    }
     let scope = parse_scope(scope.as_deref());
     let workspace_root = workspace.as_deref().map(Path::new);
 
@@ -857,6 +875,12 @@ pub async fn set_extension_enabled(
     id: String,
     enabled: bool,
 ) -> Result<Vec<InstalledExtension>, String> {
+    if let Some(client) = core.remote_client() {
+        let _ = client.set_extension_enabled(&id, enabled).await;
+        if let Ok(exts) = client.list_extensions().await {
+            return Ok(exts);
+        }
+    }
     let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     core.storage
         .extensions
@@ -873,6 +897,12 @@ pub async fn remove_extension(
     id: String,
     workspace: Option<String>,
 ) -> Result<Vec<InstalledExtension>, String> {
+    if let Some(client) = core.remote_client() {
+        let _ = client.remove_extension(&id).await;
+        if let Ok(exts) = client.list_extensions().await {
+            return Ok(exts);
+        }
+    }
     let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let record = core
         .storage

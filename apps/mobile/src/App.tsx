@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
 import { ConfirmServer, type ProvisioningApercu, lireApercu } from "./components/ConfirmServer";
 import { Extensions } from "./components/Extensions";
+import { ExtensionView } from "./components/ExtensionView";
 import { FiguresScreen } from "./components/FiguresScreen";
 import type { Destination } from "./components/MainMenu";
 import { MemoryScreen } from "./components/MemoryScreen";
@@ -332,25 +333,11 @@ export function App() {
           onSettings={() => aller("settings")}
         />
       ) : (
-        // Une entrée de menu apportée par une extension, que l'application ne
-        // sait pas dessiner : elle le dit plutôt que d'afficher la page de
-        // connexion. Le contenu vit dans l'extension ; l'application n'en
-        // garde aucune trace.
-        <div className="lo-screen">
-          <div className="lo-bar">
-            <button type="button" className="lo-back" onClick={revenir}>
-              ← Retour
-            </button>
-            <span>Extension</span>
-          </div>
-          <div className="lo-card">
-            <p className="lo-card-title">{screen}</p>
-            <p className="lo-hint">
-              Cette entrée est apportée par une extension installée sur le serveur. Son contenu vit
-              dans l'extension.
-            </p>
-          </div>
-        </div>
+        <ExtensionView
+          screenId={screen}
+          onBack={revenir}
+          onOpenChat={() => aller("chat")}
+        />
       )}
       {/*
         Posé par-dessus l'écran, pas à la suite : les écrans font toute la

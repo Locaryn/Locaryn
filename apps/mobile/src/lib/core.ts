@@ -16,6 +16,40 @@ export interface Capability {
   description: string;
 }
 
+export type RiskLevel = "low" | "medium" | "high" | "critical";
+export type RiskScope = "once" | "session" | "always";
+
+export interface ToolApprovalRequest {
+  call_id: string;
+  tool: string;
+  args?: Record<string, unknown>;
+  risk: RiskLevel;
+  reason?: string;
+  diff?: string;
+  is_remote?: boolean;
+}
+
+export interface ToolApprovalDecision {
+  call_id: string;
+  allow: boolean;
+  scope: RiskScope;
+  audit_note?: string;
+}
+
+export interface UserProfile {
+  id?: string | null;
+  username: string;
+  role: "admin" | "member" | string;
+  server_url: string;
+}
+
+export interface PhoneUserSummary {
+  id: string;
+  username: string;
+  role: string;
+  disabled: boolean;
+}
+
 export interface PhoneExtension {
   name: string;
   display_name: string;
@@ -23,6 +57,18 @@ export interface PhoneExtension {
   description: string | null;
   enabled: boolean;
   capabilities: string[];
+  kind?: "extension" | "plugin" | "core" | string;
+  ecosystem?: "locaryn" | "gemini_cli" | "opencode" | string;
+  components?: {
+    commands?: number;
+    skills?: number;
+    agents?: number;
+    mcp_servers?: number;
+    rules?: number;
+    hooks?: number;
+    lsp_adapters?: number;
+  };
+  permissions?: string[];
   /** Ce que l'extension ajoute à l'interface. Vide quand elle est éteinte. */
   ui?: ExtensionUi;
 }
@@ -34,8 +80,23 @@ export interface ExtensionUiEntry {
   icon: string | null;
 }
 
+export interface ExtensionUiSlotContribution {
+  id: string;
+  slot: string;
+  order?: number;
+  type?: "button" | "widget" | "action" | "custom-element" | "script";
+  label?: string;
+  icon?: string | null;
+  hint?: string | null;
+  action?: "insert" | "tool" | "navigate" | "event" | string;
+  value?: string;
+  tag?: string;
+  entry?: string;
+}
+
 /** Ce qu'une extension ajoute à l'interface du téléphone. */
 export interface ExtensionUi {
+  slots?: ExtensionUiSlotContribution[];
   nav_items?: ExtensionUiEntry[];
   studio_tabs?: ExtensionUiEntry[];
   composer_actions?: ComposerAction[];
@@ -269,6 +330,7 @@ export interface ChatReply {
   images: MediaResult[];
   /** La conversation où ce tour a eu lieu, à garder pour la suivante. */
   conversation_id: string;
+  approval?: ToolApprovalRequest | null;
 }
 
 /** Une conversation du serveur, partagée avec l'ordinateur. */
@@ -476,6 +538,15 @@ export const core = {
     speed?: number;
     language?: string;
   }) => invoke<MediaResult>("generate_audio", args),
+  currentUser: () => invoke<UserProfile>("current_user"),
+  changePassword: (current: string, nouveau: string) =>
+    invoke<void>("change_password", { current, nouveau }),
+  listServerUsers: () => invoke<PhoneUserSummary[]>("list_server_users"),
+  createServerUser: (username: string, password: string, isAdmin = false) =>
+    invoke<void>("create_server_user", { username, password, isAdmin }),
+  deleteServerUser: (userId: string) => invoke<void>("delete_server_user", { userId }),
+  approveToolCall: (decision: ToolApprovalDecision) =>
+    invoke<void>("approve_tool_call", { decision }),
 };
 
 /** "tauri" on a phone, "demo" in a browser during development. */
@@ -646,6 +717,20 @@ export const demoCore: typeof core = {
     mime: "audio/wav",
     data_base64: "",
   }),
+  currentUser: async () => ({
+    id: "usr-demo",
+    username: "Marie",
+    role: "admin",
+    server_url: "https://192.168.1.188:7474",
+  }),
+  changePassword: async () => {},
+  listServerUsers: async () => [
+    { id: "usr-1", username: "Marie", role: "admin", disabled: false },
+    { id: "usr-2", username: "Lucas", role: "member", disabled: false },
+  ],
+  createServerUser: async () => {},
+  deleteServerUser: async () => {},
+  approveToolCall: async () => {},
 };
 
 export const api = isTauri ? core : demoCore;

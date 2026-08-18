@@ -1,18 +1,28 @@
 //! Locaryn client SDK — talks to the local daemon or the remote-server
-//! over HTTP/1.1 + SSE. Used by the CLI and (optionally) the desktop app
-//! when it prefers the daemon over the in-process core.
+//! over HTTP/1.1 + SSE. Used by the CLI and the desktop app when acting
+//! in client mode against a remote server (e.g. DGX Spark supercomputer).
 
 use futures::TryStreamExt as _;
 use locaryn_events::{SseError, StreamEvent};
 use locaryn_shared_types::{
-    ApiError, ConnectionMode, Health, Message, Project, Provider, Session, Task, TaskStatus,
+    ApiError, ConnectionMode, Health, InstalledExtension, Message, Project, Provider, Session,
+    Task, TaskStatus,
 };
+use std::path::PathBuf;
 use std::time::Duration;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Stored session credentials on disk (`session-token.json`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StoredSession {
+    pub server_url: String,
+    pub username: String,
+    pub token: String,
+}
+
 /// A Locaryn client. The same client works against the loopback daemon
-/// (`http://127.0.0.1:7474`) or a remote server (`https://host:7473`).
+/// (`http://127.0.0.1:7474`) or a remote server (`https://host:7474`).
 #[derive(Debug, Clone)]
 pub struct LocarynClient {
     base_url: String,
@@ -36,12 +46,16 @@ pub enum SdkError {
     StreamEnded,
     #[error("SSE stream error: {0}")]
     Sse(#[from] SseError),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 impl LocarynClient {
+    /// Create a client with default timeout and standard TLS settings.
     pub fn new(base_url: impl Into<String>, token: Option<String>) -> Result<Self, SdkError> {
         let base_url = base_url.into();
-        // Sanity check.
         if base_url.is_empty() {
             return Err(SdkError::BadUrl(base_url));
         }
@@ -53,6 +67,62 @@ impl LocarynClient {
             token,
             http,
         })
+    }
+
+    /// Create a client using an externally configured `reqwest::Client` (e.g. for custom mTLS or TLS pins).
+    pub fn with_client(
+        base_url: impl Into<String>,
+        token: Option<String>,
+        http: reqwest::Client,
+    ) -> Result<Self, SdkError> {
+        let base_url = base_url.into();
+        if base_url.is_empty() {
+            return Err(SdkError::BadUrl(base_url));
+        }
+        Ok(Self {
+            base_url: base_url.trim_end_matches('/').to_string(),
+            token,
+            http,
+        })
+    }
+
+    /// Path to the stored session token file (`<data_dir>/session-token.json`).
+    pub fn token_file_path() -> PathBuf {
+        locaryn_config::default_data_dir().join("session-token.json")
+    }
+
+    /// Load stored session token from disk if it exists.
+    pub fn stored_session() -> Option<StoredSession> {
+        let path = Self::token_file_path();
+        if !path.is_file() {
+            return None;
+        }
+        let raw = std::fs::read_to_string(path).ok()?;
+        serde_json::from_str(&raw).ok()
+    }
+
+    /// Build client from the stored session if available, falling back to config.
+    pub fn from_stored_session_or_config() -> Result<Self, SdkError> {
+        if let Some(stored) = Self::stored_session() {
+            if !stored.server_url.trim().is_empty() {
+                return Self::new(stored.server_url, Some(stored.token));
+            }
+        }
+        let cfg = locaryn_config::load(None).unwrap_or_default();
+        let base_url = cfg.connection.local_url;
+        Self::new(base_url, None)
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    pub fn token(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
+
+    pub fn http(&self) -> &reqwest::Client {
+        &self.http
     }
 
     fn url(&self, path: &str) -> String {
@@ -83,83 +153,7 @@ impl LocarynClient {
         }
     }
 
-    // ---- MCP --------------------------------------------------------------
-
-    /// Ask the running daemon to start a registered MCP server.
-    ///
-    /// Starting has to happen there: a server is a child process, and a CLI
-    /// that spawned one would take it down on exit.
-    pub async fn start_mcp(&self, name: &str) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(
-                self.http
-                    .post(self.url(&format!("/v1/mcp/servers/{name}/start"))),
-            )
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    pub async fn stop_mcp(&self, name: &str) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(
-                self.http
-                    .post(self.url(&format!("/v1/mcp/servers/{name}/stop"))),
-            )
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    // ---- Travel mode ------------------------------------------------------
-
-    pub async fn travel_status(&self) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.get(self.url("/v1/travel")))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    /// `provider` of `None` switches travel mode off.
-    pub async fn set_travel(&self, provider: Option<&str>) -> Result<serde_json::Value, SdkError> {
-        let body = serde_json::json!({ "provider": provider });
-        let resp = self
-            .add_auth(self.http.post(self.url("/v1/travel")).json(&body))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    pub async fn travel_home(&self) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.get(self.url("/v1/travel/home")))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    // ---- Health & info ----------------------------------------------------
+    // ---- Health & Info ----------------------------------------------------
 
     pub async fn health(&self) -> Result<Health, SdkError> {
         let resp = self.http.get(self.url("/health")).send().await?;
@@ -170,9 +164,6 @@ impl LocarynClient {
         }
     }
 
-    /// Fetch server info (version, capabilities). Returns a flexible JSON
-    /// value because the daemon and remote-server may expose different
-    /// capability sets; use `health()` for the typed `Health` shape.
     pub async fn info(&self) -> Result<serde_json::Value, SdkError> {
         let resp = self
             .add_auth(self.http.get(self.url("/v1/info")))
@@ -217,193 +208,6 @@ impl LocarynClient {
         }
     }
 
-    // ---- Extensions -------------------------------------------------------
-
-    pub async fn list_extensions(
-        &self,
-    ) -> Result<Vec<locaryn_shared_types::InstalledExtension>, SdkError> {
-        let resp = self
-            .add_auth(self.http.get(self.url("/v1/extensions")))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    pub async fn install_extension(
-        &self,
-        source: &str,
-        scope: &str,
-    ) -> Result<serde_json::Value, SdkError> {
-        let body = serde_json::json!({ "source": source, "scope": scope });
-        let resp = self
-            .add_auth(
-                self.http
-                    .post(self.url("/v1/extensions/install"))
-                    .json(&body),
-            )
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    /// `enable`/`disable`, par nom d'extension.
-    pub async fn set_extension_enabled(
-        &self,
-        name: &str,
-        enabled: bool,
-    ) -> Result<serde_json::Value, SdkError> {
-        let action = if enabled { "enable" } else { "disable" };
-        let resp = self
-            .add_auth(
-                self.http
-                    .post(self.url(&format!("/v1/extensions/{name}/{action}"))),
-            )
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    pub async fn remove_extension(&self, name: &str) -> Result<(), SdkError> {
-        let resp = self
-            .add_auth(
-                self.http
-                    .delete(self.url(&format!("/v1/extensions/{name}"))),
-            )
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(())
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    pub async fn reload_extensions(&self) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.post(self.url("/v1/extensions/reload")))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    /// État des moteurs locaux vu par le superviseur.
-    pub async fn supervisor_status(&self) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.get(self.url("/v1/supervisor/status")))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    // ---- Noyaux alternatifs ------------------------------------------------
-
-    /// Les noyaux installés (extensions avec section `core`) et leur état.
-    pub async fn list_cores(&self) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.get(self.url("/v1/cores")))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    /// État d'un noyau (par id d'extension).
-    pub async fn core_status(&self, id: &str) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.get(self.url(&format!("/v1/cores/{id}"))))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    /// Lance le processus du noyau et attend sa sonde de santé.
-    pub async fn core_start(&self, id: &str) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.post(self.url(&format!("/v1/cores/{id}/start"))))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    /// Arrête le processus du noyau.
-    pub async fn core_stop(&self, id: &str) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.post(self.url(&format!("/v1/cores/{id}/stop"))))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    /// L'index de skills déclaré par le noyau.
-    pub async fn core_skills(&self, id: &str) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.get(self.url(&format!("/v1/cores/{id}/skills"))))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
-    /// Installe un skill de l'écosystème du noyau (permission shell requise).
-    pub async fn core_install_skill(
-        &self,
-        id: &str,
-        slug: &str,
-    ) -> Result<serde_json::Value, SdkError> {
-        let body = serde_json::json!({ "slug": slug });
-        let resp = self
-            .add_auth(
-                self.http
-                    .post(self.url(&format!("/v1/cores/{id}/skills/install")))
-                    .json(&body),
-            )
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
     // ---- Sessions ---------------------------------------------------------
 
     pub async fn list_sessions(&self, project_id: &str) -> Result<Vec<Session>, SdkError> {
@@ -436,8 +240,6 @@ impl LocarynClient {
         }
     }
 
-    /// Crée une session confiée à un noyau alternatif (OpenClaw, Hermes…),
-    /// ou à `None` pour le noyau Locaryn natif.
     pub async fn create_session_with_core(
         &self,
         project_id: &str,
@@ -490,10 +292,6 @@ impl LocarynClient {
         }
     }
 
-    /// Send a user message and return a streaming event source.
-    /// The stream yields `StreamEvent`s (tokens, tool_calls, artifacts, ...).
-    /// `+ Send` is declared explicitly so a future refactor that swaps the
-    /// concrete stream type is caught at the SDK boundary.
     pub async fn send_message(
         &self,
         session_id: &str,
@@ -511,11 +309,131 @@ impl LocarynClient {
         if !resp.status().is_success() {
             return Err(Self::decode_error(resp).await);
         }
-        // Convert the stream's SseError into SdkError via the `From<SseError>`
-        // impl on SdkError (the `Sse` variant). `TryStreamExt::map_err` does
-        // this without consuming the stream.
         Ok(locaryn_events::sse_stream(resp.bytes_stream()).map_err(SdkError::from))
     }
+
+    pub async fn cancel_session(&self, session_id: &str) -> Result<(), SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/sessions/{session_id}/cancel"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn rename_session(&self, session_id: &str, title: &str) -> Result<Session, SdkError> {
+        let body = serde_json::json!({ "title": title });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/sessions/{session_id}/title")))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn archive_session(
+        &self,
+        session_id: &str,
+        archived: bool,
+    ) -> Result<Session, SdkError> {
+        let body = serde_json::json!({ "archived": archived });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/sessions/{session_id}/archive")))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn move_session(&self, session_id: &str, project_id: &str) -> Result<Session, SdkError> {
+        let body = serde_json::json!({ "project_id": project_id });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/sessions/{session_id}/project")))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn suggest_project(&self, session_id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .get(self.url(&format!("/v1/sessions/{session_id}/suggest-project"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn merge_sessions(
+        &self,
+        session_id: &str,
+        source_id: &str,
+    ) -> Result<Session, SdkError> {
+        let body = serde_json::json!({ "source_id": source_id });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/sessions/{session_id}/merge")))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn list_archived_sessions(&self, project_id: &str) -> Result<Vec<Session>, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .get(self.url(&format!("/v1/projects/{project_id}/archived"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    // ---- Tasks & Approvals ------------------------------------------------
 
     pub async fn cancel_task(&self, task_id: &str) -> Result<Task, SdkError> {
         let resp = self
@@ -559,7 +477,7 @@ impl LocarynClient {
         }
     }
 
-    // ---- Providers --------------------------------------------------------
+    // ---- Providers & Supervisor -------------------------------------------
 
     pub async fn list_providers(&self) -> Result<Vec<Provider>, SdkError> {
         let resp = self
@@ -586,12 +504,19 @@ impl LocarynClient {
         }
     }
 
-    /// Démarre un moteur local par l'intermédiaire du superviseur.
-    ///
-    /// L'adresse visée était `/v1/providers/local/start`, qui n'existe pas :
-    /// le service répondait 405 et la commande échouait sans jamais rien
-    /// démarrer. La route réelle est celle du superviseur.
-    pub async fn start_local(
+    pub async fn supervisor_status(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/supervisor/status")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn supervisor_start(
         &self,
         engine: locaryn_shared_types::ProviderEngine,
         model: Option<&str>,
@@ -611,11 +536,662 @@ impl LocarynClient {
             Err(Self::decode_error(resp).await)
         }
     }
-}
 
-// ============================================================================
-// Helpers / sub-types
-// ============================================================================
+    pub async fn supervisor_stop(
+        &self,
+        engine: locaryn_shared_types::ProviderEngine,
+    ) -> Result<serde_json::Value, SdkError> {
+        let engine_name = format!("{engine:?}").to_lowercase();
+        let body = serde_json::json!({ "engine": engine_name });
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/supervisor/stop")).json(&body))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn start_local(
+        &self,
+        engine: locaryn_shared_types::ProviderEngine,
+        model: Option<&str>,
+    ) -> Result<serde_json::Value, SdkError> {
+        self.supervisor_start(engine, model).await
+    }
+
+    // ---- Media & Models ---------------------------------------------------
+
+    pub async fn list_media_models(&self, kind: Option<&str>) -> Result<serde_json::Value, SdkError> {
+        let path = match kind {
+            Some(k) => format!("/v1/media/models?kind={k}"),
+            None => "/v1/media/models".to_string(),
+        };
+        let resp = self
+            .add_auth(self.http.get(self.url(&path)))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn delete_model(&self, name: &str) -> Result<(), SdkError> {
+        let resp = self
+            .add_auth(self.http.delete(self.url(&format!("/v1/models/{name}"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn pull_model(
+        &self,
+        endpoint: &str,
+        model: &str,
+        heretic: Option<bool>,
+        consent: Option<bool>,
+    ) -> Result<impl futures::Stream<Item = Result<bytes::Bytes, SdkError>> + Send, SdkError> {
+        let body = serde_json::json!({
+            "endpoint": endpoint,
+            "name": model,
+            "heretic": heretic.unwrap_or(false),
+            "consent": consent.unwrap_or(false),
+        });
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/models/pull")).json(&body))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(Self::decode_error(resp).await);
+        }
+        Ok(resp.bytes_stream().map_err(SdkError::from))
+    }
+
+    pub async fn generate_image(&self, body: serde_json::Value) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/media/image")).json(&body))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn generate_audio(&self, body: serde_json::Value) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/media/audio")).json(&body))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn get_model_metrics(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/metrics/models")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    // ---- Extensions & Capabilities ----------------------------------------
+
+    pub async fn list_extensions(&self) -> Result<Vec<InstalledExtension>, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/extensions")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn install_extension(
+        &self,
+        source: &str,
+        scope: &str,
+    ) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({ "source": source, "scope": scope });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url("/v1/extensions/install"))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn set_extension_enabled(
+        &self,
+        name: &str,
+        enabled: bool,
+    ) -> Result<serde_json::Value, SdkError> {
+        let action = if enabled { "enable" } else { "disable" };
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/extensions/{name}/{action}"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn remove_extension(&self, name: &str) -> Result<(), SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .delete(self.url(&format!("/v1/extensions/{name}"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn reload_extensions(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/extensions/reload")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn get_extension_config(&self, name: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .get(self.url(&format!("/v1/extensions/{name}/config"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn set_extension_config(
+        &self,
+        name: &str,
+        values: serde_json::Value,
+    ) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/extensions/{name}/config")))
+                    .json(&values),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn get_extension_permissions(
+        &self,
+        name: &str,
+    ) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .get(self.url(&format!("/v1/extensions/{name}/permissions"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn set_extension_permission(
+        &self,
+        name: &str,
+        permission: &str,
+        granted: bool,
+    ) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({
+            "permission": permission,
+            "granted": granted,
+        });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/extensions/{name}/permissions")))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn list_capabilities(&self) -> Result<Vec<serde_json::Value>, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/capabilities")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    // ---- Alternate Cores --------------------------------------------------
+
+    pub async fn list_cores(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/cores")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn core_status(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url(&format!("/v1/cores/{id}"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn core_start(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url(&format!("/v1/cores/{id}/start"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn core_stop(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url(&format!("/v1/cores/{id}/stop"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn core_skills(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url(&format!("/v1/cores/{id}/skills"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn core_install_skill(
+        &self,
+        id: &str,
+        slug: &str,
+    ) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({ "slug": slug });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/cores/{id}/skills/install")))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    // ---- MCP Servers ------------------------------------------------------
+
+    pub async fn list_mcp_servers(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/mcp/servers")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn register_mcp_server(
+        &self,
+        name: &str,
+        transport: &str,
+        target: &str,
+        env: serde_json::Value,
+        auto_start: bool,
+    ) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({
+            "name": name,
+            "transport": transport,
+            "target": target,
+            "env": env,
+            "auto_start": auto_start,
+        });
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/mcp/servers")).json(&body))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn unregister_mcp_server(&self, name: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.delete(self.url(&format!("/v1/mcp/servers/{name}"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn start_mcp(&self, name: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/mcp/servers/{name}/start"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn stop_mcp(&self, name: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/mcp/servers/{name}/stop"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn discover_mcp(&self, name: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .get(self.url(&format!("/v1/mcp/servers/{name}/discover"))),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn invoke_mcp_tool(
+        &self,
+        name: &str,
+        tool: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/mcp/servers/{name}/tools/{tool}")))
+                    .json(&args),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    // ---- Memory -----------------------------------------------------------
+
+    pub async fn list_memories(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/memory")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn remember(
+        &self,
+        content: &str,
+        category: Option<&str>,
+        source: Option<&str>,
+    ) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({
+            "content": content,
+            "category": category.unwrap_or("general"),
+            "source": source.unwrap_or("user"),
+        });
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/memory")).json(&body))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn forget_memory(&self, id: &str) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.delete(self.url(&format!("/v1/memory/{id}"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn forget_all_memories(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.delete(self.url("/v1/memory")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    // ---- Assistance / Micro Model -----------------------------------------
+
+    pub async fn get_micro_model(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/assistance/micro-model")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn set_micro_model(&self, model: Option<&str>) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({ "model": model });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url("/v1/assistance/micro-model"))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    // ---- Figures ----------------------------------------------------------
+
+    pub async fn list_figures(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/figures")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn save_figure(&self, body: serde_json::Value) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/figures")).json(&body))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn remove_figure(&self, id: &str) -> Result<(), SdkError> {
+        let resp = self
+            .add_auth(self.http.delete(self.url(&format!("/v1/figures/{id}"))))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    // ---- Travel mode ------------------------------------------------------
+
+    pub async fn travel_status(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/travel")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn set_travel(&self, provider: Option<&str>) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({ "provider": provider });
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/travel")).json(&body))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    pub async fn travel_home(&self) -> Result<serde_json::Value, SdkError> {
+        let resp = self
+            .add_auth(self.http.get(self.url("/v1/travel/home")))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct SessionDetail {
@@ -639,8 +1215,7 @@ pub enum ApprovalScope {
     Always,
 }
 
-/// Probe a remote server's health with a short timeout. Used by the `auto`
-/// mode fallback logic.
+/// Probe a remote server's health with a short timeout.
 pub async fn remote_healthy(base_url: &str, timeout: Duration) -> bool {
     let client = reqwest::Client::builder()
         .timeout(timeout)
@@ -655,26 +1230,11 @@ pub async fn remote_healthy(base_url: &str, timeout: Duration) -> bool {
         .unwrap_or(false)
 }
 
-/// Pick the active connection in `auto` mode: try remote first, fall back to local.
-pub async fn resolve_auto(
-    remote_url: Option<&str>,
-    _local_url: &str,
-    timeout: Duration,
-) -> ConnectionMode {
-    if let Some(remote) = remote_url {
-        if remote_healthy(remote, timeout).await {
-            return ConnectionMode::Remote;
-        }
-    }
-    // Fallback to local. (V1 also healthchecks _local_url here; the skeleton
-    // defaults to Local regardless, since a missing daemon can be auto-started.)
-    ConnectionMode::Local
-}
-
-/// Helper to mark a task as completed/failed locally (for in-process core use).
+/// Helper to mark a task as completed/failed locally.
 pub fn terminal_status(status: TaskStatus) -> bool {
     matches!(
         status,
         TaskStatus::Completed | TaskStatus::Cancelled | TaskStatus::Failed
     )
 }
+

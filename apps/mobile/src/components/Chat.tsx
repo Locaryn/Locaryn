@@ -5,12 +5,17 @@ import {
   type MediaResult,
   type Message,
   type MobileStatus,
+  type ToolApprovalDecision,
+  type ToolApprovalRequest,
   api,
 } from "../lib/core";
 import type { PhoneExtension } from "../lib/core";
+import { notifyMessageReceived, notifyToolApprovalRequired } from "../lib/notifications";
 import { ComposerActions } from "./ComposerActions";
 import { Drawer } from "./Drawer";
+import { ExtensionSlot } from "./extensions/ExtensionSlot";
 import { type Destination, MainMenu } from "./MainMenu";
+import { ToolApprovalModal } from "./ToolApprovalModal";
 import { UpdateButton } from "./UpdateButton";
 
 type Props = {
@@ -39,6 +44,7 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequest | null>(null);
   /**
    * Conversation éphémère : rien n'en sera gardé, pas même son titre. L'écran
    * le dit — un mode dont on ne se souvient pas n'en est pas un.
@@ -155,6 +161,15 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
     }
   }
 
+  async function handleResolveApproval(decision: ToolApprovalDecision) {
+    setPendingApproval(null);
+    try {
+      await api.approveToolCall(decision);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function send() {
     const text = draft.trim();
     if (!text || busy) return;
@@ -169,6 +184,13 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
         ...m,
         { id: `a${m.length}`, role: "assistant", content: reply.text, images: reply.images },
       ]);
+      if (reply.approval) {
+        setPendingApproval(reply.approval);
+        notifyToolApprovalRequired(reply.approval.tool, reply.approval.risk);
+      }
+      if (document.hidden && reply.text) {
+        notifyMessageReceived(status.server_name ?? "Locaryn", reply.text);
+      }
       // Une conversation éphémère n'apparaît nulle part : rien à rafraîchir.
       if (!ephemeral) void refreshList();
     } catch (e) {
@@ -214,6 +236,20 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
             <Icon name="private" />
           </button>
         )}
+        {/* Bouton Figures si disponible */}
+        {canFigures && (
+          <button
+            type="button"
+            className="lo-bar-icon"
+            onClick={() => onGo("figures")}
+            aria-label="Mode Figures"
+            title="Figures & Personas"
+          >
+            <Icon name="figures" />
+          </button>
+        )}
+        <ExtensionSlot name="topbar.actions" context={{ onNavigate: onGo }} />
+        <ExtensionSlot name="chat.header" context={{ onNavigate: onGo }} />
         <UpdateButton onOpen={() => onGo("settings")} />
         <button
           type="button"
@@ -306,6 +342,10 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
 
       <div className="lo-compose">
         <ComposerActions draft={draft} onDraft={setDraft} onError={setError} />
+        <ExtensionSlot
+          name="composer.toolbar"
+          context={{ input: draft, setInput: setDraft, send, canCompose: !busy, onNavigate: onGo }}
+        />
         <input
           className="lo-input"
           placeholder="Votre message"
@@ -323,6 +363,12 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
           ↑
         </button>
       </div>
+
+      <ToolApprovalModal
+        approval={pendingApproval}
+        onResolve={handleResolveApproval}
+        onCancel={() => setPendingApproval(null)}
+      />
     </div>
   );
 }

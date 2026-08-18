@@ -769,7 +769,10 @@ export function App() {
         onToggleModelConfig={() => setShowModelConfig(!showModelConfig)}
         onSettingsClick={() => setPermissionsOpen(true)}
         onChatSettingsClick={() => theme.setSettingsOpen(true)}
-        onNewEphemeralChat={handleNewEphemeralChat}
+        onNewEphemeralChat={
+          activeSession?.ephemeral ? handleNewStandaloneChat : handleNewEphemeralChat
+        }
+        isEphemeral={activeSession?.ephemeral ?? false}
       />
 
       <ChatPermissionsModal

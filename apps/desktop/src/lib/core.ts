@@ -843,6 +843,13 @@ export interface ServerStatus {
   blocker: string | null;
 }
 
+export interface ServerUserSummary {
+  id: string;
+  username: string;
+  role: string;
+  disabled: boolean;
+}
+
 /** Settings an administrator prepared for this machine. */
 export interface Provisioning {
   serverUrl: string;
@@ -1444,6 +1451,9 @@ export interface CoreApi {
   serverStatus(): Promise<ServerStatus>;
   setServerMode(enabled: boolean, port?: number): Promise<ServerStatus>;
   restartServer(): Promise<ServerStatus>;
+  listServerUsers(): Promise<ServerUserSummary[]>;
+  createServerUser(username: string, password: string, isAdmin?: boolean): Promise<ServerStatus>;
+  deleteServerUser(userId: string): Promise<ServerStatus>;
   /** Deployment settings dropped next to the installer, if any. */
   provisioning(): Promise<Provisioning | null>;
 
@@ -1915,6 +1925,12 @@ const tauriCore: CoreApi = {
   setServerMode: (enabled, port) =>
     invoke<ServerStatus>("set_server_mode", { args: { enabled, port: port ?? null } }),
   restartServer: () => invoke<ServerStatus>("restart_server"),
+  listServerUsers: () => invoke<ServerUserSummary[]>("list_server_users"),
+  createServerUser: (username, password, isAdmin = true) =>
+    invoke<ServerStatus>("create_server_user", {
+      args: { username, password, isAdmin },
+    }),
+  deleteServerUser: (userId) => invoke<ServerStatus>("delete_server_user", { userId }),
   provisioning: () => invoke<Provisioning | null>("provisioning"),
 
   signIn: (serverUrl, username, password) =>
@@ -3542,6 +3558,27 @@ const demoCore: CoreApi = {
     accounts: 1,
     fingerprint: "BD:E9:FA:13:1A:62:B6:93",
     blocker: null,
+  }),
+  listServerUsers: async () => [
+    { id: "usr-admin-1", username: "admin", role: "admin", disabled: false },
+  ],
+  createServerUser: async (username, _password, isAdmin = true) => ({
+    running: false,
+    bind: "0.0.0.0",
+    port: 7474,
+    url: "",
+    accounts: 1,
+    fingerprint: null,
+    blocker: null,
+  }),
+  deleteServerUser: async () => ({
+    running: false,
+    bind: "0.0.0.0",
+    port: 7474,
+    url: "",
+    accounts: 0,
+    fingerprint: null,
+    blocker: "Aucun compte n'existe.",
   }),
   provisioning: async () => null,
 

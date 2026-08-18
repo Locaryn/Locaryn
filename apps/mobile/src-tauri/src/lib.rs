@@ -570,6 +570,7 @@ async fn send_message(
     let text = String::from_utf8_lossy(&bytes);
     let mut reply = String::new();
     let mut artifact_ids: Vec<String> = Vec::new();
+    let mut pending_approval: Option<ToolApprovalRequest> = None;
     for block in text.split("\n\n") {
         let Some(data) = block
             .lines()
@@ -597,6 +598,23 @@ async fn send_message(
                     }
                 }
             }
+            Some("tool_approval") => {
+                if let (Some(call_id), Some(tool), Some(risk)) = (
+                    ev.get("call_id").and_then(|v| v.as_str()),
+                    ev.get("tool").and_then(|v| v.as_str()),
+                    ev.get("risk").and_then(|v| v.as_str()),
+                ) {
+                    pending_approval = Some(ToolApprovalRequest {
+                        call_id: call_id.to_string(),
+                        tool: tool.to_string(),
+                        args: ev.get("args").cloned(),
+                        risk: risk.to_string(),
+                        reason: ev.get("reason").and_then(|v| v.as_str()).map(str::to_string),
+                        diff: ev.get("diff").and_then(|v| v.as_str()).map(str::to_string),
+                        is_remote: ev.get("is_remote").and_then(|v| v.as_bool()),
+                    });
+                }
+            }
             _ => {}
         }
     }
@@ -615,6 +633,7 @@ async fn send_message(
         text: reply,
         images,
         conversation_id: session_id,
+        approval: pending_approval,
     })
 }
 
@@ -793,6 +812,41 @@ pub struct ChatTurn {
     pub content: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ToolApprovalRequest {
+    pub call_id: String,
+    pub tool: String,
+    pub args: Option<serde_json::Value>,
+    pub risk: String,
+    pub reason: Option<String>,
+    pub diff: Option<String>,
+    pub is_remote: Option<bool>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ToolApprovalDecision {
+    pub call_id: String,
+    pub allow: bool,
+    pub scope: String,
+    pub audit_note: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UserProfile {
+    pub id: Option<String>,
+    pub username: String,
+    pub role: String,
+    pub server_url: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PhoneUserSummary {
+    pub id: String,
+    pub username: String,
+    pub role: String,
+    pub disabled: bool,
+}
+
 /// Ce qu'un tour de conversation rapporte : les mots, et ce que les outils ont
 /// produit en chemin.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -802,6 +856,7 @@ pub struct ChatReply {
     /// La conversation dans laquelle ce tour a eu lieu. Le téléphone la garde
     /// pour continuer au lieu d'en ouvrir une autre au message suivant.
     pub conversation_id: String,
+    pub approval: Option<ToolApprovalRequest>,
 }
 
 /// Télécharger un artefact et le rendre affichable par la vue web.
@@ -1736,6 +1791,150 @@ async fn generate_audio(
     .await
 }
 
+#[tauri::command]
+async fn current_user() -> Result<UserProfile, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/auth/me"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Ok(UserProfile {
+            id: None,
+            username: session.username,
+            role: "member".into(),
+            server_url: server.current_url,
+        });
+    }
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(UserProfile {
+        id: body.get("id").and_then(|v| v.as_str()).map(str::to_string),
+        username: body
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&session.username)
+            .to_string(),
+        role: body
+            .get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or("member")
+            .to_string(),
+        server_url: server.current_url,
+    })
+}
+
+#[tauri::command]
+async fn change_password(current: String, nouveau: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/auth/password"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({
+            "current": current,
+            "nouveau": nouveau
+        }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::FORBIDDEN {
+        return Err("Le mot de passe actuel est incorrect.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Échec du changement de mot de passe ({}).", resp.status()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn list_server_users() -> Result<Vec<PhoneUserSummary>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/users"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::FORBIDDEN {
+        return Err("Droits administrateur requis.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a renvoyé {}.", resp.status()));
+    }
+    resp.json::<Vec<PhoneUserSummary>>().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn create_server_user(username: String, password: String, is_admin: Option<bool>) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/users"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({
+            "username": username,
+            "password": password,
+            "is_admin": is_admin.unwrap_or(false),
+        }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::FORBIDDEN {
+        return Err("Droits administrateur requis.".into());
+    }
+    if resp.status() == reqwest::StatusCode::CONFLICT {
+        return Err("Ce nom d'utilisateur existe déjà ou le mot de passe est trop court.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a refusé la création ({}).", resp.status()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_server_user(user_id: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .delete(format!("{base}/v1/users/{user_id}"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::FORBIDDEN {
+        return Err("Droits administrateur requis.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a renvoyé {}.", resp.status()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn approve_tool_call(decision: ToolApprovalDecision) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/tasks/{}/approve", decision.call_id))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({
+            "allow": decision.allow,
+            "scope": decision.scope,
+            "audit_note": decision.audit_note,
+        }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a répondu {}.", resp.status()));
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -1755,6 +1954,12 @@ pub fn run() {
             reconnect_active_server,
             sign_in,
             sign_out,
+            current_user,
+            change_password,
+            list_server_users,
+            create_server_user,
+            delete_server_user,
+            approve_tool_call,
             send_message,
             list_media_models,
             list_conversations,

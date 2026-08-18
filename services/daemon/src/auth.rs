@@ -232,6 +232,122 @@ pub async fn change_password(
     }
 }
 
+/// Liste les comptes utilisateurs existants (administrateur requis si auth active).
+pub async fn list_users(
+    State(state): State<Arc<AuthState>>,
+    user: Option<axum::extract::Extension<User>>,
+) -> Response {
+    if state.required && !user.as_ref().is_some_and(|u| u.0.role == Role::Admin) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "admin_required" })),
+        )
+            .into_response();
+    }
+    match state.users.list().await {
+        Ok(users) => {
+            let out: Vec<serde_json::Value> = users
+                .into_iter()
+                .map(|u| {
+                    serde_json::json!({
+                        "id": u.id,
+                        "username": u.username,
+                        "role": if u.role == Role::Admin { "admin" } else { "member" },
+                        "disabled": u.disabled,
+                    })
+                })
+                .collect();
+            (StatusCode::OK, Json(out)).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct CreateUserBody {
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub is_admin: bool,
+}
+
+/// Créer un nouvel identifiant / compte utilisateur.
+pub async fn create_user(
+    State(state): State<Arc<AuthState>>,
+    user: Option<axum::extract::Extension<User>>,
+    Json(body): Json<CreateUserBody>,
+) -> Response {
+    let count = state.users.count().await.unwrap_or(0);
+    // Si aucun compte n'existe, on autorise le premier compte admin initial (bootstrap)
+    if state.required && count > 0 && !user.as_ref().is_some_and(|u| u.0.role == Role::Admin) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "admin_required" })),
+        )
+            .into_response();
+    }
+    let role = if body.is_admin || count == 0 {
+        Role::Admin
+    } else {
+        Role::Member
+    };
+    match state.users.create(&body.username, &body.password, role).await {
+        Ok(u) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "id": u.id,
+                "username": u.username,
+                "role": if u.role == Role::Admin { "admin" } else { "member" },
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+/// Supprimer un compte utilisateur.
+pub async fn delete_user(
+    State(state): State<Arc<AuthState>>,
+    user: Option<axum::extract::Extension<User>>,
+    axum::extract::Path(user_id_str): axum::extract::Path<String>,
+) -> Response {
+    if state.required && !user.as_ref().is_some_and(|u| u.0.role == Role::Admin) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "admin_required" })),
+        )
+            .into_response();
+    }
+    let Ok(user_id) = uuid::Uuid::parse_str(&user_id_str) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid_user_id" })),
+        )
+            .into_response();
+    };
+    match state.users.delete(user_id).await {
+        Ok(true) => (StatusCode::OK, Json(serde_json::json!({ "deleted": true }))).into_response(),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "user_not_found" })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -23,15 +23,44 @@ use tokio::io::AsyncWriteExt;
 
 use crate::DaemonState;
 
-/// GET /v1/media/models?kind=image|audio — what the machine can generate.
+fn list_chat_models() -> Vec<String> {
+    let models_dir = locaryn_config::models_dir();
+    let mut names = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&models_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if (ext.eq_ignore_ascii_case("gguf") || ext.eq_ignore_ascii_case("safetensors"))
+                        && !path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n.ends_with(".part") || n.ends_with(".tmp"))
+                    {
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                            names.push(name.to_string());
+                        }
+                    }
+                }
+            } else if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if !name.starts_with('.') {
+                        names.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    names.sort();
+    names
+}
+
+/// GET /v1/media/models?kind=image|audio|chat|all — what the machine can generate.
 pub async fn list_models(
     State(_s): State<Arc<DaemonState>>,
     axum::extract::Query(params): axum::extract::Query<ModelQuery>,
 ) -> Response {
     let kind = params.kind.as_deref().unwrap_or("image");
-    // Les images se disent en détail : un modèle de diffusion seul apparaît
-    // dans la liste mais annonce ce qui lui manque, pour que le client ne le
-    // propose pas comme s'il pouvait produire quelque chose.
     if kind == "image" {
         let details = locaryn_media::image::list_image_models_detailed();
         let names: Vec<&str> = details.iter().map(|d| d.name.as_str()).collect();
@@ -42,19 +71,34 @@ pub async fn list_models(
         }))
         .into_response();
     }
-    let models = match kind {
-        "audio" => locaryn_media::audio::list_tts_models(),
-        other => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": { "code": "bad_request", "message": format!("kind inconnu : {other} (image|audio)") }
-                })),
-            )
-                .into_response();
-        }
-    };
-    Json(serde_json::json!({ "kind": kind, "models": models })).into_response()
+    if kind == "audio" {
+        let models = locaryn_media::audio::list_tts_models();
+        return Json(serde_json::json!({ "kind": kind, "models": models })).into_response();
+    }
+    if kind == "chat" {
+        let models = list_chat_models();
+        return Json(serde_json::json!({ "kind": kind, "models": models })).into_response();
+    }
+    if kind == "all" {
+        let mut chat = list_chat_models();
+        let mut audio = locaryn_media::audio::list_tts_models();
+        let image_details = locaryn_media::image::list_image_models_detailed();
+        let mut image: Vec<String> = image_details.into_iter().map(|d| d.name).collect();
+        let mut all = Vec::new();
+        all.append(&mut chat);
+        all.append(&mut audio);
+        all.append(&mut image);
+        all.sort();
+        all.dedup();
+        return Json(serde_json::json!({ "kind": kind, "models": all })).into_response();
+    }
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "error": { "code": "bad_request", "message": format!("kind inconnu : {kind} (image|audio|chat|all)") }
+        })),
+    )
+        .into_response()
 }
 
 /// Décode une image source envoyée par un client mince (base64, avec ou
@@ -251,7 +295,13 @@ pub struct AudioGenBody {
 /// téléchargement casse en route. Les refus qui précèdent tout octet reçu
 /// (adresse invalide, déjà installé) restent des réponses JSON ordinaires.
 pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
-    let url = body.url.trim().to_string();
+    let raw_url = body.url.or(body.name).or(body.model).unwrap_or_default();
+    let mut url = raw_url.trim().to_string();
+    if url.starts_with("hf.co/") {
+        url = url.replace("hf.co/", "https://huggingface.co/");
+    } else if !url.starts_with("http") && url.contains('/') && !url.contains('\\') && !url.contains(' ') {
+        url = format!("https://huggingface.co/{url}");
+    }
     let (file_name, kind) = match classify_model_url(&url) {
         Ok(v) => v,
         Err(msg) => {
@@ -595,7 +645,12 @@ enum ModelKind {
 
 #[derive(serde::Deserialize)]
 pub struct PullBody {
-    url: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 /// Décider de ce que désigne une adresse, et du nom sous lequel le modèle

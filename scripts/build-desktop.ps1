@@ -15,6 +15,20 @@ if (-not (Get-Command -Name "pnpm" -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
+Write-Host "[Locaryn] Building locaryn-daemon and locaryn CLI in release mode..." -ForegroundColor Cyan
+cargo build --release -p locaryn-daemon -p locaryn-cli
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$BinariesDir = Join-Path $Root "apps\desktop\src-tauri\binaries"
+$ServersDir = Join-Path $ReleaseDir "servers"
+New-Item -ItemType Directory -Path $BinariesDir -Force | Out-Null
+New-Item -ItemType Directory -Path $ServersDir -Force | Out-Null
+
+Copy-Item (Join-Path $Root "target\release\locaryn-daemon.exe") (Join-Path $BinariesDir "locaryn-daemon-x86_64-pc-windows-msvc.exe") -Force
+Copy-Item (Join-Path $Root "target\release\locaryn.exe") (Join-Path $BinariesDir "locaryn-x86_64-pc-windows-msvc.exe") -Force
+Copy-Item (Join-Path $Root "target\release\locaryn-daemon.exe") (Join-Path $ServersDir "locaryn-daemon.exe") -Force
+Copy-Item (Join-Path $Root "target\release\locaryn.exe") (Join-Path $ServersDir "locaryn.exe") -Force
+
 Write-Host "[Locaryn] Building desktop app for Windows..." -ForegroundColor Cyan
 
 Push-Location (Join-Path $Root "apps\desktop")

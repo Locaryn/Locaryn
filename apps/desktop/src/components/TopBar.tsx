@@ -21,6 +21,8 @@ type Props = {
   onChatSettingsClick?: () => void;
   /** Start an ephemeral conversation. */
   onNewEphemeralChat?: () => void;
+  /** True when current conversation is ephemeral. */
+  isEphemeral?: boolean;
 };
 
 const MODE_LABEL: Record<ConnectionMode, string> = {
@@ -56,6 +58,7 @@ export function TopBar({
   onSettingsClick,
   onChatSettingsClick,
   onNewEphemeralChat,
+  isEphemeral = false,
 }: Props) {
   const isChatView = activeView === "chat";
 
@@ -66,6 +69,7 @@ export function TopBar({
           type="button"
           className="locaryn-icon-btn locaryn-topbar-action locaryn-menu-btn"
           title="Ouvrir le menu de navigation (Marketplace, Batch API, Entraînement...)"
+          aria-label="Ouvrir le menu de navigation"
           onClick={onToggleNavDrawer}
         >
           <svg
@@ -75,6 +79,8 @@ export function TopBar({
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             aria-hidden="true"
           >
             <line x1="3" y1="12" x2="21" y2="12" />
@@ -102,12 +108,25 @@ export function TopBar({
           {onNewEphemeralChat && (
             <button
               type="button"
-              className="locaryn-ephemeral-topbar-btn"
+              className={`locaryn-ephemeral-topbar-btn${isEphemeral ? " locaryn-ephemeral-active" : ""}`}
               onClick={onNewEphemeralChat}
-              title="Démarrer une conversation éphémère (rien ne sera conservé)"
+              title={
+                isEphemeral
+                  ? "Quitter le mode éphémère et ouvrir une conversation normale"
+                  : "Démarrer une conversation éphémère (rien ne sera conservé)"
+              }
+              style={
+                isEphemeral
+                  ? {
+                      background: "rgba(239, 68, 68, 0.18)",
+                      borderColor: "var(--danger)",
+                      color: "var(--danger)",
+                    }
+                  : undefined
+              }
             >
               <Icon name="private" size={13} />
-              <span>Éphémère</span>
+              <span>{isEphemeral ? "Éphémère actif (cliquer pour quitter)" : "Éphémère"}</span>
             </button>
           )}
 

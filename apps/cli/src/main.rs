@@ -277,8 +277,14 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let cfg = locaryn_config::load(None)?;
-    let base_url = cli.server.unwrap_or(cfg.connection.local_url.clone());
-    let client = LocarynClient::new(&base_url, cli.token)?;
+    let (base_url, token) = if let Some(server) = cli.server {
+        (server, cli.token)
+    } else if let Some(stored) = LocarynClient::stored_session() {
+        (stored.server_url, cli.token.or(Some(stored.token)))
+    } else {
+        (cfg.connection.local_url.clone(), cli.token)
+    };
+    let client = LocarynClient::new(&base_url, token)?;
 
     // Most commands talk to the daemon, so an unreachable one is the single
     // most likely first-run failure. A raw reqwest chain tells the user nothing
@@ -763,6 +769,7 @@ fn tail_of(path: &std::path::Path, lines: usize) -> Option<String> {
 async fn print_status(client: &LocarynClient) -> anyhow::Result<()> {
     let h = client.health().await?;
     println!("Locaryn status");
+    println!("  server  : {}", client.base_url());
     println!("  version : {}", h.version);
     println!("  mode    : {:?}", h.mode);
     if let Some(p) = h.active_provider {

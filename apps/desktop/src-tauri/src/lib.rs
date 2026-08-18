@@ -100,6 +100,29 @@ struct Core {
     cores: Arc<core_engines::CoreManager>,
 }
 
+impl Core {
+    /// Return a configured LocarynClient targeting the active remote server session.
+    pub fn remote_client(&self) -> Option<locaryn_sdk::LocarynClient> {
+        let sess = client_cert::current_session().ok().flatten()?;
+        let cert_dir = locaryn_config::default_data_dir().join("client-tls");
+        let client_pem = std::fs::read_to_string(cert_dir.join("client.pem")).ok();
+        let ca_pem = std::fs::read_to_string(cert_dir.join("authority.pem")).ok();
+        let fingerprint = locaryn_config::provision::load()
+            .ok()
+            .flatten()
+            .and_then(|p| p.certificate_fingerprint);
+        let http = crate::secure_client::build(
+            client_pem.as_deref(),
+            ca_pem.as_deref(),
+            fingerprint.as_deref(),
+            std::time::Duration::from_secs(60),
+        )
+        .ok()?;
+        locaryn_sdk::LocarynClient::with_client(sess.server_url, Some(sess.token), http).ok()
+    }
+}
+
+
 /// One in-flight approval prompt, parked on the runtime until the user
 /// resolves it on the desktop (or the daemon receives a CLI answer).
 #[allow(dead_code)]
@@ -349,6 +372,12 @@ async fn init_core() -> anyhow::Result<Core> {
 
 #[tauri::command]
 async fn core_health(core: State<'_, Core>) -> Result<Health, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(mut h) = client.health().await {
+            h.mode = ConnectionMode::Remote;
+            return Ok(h);
+        }
+    }
     let active = core.storage.providers.active().await.ok().flatten();
     let provider_summary = active.as_ref().map(|p| ProviderSummary {
         kind: p.kind,
@@ -464,6 +493,11 @@ fn save_audio_as(source_path: String, destination_path: String) -> Result<(), St
 
 #[tauri::command]
 async fn list_projects(core: State<'_, Core>) -> Result<Vec<Project>, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(projects) = client.list_projects().await {
+            return Ok(projects);
+        }
+    }
     core.storage
         .projects
         .list()
@@ -478,9 +512,15 @@ async fn create_project(
     name: String,
     trust_level: Option<TrustLevel>,
 ) -> Result<Project, String> {
+    let trust = trust_level.unwrap_or_default();
+    if let Some(client) = core.remote_client() {
+        if let Ok(project) = client.create_project(&path, &name, trust).await {
+            return Ok(project);
+        }
+    }
     core.storage
         .projects
-        .create(&path, &name, trust_level.unwrap_or_default())
+        .create(&path, &name, trust)
         .await
         .map_err(|e| e.to_string())
 }
@@ -1266,6 +1306,11 @@ async fn delete_session(core: State<'_, Core>, id: Uuid) -> Result<(), String> {
 
 #[tauri::command]
 async fn list_sessions(core: State<'_, Core>, project_id: Uuid) -> Result<Vec<Session>, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(sessions) = client.list_sessions(&project_id.to_string()).await {
+            return Ok(sessions);
+        }
+    }
     core.storage
         .sessions
         .list_for_project(project_id)
@@ -1280,6 +1325,11 @@ async fn create_session(
     title: Option<String>,
     core_id: Option<String>,
 ) -> Result<Session, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(session) = client.create_session_with_core(&project_id.to_string(), core_id.as_deref()).await {
+            return Ok(session);
+        }
+    }
     let title = title.and_then(|t| {
         let t = t.trim().to_string();
         if t.is_empty() {
@@ -1545,6 +1595,39 @@ async fn send_message(
         .await
     {
         tracing::warn!(error = %e, "failed to persist user message");
+    }
+
+    // 1b. If connected to a remote server / DGX supercomputer, stream from the remote server.
+    if let Some(client) = core.remote_client() {
+        match client.send_message(&session_id.to_string(), &content).await {
+            Ok(mut stream) => {
+                use futures::StreamExt;
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(evt) => {
+                            let _ = on_event.send(evt);
+                        }
+                        Err(e) => {
+                            let _ = on_event.send(StreamEvent::Log {
+                                level: locaryn_events::LogLevel::Error,
+                                msg: e.to_string(),
+                                source: "remote".to_string(),
+                            });
+                            return Err(e.to_string());
+                        }
+                    }
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                let _ = on_event.send(StreamEvent::Log {
+                    level: locaryn_events::LogLevel::Error,
+                    msg: e.to_string(),
+                    source: "remote".to_string(),
+                });
+                return Err(e.to_string());
+            }
+        }
     }
 
     // 2. Resolve session → project context (path + trust) for the tool loop.
@@ -1994,6 +2077,11 @@ async fn run_terminal(
 
 #[tauri::command]
 async fn list_providers(core: State<'_, Core>) -> Result<Vec<Provider>, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(providers) = client.list_providers().await {
+            return Ok(providers);
+        }
+    }
     core.storage
         .providers
         .list()
@@ -2250,7 +2338,20 @@ pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
 /// Hits `{endpoint}/api/tags` and returns the model names, sorted. Doubles as
 /// a connection test: an error means the runtime is unreachable.
 #[tauri::command]
-async fn list_models(_core: State<'_, Core>, _endpoint: String) -> Result<Vec<String>, String> {
+async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<String>, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(val) = client.list_media_models(Some("chat")).await {
+            if let Some(models) = val.get("models").and_then(|m| m.as_array()) {
+                let names: Vec<String> = models
+                    .iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect();
+                if !names.is_empty() {
+                    return Ok(names);
+                }
+            }
+        }
+    }
     // Return one entry per installed model. A model is either a single weight
     // file at the top level, or a directory/repository that may contain many
     // weight/config files. For directories, we pick a canonical representative
@@ -2422,6 +2523,61 @@ async fn pull_model(
              ou une URL directe vers un fichier .safetensors / .gguf."
                 .into(),
         );
+    }
+
+    if let Some(client) = core.remote_client() {
+        match client.pull_model(&_endpoint, &url, heretic, consent).await {
+            Ok(mut byte_stream) => {
+                use futures::StreamExt;
+                let mut buffer = String::new();
+                while let Some(chunk_res) = byte_stream.next().await {
+                    match chunk_res {
+                        Ok(chunk) => {
+                            if let Ok(text) = std::str::from_utf8(&chunk) {
+                                buffer.push_str(text);
+                                while let Some(idx) = buffer.find("\n\n") {
+                                    let block = buffer[..idx].to_string();
+                                    buffer = buffer[idx + 2..].to_string();
+                                    for line in block.lines() {
+                                        if let Some(data) = line.strip_prefix("data:") {
+                                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(data.trim()) {
+                                                let percentage = val.get("percentage").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                                                let completed = val.get("downloaded").and_then(|v| v.as_u64()).unwrap_or(0);
+                                                let total = val.get("total").and_then(|v| v.as_u64()).unwrap_or(0);
+                                                let status = val.get("message").and_then(|v| v.as_str()).unwrap_or("downloading").to_string();
+                                                let _ = on_event.send(PullProgressEvent {
+                                                    status,
+                                                    completed,
+                                                    total,
+                                                    percentage,
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let _ = on_event.send(PullProgressEvent {
+                                status: format!("error: {e}"),
+                                completed: 0,
+                                total: 0,
+                                percentage: 0.0,
+                            });
+                            return Err(e.to_string());
+                        }
+                    }
+                }
+                let _ = on_event.send(PullProgressEvent {
+                    status: "success".to_string(),
+                    completed: 100,
+                    total: 100,
+                    percentage: 100.0,
+                });
+                return Ok(());
+            }
+            Err(e) => return Err(e.to_string()),
+        }
     }
 
     // ── Repo-level download: if the URL points to a HuggingFace repository
@@ -4025,7 +4181,20 @@ fn python_string_literal(s: &str) -> String {
 }
 
 #[tauri::command]
-async fn list_image_models(_core: State<'_, Core>) -> Result<Vec<String>, String> {
+async fn list_image_models(core: State<'_, Core>) -> Result<Vec<String>, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(val) = client.list_media_models(Some("image")).await {
+            if let Some(models) = val.get("models").and_then(|m| m.as_array()) {
+                let mut names: Vec<String> = models
+                    .iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect();
+                names.sort();
+                names.dedup();
+                return Ok(names);
+            }
+        }
+    }
     let models_dir = locaryn_config::models_dir();
     let mut names: Vec<String> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
@@ -7425,7 +7594,12 @@ fn check_hardware() -> Result<HardwareSpec, String> {
 // ============================================================================
 
 #[tauri::command]
-fn delete_model_cmd(_endpoint: String, model: String) -> Result<(), String> {
+async fn delete_model_cmd(core: State<'_, Core>, _endpoint: String, model: String) -> Result<(), String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(_) = client.delete_model(&model).await {
+            return Ok(());
+        }
+    }
     let models_dir = locaryn_config::models_dir();
     let resolved = resolve_model_path(&models_dir, &model);
 
@@ -8417,6 +8591,9 @@ pub fn run() {
             server_mode::set_server_mode,
             server_mode::restart_server,
             server_mode::provisioning,
+            server_mode::list_server_users,
+            server_mode::create_server_user,
+            server_mode::delete_server_user,
             storage_root::storage_info,
             voice_presets::list_voice_presets,
             voice_presets::save_voice_preset,

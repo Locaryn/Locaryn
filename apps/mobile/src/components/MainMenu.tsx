@@ -1,5 +1,6 @@
 import { Icon, isIconName } from "@locaryn/ui-core";
 import type { PhoneExtension } from "../lib/core";
+import { getSlotContributions } from "./extensions/SlotRegistry";
 
 /** Les grands espaces de l'application, ceux qui méritent leur propre écran. */
 export type Destination = "studio" | "extensions" | "models" | "settings" | "figures";
@@ -42,6 +43,19 @@ export function MainMenu({ open, onClose, canCreate, canFigures, onGo, extension
   );
 
   const pris = new Set<string>(visibles.map((d) => d.id));
+  const navSlots = getSlotContributions(extensions, "nav.drawer");
+  const depuisSlots = navSlots.flatMap((slot) => {
+    if (pris.has(slot.id)) return [];
+    pris.add(slot.id);
+    return [
+      {
+        id: slot.id,
+        label: slot.label || slot.id,
+        note: `Apporté par ${slot.extensionName}`,
+        icon: slot.icon,
+      },
+    ];
+  });
   const depuisExtensions = extensions.flatMap((ext) =>
     (ext.ui?.nav_items ?? []).flatMap((ni) => {
       if (pris.has(ni.id)) return [];
@@ -51,6 +65,7 @@ export function MainMenu({ open, onClose, canCreate, canFigures, onGo, extension
           id: ni.id,
           label: ni.label,
           note: `Apporté par ${ext.display_name || ext.name}`,
+          icon: ni.icon,
         },
       ];
     }),
@@ -66,17 +81,20 @@ export function MainMenu({ open, onClose, canCreate, canFigures, onGo, extension
       />
       <div className="lo-sheet" role="menu">
         <div className="lo-sheet-grip" />
-        {[...visibles, ...depuisExtensions].map((d) => (
-          <button key={d.id} type="button" className="lo-sheet-item" onClick={() => onGo(d.id)}>
-            <span className="lo-sheet-icon">
-              <Icon name={isIconName(d.id) ? d.id : "extensions"} />
-            </span>
-            <span className="lo-sheet-text">
-              <span className="lo-sheet-label">{d.label}</span>
-              <span className="lo-hint">{d.note}</span>
-            </span>
-          </button>
-        ))}
+        {[...visibles, ...depuisSlots, ...depuisExtensions].map((d) => {
+          const icon = (d as { icon?: string | null }).icon;
+          return (
+            <button key={d.id} type="button" className="lo-sheet-item" onClick={() => onGo(d.id)}>
+              <span className="lo-sheet-icon">
+                <Icon name={icon && isIconName(icon) ? icon : isIconName(d.id) ? d.id : "extensions"} />
+              </span>
+              <span className="lo-sheet-text">
+                <span className="lo-sheet-label">{d.label}</span>
+                <span className="lo-hint">{d.note}</span>
+              </span>
+            </button>
+          );
+        })}
       </div>
     </>
   );

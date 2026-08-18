@@ -50,21 +50,38 @@ fn daemon_binary() -> Option<std::path::PathBuf> {
     } else {
         "locaryn-daemon"
     };
+    let name_triplet = if cfg!(windows) {
+        "locaryn-daemon-x86_64-pc-windows-msvc.exe"
+    } else {
+        "locaryn-daemon-x86_64-unknown-linux-gnu"
+    };
     let mut candidates = Vec::new();
 
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join(name));
+            candidates.push(dir.join(name_triplet));
+            candidates.push(dir.join("binaries").join(name));
+            candidates.push(dir.join("binaries").join(name_triplet));
             candidates.push(dir.join("..").join(name));
+            candidates.push(dir.join("..").join(name_triplet));
+            candidates.push(dir.join("..").join("servers").join(name));
             candidates.push(dir.join("..").join("..").join("target").join("debug").join(name));
             candidates.push(dir.join("..").join("..").join("target").join("release").join(name));
         }
     }
 
+    let bin = locaryn_config::bin_dir();
+    candidates.push(bin.join(name));
+    candidates.push(bin.join("servers").join(name));
+    candidates.push(locaryn_config::global_dir().join("bin").join(name));
+
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join("target").join("debug").join(name));
         candidates.push(cwd.join("target").join("release").join(name));
+        candidates.push(cwd.join("release").join("servers").join(name));
         candidates.push(cwd.join("..").join("..").join("target").join("debug").join(name));
+        candidates.push(cwd.join("..").join("..").join("target").join("release").join(name));
     }
 
     candidates.into_iter().find(|candidate| candidate.is_file())
@@ -392,6 +409,69 @@ pub async fn restart_server() -> Result<ServerStatus, String> {
 #[tauri::command]
 pub fn provisioning() -> Result<Option<locaryn_config::provision::Provisioning>, String> {
     locaryn_config::provision::load()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerUserSummary {
+    pub id: String,
+    pub username: String,
+    pub role: String,
+    pub disabled: bool,
+}
+
+#[tauri::command]
+pub async fn list_server_users() -> Result<Vec<ServerUserSummary>, String> {
+    let db = locaryn_config::default_data_dir().join("locaryn.db");
+    let pool = locaryn_storage::open(&db).await.map_err(|e| e.to_string())?;
+    let repo = locaryn_storage::users::UserRepo::new(pool);
+    let users = repo.list().await.map_err(|e| e.to_string())?;
+    Ok(users
+        .into_iter()
+        .map(|u| ServerUserSummary {
+            id: u.id.to_string(),
+            username: u.username,
+            role: match u.role {
+                locaryn_storage::users::Role::Admin => "admin".to_string(),
+                locaryn_storage::users::Role::Member => "member".to_string(),
+            },
+            disabled: u.disabled,
+        })
+        .collect())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateServerUserArgs {
+    pub username: String,
+    pub password: String,
+    pub is_admin: bool,
+}
+
+#[tauri::command]
+pub async fn create_server_user(args: CreateServerUserArgs) -> Result<ServerStatus, String> {
+    let db = locaryn_config::default_data_dir().join("locaryn.db");
+    let pool = locaryn_storage::open(&db).await.map_err(|e| e.to_string())?;
+    let repo = locaryn_storage::users::UserRepo::new(pool);
+    let role = if args.is_admin {
+        locaryn_storage::users::Role::Admin
+    } else {
+        locaryn_storage::users::Role::Member
+    };
+    repo.create(&args.username, &args.password, role)
+        .await
+        .map_err(|e| e.to_string())?;
+    server_status().await
+}
+
+#[tauri::command]
+pub async fn delete_server_user(user_id: String) -> Result<ServerStatus, String> {
+    let db = locaryn_config::default_data_dir().join("locaryn.db");
+    let pool = locaryn_storage::open(&db).await.map_err(|e| e.to_string())?;
+    let repo = locaryn_storage::users::UserRepo::new(pool);
+    let id = uuid::Uuid::parse_str(&user_id).map_err(|e| e.to_string())?;
+    repo.delete(id).await.map_err(|e| e.to_string())?;
+    server_status().await
 }
 
 #[cfg(test)]

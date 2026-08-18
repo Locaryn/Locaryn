@@ -21,7 +21,7 @@ use tauri::State;
 
 use crate::Core;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct McpServerInfo {
     pub name: String,
@@ -50,14 +50,17 @@ pub struct AddMcpServer {
     pub auto_start: bool,
 }
 
-fn entry_target(e: &McpServerEntry) -> String {
-    match e.transport {
+fn entry_target(entry: &McpServerEntry) -> String {
+    match entry.transport {
         Transport::Stdio => {
-            let mut parts = vec![e.command.clone().unwrap_or_default()];
-            parts.extend(e.args.clone());
+            let mut parts = Vec::new();
+            if let Some(cmd) = &entry.command {
+                parts.push(cmd.clone());
+            }
+            parts.extend(entry.args.clone());
             parts.join(" ")
         }
-        Transport::Http => e.url.clone().unwrap_or_default(),
+        Transport::Http => entry.url.clone().unwrap_or_default(),
     }
 }
 
@@ -91,6 +94,13 @@ fn split_command(line: &str) -> (String, Vec<String>) {
 
 #[tauri::command]
 pub async fn list_mcp_servers(core: State<'_, Core>) -> Result<Vec<McpServerInfo>, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(val) = client.list_mcp_servers().await {
+            if let Ok(infos) = serde_json::from_value::<Vec<McpServerInfo>>(val) {
+                return Ok(infos);
+            }
+        }
+    }
     let entries: Vec<(String, McpServerEntry)> = {
         let cfg = core.mcp.config.lock().unwrap();
         let mut v: Vec<_> = cfg
@@ -135,6 +145,19 @@ pub async fn add_mcp_server(
     core: State<'_, Core>,
     args: AddMcpServer,
 ) -> Result<Vec<McpServerInfo>, String> {
+    if let Some(client) = core.remote_client() {
+        let env_obj = serde_json::to_value(&args.env).unwrap_or_default();
+        let _ = client
+            .register_mcp_server(
+                &args.name,
+                &args.transport,
+                &args.target,
+                env_obj,
+                args.auto_start,
+            )
+            .await;
+        return list_mcp_servers(core).await;
+    }
     let name = args.name.trim().to_string();
     if name.is_empty() {
         return Err("Donnez un nom à ce serveur.".into());
@@ -207,6 +230,10 @@ pub async fn remove_mcp_server(
     core: State<'_, Core>,
     name: String,
 ) -> Result<Vec<McpServerInfo>, String> {
+    if let Some(client) = core.remote_client() {
+        let _ = client.unregister_mcp_server(&name).await;
+        return list_mcp_servers(core).await;
+    }
     if let Some(client) = core.mcp.running.write().await.remove(&name) {
         let _ = client.shutdown().await;
     }
@@ -224,6 +251,17 @@ pub async fn remove_mcp_server(
 /// nothing is indistinguishable from one that failed, unless we say so.
 #[tauri::command]
 pub async fn start_mcp_server(core: State<'_, Core>, name: String) -> Result<Vec<String>, String> {
+    if let Some(client) = core.remote_client() {
+        if let Ok(val) = client.start_mcp(&name).await {
+            if let Some(tools) = val.get("tools").and_then(|t| t.as_array()) {
+                let list: Vec<String> = tools
+                    .iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect();
+                return Ok(list);
+            }
+        }
+    }
     let entry = {
         let cfg = core.mcp.config.lock().unwrap();
         cfg.mcp_servers.get(&name).cloned()
@@ -250,6 +288,10 @@ pub async fn start_mcp_server(core: State<'_, Core>, name: String) -> Result<Vec
 
 #[tauri::command]
 pub async fn stop_mcp_server(core: State<'_, Core>, name: String) -> Result<(), String> {
+    if let Some(client) = core.remote_client() {
+        let _ = client.stop_mcp(&name).await;
+        return Ok(());
+    }
     if let Some(client) = core.mcp.running.write().await.remove(&name) {
         client.shutdown().await.map_err(|e| e.to_string())?;
     }

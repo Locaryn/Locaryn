@@ -39,6 +39,7 @@ locaryn-auth = { workspace = true, features = ["system-keychain"] }
 locaryn-ssh = { workspace = true }
 locaryn-mcp = { workspace = true }
 locaryn-travel = { workspace = true }
+locaryn-sdk = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true, features = ["std"] }
 tokio-util = { workspace = true }
