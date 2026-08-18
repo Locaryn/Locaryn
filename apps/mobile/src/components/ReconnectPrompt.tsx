@@ -37,15 +37,20 @@ export function ReconnectPrompt({ busy, error, onScan, onAddress, onDismiss }: P
 
         <input
           className="lo-input"
-          placeholder="ou une nouvelle adresse : 192.168.1.20"
+          placeholder="Nouvelle adresse si elle a changé (ex. 192.168.1.20)"
           value={adresse}
           onChange={(e) => setAdresse(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && adresse.trim() && onAddress(adresse.trim())}
+          onKeyDown={(e) => e.key === "Enter" && onAddress(adresse.trim())}
         />
+        {/*
+          Le champ peut rester vide : le serveur a peut-être simplement
+          redémarré à la même adresse, et le bouton retente alors celle qu'on
+          connaît déjà — pas besoin de la retrouver de mémoire.
+        */}
         <button
           type="button"
           className="lo-btn-ghost"
-          disabled={busy || !adresse.trim()}
+          disabled={busy}
           onClick={() => onAddress(adresse.trim())}
         >
           {busy ? "Connexion…" : "Reprendre à cette adresse"}

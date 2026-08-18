@@ -475,6 +475,16 @@ export const core = {
   listProjects: () => invoke<PhoneProject[]>("list_projects"),
   listProjectConversations: (projectId: string) =>
     invoke<Conversation[]>("list_project_conversations", { projectId }),
+  /** Ranger une conversation aux archives, ou l'en ressortir. */
+  archiveConversation: (id: string, archived: boolean) =>
+    invoke<void>("archive_session", { id, archived }),
+  /** Déplacer une conversation dans un projet. */
+  moveConversation: (id: string, projectId: string) =>
+    invoke<void>("move_session", { id, projectId }),
+  /** Créer un projet sur le serveur, depuis le téléphone. */
+  createProject: (name: string) => invoke<PhoneProject>("create_project", { name }),
+  /** Les conversations libres rangées aux archives. */
+  archivedConversations: () => invoke<Conversation[]>("list_archived"),
   loadConversation: (id: string) => invoke<ChatTurn[]>("load_conversation", { id }),
   /** Models the machine can generate with: kind = "image" | "audio". */
   listMediaModels: (kind: "image" | "audio") => invoke<MediaModel[]>("list_media_models", { kind }),
@@ -652,9 +662,19 @@ export const demoCore: typeof core = {
   }),
   listConversations: async () => [
     { id: "demo", title: "Conversation de démonstration", last_message_at: null },
+    { id: "demo-2", title: "Préparer la terrasse", last_message_at: null },
   ],
   listProjects: async () => [{ id: "p1", name: "Atelier" }],
   listProjectConversations: async () => [],
+  archiveConversation: async () => {},
+  moveConversation: async () => {},
+  createProject: async (name) => ({
+    id: `p-${Date.now()}`,
+    name,
+  }),
+  archivedConversations: async () => [
+    { id: "demo-old", title: "Ancienne discussion", last_message_at: null },
+  ],
   loadConversation: async () => [],
   listMediaModels: async () => [
     { name: "sd_xl_turbo_1.0.q8_0.gguf", ready: true, missing: [] },
@@ -729,7 +749,9 @@ export const demoCore: typeof core = {
   generateImage: async () => ({
     name: "demo.png",
     mime: "image/png",
-    data_base64: "",
+    // Un carré vert de 2 px : assez pour voir qu'une image arrive et s'affiche.
+    data_base64:
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAADUlEQVR4nGNg+M8AQwAV9gP96s/jsQAAAABJRU5ErkJggg==",
   }),
   generateAudio: async () => ({
     name: "demo.wav",

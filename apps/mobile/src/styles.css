@@ -170,6 +170,13 @@ body {
   border-radius: var(--radius);
   cursor: pointer;
 }
+/* Sans cette règle, un bouton fantôme désactivé ressemble exactement à un
+   bouton actif : « Reprendre à cette adresse » paraissait cliquable alors
+   qu'il attendait une adresse — il ne faisait rien, sans le dire. */
+.lo-btn-ghost:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 
 .lo-error {
   margin: 0;
@@ -1050,6 +1057,36 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   color: var(--text-faint);
 }
 
+/* Créer un projet depuis le tiroir : une ligne discrète, mais pleine hauteur
+   sous le pouce. */
+.lo-drawer-new-project {
+  margin-top: var(--space-1);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Le menu contextuel d'une conversation : une feuille qui monte, comme le
+   menu principal, mais pour une seule ligne de l'historique. */
+.lo-sheet-context {
+  margin: 0;
+  padding: 0 var(--space-2) var(--space-2);
+  font-size: 13px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lo-sheet-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+.lo-sheet-close {
+  align-self: flex-end;
+  margin-top: var(--space-2);
+}
+
 .lo-drawer-project {
   display: flex;
   align-items: center;
@@ -1462,8 +1499,14 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 }
 
 /* ── Filtres / Chips ── */
+/* `flex: none` : une rangée de filtres ne doit jamais rétrécir dans la colonne
+   qui la porte. Sans lui, le conteneur (item flex, flex-shrink par défaut)
+   était compressé à sa bordure basse — 4px de haut — et les puces, elles,
+   restaient à 40px : le marketplace montrait des filtres coupés en hauteur. */
 .lo-chips {
+  flex: none;
   display: flex;
+  align-items: center;
   gap: var(--space-1);
   overflow-x: auto;
   padding-bottom: 4px;
@@ -1607,6 +1650,48 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+/* ── Chargement ──
+   Un anneau qui tourne : le même pour tout ce qui charge — la liste, une
+   conversation, une réponse. Une animation en mouvement vaut mieux qu'un
+   « … » statique qui ne dit pas si quelque chose se passe. */
+.lo-spinner {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 2px solid rgba(var(--accent-rgb), 0.25);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: lo-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-spinner {
+    animation-duration: 2s;
+  }
+}
+.lo-loading-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.lo-thread-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6) 0;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.lo-msg-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-faint);
 }
 
 /* ── Badges de risque d'autorisation ── */

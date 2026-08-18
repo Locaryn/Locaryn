@@ -266,10 +266,13 @@ async fn register_address(address: String) -> Result<MobileStatus, String> {
 }
 
 /// Reprendre le serveur déjà connu à une nouvelle adresse, après un échec.
+///
+/// Le champ peut rester vide : le serveur a peut-être redémarré à la même
+/// adresse, et c'est cette adresse-là qu'il faut retenter — pas une que la
+/// personne doit retrouver de mémoire. On essaie alors l'adresse courante,
+/// puis l'adresse d'origine, chacune dans ses deux variantes de schéma.
 #[tauri::command]
 async fn reconnect_active_server(address: String) -> Result<MobileStatus, String> {
-    let candidates = normalise_candidates(&address)?;
-
     let mut store = servers::load();
     let actif = store
         .active
@@ -277,6 +280,30 @@ async fn reconnect_active_server(address: String) -> Result<MobileStatus, String
         .ok_or("Aucun serveur enregistré sur cet appareil.")?;
     let Some(serveur) = store.get_mut(&actif) else {
         return Err("Aucun serveur enregistré sur cet appareil.".into());
+    };
+
+    // Une adresse tapée prime ; sinon on retente ce qu'on sait déjà.
+    let candidates = if address.trim().is_empty() {
+        let mut c = Vec::new();
+        for url in [&serveur.current_url, &serveur.home_url] {
+            let sans_schema = url
+                .trim_end_matches('/')
+                .strip_prefix("http://")
+                .or_else(|| url.trim_end_matches('/').strip_prefix("https://"));
+            if let Some(rest) = sans_schema {
+                if url.starts_with("https://") {
+                    c.push(format!("https://{rest}"));
+                    c.push(format!("http://{rest}"));
+                } else {
+                    c.push(format!("http://{rest}"));
+                    c.push(format!("https://{rest}"));
+                }
+            }
+        }
+        c.dedup();
+        c
+    } else {
+        normalise_candidates(&address)?
     };
 
     let client = reqwest::Client::builder()
@@ -897,6 +924,156 @@ async fn list_project_conversations(project_id: String) -> Result<Vec<Conversati
     let base = server.current_url.trim_end_matches('/').to_string();
     let resp = client
         .get(format!("{base}/v1/projects/{project_id}/sessions"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    let brut: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(conversations_depuis(&brut))
+}
+
+/// Ranger une conversation aux archives, ou l'en ressortir.
+///
+/// Rien n'est effacé : la conversation quitte simplement les listes. La même
+/// adresse que l'ordinateur, pour que le geste fait ici se voie là-bas.
+#[tauri::command]
+async fn archive_session(id: String, archived: bool) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/sessions/{id}/archive"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "archived": archived }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Votre session a expiré. Reconnectez-vous.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    Ok(())
+}
+
+/// Déplacer une conversation dans un projet.
+#[tauri::command]
+async fn move_session(id: String, project_id: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/sessions/{id}/project"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "project_id": project_id }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Votre session a expiré. Reconnectez-vous.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+    Ok(())
+}
+
+/// Créer un projet depuis le téléphone.
+///
+/// L'ordinateur choisit un dossier réel ; le téléphone n'a pas d'accès au
+/// disque du serveur. Le chemin devient un rangement stable, unique, dérivé
+/// du nom — les conversations y vivent, et si le dossier n'existe pas sur le
+/// serveur, la conversation s'y range quand même : c'est le serveur qui
+/// décide, le jour venu, de ce qu'il en fait pour les outils.
+#[tauri::command]
+async fn create_project(name: String) -> Result<PhoneProject, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let slug = slugify(&name);
+    let resp = client
+        .post(format!("{base}/v1/projects"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({
+            "path": format!("mobile-projets/{slug}"),
+            "name": name,
+            "trust_level": "sandbox",
+        }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Votre session a expiré. Reconnectez-vous.".into());
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let corps = resp.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&corps)
+            .ok()
+            .and_then(|v| {
+                v.pointer("/error/message")
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| format!("Le serveur a refusé la création ({status})."));
+        return Err(message);
+    }
+    let brut: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(PhoneProject {
+        id: brut
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or("Le serveur a renvoyé un projet sans identifiant.")?
+            .to_string(),
+        name: brut
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Projet")
+            .to_string(),
+    })
+}
+
+/// Un nom de projet ramené à une forme qui tient dans un chemin : minuscules,
+/// espaces et accents remplacés, jamais vide.
+fn slugify(nom: &str) -> String {
+    let mut sortie = String::new();
+    let mut precedent_tiret = false;
+    for c in nom.chars().flat_map(|c| c.to_lowercase()) {
+        if c.is_alphanumeric() {
+            sortie.push(c);
+            precedent_tiret = false;
+        } else if !precedent_tiret {
+            sortie.push('-');
+            precedent_tiret = true;
+        }
+    }
+    let sortie = sortie.trim_matches('-').to_string();
+    if sortie.is_empty() {
+        "projet".to_string()
+    } else {
+        sortie
+    }
+}
+
+/// Les conversations rangées aux archives — celles du conteneur des
+/// conversations libres, les seules qu'on range depuis ce tiroir.
+#[tauri::command]
+async fn list_archived() -> Result<Vec<Conversation>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/').to_string();
+    let project_id = ensure_free_chat_project(&client, &server, &session.token).await?;
+    let resp = client
+        .get(format!("{base}/v1/projects/{project_id}/archived"))
         .bearer_auth(&session.token)
         .send()
         .await
@@ -2125,6 +2302,10 @@ pub fn run() {
             list_conversations,
             list_projects,
             list_project_conversations,
+            archive_session,
+            move_session,
+            create_project,
+            list_archived,
             load_conversation,
             list_memory,
             remember,
@@ -2246,6 +2427,23 @@ mod adresse_tests {
     fn refus_du_vide_et_des_schemas_inconnus() {
         assert!(normalise_address("   ").is_err());
         assert!(normalise_address("ftp://serveur").is_err());
+    }
+}
+
+#[cfg(test)]
+mod slugify_tests {
+    use super::slugify;
+
+    #[test]
+    fn un_nom_de_projet_devient_un_chemin_stable() {
+        assert_eq!(slugify("Jardin d'été"), "jardin-d-été");
+        assert_eq!(slugify("  Projet   Web  "), "projet-web");
+    }
+
+    #[test]
+    fn un_nom_sans_lettres_reste_utilisable() {
+        assert_eq!(slugify("!!!"), "projet");
+        assert_eq!(slugify(""), "projet");
     }
 }
 

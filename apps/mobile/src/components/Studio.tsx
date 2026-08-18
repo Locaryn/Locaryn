@@ -9,6 +9,8 @@ type Props = {
   /** Extensions actives : leurs `studio_tabs` s'ajoutent aux onglets, sans
    *  jamais recouvrir un onglet natif. */
   extensions?: PhoneExtension[];
+  /** Porter une image produite ici dans le fil de conversation. */
+  onSendToChat?: (media: MediaResult) => void;
 };
 
 type Tab = "image" | "audio" | (string & {});
@@ -18,7 +20,7 @@ type Tab = "image" | "audio" | (string & {});
  * end. The phone holds a prompt and a model picker; the pixels and the
  * waveforms are made where the weights live, and come back as base64.
  */
-export function Studio({ onBack, extensions = [] }: Props) {
+export function Studio({ onBack, extensions = [], onSendToChat }: Props) {
   const [tab, setTab] = useState<Tab>("image");
 
   // Le socle d'abord : les onglets natifs. Puis ceux que les extensions
@@ -97,7 +99,7 @@ export function Studio({ onBack, extensions = [] }: Props) {
 
       <div className="lo-studio">
         {tab === "image" ? (
-          <ImageGen />
+          <ImageGen onSendToChat={onSendToChat} />
         ) : tab === "audio" ? (
           <AudioGen />
         ) : ongletCourant ? (
@@ -112,7 +114,7 @@ export function Studio({ onBack, extensions = [] }: Props) {
   );
 }
 
-function ImageGen() {
+function ImageGen({ onSendToChat }: { onSendToChat?: (media: MediaResult) => void }) {
   const [models, setModels] = useState<MediaModel[] | null>(null);
   const [model, setModel] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -242,9 +244,21 @@ function ImageGen() {
               objectFit: "contain",
             }}
           />
-          <button type="button" className="lo-btn-small" onClick={keep}>
-            Enregistrer dans la galerie
-          </button>
+          <div className="lo-row" style={{ flexWrap: "wrap" }}>
+            <button type="button" className="lo-btn-small" style={{ flex: 1 }} onClick={keep}>
+              Enregistrer dans la galerie
+            </button>
+            {onSendToChat && (
+              <button
+                type="button"
+                className="lo-btn-small lo-btn-small-on"
+                style={{ flex: 1 }}
+                onClick={() => onSendToChat(result)}
+              >
+                Envoyer dans le chat
+              </button>
+            )}
+          </div>
         </div>
       )}
     </>

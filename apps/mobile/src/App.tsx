@@ -14,6 +14,7 @@ import { Settings } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
 import {
+  type MediaResult,
   type MobileStatus,
   type PairingResult,
   type PhoneExtension,
@@ -59,6 +60,8 @@ export function App() {
   const [activeExtensions, setActiveExtensions] = useState<PhoneExtension[]>([]);
   /** Une conversation neuve tenue par une figure, à ouvrir dans le chat. */
   const [figureChatId, setFigureChatId] = useState<string | null>(null);
+  /** Une image produite par le Studio, à poser dans le fil au retour au chat. */
+  const [pendingMedia, setPendingMedia] = useState<MediaResult | null>(null);
 
   const refreshCapabilities = useCallback(async () => {
     try {
@@ -282,8 +285,16 @@ export function App() {
   }
 
   if (!status) {
-    // Blank rather than a spinner: this lasts a few milliseconds.
-    return <div className="lo-screen" />;
+    // Un instant, rarement plus : une animation vaut mieux qu'un écran vide
+    // qu'on pourrait prendre pour un plantage.
+    return (
+      <div className="lo-screen lo-center">
+        <div className="lo-loading-row" role="status">
+          <span className="lo-spinner" aria-hidden />
+          <span>Connexion…</span>
+        </div>
+      </div>
+    );
   }
 
   // Non connecté : seuls SignIn et Settings (pour version / mise à jour) sont accessibles.
@@ -336,6 +347,8 @@ export function App() {
           extensions={activeExtensions}
           key={figureChatId ?? "chat"}
           initialId={figureChatId}
+          initialMedia={pendingMedia}
+          onConsumedMedia={() => setPendingMedia(null)}
         />
       ) : screen === "figures" ? (
         <FiguresScreen
@@ -346,7 +359,14 @@ export function App() {
           }}
         />
       ) : screen === "studio" ? (
-        <Studio onBack={revenir} extensions={activeExtensions} />
+        <Studio
+          onBack={revenir}
+          extensions={activeExtensions}
+          onSendToChat={(media) => {
+            setPendingMedia(media);
+            aller("chat");
+          }}
+        />
       ) : screen === "extensions" ? (
         <Extensions
           onBack={revenir}

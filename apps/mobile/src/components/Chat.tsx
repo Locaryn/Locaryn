@@ -26,6 +26,10 @@ type Props = {
   capabilities: string[];
   /** Une conversation précise à ouvrir au montage — venue de l'écran Figures. */
   initialId?: string | null;
+  /** Une image produite par le Studio, à poser dans le fil au montage. */
+  initialMedia?: MediaResult | null;
+  /** L'image initiale a été posée : l'application peut l'oublier. */
+  onConsumedMedia?: () => void;
   /** Extensions actives : le menu en tire ses `nav_items`. */
   extensions?: PhoneExtension[];
 };
@@ -38,7 +42,15 @@ type Props = {
  * serveur, donc celles de l'ordinateur : une phrase écrite ici se lit là-bas,
  * et une conversation commencée là-bas se continue ici.
  */
-export function Chat({ status, onGo, capabilities, initialId, extensions = [] }: Props) {
+export function Chat({
+  status,
+  onGo,
+  capabilities,
+  initialId,
+  initialMedia,
+  onConsumedMedia,
+  extensions = [],
+}: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -59,10 +71,17 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
   const canFigures = capabilities.includes("figures");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Une conversation est en train de charger ses messages. */
+  const [loadingConversation, setLoadingConversation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Confirmation brève : copie faite, image enregistrée. */
   const [notice, setNotice] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+  /** Vrai tant que la personne lit le bas du fil : on peut l'y suivre quand
+   *  un message arrive. Faux si elle a remonté pour relire — on ne la tire
+   *  pas vers le bas à chaque rafraîchissement. */
+  const nearBottomRef = useRef(true);
 
   // Une confirmation qui reste à l'écran devient du décor. Trois secondes, le
   // temps de la lire.
@@ -88,8 +107,64 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: ni `messages` ni `busy` ne sont lus ici — ils déclenchent. Les retirer immobiliserait la vue au premier message au lieu de suivre la conversation.
   useEffect(() => {
+    if (!nearBottomRef.current) return;
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
+
+  // ── Synchronisation avec le serveur ────────────────────────────
+  //
+  // Le téléphone n'est pas le seul à écrire : l'ordinateur continue les mêmes
+  // conversations. Sans un rafraîchissement régulier, une conversation ouverte
+  // ici restait figée sur ce qu'elle montrait à l'ouverture, et une
+  // conversation commencée là-bas n'apparaissait pas dans le tiroir. On relit
+  // la liste et le fil tant que l'application est visible — cinq secondes, le
+  // temps de ne pas rater une réponse sans vider la batterie.
+  const pollMessages = useCallback(async () => {
+    if (!currentId || busy || loadingConversation) return;
+    try {
+      const turns = await api.loadConversation(currentId);
+      const recus = turns.map((t) => ({
+        id: t.id,
+        role: t.role as Message["role"],
+        content: t.content,
+      }));
+      setMessages((prev) => {
+        // Rien de nouveau : on garde ce qu'on a — y compris les images que le
+        // rechargement ne renvoie pas. Le serveur est en append-only, donc si
+        // la liste s'allonge, ce qui manque est à la fin.
+        if (recus.length <= prev.length) return prev;
+        return [...prev, ...recus.slice(prev.length)];
+      });
+    } catch {
+      // Un serveur qui ne répond pas n'a rien à ajouter : au prochain tour.
+    }
+  }, [currentId, busy, loadingConversation]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshList();
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [refreshList]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (document.visibilityState === "visible") void pollMessages();
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [pollMessages]);
+
+  // Revenir à l'application rafraîchit tout de suite : pas besoin d'attendre
+  // le prochain tour de minuterie pour voir ce qui s'est passé ailleurs.
+  useEffect(() => {
+    function auPremierPlan() {
+      if (document.visibilityState !== "visible") return;
+      void refreshList();
+      void pollMessages();
+    }
+    document.addEventListener("visibilitychange", auPremierPlan);
+    return () => document.removeEventListener("visibilitychange", auPremierPlan);
+  }, [refreshList, pollMessages]);
 
   /** Reprendre une conversation, d'où qu'elle vienne. */
   async function open(id: string) {
@@ -97,6 +172,7 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
     setError(null);
     setCurrentId(id);
     setMessages([]);
+    setLoadingConversation(true);
     try {
       const turns = await api.loadConversation(id);
       setMessages(
@@ -104,6 +180,8 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
       );
     } catch (e) {
       setError(String(e));
+    } finally {
+      setLoadingConversation(false);
     }
   }
 
@@ -120,6 +198,23 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
   // biome-ignore lint/correctness/useExhaustiveDependencies: l'ouverture ne se fait qu'au montage.
   useEffect(() => {
     if (initialId) void open(initialId);
+  }, []);
+
+  // Une image produite par le Studio arrive avec le montage : elle s'affiche
+  // dans le fil, comme le ferait une réponse. Une fois posée, l'application
+  // l'oublie — un aller-retour au Studio ne doit pas la reposer deux fois.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ne se fait qu'au montage.
+  useEffect(() => {
+    if (!initialMedia) return;
+    setMessages([
+      {
+        id: `media-${initialMedia.name}`,
+        role: "assistant",
+        content: "Image générée dans le Studio.",
+        images: [initialMedia],
+      },
+    ]);
+    onConsumedMedia?.();
   }, []);
 
   /** Reprendre une conversation gardée quitte le mode éphémère. */
@@ -274,6 +369,7 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
         currentId={currentId}
         onPick={openKept}
         onNew={startNew}
+        onChanged={() => void refreshList()}
       />
 
       <MainMenu
@@ -288,8 +384,25 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
         }}
       />
 
-      <div className="lo-thread">
-        {messages.length === 0 && (
+      <div
+        className="lo-thread"
+        ref={threadRef}
+        onScroll={() => {
+          const el = threadRef.current;
+          if (!el) return;
+          // À moins de 120 px du bas, on est « en bas » : les nouveaux
+          // messages peuvent nous y suivre. Au-delà, on lit plus haut et on
+          // ne veut pas être tiré vers le bas.
+          nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+        }}
+      >
+        {messages.length === 0 && loadingConversation && (
+          <div className="lo-thread-loading" role="status">
+            <span className="lo-spinner" aria-hidden />
+            <span>Chargement de la conversation…</span>
+          </div>
+        )}
+        {messages.length === 0 && !loadingConversation && (
           <p className="lo-sub" style={{ marginTop: "var(--space-6)", textAlign: "center" }}>
             Posez une question. Le modèle tourne sur {status.server_name ?? "votre serveur"}.
           </p>
@@ -326,8 +439,9 @@ export function Chat({ status, onGo, capabilities, initialId, extensions = [] }:
           </div>
         ))}
         {busy && (
-          <div className="lo-msg lo-msg-ai" style={{ color: "var(--text-faint)" }}>
-            …
+          <div className="lo-msg lo-msg-ai lo-msg-busy" role="status">
+            <span className="lo-spinner" aria-hidden />
+            <span>Le modèle réfléchit…</span>
           </div>
         )}
         {error && <p className="lo-error">{error}</p>}
