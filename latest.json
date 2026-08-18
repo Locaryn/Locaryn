@@ -1,10 +1,10 @@
 {
-  "version": "0.3.14",
-  "pub_date": "2026-08-18T21:50:00Z",
-  "notes": "Locaryn v0.3.14 - génération d’images stable, fenêtres CMD masquées, erreurs copiables et aperçu des images dans le chat",
+  "version": "0.3.15",
+  "pub_date": "2026-08-19T00:00:00Z",
+  "notes": "Locaryn v0.3.15 - archivage et projets depuis le téléphone, reconnexion corrigée, clavier Android, synchro mobile-serveur et image du Studio dans le chat",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.14/Locaryn_0.3.14_x64-setup.exe",
+      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.15/Locaryn_0.3.15_x64-setup.exe",
       "signature": ""
     }
   }
