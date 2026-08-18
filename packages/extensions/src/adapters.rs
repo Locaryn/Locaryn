@@ -79,9 +79,15 @@ pub fn detect(dir: &Path) -> Option<ExtensionEcosystem> {
     if dir.join("commands").is_dir()
         || dir.join("agents").is_dir()
         || dir.join("skills").is_dir()
+        || dir.join("skill").is_dir()
+        || dir.join("tools").is_dir()
+        || dir.join("prompts").is_dir()
         || dir.join("hooks").is_dir()
         || dir.join("SKILL.md").is_file()
         || dir.join("skill.md").is_file()
+        || dir.join("prompt.md").is_file()
+        || dir.join("PROMPT.md").is_file()
+        || dir.join("figures.md").is_file()
     {
         return Some(ExtensionEcosystem::ClaudeCode);
     }
@@ -697,26 +703,70 @@ fn write_manifest(dir: &Path, m: &PluginManifest) -> Result<(), AdaptError> {
     Ok(())
 }
 
-/// `skills/<name>/SKILL.md`, plus a lone `SKILL.md` at the root.
+/// Discover all skill files across standard conventions:
+/// `skills/<name>/SKILL.md`, `skills/*.md`, `skill/<name>/SKILL.md`, `prompts/*.md`, plus root `SKILL.md`.
 fn find_skills(dir: &Path) -> Vec<String> {
     let mut out = Vec::new();
-    let skills = dir.join("skills");
-    if skills.is_dir() {
-        if let Ok(rd) = std::fs::read_dir(&skills) {
-            let mut names: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
-            names.sort();
-            for p in names {
-                if p.join("SKILL.md").is_file() {
-                    if let Some(n) = p.file_name().and_then(|n| n.to_str()) {
-                        out.push(format!("skills/{n}/SKILL.md"));
+    for folder_name in ["skills", "skill", "tools", "prompts"] {
+        let folder = dir.join(folder_name);
+        if folder.is_dir() {
+            if let Ok(rd) = std::fs::read_dir(&folder) {
+                let mut entries: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+                entries.sort();
+                for p in entries {
+                    if p.is_dir() {
+                        if p.join("SKILL.md").is_file() {
+                            if let Some(n) = p.file_name().and_then(|n| n.to_str()) {
+                                out.push(format!("{folder_name}/{n}/SKILL.md"));
+                            }
+                        } else if p.join("skill.md").is_file() {
+                            if let Some(n) = p.file_name().and_then(|n| n.to_str()) {
+                                out.push(format!("{folder_name}/{n}/skill.md"));
+                            }
+                        } else {
+                            let mut mds = Vec::new();
+                            collect_files(&p, "md", &mut mds);
+                            for md in mds {
+                                if let Ok(rel) = md.strip_prefix(dir) {
+                                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                                }
+                            }
+                        }
+                    } else if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("md") {
+                        if let Ok(rel) = p.strip_prefix(dir) {
+                            out.push(rel.to_string_lossy().replace('\\', "/"));
+                        }
                     }
                 }
             }
         }
     }
-    if out.is_empty() && dir.join("SKILL.md").is_file() {
-        out.push("SKILL.md".into());
+
+    for candidate in ["SKILL.md", "skill.md", "prompt.md", "PROMPT.md", "figures.md"] {
+        if dir.join(candidate).is_file() && !out.contains(&candidate.to_string()) {
+            out.push(candidate.to_string());
+        }
     }
+
+    // If still empty and the directory has standalone markdown files, treat them as skills
+    if out.is_empty() {
+        let mut all_mds = Vec::new();
+        collect_files(dir, "md", &mut all_mds);
+        for md in all_mds {
+            let name = md.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.eq_ignore_ascii_case("README.md")
+                || name.eq_ignore_ascii_case("LICENSE.md")
+                || name.eq_ignore_ascii_case("CHANGELOG.md")
+                || name.eq_ignore_ascii_case("CONTRIBUTING.md")
+            {
+                continue;
+            }
+            if let Ok(rel) = md.strip_prefix(dir) {
+                out.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+
     out
 }
 

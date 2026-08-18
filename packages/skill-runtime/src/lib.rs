@@ -71,19 +71,19 @@ pub fn parse_str(raw: &str, source_path: PathBuf) -> Result<SkillDef, SkillError
 }
 
 fn split_frontmatter(raw: &str) -> (String, String) {
-    let raw = raw.trim_start_matches('\u{feff}');
-    let raw = raw
+    let raw_clean = raw.trim_start_matches('\u{feff}');
+    let raw_stripped = raw_clean
         .strip_prefix("---\n")
-        .or_else(|| raw.strip_prefix("---\r\n"));
-    let Some(rest) = raw else {
-        return (String::new(), String::new());
+        .or_else(|| raw_clean.strip_prefix("---\r\n"));
+    let Some(rest) = raw_stripped else {
+        return (String::new(), raw.to_string());
     };
     if let Some(end) = rest.find("\n---\n").or_else(|| rest.find("\r\n---\r\n")) {
         let (fm, body) = rest.split_at(end);
         let body = body.trim_start_matches(['\n', '\r', '-', '-']);
         (fm.to_string(), body.trim_start().to_string())
     } else {
-        (rest.to_string(), String::new())
+        (String::new(), raw.to_string())
     }
 }
 
