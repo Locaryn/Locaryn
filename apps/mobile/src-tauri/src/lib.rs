@@ -164,83 +164,100 @@ fn register_server(provisioning_json: String) -> Result<MobileStatus, String> {
     Ok(status())
 }
 
-/// Ce que l'utilisateur a tapé, ramené à une URL utilisable.
+/// Ce que l'utilisateur a tapé, ramené aux URLs candidates utilisables.
 ///
-/// On accepte ce qu'une personne écrit vraiment : « 192.168.1.20 »,
-/// « 192.168.1.20:7474 », « http://serveur.local », « locaryn.maison:7474/ ».
-/// Le port par défaut est celui du service ; le schéma par défaut est `http`,
-/// parce qu'une adresse tapée à la main désigne presque toujours une machine du
-/// réseau local qui n'a pas de certificat.
-pub fn normalise_address(raw: &str) -> Result<String, String> {
+/// On accepte : « 192.168.1.20 », « 192.168.1.20:7474 », « http://serveur.local »,
+/// « https://locaryn.maison:7474/ ».
+/// Par défaut sur le réseau local, on essaie HTTPS (avec acceptation des certificats
+/// locaux auto-signés) puis HTTP.
+pub fn normalise_candidates(raw: &str) -> Result<Vec<String>, String> {
     let raw = raw.trim().trim_end_matches('/');
     if raw.is_empty() {
         return Err("Entrez l'adresse du serveur.".into());
     }
-    let (scheme, rest) = match raw.split_once("://") {
-        Some(("http", r)) => ("http", r),
-        Some(("https", r)) => ("https", r),
-        Some((other, _)) => return Err(format!("Adresse inattendue : « {other}:// ».")),
-        None => ("http", raw),
-    };
-    let rest = rest.trim_end_matches('/');
-    if rest.is_empty() || rest.contains(' ') {
-        return Err("Cette adresse n'est pas valide.".into());
+    if let Some(("http", rest)) = raw.split_once("://") {
+        let rest = rest.trim_end_matches('/');
+        let host_port = with_default_port(rest);
+        return Ok(vec![format!("http://{host_port}"), format!("https://{host_port}")]);
     }
-    // Un port déjà écrit est gardé tel quel ; sinon on ajoute celui du service.
-    // Le test cherche un « : » suivi de chiffres pour ne pas confondre avec le
-    // séparateur d'une adresse IPv6 entre crochets.
+    if let Some(("https", rest)) = raw.split_once("://") {
+        let rest = rest.trim_end_matches('/');
+        let host_port = with_default_port(rest);
+        return Ok(vec![format!("https://{host_port}"), format!("http://{host_port}")]);
+    }
+    if raw.contains("://") {
+        return Err(format!("Adresse inattendue : « {raw} »."));
+    }
+    let host_port = with_default_port(raw);
+    Ok(vec![format!("https://{host_port}"), format!("http://{host_port}")])
+}
+
+fn with_default_port(rest: &str) -> String {
+    let rest = rest.trim_end_matches('/');
     let has_port = rest
         .rsplit_once(':')
         .is_some_and(|(_, p)| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
     if has_port {
-        Ok(format!("{scheme}://{rest}"))
+        rest.to_string()
     } else {
-        Ok(format!("{scheme}://{rest}:7474"))
+        format!("{rest}:7474")
     }
 }
 
+pub fn normalise_address(raw: &str) -> Result<String, String> {
+    let candidates = normalise_candidates(raw)?;
+    Ok(candidates[0].clone())
+}
+
 /// Enregistrer un serveur à partir de son adresse, sans code à scanner.
-///
-/// C'est le chemin pour un téléphone sans appareil photo, ou pour un serveur
-/// personnel sur le réseau local. Ce qu'on perd par rapport au code scanné est
-/// réel et l'interface le dit : le code, lui, porte le certificat de
-/// l'autorité, et c'est ce certificat qui permet ensuite de vérifier un lien de
-/// mode voyage et de chiffrer la liaison hors du réseau local.
-///
-/// L'adresse n'est pas enregistrée sur parole : on demande d'abord au serveur
-/// de se présenter.
 #[tauri::command]
 async fn register_address(address: String) -> Result<MobileStatus, String> {
-    let url = normalise_address(&address)?;
+    let candidates = normalise_candidates(&address)?;
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_secs(6))
+        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames(true)
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client
-        .get(format!("{url}/v1/info"))
-        .send()
-        .await
-        .map_err(|_| format!("Aucune réponse de {url}. Vérifiez l'adresse et le réseau."))?;
-    if !resp.status().is_success() {
-        return Err(format!("{url} a répondu {}.", resp.status()));
+    let mut final_url = None;
+    let mut last_err = String::new();
+
+    for url in &candidates {
+        match client.get(format!("{url}/v1/info")).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(info) = resp.json::<serde_json::Value>().await {
+                    if info["name"].as_str() == Some("locaryn-daemon") {
+                        final_url = Some(url.clone());
+                        break;
+                    } else {
+                        last_err = format!("{url} répond, mais ce n'est pas un serveur Locaryn.");
+                    }
+                } else {
+                    last_err = format!("{url} répond, mais les données reçues sont invalides.");
+                }
+            }
+            Ok(resp) => {
+                last_err = format!("{url} a répondu avec le statut {}.", resp.status());
+            }
+            Err(e) => {
+                last_err = format!("Aucune réponse de {url} ({e}).");
+            }
+        }
     }
-    let info: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|_| format!("{url} répond, mais ce n'est pas un serveur Locaryn."))?;
-    if info["name"].as_str() != Some("locaryn-daemon") {
-        return Err(format!(
-            "{url} répond, mais ce n'est pas un serveur Locaryn."
-        ));
-    }
+
+    let url = final_url.ok_or_else(|| {
+        if last_err.is_empty() {
+            "Impossible de joindre le serveur. Vérifiez l'adresse et que le mode serveur est bien actif."
+                .to_string()
+        } else {
+            last_err
+        }
+    })?;
 
     let mut store = servers::load();
     store.upsert(servers::KnownServer {
-        // Pas d'autorité, donc pas d'empreinte d'autorité : l'adresse elle-même
-        // identifie ce serveur. Le préfixe évite toute collision avec les
-        // identifiants dérivés d'un certificat.
         key_id: format!("adresse:{url}"),
         name: url
             .trim_start_matches("http://")
@@ -250,8 +267,6 @@ async fn register_address(address: String) -> Result<MobileStatus, String> {
         current_url: url,
         authority_pem: String::new(),
         travelling: false,
-        // Une adresse tapée à la main ne dit pas par quel chemin elle passe :
-        // on ne le devine pas, on laisse vide.
         access_mode: String::new(),
     });
     servers::save(&store)?;
@@ -259,16 +274,9 @@ async fn register_address(address: String) -> Result<MobileStatus, String> {
 }
 
 /// Reprendre le serveur déjà connu à une nouvelle adresse, après un échec.
-///
-/// Ce n'est pas un nouvel appairage : c'est le **même** serveur, qui a changé
-/// d'adresse — une box qui a redémarré, un tunnel qui a expiré. `register_address`
-/// créerait une seconde entrée, sans autorité et sans session, et la
-/// personne devrait tout resaisir. Ici, seule `current_url` (et `home_url` si le
-/// téléphone n'est pas en voyage) change ; l'autorité et la session restent —
-/// c'est ce qui garde le compte connecté et l'historique en place.
 #[tauri::command]
 async fn reconnect_active_server(address: String) -> Result<MobileStatus, String> {
-    let url = normalise_address(&address)?;
+    let candidates = normalise_candidates(&address)?;
 
     let mut store = servers::load();
     let actif = store
@@ -279,29 +287,30 @@ async fn reconnect_active_server(address: String) -> Result<MobileStatus, String
         return Err("Aucun serveur enregistré sur cet appareil.".into());
     };
 
-    // Vérifié à la nouvelle adresse, avec l'autorité déjà connue de ce
-    // serveur — c'est elle qui distingue ce serveur d'un autre qui
-    // répondrait par hasard sur la même adresse.
-    let mut sonde = serveur.clone();
-    sonde.current_url = url.clone();
-    let client = client_for(&sonde)?;
-    let resp = client
-        .get(format!("{url}/v1/info"))
-        .send()
-        .await
-        .map_err(|_| format!("Aucune réponse de {url}. Vérifiez l'adresse et le réseau."))?;
-    if !resp.status().is_success() {
-        return Err(format!("{url} a répondu {}.", resp.status()));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut final_url = None;
+    for url in &candidates {
+        if let Ok(resp) = client.get(format!("{url}/v1/info")).send().await {
+            if resp.status().is_success() {
+                if let Ok(info) = resp.json::<serde_json::Value>().await {
+                    if info["name"].as_str() == Some("locaryn-daemon") {
+                        final_url = Some(url.clone());
+                        break;
+                    }
+                }
+            }
+        }
     }
-    let info: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|_| format!("{url} répond, mais ce n'est pas un serveur Locaryn."))?;
-    if info["name"].as_str() != Some("locaryn-daemon") {
-        return Err(format!(
-            "{url} répond, mais ce n'est pas un serveur Locaryn."
-        ));
-    }
+
+    let url = final_url.ok_or_else(|| {
+        "Aucune réponse valide aux adresses testées. Vérifiez le réseau.".to_string()
+    })?;
 
     serveur.current_url = url.clone();
     if !serveur.travelling {
@@ -309,6 +318,83 @@ async fn reconnect_active_server(address: String) -> Result<MobileStatus, String
     }
     servers::save(&store)?;
     Ok(status())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DiscoveredServer {
+    pub name: String,
+    pub url: String,
+    pub ip: String,
+    pub port: u16,
+    pub version: Option<String>,
+}
+
+/// Recherche active des serveurs Locaryn sur les sous-réseaux locaux.
+#[tauri::command]
+async fn discover_servers() -> Vec<DiscoveredServer> {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(1600))
+        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames(true)
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let subnets = [
+        "192.168.1",
+        "192.168.0",
+        "192.168.178",
+        "10.0.0",
+        "172.20.10",
+        "192.168.43",
+    ];
+
+    let mut ips: Vec<String> = Vec::with_capacity(subnets.len() * 254 + 2);
+    ips.push("127.0.0.1".to_string());
+    ips.push("localhost".to_string());
+
+    for s in subnets {
+        for i in 1..=254 {
+            ips.push(format!("{s}.{i}"));
+        }
+    }
+
+    use futures::StreamExt;
+    let stream = futures::stream::iter(ips.into_iter().map(|ip| {
+        let client = client.clone();
+        async move {
+            for scheme in &["https", "http"] {
+                let url = format!("{scheme}://{ip}:7474");
+                if let Ok(resp) = client.get(format!("{url}/v1/info")).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(info) = resp.json::<serde_json::Value>().await {
+                            if info["name"].as_str() == Some("locaryn-daemon") {
+                                let version = info["version"].as_str().map(str::to_string);
+                                return Some(DiscoveredServer {
+                                    name: "Serveur Locaryn".to_string(),
+                                    url,
+                                    ip,
+                                    port: 7474,
+                                    version,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
+    }))
+    .buffer_unordered(128);
+
+    let results: Vec<Option<DiscoveredServer>> = stream.collect().await;
+    let mut discovered: Vec<DiscoveredServer> = results.into_iter().flatten().collect();
+
+    discovered.sort_by(|a, b| a.ip.cmp(&b.ip));
+    discovered.dedup_by(|a, b| a.ip == b.ip);
+    discovered
 }
 
 /// Sign in against whichever address is currently in force.
@@ -382,23 +468,20 @@ fn client_for_with(
 ) -> Result<reqwest::Client, String> {
     let builder = reqwest::Client::builder().timeout(timeout);
 
-    // Une adresse tapée à la main n'apporte aucune autorité : c'est un serveur
-    // joint en clair sur le réseau local, ou en HTTPS avec un certificat que le
-    // téléphone sait déjà vérifier. Rien à ancrer, donc rien à ajouter — et
-    // surtout pas une exception de vérification qu'on n'aurait pas demandée.
-    if server.authority_pem.trim().is_empty() {
-        return builder.build().map_err(|e| e.to_string());
+    if !server.authority_pem.trim().is_empty() {
+        return builder
+            .add_root_certificate(
+                reqwest::Certificate::from_pem(server.authority_pem.as_bytes())
+                    .map_err(|e| format!("autorité illisible : {e}"))?,
+            )
+            .danger_accept_invalid_hostnames(true)
+            .build()
+            .map_err(|e| e.to_string());
     }
 
+    // Direct IP or local hostname connection: accept self-signed certificates on LAN
     builder
-        // The certificate is issued by the deployment's authority, which no
-        // phone trusts by default. That authority is the anchor.
-        .add_root_certificate(
-            reqwest::Certificate::from_pem(server.authority_pem.as_bytes())
-                .map_err(|e| format!("autorité illisible : {e}"))?,
-        )
-        // Reached through a relay, the server answers on a hostname its own
-        // certificate does not name. The authority still vouches for it.
+        .danger_accept_invalid_certs(true)
         .danger_accept_invalid_hostnames(true)
         .build()
         .map_err(|e| e.to_string())
@@ -1966,6 +2049,7 @@ pub fn run() {
             status,
             register_server,
             register_address,
+            discover_servers,
             reconnect_active_server,
             sign_in,
             sign_out,

@@ -8,6 +8,14 @@ export interface MobileStatus {
   servers: number;
 }
 
+export interface DiscoveredServer {
+  name: string;
+  url: string;
+  ip: string;
+  port: number;
+  version?: string | null;
+}
+
 /** Une extension installée sur le serveur, vue du téléphone. */
 /** Une capacité reconnue par le serveur : id, label français, description. */
 export interface Capability {
@@ -448,6 +456,8 @@ export const core = {
     invoke<MobileStatus>("register_server", { provisioningJson }),
   /** Enregistre un serveur depuis son adresse, sans code à scanner. */
   registerAddress: (address: string) => invoke<MobileStatus>("register_address", { address }),
+  /** Recherche les serveurs Locaryn sur le réseau local. */
+  discoverServers: () => invoke<DiscoveredServer[]>("discover_servers"),
   /** Reprendre le serveur actif à une nouvelle adresse : même autorité, même
    *  session, même historique — seule l'adresse change. */
   reconnectActiveServer: (address: string) =>
@@ -609,6 +619,15 @@ export const demoCore: typeof core = {
     signed_in: false,
     servers: 1,
   }),
+  discoverServers: async () => [
+    {
+      name: "Atelier Vasseur (Démo)",
+      url: "http://192.168.1.50:7474",
+      ip: "192.168.1.50",
+      port: 7474,
+      version: "0.3.11",
+    },
+  ],
   signIn: async () => ({
     server_name: "Atelier Vasseur",
     travelling: false,

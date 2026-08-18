@@ -1511,3 +1511,12 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+@keyframes lo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
