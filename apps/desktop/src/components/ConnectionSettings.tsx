@@ -15,6 +15,9 @@ export function ConnectionSettings() {
   const [cert, setCert] = useState<CertificateStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [serverUrl, setServerUrl] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
     void (async () => {
@@ -27,6 +30,26 @@ export function ConnectionSettings() {
       }
     })();
   }, []);
+
+  async function handleSignIn() {
+    setError(null);
+    const cleanUrl = serverUrl.trim();
+    const cleanUser = username.trim();
+    if (!cleanUrl || !cleanUser || !password) {
+      setError("Veuillez renseigner l'adresse du serveur, l'identifiant et le mot de passe.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await core.signIn(cleanUrl, cleanUser, password);
+      setPassword("");
+      window.location.reload();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function install() {
     setError(null);
@@ -70,9 +93,6 @@ export function ConnectionSettings() {
               onClick={async () => {
                 setBusy(true);
                 await core.signOut();
-                // Reload rather than juggle state: the sign-in screen is
-                // decided when the application starts, and this is exactly
-                // the same situation as a fresh launch.
                 window.location.reload();
               }}
             >
@@ -81,9 +101,68 @@ export function ConnectionSettings() {
           </div>
         </>
       ) : (
-        <p className="locaryn-field-hint" style={{ marginTop: 10 }}>
-          Aucune session. Cette installation utilise les modèles de cet ordinateur.
-        </p>
+        <div style={{ marginTop: 12, padding: "12px", background: "var(--locaryn-bg-subtle, rgba(255,255,255,0.03))", borderRadius: 8 }}>
+          <p className="locaryn-field-hint" style={{ margin: 0, marginBottom: 12 }}>
+            Connectez cette application à un serveur ou supercalculateur IA distant (ex: DGX Spark).
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div>
+              <label htmlFor="conn-server-url" className="locaryn-field-label" style={{ fontSize: "0.85rem" }}>
+                Adresse du serveur (ex: https://192.168.1.50:7474)
+              </label>
+              <input
+                id="conn-server-url"
+                className="locaryn-input"
+                style={{ width: "100%", marginTop: 4 }}
+                placeholder="https://ip-ou-domaine:7474"
+                value={serverUrl}
+                disabled={busy}
+                onChange={(e) => setServerUrl(e.target.value)}
+              />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label htmlFor="conn-username" className="locaryn-field-label" style={{ fontSize: "0.85rem" }}>
+                  Identifiant
+                </label>
+                <input
+                  id="conn-username"
+                  className="locaryn-input"
+                  style={{ width: "100%", marginTop: 4 }}
+                  placeholder="admin"
+                  value={username}
+                  disabled={busy}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="conn-password" className="locaryn-field-label" style={{ fontSize: "0.85rem" }}>
+                  Mot de passe
+                </label>
+                <input
+                  id="conn-password"
+                  type="password"
+                  className="locaryn-input"
+                  style={{ width: "100%", marginTop: 4 }}
+                  value={password}
+                  disabled={busy}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && void handleSignIn()}
+                />
+              </div>
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <button
+                type="button"
+                className="locaryn-btn-primary"
+                disabled={busy || !serverUrl.trim() || !username.trim() || !password}
+                onClick={handleSignIn}
+              >
+                {busy ? "Connexion en cours…" : "Se connecter au serveur"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="locaryn-field-label" style={{ marginTop: 20 }}>
