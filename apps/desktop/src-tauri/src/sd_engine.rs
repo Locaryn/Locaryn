@@ -223,42 +223,109 @@ pub fn build_args(req: &SdRequest<'_>) -> Result<Vec<String>, String> {
         }
     }
 
-    let missing = missing_companions(family, &companions);
-    if !missing.is_empty() {
-        return Err(format!(
-            "{file_name} est un modèle de diffusion seul : il lui faut aussi {}. \
-             Placez ces fichiers dans le dossier des modèles.",
-            missing.join(" et ")
-        ));
-    }
-
     let mut a: Vec<String> = Vec::new();
     a.push("-M".into());
     a.push("img_gen".into());
 
-    match family {
-        ModelFamily::FullCheckpoint => {
+    if req.model_path.is_dir() {
+        // Directory model: either a single-file checkpoint inside or a diffusers pipeline.
+        let single_file = std::fs::read_dir(req.model_path).ok().and_then(|entries| {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() {
+                    let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
+                    if (ext == "safetensors" || ext == "gguf" || ext == "ckpt") && !p.to_string_lossy().contains("taesd") {
+                        return Some(p);
+                    }
+                }
+            }
+            None
+        });
+
+        if let Some(single) = single_file {
             a.push("-m".into());
-            a.push(req.model_path.to_string_lossy().to_string());
+            a.push(single.to_string_lossy().to_string());
+        } else {
+            let unet = [
+                "unet/diffusion_pytorch_model.safetensors",
+                "unet/diffusion_pytorch_model.bin",
+                "diffusion_pytorch_model.safetensors",
+            ]
+            .iter()
+            .map(|sub| req.model_path.join(sub))
+            .find(|p| p.exists());
+
+            let vae = [
+                "vae/diffusion_pytorch_model.safetensors",
+                "vae/diffusion_pytorch_model.bin",
+            ]
+            .iter()
+            .map(|sub| req.model_path.join(sub))
+            .find(|p| p.exists())
+            .or_else(|| companions.vae.clone());
+
+            let clip = [
+                "text_encoder/model.safetensors",
+                "text_encoder/pytorch_model.bin",
+                "text_encoder/diffusion_pytorch_model.safetensors",
+            ]
+            .iter()
+            .map(|sub| req.model_path.join(sub))
+            .find(|p| p.exists())
+            .or_else(|| companions.clip_l.clone());
+
+            if let Some(u) = unet {
+                a.push("--diffusion-model".into());
+                a.push(u.to_string_lossy().to_string());
+                if let Some(v) = vae {
+                    a.push("--vae".into());
+                    a.push(v.to_string_lossy().to_string());
+                }
+                if let Some(c) = clip {
+                    a.push("--clip_l".into());
+                    a.push(c.to_string_lossy().to_string());
+                }
+            } else {
+                return Err(format!(
+                    "Dossier de modèle {} invalide : aucun poids UNet ou checkpoint .safetensors détecté",
+                    req.model_path.display()
+                ));
+            }
         }
-        _ => {
-            a.push("--diffusion-model".into());
-            a.push(req.model_path.to_string_lossy().to_string());
-            if let Some(v) = &companions.vae {
-                a.push("--vae".into());
-                a.push(v.to_string_lossy().to_string());
+    } else {
+        let missing = missing_companions(family, &companions);
+        if !missing.is_empty() {
+            return Err(format!(
+                "{file_name} est un modèle de diffusion seul : il lui faut aussi {}. \
+                 Placez ces fichiers dans le dossier des modèles.",
+                missing.join(" et ")
+            ));
+        }
+
+        match family {
+            ModelFamily::FullCheckpoint => {
+                a.push("-m".into());
+                a.push(req.model_path.to_string_lossy().to_string());
             }
-            if let Some(l) = &companions.llm {
-                a.push("--llm".into());
-                a.push(l.to_string_lossy().to_string());
-            }
-            if let Some(c) = &companions.clip_l {
-                a.push("--clip_l".into());
-                a.push(c.to_string_lossy().to_string());
-            }
-            if let Some(t) = &companions.t5xxl {
-                a.push("--t5xxl".into());
-                a.push(t.to_string_lossy().to_string());
+            _ => {
+                a.push("--diffusion-model".into());
+                a.push(req.model_path.to_string_lossy().to_string());
+                if let Some(v) = &companions.vae {
+                    a.push("--vae".into());
+                    a.push(v.to_string_lossy().to_string());
+                }
+                if let Some(l) = &companions.llm {
+                    a.push("--llm".into());
+                    a.push(l.to_string_lossy().to_string());
+                }
+                if let Some(c) = &companions.clip_l {
+                    a.push("--clip_l".into());
+                    a.push(c.to_string_lossy().to_string());
+                }
+                if let Some(t) = &companions.t5xxl {
+                    a.push("--t5xxl".into());
+                    a.push(t.to_string_lossy().to_string());
+                }
             }
         }
     }
