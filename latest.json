@@ -1,10 +1,10 @@
 {
-  "version": "0.3.16",
+  "version": "0.3.17",
   "pub_date": "2026-08-19T00:00:00Z",
-  "notes": "Locaryn v0.3.16 - menus et réglages du téléphone alignés sur l'ordinateur (mêmes catégories, mêmes organisations), archives déplacées dans Compte → Archives, historique des conversations consultable dans les réglages, couleur d'accentuation, projets en haut de l'historique et conversations libres en dessous",
+  "notes": "Locaryn v0.3.17 - le bouton retour d'Android ferme les menus et les fenêtres au lieu de quitter l'application (tiroir, menu, modales, catégories de réglages), « Chat et agent » retiré du menu (l'accueil est déjà le chat), historique des conversations déplacé dans Compte (téléphone et bureau), notifications push réparées sur Android 13+ (permission manquante), synchronisation plus rapide (tiroir relu à l'ouverture, fil toutes les 3 s)",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.16/Locaryn_0.3.16_x64-setup.exe",
+      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.17/Locaryn_0.3.17_x64-setup.exe",
       "signature": ""
     }
   }
