@@ -33,7 +33,12 @@ export function useNavigation<T extends string>(racine: T) {
     }
 
     function auRetour(e: PopStateEvent) {
-      const vers = (e.state as { ecran?: T } | null)?.ecran;
+      const etat = e.state as { ecran?: T; lo?: string } | null;
+      // Une entrée de couche (tiroir, feuille, modale) n'est pas une
+      // navigation : on est retombé dessus parce qu'une couche au-dessus
+      // s'est refermée — l'écran, lui, n'a pas bougé.
+      if (etat?.lo === "couche") return;
+      const vers = etat?.ecran;
       setEcran(vers ?? racineRef.current);
     }
     window.addEventListener("popstate", auRetour);
@@ -81,4 +86,54 @@ export function useNavigation<T extends string>(racine: T) {
 function profondeur(): number {
   const etat = window.history.state as { profondeur?: number } | null;
   return etat?.profondeur ?? 0;
+}
+
+/**
+ * Donner au retour système une couche à fermer.
+ *
+ * Android ferme l'application quand la vue web n'a plus rien à reculer — mais
+ * un tiroir ouvert, une feuille, une modale ou une section de réglages ne
+ * poussait rien : le retour quittait Locaryn au lieu de fermer ce qui était
+ * ouvert. Chaque couche ouverte pousse ici une entrée d'historique : le retour
+ * la consomme, la couche se ferme, l'application reste en place.
+ *
+ * Plusieurs couches peuvent s'empiler (une modale ouverte dans une section de
+ * réglages, une feuille ouverte dans le tiroir). Chacune porte un identifiant
+ * : quand le retour tombe sur l'entrée d'une autre couche, c'est qu'elle s'est
+ * refermée — pas la nôtre, on reste ouvert. Fermée d'une autre façon (le
+ * voile, un bouton), une couche retire elle-même son entrée pour ne pas
+ * laisser un retour muet derrière elle.
+ */
+let prochaineCouche = 0;
+
+export function useCoucheRetour(actif: boolean, fermer: () => void) {
+  const fermerRef = useRef(fermer);
+  fermerRef.current = fermer;
+  const idRef = useRef<number | null>(null);
+  const consommeeRef = useRef(false);
+
+  useEffect(() => {
+    if (!actif) return;
+    idRef.current = ++prochaineCouche;
+    consommeeRef.current = false;
+    const monId = idRef.current;
+    window.history.pushState({ lo: "couche", id: monId }, "");
+    function auRetour() {
+      const etat = window.history.state as { lo?: string; id?: number } | null;
+      // On est retombé sur NOTRE entrée : une couche au-dessus vient de se
+      // refermer, pas la nôtre — on reste ouvert.
+      if (etat?.lo === "couche" && etat.id === monId) return;
+      consommeeRef.current = true;
+      fermerRef.current();
+    }
+    window.addEventListener("popstate", auRetour);
+    return () => {
+      window.removeEventListener("popstate", auRetour);
+      // L'entrée qu'on a poussée n'a pas été consommée par le retour : on l'a
+      // fermée autrement. La retirer, sinon le prochain retour ne ferait rien.
+      if (!consommeeRef.current && window.history.state?.lo === "couche") {
+        window.history.back();
+      }
+    };
+  }, [actif]);
 }

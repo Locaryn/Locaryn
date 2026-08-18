@@ -10,6 +10,7 @@ import {
   api,
 } from "../lib/core";
 import type { PhoneExtension } from "../lib/core";
+import { useCoucheRetour } from "../lib/navigation";
 import { notifyMessageReceived, notifyToolApprovalRequired } from "../lib/notifications";
 import { ComposerActions } from "./ComposerActions";
 import { Drawer } from "./Drawer";
@@ -91,6 +92,12 @@ export function Chat({
     return () => clearTimeout(t);
   }, [notice]);
 
+  // Le retour d'Android ferme ce qui est ouvert au lieu de quitter
+  // l'application : le tiroir, le menu, la demande d'autorisation.
+  useCoucheRetour(drawerOpen, () => setDrawerOpen(false));
+  useCoucheRetour(menuOpen, () => setMenuOpen(false));
+  useCoucheRetour(pendingApproval !== null, () => setPendingApproval(null));
+
   const refreshList = useCallback(async () => {
     try {
       setConversations(await api.listConversations());
@@ -147,10 +154,12 @@ export function Chat({
     return () => window.clearInterval(t);
   }, [refreshList]);
 
+  // Le fil est relu plus souvent que la liste : c'est lui qu'on regarde. Trois
+  // secondes, le temps de ne pas rater une réponse écrite sur l'ordinateur.
   useEffect(() => {
     const t = window.setInterval(() => {
       if (document.visibilityState === "visible") void pollMessages();
-    }, 5000);
+    }, 3000);
     return () => window.clearInterval(t);
   }, [pollMessages]);
 
@@ -304,7 +313,13 @@ export function Chat({
         <button
           type="button"
           className="lo-bar-menu"
-          onClick={() => setDrawerOpen(true)}
+          onClick={() => {
+            // Le tiroir se rouvre : c'est le moment où on veut voir ce qui
+            // s'est passé ailleurs. On relit tout de suite, pas au prochain
+            // tour de minuterie.
+            setDrawerOpen(true);
+            void refreshList();
+          }}
           aria-label="Ouvrir l'historique"
         >
           <Icon name="menu" />

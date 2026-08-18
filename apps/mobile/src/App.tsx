@@ -22,7 +22,7 @@ import {
   api,
   coreMode,
 } from "./lib/core";
-import { useNavigation } from "./lib/navigation";
+import { useCoucheRetour, useNavigation } from "./lib/navigation";
 import { surEchecReseau } from "./lib/reachability";
 import { annulerScan, isScannerAvailable, scan } from "./lib/scanner";
 import { appliquerAccent, lireAccent } from "./lib/theme";
@@ -74,6 +74,10 @@ export function App() {
   useEffect(() => {
     appliquerAccent(lireAccent());
   }, []);
+
+  // Le retour d'Android annule la confirmation d'appairage au lieu de quitter
+  // l'application en plein milieu.
+  useCoucheRetour(pendingProvisioning !== null, () => setPendingProvisioning(null));
 
   const refreshCapabilities = useCallback(async () => {
     try {

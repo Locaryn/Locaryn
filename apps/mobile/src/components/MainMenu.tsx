@@ -4,9 +4,8 @@ import { getSlotContributions } from "./extensions/SlotRegistry";
 
 /**
  * Les grands espaces de l'application, ceux qui méritent leur propre écran.
- * `chat` est l'accueil : l'entrée existe pour que le menu raconte la même
- * chose que celui de l'ordinateur, mais rester sur le chat ne navigue nulle
- * part — le menu se contente de se fermer.
+ * Le chat est l'accueil, pas une destination : il n'apparaît pas dans le
+ * menu, on y est déjà.
  */
 export type Destination = "chat" | "studio" | "extensions" | "models" | "settings" | "figures";
 
@@ -43,22 +42,17 @@ type Entree = {
  *
  * Le bureau énumère ses vues dans un ordre précis, avec une phrase pour
  * chacune ; le téléphone reprend la même énumération, le même ordre, les mêmes
- * phrases, pour les vues qu'il a. « Mes modèles installés » et « Catalogue de
- * modèles », séparées sur le bureau, sont ici deux entrées vers le même écran,
- * qui s'ouvre sur l'onglet correspondant. Les archives, les connecteurs et les
- * réglages propres au serveur vivent dans Paramètres, pas ici.
+ * phrases, pour les vues qu'il a — sauf le chat, qui est l'accueil du
+ * téléphone : le lister reviendrait à proposer de revenir là où on est déjà.
+ * « Mes modèles installés » et « Catalogue de modèles », séparées sur le
+ * bureau, sont ici deux entrées vers le même écran, qui s'ouvre sur l'onglet
+ * correspondant. Les archives, les connecteurs et les réglages propres au
+ * serveur vivent dans Paramètres, pas ici.
  */
 export function MainMenu({ open, onClose, canCreate, canFigures, onGo, extensions = [] }: Props) {
   if (!open) return null;
 
   const natives: Entree[] = [
-    {
-      id: "chat",
-      label: "Chat et agent",
-      note: "Environnement de chat principal, exécution de code et prompts",
-      icon: "chat",
-      destination: "chat",
-    },
     {
       id: "studio",
       label: "Studio de génération",

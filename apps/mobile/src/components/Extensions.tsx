@@ -1,6 +1,7 @@
 import { capabilityLabel } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CATALOGUE, type Capability, type PhoneExtension, api } from "../lib/core";
+import { useCoucheRetour } from "../lib/navigation";
 import { Screen } from "./Screen";
 
 type Props = {
@@ -162,10 +163,13 @@ export function Extensions({ onBack, onChanged }: Props) {
 
   // Modal d'installation manuelle
   const [showInstallModal, setShowInstallModal] = useState(false);
+  // Le retour d'Android referme les fenêtres ouvertes avant de quitter.
+  useCoucheRetour(showInstallModal, () => setShowInstallModal(false));
   const [manualSource, setManualSource] = useState("");
 
   // Modal de permissions
   const [permissionTarget, setPermissionTarget] = useState<PhoneExtension | null>(null);
+  useCoucheRetour(permissionTarget !== null, () => setPermissionTarget(null));
 
   const reload = useCallback(async () => {
     try {

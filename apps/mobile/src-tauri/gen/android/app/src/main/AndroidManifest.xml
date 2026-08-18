@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      Notifications push : demander le droit d'afficher des notifications.
+
+      Sans cette permission, Android 13+ refuse d'afficher la moindre
+      notification et Notification.requestPermission() échoue immédiatement —
+      le bouton des réglages ne pouvait ni activer ni désactiver quoi que ce
+      soit.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!--
       Installer la mise à jour depuis l'application.
 

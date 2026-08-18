@@ -6,6 +6,7 @@ import {
   type ModelPullProgress,
   api,
 } from "../lib/core";
+import { useCoucheRetour } from "../lib/navigation";
 import { notifyModelDownloaded } from "../lib/notifications";
 import { Screen } from "./Screen";
 
@@ -297,6 +298,9 @@ export function Models({ onBack, initialTab }: Props) {
   // Téléchargement personnalisé
   const [showCustomPull, setShowCustomPull] = useState(false);
   const [customModelUrl, setCustomModelUrl] = useState("");
+
+  // Le retour d'Android referme la fenêtre de téléchargement personnalisé.
+  useCoucheRetour(showCustomPull, () => setShowCustomPull(false));
 
   /** L'avancement du téléchargement en cours */
   const [progress, setProgress] = useState<ModelPullProgress | null>(null);

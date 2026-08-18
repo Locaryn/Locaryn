@@ -1,8 +1,9 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
+import { ConversationHistorySettings } from "../components/ConversationHistorySettings";
 import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
-import { type LocalProfile, type Session, core } from "../lib/core";
+import { type LocalProfile, type Project, type Session, core } from "../lib/core";
 import { pickImageFile } from "../lib/dialog";
 import { toMediaUrl } from "../lib/media";
 import { ArchivesView } from "./ArchivesView";
@@ -12,9 +13,13 @@ type Props = {
   onOpenSession: (session: Session) => void;
   activeCapabilities?: string[];
   embedded?: boolean;
+  /** Les conversations, pour l'historique consultable du compte. */
+  projects?: Project[];
+  sessionsByProject?: Record<string, Session[]>;
+  standaloneSessions?: Session[];
 };
 
-type AccountSection = "profile" | "models" | "memory" | "archives";
+type AccountSection = "profile" | "models" | "memory" | "archives" | "conversations";
 
 /**
  * Espace compte.
@@ -24,7 +29,14 @@ type AccountSection = "profile" | "models" | "memory" | "archives";
  * connexion à un gateway reste une option, rangée dans le profil plutôt qu'au
  * premier plan de la navigation.
  */
-export function AccountView({ onOpenSession, activeCapabilities = [], embedded = false }: Props) {
+export function AccountView({
+  onOpenSession,
+  activeCapabilities = [],
+  embedded = false,
+  projects = [],
+  sessionsByProject = {},
+  standaloneSessions = [],
+}: Props) {
   const [section, setSection] = useState<AccountSection>("profile");
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
@@ -145,6 +157,19 @@ export function AccountView({ onOpenSession, activeCapabilities = [], embedded =
         </button>
         <button
           type="button"
+          className={`locaryn-account-nav-item${section === "conversations" ? " locaryn-active" : ""}`}
+          onClick={() => setSection("conversations")}
+        >
+          <span className="locaryn-account-nav-icon">
+            <Icon name="chat" size={15} />
+          </span>
+          <span className="locaryn-account-nav-text">
+            <strong>Conversations</strong>
+            <small>Historique et conversations récentes</small>
+          </span>
+        </button>
+        <button
+          type="button"
           className={`locaryn-account-nav-item${section === "memory" ? " locaryn-active" : ""}`}
           onClick={() => setSection("memory")}
         >
@@ -178,6 +203,13 @@ export function AccountView({ onOpenSession, activeCapabilities = [], embedded =
           <ModelPreferencesSettings activeCapabilities={activeCapabilities} />
         ) : section === "memory" ? (
           <MemorySettings />
+        ) : section === "conversations" ? (
+          <ConversationHistorySettings
+            projects={projects}
+            sessionsByProject={sessionsByProject}
+            standaloneSessions={standaloneSessions}
+            onOpenSession={onOpenSession}
+          />
         ) : (
           <>
             <div className="locaryn-card locaryn-account-profile-card">

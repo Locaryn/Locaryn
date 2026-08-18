@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { type Conversation, type PhoneProject, api } from "../lib/core";
+import { useCoucheRetour } from "../lib/navigation";
 
 type Props = {
   open: boolean;
@@ -107,6 +108,9 @@ export function Drawer({
   const [newProjectName, setNewProjectName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Le retour d'Android ferme la feuille du menu contextuel avant tout.
+  useCoucheRetour(menu !== null, () => setMenu(null));
 
   const reloadSide = () => {
     void api

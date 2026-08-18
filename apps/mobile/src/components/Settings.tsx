@@ -8,6 +8,7 @@ import {
   type UserProfile,
   api,
 } from "../lib/core";
+import { useCoucheRetour } from "../lib/navigation";
 import {
   getNotificationPermission,
   isPushEnabled,
@@ -43,7 +44,6 @@ type Section =
   | "account"
   | "engine"
   | "performance"
-  | "conversation"
   | "huggingface"
   | "projects"
   | "extensions"
@@ -74,13 +74,6 @@ const SECTIONS: { id: Section; icon: IconName; label: string; desc: string; conn
       icon: "speed",
       label: "Performance",
       desc: "GPU, cache KV, contexte, offload",
-    },
-    {
-      id: "conversation",
-      icon: "chat",
-      label: "Conversation",
-      desc: "Historique, titres et conversations récentes",
-      connecte: true,
     },
     {
       id: "huggingface",
@@ -158,9 +151,16 @@ export function Settings({ status, onBack, onSignedOut, onMemory, onArchives, on
   // ── Notifications ──
   const [pushActive, setPushActive] = useState(isPushEnabled());
   const [notifPermission, setNotifPermission] = useState(getNotificationPermission());
+  const [notifError, setNotifError] = useState<string | null>(null);
 
   // ── Apparence ──
   const [accent, setAccent] = useState(() => lireAccent());
+
+  // Le retour d'Android referme ce qui est ouvert : la catégorie courante,
+  // puis les modales — jamais l'application d'un seul coup.
+  useCoucheRetour(section !== null, () => setSection(null));
+  useCoucheRetour(showPasswordModal, () => setShowPasswordModal(false));
+  useCoucheRetour(showAddUserModal, () => setShowAddUserModal(false));
 
   const loadUserData = useCallback(async () => {
     if (!status?.signed_in) return;
@@ -189,6 +189,7 @@ export function Settings({ status, onBack, onSignedOut, onMemory, onArchives, on
   }
 
   async function handleTogglePush() {
+    setNotifError(null);
     if (!pushActive) {
       const ok = await requestNotificationPermission();
       setNotifPermission(getNotificationPermission());
@@ -197,6 +198,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory, onArchives, on
         sendNotification("Notifications activées", {
           body: "Vous recevrez les alertes et les réponses du serveur.",
         });
+      } else {
+        // Refus ou indisponibilité : le dire, sinon le bouton semble mort.
+        setNotifError(
+          "Locaryn n'a pas obtenu le droit de notifier. Autorisez les notifications dans les réglages Android : Paramètres → Applications → Locaryn → Notifications.",
+        );
       }
     } else {
       setPushEnabled(false);
@@ -405,6 +411,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory, onArchives, on
                 )}
               </section>
 
+              {/* L'historique vit dans le Compte, comme sur le bureau — les
+                  conversations récentes sont une affaire de compte, pas une
+                  catégorie de réglages. */}
+              <ConversationHistory onOpenChat={onOpenChat} />
+
               <section className="lo-section">
                 <h2 className="lo-section-title">Préférences & mémoire</h2>
                 <button type="button" className="lo-row" onClick={onMemory}>
@@ -455,9 +466,6 @@ export function Settings({ status, onBack, onSignedOut, onMemory, onArchives, on
               detail="Ces réglages dépendent du matériel de la machine qui héberge le serveur : ils ne se font que sur place."
             />
           )}
-
-          {/* ── Conversation : l'historique, consultable d'ici ── */}
-          {section === "conversation" && <ConversationHistory onOpenChat={onOpenChat} />}
 
           {/* ── HuggingFace : token du serveur ── */}
           {section === "huggingface" && (
@@ -611,6 +619,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory, onArchives, on
                         Envoyer un test
                       </button>
                     </div>
+                  )}
+                  {notifError && (
+                    <p className="lo-error" style={{ marginTop: 8 }}>
+                      {notifError}
+                    </p>
                   )}
                 </div>
               </section>
