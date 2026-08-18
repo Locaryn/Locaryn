@@ -1748,3 +1748,82 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
     transform: rotate(360deg);
   }
 }
+
+/* ── Paramètres : les mêmes catégories que le bureau ── */
+.lo-settings-intro {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+/* Ce qui se règle uniquement sur la machine qui héberge le serveur. */
+.lo-note {
+  margin: 0;
+  padding: var(--space-4);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.lo-note strong {
+  color: var(--text);
+}
+
+/* Groupe de l'historique des conversations, comme sur le bureau. */
+.lo-settings-groupe {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* ── Apparence : les pastilles d'accent ── */
+.lo-swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.lo-swatch {
+  width: 42px;
+  height: 42px;
+  position: relative;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.lo-swatch-active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text);
+}
+.lo-swatch-check {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #12140f;
+}
+.lo-custom-color {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.lo-color-input {
+  width: 46px;
+  height: 40px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+.lo-color-value {
+  font-size: 13px;
+  color: var(--text-faint);
+}

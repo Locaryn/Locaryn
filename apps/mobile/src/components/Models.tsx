@@ -9,7 +9,11 @@ import {
 import { notifyModelDownloaded } from "../lib/notifications";
 import { Screen } from "./Screen";
 
-type Props = { onBack: () => void };
+type Props = {
+  onBack: () => void;
+  /** L'onglet d'ouverture : « installés » ou « catalogue ». */
+  initialTab?: "installed" | "marketplace";
+};
 
 type Tab = "installed" | "marketplace";
 type CategoryFilter =
@@ -280,8 +284,8 @@ const MARKETPLACE_CATALOGUE: MarketplaceModelItem[] = [
   },
 ];
 
-export function Models({ onBack }: Props) {
-  const [tab, setTab] = useState<Tab>("installed");
+export function Models({ onBack, initialTab }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? "installed");
   const [images, setImages] = useState<MediaModel[] | null>(null);
   const [voices, setVoices] = useState<MediaModel[] | null>(null);
   const [llmModels, setLlmModels] = useState<string[]>([]);

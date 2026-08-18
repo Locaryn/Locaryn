@@ -1065,27 +1065,88 @@ fn slugify(nom: &str) -> String {
     }
 }
 
-/// Les conversations rangées aux archives — celles du conteneur des
-/// conversations libres, les seules qu'on range depuis ce tiroir.
+/// Une conversation archivée, avec le projet d'où elle vient.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ArchivedConversation {
+    pub id: String,
+    pub title: String,
+    pub archived_at: Option<String>,
+    pub project: String,
+}
+
+/// Toutes les conversations rangées aux archives, quel que soit leur projet.
+///
+/// Comme sur l'ordinateur : les archives sont rangées par projet côté serveur,
+/// on parcourt donc tous les projets — y compris le conteneur des
+/// conversations libres — et on remet tout à plat par date. C'est un endroit
+/// qu'on ne visite pas tous les jours, mais quand on y va, c'est pour
+/// retrouver « la conversation d'avant-hier », pas pour naviguer dans ses
+/// dossiers.
 #[tauri::command]
-async fn list_archived() -> Result<Vec<Conversation>, String> {
+async fn list_archived() -> Result<Vec<ArchivedConversation>, String> {
     let (client, server, session) = authenticated()?;
-    let base = server.current_url.trim_end_matches('/').to_string();
-    let project_id = ensure_free_chat_project(&client, &server, &session.token).await?;
+    let base = server.current_url.trim_end_matches('/');
     let resp = client
-        .get(format!("{base}/v1/projects/{project_id}/archived"))
+        .get(format!("{base}/v1/projects"))
         .bearer_auth(&session.token)
         .send()
         .await
         .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Votre session a expiré. Reconnectez-vous.".into());
+    }
     if !resp.status().is_success() {
         return Err(format!(
             "Le serveur a refusé la demande ({}).",
             resp.status()
         ));
     }
-    let brut: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
-    Ok(conversations_depuis(&brut))
+    let projets: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+
+    let mut out = Vec::new();
+    for projet in projets {
+        let Some(pid) = projet.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let nom = projet
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Projet")
+            .to_string();
+        let arch = client
+            .get(format!("{base}/v1/projects/{pid}/archived"))
+            .bearer_auth(&session.token)
+            .send()
+            .await
+            .map_err(|_| unreachable(&server))?;
+        if !arch.status().is_success() {
+            continue;
+        }
+        let Ok(liste) = arch.json::<Vec<serde_json::Value>>().await else {
+            continue;
+        };
+        for s in liste {
+            let Some(id) = s.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            out.push(ArchivedConversation {
+                id: id.to_string(),
+                title: s.get("title")
+                    .and_then(|v| v.as_str())
+                    .filter(|t| !t.trim().is_empty())
+                    .unwrap_or("Conversation")
+                    .to_string(),
+                archived_at: s
+                    .get("archived_at")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                project: nom.clone(),
+            });
+        }
+    }
+    // La plus récemment archivée d'abord : c'est celle qu'on cherche.
+    out.sort_by(|a, b| b.archived_at.cmp(&a.archived_at));
+    Ok(out)
 }
 
 /// Le contenu d'une conversation, pour la reprendre là où elle en était.

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ArchivesScreen } from "./components/ArchivesScreen";
 import { Chat } from "./components/Chat";
 import { ConfirmServer, type ProvisioningApercu, lireApercu } from "./components/ConfirmServer";
 import { ExtensionView } from "./components/ExtensionView";
@@ -24,6 +25,7 @@ import {
 import { useNavigation } from "./lib/navigation";
 import { surEchecReseau } from "./lib/reachability";
 import { annulerScan, isScannerAvailable, scan } from "./lib/scanner";
+import { appliquerAccent, lireAccent } from "./lib/theme";
 
 type Screen = "signin" | "chat" | "memory" | Destination | (string & {});
 
@@ -60,8 +62,18 @@ export function App() {
   const [activeExtensions, setActiveExtensions] = useState<PhoneExtension[]>([]);
   /** Une conversation neuve tenue par une figure, à ouvrir dans le chat. */
   const [figureChatId, setFigureChatId] = useState<string | null>(null);
+  /** Une conversation sortie des archives, à ouvrir dans le chat. */
+  const [restoredChatId, setRestoredChatId] = useState<string | null>(null);
   /** Une image produite par le Studio, à poser dans le fil au retour au chat. */
   const [pendingMedia, setPendingMedia] = useState<MediaResult | null>(null);
+  /** L'onglet d'ouverture de l'écran Modèles, choisi depuis le menu. */
+  const [modelsTab, setModelsTab] = useState<"installed" | "marketplace">("installed");
+
+  // La couleur d'accent choisie dans Paramètres → Apparence s'applique dès le
+  // démarrage, pas seulement à l'ouverture des réglages.
+  useEffect(() => {
+    appliquerAccent(lireAccent());
+  }, []);
 
   const refreshCapabilities = useCallback(async () => {
     try {
@@ -314,6 +326,11 @@ export function App() {
               remplacer("signin");
             }}
             onMemory={() => aller("memory")}
+            onArchives={() => aller("archives")}
+            onOpenChat={(sessionId) => {
+              setRestoredChatId(sessionId);
+              aller("chat");
+            }}
           />
         ) : (
           <SignIn
@@ -343,12 +360,25 @@ export function App() {
         <Chat
           status={status}
           capabilities={capabilities}
-          onGo={aller}
+          onGo={(d, initialTab) => {
+            // Le chat est l'accueil : le menu se referme, on n'y navigue pas.
+            if (d === "chat") return;
+            if (initialTab) setModelsTab(initialTab);
+            aller(d);
+          }}
           extensions={activeExtensions}
-          key={figureChatId ?? "chat"}
-          initialId={figureChatId}
+          key={figureChatId ?? restoredChatId ?? "chat"}
+          initialId={figureChatId ?? restoredChatId}
           initialMedia={pendingMedia}
           onConsumedMedia={() => setPendingMedia(null)}
+        />
+      ) : screen === "archives" ? (
+        <ArchivesScreen
+          onBack={revenir}
+          onOpenChat={(sessionId) => {
+            setRestoredChatId(sessionId);
+            aller("chat");
+          }}
         />
       ) : screen === "figures" ? (
         <FiguresScreen
@@ -375,7 +405,7 @@ export function App() {
           onChanged={() => void refreshCapabilities()}
         />
       ) : screen === "models" ? (
-        <Models onBack={revenir} />
+        <Models onBack={revenir} initialTab={modelsTab} />
       ) : screen === "memory" ? (
         <MemoryScreen onBack={revenir} />
       ) : screen === "settings" ? (
@@ -387,6 +417,11 @@ export function App() {
             remplacer("signin");
           }}
           onMemory={() => aller("memory")}
+          onArchives={() => aller("archives")}
+          onOpenChat={(sessionId) => {
+            setRestoredChatId(sessionId);
+            aller("chat");
+          }}
         />
       ) : (
         <ExtensionView screenId={screen} onBack={revenir} onOpenChat={() => aller("chat")} />

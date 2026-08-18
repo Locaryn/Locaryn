@@ -354,6 +354,14 @@ export interface PhoneProject {
   name: string;
 }
 
+/** Une conversation rangée aux archives, avec le projet d'où elle vient. */
+export interface ArchivedConversation {
+  id: string;
+  title: string;
+  archived_at: string | null;
+  project: string;
+}
+
 /** Un tour déjà écrit, relu depuis le serveur. */
 export interface ChatTurn {
   id: string;
@@ -483,8 +491,8 @@ export const core = {
     invoke<void>("move_session", { id, projectId }),
   /** Créer un projet sur le serveur, depuis le téléphone. */
   createProject: (name: string) => invoke<PhoneProject>("create_project", { name }),
-  /** Les conversations libres rangées aux archives. */
-  archivedConversations: () => invoke<Conversation[]>("list_archived"),
+  /** Toutes les conversations rangées aux archives, quel que soit leur projet. */
+  archivedConversations: () => invoke<ArchivedConversation[]>("list_archived"),
   loadConversation: (id: string) => invoke<ChatTurn[]>("load_conversation", { id }),
   /** Models the machine can generate with: kind = "image" | "audio". */
   listMediaModels: (kind: "image" | "audio") => invoke<MediaModel[]>("list_media_models", { kind }),
@@ -673,7 +681,8 @@ export const demoCore: typeof core = {
     name,
   }),
   archivedConversations: async () => [
-    { id: "demo-old", title: "Ancienne discussion", last_message_at: null },
+    { id: "demo-old", title: "Ancienne discussion", archived_at: null, project: "Atelier" },
+    { id: "demo-old-2", title: "Recherche de matériaux", archived_at: null, project: "Jardin" },
   ],
   loadConversation: async () => [],
   listMediaModels: async () => [

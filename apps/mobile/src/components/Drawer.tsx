@@ -14,7 +14,7 @@ type Props = {
 
 /** Ce que la feuille du bas montre, selon qui l'a ouverte. */
 type Menu =
-  | { kind: "chat"; chat: Conversation; archived: boolean }
+  | { kind: "chat"; chat: Conversation }
   | { kind: "move"; chat: Conversation }
   | { kind: "create" }
   | null;
@@ -30,13 +30,11 @@ type Menu =
 function ConversationRow({
   chat,
   isCurrent,
-  archived,
   onOpen,
   onLongPress,
 }: {
   chat: Conversation;
   isCurrent: boolean;
-  archived: boolean;
   onOpen: () => void;
   onLongPress: () => void;
 }) {
@@ -85,11 +83,13 @@ function ConversationRow({
 /**
  * L'historique, et rien d'autre — mais un historique qu'on range.
  *
- * Ce tiroir contient ce sur quoi on travaille : les conversations libres,
- * puis les projets, chacun dépliable sur les siennes. Un appui prolongé sur
- * une conversation propose de l'archiver ou de la ranger dans un projet, et
- * les projets se créent d'ici — le serveur est le même que celui de
- * l'ordinateur, le rangement fait ici se voit là-bas.
+ * Même organisation que la barre latérale de l'ordinateur : les projets en
+ * haut, chacun dépliable sur ses conversations, puis les conversations libres
+ * en dessous. Un appui prolongé sur une conversation propose de l'archiver ou
+ * de la ranger dans un projet, et les projets se créent d'ici — le serveur est
+ * le même que celui de l'ordinateur, le rangement fait ici se voit là-bas.
+ * Les archives, elles, n'ont rien à faire dans cet historique : elles vivent
+ * dans Réglages → Archives, un endroit qu'on ne visite que quand on les veut.
  */
 export function Drawer({
   open,
@@ -103,8 +103,6 @@ export function Drawer({
   const [projects, setProjects] = useState<PhoneProject[] | null>(null);
   const [openProject, setOpenProject] = useState<string | null>(null);
   const [projectChats, setProjectChats] = useState<Record<string, Conversation[]>>({});
-  const [archived, setArchived] = useState<Conversation[] | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
   const [menu, setMenu] = useState<Menu>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -115,16 +113,12 @@ export function Drawer({
       .listProjects()
       .then(setProjects)
       .catch(() => setProjects([]));
-    void api
-      .archivedConversations()
-      .then(setArchived)
-      .catch(() => setArchived([]));
   };
 
   // Les listes ne sont lues qu'à l'ouverture : un tiroir fermé n'a rien à
-  // demander au serveur. Elles sont relues après chaque action. Les listes
-  // elles-mêmes ne font pas partie des dépendances : c'est leur passage à
-  // `null` (ou le retour à l'ouverture) qui décide, pas leur contenu.
+  // demander au serveur. Elles sont relues après chaque action. La liste
+  // elle-même ne fait pas partie des dépendances : c'est son passage à `null`
+  // (ou le retour à l'ouverture) qui décide, pas son contenu.
   // biome-ignore lint/correctness/useExhaustiveDependencies: voir ci-dessus.
   useEffect(() => {
     if (!open) return;
@@ -133,12 +127,6 @@ export function Drawer({
         .listProjects()
         .then(setProjects)
         .catch(() => setProjects([]));
-    }
-    if (archived === null) {
-      void api
-        .archivedConversations()
-        .then(setArchived)
-        .catch(() => setArchived([]));
     }
   }, [open]);
 
@@ -158,11 +146,11 @@ export function Drawer({
     }
   }
 
-  async function archiver(chat: Conversation, archivedValue: boolean) {
+  async function archiver(chat: Conversation) {
     setBusy(true);
     setError(null);
     try {
-      await api.archiveConversation(chat.id, archivedValue);
+      await api.archiveConversation(chat.id, true);
       setMenu(null);
       onChanged();
       reloadSide();
@@ -230,32 +218,28 @@ export function Drawer({
                 type="button"
                 className="lo-sheet-item"
                 disabled={busy}
-                onClick={() => void archiver(menu.chat, !menu.archived)}
+                onClick={() => void archiver(menu.chat)}
               >
                 <span className="lo-sheet-icon">🗄</span>
                 <span className="lo-sheet-text">
-                  <span className="lo-sheet-label">{menu.archived ? "Restaurer" : "Archiver"}</span>
+                  <span className="lo-sheet-label">Archiver</span>
                   <span className="lo-hint">
-                    {menu.archived
-                      ? "Remet la conversation dans la liste"
-                      : "Quitte la liste, rien n'est effacé"}
+                    Quitte la liste, rien n'est effacé — on la retrouve dans Réglages → Archives
                   </span>
                 </span>
               </button>
-              {!menu.archived && (
-                <button
-                  type="button"
-                  className="lo-sheet-item"
-                  disabled={busy}
-                  onClick={() => setMenu({ kind: "move", chat: menu.chat })}
-                >
-                  <span className="lo-sheet-icon">📁</span>
-                  <span className="lo-sheet-text">
-                    <span className="lo-sheet-label">Déplacer vers un projet…</span>
-                    <span className="lo-hint">Range la conversation dans un projet</span>
-                  </span>
-                </button>
-              )}
+              <button
+                type="button"
+                className="lo-sheet-item"
+                disabled={busy}
+                onClick={() => setMenu({ kind: "move", chat: menu.chat })}
+              >
+                <span className="lo-sheet-icon">📁</span>
+                <span className="lo-sheet-text">
+                  <span className="lo-sheet-label">Déplacer vers un projet…</span>
+                  <span className="lo-hint">Range la conversation dans un projet</span>
+                </span>
+              </button>
             </>
           )}
 
@@ -357,26 +341,14 @@ export function Drawer({
             Nouvelle conversation
           </button>
 
-          {conversations === null && (
+          {projects === null && (
             <div className="lo-loading-row" role="status">
               <span className="lo-spinner" aria-hidden />
               <span>Chargement…</span>
             </div>
           )}
-          {conversations?.length === 0 && <p className="lo-sub lo-pad">Rien pour l'instant.</p>}
-          <ul className="lo-list">
-            {conversations?.map((c) => (
-              <ConversationRow
-                key={c.id}
-                chat={c}
-                isCurrent={c.id === currentId}
-                archived={false}
-                onOpen={() => onPick(c.id)}
-                onLongPress={() => setMenu({ kind: "chat", chat: c, archived: false })}
-              />
-            ))}
-          </ul>
 
+          {/* ── Projets, comme « Espaces de travail » sur l'ordinateur ── */}
           {projects && projects.length > 0 && (
             <>
               <div className="lo-drawer-group-label">Projets</div>
@@ -410,9 +382,8 @@ export function Drawer({
                             key={c.id}
                             chat={c}
                             isCurrent={c.id === currentId}
-                            archived={false}
                             onOpen={() => onPick(c.id)}
-                            onLongPress={() => setMenu({ kind: "chat", chat: c, archived: false })}
+                            onLongPress={() => setMenu({ kind: "chat", chat: c })}
                           />
                         ))}
                       </ul>
@@ -435,33 +406,28 @@ export function Drawer({
             + Nouveau projet
           </button>
 
-          {archived && archived.length > 0 && (
-            <>
-              <button
-                type="button"
-                className="lo-drawer-item lo-drawer-project"
-                onClick={() => setShowArchived((v) => !v)}
-                aria-expanded={showArchived}
-              >
-                <span className="lo-drawer-caret">{showArchived ? "▾" : "▸"}</span>
-                Archivées ({archived.length})
-              </button>
-              {showArchived && (
-                <ul className="lo-list lo-list-nested">
-                  {archived.map((c) => (
-                    <ConversationRow
-                      key={c.id}
-                      chat={c}
-                      isCurrent={c.id === currentId}
-                      archived
-                      onOpen={() => onPick(c.id)}
-                      onLongPress={() => setMenu({ kind: "chat", chat: c, archived: true })}
-                    />
-                  ))}
-                </ul>
-              )}
-            </>
+          {/* ── Conversations libres, sous les projets ── */}
+          <div className="lo-drawer-group-label">Conversations</div>
+          {conversations === null && (
+            <div className="lo-loading-row" role="status">
+              <span className="lo-spinner" aria-hidden />
+              <span>Chargement…</span>
+            </div>
           )}
+          {conversations?.length === 0 && (
+            <p className="lo-sub lo-pad">Aucune conversation libre.</p>
+          )}
+          <ul className="lo-list">
+            {conversations?.map((c) => (
+              <ConversationRow
+                key={c.id}
+                chat={c}
+                isCurrent={c.id === currentId}
+                onOpen={() => onPick(c.id)}
+                onLongPress={() => setMenu({ kind: "chat", chat: c })}
+              />
+            ))}
+          </ul>
         </div>
       </nav>
 

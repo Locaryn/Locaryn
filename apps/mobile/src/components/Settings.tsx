@@ -1,6 +1,13 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
-import { type MobileStatus, type PhoneUserSummary, type UserProfile, api } from "../lib/core";
+import {
+  type Conversation,
+  type MobileStatus,
+  type PhoneProject,
+  type PhoneUserSummary,
+  type UserProfile,
+  api,
+} from "../lib/core";
 import {
   getNotificationPermission,
   isPushEnabled,
@@ -8,6 +15,7 @@ import {
   sendNotification,
   setPushEnabled,
 } from "../lib/notifications";
+import { ACCENT_PRESETS, accentDepuisHex, appliquerAccent, lireAccent } from "../lib/theme";
 import { ExtensionSettings } from "./ExtensionSettings";
 import { Screen } from "./Screen";
 import { VersionSection } from "./VersionSection";
@@ -18,9 +26,112 @@ type Props = {
   onBack: () => void;
   onSignedOut: (s: MobileStatus) => void;
   onMemory: () => void;
+  /** Les conversations rangées — un endroit rarement visité, comme sur le bureau. */
+  onArchives: () => void;
+  /** Ouvrir une conversation depuis l'historique des réglages. */
+  onOpenChat: (sessionId: string) => void;
 };
 
-export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
+/**
+ * Les mêmes catégories que « Paramètres Système » sur l'ordinateur, dans le
+ * même ordre, avec les mêmes phrases. Le téléphone est un client du serveur :
+ * ce qui tourne sur la machine qui héberge Locaryn (moteur, performance,
+ * stockage…) s'y règle, et le téléphone le dit clairement au lieu de le
+ * cacher — la catégorie existe, le réglage vit sur le bureau.
+ */
+type Section =
+  | "account"
+  | "engine"
+  | "performance"
+  | "conversation"
+  | "huggingface"
+  | "projects"
+  | "extensions"
+  | "connectors"
+  | "appearance"
+  | "language"
+  | "server"
+  | "storage"
+  | "about";
+
+const SECTIONS: { id: Section; icon: IconName; label: string; desc: string; connecte?: boolean }[] =
+  [
+    {
+      id: "account",
+      icon: "private",
+      label: "Compte",
+      desc: "Profil local, identité, préférences et mémoire",
+      connecte: true,
+    },
+    {
+      id: "engine",
+      icon: "settings",
+      label: "Moteur IA",
+      desc: "Runtime llama.cpp, capacités, adaptateurs LoRA",
+    },
+    {
+      id: "performance",
+      icon: "speed",
+      label: "Performance",
+      desc: "GPU, cache KV, contexte, offload",
+    },
+    {
+      id: "conversation",
+      icon: "chat",
+      label: "Conversation",
+      desc: "Historique, titres et conversations récentes",
+      connecte: true,
+    },
+    {
+      id: "huggingface",
+      icon: "marketplace",
+      label: "HuggingFace",
+      desc: "Token pour les dépôts restreints (modèles gated)",
+    },
+    {
+      id: "projects",
+      icon: "project",
+      label: "Projets",
+      desc: "Autorisations, base de connaissances, archivage",
+      connecte: true,
+    },
+    {
+      id: "extensions",
+      icon: "extensions",
+      label: "Extensions",
+      desc: "Extensions Locaryn, plugins compatibles et noyaux",
+      connecte: true,
+    },
+    {
+      id: "connectors",
+      icon: "server",
+      label: "Connecteurs & MCP",
+      desc: "Connexions SSH, bases de données et serveurs MCP",
+    },
+    { id: "appearance", icon: "studio", label: "Apparence", desc: "Couleur d'accentuation, thème" },
+    { id: "language", icon: "chat", label: "Langue", desc: "Langue de l'interface" },
+    {
+      id: "server",
+      icon: "server",
+      label: "Serveur & fonctions",
+      desc: "Service Locaryn, accès local et appairage",
+    },
+    {
+      id: "storage",
+      icon: "models",
+      label: "Stockage",
+      desc: "Emplacement des modèles, espace disque, nettoyage",
+    },
+    { id: "about", icon: "warning", label: "À propos", desc: "Version, licences, système" },
+  ];
+
+export function Settings({ status, onBack, onSignedOut, onMemory, onArchives, onOpenChat }: Props) {
+  const connecte = status?.signed_in ?? false;
+
+  // ── Navigation interne : la liste des catégories, puis la catégorie ──
+  const [section, setSection] = useState<Section | null>(null);
+  const courante = section ? SECTIONS.find((s) => s.id === section) : null;
+
   // ── Utilisateur actif & serveur ──
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [serverUsers, setServerUsers] = useState<PhoneUserSummary[]>([]);
@@ -48,6 +159,9 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
   const [pushActive, setPushActive] = useState(isPushEnabled());
   const [notifPermission, setNotifPermission] = useState(getNotificationPermission());
 
+  // ── Apparence ──
+  const [accent, setAccent] = useState(() => lireAccent());
+
   const loadUserData = useCallback(async () => {
     if (!status?.signed_in) return;
     try {
@@ -68,6 +182,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
   useEffect(() => {
     void loadUserData();
   }, [loadUserData]);
+
+  function choisirAccent(a: { hex: string; rgb: string }) {
+    setAccent(a);
+    appliquerAccent(a);
+  }
 
   async function handleTogglePush() {
     if (!pushActive) {
@@ -148,173 +267,390 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
     }
   }
 
+  const visibles = SECTIONS.filter((s) => !s.connecte || connecte);
+
   return (
-    <Screen title="Réglages" onBack={onBack}>
+    <Screen
+      title={courante ? courante.label : "Paramètres"}
+      onBack={courante ? () => setSection(null) : onBack}
+    >
       {userNotice && (
         <div className="lo-toast">
           <p className="lo-notice">{userNotice}</p>
         </div>
       )}
 
-      <VersionSection />
+      {!courante ? (
+        <>
+          <p className="lo-hint lo-settings-intro">
+            Tous les réglages de Locaryn, rangés comme sur l'ordinateur. Les options propres à une
+            conversation restent accessibles depuis l'écran du chat.
+          </p>
+          <ul className="lo-cards">
+            {visibles.map((s) => (
+              <li key={s.id}>
+                <button type="button" className="lo-row" onClick={() => setSection(s.id)}>
+                  <span className="lo-row-icon">
+                    <Icon name={s.icon} />
+                  </span>
+                  <span className="lo-row-text">
+                    <span className="lo-row-label">{s.label}</span>
+                    <span className="lo-hint">{s.desc}</span>
+                  </span>
+                  <span className="lo-row-go">
+                    <Icon name="chevron" size={16} />
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <>
+          <p className="lo-hint lo-settings-intro">{courante.desc}</p>
 
-      {/* ── Compte & Profil Utilisateur ── */}
-      {status?.signed_in && (
-        <section className="lo-section">
-          <h2 className="lo-section-title">Compte Utilisateur</h2>
-          <div className="lo-card" style={{ flexDirection: "column", alignItems: "stretch" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div className="lo-card-text">
-                <span className="lo-card-title">{profile?.username ?? "Utilisateur"}</span>
-                <span className="lo-hint">
-                  Rôle : {profile?.role === "admin" ? "Administrateur" : "Membre"}
-                </span>
+          {/* ── Compte : profil, identité, préférences et mémoire ── */}
+          {section === "account" && (
+            <>
+              <section className="lo-section">
+                <h2 className="lo-section-title">Profil</h2>
+                <div className="lo-card" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div className="lo-card-text">
+                      <span className="lo-card-title">{profile?.username ?? "Utilisateur"}</span>
+                      <span className="lo-hint">
+                        Rôle : {profile?.role === "admin" ? "Administrateur" : "Membre"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="lo-btn-small"
+                      onClick={() => setShowPasswordModal(true)}
+                    >
+                      Changer le mot de passe
+                    </button>
+                  </div>
+                </div>
+
+                {/* Gestion des comptes par l'administrateur */}
+                {profile?.role === "admin" && (
+                  <div style={{ marginTop: "var(--space-3)" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+                        Utilisateurs du serveur ({serverUsers.length})
+                      </span>
+                      <button
+                        type="button"
+                        className="lo-btn-small lo-btn-small-on"
+                        onClick={() => setShowAddUserModal(true)}
+                      >
+                        + Ajouter
+                      </button>
+                    </div>
+
+                    {userError && <p className="lo-error">{userError}</p>}
+                    {loadingUsers && <p className="lo-sub">Chargement des comptes…</p>}
+
+                    <ul className="lo-cards">
+                      {serverUsers.map((u) => (
+                        <li key={u.id} className="lo-card" style={{ padding: "8px 12px" }}>
+                          <div className="lo-card-text">
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                                {u.username}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  padding: "1px 5px",
+                                  borderRadius: 4,
+                                  background:
+                                    u.role === "admin"
+                                      ? "rgba(var(--accent-rgb), 0.2)"
+                                      : "rgba(255, 255, 255, 0.08)",
+                                  color: u.role === "admin" ? "var(--accent)" : "var(--text-dim)",
+                                }}
+                              >
+                                {u.role === "admin" ? "Admin" : "Membre"}
+                              </span>
+                            </div>
+                          </div>
+                          {u.username !== profile?.username && (
+                            <button
+                              type="button"
+                              className="lo-btn-small"
+                              style={{ color: "var(--danger)" }}
+                              onClick={() => void handleDeleteUser(u)}
+                            >
+                              Supprimer
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+
+              <section className="lo-section">
+                <h2 className="lo-section-title">Préférences & mémoire</h2>
+                <button type="button" className="lo-row" onClick={onMemory}>
+                  <span className="lo-row-icon">
+                    <Icon name="memory" />
+                  </span>
+                  <span className="lo-row-text">
+                    <span className="lo-row-label">Mémoire</span>
+                    <span className="lo-hint">Ce que le serveur retient de vous</span>
+                  </span>
+                  <span className="lo-row-go">
+                    <Icon name="chevron" size={16} />
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="lo-row"
+                  style={{ marginTop: "var(--space-2)" }}
+                  onClick={onArchives}
+                >
+                  <span className="lo-row-icon">
+                    <Icon name="archive" />
+                  </span>
+                  <span className="lo-row-text">
+                    <span className="lo-row-label">Archives</span>
+                    <span className="lo-hint">Conversations rangées</span>
+                  </span>
+                  <span className="lo-row-go">
+                    <Icon name="chevron" size={16} />
+                  </span>
+                </button>
+              </section>
+            </>
+          )}
+
+          {/* ── Moteur IA : tourne sur l'ordinateur ── */}
+          {section === "engine" && (
+            <SurOrdinateur
+              quoi="Le moteur d'inférence — runtime llama.cpp, capacités, adaptateurs LoRA"
+              detail="C'est la machine qui héberge le serveur Locaryn qui fait tourner les modèles. Ses réglages s'y règlent."
+            />
+          )}
+
+          {/* ── Performance : tourne sur l'ordinateur ── */}
+          {section === "performance" && (
+            <SurOrdinateur
+              quoi="La performance — GPU, cache KV, contexte, offload"
+              detail="Ces réglages dépendent du matériel de la machine qui héberge le serveur : ils ne se font que sur place."
+            />
+          )}
+
+          {/* ── Conversation : l'historique, consultable d'ici ── */}
+          {section === "conversation" && <ConversationHistory onOpenChat={onOpenChat} />}
+
+          {/* ── HuggingFace : token du serveur ── */}
+          {section === "huggingface" && (
+            <SurOrdinateur
+              quoi="Le jeton HuggingFace"
+              detail="Il déverrouille les dépôts restreints (modèles gated) du côté du serveur qui les télécharge."
+            />
+          )}
+
+          {/* ── Projets : la liste, et le reste sur l'ordinateur ── */}
+          {section === "projects" && <ProjectsSection />}
+
+          {/* ── Extensions : piloteables depuis le téléphone ── */}
+          {section === "extensions" && <ExtensionSettings />}
+
+          {/* ── Connecteurs & MCP : sur l'ordinateur ── */}
+          {section === "connectors" && (
+            <SurOrdinateur
+              quoi="Les connecteurs et serveurs MCP — SSH, bases de données"
+              detail="Ces connexions partent de la machine qui héberge le serveur, vers d'autres machines. Elles se configurent sur place."
+            />
+          )}
+
+          {/* ── Apparence : la couleur d'accentuation ── */}
+          {section === "appearance" && (
+            <section className="lo-section">
+              <h2 className="lo-section-title">Couleur d'accentuation</h2>
+              <p className="lo-hint">
+                La teinte unique de l'interface. Sobre et naturelle par défaut — la même palette que
+                sur l'ordinateur.
+              </p>
+              <div className="lo-swatch-grid" style={{ marginTop: 12 }}>
+                {ACCENT_PRESETS.map((p) => {
+                  const actif = accent.hex.toLowerCase() === p.hex.toLowerCase();
+                  return (
+                    <button
+                      key={p.hex}
+                      type="button"
+                      className={`lo-swatch${actif ? " lo-swatch-active" : ""}`}
+                      style={{ background: p.hex }}
+                      title={p.name}
+                      aria-label={`Accent ${p.name}`}
+                      aria-pressed={actif}
+                      onClick={() => choisirAccent({ hex: p.hex, rgb: p.rgb })}
+                    >
+                      {actif && (
+                        <span className="lo-swatch-check">
+                          <Icon name="check" size={14} />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="lo-custom-color" style={{ marginTop: 16 }}>
+                <input
+                  type="color"
+                  value={accent.hex}
+                  onChange={(e) => choisirAccent(accentDepuisHex(e.target.value))}
+                  className="lo-color-input"
+                  aria-label="Couleur personnalisée"
+                />
+                <span className="lo-color-value">{accent.hex}</span>
               </div>
               <button
                 type="button"
-                className="lo-btn-small"
-                onClick={() => setShowPasswordModal(true)}
+                className="lo-btn-ghost lo-settings-reset"
+                style={{ marginTop: 16 }}
+                onClick={() =>
+                  choisirAccent({ hex: ACCENT_PRESETS[0].hex, rgb: ACCENT_PRESETS[0].rgb })
+                }
               >
-                Changer le mot de passe
+                Réinitialiser l'apparence
               </button>
-            </div>
-          </div>
+            </section>
+          )}
 
-          {/* Gestion des comptes par l'administrateur */}
-          {profile?.role === "admin" && (
-            <div style={{ marginTop: "var(--space-3)" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 6,
-                }}
-              >
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
-                  Utilisateurs du serveur ({serverUsers.length})
-                </span>
-                <button
-                  type="button"
-                  className="lo-btn-small lo-btn-small-on"
-                  onClick={() => setShowAddUserModal(true)}
-                >
-                  + Ajouter
-                </button>
+          {/* ── Langue : le français, comme partout ── */}
+          {section === "language" && (
+            <section className="lo-section">
+              <h2 className="lo-section-title">Langue de l'interface</h2>
+              <div className="lo-card">
+                <div className="lo-card-text">
+                  <span className="lo-card-title">Français</span>
+                  <span className="lo-hint">
+                    La langue de l'application sur le téléphone. Les noms de modèles et les termes
+                    techniques restent inchangés.
+                  </span>
+                </div>
               </div>
+            </section>
+          )}
 
-              {userError && <p className="lo-error">{userError}</p>}
-              {loadingUsers && <p className="lo-sub">Chargement des comptes…</p>}
+          {/* ── Serveur & fonctions ── */}
+          {section === "server" && (
+            <>
+              <section className="lo-section">
+                <h2 className="lo-section-title">Serveur Locaryn</h2>
+                <div className="lo-card">
+                  <div className="lo-card-text">
+                    <span className="lo-card-title">
+                      {status?.server_name ?? "Aucun serveur enregistré"}
+                    </span>
+                    <span className="lo-hint">
+                      {status?.travelling
+                        ? "Joint depuis l'extérieur (mode voyage)"
+                        : "Service local, accès direct"}
+                    </span>
+                  </div>
+                </div>
+                {status?.signed_in && (
+                  <button
+                    type="button"
+                    className="lo-btn-ghost"
+                    style={{ marginTop: 8 }}
+                    onClick={() => void api.signOut().then(onSignedOut)}
+                  >
+                    Se déconnecter de ce serveur
+                  </button>
+                )}
+              </section>
 
-              <ul className="lo-cards">
-                {serverUsers.map((u) => (
-                  <li key={u.id} className="lo-card" style={{ padding: "8px 12px" }}>
+              <section className="lo-section">
+                <h2 className="lo-section-title">Notifications & Alertes</h2>
+                <div className="lo-card" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <div className="lo-card-text">
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontWeight: 600, color: "var(--text)" }}>{u.username}</span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            padding: "1px 5px",
-                            borderRadius: 4,
-                            background:
-                              u.role === "admin"
-                                ? "rgba(var(--accent-rgb), 0.2)"
-                                : "rgba(255, 255, 255, 0.08)",
-                            color: u.role === "admin" ? "var(--accent)" : "var(--text-dim)",
-                          }}
-                        >
-                          {u.role === "admin" ? "Admin" : "Membre"}
-                        </span>
-                      </div>
+                      <span className="lo-card-title">Notifications push</span>
+                      <span className="lo-hint">
+                        Réponses en arrière-plan, générations prêtes et demandes d'autorisation
+                      </span>
                     </div>
-                    {u.username !== profile?.username && (
-                      <button
-                        type="button"
-                        className="lo-btn-small"
-                        style={{ color: "var(--danger)" }}
-                        onClick={() => void handleDeleteUser(u)}
-                      >
-                        Supprimer
+                    <button
+                      type="button"
+                      className={`lo-toggle ${pushActive ? "lo-toggle-on" : ""}`}
+                      onClick={() => void handleTogglePush()}
+                      aria-pressed={pushActive}
+                    >
+                      {pushActive ? "Activé" : "Désactivé"}
+                    </button>
+                  </div>
+                  {pushActive && (
+                    <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+                      <button type="button" className="lo-btn-small" onClick={handleTestPush}>
+                        Envoyer un test
                       </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="lo-section">
+                <h2 className="lo-section-title">Appairage</h2>
+                <div className="lo-note">
+                  <p>
+                    Un autre serveur s'ajoute par code QR depuis l'écran de connexion. Le code
+                    d'appairage du bureau se lit avec la caméra du téléphone.
+                  </p>
+                </div>
+              </section>
+            </>
           )}
-        </section>
-      )}
 
-      {/* ── Notifications Push ── */}
-      <section className="lo-section">
-        <h2 className="lo-section-title">Notifications & Alertes</h2>
-        <div className="lo-card" style={{ flexDirection: "column", alignItems: "stretch" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div className="lo-card-text">
-              <span className="lo-card-title">Notifications push</span>
-              <span className="lo-hint">
-                Réponses en arrière-plan, générations prêtes et demandes d'autorisation
-              </span>
-            </div>
-            <button
-              type="button"
-              className={`lo-toggle ${pushActive ? "lo-toggle-on" : ""}`}
-              onClick={() => void handleTogglePush()}
-              aria-pressed={pushActive}
-            >
-              {pushActive ? "Activé" : "Désactivé"}
-            </button>
-          </div>
-          {pushActive && (
-            <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" className="lo-btn-small" onClick={handleTestPush}>
-                Envoyer un test
-              </button>
-            </div>
+          {/* ── Stockage : sur l'ordinateur ── */}
+          {section === "storage" && (
+            <SurOrdinateur
+              quoi="Le stockage — emplacement des modèles, espace disque, nettoyage"
+              detail="Les modèles vivent sur le disque de la machine qui héberge le serveur : c'est là que se gèrent l'espace et le nettoyage."
+            />
           )}
-        </div>
-      </section>
 
-      {/* ── Réglages des extensions ── */}
-      <ExtensionSettings />
-
-      {/* ── Serveur & Déconnexion ── */}
-      <section className="lo-section">
-        <h2 className="lo-section-title">Serveur Locaryn</h2>
-        <p className="lo-hint">
-          {status?.server_name ?? "Aucun serveur enregistré"}
-          {status?.travelling ? " — joint depuis l'extérieur (mode voyage)" : ""}
-        </p>
-        {status?.signed_in && (
-          <button
-            type="button"
-            className="lo-btn-ghost"
-            style={{ marginTop: 8 }}
-            onClick={() => void api.signOut().then(onSignedOut)}
-          >
-            Se déconnecter de ce serveur
-          </button>
-        )}
-      </section>
-
-      {/* ── Personnalisation / Mémoire ── */}
-      {status?.signed_in && (
-        <section className="lo-section">
-          <h2 className="lo-section-title">Personnalisation</h2>
-          <button type="button" className="lo-row" onClick={onMemory}>
-            <span className="lo-row-icon">
-              <Icon name="memory" />
-            </span>
-            <span className="lo-row-text">
-              <span className="lo-row-label">Mémoire</span>
-              <span className="lo-hint">Ce que le serveur retient de vous</span>
-            </span>
-            <span className="lo-row-go">
-              <Icon name="chevron" size={16} />
-            </span>
-          </button>
-        </section>
+          {/* ── À propos : version et mise à jour ── */}
+          {section === "about" && (
+            <>
+              <VersionSection />
+              <section className="lo-section">
+                <h2 className="lo-section-title">Système</h2>
+                <div className="lo-note">
+                  <p>
+                    Les licences et les informations système détaillées sont sur l'ordinateur, dans
+                    Paramètres → À propos.
+                  </p>
+                </div>
+              </section>
+            </>
+          )}
+        </>
       )}
 
       {/* ── Modale Changement de mot de passe ── */}
@@ -454,5 +790,218 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
         </div>
       )}
     </Screen>
+  );
+}
+
+/** Ce qui se règle uniquement sur la machine qui héberge le serveur. */
+function SurOrdinateur({ quoi, detail }: { quoi: string; detail?: string }) {
+  return (
+    <section className="lo-section">
+      <div className="lo-note">
+        <p>
+          <strong>{quoi}</strong> se règle sur l'ordinateur qui héberge le serveur Locaryn.
+        </p>
+        {detail && (
+          <p className="lo-hint" style={{ marginTop: 6 }}>
+            {detail}
+          </p>
+        )}
+        <p className="lo-hint" style={{ marginTop: 6 }}>
+          Ouvrez les Paramètres du bureau, dans la catégorie correspondante : le téléphone en
+          reprendra les effets.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/** L'historique des conversations, comme « Conversation » sur le bureau. */
+function ConversationHistory({ onOpenChat }: { onOpenChat: (id: string) => void }) {
+  const [search, setSearch] = useState("");
+  const [libres, setLibres] = useState<Conversation[] | null>(null);
+  const [projets, setProjets] = useState<PhoneProject[] | null>(null);
+  const [parProjet, setParProjet] = useState<Record<string, Conversation[]>>({});
+
+  useEffect(() => {
+    let actif = true;
+    void (async () => {
+      const l = await api.listConversations().catch(() => [] as Conversation[]);
+      if (!actif) return;
+      setLibres(l);
+      const ps = await api.listProjects().catch(() => [] as PhoneProject[]);
+      if (!actif) return;
+      setProjets(ps);
+      const tout: Record<string, Conversation[]> = {};
+      await Promise.all(
+        ps.map(async (p) => {
+          const list = await api.listProjectConversations(p.id).catch(() => [] as Conversation[]);
+          tout[p.id] = list;
+        }),
+      );
+      if (actif) setParProjet(tout);
+    })();
+    return () => {
+      actif = false;
+    };
+  }, []);
+
+  const q = search.trim().toLowerCase();
+  const filtre = (c: Conversation) => !q || c.title.toLowerCase().includes(q);
+
+  const libresFiltrees = (libres ?? []).filter(filtre);
+  const groupesProjets = (projets ?? [])
+    .map((p) => ({ p, chats: (parProjet[p.id] ?? []).filter(filtre) }))
+    .filter((g) => g.chats.length > 0);
+  const total = libresFiltrees.length + groupesProjets.reduce((n, g) => n + g.chats.length, 0);
+
+  return (
+    <>
+      <section className="lo-section">
+        <h2 className="lo-section-title">Historique des conversations</h2>
+        <p className="lo-hint">
+          Retrouvez vos échanges par espace de travail. Touchez une conversation pour l'ouvrir dans
+          le chat. Les archivées sont rangées dans Compte → Archives.
+        </p>
+      </section>
+
+      <div className="lo-search-box">
+        <input
+          type="text"
+          className="lo-search-input"
+          placeholder="Rechercher une conversation…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {libres === null && (
+        <div className="lo-loading-row" role="status">
+          <span className="lo-spinner" aria-hidden />
+          <span>Chargement…</span>
+        </div>
+      )}
+      {libres !== null && total === 0 && (
+        <p className="lo-sub">
+          {search ? "Aucune conversation ne correspond." : "Aucune conversation à afficher."}
+        </p>
+      )}
+
+      {libresFiltrees.length > 0 && (
+        <section className="lo-section">
+          <h3 className="lo-settings-groupe">Conversations</h3>
+          <ul className="lo-cards">
+            {libresFiltrees.map((c) => (
+              <LigneConversation key={c.id} c={c} onOpen={onOpenChat} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {groupesProjets.map(({ p, chats }) => (
+        <section key={p.id} className="lo-section">
+          <h3 className="lo-settings-groupe">{p.name}</h3>
+          <ul className="lo-cards">
+            {chats.map((c) => (
+              <LigneConversation key={c.id} c={c} onOpen={onOpenChat} />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </>
+  );
+}
+
+function LigneConversation({ c, onOpen }: { c: Conversation; onOpen: (id: string) => void }) {
+  return (
+    <li>
+      <button type="button" className="lo-row" onClick={() => onOpen(c.id)}>
+        <span className="lo-row-icon">
+          <Icon name="chat" />
+        </span>
+        <span className="lo-row-text">
+          <span className="lo-row-label">{c.title}</span>
+          <span className="lo-hint">
+            {c.last_message_at ? dateCourte(c.last_message_at) : "Conversation récente"}
+          </span>
+        </span>
+        <span className="lo-row-go">
+          <Icon name="forward" size={14} />
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function dateCourte(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+/** Les projets du serveur, avec leur nombre de conversations. */
+function ProjectsSection() {
+  const [projets, setProjets] = useState<PhoneProject[] | null>(null);
+  const [comptes, setComptes] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let actif = true;
+    void (async () => {
+      const ps = await api.listProjects().catch(() => [] as PhoneProject[]);
+      if (!actif) return;
+      setProjets(ps);
+      const n: Record<string, number> = {};
+      await Promise.all(
+        ps.map(async (p) => {
+          const list = await api.listProjectConversations(p.id).catch(() => [] as Conversation[]);
+          n[p.id] = list.length;
+        }),
+      );
+      if (actif) setComptes(n);
+    })();
+    return () => {
+      actif = false;
+    };
+  }, []);
+
+  return (
+    <>
+      <section className="lo-section">
+        <h2 className="lo-section-title">Projets du serveur</h2>
+        {projets === null && (
+          <div className="lo-loading-row" role="status">
+            <span className="lo-spinner" aria-hidden />
+            <span>Chargement…</span>
+          </div>
+        )}
+        {projets?.length === 0 && (
+          <p className="lo-sub">Aucun projet. Créez-en un depuis l'historique.</p>
+        )}
+        <ul className="lo-cards">
+          {projets?.map((p) => (
+            <li key={p.id} className="lo-card">
+              <span className="lo-row-icon">
+                <Icon name="project" />
+              </span>
+              <div className="lo-card-text">
+                <span className="lo-card-title">{p.name}</span>
+                <span className="lo-hint">
+                  {comptes[p.id] ?? 0} conversation{comptes[p.id] === 1 ? "" : "s"}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="lo-section">
+        <h2 className="lo-section-title">Gestion</h2>
+        <div className="lo-note">
+          <p>
+            Les autorisations, la base de connaissances et l'archivage d'un projet se gèrent sur
+            l'ordinateur, dans Paramètres → Projets.
+          </p>
+        </div>
+      </section>
+    </>
   );
 }

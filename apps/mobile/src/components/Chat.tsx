@@ -13,7 +13,7 @@ import type { PhoneExtension } from "../lib/core";
 import { notifyMessageReceived, notifyToolApprovalRequired } from "../lib/notifications";
 import { ComposerActions } from "./ComposerActions";
 import { Drawer } from "./Drawer";
-import { type Destination, MainMenu } from "./MainMenu";
+import { type Destination, MainMenu, type ModelsTab } from "./MainMenu";
 import { ToolApprovalModal } from "./ToolApprovalModal";
 import { UpdateButton } from "./UpdateButton";
 import { ExtensionSlot } from "./extensions/ExtensionSlot";
@@ -21,7 +21,7 @@ import { ExtensionSlot } from "./extensions/ExtensionSlot";
 type Props = {
   status: MobileStatus;
   /** Chaque grand espace a son écran ; le tiroir dit lequel ouvrir. */
-  onGo: (d: Destination | string) => void;
+  onGo: (d: Destination | string, initialTab?: ModelsTab) => void;
   /** Ce que les extensions actives du serveur apportent, déjà lu par l'app. */
   capabilities: string[];
   /** Une conversation précise à ouvrir au montage — venue de l'écran Figures. */
@@ -378,9 +378,10 @@ export function Chat({
         canCreate={canCreate}
         canFigures={canFigures}
         extensions={extensions}
-        onGo={(d) => {
+        onGo={(d, tab) => {
           setMenuOpen(false);
-          onGo(d);
+          if (d === "chat") return;
+          onGo(d, tab);
         }}
       />
 
