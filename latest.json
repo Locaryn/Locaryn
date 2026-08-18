@@ -1,10 +1,10 @@
 {
-  "version": "0.3.15",
+  "version": "0.3.16",
   "pub_date": "2026-08-19T00:00:00Z",
-  "notes": "Locaryn v0.3.15 - archivage et projets depuis le téléphone, reconnexion corrigée, clavier Android, synchro mobile-serveur et image du Studio dans le chat",
+  "notes": "Locaryn v0.3.16 - menus et réglages du téléphone alignés sur l'ordinateur (mêmes catégories, mêmes organisations), archives déplacées dans Compte → Archives, historique des conversations consultable dans les réglages, couleur d'accentuation, projets en haut de l'historique et conversations libres en dessous",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.15/Locaryn_0.3.15_x64-setup.exe",
+      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.16/Locaryn_0.3.16_x64-setup.exe",
       "signature": ""
     }
   }
