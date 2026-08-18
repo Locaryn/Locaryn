@@ -20,7 +20,7 @@ Write-Host "[Locaryn] Building desktop app for Windows..." -ForegroundColor Cyan
 Push-Location (Join-Path $Root "apps\desktop")
 pnpm install
 if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
-pnpm tauri build
+pnpm tauri build --no-sign
 if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
 Pop-Location
 
