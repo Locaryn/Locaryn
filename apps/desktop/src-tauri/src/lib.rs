@@ -122,7 +122,6 @@ impl Core {
     }
 }
 
-
 /// One in-flight approval prompt, parked on the runtime until the user
 /// resolves it on the desktop (or the daemon receives a CLI answer).
 #[allow(dead_code)]
@@ -1326,7 +1325,10 @@ async fn create_session(
     core_id: Option<String>,
 ) -> Result<Session, String> {
     if let Some(client) = core.remote_client() {
-        if let Ok(session) = client.create_session_with_core(&project_id.to_string(), core_id.as_deref()).await {
+        if let Ok(session) = client
+            .create_session_with_core(&project_id.to_string(), core_id.as_deref())
+            .await
+        {
             return Ok(session);
         }
     }
@@ -2215,7 +2217,10 @@ fn is_diffusion_checkpoint(file_name: &str) -> bool {
 }
 
 /// Resolve a model specification (filename, HuggingFace repo tag, URL) to its actual file/dir path in `models_dir`.
-pub(crate) fn resolve_model_path(models_dir: &std::path::Path, raw_name: &str) -> std::path::PathBuf {
+pub(crate) fn resolve_model_path(
+    models_dir: &std::path::Path,
+    raw_name: &str,
+) -> std::path::PathBuf {
     let direct = models_dir.join(raw_name);
     if direct.exists() {
         return direct;
@@ -2511,7 +2516,11 @@ async fn pull_model(
     let url = model.trim().to_string();
     let url = if url.starts_with("hf.co/") {
         url.replace("hf.co/", "https://huggingface.co/")
-    } else if !url.starts_with("http") && url.contains('/') && !url.contains('\\') && !url.contains(' ') {
+    } else if !url.starts_with("http")
+        && url.contains('/')
+        && !url.contains('\\')
+        && !url.contains(' ')
+    {
         format!("https://huggingface.co/{url}")
     } else {
         url
@@ -2540,11 +2549,26 @@ async fn pull_model(
                                     buffer = buffer[idx + 2..].to_string();
                                     for line in block.lines() {
                                         if let Some(data) = line.strip_prefix("data:") {
-                                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(data.trim()) {
-                                                let percentage = val.get("percentage").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                                                let completed = val.get("downloaded").and_then(|v| v.as_u64()).unwrap_or(0);
-                                                let total = val.get("total").and_then(|v| v.as_u64()).unwrap_or(0);
-                                                let status = val.get("message").and_then(|v| v.as_str()).unwrap_or("downloading").to_string();
+                                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(
+                                                data.trim(),
+                                            ) {
+                                                let percentage = val
+                                                    .get("percentage")
+                                                    .and_then(|v| v.as_f64())
+                                                    .unwrap_or(0.0);
+                                                let completed = val
+                                                    .get("downloaded")
+                                                    .and_then(|v| v.as_u64())
+                                                    .unwrap_or(0);
+                                                let total = val
+                                                    .get("total")
+                                                    .and_then(|v| v.as_u64())
+                                                    .unwrap_or(0);
+                                                let status = val
+                                                    .get("message")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("downloading")
+                                                    .to_string();
                                                 let _ = on_event.send(PullProgressEvent {
                                                     status,
                                                     completed,
@@ -4214,7 +4238,11 @@ async fn list_image_models(core: State<'_, Core>) -> Result<Vec<String>, String>
                     let has_model_index = path.join("model_index.json").exists();
                     let has_unet = path.join("unet").exists();
                     let lower = dir_name.to_ascii_lowercase();
-                    if has_model_index || has_unet || lower.contains("diffusion") || lower.contains("deliberate") {
+                    if has_model_index
+                        || has_unet
+                        || lower.contains("diffusion")
+                        || lower.contains("deliberate")
+                    {
                         names.push(dir_name.to_string());
                     }
                 }
@@ -7594,7 +7622,11 @@ fn check_hardware() -> Result<HardwareSpec, String> {
 // ============================================================================
 
 #[tauri::command]
-async fn delete_model_cmd(core: State<'_, Core>, _endpoint: String, model: String) -> Result<(), String> {
+async fn delete_model_cmd(
+    core: State<'_, Core>,
+    _endpoint: String,
+    model: String,
+) -> Result<(), String> {
     if let Some(client) = core.remote_client() {
         if let Ok(_) = client.delete_model(&model).await {
             return Ok(());

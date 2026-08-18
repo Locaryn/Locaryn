@@ -609,7 +609,10 @@ async fn send_message(
                         tool: tool.to_string(),
                         args: ev.get("args").cloned(),
                         risk: risk.to_string(),
-                        reason: ev.get("reason").and_then(|v| v.as_str()).map(str::to_string),
+                        reason: ev
+                            .get("reason")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string),
                         diff: ev.get("diff").and_then(|v| v.as_str()).map(str::to_string),
                         is_remote: ev.get("is_remote").and_then(|v| v.as_bool()),
                     });
@@ -1844,7 +1847,10 @@ async fn change_password(current: String, nouveau: String) -> Result<(), String>
         return Err("Le mot de passe actuel est incorrect.".into());
     }
     if !resp.status().is_success() {
-        return Err(format!("Échec du changement de mot de passe ({}).", resp.status()));
+        return Err(format!(
+            "Échec du changement de mot de passe ({}).",
+            resp.status()
+        ));
     }
     Ok(())
 }
@@ -1865,11 +1871,17 @@ async fn list_server_users() -> Result<Vec<PhoneUserSummary>, String> {
     if !resp.status().is_success() {
         return Err(format!("Le serveur a renvoyé {}.", resp.status()));
     }
-    resp.json::<Vec<PhoneUserSummary>>().await.map_err(|e| e.to_string())
+    resp.json::<Vec<PhoneUserSummary>>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn create_server_user(username: String, password: String, is_admin: Option<bool>) -> Result<(), String> {
+async fn create_server_user(
+    username: String,
+    password: String,
+    is_admin: Option<bool>,
+) -> Result<(), String> {
     let (client, server, session) = authenticated()?;
     let base = server.current_url.trim_end_matches('/');
     let resp = client
@@ -1890,7 +1902,10 @@ async fn create_server_user(username: String, password: String, is_admin: Option
         return Err("Ce nom d'utilisateur existe déjà ou le mot de passe est trop court.".into());
     }
     if !resp.status().is_success() {
-        return Err(format!("Le serveur a refusé la création ({}).", resp.status()));
+        return Err(format!(
+            "Le serveur a refusé la création ({}).",
+            resp.status()
+        ));
     }
     Ok(())
 }

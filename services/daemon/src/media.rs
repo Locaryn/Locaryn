@@ -299,7 +299,11 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
     let mut url = raw_url.trim().to_string();
     if url.starts_with("hf.co/") {
         url = url.replace("hf.co/", "https://huggingface.co/");
-    } else if !url.starts_with("http") && url.contains('/') && !url.contains('\\') && !url.contains(' ') {
+    } else if !url.starts_with("http")
+        && url.contains('/')
+        && !url.contains('\\')
+        && !url.contains(' ')
+    {
         url = format!("https://huggingface.co/{url}");
     }
     let (file_name, kind) = match classify_model_url(&url) {

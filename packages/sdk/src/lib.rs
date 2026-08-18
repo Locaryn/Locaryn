@@ -365,7 +365,11 @@ impl LocarynClient {
         }
     }
 
-    pub async fn move_session(&self, session_id: &str, project_id: &str) -> Result<Session, SdkError> {
+    pub async fn move_session(
+        &self,
+        session_id: &str,
+        project_id: &str,
+    ) -> Result<Session, SdkError> {
         let body = serde_json::json!({ "project_id": project_id });
         let resp = self
             .add_auth(
@@ -564,15 +568,15 @@ impl LocarynClient {
 
     // ---- Media & Models ---------------------------------------------------
 
-    pub async fn list_media_models(&self, kind: Option<&str>) -> Result<serde_json::Value, SdkError> {
+    pub async fn list_media_models(
+        &self,
+        kind: Option<&str>,
+    ) -> Result<serde_json::Value, SdkError> {
         let path = match kind {
             Some(k) => format!("/v1/media/models?kind={k}"),
             None => "/v1/media/models".to_string(),
         };
-        let resp = self
-            .add_auth(self.http.get(self.url(&path)))
-            .send()
-            .await?;
+        let resp = self.add_auth(self.http.get(self.url(&path))).send().await?;
         if resp.status().is_success() {
             Ok(resp.json().await?)
         } else {
@@ -615,7 +619,10 @@ impl LocarynClient {
         Ok(resp.bytes_stream().map_err(SdkError::from))
     }
 
-    pub async fn generate_image(&self, body: serde_json::Value) -> Result<serde_json::Value, SdkError> {
+    pub async fn generate_image(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, SdkError> {
         let resp = self
             .add_auth(self.http.post(self.url("/v1/media/image")).json(&body))
             .send()
@@ -627,7 +634,10 @@ impl LocarynClient {
         }
     }
 
-    pub async fn generate_audio(&self, body: serde_json::Value) -> Result<serde_json::Value, SdkError> {
+    pub async fn generate_audio(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, SdkError> {
         let resp = self
             .add_auth(self.http.post(self.url("/v1/media/audio")).json(&body))
             .send()
@@ -948,7 +958,10 @@ impl LocarynClient {
 
     pub async fn unregister_mcp_server(&self, name: &str) -> Result<serde_json::Value, SdkError> {
         let resp = self
-            .add_auth(self.http.delete(self.url(&format!("/v1/mcp/servers/{name}"))))
+            .add_auth(
+                self.http
+                    .delete(self.url(&format!("/v1/mcp/servers/{name}"))),
+            )
             .send()
             .await?;
         if resp.status().is_success() {
@@ -1098,7 +1111,10 @@ impl LocarynClient {
         }
     }
 
-    pub async fn set_micro_model(&self, model: Option<&str>) -> Result<serde_json::Value, SdkError> {
+    pub async fn set_micro_model(
+        &self,
+        model: Option<&str>,
+    ) -> Result<serde_json::Value, SdkError> {
         let body = serde_json::json!({ "model": model });
         let resp = self
             .add_auth(
@@ -1129,7 +1145,10 @@ impl LocarynClient {
         }
     }
 
-    pub async fn save_figure(&self, body: serde_json::Value) -> Result<serde_json::Value, SdkError> {
+    pub async fn save_figure(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, SdkError> {
         let resp = self
             .add_auth(self.http.post(self.url("/v1/figures")).json(&body))
             .send()
@@ -1237,4 +1256,3 @@ pub fn terminal_status(status: TaskStatus) -> bool {
         TaskStatus::Completed | TaskStatus::Cancelled | TaskStatus::Failed
     )
 }
-

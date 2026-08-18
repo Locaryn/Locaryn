@@ -233,8 +233,14 @@ pub fn build_args(req: &SdRequest<'_>) -> Result<Vec<String>, String> {
             for entry in entries.flatten() {
                 let p = entry.path();
                 if p.is_file() {
-                    let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
-                    if (ext == "safetensors" || ext == "gguf" || ext == "ckpt") && !p.to_string_lossy().contains("taesd") {
+                    let ext = p
+                        .extension()
+                        .and_then(|x| x.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if (ext == "safetensors" || ext == "gguf" || ext == "ckpt")
+                        && !p.to_string_lossy().contains("taesd")
+                    {
                         return Some(p);
                     }
                 }

@@ -527,7 +527,11 @@ fn parse_json_or_toml(raw: &str) -> Result<Config, ConfigError> {
                 }
             }
             "micro_model" => {
-                cfg.assistance.micro_model = if v.is_empty() { None } else { Some(v.to_string()) };
+                cfg.assistance.micro_model = if v.is_empty() {
+                    None
+                } else {
+                    Some(v.to_string())
+                };
             }
             _ => {}
         }

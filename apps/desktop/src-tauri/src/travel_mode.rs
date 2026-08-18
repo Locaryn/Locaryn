@@ -205,9 +205,13 @@ pub async fn set_micro_model(model: Option<String>) -> Result<MicroModel, String
     // Si un démon tourne, le notifier sans bloquer en cas d'erreur
     if let Ok(cfg) = locaryn_config::load(None) {
         let port = cfg.daemon.port;
-        if let Ok(client) = crate::secure_client::build(None, None, None, std::time::Duration::from_millis(500)) {
+        if let Ok(client) =
+            crate::secure_client::build(None, None, None, std::time::Duration::from_millis(500))
+        {
             let _ = client
-                .post(format!("https://127.0.0.1:{port}/v1/assistance/micro-model"))
+                .post(format!(
+                    "https://127.0.0.1:{port}/v1/assistance/micro-model"
+                ))
                 .json(&serde_json::json!({ "model": choix }))
                 .send()
                 .await;

@@ -66,8 +66,20 @@ fn daemon_binary() -> Option<std::path::PathBuf> {
             candidates.push(dir.join("..").join(name));
             candidates.push(dir.join("..").join(name_triplet));
             candidates.push(dir.join("..").join("servers").join(name));
-            candidates.push(dir.join("..").join("..").join("target").join("debug").join(name));
-            candidates.push(dir.join("..").join("..").join("target").join("release").join(name));
+            candidates.push(
+                dir.join("..")
+                    .join("..")
+                    .join("target")
+                    .join("debug")
+                    .join(name),
+            );
+            candidates.push(
+                dir.join("..")
+                    .join("..")
+                    .join("target")
+                    .join("release")
+                    .join(name),
+            );
         }
     }
 
@@ -80,8 +92,20 @@ fn daemon_binary() -> Option<std::path::PathBuf> {
         candidates.push(cwd.join("target").join("debug").join(name));
         candidates.push(cwd.join("target").join("release").join(name));
         candidates.push(cwd.join("release").join("servers").join(name));
-        candidates.push(cwd.join("..").join("..").join("target").join("debug").join(name));
-        candidates.push(cwd.join("..").join("..").join("target").join("release").join(name));
+        candidates.push(
+            cwd.join("..")
+                .join("..")
+                .join("target")
+                .join("debug")
+                .join(name),
+        );
+        candidates.push(
+            cwd.join("..")
+                .join("..")
+                .join("target")
+                .join("release")
+                .join(name),
+        );
     }
 
     candidates.into_iter().find(|candidate| candidate.is_file())
@@ -423,7 +447,9 @@ pub struct ServerUserSummary {
 #[tauri::command]
 pub async fn list_server_users() -> Result<Vec<ServerUserSummary>, String> {
     let db = locaryn_config::default_data_dir().join("locaryn.db");
-    let pool = locaryn_storage::open(&db).await.map_err(|e| e.to_string())?;
+    let pool = locaryn_storage::open(&db)
+        .await
+        .map_err(|e| e.to_string())?;
     let repo = locaryn_storage::users::UserRepo::new(pool);
     let users = repo.list().await.map_err(|e| e.to_string())?;
     Ok(users
@@ -451,7 +477,9 @@ pub struct CreateServerUserArgs {
 #[tauri::command]
 pub async fn create_server_user(args: CreateServerUserArgs) -> Result<ServerStatus, String> {
     let db = locaryn_config::default_data_dir().join("locaryn.db");
-    let pool = locaryn_storage::open(&db).await.map_err(|e| e.to_string())?;
+    let pool = locaryn_storage::open(&db)
+        .await
+        .map_err(|e| e.to_string())?;
     let repo = locaryn_storage::users::UserRepo::new(pool);
     let role = if args.is_admin {
         locaryn_storage::users::Role::Admin
@@ -467,7 +495,9 @@ pub async fn create_server_user(args: CreateServerUserArgs) -> Result<ServerStat
 #[tauri::command]
 pub async fn delete_server_user(user_id: String) -> Result<ServerStatus, String> {
     let db = locaryn_config::default_data_dir().join("locaryn.db");
-    let pool = locaryn_storage::open(&db).await.map_err(|e| e.to_string())?;
+    let pool = locaryn_storage::open(&db)
+        .await
+        .map_err(|e| e.to_string())?;
     let repo = locaryn_storage::users::UserRepo::new(pool);
     let id = uuid::Uuid::parse_str(&user_id).map_err(|e| e.to_string())?;
     repo.delete(id).await.map_err(|e| e.to_string())?;

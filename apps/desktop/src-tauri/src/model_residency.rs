@@ -333,7 +333,10 @@ pub struct ResidencyStatus {
 #[tauri::command]
 pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, String> {
     let active = core.storage.providers.active().await.ok().flatten();
-    let engine = active.as_ref().map(|p| p.engine).unwrap_or(ProviderEngine::LlamaCpp);
+    let engine = active
+        .as_ref()
+        .map(|p| p.engine)
+        .unwrap_or(ProviderEngine::LlamaCpp);
 
     let is_managed = matches!(engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm);
     let loaded = if is_managed {
@@ -437,7 +440,10 @@ pub async fn load_chat_model(
 #[tauri::command]
 pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, String> {
     let active = core.storage.providers.active().await.ok().flatten();
-    let engine = active.as_ref().map(|p| p.engine).unwrap_or(ProviderEngine::LlamaCpp);
+    let engine = active
+        .as_ref()
+        .map(|p| p.engine)
+        .unwrap_or(ProviderEngine::LlamaCpp);
     let endpoint = active
         .as_ref()
         .map(|p| p.endpoint.clone())
@@ -445,8 +451,12 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
 
     // 1. Décharger le moteur supervisé (LlamaCpp, AirLLM, etc.)
     core.supervisor.set_pinned(engine, false).await;
-    core.supervisor.set_pinned(ProviderEngine::LlamaCpp, false).await;
-    core.supervisor.set_pinned(ProviderEngine::AirLlm, false).await;
+    core.supervisor
+        .set_pinned(ProviderEngine::LlamaCpp, false)
+        .await;
+    core.supervisor
+        .set_pinned(ProviderEngine::AirLlm, false)
+        .await;
 
     let _ = core.supervisor.shutdown(engine).await;
     let _ = core.supervisor.shutdown(ProviderEngine::LlamaCpp).await;
@@ -471,7 +481,11 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
     }
 
     // 3. Réinitialiser le modèle actif dans le stockage local
-    let _ = core.storage.providers.upsert_local(engine, &endpoint, None).await;
+    let _ = core
+        .storage
+        .providers
+        .upsert_local(engine, &endpoint, None)
+        .await;
 
     crate::refresh_mcp_runtime_env(&core).await;
     tracing::info!("modèle de chat déchargé à la demande");

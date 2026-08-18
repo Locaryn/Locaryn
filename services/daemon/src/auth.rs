@@ -295,7 +295,11 @@ pub async fn create_user(
     } else {
         Role::Member
     };
-    match state.users.create(&body.username, &body.password, role).await {
+    match state
+        .users
+        .create(&body.username, &body.password, role)
+        .await
+    {
         Ok(u) => (
             StatusCode::CREATED,
             Json(serde_json::json!({
