@@ -11,6 +11,7 @@ Cargo.lock.bak
 # ─────────────────────────────────────────────────────────────────────────
 node_modules/
 dist/
+!plugins/**/dist/
 .vite/
 .turbo/
 *.tsbuildinfo

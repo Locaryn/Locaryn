@@ -1,4 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
+import { useEffect, useState } from "react";
+import { core } from "../lib/core";
+import { ImageModelSetting } from "./ImageModelSetting";
 import { MicroModelSetting } from "./MicroModelSetting";
 import { TtsModelSetting } from "./TtsModelSetting";
 
@@ -8,8 +11,33 @@ export function ModelPreferencesSettings({
 }: {
   activeCapabilities?: string[];
 }) {
+  const [caps, setCaps] = useState<string[]>(activeCapabilities);
+
+  useEffect(() => {
+    if (activeCapabilities.length > 0) {
+      setCaps(activeCapabilities);
+      return;
+    }
+    let cancelled = false;
+    core
+      .listExtensions()
+      .then((exts) => {
+        if (cancelled) return;
+        const discovered = exts.filter((e) => e.enabled).flatMap((e) => e.capabilities ?? []);
+        if (discovered.length > 0) {
+          setCaps(discovered);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCapabilities]);
+
   const hasTts =
-    activeCapabilities.includes("voice-tts") || activeCapabilities.includes("voice-cloning");
+    caps.includes("voice-tts") || caps.includes("voice-cloning") || activeCapabilities.length === 0;
+  const hasImageGen =
+    caps.includes("image-gen") || caps.includes("image-editor") || activeCapabilities.length === 0;
   return (
     <div className="locaryn-model-preferences">
       <div className="locaryn-model-preferences-intro">
@@ -46,6 +74,19 @@ export function ModelPreferencesSettings({
               </div>
             </div>
             <TtsModelSetting />
+          </section>
+        )}
+
+        {hasImageGen && (
+          <section className="locaryn-model-preference-card">
+            <div className="locaryn-model-preference-heading">
+              <Icon name="image" size={17} />
+              <div>
+                <h4>Génération d'images</h4>
+                <p>Modèle de diffusion par défaut pour le Studio et les illustrations du chat.</p>
+              </div>
+            </div>
+            <ImageModelSetting />
           </section>
         )}
       </div>

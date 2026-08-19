@@ -1041,6 +1041,8 @@ export interface TaskPlan {
 export interface ModelPreferences {
   /** Null means the Studio chooses the first installed TTS model. */
   tts_model: string | null;
+  /** Null means the first installed image diffusion model. */
+  image_model?: string | null;
 }
 
 /** One complete model choice inside a HuggingFace repository. */
@@ -2311,7 +2313,7 @@ let demoImageDefaults: ImageDefaults = {
   negative_prompt: "",
   variants: 1,
 };
-let demoModelPreferences: ModelPreferences = { tts_model: null };
+let demoModelPreferences: ModelPreferences = { tts_model: null, image_model: null };
 let demoLocalProfile: LocalProfile = { display_name: "", avatar_path: null };
 
 const now = Date.now();

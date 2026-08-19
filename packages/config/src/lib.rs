@@ -719,8 +719,17 @@ pub fn resolve_program(command: &str) -> std::ffi::OsString {
     #[cfg(windows)]
     {
         use std::path::Path;
-        // An explicit path is the caller's business; leave it alone.
+        let p = Path::new(command);
         if command.contains('/') || command.contains('\\') {
+            if p.is_file() {
+                return std::ffi::OsString::from(command);
+            }
+            for ext in &[".exe", ".cmd", ".bat", ".com", ".EXE", ".CMD", ".BAT"] {
+                let candidate = std::path::PathBuf::from(format!("{command}{ext}"));
+                if candidate.is_file() {
+                    return candidate.into_os_string();
+                }
+            }
             return std::ffi::OsString::from(command);
         }
         let exts: Vec<String> = std::env::var("PATHEXT")

@@ -1909,8 +1909,18 @@ dialog:where([open]) {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  animation: modal-in var(--dur-med) var(--ease) both;
+  animation: approval-modal-in var(--dur-med) var(--ease) both;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+}
+@keyframes approval-modal-in {
+  from {
+    transform: translateY(8px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 .locaryn-approval-banner {
   display: flex;

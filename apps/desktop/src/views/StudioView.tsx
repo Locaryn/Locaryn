@@ -376,7 +376,7 @@ export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }
       default: {
         const tab = tabs.find((candidate) => candidate.id === active);
         return tab?.contribution ? (
-          <div className="locaryn-card" style={{ padding: 24 }}>
+          <div style={{ width: "100%" }}>
             <DynamicPluginWidget contribution={tab.contribution} />
           </div>
         ) : (

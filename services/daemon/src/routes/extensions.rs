@@ -796,7 +796,7 @@ pub async fn read_extension_asset(
         .extensions
         .list()
         .into_iter()
-        .find(|entry| entry.name == body.extension_id && entry.enabled)
+        .find(|entry| (entry.name == body.extension_id || entry.id.to_string() == body.extension_id) && entry.enabled)
         .and_then(|entry| entry.manifest_path.parent().map(|path| path.to_path_buf()))
     else {
         return (
