@@ -27,10 +27,6 @@ type Props = {
   capabilities: string[];
   /** Une conversation précise à ouvrir au montage — venue de l'écran Figures. */
   initialId?: string | null;
-  /** Une image produite par le Studio, à poser dans le fil au montage. */
-  initialMedia?: MediaResult | null;
-  /** L'image initiale a été posée : l'application peut l'oublier. */
-  onConsumedMedia?: () => void;
   /** Extensions actives : le menu en tire ses `nav_items`. */
   extensions?: PhoneExtension[];
   /** Le bouton « Mettre à jour » mène directement à la section À propos. */
@@ -50,8 +46,6 @@ export function Chat({
   onGo,
   capabilities,
   initialId,
-  initialMedia,
-  onConsumedMedia,
   extensions = [],
   onOpenUpdate,
 }: Props) {
@@ -78,6 +72,7 @@ export function Chat({
   /** Une conversation est en train de charger ses messages. */
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<MediaResult | null>(null);
   /** Confirmation brève : copie faite, image enregistrée. */
   const [notice, setNotice] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -137,6 +132,7 @@ export function Chat({
         id: t.id,
         role: t.role as Message["role"],
         content: t.content,
+        images: t.images,
       }));
       setMessages((prev) => {
         // Rien de nouveau : on garde ce qu'on a — y compris les images que le
@@ -188,7 +184,12 @@ export function Chat({
     try {
       const turns = await api.loadConversation(id);
       setMessages(
-        turns.map((t) => ({ id: t.id, role: t.role as Message["role"], content: t.content })),
+        turns.map((t) => ({
+          id: t.id,
+          role: t.role as Message["role"],
+          content: t.content,
+          images: t.images,
+        })),
       );
     } catch (e) {
       setError(String(e));
@@ -210,23 +211,6 @@ export function Chat({
   // biome-ignore lint/correctness/useExhaustiveDependencies: l'ouverture ne se fait qu'au montage.
   useEffect(() => {
     if (initialId) void open(initialId);
-  }, []);
-
-  // Une image produite par le Studio arrive avec le montage : elle s'affiche
-  // dans le fil, comme le ferait une réponse. Une fois posée, l'application
-  // l'oublie — un aller-retour au Studio ne doit pas la reposer deux fois.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: ne se fait qu'au montage.
-  useEffect(() => {
-    if (!initialMedia) return;
-    setMessages([
-      {
-        id: `media-${initialMedia.name}`,
-        role: "assistant",
-        content: "Image générée dans le Studio.",
-        images: [initialMedia],
-      },
-    ]);
-    onConsumedMedia?.();
   }, []);
 
   /** Reprendre une conversation gardée quitte le mode éphémère. */
@@ -256,6 +240,24 @@ export function Chat({
       zone.remove();
     }
     setNotice("Message copié.");
+  }
+
+  function imageSrc(img: MediaResult): string {
+    return `data:${img.mime};base64,${img.data_base64}`;
+  }
+
+  async function copyImage(img: MediaResult) {
+    try {
+      const response = await fetch(imageSrc(img));
+      const blob = await response.blob();
+      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        throw new Error("presse-papier image indisponible");
+      }
+      await navigator.clipboard.write([new ClipboardItem({ [img.mime]: blob })]);
+      setNotice("Image copiée.");
+    } catch (e) {
+      setNotice(`Copie impossible : ${String(e)}`);
+    }
   }
 
   /** Écrire l'image sur l'appareil et la confier au système. */
@@ -436,8 +438,8 @@ export function Chat({
                 key={img.name}
                 type="button"
                 className="lo-msg-image"
-                onClick={() => void keepImage(img)}
-                title="Enregistrer l'image"
+                onClick={() => setLightbox(img)}
+                title="Ouvrir l'image"
               >
                 <img
                   src={`data:${img.mime};base64,${img.data_base64}`}
@@ -466,6 +468,53 @@ export function Chat({
         {error && <p className="lo-error">{error}</p>}
         <div ref={endRef} />
       </div>
+
+      {lightbox && (
+        <div
+          className="lo-image-lightbox"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setLightbox(null);
+          }}
+        >
+          <div
+            className="lo-image-lightbox-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Image agrandie"
+          >
+            <div className="lo-image-lightbox-toolbar">
+              <button
+                type="button"
+                className="lo-image-lightbox-action"
+                onClick={() => void keepImage(lightbox)}
+              >
+                Enregistrer sous
+              </button>
+              <button
+                type="button"
+                className="lo-image-lightbox-action"
+                onClick={() => void copyImage(lightbox)}
+              >
+                Copier l'image
+              </button>
+              <button
+                type="button"
+                className="lo-image-lightbox-close"
+                onClick={() => setLightbox(null)}
+                aria-label="Fermer l'image agrandie"
+              >
+                ×
+              </button>
+            </div>
+            <img
+              className="lo-image-lightbox-image"
+              src={imageSrc(lightbox)}
+              alt="Image agrandie"
+            />
+          </div>
+        </div>
+      )}
 
       {notice && (
         <div className="lo-toast">

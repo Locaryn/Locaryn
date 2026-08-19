@@ -6,12 +6,11 @@
 //! and the desktop must produce the same invocation for the same request, so
 //! the argument building lives in this one crate instead of drifting apart.
 //!
-//! Two engines for now:
-//! - [`image`] — text-to-image through stable-diffusion.cpp (`sd.exe`).
-//! - [`audio`] — text-to-speech through Kokoro or Qwen3-TTS (Python).
+//! The host keeps generic audio generation here. Image generation belongs to
+//! the `plugin-image-gen` extension and is intentionally not a Locaryn host
+//! engine.
 
 pub mod audio;
-pub mod image;
 pub mod python;
 
 use std::path::PathBuf;

@@ -26,6 +26,8 @@ export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  /** Generic image artifacts produced by an enabled MCP extension. */
+  images?: MediaResult[];
 }
 
 /** Une conversation du serveur — la même que sur le téléphone et le bureau. */
@@ -42,6 +44,20 @@ export interface PhoneProject {
 }
 
 /** Une extension installée sur le serveur, vue du navigateur. */
+export interface ExtensionUiSlotContribution {
+  id: string;
+  slot: string;
+  order?: number;
+  type?: "button" | "widget" | "action" | "custom-element" | "script";
+  label?: string;
+  icon?: string | null;
+  hint?: string | null;
+  action?: string;
+  value?: string;
+  tag?: string;
+  entry?: string;
+}
+
 export interface PhoneExtension {
   name: string;
   display_name: string;
@@ -49,6 +65,11 @@ export interface PhoneExtension {
   description: string | null;
   enabled: boolean;
   capabilities: string[];
+  ui?: {
+    slots?: ExtensionUiSlotContribution[];
+    nav_items?: { id: string; label: string; icon: string | null }[];
+    studio_tabs?: { id: string; label: string; icon: string | null }[];
+  };
 }
 
 /** Une chose que le serveur retient de son utilisateur. */
@@ -136,7 +157,7 @@ export const CATALOGUE: { repo: string; label: string; note: string }[] = [
 export interface CatalogueModel {
   /** URL directe vers un fichier de poids, ou dépôt HuggingFace complet. */
   url: string;
-  kind: "image" | "audio";
+  kind: "audio";
   /** Le nom sous lequel il apparaîtra dans « Modèles ». */
   name: string;
   label: string;
@@ -150,62 +171,6 @@ export interface CatalogueModel {
  * Ils s'installent sur le serveur ; le navigateur ne fait que désigner lequel.
  */
 export const MODEL_CATALOGUE: CatalogueModel[] = [
-  {
-    url: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf",
-    kind: "image",
-    name: "z_image_turbo-Q8_0.gguf",
-    label: "Z-Image Turbo",
-    note: "Ultra-rapide (1 à 4 étapes), 6B",
-    sizeGb: 6.5,
-  },
-  {
-    url: "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
-    kind: "image",
-    name: "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
-    label: "Stable Diffusion 1.5",
-    note: "Léger et rapide, tourne partout",
-    sizeGb: 1.5,
-  },
-  {
-    url: "https://huggingface.co/second-state/SDXL-Turbo-GGUF/resolve/main/sdxl-turbo-Q4_0.gguf",
-    kind: "image",
-    name: "sdxl-turbo-Q4_0.gguf",
-    label: "SDXL Turbo",
-    note: "Temps réel, 1 étape, 1024²",
-    sizeGb: 3.1,
-  },
-  {
-    url: "https://huggingface.co/city96/SDXL-1.0-gguf/resolve/main/sdxl-1.0-Q4_0.gguf",
-    kind: "image",
-    name: "sdxl-1.0-Q4_0.gguf",
-    label: "Stable Diffusion XL 1.0",
-    note: "Le modèle phare 1024²",
-    sizeGb: 3.8,
-  },
-  {
-    url: "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_0.gguf",
-    kind: "image",
-    name: "flux1-schnell-Q4_0.gguf",
-    label: "FLUX.1 Schnell",
-    note: "Haute résolution, 4 étapes",
-    sizeGb: 6.7,
-  },
-  {
-    url: "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf",
-    kind: "image",
-    name: "flux1-dev-Q4_0.gguf",
-    label: "FLUX.1 Dev",
-    note: "Fidélité photoréaliste",
-    sizeGb: 7.2,
-  },
-  {
-    url: "https://huggingface.co/city96/stable-diffusion-3.5-medium-gguf/resolve/main/sd3.5_medium-Q4_0.gguf",
-    kind: "image",
-    name: "sd3.5_medium-Q4_0.gguf",
-    label: "Stable Diffusion 3.5 Medium",
-    note: "Texte dans l'image corrigé",
-    sizeGb: 2.1,
-  },
   {
     url: "https://huggingface.co/hexgrad/Kokoro-82M",
     kind: "audio",
@@ -237,12 +202,37 @@ interface MessageRow {
   content: string;
 }
 
-/** A file generated on the machine at the other end, ready to show. */
+/** A generic image artifact produced on the machine at the other end. */
 export interface MediaResult {
   name: string;
   mime: string;
   /** Base64 payload; the page has no access to the server's disk. */
   data_base64: string;
+}
+
+function artifactMime(kind: string): string {
+  switch (kind) {
+    case "image_png":
+      return "image/png";
+    case "audio_wav":
+      return "audio/wav";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+async function loadArtifact(id: string): Promise<MediaResult | null> {
+  const artifact = await http<{
+    id: string;
+    kind: string;
+    content: string | null;
+  }>(`/v1/artifacts/${encodeURIComponent(id)}`);
+  if (!artifact.content) return null;
+  return {
+    name: `${artifact.id}.${artifact.kind === "image_png" ? "png" : "bin"}`,
+    mime: artifactMime(artifact.kind),
+    data_base64: artifact.content,
+  };
 }
 
 const FREE_CHAT_PROJECT_PATH = "__locaryn_free_chats__";
@@ -423,6 +413,28 @@ export const api = {
     return http("/v1/extensions/install", { method: "POST", body: { source } });
   },
 
+  /** Lire un asset textuel déclaré par une extension (par exemple son UI). */
+  async readExtensionAsset(extension: string, assetPath: string): Promise<string> {
+    return http("/v1/extensions/asset", {
+      method: "POST",
+      body: { extension_id: extension, asset_path: assetPath },
+    });
+  },
+
+  /** Appeler un outil MCP exposé par une extension, sans connaître son serveur. */
+  async invokeExtensionTool(tool: string, args: Record<string, unknown>): Promise<unknown> {
+    const result = await http<{ text?: string }>(`/v1/tools/${encodeURIComponent(tool)}`, {
+      method: "POST",
+      body: args,
+    });
+    if (typeof result.text !== "string") return result;
+    try {
+      return JSON.parse(result.text);
+    } catch {
+      return result.text;
+    }
+  },
+
   async setExtensionEnabled(name: string, enabled: boolean): Promise<void> {
     await http(`/v1/extensions/${encodeURIComponent(name)}/${enabled ? "enable" : "disable"}`, {
       method: "POST",
@@ -599,14 +611,8 @@ export const api = {
     return session.id;
   },
 
-  /**
-   * Un modèle de génération par type — `image` ou `audio`.
-   *
-   * Le serveur détaille les modèles d'image (`details` : prêt ou non, ce qui
-   * manque) mais un serveur plus ancien ne renvoie que des noms (`models`) —
-   * on les considère alors utilisables, comme le fait le téléphone.
-   */
-  async listMediaModels(kind: "image" | "audio"): Promise<MediaModel[]> {
+  /** Les modèles audio génériques exposés par Locaryn. */
+  async listMediaModels(kind: "audio"): Promise<MediaModel[]> {
     const r = await http<{ details?: MediaModel[]; models?: string[] }>(
       `/v1/media/models?kind=${encodeURIComponent(kind)}`,
     );
@@ -633,12 +639,39 @@ export const api = {
       .sort(sortByRecent);
   },
 
-  /** Relire une conversation depuis le serveur, messages dans l'ordre. */
+  /** Relire une conversation depuis le serveur, messages dans l'ordre, avec
+   *  les artefacts image associés à la session. */
   async loadConversation(id: string): Promise<Message[]> {
     const rows = await http<MessageRow[]>(`/v1/sessions/${id}/messages`);
-    return rows
+    const messages: Message[] = rows
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
+    try {
+      const artifacts = await http<Array<{ id: string; kind: string }>>(
+        `/v1/sessions/${encodeURIComponent(id)}/artifacts`,
+      );
+      const images = (
+        await Promise.all(
+          artifacts
+            .filter((artifact) => artifact.kind === "image_png")
+            .map((artifact) => loadArtifact(artifact.id).catch(() => null)),
+        )
+      ).filter((image): image is MediaResult => image !== null);
+      if (images.length) {
+        let index = -1;
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          if (messages[i].role === "assistant") {
+            index = i;
+            break;
+          }
+        }
+        if (index >= 0) messages[index] = { ...messages[index], images };
+        else messages.push({ id: `artifact-${id}`, role: "assistant", content: "", images });
+      }
+    } catch {
+      // Older servers may not expose artifact routes; text history remains usable.
+    }
+    return messages;
   },
 
   /**
@@ -675,7 +708,7 @@ export const api = {
   },
 
   /** One reply, gathered from the token events of the SSE stream. */
-  async send(text: string, sessionId: string): Promise<string> {
+  async send(text: string, sessionId: string): Promise<{ text: string; images: MediaResult[] }> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -698,6 +731,7 @@ export const api = {
     const decoder = new TextDecoder();
     let buffer = "";
     let reply = "";
+    const artifactIds: string[] = [];
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -712,34 +746,27 @@ export const api = {
           const data = line.slice(5).trim();
           if (!data) continue;
           try {
-            const ev = JSON.parse(data) as { type?: string; text?: string };
+            const ev = JSON.parse(data) as {
+              type?: string;
+              text?: string;
+              kind?: string;
+              artifact_id?: string;
+            };
             if (ev.type === "token" && ev.text) reply += ev.text;
+            if (ev.type === "artifact" && ev.kind === "image_png" && ev.artifact_id) {
+              artifactIds.push(ev.artifact_id);
+            }
           } catch {
             // A malformed event is not worth failing the whole reply for.
           }
         }
       }
     }
-    return reply;
+    const images = (
+      await Promise.all([...new Set(artifactIds)].map((id) => loadArtifact(id).catch(() => null)))
+    ).filter((image): image is MediaResult => image !== null);
+    return { text: reply, images };
   },
-
-  generateImage: (args: {
-    model: string;
-    prompt: string;
-    negativePrompt?: string;
-    width?: number;
-    height?: number;
-  }) =>
-    http<MediaResult>("/v1/media/image", {
-      method: "POST",
-      body: {
-        model: args.model,
-        prompt: args.prompt,
-        negative_prompt: args.negativePrompt,
-        width: args.width,
-        height: args.height,
-      },
-    }),
 
   generateAudio: (args: { model: string; text: string; speed?: number; language?: string }) =>
     http<MediaResult>("/v1/media/audio", {

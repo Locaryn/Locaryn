@@ -56,7 +56,7 @@ export function MainMenu({ open, onClose, canCreate, canFigures, onGo, extension
     {
       id: "studio",
       label: "Studio de génération",
-      note: "Image, vidéo, audio, musique, 3D et édition multimodale",
+      note: "Outils multimodaux fournis par les extensions",
       icon: "studio",
       gated: "create",
     },

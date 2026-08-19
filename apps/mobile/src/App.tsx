@@ -15,7 +15,6 @@ import { Settings, type Section as SettingsSection } from "./components/Settings
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
 import {
-  type MediaResult,
   type MobileStatus,
   type PairingResult,
   type PhoneExtension,
@@ -64,8 +63,6 @@ export function App() {
   const [figureChatId, setFigureChatId] = useState<string | null>(null);
   /** Une conversation sortie des archives, à ouvrir dans le chat. */
   const [restoredChatId, setRestoredChatId] = useState<string | null>(null);
-  /** Une image produite par le Studio, à poser dans le fil au retour au chat. */
-  const [pendingMedia, setPendingMedia] = useState<MediaResult | null>(null);
   /** L'onglet d'ouverture de l'écran Modèles, choisi depuis le menu. */
   const [modelsTab, setModelsTab] = useState<"installed" | "marketplace">("installed");
   /** La catégorie des réglages à ouvrir d'emblée : le bouton « Mettre à
@@ -381,8 +378,6 @@ export function App() {
           extensions={activeExtensions}
           key={figureChatId ?? restoredChatId ?? "chat"}
           initialId={figureChatId ?? restoredChatId}
-          initialMedia={pendingMedia}
-          onConsumedMedia={() => setPendingMedia(null)}
           onOpenUpdate={() => {
             // Le bouton de la barre du chat vise la section À propos, où vit
             // la mise à jour — pas la première page des réglages.
@@ -407,14 +402,7 @@ export function App() {
           }}
         />
       ) : screen === "studio" ? (
-        <Studio
-          onBack={revenir}
-          extensions={activeExtensions}
-          onSendToChat={(media) => {
-            setPendingMedia(media);
-            aller("chat");
-          }}
-        />
+        <Studio onBack={revenir} extensions={activeExtensions} />
       ) : screen === "extensions" ? (
         <Extensions
           onBack={revenir}

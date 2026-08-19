@@ -23,7 +23,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::DaemonState;
 
-fn is_chat_weight(path: &std::path::Path) -> bool {
+pub(crate) fn is_chat_weight(path: &std::path::Path) -> bool {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     if !ext.eq_ignore_ascii_case("gguf") && !ext.eq_ignore_ascii_case("safetensors") {
         return false;
@@ -157,22 +157,12 @@ fn list_chat_models() -> Vec<String> {
     names
 }
 
-/// GET /v1/media/models?kind=image|audio|chat|all — what the machine can generate.
+/// GET /v1/media/models?kind=audio|chat — what the machine can generate.
 pub async fn list_models(
     State(_s): State<Arc<DaemonState>>,
     axum::extract::Query(params): axum::extract::Query<ModelQuery>,
 ) -> Response {
-    let kind = params.kind.as_deref().unwrap_or("image");
-    if kind == "image" {
-        let details = locaryn_media::image::list_image_models_detailed();
-        let names: Vec<&str> = details.iter().map(|d| d.name.as_str()).collect();
-        return Json(serde_json::json!({
-            "kind": kind,
-            "models": names,
-            "details": details,
-        }))
-        .into_response();
-    }
+    let kind = params.kind.as_deref().unwrap_or("audio");
     if kind == "audio" {
         let models = locaryn_media::audio::list_tts_models();
         return Json(serde_json::json!({ "kind": kind, "models": models })).into_response();
@@ -184,12 +174,9 @@ pub async fn list_models(
     if kind == "all" {
         let mut chat = list_chat_models();
         let mut audio = locaryn_media::audio::list_tts_models();
-        let image_details = locaryn_media::image::list_image_models_detailed();
-        let mut image: Vec<String> = image_details.into_iter().map(|d| d.name).collect();
         let mut all = Vec::new();
         all.append(&mut chat);
         all.append(&mut audio);
-        all.append(&mut image);
         all.sort();
         all.dedup();
         return Json(serde_json::json!({ "kind": kind, "models": all })).into_response();
@@ -197,84 +184,10 @@ pub async fn list_models(
     (
         StatusCode::BAD_REQUEST,
         Json(serde_json::json!({
-            "error": { "code": "bad_request", "message": format!("kind inconnu : {kind} (image|audio|chat|all)") }
+            "error": { "code": "bad_request", "message": format!("kind inconnu : {kind} (audio|chat|all)") }
         })),
     )
         .into_response()
-}
-
-/// Décode une image source envoyée par un client mince (base64, avec ou
-/// sans le préfixe `data:...;base64,`) vers un fichier temporaire sur cette
-/// machine — c'est elle qui a le moteur, la vue web du client n'a pas accès
-/// à son propre disque de la même façon.
-fn decode_input_image(data: &str) -> Result<std::path::PathBuf, String> {
-    let payload = data.split_once(',').map(|(_, p)| p).unwrap_or(data);
-    let bytes = locaryn_shared_types::base64_decode(payload)?;
-    let ext = if data.contains("jpeg") || data.contains("jpg") {
-        "jpg"
-    } else if data.contains("webp") {
-        "webp"
-    } else {
-        "png"
-    };
-    let path = locaryn_config::ensure_temp_dir().join(format!(
-        "media_input_{}.{ext}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    ));
-    std::fs::write(&path, bytes).map_err(|e| format!("écriture image source : {e}"))?;
-    Ok(path)
-}
-
-/// POST /v1/media/image — text-to-image (ou img2img si `input_image` est
-/// fourni) via stable-diffusion.cpp.
-pub async fn generate_image(
-    State(s): State<Arc<DaemonState>>,
-    Json(body): Json<ImageGenBody>,
-) -> Response {
-    let width = body.width.unwrap_or(1024);
-    let height = body.height.unwrap_or(1024);
-    let variants = body.variants.unwrap_or(1).clamp(1, 8);
-
-    let input_image = match body.input_image.as_deref().filter(|s| !s.is_empty()) {
-        Some(data) => match decode_input_image(data) {
-            Ok(p) => Some(p),
-            Err(e) => return err_response(StatusCode::BAD_REQUEST, "bad_request", &e),
-        },
-        None => None,
-    };
-
-    let req = locaryn_media::image::ImageRequest {
-        model: body.model,
-        prompt: body.prompt,
-        negative_prompt: body.negative_prompt,
-        width,
-        height,
-        steps: body.steps,
-        cfg_scale: body.cfg_scale,
-        variants,
-        // Volumineux et refabricable : suit la racine de stockage, pas le
-        // disque système.
-        output_dir: locaryn_config::generated_images_dir(),
-        input_image,
-    };
-    let progress = |pct: u32, detail: &str| {
-        tracing::info!(progress = pct, detail, "image generation");
-    };
-
-    // Chronométré pour de vrai : c'est ce temps-là, sur cette machine, qui
-    // permettra de comparer deux modèles dans le catalogue.
-    let model_name = req.model.clone();
-    let started = std::time::Instant::now();
-    match locaryn_media::image::generate_image(req, &progress).await {
-        Ok(file) => {
-            record_speed(&s, &model_name, "image", started).await;
-            respond_file(file.path, "image/png", "png")
-        }
-        Err(e) => err_response(StatusCode::INTERNAL_SERVER_ERROR, "generation_failed", &e),
-    }
 }
 
 /// POST /v1/media/audio — text-to-speech via Kokoro or Qwen3-TTS.
@@ -352,21 +265,6 @@ fn err_response(status: StatusCode, code: &str, message: &str) -> Response {
 #[derive(serde::Deserialize)]
 pub struct ModelQuery {
     kind: Option<String>,
-}
-
-#[derive(serde::Deserialize)]
-pub struct ImageGenBody {
-    model: String,
-    prompt: String,
-    negative_prompt: Option<String>,
-    width: Option<u32>,
-    height: Option<u32>,
-    steps: Option<u32>,
-    cfg_scale: Option<f32>,
-    variants: Option<u32>,
-    /// Image source pour une édition (img2img) : base64, avec ou sans le
-    /// préfixe `data:image/...;base64,`. Absent = texte vers image ordinaire.
-    input_image: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

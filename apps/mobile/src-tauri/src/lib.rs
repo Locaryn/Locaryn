@@ -181,7 +181,7 @@ pub fn normalise_candidates(raw: &str) -> Result<Vec<String>, String> {
         return Err(format!("Adresse inattendue : « {raw} »."));
     }
     let host_port = with_default_port(raw);
-    Ok(vec![format!("https://{host_port}"), format!("http://{host_port}")])
+    Ok(vec![format!("http://{host_port}"), format!("https://{host_port}")])
 }
 
 fn with_default_port(rest: &str) -> String {
@@ -1167,7 +1167,7 @@ async fn load_conversation(id: String) -> Result<Vec<ChatTurn>, String> {
         ));
     }
     let brut: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
-    Ok(brut
+    let mut turns: Vec<ChatTurn> = brut
         .iter()
         .filter_map(|m| {
             let role = m.get("role")?.as_str()?;
@@ -1184,9 +1184,49 @@ async fn load_conversation(id: String) -> Result<Vec<ChatTurn>, String> {
                 id: m.get("id")?.as_str()?.to_string(),
                 role: role.to_string(),
                 content,
+                images: Vec::new(),
             })
         })
-        .collect())
+        .collect();
+
+    // Les pixels ne sont pas stockés dans le texte. Relire les artefacts de la
+    // session permet de retrouver une génération après un redémarrage, sans
+    // que le téléphone ait à connaître le chemin du fichier serveur.
+    if let Ok(artifact_resp) = client
+        .get(format!("{base}/v1/sessions/{id}/artifacts"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+    {
+        if artifact_resp.status().is_success() {
+            if let Ok(artifacts) = artifact_resp.json::<Vec<serde_json::Value>>().await {
+                let mut images = Vec::new();
+                for artifact in artifacts {
+                    if artifact.get("kind").and_then(|k| k.as_str()) != Some("image_png") {
+                        continue;
+                    }
+                    if let Some(artifact_id) = artifact.get("id").and_then(|i| i.as_str()) {
+                        if let Ok(image) = fetch_artifact(&client, &base, &session.token, artifact_id).await {
+                            images.push(image);
+                        }
+                    }
+                }
+                if !images.is_empty() {
+                    if let Some(turn) = turns.iter_mut().rev().find(|turn| turn.role == "assistant") {
+                        turn.images = images;
+                    } else {
+                        turns.push(ChatTurn {
+                            id: format!("artifacts-{id}"),
+                            role: "assistant".into(),
+                            content: String::new(),
+                            images,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    Ok(turns)
 }
 
 /// Un tour déjà écrit, relu depuis le serveur.
@@ -1195,6 +1235,8 @@ pub struct ChatTurn {
     pub id: String,
     pub role: String,
     pub content: String,
+    /// Generic image artifacts associated with the assistant turn.
+    pub images: Vec<MediaResult>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1634,6 +1676,62 @@ async fn run_composer_tool(tool: String, text: String) -> Result<String, String>
         .and_then(|t| t.as_str())
         .unwrap_or_default()
         .to_string())
+}
+
+/// Lire un asset textuel fourni par une extension active (son interface, par
+/// exemple). Le serveur vérifie que le chemin reste dans le dossier du plugin.
+#[tauri::command]
+async fn read_extension_asset(extension_id: String, asset_path: String) -> Result<String, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let response = client
+        .post(format!("{base}/v1/extensions/asset"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "extension_id": extension_id, "asset_path": asset_path }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        return Err(body
+            .pointer("/error/message")
+            .and_then(|message| message.as_str())
+            .unwrap_or("Asset d'extension indisponible.")
+            .to_string());
+    }
+    body.as_str()
+        .map(str::to_string)
+        .ok_or_else(|| "Le serveur a renvoyé un asset invalide.".into())
+}
+
+/// Appeler un outil MCP d'extension avec un objet de paramètres arbitraire.
+#[tauri::command]
+async fn invoke_extension_tool(tool: String, args: serde_json::Value) -> Result<String, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let response = client
+        .post(format!("{base}/v1/tools/{tool}"))
+        .bearer_auth(&session.token)
+        .json(&args)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        return Err(body
+            .pointer("/error/message")
+            .and_then(|message| message.as_str())
+            .unwrap_or("L'outil de l'extension a échoué.")
+            .to_string());
+    }
+    let text = body
+        .get("text")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| body.to_string());
+    Ok(text)
 }
 
 /// Les réglages déclarés par les extensions, tels qu'ils sont sur le serveur.
@@ -2134,28 +2232,6 @@ async fn list_media_models(kind: String) -> Result<Vec<MediaModel>, String> {
         .unwrap_or_default())
 }
 
-/// Generate an image on the machine at the other end.
-#[tauri::command]
-async fn generate_image(
-    model: String,
-    prompt: String,
-    negative_prompt: Option<String>,
-    width: Option<u32>,
-    height: Option<u32>,
-) -> Result<MediaResult, String> {
-    fetch_media(
-        "/v1/media/image",
-        serde_json::json!({
-            "model": model,
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "width": width,
-            "height": height,
-        }),
-    )
-    .await
-}
-
 /// Generate speech on the machine at the other end.
 #[tauri::command]
 async fn generate_audio(
@@ -2378,6 +2454,8 @@ pub fn run() {
             start_figure_chat,
             figure_sessions,
             run_composer_tool,
+            read_extension_asset,
+            invoke_extension_tool,
             extension_config,
             set_extension_config,
             list_models,
@@ -2387,7 +2465,6 @@ pub fn run() {
             pull_model,
             remove_model,
             save_image,
-            generate_image,
             generate_audio,
             pairing::apply_pairing_link,
             server_capabilities,

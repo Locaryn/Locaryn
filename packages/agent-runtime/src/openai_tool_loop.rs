@@ -51,10 +51,8 @@ pub async fn run_openai_tool_loop(
     let chat_url = format!("{}/v1/chat/completions", endpoint.trim_end_matches('/'));
 
     // Les outils intégrés touchent des fichiers : ils n'ont de sens que dans un
-    // projet. Ceux apportés par une extension, non — générer une image ne
-    // demande aucun dossier de travail, et l'exiger revenait à répondre « je ne
-    // sais pas faire » dans une conversation libre alors que l'extension était
-    // installée.
+    // projet. Les extensions restent disponibles dans une conversation libre
+    // et gèrent elles-mêmes leur espace de stockage.
     let in_project = input.project_path.is_some();
     let extension_tools = crate::tools::capability_tools(&input.capabilities);
     let trust = input.trust.unwrap_or(TrustLevel::Sandbox);
@@ -63,12 +61,11 @@ pub async fn run_openai_tool_loop(
     } else {
         Vec::new()
     };
-    let mcp_tools = if in_project {
-        if let Some(ref mcp) = input.mcp_state {
-            crate::mcp_tools::collect_mcp_tools(mcp).await
-        } else {
-            Vec::new()
-        }
+    // MCP extensions are valid in a free conversation too (for example an
+    // image plugin writes only to its own storage). Only the host's built-in
+    // file tools require a project path.
+    let mcp_tools = if let Some(ref mcp) = input.mcp_state {
+        crate::mcp_tools::collect_mcp_tools(mcp).await
     } else {
         Vec::new()
     };

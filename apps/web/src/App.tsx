@@ -8,7 +8,7 @@ import { Models } from "./components/Models";
 import { Settings } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
-import { type WebStatus, api } from "./lib/core";
+import { type PhoneExtension, type WebStatus, api } from "./lib/core";
 import { isIOS, isStandalone, rememberDismissed, rememberInstalled, shouldPrompt } from "./lib/pwa";
 
 type Screen = "loading" | "signin" | "chat" | Destination | "memory";
@@ -26,6 +26,7 @@ export function App() {
   const [showPrompt, setShowPrompt] = useState(false);
   /** Ce que les extensions actives du serveur apportent, relu quand elles bougent. */
   const [capabilities, setCapabilities] = useState<string[]>([]);
+  const [extensions, setExtensions] = useState<PhoneExtension[]>([]);
   /** Une conversation neuve tenue par une figure, à ouvrir dans le chat. */
   const [figureChatId, setFigureChatId] = useState<string | null>(null);
 
@@ -42,7 +43,14 @@ export function App() {
 
   const refreshCapabilities = useCallback(async () => {
     try {
-      setCapabilities(await api.serverCapabilities());
+      const installed = await api.listExtensions();
+      setExtensions(installed.filter((extension) => extension.enabled));
+      const caps = new Set<string>();
+      for (const extension of installed) {
+        if (!extension.enabled) continue;
+        for (const capability of extension.capabilities ?? []) caps.add(capability);
+      }
+      setCapabilities([...caps]);
     } catch {
       // Un serveur muet ne doit pas vider l'interface : on garde ce qu'on a.
     }
@@ -122,7 +130,7 @@ export function App() {
           initialId={figureChatId}
         />
       ) : screen === "studio" ? (
-        <Studio onBack={() => setScreen("chat")} />
+        <Studio onBack={() => setScreen("chat")} extensions={extensions} />
       ) : screen === "figures" ? (
         <FiguresScreen
           onBack={() => setScreen("chat")}

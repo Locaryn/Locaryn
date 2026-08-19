@@ -16,8 +16,8 @@ import { TopBar } from "./components/TopBar";
 import { useTheme } from "./hooks/useTheme";
 import { FREE_CHAT_PATH } from "./lib/constants";
 import {
-  type HfModelSelection,
   type Health,
+  type HfModelSelection,
   type InstalledExtension,
   type Project,
   type Provisioning,

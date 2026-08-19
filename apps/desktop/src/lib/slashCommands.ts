@@ -3,8 +3,6 @@
 // supplies the handlers, so this list stays testable and easy to extend.
 
 export type SlashAction =
-  | "image"
-  | "edit-image"
   | "documents"
   | "json"
   | "reasoning-off"
@@ -44,14 +42,6 @@ export interface SlashCommand {
   extension?: string;
 }
 
-/** Quality arguments shared by the image commands. */
-const QUALITY_ARGS: SlashArg[] = [
-  { value: "brouillon", label: "Brouillon · 256px", hint: "Le plus rapide — icônes, essais" },
-  { value: "standard", label: "Standard · 512px", hint: "Compromis vitesse/qualité" },
-  { value: "haute", label: "Haute · 768px", hint: "Plus détaillé, plus lent" },
-  { value: "max", label: "Maximale · 1024px", hint: "Qualité maximale, le plus lent" },
-];
-
 /** Map a typed argument to a resolution, or null when it isn't one. */
 export function argToSize(arg: string): number | null {
   const a = arg.trim().toLowerCase();
@@ -77,26 +67,6 @@ export function argToSize(arg: string): number | null {
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
-  {
-    name: "image",
-    aliases: ["img", "generer", "générer", "dessine"],
-    icon: "image",
-    label: "Générer une image",
-    hint: "Ouvre le studio d'image",
-    action: "image",
-    requiredCapability: "image-gen",
-    args: QUALITY_ARGS,
-  },
-  {
-    name: "editer-image",
-    aliases: ["edit", "retouche", "img2img"],
-    icon: "image",
-    label: "Éditer une image",
-    hint: "Transformer une image existante",
-    action: "edit-image",
-    requiredCapability: "image-editor",
-    args: QUALITY_ARGS,
-  },
   {
     name: "plan",
     aliases: ["workflow", "etapes", "étapes"],

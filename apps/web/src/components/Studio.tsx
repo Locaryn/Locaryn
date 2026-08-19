@@ -1,158 +1,74 @@
-import { useEffect, useState } from "react";
-import { type MediaResult, api } from "../lib/core";
+import { useEffect, useMemo, useState } from "react";
+import { type MediaResult, type PhoneExtension, api } from "../lib/core";
+import {
+  PluginWidget,
+  type WebPluginContribution,
+  getWebStudioContributions,
+} from "./PluginWidget";
 
 type Props = {
   onBack: () => void;
+  extensions?: PhoneExtension[];
 };
 
-type Tab = "image" | "audio";
+type Tab = "audio" | string;
 
 /**
- * Creation studio — image and speech, generated on the machine at the other
- * end. The page holds a prompt and a model picker; the pixels and the
- * waveforms are made where the weights live, and come back as base64.
+ * The host only supplies generic Studio plumbing. Image generation is owned by
+ * plugin-image-gen and arrives here as a custom element declared by the
+ * extension manifest; there is no native image endpoint or image form here.
  */
-export function Studio({ onBack }: Props) {
-  const [tab, setTab] = useState<Tab>("image");
+export function Studio({ onBack, extensions = [] }: Props) {
+  const pluginTabs = useMemo(() => getWebStudioContributions(extensions), [extensions]);
+  const tabs = useMemo(
+    () => [
+      { id: "audio" as Tab, label: "Voix", contribution: undefined },
+      ...pluginTabs.map((contribution) => ({
+        id: contribution.id,
+        label: contribution.label || contribution.id,
+        contribution,
+      })),
+    ],
+    [pluginTabs],
+  );
+  const [tab, setTab] = useState<Tab>(tabs[0]?.id ?? "audio");
+
+  useEffect(() => {
+    if (!tabs.some((candidate) => candidate.id === tab)) setTab(tabs[0]?.id ?? "audio");
+  }, [tab, tabs]);
+
+  const current = tabs.find((candidate) => candidate.id === tab);
+
   return (
     <div className="lo-screen">
       <div className="lo-bar">
         <button type="button" className="lo-back" onClick={onBack}>
           ← Chat
         </button>
-        <span>Créer</span>
+        <span>Studio</span>
       </div>
 
       <div className="lo-tabs">
-        <button
-          type="button"
-          className={`lo-tab${tab === "image" ? " lo-tab-on" : ""}`}
-          onClick={() => setTab("image")}
-        >
-          Image
-        </button>
-        <button
-          type="button"
-          className={`lo-tab${tab === "audio" ? " lo-tab-on" : ""}`}
-          onClick={() => setTab("audio")}
-        >
-          Voix
-        </button>
-      </div>
-
-      <div className="lo-studio">{tab === "image" ? <ImageGen /> : <AudioGen />}</div>
-    </div>
-  );
-}
-
-function ImageGen() {
-  const [models, setModels] = useState<{ name: string }[] | null>(null);
-  const [model, setModel] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [size, setSize] = useState<"512" | "1024">("1024");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<MediaResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .listMediaModels("image")
-      .then((m) => {
-        if (cancelled) return;
-        const list = Array.isArray(m) ? m : [];
-        setModels(list);
-        if (list.length && !model) setModel(list[0].name);
-      })
-      .catch((e) => !cancelled && setError(String(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [model]);
-
-  async function generate() {
-    if (!prompt.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    setResult(null);
-    try {
-      const w = size === "512" ? 512 : 1024;
-      const r = await api.generateImage({
-        model,
-        prompt: prompt.trim(),
-        width: w,
-        height: w,
-      });
-      setResult(r);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <label className="lo-label" htmlFor="img-model">
-        Modèle
-      </label>
-      <select
-        id="img-model"
-        className="lo-input"
-        value={model}
-        onChange={(e) => setModel(e.target.value)}
-        disabled={busy}
-      >
-        {models?.map((m) => (
-          <option key={m.name} value={m.name}>
-            {m.name}
-          </option>
-        ))}
-      </select>
-
-      <label className="lo-label" htmlFor="img-prompt">
-        Description
-      </label>
-      <textarea
-        id="img-prompt"
-        className="lo-input lo-textarea"
-        placeholder="Un phare sur une falaise, au coucher du soleil…"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        rows={4}
-      />
-
-      <div className="lo-row">
-        {(["512", "1024"] as const).map((s) => (
+        {tabs.map((candidate) => (
           <button
-            key={s}
+            key={candidate.id}
             type="button"
-            className={`lo-chip${size === s ? " lo-chip-on" : ""}`}
-            onClick={() => setSize(s)}
+            className={`lo-tab${tab === candidate.id ? " lo-tab-on" : ""}`}
+            onClick={() => setTab(candidate.id)}
           >
-            {s} × {s}
+            {candidate.label}
           </button>
         ))}
       </div>
 
-      <button type="button" className="lo-btn" disabled={busy || !prompt.trim()} onClick={generate}>
-        {busy ? "Génération…" : "Générer l'image"}
-      </button>
-
-      {busy && (
-        <p className="lo-sub">
-          Le modèle tourne sur {model} — comptez quelques dizaines de secondes.
-        </p>
-      )}
-      {error && <p className="lo-error">{error}</p>}
-      {result && (
-        <img
-          className="lo-result"
-          src={`data:${result.mime};base64,${result.data_base64}`}
-          alt={prompt}
-        />
-      )}
-    </>
+      <div className="lo-studio">
+        {current?.contribution ? (
+          <PluginWidget contribution={current.contribution as WebPluginContribution} />
+        ) : (
+          <AudioGen />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -169,13 +85,12 @@ function AudioGen() {
     let cancelled = false;
     api
       .listMediaModels("audio")
-      .then((m) => {
+      .then((list) => {
         if (cancelled) return;
-        const list = Array.isArray(m) ? m : [];
-        setModels(list);
+        setModels(Array.isArray(list) ? list : []);
         if (list.length && !model) setModel(list[0].name);
       })
-      .catch((e) => !cancelled && setError(String(e)));
+      .catch((cause) => !cancelled && setError(String(cause)));
     return () => {
       cancelled = true;
     };
@@ -187,14 +102,15 @@ function AudioGen() {
     setError(null);
     setResult(null);
     try {
-      const r = await api.generateAudio({
-        model,
-        text: text.trim(),
-        speed: Number(speed),
-      });
-      setResult(r);
-    } catch (e) {
-      setError(String(e));
+      setResult(
+        await api.generateAudio({
+          model,
+          text: text.trim(),
+          speed: Number(speed),
+        }),
+      );
+    } catch (cause) {
+      setError(String(cause));
     } finally {
       setBusy(false);
     }
@@ -202,6 +118,10 @@ function AudioGen() {
 
   return (
     <>
+      <p className="lo-sub">
+        Les extensions ajoutent leurs propres outils. La voix ci-dessous est le module générique
+        conservé par Locaryn.
+      </p>
       <label className="lo-label" htmlFor="au-model">
         Voix
       </label>
@@ -209,12 +129,12 @@ function AudioGen() {
         id="au-model"
         className="lo-input"
         value={model}
-        onChange={(e) => setModel(e.target.value)}
+        onChange={(event) => setModel(event.target.value)}
         disabled={busy}
       >
-        {models?.map((m) => (
-          <option key={m.name} value={m.name}>
-            {m.name}
+        {models?.map((candidate) => (
+          <option key={candidate.name} value={candidate.name}>
+            {candidate.name}
           </option>
         ))}
       </select>
@@ -225,21 +145,21 @@ function AudioGen() {
       <textarea
         id="au-text"
         className="lo-input lo-textarea"
-        placeholder="Bonjour ! Je parle avec la voix d'un modèle qui tourne sur votre machine."
+        placeholder="Bonjour !"
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(event) => setText(event.target.value)}
         rows={4}
       />
 
       <div className="lo-row">
-        {(["0.8", "1.0", "1.2"] as const).map((s) => (
+        {(["0.8", "1.0", "1.2"] as const).map((candidate) => (
           <button
-            key={s}
+            key={candidate}
             type="button"
-            className={`lo-chip${speed === s ? " lo-chip-on" : ""}`}
-            onClick={() => setSpeed(s)}
+            className={`lo-chip${speed === candidate ? " lo-chip-on" : ""}`}
+            onClick={() => setSpeed(candidate)}
           >
-            {s === "0.8" ? "Lent" : s === "1.0" ? "Normal" : "Rapide"}
+            {candidate === "0.8" ? "Lent" : candidate === "1.0" ? "Normal" : "Rapide"}
           </button>
         ))}
       </div>
@@ -247,7 +167,6 @@ function AudioGen() {
       <button type="button" className="lo-btn" disabled={busy || !text.trim()} onClick={generate}>
         {busy ? "Synthèse…" : "Générer la voix"}
       </button>
-
       {busy && <p className="lo-sub">Synthèse en cours sur {model}…</p>}
       {error && <p className="lo-error">{error}</p>}
       {result && (

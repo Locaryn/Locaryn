@@ -48,6 +48,7 @@ apps/desktop/.tauri/
 # poids se téléchargent, l'environnement se reconstruit.
 # ─────────────────────────────────────────────────────────────────────────
 models/
+generated_images/
 hf_cache/
 .venv/
 venv/

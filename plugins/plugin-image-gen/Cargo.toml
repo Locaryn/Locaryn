@@ -1,23 +1,26 @@
 [package]
 name = "locaryn-plugin-image-gen"
-version = "1.3.0"
+version = "1.4.0"
 edition = "2021"
 description = "Official Locaryn Extension: Text-to-Image Generation (Flux, Stable Diffusion, SDXL, Z-Image)"
 license = "Apache-2.0"
-authors = ["Locaryn Team"]
 
-[dependencies]
-futures-util = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tokio = { version = "1.38", features = ["full"] }
-tracing = "0.1"
-thiserror = "1.0"
-async-trait = "0.1"
+[lib]
+path = "src/lib.rs"
 
 [[bin]]
 name = "locaryn-image-gen-mcp"
 path = "src/bin/image_gen_mcp.rs"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+url = "2"
+walkdir = "2"
 
 [workspace]

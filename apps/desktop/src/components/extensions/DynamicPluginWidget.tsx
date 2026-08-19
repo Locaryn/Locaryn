@@ -88,7 +88,7 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
       <div
         ref={customElementContainerRef}
         className={className}
-        style={{ display: "inline-flex", alignItems: "center", ...style }}
+        style={{ display: "block", width: "100%", ...style }}
       />
     );
   }

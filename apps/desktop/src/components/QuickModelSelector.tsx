@@ -55,7 +55,11 @@ export function QuickModelSelector({
   const dedupedModels = useMemo(
     () =>
       Array.from(
-        new Set(installedModels.length > 0 ? installedModels : ([activeModel].filter(Boolean) as string[])),
+        new Set(
+          installedModels.length > 0
+            ? installedModels
+            : ([activeModel].filter(Boolean) as string[]),
+        ),
       ).sort((a, b) => a.localeCompare(b)),
     [installedModels, activeModel],
   );
@@ -306,7 +310,10 @@ export function QuickModelSelector({
                     onClose();
                   }}
                 >
-                  <div className="locaryn-quick-model-info" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div
+                    className="locaryn-quick-model-info"
+                    style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                  >
                     <div
                       style={{
                         width: "30px",

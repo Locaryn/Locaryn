@@ -11,19 +11,17 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const Z_IMAGE_VAE_URL: &str =
     "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors";
-#[cfg(test)]
-const Z_IMAGE_VAE_FILE: &str = "ae.safetensors";
 const Z_IMAGE_ENCODER_URL: &str =
     "https://huggingface.co/second-state/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
-#[cfg(test)]
-const Z_IMAGE_ENCODER_FILE: &str = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageGenRequest {
     pub prompt: String,
     #[serde(default)]
     pub negative_prompt: Option<String>,
-    pub model: String,
+    /// Optional: the first detected checkpoint is used when omitted.
+    #[serde(default)]
+    pub model: Option<String>,
     #[serde(default = "default_width")]
     pub width: u32,
     #[serde(default = "default_height")]
@@ -107,11 +105,88 @@ pub fn plugin_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// The plugin keeps its own models instead of using Locaryn's chat model root.
+/// Primary model directory for downloads.
 pub fn models_dir() -> PathBuf {
     std::env::var_os("LOCARYN_EXTENSION_MODELS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| plugin_root().join("models"))
+}
+
+/// All candidate directories where diffusion models or companions may be located.
+pub fn candidate_model_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+
+    // 1. Explicit extension models dir
+    if let Some(d) = std::env::var_os("LOCARYN_EXTENSION_MODELS_DIR").map(PathBuf::from) {
+        if !dirs.contains(&d) {
+            dirs.push(d);
+        }
+    }
+
+    // 2. Host models dir
+    if let Some(d) = std::env::var_os("LOCARYN_MODELS_DIR").map(PathBuf::from) {
+        if !dirs.contains(&d) {
+            dirs.push(d);
+        }
+    }
+
+    // 3. Plugin root models
+    let plugin_models = plugin_root().join("models");
+    if !dirs.contains(&plugin_models) {
+        dirs.push(plugin_models);
+    }
+
+    // 4. Windows AppData / UserProfile
+    #[cfg(windows)]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA").map(PathBuf::from) {
+            let p1 = appdata.join("Locaryn").join("models");
+            if !dirs.contains(&p1) {
+                dirs.push(p1);
+            }
+            let p2 = appdata.join("syncho").join("models");
+            if !dirs.contains(&p2) {
+                dirs.push(p2);
+            }
+        }
+        if let Some(userprofile) = std::env::var_os("USERPROFILE").map(PathBuf::from) {
+            let p1 = userprofile.join(".locaryn").join("models");
+            if !dirs.contains(&p1) {
+                dirs.push(p1);
+            }
+        }
+    }
+
+    // 5. Unix Home / Data Dir
+    #[cfg(not(windows))]
+    {
+        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+            let p1 = home.join(".locaryn").join("models");
+            if !dirs.contains(&p1) {
+                dirs.push(p1);
+            }
+            let p2 = home.join(".local").join("share").join("Locaryn").join("models");
+            if !dirs.contains(&p2) {
+                dirs.push(p2);
+            }
+        }
+    }
+
+    // 6. Current working directory / parent models directory
+    if let Ok(cwd) = std::env::current_dir() {
+        let cwd_models = cwd.join("models");
+        if !dirs.contains(&cwd_models) {
+            dirs.push(cwd_models);
+        }
+        if let Some(parent) = cwd.parent() {
+            let parent_models = parent.join("models");
+            if !dirs.contains(&parent_models) {
+                dirs.push(parent_models);
+            }
+        }
+    }
+
+    dirs
 }
 
 pub fn generated_images_dir() -> PathBuf {
@@ -129,19 +204,35 @@ pub fn generated_images_dir() -> PathBuf {
 pub fn find_sd_binary() -> Option<PathBuf> {
     let executable = if cfg!(windows) { "sd.exe" } else { "sd" };
     let explicit = std::env::var_os("LOCARYN_SD_BINARY").map(PathBuf::from);
-    let mut candidates = explicit
-        .into_iter()
-        .chain([
-            plugin_root().join("bin").join(executable),
-            plugin_root().join(executable),
-        ])
-        .chain(
-            std::env::var_os("LOCARYN_PLUGIN_BIN_DIR")
-                .map(PathBuf::from)
-                .into_iter()
-                .map(|dir| dir.join(executable)),
-        );
-    candidates.find(|path| path.is_file())
+    let mut candidates: Vec<PathBuf> = explicit.into_iter().collect();
+
+    // In plugin bin/ and plugin root
+    candidates.push(plugin_root().join("bin").join(executable));
+    candidates.push(plugin_root().join(executable));
+
+    // In LOCARYN_PLUGIN_BIN_DIR
+    if let Some(bin_dir) = std::env::var_os("LOCARYN_PLUGIN_BIN_DIR").map(PathBuf::from) {
+        candidates.push(bin_dir.join(executable));
+    }
+
+    // In candidate model dirs / parent bin dirs
+    for dir in candidate_model_dirs() {
+        candidates.push(dir.join("bin").join(executable));
+        candidates.push(dir.join(executable));
+        if let Some(parent) = dir.parent() {
+            candidates.push(parent.join("bin").join(executable));
+            candidates.push(parent.join(executable));
+        }
+    }
+
+    // In PATH
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for path_entry in std::env::split_paths(&path_var) {
+            candidates.push(path_entry.join(executable));
+        }
+    }
+
+    candidates.into_iter().find(|path| path.is_file())
 }
 
 #[derive(Debug, Clone, Default)]
@@ -171,26 +262,39 @@ fn find_companion(dir: &Path, patterns: &[&str], exclude: &[&str]) -> Option<Pat
     best.map(|(_, path)| path)
 }
 
+fn find_companion_in_all_dirs(patterns: &[&str], exclude: &[&str]) -> Option<PathBuf> {
+    for dir in candidate_model_dirs() {
+        if let Some(p) = find_companion(&dir, patterns, exclude) {
+            return Some(p);
+        }
+    }
+    None
+}
+
 pub fn discover_companions(models: &Path, family: ModelFamily, uncensored: bool) -> Companions {
     if family == ModelFamily::FullCheckpoint {
         return Companions::default();
     }
-    // decoder_fp32_fix.onnx is not a VAE accepted by stable-diffusion.cpp.
-    let vae = find_companion(models, &["ae.safetensors", "vae"], &[".onnx", "decoder", "taesd"]);
+    let vae = find_companion(models, &["ae.safetensors", "vae"], &[".onnx", "decoder", "taesd"])
+        .or_else(|| find_companion_in_all_dirs(&["ae.safetensors", "vae"], &[".onnx", "decoder", "taesd"]));
     match family {
         ModelFamily::ZImage => Companions {
             vae,
             llm: if uncensored {
                 find_companion(models, &["abliterat", "heretic"], &[])
+                    .or_else(|| find_companion_in_all_dirs(&["abliterat", "heretic"], &[]))
             } else {
                 find_companion(models, &["qwen3-4b", "qwen3_4b"], &["tts", "abliterat"])
+                    .or_else(|| find_companion_in_all_dirs(&["qwen3-4b", "qwen3_4b"], &["tts", "abliterat"]))
             },
             ..Companions::default()
         },
         ModelFamily::Flux => Companions {
             vae,
-            clip_l: find_companion(models, &["clip_l", "clip-l"], &[]),
-            t5xxl: find_companion(models, &["t5xxl", "t5-xxl"], &[]),
+            clip_l: find_companion(models, &["clip_l", "clip-l"], &[])
+                .or_else(|| find_companion_in_all_dirs(&["clip_l", "clip-l"], &[])),
+            t5xxl: find_companion(models, &["t5xxl", "t5-xxl"], &[])
+                .or_else(|| find_companion_in_all_dirs(&["t5xxl", "t5-xxl"], &[])),
             ..Companions::default()
         },
         ModelFamily::FullCheckpoint => Companions::default(),
@@ -224,12 +328,14 @@ pub fn missing_companions(family: ModelFamily, companions: &Companions) -> Vec<&
     missing
 }
 
-fn image_asset(name: &str) -> bool {
+/// Companion files cannot render an image by themselves. Everything else in
+/// the candidate model directories is a candidate, including unfamiliar
+/// repository names and new quantization names.
+fn is_companion_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     [
-        "stable-diffusion", "stable_diffusion", "sd_xl", "sdxl", "sd15", "sd-v1", "sd_v1",
-        "sd3", "sd3.5", "z_image", "z-image", "z_img", "zimg", "flux", "krea",
-        "dreamshaper", "juggernaut", "pony", "playground-v", "kolors", "hunyuan-dit", "pixart",
+        "mmproj-", "ae.safetensors", "vae", "clip", "t5xxl", "t5-xxl",
+        "text_encoder", "text-encoder", "abliterat", "heretic", "qwen", "embed",
     ]
     .iter()
     .any(|part| lower.contains(part))
@@ -241,58 +347,72 @@ pub fn is_diffusion_checkpoint(name: &str) -> bool {
         .iter()
         .any(|suffix| lower.ends_with(suffix));
     valid_extension
-        && image_asset(name)
-        && [
-            "mmproj-", "ae.safetensors", "vae", "clip", "t5xxl", "text_encoder",
-            "text-encoder", "abliterat", "qwen", "embed",
-        ]
-        .iter()
-        .all(|part| !lower.contains(part))
+        && !lower.ends_with(".part")
+        && !lower.ends_with(".tmp")
+        && !is_companion_name(name)
+}
+
+fn collect_models(dir: &Path, relative: &Path, output: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let rel = relative.join(&name);
+        if path.is_dir() {
+            // A diffusers repository is one model, not one model per nested
+            // safetensors shard.
+            if path.join("model_index.json").is_file() || path.join("unet").is_dir() {
+                output.push(rel.to_string_lossy().replace('\\', "/"));
+            } else {
+                collect_models(&path, &rel, output);
+            }
+        } else if is_diffusion_checkpoint(&name) {
+            output.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
 }
 
 pub fn list_image_models() -> Vec<String> {
-    let mut names = std::fs::read_dir(models_dir())
-        .ok()
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            let name = path.file_name()?.to_str()?.to_string();
-            let lower = name.to_ascii_lowercase();
-            if path.is_dir()
-                && (path.join("model_index.json").is_file() || path.join("unet").is_dir())
-            {
-                return Some(name);
-            }
-            (!lower.ends_with(".part") && !lower.ends_with(".tmp") && is_diffusion_checkpoint(&name))
-                .then_some(name)
-        })
-        .collect::<Vec<_>>();
-    names.sort();
+    let mut names = Vec::new();
+    for dir in candidate_model_dirs() {
+        collect_models(&dir, Path::new(""), &mut names);
+    }
+    names.sort_by_key(|name| name.to_ascii_lowercase());
     names.dedup();
     names
 }
 
 pub fn resolve_model_path(raw: &str) -> PathBuf {
-    let root = models_dir();
-    let direct = root.join(raw);
-    if direct.exists() {
-        return direct;
+    let raw_path = Path::new(raw);
+    if raw_path.is_absolute() && raw_path.exists() {
+        return raw_path.to_path_buf();
     }
-    let clean = raw
-        .split(['/', '\\'])
-        .next_back()
-        .unwrap_or(raw);
-    root.join(clean)
+    for dir in candidate_model_dirs() {
+        let candidate = dir.join(raw);
+        if candidate.exists() {
+            return candidate;
+        }
+        let clean = raw
+            .split(['/', '\\'])
+            .next_back()
+            .unwrap_or(raw);
+        let candidate_clean = dir.join(clean);
+        if candidate_clean.exists() {
+            return candidate_clean;
+        }
+    }
+    models_dir().join(raw)
 }
 
 fn validate_model_path(path: &Path) -> Result<PathBuf, String> {
-    let root = std::fs::canonicalize(models_dir()).map_err(|e| format!("dossier modèles illisible : {e}"))?;
-    let model = std::fs::canonicalize(path).map_err(|e| format!("modèle introuvable : {e}"))?;
-    if !model.starts_with(&root) {
-        return Err("le modèle doit se trouver dans le stockage de l'extension".into());
-    }
+    let model = if path.exists() {
+        std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    } else {
+        let resolved = resolve_model_path(&path.to_string_lossy());
+        std::fs::canonicalize(&resolved).map_err(|e| format!("modèle introuvable : {e}"))?
+    };
     Ok(model)
 }
 
@@ -420,11 +540,18 @@ pub async fn generate_image(request: ImageGenRequest) -> Result<ImageGenResult, 
     if request.prompt.trim().is_empty() {
         return Err("le prompt ne peut pas être vide".into());
     }
-    let model_path = validate_model_path(&resolve_model_path(&request.model))?;
+    let selected = request
+        .model
+        .as_deref()
+        .filter(|model| !model.trim().is_empty())
+        .map(str::to_string)
+        .or_else(|| list_image_models().into_iter().next())
+        .ok_or_else(|| "aucun modèle de diffusion installé dans le stockage du plugin".to_string())?;
+    let model_path = validate_model_path(&resolve_model_path(&selected))?;
     let model_name = model_path
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_default();
+        .unwrap_or_else(|| selected.clone());
     let (family_steps, family_cfg) = default_sampling(&model_name);
     let steps = if request.steps == 20 || request.steps == 8 {
         family_steps
@@ -481,35 +608,45 @@ pub async fn generate_image(request: ImageGenRequest) -> Result<ImageGenResult, 
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
     hide_console(&mut command);
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("lancement de stable-diffusion.cpp : {e}"))?;
-    let stderr = child.stderr.take().ok_or("stderr du moteur indisponible")?;
-    let mut lines = tokio::io::BufReader::new(stderr).lines();
-    let mut errors = Vec::new();
-    while let Ok(Some(line)) = lines.next_line().await {
-        if line.contains("[ERROR]") {
-            errors.push(line.trim().to_string());
+    let result = async {
+        let mut child = command
+            .spawn()
+            .map_err(|e| format!("lancement de stable-diffusion.cpp : {e}"))?;
+        let stderr = child.stderr.take().ok_or("stderr du moteur indisponible")?;
+        let mut lines = tokio::io::BufReader::new(stderr).lines();
+        let mut errors = Vec::new();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if line.contains("[ERROR]") || line.to_ascii_lowercase().contains("error") {
+                errors.push(line.trim().to_string());
+            }
         }
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| format!("attente du moteur : {e}"))?;
+        let (_, expected) = batch_output(&out_file, request.variants.clamp(1, 8));
+        let paths = expected.into_iter().filter(|path| path.is_file()).collect::<Vec<_>>();
+        if !status.success() || paths.is_empty() {
+            return Err(format!(
+                "génération échouée : {}",
+                errors.last().map(String::as_str).unwrap_or("aucune image écrite")
+            ));
+        }
+        Ok(paths)
     }
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| format!("attente du moteur : {e}"))?;
+    .await;
     if let Some(path) = &input_path {
         let _ = std::fs::remove_file(path);
     }
-    let (_, expected) = batch_output(&out_file, request.variants.clamp(1, 8));
-    let paths = expected.into_iter().filter(|path| path.is_file()).collect::<Vec<_>>();
-    if !status.success() || paths.is_empty() {
-        return Err(format!(
-            "génération échouée : {}",
-            errors.last().map(String::as_str).unwrap_or("aucune image écrite")
-        ));
+    if result.is_err() {
+        let (_, expected) = batch_output(&out_file, request.variants.clamp(1, 8));
+        for path in expected {
+            let _ = std::fs::remove_file(path);
+        }
     }
     Ok(ImageGenResult {
-        paths,
-        model: request.model,
+        paths: result?,
+        model: selected,
     })
 }
 
@@ -576,6 +713,7 @@ pub async fn install_models(request: InstallRequest) -> Result<Vec<String>, Stri
     if sources.is_empty() {
         return Err("aucune source de modèle".into());
     }
+
     let mut expanded = Vec::new();
     for source in sources {
         expanded.push(source.clone());
@@ -597,14 +735,28 @@ pub async fn install_models(request: InstallRequest) -> Result<Vec<String>, Stri
         .build()
         .map_err(|e| format!("client HTTP : {e}"))?;
     let mut installed = Vec::new();
+    let mut created = Vec::new();
     for source in expanded {
-        let url = normalize_huggingface_source(&source)?;
-        let file_name = filename_from_url(&url)?;
-        let destination = models_dir().join(&file_name);
-        if !destination.is_file() {
-            download_file(&client, &url, &destination, &token).await?;
+        let outcome = async {
+            let url = normalize_huggingface_source(&source)?;
+            let file_name = filename_from_url(&url)?;
+            let destination = models_dir().join(&file_name);
+            if !destination.is_file() {
+                download_file(&client, &url, &destination, &token).await?;
+                created.push(destination);
+            }
+            Ok::<String, String>(file_name)
         }
-        installed.push(file_name);
+        .await;
+        match outcome {
+            Ok(file_name) => installed.push(file_name),
+            Err(error) => {
+                for path in created {
+                    let _ = tokio::fs::remove_file(path).await;
+                }
+                return Err(error);
+            }
+        }
     }
     Ok(installed)
 }
@@ -614,7 +766,10 @@ pub async fn install_runtime(request: RuntimeInstallRequest) -> Result<String, S
     if !(source.starts_with("https://") && source.contains("github.com/")) {
         return Err("le runtime doit être un asset HTTPS de GitHub".into());
     }
-    let file_name = filename_from_url(source)?;
+    if source.to_ascii_lowercase().ends_with(".zip") {
+        return Err("le runtime doit être un exécutable stable-diffusion.cpp, pas une archive ZIP".into());
+    }
+    let file_name = if cfg!(windows) { "sd.exe" } else { "sd" };
     let destination = plugin_root().join("bin").join(file_name);
     let client = reqwest::Client::builder()
         .user_agent("locaryn-plugin-image-gen")
@@ -657,17 +812,6 @@ async fn download_file(
     destination: &Path,
     token: &str,
 ) -> Result<(), String> {
-    let mut request = client.get(url);
-    if !token.is_empty() {
-        request = request.bearer_auth(token);
-    }
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("téléchargement : {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!("téléchargement HTTP {} pour {}", response.status(), url));
-    }
     if let Some(parent) = destination.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -677,20 +821,38 @@ async fn download_file(
         "{}.part",
         destination.file_name().unwrap().to_string_lossy()
     ));
-    let mut file = tokio::fs::File::create(&part)
-        .await
-        .map_err(|e| format!("fichier temporaire : {e}"))?;
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk.map_err(|e| format!("flux de téléchargement : {e}"))?)
+    let outcome = async {
+        let mut request = client.get(url);
+        if !token.is_empty() {
+            request = request.bearer_auth(token);
+        }
+        let response = request
+            .send()
             .await
-            .map_err(|e| format!("écriture : {e}"))?;
+            .map_err(|e| format!("téléchargement : {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!("téléchargement HTTP {} pour {}", response.status(), url));
+        }
+        let mut file = tokio::fs::File::create(&part)
+            .await
+            .map_err(|e| format!("fichier temporaire : {e}"))?;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            file.write_all(&chunk.map_err(|e| format!("flux de téléchargement : {e}"))?)
+                .await
+                .map_err(|e| format!("écriture : {e}"))?;
+        }
+        file.flush().await.map_err(|e| format!("flush : {e}"))?;
+        drop(file);
+        tokio::fs::rename(&part, destination)
+            .await
+            .map_err(|e| format!("finalisation : {e}"))
     }
-    file.flush().await.map_err(|e| format!("flush : {e}"))?;
-    drop(file);
-    tokio::fs::rename(&part, destination)
-        .await
-        .map_err(|e| format!("finalisation : {e}"))
+    .await;
+    if outcome.is_err() {
+        let _ = tokio::fs::remove_file(&part).await;
+    }
+    outcome
 }
 
 #[cfg(test)]
@@ -708,20 +870,21 @@ mod tests {
     }
 
     #[test]
-    fn old_onnx_vae_is_never_selected() {
-        let root = temp_dir("companions");
-        std::fs::write(root.join("decoder_fp32_fix.onnx"), b"bad").unwrap();
-        std::fs::write(root.join(Z_IMAGE_VAE_FILE), b"good").unwrap();
-        let companions = discover_companions(&root, ModelFamily::ZImage, false);
-        assert_eq!(companions.vae, Some(root.join(Z_IMAGE_VAE_FILE)));
+    fn unknown_checkpoint_names_are_detected_and_companions_hidden() {
+        assert!(is_diffusion_checkpoint("L3.2-8X3B-MOE-Dark-Champion-Q3.gguf"));
+        assert!(is_diffusion_checkpoint("custom-style-Q6.safetensors"));
+        assert!(!is_diffusion_checkpoint("ae.safetensors"));
+        assert!(!is_diffusion_checkpoint("decoder_fp32_fix.onnx"));
+        assert!(!is_diffusion_checkpoint("Qwen3-4B-Instruct-Q4.gguf"));
     }
 
     #[test]
-    fn catalog_hides_companions() {
-        assert!(is_diffusion_checkpoint("z_image_turbo-Q8.gguf"));
-        assert!(!is_diffusion_checkpoint("ae.safetensors"));
-        assert!(!is_diffusion_checkpoint("decoder_fp32_fix.onnx"));
-        assert!(!is_diffusion_checkpoint(Z_IMAGE_ENCODER_FILE));
+    fn old_onnx_vae_is_never_selected() {
+        let root = temp_dir("companions");
+        std::fs::write(root.join("decoder_fp32_fix.onnx"), b"bad").unwrap();
+        std::fs::write(root.join("ae.safetensors"), b"good").unwrap();
+        let companions = discover_companions(&root, ModelFamily::ZImage, false);
+        assert_eq!(companions.vae, Some(root.join("ae.safetensors")));
     }
 
     #[test]

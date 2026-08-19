@@ -131,9 +131,7 @@ export function TaskCenter({ onOpenResult }: Props) {
                 // notifications restent interactives uniquement si elles ont
                 // réellement une destination.
                 const isError = t.status === "error" && Boolean(t.error);
-                const actionable =
-                  isError ||
-                  t.status !== "error" && Boolean(t.resultImageUrl);
+                const actionable = isError || (t.status !== "error" && Boolean(t.resultImageUrl));
                 const activate = async () => {
                   if (isError && t.error) {
                     const copied = await copyText(t.error);

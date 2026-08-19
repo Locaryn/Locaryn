@@ -20,7 +20,7 @@ export function MainMenu({ open, onClose, canCreate, canFigures, onGo }: Props) 
   if (!open) return null;
 
   const destinations: { id: Destination; label: string; note: string }[] = [
-    { id: "studio", label: "Studio", note: "Images et voix" },
+    { id: "studio", label: "Studio", note: "Outils multimodaux des extensions" },
     { id: "figures", label: "Figures", note: "Rôles et consignes" },
     { id: "extensions", label: "Extensions", note: "Ce que le serveur sait faire" },
     { id: "models", label: "Modèles", note: "Ce qui est installé" },

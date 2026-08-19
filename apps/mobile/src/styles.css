@@ -310,6 +310,56 @@ body {
   width: 100%;
   height: auto;
 }
+.lo-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, 0.84);
+}
+.lo-image-lightbox-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(96vw, 760px);
+  max-height: 94vh;
+}
+.lo-image-lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.lo-image-lightbox-action,
+.lo-image-lightbox-close {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 12px;
+}
+.lo-image-lightbox-close {
+  width: 36px;
+  padding: 0;
+  font-size: 22px;
+}
+.lo-image-lightbox-image {
+  display: block;
+  width: 100%;
+  max-height: 82vh;
+  object-fit: contain;
+  border-radius: var(--radius);
+}
 
 .lo-msg-copy {
   padding: 2px 8px;

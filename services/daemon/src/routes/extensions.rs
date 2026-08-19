@@ -17,14 +17,17 @@
 //!   GET    /v1/capabilities                   — liste canonique des capacités
 
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    body::Body,
+    extract::{Path, Query, State},
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use locaryn_extensions::RegistryError;
+use locaryn_mcp::McpClient;
 use locaryn_shared_types::{ExtensionScope, Permission};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::DaemonState;
@@ -49,6 +52,17 @@ fn default_scope() -> String {
 pub struct PermissionBody {
     pub permission: String,
     pub granted: bool,
+}
+
+#[derive(Deserialize)]
+pub struct ExtensionAssetBody {
+    pub extension_id: String,
+    pub asset_path: String,
+}
+
+#[derive(Deserialize)]
+pub struct ExtensionMediaQuery {
+    pub path: String,
 }
 
 // ============================================================================
@@ -349,6 +363,94 @@ pub async fn restore_from_storage(state: &DaemonState) {
     }
 }
 
+/// Register and auto-start the MCP servers shipped by enabled extensions.
+///
+/// The desktop has an equivalent refresh path. The daemon needs its own one:
+/// mobile and web clients never launch plugin processes themselves, so an
+/// extension installed on the server would otherwise appear in `/v1/extensions`
+/// while its tools remained invisible to the agent.
+pub async fn sync_mcp_servers(state: &DaemonState) {
+    let records = match state.storage.extensions.list().await {
+        Ok(records) => records,
+        Err(error) => {
+            tracing::warn!(error = %error, "MCP extensions : lecture des permissions impossible");
+            return;
+        }
+    };
+    let mut desired: HashMap<String, locaryn_mcp::McpServerEntry> = HashMap::new();
+    for record in records.into_iter().filter(|record| record.enabled) {
+        if !record.granted.contains(&Permission::Mcp) {
+            continue;
+        }
+        let Some(entry) = state.extensions.get(&record.name) else {
+            continue;
+        };
+        let Some(root) = std::path::Path::new(&record.manifest_path).parent() else {
+            continue;
+        };
+        let Ok(loaded) = locaryn_extensions::loader::load(root) else {
+            continue;
+        };
+        let safe_name: String = record
+            .name
+            .chars()
+            .map(|character| if character.is_ascii_alphanumeric() || character == '-' || character == '_' { character } else { '-' })
+            .collect();
+        let extension_data_dir = state.data_dir.join("extensions").join(&safe_name);
+        let _ = std::fs::create_dir_all(&extension_data_dir);
+        for (server_name, mut server) in loaded.mcp {
+            let scoped = format!("{}__{}", safe_name, server_name);
+            server.env.insert("LOCARYN_DATA_DIR".into(), state.data_dir.display().to_string());
+            server.env.insert("LOCARYN_EXTENSION_DATA_DIR".into(), extension_data_dir.display().to_string());
+            server.env.insert("LOCARYN_EXTENSION_MODELS_DIR".into(), extension_data_dir.join("models").display().to_string());
+            server.env.insert("LOCARYN_EXTENSION_MEDIA_DIR".into(), extension_data_dir.join("media").display().to_string());
+            server.env.insert("LOCARYN_PLUGIN_ROOT".into(), root.display().to_string());
+            server.env.insert("LOCARYN_PLUGIN_BIN_DIR".into(), root.join("bin").display().to_string());
+            server.owner = Some(entry.name.clone());
+            desired.insert(scoped, server);
+        }
+    }
+
+    let stale = {
+        let mut config = state.mcp_state.config.lock().unwrap();
+        let stale: Vec<String> = config
+            .mcp_servers
+            .iter()
+            .filter(|(_, server)| server.owner.is_some())
+            .map(|(name, _)| name.clone())
+            .filter(|name| !desired.contains_key(name))
+            .collect();
+        for name in &stale {
+            config.mcp_servers.remove(name);
+        }
+        for (name, server) in &desired {
+            config.mcp_servers.insert(name.clone(), server.clone());
+        }
+        drop(config);
+        state.mcp_state.save();
+        stale
+    };
+    for name in stale {
+        if let Some(client) = state.mcp_state.running.write().await.remove(&name) {
+            let _ = client.shutdown().await;
+        }
+    }
+
+    for (name, server) in desired {
+        if !server.auto_start || state.mcp_state.running.read().await.contains_key(&name) {
+            continue;
+        }
+        let client: Arc<dyn McpClient> = Arc::from(state.mcp_state.build_client(&server));
+        match client.discover().await {
+            Ok(capabilities) => {
+                tracing::info!(server = %name, tools = capabilities.tools.len(), "serveur MCP d'extension démarré");
+                state.mcp_state.running.write().await.insert(name, client);
+            }
+            Err(error) => tracing::warn!(server = %name, error = %error, "serveur MCP d'extension indisponible"),
+        }
+    }
+}
+
 /// Écrit dans la base ce que le registre vient de faire.
 async fn persist(state: &DaemonState, entry: &locaryn_extensions::ExtensionEntry) {
     let new = locaryn_storage::repos::NewExtension {
@@ -632,6 +734,7 @@ pub async fn enable_extension(
     match s.extensions.enable(&name) {
         Ok(()) => {
             persist_enabled(&s, &name, true).await;
+            sync_mcp_servers(&s).await;
             (
                 StatusCode::OK,
                 Json(serde_json::json!({ "status": "enabled", "name": name })),
@@ -650,6 +753,7 @@ pub async fn disable_extension(
     match s.extensions.disable(&name) {
         Ok(()) => {
             persist_enabled(&s, &name, false).await;
+            sync_mcp_servers(&s).await;
             (
                 StatusCode::OK,
                 Json(serde_json::json!({ "status": "disabled", "name": name })),
@@ -668,6 +772,7 @@ pub async fn remove_extension(
     match s.extensions.remove(&name) {
         Ok(()) => {
             persist_removed(&s, &name).await;
+            sync_mcp_servers(&s).await;
             (
                 StatusCode::OK,
                 Json(serde_json::json!({ "status": "removed", "name": name })),
@@ -676,6 +781,100 @@ pub async fn remove_extension(
         }
         Err(e) => registry_error_response(e).into_response(),
     }
+}
+
+/// POST /v1/extensions/asset — read a text asset declared by an enabled extension.
+///
+/// Assets are resolved below the extension root and never through an arbitrary
+/// filesystem path. The endpoint exists for the web client; desktop and mobile
+/// use the same contract through their thin bridges.
+pub async fn read_extension_asset(
+    State(s): State<Arc<DaemonState>>,
+    Json(body): Json<ExtensionAssetBody>,
+) -> Response {
+    let Some(root) = s
+        .extensions
+        .list()
+        .into_iter()
+        .find(|entry| entry.name == body.extension_id && entry.enabled)
+        .and_then(|entry| entry.manifest_path.parent().map(|path| path.to_path_buf()))
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": { "code": "not_found", "message": "extension inconnue ou désactivée" } })),
+        )
+            .into_response();
+    };
+
+    let relative = std::path::Path::new(&body.asset_path);
+    if relative.is_absolute() || relative.components().any(|component| {
+        matches!(component, std::path::Component::ParentDir)
+    }) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": { "code": "bad_request", "message": "asset hors du dossier de l'extension" } })),
+        )
+            .into_response();
+    }
+    let root = match std::fs::canonicalize(&root) {
+        Ok(path) => path,
+        Err(error) => return extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
+    };
+    let target = match std::fs::canonicalize(root.join(relative)) {
+        Ok(path) if path.starts_with(&root) => path,
+        Ok(_) => return extension_asset_error(StatusCode::FORBIDDEN, "asset hors du dossier de l'extension".into()),
+        Err(error) => return extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
+    };
+    match tokio::fs::read_to_string(&target).await {
+        Ok(content) => (StatusCode::OK, Json(content)).into_response(),
+        Err(error) => extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
+    }
+}
+
+/// GET /v1/extension-assets?path=... — serve an extension-produced file.
+///
+/// Generated files are kept below Locaryn's private extension data root. This
+/// is a generic media route, not an image-generation API.
+pub async fn get_extension_media(
+    State(_s): State<Arc<DaemonState>>,
+    Query(query): Query<ExtensionMediaQuery>,
+) -> Response {
+    let requested = std::path::PathBuf::from(&query.path);
+    let extension_root = locaryn_config::storage_root().join("extensions");
+    let root = match std::fs::canonicalize(&extension_root) {
+        Ok(path) => path,
+        Err(error) => return extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
+    };
+    let target = match std::fs::canonicalize(&requested) {
+        Ok(path) if path.starts_with(&root) && path.is_file() => path,
+        Ok(_) => return extension_asset_error(StatusCode::FORBIDDEN, "fichier d'extension invalide".into()),
+        Err(error) => return extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
+    };
+    let bytes = match tokio::fs::read(&target).await {
+        Ok(bytes) => bytes,
+        Err(error) => return extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
+    };
+    let mime = match target.extension().and_then(|extension| extension.to_str()).unwrap_or_default().to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "wav" => "audio/wav",
+        "mp3" => "audio/mpeg",
+        _ => "application/octet-stream",
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime)
+        .body(Body::from(bytes))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+fn extension_asset_error(status: StatusCode, message: String) -> Response {
+    (
+        status,
+        Json(serde_json::json!({ "error": { "code": "asset_error", "message": message } })),
+    )
+        .into_response()
 }
 
 /// GET /v1/extensions/{name}/permissions — list requested vs granted permissions.

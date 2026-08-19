@@ -7,7 +7,7 @@
 //! - `dispatch_mcp_tool`: parses the prefixed name back to find the right
 //!   server and forwards the call via `invoke_tool()`.
 
-use crate::tools::{ToolResult, ToolSpec};
+use crate::tools::{ToolArtifact, ToolResult, ToolSpec};
 use locaryn_mcp::{McpClient, McpState};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -113,7 +113,11 @@ pub async fn dispatch_mcp_tool(
             ToolResult {
                 ok: true,
                 output,
-                artifact: None,
+                // MCP transports return a text content item for most tools.
+                // The host stays capability-agnostic: an extension may opt in
+                // to the generic artifact envelope without teaching Locaryn
+                // what the file means.
+                artifact: artifact_from_mcp_value(&val),
             }
         }
         Err(e) => ToolResult {
@@ -122,4 +126,38 @@ pub async fn dispatch_mcp_tool(
             artifact: None,
         },
     }
+}
+
+/// Read the generic artifact envelope emitted by an MCP extension.
+///
+/// Both the direct JSON shape (`{\"artifacts\":[...]}`) and the MCP text
+/// shape (a JSON string containing that object) are accepted. This keeps the
+/// transport layer independent from image/audio/video plugins while still
+/// allowing every client to render the produced file.
+fn artifact_from_mcp_value(value: &serde_json::Value) -> Option<ToolArtifact> {
+    let payload = value
+        .as_str()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+        .unwrap_or_else(|| value.clone());
+    let candidate = payload
+        .get("artifacts")
+        .and_then(|items| items.as_array())
+        .and_then(|items| items.first())
+        .or_else(|| payload.get("artifact"));
+    let object = candidate?.as_object()?;
+    let kind = object.get("kind")?.as_str()?;
+    let path = object.get("path")?.as_str()?;
+    let kind = match kind {
+        "html" => locaryn_shared_types::ArtifactKind::Html,
+        "markdown" => locaryn_shared_types::ArtifactKind::Markdown,
+        "python_text" => locaryn_shared_types::ArtifactKind::PythonText,
+        "image_png" => locaryn_shared_types::ArtifactKind::ImagePng,
+        "plotly_html" => locaryn_shared_types::ArtifactKind::PlotlyHtml,
+        "audio_wav" => locaryn_shared_types::ArtifactKind::AudioWav,
+        _ => return None,
+    };
+    Some(ToolArtifact {
+        kind,
+        path: path.to_string(),
+    })
 }

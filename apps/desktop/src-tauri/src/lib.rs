@@ -1838,9 +1838,9 @@ async fn send_message(
                     MessageRole::Assistant => "assistant".to_string(),
                     _ => "user".to_string(),
                 },
-                // The audio marker is a UI persistence detail, not part of the
+                // Artifact markers are UI persistence details, not part of the
                 // conversation the model should answer from.
-                content: strip_audio_markers(&m.content),
+                content: strip_ui_markers(&m.content),
             })
             .collect();
         // The message we just persisted is the current one — it is sent separately.
@@ -1966,6 +1966,7 @@ async fn send_message(
     let mut tokens_in = 0u64;
     let mut tokens_out = 0u64;
     let mut audio_artifacts: Vec<String> = Vec::new();
+    let mut image_artifacts: Vec<String> = Vec::new();
     while let Some(ev) = event_stream.next().await {
         match &ev {
             StreamEvent::Token { text } => full_text.push_str(text),
@@ -1974,6 +1975,11 @@ async fn send_message(
                 path,
                 ..
             } => audio_artifacts.push(path.clone()),
+            StreamEvent::Artifact {
+                kind: ArtifactKind::ImagePng,
+                path,
+                ..
+            } => image_artifacts.push(path.clone()),
             StreamEvent::MessageEnd {
                 tokens_in: ti,
                 tokens_out: to,
@@ -1996,6 +2002,10 @@ async fn send_message(
     for path in audio_artifacts {
         persisted_text.push('\n');
         persisted_text.push_str(&audio_marker(&path));
+    }
+    for path in image_artifacts {
+        persisted_text.push('\n');
+        persisted_text.push_str(&image_marker(&path));
     }
     if !persisted_text.is_empty() {
         if let Err(e) = core
@@ -2029,22 +2039,31 @@ async fn send_message(
     Ok(())
 }
 
-/// Marker stored alongside an assistant message for a generated audio note.
-/// JSON escaping keeps Windows paths and quotes unambiguous.
-fn audio_marker(path: &str) -> String {
+/// Marker stored alongside a generated artifact. JSON escaping keeps Windows
+/// paths and quotes unambiguous; the frontend turns it into a real media URL.
+fn artifact_marker(kind: &str, path: &str) -> String {
     let encoded = serde_json::to_string(path).unwrap_or_else(|_| "\"\"".to_string());
-    format!("<!--locaryn-audio:{encoded}-->")
+    format!("<!--locaryn-{kind}:{encoded}-->")
 }
 
-/// Remove UI-only audio markers before replaying history to a model.
-fn strip_audio_markers(content: &str) -> String {
+fn audio_marker(path: &str) -> String {
+    artifact_marker("audio", path)
+}
+
+fn image_marker(path: &str) -> String {
+    artifact_marker("image", path)
+}
+
+/// Remove UI-only artifact markers before replaying history to a model.
+fn strip_ui_markers(content: &str) -> String {
     let mut text = content.to_string();
-    let marker = "<!--locaryn-audio:";
-    while let Some(start) = text.find(marker) {
-        let Some(end_rel) = text[start..].find("-->") else {
-            break;
-        };
-        text.replace_range(start..start + end_rel + 3, "");
+    for marker in ["<!--locaryn-audio:", "<!--locaryn-image:"] {
+        while let Some(start) = text.find(marker) {
+            let Some(end_rel) = text[start..].find("-->") else {
+                break;
+            };
+            text.replace_range(start..start + end_rel + 3, "");
+        }
     }
     text.trim().to_string()
 }

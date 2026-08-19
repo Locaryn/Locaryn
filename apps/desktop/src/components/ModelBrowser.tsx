@@ -1,13 +1,13 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  formatBytes,
-  getHfToken,
   type HfModelCandidate,
   type HfModelSelection,
   type HfRepoInspection,
   type ModelMetric,
   core,
+  formatBytes,
+  getHfToken,
 } from "../lib/core";
 import {
   MODEL_CATEGORIES,
@@ -322,7 +322,10 @@ function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?
     if (hint) {
       for (const inst of installedSet) {
         const normalized = inst.toLowerCase().replace(/[^a-z0-9]+/g, "");
-        if (inst.toLowerCase().startsWith(`${dirName.toLowerCase()}/`) && normalized.includes(hint)) {
+        if (
+          inst.toLowerCase().startsWith(`${dirName.toLowerCase()}/`) &&
+          normalized.includes(hint)
+        ) {
           return true;
         }
       }
@@ -741,15 +744,16 @@ export function ModelBrowser({
   }
 
   function hfRepoSource(tag: string): string | null {
-    const source = tag.startsWith("hf.co/")
-      ? `https://huggingface.co/${tag.slice(6)}`
-      : tag;
+    const source = tag.startsWith("hf.co/") ? `https://huggingface.co/${tag.slice(6)}` : tag;
     if (!source.startsWith("https://huggingface.co/")) return null;
     if (source.includes("/resolve/") || source.includes("/blob/")) return null;
     return source.replace(/\/+$/, "");
   }
 
-  function makeSelection(inspection: HfRepoInspection, candidate: HfModelCandidate): HfModelSelection {
+  function makeSelection(
+    inspection: HfRepoInspection,
+    candidate: HfModelCandidate,
+  ): HfModelSelection {
     return {
       repo: inspection.repo,
       files: candidate.files,
@@ -806,7 +810,12 @@ export function ModelBrowser({
         }
       } catch (e) {
         setRepoInspectionError(String(e).replace(/^Error:\s*/, ""));
-        setRepoInspection({ repo: repo.replace("https://huggingface.co/", ""), candidates: [], support_files: [], total_bytes: 0 });
+        setRepoInspection({
+          repo: repo.replace("https://huggingface.co/", ""),
+          candidates: [],
+          support_files: [],
+          total_bytes: 0,
+        });
         setRepoInstallContext({ source: repo, familyName, heretic, consent });
         return;
       } finally {
@@ -2360,7 +2369,10 @@ export function ModelBrowser({
 
             {repoInspecting ? (
               <div style={{ padding: "24px 8px", color: "var(--text-dim)", textAlign: "center" }}>
-                <span className="locaryn-spin" style={{ display: "inline-flex", marginRight: "8px" }}>
+                <span
+                  className="locaryn-spin"
+                  style={{ display: "inline-flex", marginRight: "8px" }}
+                >
                   <Icon name="refresh" size={16} />
                 </span>
                 Analyse des fichiers et des quantifications HuggingFace…
@@ -2379,9 +2391,9 @@ export function ModelBrowser({
               </div>
             ) : repoInspection.candidates.length === 0 ? (
               <div style={{ color: "var(--text-dim)", lineHeight: 1.5 }}>
-                Aucun fichier de poids standard n'a été identifié. Ce dépôt semble être un
-                paquet multi-fichiers (par exemple un modèle TTS). Installer le dépôt complet
-                téléchargera aussi ses fichiers de configuration.
+                Aucun fichier de poids standard n'a été identifié. Ce dépôt semble être un paquet
+                multi-fichiers (par exemple un modèle TTS). Installer le dépôt complet téléchargera
+                aussi ses fichiers de configuration.
               </div>
             ) : (
               <div style={{ display: "grid", gap: "7px" }}>
@@ -2431,7 +2443,9 @@ export function ModelBrowser({
                           {candidate.files.length > 1 ? ` · ${candidate.files.length} shards` : ""}
                         </span>
                       </span>
-                      <span style={{ fontSize: "11px", color: "var(--text-dim)", whiteSpace: "nowrap" }}>
+                      <span
+                        style={{ fontSize: "11px", color: "var(--text-dim)", whiteSpace: "nowrap" }}
+                      >
                         {formatBytes(candidate.total_bytes)}
                       </span>
                     </button>

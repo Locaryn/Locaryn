@@ -23,7 +23,6 @@ type CategoryFilter =
   | "code"
   | "reasoning"
   | "vision"
-  | "image"
   | "voice"
   | "audio"
   | "video_3d";
@@ -182,56 +181,6 @@ const MARKETPLACE_CATALOGUE: MarketplaceModelItem[] = [
     url: "minicpm-v:8b",
   },
 
-  // ── Images & Diffusion ──
-  {
-    id: "z_image_turbo-Q8_0.gguf",
-    name: "z_image_turbo-Q8_0.gguf",
-    label: "Z-Image Turbo GGUF",
-    category: "image",
-    categoryLabel: "Image & Diffusion",
-    note: "Ultra-rapide (1 à 4 étapes d'inférence), génération instantanée 6B",
-    provider: "huggingface",
-    sizeGb: 6.5,
-    tags: ["Diffusion", "Temps réel", "Turbo"],
-    url: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf",
-  },
-  {
-    id: "sdxl-turbo-Q4_0.gguf",
-    name: "sdxl-turbo-Q4_0.gguf",
-    label: "SDXL Turbo GGUF",
-    category: "image",
-    categoryLabel: "Image & Diffusion",
-    note: "Génération temps réel en 1 seule étape en résolution 1024x1024",
-    provider: "huggingface",
-    sizeGb: 3.1,
-    tags: ["SDXL", "1 étape", "1024²"],
-    url: "https://huggingface.co/second-state/SDXL-Turbo-GGUF/resolve/main/sdxl-turbo-Q4_0.gguf",
-  },
-  {
-    id: "flux1-schnell-Q4_0.gguf",
-    name: "flux1-schnell-Q4_0.gguf",
-    label: "FLUX.1 Schnell GGUF",
-    category: "image",
-    categoryLabel: "Image & Diffusion",
-    note: "Fidélité photoréaliste et respect minutieux du prompt en 4 étapes",
-    provider: "huggingface",
-    sizeGb: 6.7,
-    tags: ["FLUX", "4 étapes", "Ultra-détail"],
-    url: "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_0.gguf",
-  },
-  {
-    id: "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
-    name: "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
-    label: "Stable Diffusion 1.5 GGUF",
-    category: "image",
-    categoryLabel: "Image & Diffusion",
-    note: "Léger et éprouvé, fonctionne sur toutes les configurations",
-    provider: "huggingface",
-    sizeGb: 1.5,
-    tags: ["SD 1.5", "Léger", "512²"],
-    url: "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
-  },
-
   // ── Voix & TTS ──
   {
     id: "hexgrad__Kokoro-82M",
@@ -287,7 +236,6 @@ const MARKETPLACE_CATALOGUE: MarketplaceModelItem[] = [
 
 export function Models({ onBack, initialTab }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "installed");
-  const [images, setImages] = useState<MediaModel[] | null>(null);
   const [voices, setVoices] = useState<MediaModel[] | null>(null);
   const [llmModels, setLlmModels] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -307,12 +255,10 @@ export function Models({ onBack, initialTab }: Props) {
 
   const reload = useCallback(async () => {
     try {
-      const [i, v, l] = await Promise.all([
-        api.listMediaModels("image").catch(() => []),
-        api.listMediaModels("audio").catch(() => []),
+      const [v, l] = await Promise.all([
+        api.listMediaModels("audio"),
         api.listModels().catch(() => []),
       ]);
-      setImages(i);
       setVoices(v);
       setLlmModels(l);
       setError(null);
@@ -388,12 +334,8 @@ export function Models({ onBack, initialTab }: Props) {
   }
 
   const installedSet = useMemo(() => {
-    return new Set([
-      ...(images ?? []).map((m) => m.name),
-      ...(voices ?? []).map((m) => m.name),
-      ...(llmModels ?? []),
-    ]);
-  }, [images, voices, llmModels]);
+    return new Set([...(voices ?? []).map((m) => m.name), ...(llmModels ?? [])]);
+  }, [voices, llmModels]);
 
   const filteredMarketplace = useMemo(() => {
     return MARKETPLACE_CATALOGUE.filter((item) => {
@@ -410,7 +352,7 @@ export function Models({ onBack, initialTab }: Props) {
     });
   }, [categoryFilter, searchQuery]);
 
-  const totalInstalled = (images?.length ?? 0) + (voices?.length ?? 0) + (llmModels.length ?? 0);
+  const totalInstalled = (voices?.length ?? 0) + (llmModels.length ?? 0);
 
   return (
     <Screen
@@ -498,41 +440,6 @@ export function Models({ onBack, initialTab }: Props) {
                       onClick={() => void remove(name)}
                     >
                       {busy === name ? "Retrait…" : "Retirer"}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          {/* Section : Modèles d'image */}
-          <section className="lo-section" style={{ marginTop: "var(--space-4)" }}>
-            <h2 className="lo-section-title">Génération d'Images (Diffusion)</h2>
-            {images === null && !error && <p className="lo-sub">Chargement…</p>}
-            {images?.length === 0 && <p className="lo-sub">Aucun modèle d'image installé.</p>}
-            <ul className="lo-cards">
-              {images?.map((m) => (
-                <li key={m.name} className="lo-card">
-                  <div className="lo-card-text">
-                    <span className="lo-card-title">{m.name}</span>
-                    {m.ready ? (
-                      <span className="lo-hint" style={{ color: "var(--accent)" }}>
-                        Prêt pour le Studio
-                      </span>
-                    ) : (
-                      <span className="lo-hint" style={{ color: "var(--danger)" }}>
-                        Incomplet — manque : {m.missing.join(", ")}
-                      </span>
-                    )}
-                  </div>
-                  <div className="lo-card-actions">
-                    <button
-                      type="button"
-                      className="lo-btn-small"
-                      disabled={busy === m.name}
-                      onClick={() => void remove(m.name)}
-                    >
-                      {busy === m.name ? "Retrait…" : "Retirer"}
                     </button>
                   </div>
                 </li>
@@ -637,13 +544,6 @@ export function Models({ onBack, initialTab }: Props) {
             </button>
             <button
               type="button"
-              className={`lo-chip ${categoryFilter === "image" ? "lo-chip-active" : ""}`}
-              onClick={() => setCategoryFilter("image")}
-            >
-              Images & Diffusion
-            </button>
-            <button
-              type="button"
               className={`lo-chip ${categoryFilter === "voice" ? "lo-chip-active" : ""}`}
               onClick={() => setCategoryFilter("voice")}
             >
@@ -666,7 +566,7 @@ export function Models({ onBack, initialTab }: Props) {
           </div>
 
           <p className="lo-hint" style={{ margin: "6px 0 10px 0" }}>
-            Les modèles sont téléchargés et stockés sur votre serveur Locaryn.
+            Les modèles de chat et les extensions sont téléchargés sur votre serveur Locaryn.
           </p>
 
           <ul className="lo-cards">

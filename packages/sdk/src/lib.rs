@@ -621,21 +621,6 @@ impl LocarynClient {
         Ok(resp.bytes_stream().map_err(SdkError::from))
     }
 
-    pub async fn generate_image(
-        &self,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value, SdkError> {
-        let resp = self
-            .add_auth(self.http.post(self.url("/v1/media/image")).json(&body))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            Ok(resp.json().await?)
-        } else {
-            Err(Self::decode_error(resp).await)
-        }
-    }
-
     pub async fn generate_audio(
         &self,
         body: serde_json::Value,

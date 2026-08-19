@@ -48,7 +48,6 @@ export function ModelPreferencesSettings({
             <TtsModelSetting />
           </section>
         )}
-
       </div>
     </div>
   );

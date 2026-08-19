@@ -98,10 +98,7 @@ export function TopBar({
         <span className="locaryn-sep" aria-hidden="true">
           /
         </span>
-        <span
-          className="locaryn-conversation-title"
-          title={isChatView ? chatTitle : viewTitle}
-        >
+        <span className="locaryn-conversation-title" title={isChatView ? chatTitle : viewTitle}>
           {isChatView ? chatTitle : viewTitle}
         </span>
         {demo && <span className="locaryn-demo-badge">demo</span>}

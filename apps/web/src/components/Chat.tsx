@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type Conversation, type Message, type WebStatus, api } from "../lib/core";
+import {
+  type Conversation,
+  type MediaResult,
+  type Message,
+  type WebStatus,
+  api,
+} from "../lib/core";
 import { Drawer } from "./Drawer";
 import { type Destination, MainMenu } from "./MainMenu";
 
@@ -34,6 +40,7 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<MediaResult | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   async function open(id: string) {
@@ -115,7 +122,10 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
         setCurrentId(sessionId);
       }
       const reply = await api.send(text, sessionId);
-      setMessages((m) => [...m, { id: `a${Date.now()}`, role: "assistant", content: reply }]);
+      setMessages((m) => [
+        ...m,
+        { id: `a${Date.now()}`, role: "assistant", content: reply.text, images: reply.images },
+      ]);
     } catch (e) {
       setError(String(e));
       // Put the text back rather than losing it to a failed send.
@@ -123,6 +133,23 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
       setMessages((m) => m.filter((x) => x.id !== optimiste.id));
     } finally {
       setBusy(false);
+    }
+  }
+
+  function imageSrc(image: MediaResult): string {
+    return `data:${image.mime};base64,${image.data_base64}`;
+  }
+
+  async function copyImage(image: MediaResult) {
+    try {
+      const response = await fetch(imageSrc(image));
+      const blob = await response.blob();
+      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        throw new Error("presse-papier image indisponible");
+      }
+      await navigator.clipboard.write([new ClipboardItem({ [image.mime]: blob })]);
+    } catch (e) {
+      setError(`Copie de l'image impossible : ${String(e)}`);
     }
   }
 
@@ -167,6 +194,17 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
             style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
           >
             {m.content}
+            {m.images?.map((image) => (
+              <button
+                key={image.name}
+                type="button"
+                className="lo-msg-image"
+                onClick={() => setLightbox(image)}
+                title="Ouvrir l'image"
+              >
+                <img src={imageSrc(image)} alt={m.content || "Image générée"} loading="lazy" />
+              </button>
+            ))}
           </div>
         ))}
         {busy && (
@@ -212,6 +250,52 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
         canFigures={canFigures}
         onGo={onGo}
       />
+      {lightbox && (
+        <div
+          className="lo-image-lightbox"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setLightbox(null);
+          }}
+        >
+          <div
+            className="lo-image-lightbox-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Image agrandie"
+          >
+            <div className="lo-image-lightbox-toolbar">
+              <a
+                className="lo-image-lightbox-action"
+                href={imageSrc(lightbox)}
+                download={lightbox.name}
+              >
+                Enregistrer sous
+              </a>
+              <button
+                type="button"
+                className="lo-image-lightbox-action"
+                onClick={() => void copyImage(lightbox)}
+              >
+                Copier l'image
+              </button>
+              <button
+                type="button"
+                className="lo-image-lightbox-close"
+                onClick={() => setLightbox(null)}
+                aria-label="Fermer l'image agrandie"
+              >
+                ×
+              </button>
+            </div>
+            <img
+              className="lo-image-lightbox-image"
+              src={imageSrc(lightbox)}
+              alt="Image agrandie"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -371,6 +371,11 @@ pub struct OutilBody {
     /// Le texte à confier à l'outil — ce que contient le champ de saisie.
     #[serde(default)]
     pub text: String,
+    /// Les interfaces d'extension peuvent envoyer un objet structuré (par
+    /// exemple un prompt, une taille et un checkpoint). Le host ne connaît
+    /// pas ces champs : il les transmet tels quels au serveur MCP.
+    #[serde(flatten)]
+    pub args: serde_json::Map<String, serde_json::Value>,
 }
 
 /// POST /v1/tools/{tool} — appeler un outil sans savoir qui le porte.
@@ -408,7 +413,11 @@ pub async fn invoke_tool_par_nom(
             .into_response();
     }
 
-    let args = serde_json::json!({ "text": body.text });
+    let mut args = body.args;
+    if !body.text.is_empty() {
+        args.insert("text".to_string(), serde_json::Value::String(body.text));
+    }
+    let args = serde_json::Value::Object(args);
     for (nom, client) in &clients {
         // Un serveur qui ne répond pas à `discover` n'est pas une erreur à
         // remonter : on passe au suivant, et c'est l'absence de l'outil qui

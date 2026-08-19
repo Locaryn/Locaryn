@@ -367,6 +367,8 @@ export interface ChatTurn {
   id: string;
   role: string;
   content: string;
+  /** Generic image artifacts returned by an enabled MCP extension. */
+  images?: MediaResult[];
 }
 
 /** Ce que le téléphone sait de sa propre mise à jour. */
@@ -540,6 +542,12 @@ export const core = {
   /** Appeler l'outil qu'un bouton d'extension désigne, avec le texte du champ. */
   runComposerTool: (tool: string, text: string) =>
     invoke<string>("run_composer_tool", { tool, text }),
+  /** Lire le script d'interface d'une extension active. */
+  readExtensionAsset: (extensionId: string, assetPath: string) =>
+    invoke<string>("read_extension_asset", { extensionId, assetPath }),
+  /** Appeler un outil MCP d'extension avec ses paramètres structurés. */
+  invokeExtensionTool: (tool: string, args: Record<string, unknown>) =>
+    invoke<string>("invoke_extension_tool", { tool, args }),
   /** Les réglages déclarés par les extensions, clés `extension.champ`. */
   extensionConfig: () => invoke<Record<string, string>>("extension_config"),
   setExtensionConfig: (extension: string, key: string, value: string) =>
@@ -553,13 +561,6 @@ export const core = {
   /** Écrit une image sur l'appareil ; renvoie le chemin du fichier. */
   saveImage: (img: MediaResult) =>
     invoke<string>("save_image", { name: img.name, dataBase64: img.data_base64 }),
-  generateImage: (args: {
-    model: string;
-    prompt: string;
-    negativePrompt?: string;
-    width?: number;
-    height?: number;
-  }) => invoke<MediaResult>("generate_image", args),
   generateAudio: (args: {
     model: string;
     text: string;
@@ -747,6 +748,8 @@ export const demoCore: typeof core = {
   },
   removeModel: async () => {},
   runComposerTool: async (_tool: string, text: string) => text,
+  readExtensionAsset: async () => "",
+  invokeExtensionTool: async () => "{}",
   extensionConfig: async () => ({}) as Record<string, string>,
   setExtensionConfig: async () => {},
   listModels: async () => ["qwen2.5:3b"],
@@ -755,13 +758,6 @@ export const demoCore: typeof core = {
   ],
   remember: async () => {},
   forget: async () => {},
-  generateImage: async () => ({
-    name: "demo.png",
-    mime: "image/png",
-    // Un carré vert de 2 px : assez pour voir qu'une image arrive et s'affiche.
-    data_base64:
-      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAADUlEQVR4nGNg+M8AQwAV9gP96s/jsQAAAABJRU5ErkJggg==",
-  }),
   generateAudio: async () => ({
     name: "demo.wav",
     mime: "audio/wav",

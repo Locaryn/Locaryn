@@ -23,7 +23,7 @@ import {
 } from "../lib/core";
 import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
-import { loadMediaObjectUrl } from "../lib/media";
+import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
 import { pluginBridge } from "../lib/pluginBridge";
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
@@ -43,6 +43,7 @@ type ChatItem =
       role: "user" | "assistant";
       text: string;
       images?: string[];
+      imagePaths?: Array<string | undefined>;
     }
   | {
       id: string;
@@ -61,8 +62,7 @@ type ChatItem =
       status: "running" | "ok" | "error";
       output: string;
     }
-  | { id: string; kind: "log"; text: string }
-;
+  | { id: string; kind: "log"; text: string };
 
 type Attachment = { id: string; dataUrl: string; base64: string; name: string };
 type QueuedMessage = { id: string; text: string; attachments: Attachment[] };
@@ -120,18 +120,40 @@ function wantsJson(prompt: string): boolean {
   return /\b(json|structur\w+|sch[ée]ma|format\w*\s+json|cl[ée]s?\/valeurs?)\b/i.test(prompt);
 }
 
-/** Pull inline `![](…)` images out of a stored message so they render as
- *  real images (the markdown renderer has no image support). Handles data:
- *  URLs, Tauri asset:// URLs, and any other image scheme. */
-function splitInlineImages(content: string): { text: string; images?: string[] } {
-  const images: string[] = [];
-  const text = content
+/** Pull inline images and generic artifact markers out of a stored message
+ *  so they render as real images (the markdown renderer has no image support).
+ *  The marker is deliberately UI-only: it is stripped before the next model
+ *  request and never shown as a filesystem path. */
+function splitInlineImages(content: string): {
+  text: string;
+  images?: string[];
+  imagePaths?: Array<string | undefined>;
+} {
+  const sources: string[] = [];
+  const paths: Array<string | undefined> = [];
+  const withoutMarkers = content.replace(
+    /<!--locaryn-image:([\s\S]*?)-->/g,
+    (_m, encoded: string) => {
+      try {
+        const path = JSON.parse(encoded);
+        if (typeof path === "string" && path) {
+          sources.push(toMediaUrl(path));
+          paths.push(path);
+        }
+      } catch {
+        // Ignore malformed UI markers rather than exposing implementation data.
+      }
+      return "";
+    },
+  );
+  const text = withoutMarkers
     .replace(/!\[[^\]]*\]\(([^)]+)\)/g, (_m, url: string) => {
-      images.push(url);
+      sources.push(toMediaUrl(url));
+      paths.push(/^(?:data:|blob:|https?:|asset:)/i.test(url) ? undefined : url);
       return "";
     })
     .trim();
-  return images.length ? { text, images } : { text: content };
+  return sources.length ? { text, images: sources, imagePaths: paths } : { text: content };
 }
 
 /** Audio artifacts are persisted as transparent HTML comments so a session
@@ -164,6 +186,7 @@ function storedMessageItems(m: { id: string; role: string; content: string }): C
       role: m.role as "user" | "assistant",
       text: parsed.text,
       images: parsed.images,
+      imagePaths: parsed.imagePaths,
     });
   }
   audio.paths.forEach((path, index) => {
@@ -519,6 +542,20 @@ export function ChatPanel({
         diff: ev.diff,
         is_remote: ev.is_remote,
       });
+    } else if (ev.type === "artifact" && ev.kind === "image_png") {
+      // Image generation is owned by an MCP extension. The host only renders
+      // the generic artifact it receives; it does not know how it was made.
+      setItems((prev) => [
+        ...prev,
+        {
+          id: nextId("image"),
+          kind: "msg",
+          role: "assistant",
+          text: "",
+          images: [toMediaUrl(ev.path)],
+          imagePaths: [ev.path],
+        },
+      ]);
     } else if (ev.type === "artifact" && ev.kind === "audio_wav") {
       const audioId = nextId("audio");
       setItems((prev) => [
@@ -1097,6 +1134,7 @@ export function ChatPanel({
                       role={it.role}
                       text={it.text}
                       images={it.images}
+                      imagePaths={it.imagePaths}
                       canEdit={i === lastUserIdx && !streaming}
                       onEdit={editLastUserMessage}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}

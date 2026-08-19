@@ -213,6 +213,7 @@ async fn main() -> anyhow::Result<()> {
     // redémarrage du service les faisait disparaître, avec les écrans et les
     // outils qu'elles apportaient.
     routes::extensions::restore_from_storage(&state).await;
+    routes::extensions::sync_mcp_servers(&state).await;
 
     if exposed && users.count().await.unwrap_or(0) == 0 {
         anyhow::bail!(
@@ -280,6 +281,14 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/v1/extensions/reload",
             post(routes::extensions::reload_extensions),
+        )
+        .route(
+            "/v1/extensions/asset",
+            post(routes::extensions::read_extension_asset),
+        )
+        .route(
+            "/v1/extension-assets",
+            get(routes::extensions::get_extension_media),
         )
         .route(
             "/v1/extensions/:name/enable",
@@ -361,7 +370,6 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/models/pull", post(media::pull_model))
         .route("/v1/models/*name", delete(media::remove_model))
         .route("/v1/media/models", get(media::list_models))
-        .route("/v1/media/image", post(media::generate_image))
         .route("/v1/media/audio", post(media::generate_audio))
         // Mémoire de l'utilisateur : ce que le service retient d'une
         // conversation à l'autre, lisible et corrigible depuis n'importe quel
@@ -1765,7 +1773,7 @@ fn modeles_de_conversation() -> Vec<String> {
         if !minuscule.ends_with(".gguf") {
             continue;
         }
-        if locaryn_media::image::is_diffusion_checkpoint(nom) {
+        if !media::is_chat_weight(&chemin) {
             continue;
         }
         out.push(nom.to_string());

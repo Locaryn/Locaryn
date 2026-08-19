@@ -5,7 +5,10 @@ import { Model3DPanel } from "../components/Model3DPanel";
 import { MusicGenPanel } from "../components/MusicGenPanel";
 import { VideoGenPanel } from "../components/VideoGenPanel";
 import { DynamicPluginWidget } from "../components/extensions/DynamicPluginWidget";
-import { type ResolvedSlotContribution, getSlotContributions } from "../components/extensions/SlotRegistry";
+import {
+  type ResolvedSlotContribution,
+  getSlotContributions,
+} from "../components/extensions/SlotRegistry";
 import type { InstalledExtension } from "../lib/core";
 import { taskCenter, useTasks } from "../lib/taskCenter";
 
@@ -98,7 +101,9 @@ export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }
   }, [extensions]);
 
   useEffect(() => {
-    setActive((current) => (tabs.some((tab) => tab.id === current) ? current : (tabs[0]?.id ?? "")));
+    setActive((current) =>
+      tabs.some((tab) => tab.id === current) ? current : (tabs[0]?.id ?? ""),
+    );
   }, [tabs]);
 
   const audioItems = useMemo<GalleryItem[]>(
@@ -196,27 +201,91 @@ export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }
           <button
             type="button"
             className="locaryn-btn-ghost"
-            style={{ fontSize: 11, padding: "3px 10px", color: "var(--danger)", borderColor: "var(--danger)" }}
+            style={{
+              fontSize: 11,
+              padding: "3px 10px",
+              color: "var(--danger)",
+              borderColor: "var(--danger)",
+            }}
             onClick={() => taskCenter.clearGallery()}
           >
             <Icon name="trash" size={15} /> Tout effacer
           </button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 12,
+          }}
+        >
           {items.map((item) => (
-            <div key={item.id} style={{ borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg-alt)" }}>
-              {item.mediaKind === "audio" && <audio src={item.url} controls preload="none" style={{ width: "100%", display: "block" }} />}
-              {item.mediaKind === "video" && <video src={item.url} controls preload="metadata" style={{ width: "100%", display: "block", maxHeight: 160 }} />}
+            <div
+              key={item.id}
+              style={{
+                borderRadius: 8,
+                overflow: "hidden",
+                border: "1px solid var(--border)",
+                background: "var(--bg-alt)",
+              }}
+            >
+              {item.mediaKind === "audio" && (
+                <audio
+                  src={item.url}
+                  controls
+                  preload="none"
+                  style={{ width: "100%", display: "block" }}
+                />
+              )}
+              {item.mediaKind === "video" && (
+                <video
+                  src={item.url}
+                  controls
+                  preload="metadata"
+                  style={{ width: "100%", display: "block", maxHeight: 160 }}
+                />
+              )}
               {item.mediaKind === "model3d" && (
-                <div style={{ height: 80, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)", color: "var(--text-faint)" }}>
+                <div
+                  style={{
+                    height: 80,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "var(--surface)",
+                    color: "var(--text-faint)",
+                  }}
+                >
                   <Icon name="cube" size={28} />
                 </div>
               )}
-              <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <span style={{ fontSize: 11, color: "var(--text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div
+                style={{
+                  padding: "8px 10px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-faint)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {item.detail ?? "Terminé"}
                 </span>
-                <a href={item.url} download={item.label} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none" }}>
+                <a
+                  href={item.url}
+                  download={item.label}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none" }}
+                >
                   Télécharger
                 </a>
               </div>
@@ -231,7 +300,9 @@ export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }
     return (
       <div className="locaryn-card" style={{ padding: 40, textAlign: "center" }}>
         <h3 style={{ marginBottom: 12 }}>{title}</h3>
-        <p className="locaryn-field-hint" style={{ maxWidth: 520, margin: "0 auto" }}>{description}</p>
+        <p className="locaryn-field-hint" style={{ maxWidth: 520, margin: "0 auto" }}>
+          {description}
+        </p>
       </div>
     );
   }
@@ -239,28 +310,81 @@ export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }
   function renderContent() {
     switch (active) {
       case "audio":
-        return <><AudioGenPanel installedModels={installedModels} onClose={onCloseAudioGen ?? (() => {})} inline />{renderGallery(audioItems, "mic", "Synthèses vocales")}</>;
+        return (
+          <>
+            <AudioGenPanel
+              installedModels={installedModels}
+              onClose={onCloseAudioGen ?? (() => {})}
+              inline
+            />
+            {renderGallery(audioItems, "mic", "Synthèses vocales")}
+          </>
+        );
       case "video":
-        return <><VideoGenPanel installedModels={installedModels} onClose={onCloseAudioGen ?? (() => {})} inline />{renderGallery(videoItems, "video", "Vidéos générées")}</>;
+        return (
+          <>
+            <VideoGenPanel
+              installedModels={installedModels}
+              onClose={onCloseAudioGen ?? (() => {})}
+              inline
+            />
+            {renderGallery(videoItems, "video", "Vidéos générées")}
+          </>
+        );
       case "music":
-        return <><MusicGenPanel installedModels={installedModels} onClose={onCloseAudioGen ?? (() => {})} inline />{renderGallery(musicItems, "music", "Musiques générées")}</>;
+        return (
+          <>
+            <MusicGenPanel
+              installedModels={installedModels}
+              onClose={onCloseAudioGen ?? (() => {})}
+              inline
+            />
+            {renderGallery(musicItems, "music", "Musiques générées")}
+          </>
+        );
       case "3d":
-        return <><Model3DPanel installedModels={installedModels} onClose={onCloseAudioGen ?? (() => {})} inline />{renderGallery(model3dItems, "cube", "Modèles 3D")}</>;
+        return (
+          <>
+            <Model3DPanel
+              installedModels={installedModels}
+              onClose={onCloseAudioGen ?? (() => {})}
+              inline
+            />
+            {renderGallery(model3dItems, "cube", "Modèles 3D")}
+          </>
+        );
       case "object-detection":
-        return placeholder("Détection d'objets", "Détection, segmentation et annotation d'objets dans des images et vidéos.");
+        return placeholder(
+          "Détection d'objets",
+          "Détection, segmentation et annotation d'objets dans des images et vidéos.",
+        );
       case "translation":
-        return placeholder("Traduction automatique", "Traduction de texte et de documents entre de nombreuses langues.");
+        return placeholder(
+          "Traduction automatique",
+          "Traduction de texte et de documents entre de nombreuses langues.",
+        );
       case "text-analysis":
-        return placeholder("Analyse de texte", "Classification, reconnaissance d'entités et analyse sémantique.");
+        return placeholder(
+          "Analyse de texte",
+          "Classification, reconnaissance d'entités et analyse sémantique.",
+        );
       case "question-answering":
-        return placeholder("Question-réponse", "Réponses à partir d'un corpus de documents ou d'un contexte donné.");
+        return placeholder(
+          "Question-réponse",
+          "Réponses à partir d'un corpus de documents ou d'un contexte donné.",
+        );
       default: {
         const tab = tabs.find((candidate) => candidate.id === active);
         return tab?.contribution ? (
           <div className="locaryn-card" style={{ padding: 24 }}>
             <DynamicPluginWidget contribution={tab.contribution} />
           </div>
-        ) : placeholder(tab?.label ?? active, tab?.source ? `Onglet apporté par ${tab.source}.` : "Onglet inconnu.");
+        ) : (
+          placeholder(
+            tab?.label ?? active,
+            tab?.source ? `Onglet apporté par ${tab.source}.` : "Onglet inconnu.",
+          )
+        );
       }
     }
   }
@@ -268,11 +392,21 @@ export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }
   if (tabs.length === 0) {
     return (
       <div className="locaryn-view-container">
-        <div className="locaryn-view-header"><h2>Studio</h2><p className="locaryn-view-desc">Installez une extension multimodale pour ajouter un module au Studio.</p></div>
-        <div className="locaryn-card" style={{ padding: 48, textAlign: "center", maxWidth: 540, margin: "40px auto" }}>
+        <div className="locaryn-view-header">
+          <h2>Studio</h2>
+          <p className="locaryn-view-desc">
+            Installez une extension multimodale pour ajouter un module au Studio.
+          </p>
+        </div>
+        <div
+          className="locaryn-card"
+          style={{ padding: 48, textAlign: "center", maxWidth: 540, margin: "40px auto" }}
+        >
           <Icon name="studio" size={40} />
           <h3 style={{ margin: "16px 0 8px" }}>Aucun module de Studio installé</h3>
-          <p className="locaryn-field-hint">Les extensions ajoutent leurs propres onglets et leur interface.</p>
+          <p className="locaryn-field-hint">
+            Les extensions ajoutent leurs propres onglets et leur interface.
+          </p>
         </div>
       </div>
     );
@@ -282,12 +416,33 @@ export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }
     <div className="locaryn-view-container">
       <div className="locaryn-view-header" style={{ flexShrink: 0 }}>
         <h2>Studio</h2>
-        <p className="locaryn-view-desc">Les extensions actives ajoutent leurs propres outils multimodaux.</p>
+        <p className="locaryn-view-desc">
+          Les extensions actives ajoutent leurs propres outils multimodaux.
+        </p>
       </div>
-      <div className="locaryn-studio-tabs" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 16, flexShrink: 0 }}>
+      <div
+        className="locaryn-studio-tabs"
+        style={{
+          display: "flex",
+          gap: 6,
+          overflowX: "auto",
+          paddingBottom: 8,
+          marginBottom: 16,
+          flexShrink: 0,
+        }}
+      >
         {tabs.map((tab) => (
-          <button key={tab.id} type="button" className={`locaryn-chip${active === tab.id ? " locaryn-chip-on" : ""}`} onClick={() => setActive(tab.id)} style={{ whiteSpace: "nowrap", fontSize: 12 }}>
-            <span style={{ marginRight: 4, display: "inline-flex" }}><Icon name={tab.icon} size={15} /></span>{tab.label}
+          <button
+            key={tab.id}
+            type="button"
+            className={`locaryn-chip${active === tab.id ? " locaryn-chip-on" : ""}`}
+            onClick={() => setActive(tab.id)}
+            style={{ whiteSpace: "nowrap", fontSize: 12 }}
+          >
+            <span style={{ marginRight: 4, display: "inline-flex" }}>
+              <Icon name={tab.icon} size={15} />
+            </span>
+            {tab.label}
           </button>
         ))}
       </div>
