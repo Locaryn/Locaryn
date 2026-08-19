@@ -33,6 +33,8 @@ type Props = {
   onConsumedMedia?: () => void;
   /** Extensions actives : le menu en tire ses `nav_items`. */
   extensions?: PhoneExtension[];
+  /** Le bouton « Mettre à jour » mène directement à la section À propos. */
+  onOpenUpdate: () => void;
 };
 
 /**
@@ -51,6 +53,7 @@ export function Chat({
   initialMedia,
   onConsumedMedia,
   extensions = [],
+  onOpenUpdate,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
@@ -360,7 +363,7 @@ export function Chat({
         )}
         <ExtensionSlot name="topbar.actions" context={{ onNavigate: onGo }} />
         <ExtensionSlot name="chat.header" context={{ onNavigate: onGo }} />
-        <UpdateButton onOpen={() => onGo("settings")} />
+        <UpdateButton onOpen={onOpenUpdate} />
         <button
           type="button"
           className="lo-bar-menu"

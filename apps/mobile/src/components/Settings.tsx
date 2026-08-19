@@ -31,6 +31,8 @@ type Props = {
   onArchives: () => void;
   /** Ouvrir une conversation depuis l'historique des réglages. */
   onOpenChat: (sessionId: string) => void;
+  /** La catégorie à ouvrir dès l'arrivée — le bouton « Mettre à jour » vise À propos. */
+  initialSection?: Section | null;
 };
 
 /**
@@ -40,7 +42,7 @@ type Props = {
  * stockage…) s'y règle, et le téléphone le dit clairement au lieu de le
  * cacher — la catégorie existe, le réglage vit sur le bureau.
  */
-type Section =
+export type Section =
   | "account"
   | "engine"
   | "performance"
@@ -118,11 +120,20 @@ const SECTIONS: { id: Section; icon: IconName; label: string; desc: string; conn
     { id: "about", icon: "warning", label: "À propos", desc: "Version, licences, système" },
   ];
 
-export function Settings({ status, onBack, onSignedOut, onMemory, onArchives, onOpenChat }: Props) {
+export function Settings({
+  status,
+  onBack,
+  onSignedOut,
+  onMemory,
+  onArchives,
+  onOpenChat,
+  initialSection = null,
+}: Props) {
   const connecte = status?.signed_in ?? false;
 
-  // ── Navigation interne : la liste des catégories, puis la catégorie ──
-  const [section, setSection] = useState<Section | null>(null);
+  // ── Navigation interne : la liste des catégories, puis la catégorie. Le
+  // bouton « Mettre à jour » arrive directement sur À propos. ──
+  const [section, setSection] = useState<Section | null>(initialSection);
   const courante = section ? SECTIONS.find((s) => s.id === section) : null;
 
   // ── Utilisateur actif & serveur ──

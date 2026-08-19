@@ -11,7 +11,7 @@ import { Models } from "./components/Models";
 import { Paired } from "./components/Paired";
 import { ReconnectPrompt } from "./components/ReconnectPrompt";
 import { ScanOverlay } from "./components/ScanOverlay";
-import { Settings } from "./components/Settings";
+import { Settings, type Section as SettingsSection } from "./components/Settings";
 import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
 import {
@@ -68,6 +68,10 @@ export function App() {
   const [pendingMedia, setPendingMedia] = useState<MediaResult | null>(null);
   /** L'onglet d'ouverture de l'écran Modèles, choisi depuis le menu. */
   const [modelsTab, setModelsTab] = useState<"installed" | "marketplace">("installed");
+  /** La catégorie des réglages à ouvrir d'emblée : le bouton « Mettre à
+   *  jour » vise À propos, pas la liste des catégories. Remise à zéro à
+   *  chaque navigation depuis le menu. */
+  const [settingsInitial, setSettingsInitial] = useState<SettingsSection | null>(null);
 
   // La couleur d'accent choisie dans Paramètres → Apparence s'applique dès le
   // démarrage, pas seulement à l'ouverture des réglages.
@@ -335,6 +339,7 @@ export function App() {
               setRestoredChatId(sessionId);
               aller("chat");
             }}
+            initialSection={settingsInitial}
           />
         ) : (
           <SignIn
@@ -368,6 +373,9 @@ export function App() {
             // Le chat est l'accueil : le menu se referme, on n'y navigue pas.
             if (d === "chat") return;
             if (initialTab) setModelsTab(initialTab);
+            // Ouvert depuis le menu, les réglages commencent par la liste des
+            // catégories, pas par une section précise.
+            setSettingsInitial(null);
             aller(d);
           }}
           extensions={activeExtensions}
@@ -375,6 +383,12 @@ export function App() {
           initialId={figureChatId ?? restoredChatId}
           initialMedia={pendingMedia}
           onConsumedMedia={() => setPendingMedia(null)}
+          onOpenUpdate={() => {
+            // Le bouton de la barre du chat vise la section À propos, où vit
+            // la mise à jour — pas la première page des réglages.
+            setSettingsInitial("about");
+            aller("settings");
+          }}
         />
       ) : screen === "archives" ? (
         <ArchivesScreen
@@ -426,6 +440,7 @@ export function App() {
             setRestoredChatId(sessionId);
             aller("chat");
           }}
+          initialSection={settingsInitial}
         />
       ) : (
         <ExtensionView screenId={screen} onBack={revenir} onOpenChat={() => aller("chat")} />
