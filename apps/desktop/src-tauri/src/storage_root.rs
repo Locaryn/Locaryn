@@ -84,9 +84,16 @@ fn same_volume(a: &Path, b: &Path) -> bool {
     #[cfg(target_os = "windows")]
     {
         fn prefix(p: &Path) -> Option<String> {
-            p.components()
+            let raw = p
+                .components()
                 .next()
-                .map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase())
+                .map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase())?;
+            // sysinfo may expose a drive as `\\?\C:\` while the configured
+            // root uses `C:\`. Both prefixes name the same Windows volume.
+            if let Some(unc) = raw.strip_prefix(r"\\?\unc\") {
+                return Some(format!(r"\\{unc}"));
+            }
+            Some(raw.strip_prefix(r"\\?\").unwrap_or(&raw).to_string())
         }
         // Compare the drive letter of the nearest existing ancestor, since the
         // destination itself may not exist yet.
@@ -621,6 +628,8 @@ mod tests {
         ));
         // Case must not decide which strategy we take.
         assert!(same_volume(Path::new(r"d:\a"), Path::new(r"D:\b")));
+        // sysinfo commonly returns the verbatim form for mounted volumes.
+        assert!(same_volume(Path::new(r"C:\a"), Path::new(r"\\?\C:\b")));
     }
 
     /// Runs against the real machine: proves volume enumeration works on this

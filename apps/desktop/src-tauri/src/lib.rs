@@ -2569,12 +2569,10 @@ async fn list_incompatible_models(core: State<'_, Core>) -> Result<Vec<String>, 
         }) {
             continue;
         }
-        let has_safetensors = files.iter().any(|file| {
-            file.extension()
-                .and_then(|ext| ext.to_str())
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("safetensors"))
-        });
-        if !has_safetensors {
+        // Interrupted Transformers downloads can contain only the shard index
+        // and tokenizer metadata. Surface those too so the management screen
+        // can remove the otherwise invisible repository directory.
+        if !files.iter().any(|file| is_safetensors_layout_file(file)) {
             continue;
         }
         let config: serde_json::Value = match std::fs::read_to_string(path.join("config.json"))
@@ -2613,6 +2611,19 @@ async fn list_incompatible_models(core: State<'_, Core>) -> Result<Vec<String>, 
     names.sort();
     names.dedup();
     Ok(names)
+}
+
+fn is_safetensors_layout_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("safetensors"))
+        || path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                name.to_ascii_lowercase()
+                    .ends_with(".safetensors.index.json")
+            })
 }
 
 /// Recursively list all files under `dir` up to `max_depth` levels.
@@ -3147,6 +3158,7 @@ async fn inspect_huggingface_repo(
 }
 
 #[tauri::command]
+// Tauri serializes each parameter by name; grouping them would break the IPC API.
 #[allow(clippy::too_many_arguments)]
 async fn pull_model(
     core: State<'_, Core>,
@@ -4493,6 +4505,17 @@ fn find_python() -> Option<String> {
         let base = std::path::Path::new(&localappdata)
             .join("Programs")
             .join("Python");
+        // Probe supported CPython layouts directly first. Besides avoiding a
+        // directory scan, this also works in restricted app sandboxes that may
+        // allow the executable but deny listing its parent directory.
+        for version in ["313", "312", "311", "310"] {
+            let python_exe = base.join(format!("Python{version}")).join("python.exe");
+            if python_exe.exists() {
+                return Some(python_exe.to_string_lossy().to_string());
+            }
+        }
+        // Keep discovering non-standard Python3xx installations when normal
+        // directory enumeration is available.
         if let Ok(entries) = std::fs::read_dir(&base) {
             for entry in entries.flatten() {
                 let python_exe = entry.path().join("python.exe");
@@ -8965,8 +8988,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        compatible_gguf_repo, hf_candidate_variant, hf_quantization, hf_shard_group,
-        is_text_chat_model, preferred_mmproj, summarise_python_error,
+        compatible_gguf_repo, find_python, hf_candidate_variant, hf_quantization, hf_shard_group,
+        is_safetensors_layout_file, is_text_chat_model, preferred_mmproj, summarise_python_error,
     };
     use std::process::Command;
     use uuid::Uuid;
@@ -9024,6 +9047,9 @@ mod tests {
         ));
         assert!(!is_text_chat_model("mmproj-Qwen3.8-27B-Q8_0.gguf"));
         assert!(!is_text_chat_model("mtp-Qwen3.8-27B-Q4_0.gguf"));
+        assert!(is_safetensors_layout_file(std::path::Path::new(
+            "Qwen__Qwen3.8-27B/model.safetensors.index.json"
+        )));
     }
 
     #[test]
@@ -9172,8 +9198,8 @@ ligne utile B
 
     /// Validate Python syntax of all embedded TTS scripts.
     /// Reads each .py file in `scripts/`, replaces Rust format!() placeholders
-    /// with dummy values, and runs `python3 -c compile()` to catch syntax
-    /// errors before they surface at runtime.
+    /// with dummy values, and runs the same Python interpreter Locaryn will
+    /// use to catch syntax errors before they surface at runtime.
     #[test]
     fn validate_tts_python_syntax() {
         let scripts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts");
@@ -9193,7 +9219,7 @@ ligne utile B
             let src = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
 
-            // Write to a temp file so python3 can read it cleanly.
+            // Write to a temp file so Python can read it cleanly.
             // The raw scripts are already syntactically valid Python:
             // `{repo_dir_json}` is a legal Python set literal (undefined var
             // at runtime, but compile() only checks syntax).
@@ -9205,13 +9231,14 @@ ligne utile B
 
             // Use forward slashes so Python's parser doesn't interpret \U / \u escapes.
             let py_path = tmpfile.to_str().unwrap().replace("\\", "/");
-            let out = Command::new("python3")
+            let python = find_python().expect("Python 3.10+ is required for media features");
+            let out = Command::new(python)
                 .args([
                     "-c",
                     &format!("compile(open('{py_path}', 'r').read(), '{name}', 'exec')"),
                 ])
                 .output()
-                .unwrap_or_else(|e| panic!("failed to run python3: {e}"));
+                .unwrap_or_else(|e| panic!("failed to run Python: {e}"));
 
             assert!(
                 out.status.success(),

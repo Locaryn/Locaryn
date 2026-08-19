@@ -76,7 +76,6 @@ export function ModelPreferencesSettings({
             <TtsModelSetting />
           </section>
         )}
-
         {hasImageGen && (
           <section className="locaryn-model-preference-card">
             <div className="locaryn-model-preference-heading">

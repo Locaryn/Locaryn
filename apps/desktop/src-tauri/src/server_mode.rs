@@ -331,27 +331,23 @@ mod win_job {
     const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
     const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: u32 = 9;
 
-    // Ces alias portent le nom exact de l'API Windows : les renommer
-    // rendrait la déclaration illisible face au prototype officiel.
-    #[allow(clippy::upper_case_acronyms)]
-    type HANDLE = *mut std::ffi::c_void;
-    #[allow(clippy::upper_case_acronyms)]
-    type BOOL = i32;
+    type Handle = *mut std::ffi::c_void;
+    type Bool = i32;
 
     extern "system" {
         fn CreateJobObjectW(lpJobAttributes: *const std::ffi::c_void, lpName: *const u16)
-            -> HANDLE;
+            -> Handle;
         fn SetInformationJobObject(
-            hJob: HANDLE,
+            hJob: Handle,
             JobObjectInformationClass: u32,
             lpJobObjectInformation: *const std::ffi::c_void,
             cbJobObjectInformationLength: u32,
-        ) -> BOOL;
-        fn AssignProcessToJobObject(hJob: HANDLE, hProcess: HANDLE) -> BOOL;
-        fn CloseHandle(hObject: HANDLE) -> BOOL;
+        ) -> Bool;
+        fn AssignProcessToJobObject(hJob: Handle, hProcess: Handle) -> Bool;
+        fn CloseHandle(hObject: Handle) -> Bool;
     }
 
-    struct SafeJobHandle(HANDLE);
+    struct SafeJobHandle(Handle);
     unsafe impl Send for SafeJobHandle {}
     unsafe impl Sync for SafeJobHandle {}
 
@@ -367,7 +363,7 @@ mod win_job {
 
     static JOB: OnceLock<SafeJobHandle> = OnceLock::new();
 
-    fn get_job_object() -> Option<HANDLE> {
+    fn get_job_object() -> Option<Handle> {
         let job = JOB.get_or_init(|| unsafe {
             let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
             if handle.is_null() {
@@ -408,7 +404,7 @@ mod win_job {
     /// se termine ou plante brutalement.
     pub fn attach_child_to_job(child: &std::process::Child) {
         if let Some(job) = get_job_object() {
-            let process_handle = child.as_raw_handle() as HANDLE;
+            let process_handle = child.as_raw_handle() as Handle;
             unsafe {
                 let res = AssignProcessToJobObject(job, process_handle);
                 if res == 0 {
