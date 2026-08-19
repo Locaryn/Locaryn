@@ -1,10 +1,10 @@
 {
-  "version": "0.3.18",
+  "version": "0.3.19",
   "pub_date": "2026-08-19T00:00:00Z",
-  "notes": "Locaryn v0.3.18 - titre de la conversation active affiché dans la barre supérieure, progression agrégée des téléchargements multi-fichiers, nettoyage des téléchargements échoués et sélection des variantes Hugging Face.",
+  "notes": "Locaryn v0.3.19 - le bouton « Mettre à jour » de la barre du chat mène maintenant directement à la section À propos des réglages (au lieu de la liste des catégories)",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.18/Locaryn_0.3.18_x64-setup.exe",
+      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.19/Locaryn_0.3.19_x64-setup.exe",
       "signature": ""
     }
   }
