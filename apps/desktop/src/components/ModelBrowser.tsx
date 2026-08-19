@@ -754,10 +754,13 @@ export function ModelBrowser({
     inspection: HfRepoInspection,
     candidate: HfModelCandidate,
   ): HfModelSelection {
+    const supportFiles = Array.from(
+      new Set([...inspection.support_files, ...candidate.support_files]),
+    );
     return {
       repo: inspection.repo,
       files: candidate.files,
-      support_files: inspection.support_files,
+      support_files: supportFiles,
       label: candidate.label,
     };
   }
@@ -790,14 +793,16 @@ export function ModelBrowser({
         candidates: [],
         support_files: [],
         total_bytes: 0,
+        warning: null,
+        suggested_repo: null,
       });
       setRepoInstallContext({ source: repo, familyName, heretic, consent });
       try {
         const inspection = await core.inspectHuggingFaceRepo(repo, getHfToken());
-        if (inspection.candidates.length > 1) {
+        if (inspection.candidates.length > 1 || inspection.warning || inspection.suggested_repo) {
           setRepoInspection(inspection);
           setRepoInstallContext({ source: repo, familyName, heretic, consent });
-          setRepoCandidateId(inspection.candidates[0].id);
+          setRepoCandidateId(inspection.candidates[0]?.id ?? "");
           return;
         }
         if (inspection.candidates.length === 1) {
@@ -815,6 +820,8 @@ export function ModelBrowser({
           candidates: [],
           support_files: [],
           total_bytes: 0,
+          warning: null,
+          suggested_repo: null,
         });
         setRepoInstallContext({ source: repo, familyName, heretic, consent });
         return;
@@ -879,6 +886,15 @@ export function ModelBrowser({
       consent,
       makeSelection(repoInspection, candidate),
     );
+  }
+
+  function inspectSuggestedRepo() {
+    if (!repoInspection?.suggested_repo || !repoInstallContext) return;
+    const { familyName, heretic, consent } = repoInstallContext;
+    const source = `https://huggingface.co/${repoInspection.suggested_repo}`;
+    setRepoInspection(null);
+    setRepoInstallContext(null);
+    void beginModelInstall(source, familyName, heretic, consent);
   }
 
   async function handleCancelInstall(tag: string) {
@@ -2348,7 +2364,10 @@ export function ModelBrowser({
                   <Icon name="models" size={17} /> Choisir le modèle à installer
                 </h3>
                 <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
-                  {repoInspection.repo} — une seule variante sera téléchargée, pas tout le dépôt.
+                  {repoInspection.repo}
+                  {repoInspection.suggested_repo
+                    ? " — conversion requise pour llama.cpp"
+                    : " — une seule variante sera téléchargée, pas tout le dépôt."}
                 </span>
               </div>
               <button
@@ -2388,6 +2407,27 @@ export function ModelBrowser({
                 }}
               >
                 {repoInspectionError}
+              </div>
+            ) : repoInspection.suggested_repo ? (
+              <div style={{ display: "grid", gap: "12px" }}>
+                <div
+                  style={{
+                    padding: "12px",
+                    border: "1px solid var(--warning, #d6a45c)",
+                    borderRadius: "var(--radius-sm)",
+                    background: "rgba(214, 164, 92, 0.08)",
+                    color: "var(--text)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {repoInspection.warning}
+                </div>
+                <div style={{ color: "var(--text-dim)", lineHeight: 1.5 }}>
+                  Le dépôt d'origine contient {repoInspection.candidates.length || 1} checkpoint(s)
+                  Transformers et ne sera pas installé. Locaryn peut ouvrir automatiquement{" "}
+                  <strong>{repoInspection.suggested_repo}</strong>, puis proposer les variantes GGUF
+                  compatibles et leur projecteur vision.
+                </div>
               </div>
             ) : repoInspection.candidates.length === 0 ? (
               <div style={{ color: "var(--text-dim)", lineHeight: 1.5 }}>
@@ -2441,6 +2481,9 @@ export function ModelBrowser({
                           {candidate.quantization ? ` · ${candidate.quantization}` : ""}
                           {candidate.variant ? ` · ${candidate.variant}` : ""}
                           {candidate.files.length > 1 ? ` · ${candidate.files.length} shards` : ""}
+                          {candidate.support_files.length > 0
+                            ? ` · ${candidate.support_files.length} compagnon(s)`
+                            : ""}
                         </span>
                       </span>
                       <span
@@ -2459,9 +2502,11 @@ export function ModelBrowser({
               style={{ justifyContent: "space-between", gap: "8px", marginTop: "16px" }}
             >
               <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-                {repoInspection.candidates.length > 0
-                  ? `${repoInspection.candidates.length} variante(s) détectée(s) · ${formatBytes(repoInspection.total_bytes)} au total dans le dépôt`
-                  : "Les fichiers alternatifs ne seront pas ciblés automatiquement."}
+                {repoInspection.suggested_repo
+                  ? "Les poids Safetensors existants ne seront ni relancés ni retéléchargés."
+                  : repoInspection.candidates.length > 0
+                    ? `${repoInspection.candidates.length} variante(s) détectée(s) · ${formatBytes(repoInspection.total_bytes)} au total dans le dépôt`
+                    : "Les fichiers alternatifs ne seront pas ciblés automatiquement."}
               </span>
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
@@ -2475,7 +2520,16 @@ export function ModelBrowser({
                 >
                   Annuler
                 </button>
-                {repoInspection.candidates.length > 0 ? (
+                {repoInspection.suggested_repo ? (
+                  <button
+                    type="button"
+                    className="locaryn-btn-primary"
+                    onClick={inspectSuggestedRepo}
+                    disabled={repoInspecting}
+                  >
+                    <Icon name="refresh" size={14} /> Ouvrir la version GGUF compatible
+                  </button>
+                ) : repoInspection.candidates.length > 0 ? (
                   <button
                     type="button"
                     className="locaryn-btn-primary"

@@ -697,6 +697,20 @@ async fn spawn_llama_server(
         ));
     }
 
+    let is_gguf = full_model_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"));
+    if !full_model_path.is_file() || !is_gguf {
+        return Err(SupervisorError::SpawnFailed(
+            ProviderEngine::LlamaCpp,
+            format!(
+                "Unsupported model format for llama.cpp: {}. Install a GGUF model; Transformers .safetensors repositories cannot be passed to llama-server -m.",
+                full_model_path.display()
+            ),
+        ));
+    }
+
     tracing::info!(
         bin = %bin.display(),
         model = %full_model_path.display(),

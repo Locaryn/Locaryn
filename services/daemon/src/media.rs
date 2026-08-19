@@ -25,7 +25,10 @@ use crate::DaemonState;
 
 pub(crate) fn is_chat_weight(path: &std::path::Path) -> bool {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    if !ext.eq_ignore_ascii_case("gguf") && !ext.eq_ignore_ascii_case("safetensors") {
+    // The daemon's managed chat provider is llama.cpp (`-m`), so only GGUF
+    // primary weights are runnable. Transformers Safetensors stay available
+    // to their dedicated media runtimes but never enter the chat selector.
+    if !ext.eq_ignore_ascii_case("gguf") {
         return false;
     }
     let name = path.to_string_lossy().to_ascii_lowercase();
@@ -47,6 +50,10 @@ pub(crate) fn is_chat_weight(path: &std::path::Path) -> bool {
             "musicgen",
             "audio",
             "embed",
+            "mtp-",
+            "/mtp/",
+            "-draft-",
+            "_draft_",
         ]
         .iter()
         .any(|part| name.contains(part))
@@ -609,6 +616,8 @@ fn nom_modele_valide(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with('/')
         && !name.contains('\\')
+        && !name.contains(':')
+        && !std::path::Path::new(name).is_absolute()
         && name
             .split('/')
             .all(|part| !part.is_empty() && part != "." && part != ".." && !part.starts_with('.'))
@@ -1215,6 +1224,22 @@ mod tests {
     }
 
     #[test]
+    fn seuls_les_gguf_principaux_apparaissent_dans_le_chat() {
+        assert!(is_chat_weight(std::path::Path::new(
+            "Qwen3.8-27B-Q4_K_M.gguf"
+        )));
+        assert!(!is_chat_weight(std::path::Path::new(
+            "Qwen__Qwen3.8-27B/model-00001-of-00018.safetensors"
+        )));
+        assert!(!is_chat_weight(std::path::Path::new(
+            "mmproj-Qwen3.8-27B-Q8_0.gguf"
+        )));
+        assert!(!is_chat_weight(std::path::Path::new(
+            "mtp-Qwen3.8-27B-Q4_0.gguf"
+        )));
+    }
+
+    #[test]
     fn les_fichiers_partiels_sont_supprimes_si_le_telechargement_echoue() {
         let path = std::env::temp_dir().join(format!(
             "locaryn-daemon-part-{}",
@@ -1248,6 +1273,7 @@ mod tests {
         assert!(!nom_modele_valide("../secret.gguf"));
         assert!(!nom_modele_valide("a/../b.gguf"));
         assert!(!nom_modele_valide("a\\b.gguf"));
+        assert!(!nom_modele_valide("C:/outside/model.gguf"));
         assert!(!nom_modele_valide(".cache"));
         assert!(!nom_modele_valide(""));
         assert!(!nom_modele_valide(".."));

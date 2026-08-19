@@ -2339,15 +2339,15 @@ pub(crate) fn resolve_model_path(
     candidate
 }
 
-/// Text chat model (GGUF/Safetensors LLM), excluding TTS, audio, embeddings,
-/// image diffusion and non-chat models.
+/// Text chat model loadable by the managed llama.cpp runtime, excluding TTS,
+/// audio, embeddings, image diffusion and non-chat companions.
 pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
 
-    // 1. Must be GGUF or Safetensors (llama.cpp and chat inference engines).
-    // Standalone .pth, .pt, .onnx, .bin are Piper/Kokoro/Audio/Vision weights.
-    let is_valid_ext = n.ends_with(".gguf") || n.ends_with(".safetensors");
-    if !is_valid_ext {
+    // The local provider starts llama-server with `-m`, which accepts GGUF.
+    // A Transformers repository made of `.safetensors` shards is not a
+    // llama.cpp model and must never appear as a selectable local chat model.
+    if !n.ends_with(".gguf") {
         return false;
     }
 
@@ -2408,6 +2408,18 @@ pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
         "segment-anything",
     ];
     if VISION_ONLY.iter().any(|p| n.contains(p)) {
+        return false;
+    }
+
+    // 6. Exclude multimodal/speculative decoding companions. They are loaded
+    // alongside a primary model and cannot answer chat requests on their own.
+    if n.contains("mmproj")
+        || n.contains("/mtp/")
+        || n.contains("\\mtp\\")
+        || n.contains("mtp-")
+        || n.contains("-draft-")
+        || n.contains("_draft_")
+    {
         return false;
     }
 
@@ -2530,6 +2542,79 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
     Ok(names)
 }
 
+/// Full Transformers language-model repositories stored in `models_dir` are
+/// useful to other runtimes, but the managed llama.cpp provider cannot load
+/// them with `-m`. Keep them out of chat pickers while exposing them to the
+/// management screen so a failed 50+ GB download can be removed cleanly.
+#[tauri::command]
+async fn list_incompatible_models(core: State<'_, Core>) -> Result<Vec<String>, String> {
+    if core.remote_client().is_some() {
+        return Ok(Vec::new());
+    }
+    let models_dir = locaryn_config::models_dir();
+    let mut names = Vec::new();
+    let Ok(entries) = std::fs::read_dir(models_dir) else {
+        return Ok(names);
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let files = walkdir_recursive(&path, 3);
+        if files.iter().any(|file| {
+            file.extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"))
+        }) {
+            continue;
+        }
+        let has_safetensors = files.iter().any(|file| {
+            file.extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("safetensors"))
+        });
+        if !has_safetensors {
+            continue;
+        }
+        let config: serde_json::Value = match std::fs::read_to_string(path.join("config.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+        {
+            Some(config) => config,
+            None => continue,
+        };
+        let language_architecture = config["architectures"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str())
+            .any(|architecture| {
+                let lower = architecture.to_ascii_lowercase();
+                lower.contains("forcausallm") || lower.contains("forconditionalgeneration")
+            });
+        let dir_name = entry.file_name().to_string_lossy().to_string();
+        let lower_name = dir_name.to_ascii_lowercase();
+        let dedicated_media_repo = [
+            "-tts",
+            "_tts",
+            "speech",
+            "audio",
+            "kokoro",
+            "xtts",
+            "diffusion",
+        ]
+        .iter()
+        .any(|marker| lower_name.contains(marker));
+        if language_architecture && !dedicated_media_repo {
+            names.push(dir_name);
+        }
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
 /// Recursively list all files under `dir` up to `max_depth` levels.
 fn walkdir_recursive(dir: &std::path::Path, max_depth: usize) -> Vec<std::path::PathBuf> {
     let mut results = Vec::new();
@@ -2578,6 +2663,9 @@ pub struct HfModelCandidate {
     pub id: String,
     pub label: String,
     pub files: Vec<String>,
+    /// Runtime companions tied to this candidate (for example one multimodal
+    /// projector). They are downloaded with the selected primary weights.
+    pub support_files: Vec<String>,
     pub total_bytes: u64,
     pub format: String,
     pub quantization: Option<String>,
@@ -2591,6 +2679,10 @@ pub struct HfRepoInspection {
     pub candidates: Vec<HfModelCandidate>,
     pub support_files: Vec<String>,
     pub total_bytes: u64,
+    /// Explanation shown before an incompatible repository can be installed.
+    pub warning: Option<String>,
+    /// Known GGUF conversion that the managed llama.cpp runtime can load.
+    pub suggested_repo: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -2793,6 +2885,10 @@ fn is_hf_weight_path(path: &str) -> bool {
         "projection",
         "adapter",
         "lora",
+        "mtp-",
+        "/mtp/",
+        "-draft-",
+        "_draft_",
         "optimizer",
         "scheduler",
         "ema",
@@ -2819,11 +2915,56 @@ fn hf_shard_group(path: &str) -> String {
                 && digits_start > 0
                 && matches!(lower.as_bytes()[digits_start - 1], b'-' | b'_' | b'.')
             {
-                return path[..digits_start - 1].to_string();
+                let stem = &path[..digits_start - 1];
+                if let Some(ext) = std::path::Path::new(path)
+                    .extension()
+                    .and_then(|value| value.to_str())
+                {
+                    return format!("{stem}.{ext}");
+                }
+                return stem.to_string();
             }
         }
     }
     path.to_string()
+}
+
+/// Official/full-precision repositories that have a known llama.cpp-ready
+/// conversion. Keeping this mapping explicit prevents silently swapping model
+/// families while still repairing the common "downloaded Safetensors" trap.
+fn compatible_gguf_repo(repo: &str) -> Option<&'static str> {
+    match repo.to_ascii_lowercase().as_str() {
+        "qwen/qwen3.8-27b" | "qwen/qwen3.8-27b-fp8" => Some("ggml-org/Qwen3.8-27B-GGUF"),
+        _ => None,
+    }
+}
+
+fn is_hf_mmproj(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".gguf")
+        && lower
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.starts_with("mmproj-") || name.contains(".mmproj-"))
+}
+
+/// Prefer the compact Q8 projector when a repository offers several. A
+/// projector is an inference companion, not the main model quantisation.
+fn preferred_mmproj(projectors: &[(String, u64)]) -> Option<String> {
+    let mut paths: Vec<&String> = projectors.iter().map(|(path, _)| path).collect();
+    paths.sort_by_key(|path| {
+        let lower = path.to_ascii_lowercase();
+        if lower.contains("q8_0") {
+            0
+        } else if lower.contains("f16") && !lower.contains("bf16") {
+            1
+        } else if lower.contains("bf16") {
+            2
+        } else {
+            3
+        }
+    });
+    paths.first().map(|path| (*path).clone())
 }
 
 fn hf_quantization(path: &str) -> Option<String> {
@@ -2920,8 +3061,11 @@ async fn inspect_huggingface_repo(
     let mut groups: std::collections::BTreeMap<String, Vec<(String, u64)>> =
         std::collections::BTreeMap::new();
     let mut support = Vec::new();
+    let mut projectors = Vec::new();
     for (path, size) in files {
-        if is_hf_weight_path(&path) {
+        if is_hf_mmproj(&path) {
+            projectors.push((path, size));
+        } else if is_hf_weight_path(&path) {
             groups
                 .entry(hf_shard_group(&path))
                 .or_default()
@@ -2955,6 +3099,11 @@ async fn inspect_huggingface_repo(
             .next()
             .unwrap_or("model")
             .to_ascii_lowercase();
+        let candidate_support = if format == "gguf" {
+            preferred_mmproj(&projectors).into_iter().collect()
+        } else {
+            Vec::new()
+        };
         let label = format!(
             "{}{}{}",
             variant.as_deref().unwrap_or(&group),
@@ -2972,6 +3121,7 @@ async fn inspect_huggingface_repo(
             id: group.replace('/', "::"),
             label,
             files,
+            support_files: candidate_support,
             total_bytes,
             format,
             quantization,
@@ -2980,11 +3130,19 @@ async fn inspect_huggingface_repo(
     }
     candidates.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
     let total_bytes = candidates.iter().map(|c| c.total_bytes).sum();
+    let suggested_repo = compatible_gguf_repo(&repo).map(str::to_string);
+    let warning = suggested_repo.as_ref().map(|suggested| {
+        format!(
+            "{repo} contient des poids Transformers Safetensors. Le moteur local llama.cpp ne peut pas les charger avec -m. Utilisez la conversion GGUF compatible {suggested}."
+        )
+    });
     Ok(HfRepoInspection {
         repo,
         candidates,
         support_files: support,
         total_bytes,
+        warning,
+        suggested_repo,
     })
 }
 
@@ -3271,6 +3429,19 @@ async fn pull_hf_repo(
     selection: Option<&HfModelSelection>,
 ) -> Result<(), String> {
     let repo_id = normalize_hf_repo(url)?;
+    if let Some(suggested) = compatible_gguf_repo(&repo_id) {
+        let selected_gguf = selection.is_some_and(|choice| {
+            choice
+                .files
+                .iter()
+                .any(|path| path.to_ascii_lowercase().ends_with(".gguf"))
+        });
+        if !selected_gguf {
+            return Err(format!(
+                "{repo_id} est un checkpoint Transformers Safetensors que llama.cpp ne peut pas lancer. Installez la conversion GGUF compatible : https://huggingface.co/{suggested}"
+            ));
+        }
+    }
     if let Some(choice) = selection {
         if normalize_hf_repo(&choice.repo)? != repo_id {
             return Err("La variante sélectionnée ne vient pas de ce dépôt HuggingFace.".into());
@@ -7682,7 +7853,12 @@ async fn delete_model_cmd(
     model: String,
 ) -> Result<(), String> {
     let model = model.trim().replace('\\', "/");
-    if model.is_empty() || model.starts_with('/') || model.contains("..") {
+    if model.is_empty()
+        || model.starts_with('/')
+        || model.contains("..")
+        || model.contains(':')
+        || std::path::Path::new(&model).is_absolute()
+    {
         return Err("nom de modèle invalide".into());
     }
     if let Some(client) = core.remote_client() {
@@ -8632,6 +8808,7 @@ pub fn run() {
             airllm::airllm_uninstall,
             airllm::configure_airllm_provider,
             list_models,
+            list_incompatible_models,
             inspect_huggingface_repo,
             app_info,
             region_edit::edit_region,
@@ -8787,7 +8964,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{hf_candidate_variant, hf_quantization, hf_shard_group, summarise_python_error};
+    use super::{
+        compatible_gguf_repo, hf_candidate_variant, hf_quantization, hf_shard_group,
+        is_text_chat_model, preferred_mmproj, summarise_python_error,
+    };
     use std::process::Command;
     use uuid::Uuid;
 
@@ -8811,11 +8991,15 @@ mod tests {
     fn huggingface_shards_stay_one_variant_and_quantisations_stay_distinct() {
         assert_eq!(
             hf_shard_group("model-Q4_K_M-00001-of-00003.gguf"),
-            "model-Q4_K_M"
+            "model-Q4_K_M.gguf"
         );
         assert_eq!(
             hf_shard_group("model-Q4_K_M-00003-of-00003.gguf"),
-            "model-Q4_K_M"
+            "model-Q4_K_M.gguf"
+        );
+        assert_eq!(
+            hf_shard_group("model-00018-of-00018.safetensors"),
+            "model.safetensors"
         );
         assert_ne!(
             hf_shard_group("model-Q4_K_M.gguf"),
@@ -8825,9 +9009,36 @@ mod tests {
             hf_quantization("model-Q3_K_M.gguf").as_deref(),
             Some("Q3_K_M")
         );
+        assert_eq!(hf_quantization("model-BF16.gguf").as_deref(), Some("BF16"));
         assert_eq!(
             hf_candidate_variant("models/Champion-Inst-Q3_K_M.gguf", Some("Q3_K_M")),
             "models/Champion-Inst"
+        );
+    }
+
+    #[test]
+    fn transformers_shards_and_runtime_companions_are_not_chat_models() {
+        assert!(is_text_chat_model("Qwen3.8-27B-Q4_K_M.gguf"));
+        assert!(!is_text_chat_model(
+            "Qwen__Qwen3.8-27B/model-00001-of-00018.safetensors"
+        ));
+        assert!(!is_text_chat_model("mmproj-Qwen3.8-27B-Q8_0.gguf"));
+        assert!(!is_text_chat_model("mtp-Qwen3.8-27B-Q4_0.gguf"));
+    }
+
+    #[test]
+    fn qwen38_uses_a_loadable_gguf_and_the_compact_vision_projector() {
+        assert_eq!(
+            compatible_gguf_repo("Qwen/Qwen3.8-27B"),
+            Some("ggml-org/Qwen3.8-27B-GGUF")
+        );
+        let projectors = vec![
+            ("mmproj-Qwen3.8-27B-BF16.gguf".to_string(), 900),
+            ("mmproj-Qwen3.8-27B-Q8_0.gguf".to_string(), 600),
+        ];
+        assert_eq!(
+            preferred_mmproj(&projectors).as_deref(),
+            Some("mmproj-Qwen3.8-27B-Q8_0.gguf")
         );
     }
 

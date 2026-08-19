@@ -74,7 +74,7 @@ pub async fn airllm_status() -> Result<AirllmStatus, String> {
             let mut command = tokio::process::Command::new(py);
             crate::hide_tokio_console(&mut command);
             let check = command
-                .args(["-c", "import importlib.util; print(1 if importlib.util.find_spec('airllm') else 0, 1 if importlib.util.find_spec('torch') else 0)"])
+                .args(["-c", "import importlib.util; print(1 if importlib.util.find_spec('torch') else 0, 1 if importlib.util.find_spec('airllm') else 0)"])
                 .output()
                 .await;
             match check {

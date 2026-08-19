@@ -1042,6 +1042,8 @@ export interface HfModelCandidate {
   id: string;
   label: string;
   files: string[];
+  /** Candidate-specific runtime companions such as a multimodal projector. */
+  support_files: string[];
   total_bytes: number;
   format: string;
   quantization: string | null;
@@ -1053,6 +1055,9 @@ export interface HfRepoInspection {
   candidates: HfModelCandidate[];
   support_files: string[];
   total_bytes: number;
+  warning: string | null;
+  /** A known conversion that the managed llama.cpp runtime can actually load. */
+  suggested_repo: string | null;
 }
 
 export interface HfModelSelection {
@@ -1392,6 +1397,8 @@ export interface CoreApi {
   setActiveProvider(id: string): Promise<Provider>;
   configureProvider(endpoint: string, model: string | null): Promise<Provider>;
   listModels(endpoint: string): Promise<string[]>;
+  /** Transformers repos present on disk but not loadable by llama.cpp. */
+  listIncompatibleModels(): Promise<string[]>;
   appInfo(): Promise<AppInfo>;
   getLocalProfile(): Promise<LocalProfile>;
   setLocalProfile(displayName: string): Promise<LocalProfile>;
@@ -1867,6 +1874,7 @@ const tauriCore: CoreApi = {
   airllmUninstall: (repo) => invoke<void>("airllm_uninstall", { repo }),
   configureAirllmProvider: (repo) => invoke<Provider>("configure_airllm_provider", { repo }),
   listModels: (endpoint) => invoke<string[]>("list_models", { endpoint }),
+  listIncompatibleModels: () => invoke<string[]>("list_incompatible_models"),
   appInfo: () => invoke<AppInfo>("app_info"),
   getLocalProfile: () => invoke<LocalProfile>("get_local_profile"),
   setLocalProfile: (displayName) => invoke<LocalProfile>("set_local_profile", { displayName }),
@@ -3401,6 +3409,7 @@ const demoCore: CoreApi = {
     }
     return demoModels;
   },
+  listIncompatibleModels: async () => [],
   airllmStatus: async () => ({
     python: true,
     pythonPath: "demo-python",
@@ -3448,6 +3457,7 @@ const demoCore: CoreApi = {
         id: "demo-q4",
         label: "Model Instruct — Q4_K_M",
         files: ["model-Q4_K_M.gguf"],
+        support_files: ["mmproj-model-Q8_0.gguf"],
         total_bytes: 4_200_000_000,
         format: "gguf",
         quantization: "Q4_K_M",
@@ -3457,6 +3467,7 @@ const demoCore: CoreApi = {
         id: "demo-q8",
         label: "Model Instruct — Q8_0",
         files: ["model-Q8_0.gguf"],
+        support_files: ["mmproj-model-Q8_0.gguf"],
         total_bytes: 7_900_000_000,
         format: "gguf",
         quantization: "Q8_0",
@@ -3465,6 +3476,8 @@ const demoCore: CoreApi = {
     ],
     support_files: ["config.json", "tokenizer.json"],
     total_bytes: 12_100_000_000,
+    warning: null,
+    suggested_repo: null,
   }),
   pullModel: async (_endpoint, model, onProgress, _heretic, consent) => {
     if (

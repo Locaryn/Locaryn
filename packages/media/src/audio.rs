@@ -24,9 +24,11 @@ pub fn list_tts_models() -> Vec<String> {
             let name = entry.file_name().to_string_lossy().to_string();
             let lower = name.to_ascii_lowercase();
             if path.is_dir() {
-                let is_tts = ["kokoro", "qwen3", "xtts", "piper", "parler", "omni"]
-                    .iter()
-                    .any(|k| lower.contains(k));
+                let is_qwen_tts = lower.contains("qwen3") && lower.contains("tts");
+                let is_tts = is_qwen_tts
+                    || ["kokoro", "xtts", "piper", "parler", "omni"]
+                        .iter()
+                        .any(|k| lower.contains(k));
                 if is_tts {
                     names.push(name);
                 }
@@ -97,7 +99,7 @@ fn resolve_engine(model: &str) -> Result<TtsEngine, String> {
     let lower = model.to_ascii_lowercase();
     if lower.contains("kokoro") {
         Ok(TtsEngine::Kokoro)
-    } else if lower.contains("qwen3") {
+    } else if lower.contains("qwen3") && lower.contains("tts") {
         Ok(TtsEngine::Qwen3)
     } else if lower.ends_with(".onnx") && lower.contains("kokoro") {
         Ok(TtsEngine::Kokoro)
@@ -490,7 +492,7 @@ async fn run_python_script(python: &str, script: &str, text: &str) -> Result<(),
 
 #[cfg(test)]
 mod voix_tests {
-    use super::has_own_voice;
+    use super::{has_own_voice, resolve_engine};
 
     /// Le choix automatique doit écarter les modèles qui exigent un
     /// enregistrement de référence : sinon la première voix par ordre
@@ -500,6 +502,12 @@ mod voix_tests {
         assert!(!has_own_voice("Qwen__Qwen3-TTS-12Hz-0.6B-Base"));
         assert!(has_own_voice("Qwen__Qwen3-TTS-12Hz-1.7B-CustomVoice"));
         assert!(has_own_voice("hexgrad__Kokoro-82M"));
+    }
+
+    #[test]
+    fn un_qwen_de_chat_ne_devient_pas_une_voix_qwen_tts() {
+        assert!(resolve_engine("Qwen__Qwen3.8-27B").is_err());
+        assert!(resolve_engine("Qwen__Qwen3-TTS-12Hz-1.7B-CustomVoice").is_ok());
     }
 }
 

@@ -46,6 +46,7 @@ export function InstalledModelsView({
   const [activatingModel, setActivatingModel] = useState<string | null>(null);
   const [modelsDir, setModelsDir] = useState("");
   const [metrics, setMetrics] = useState<ModelMetric[]>([]);
+  const [incompatibleModels, setIncompatibleModels] = useState<string[]>([]);
   // The backend already groups shards, but deliberately keeps separate
   // quantisations/variants. Do not collapse by directory here or Q4 and Q8
   // from the same HuggingFace repository would appear as one model again.
@@ -63,6 +64,10 @@ export function InstalledModelsView({
       .listModelMetrics()
       .then(setMetrics)
       .catch(() => setMetrics([]));
+    void core
+      .listIncompatibleModels()
+      .then(setIncompatibleModels)
+      .catch(() => setIncompatibleModels([]));
   }, []);
 
   const parsedModels = useMemo(
@@ -115,6 +120,18 @@ export function InstalledModelsView({
     }
   }
 
+  async function handleDelete(model: string, incompatible = false) {
+    if (!onDeleteModel) return;
+    const detail = incompatible
+      ? "Ce dépôt Transformers complet sera supprimé définitivement, y compris tous ses shards Safetensors."
+      : "Tous les shards de cette variante seront supprimés définitivement.";
+    if (!window.confirm(`Supprimer « ${model} » ?\n\n${detail}`)) return;
+    await onDeleteModel(model);
+    if (incompatible) {
+      setIncompatibleModels((current) => current.filter((item) => item !== model));
+    }
+  }
+
   return (
     <div className="locaryn-view-container">
       <div className="locaryn-view-header">
@@ -128,7 +145,8 @@ export function InstalledModelsView({
         >
           <div>
             <h2>
-              <Icon name="models" size={18} /> Mes modèles installés ({dedupedModels.length})
+              <Icon name="models" size={18} /> Mes modèles installés (
+              {dedupedModels.length + incompatibleModels.length})
             </h2>
             <p className="locaryn-view-desc">
               Gérez les modèles de conversation stockés localement.
@@ -150,6 +168,62 @@ export function InstalledModelsView({
           </div>
         </div>
       </div>
+
+      {incompatibleModels.length > 0 && (
+        <div
+          className="locaryn-card"
+          style={{ marginBottom: 16, borderColor: "var(--warning, #d6a45c)" }}
+        >
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+            <Icon name="warning" size={18} />
+            <div>
+              <strong>Poids Transformers non exécutables par llama.cpp</strong>
+              <div style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 3 }}>
+                Ces dépôts Safetensors restent visibles ici pour libérer l'espace disque. Pour
+                Qwen3.8 27B, installez la conversion GGUF proposée dans le Marketplace.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {incompatibleModels.map((model) => (
+              <div
+                key={model}
+                className="locaryn-box-card"
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: 12 }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong style={{ overflowWrap: "anywhere" }}>{model}</strong>
+                  <div style={{ color: "var(--text-faint)", fontSize: 11, marginTop: 3 }}>
+                    TRANSFORMERS · SAFETENSORS · incompatible avec le moteur de chat local
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  onClick={() => void handleOpenFolder(`${modelsDir}\\${model}`)}
+                >
+                  <Icon name="project" size={14} /> Emplacement
+                </button>
+                {onOpenMarketplace && /qwen.*3\.8.*27b/i.test(model) && (
+                  <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}>
+                    Version GGUF
+                  </button>
+                )}
+                {onDeleteModel && (
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost"
+                    style={{ color: "var(--danger)" }}
+                    onClick={() => void handleDelete(model, true)}
+                  >
+                    <Icon name="trash" size={14} /> Supprimer
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16 }}>
         <input
@@ -284,7 +358,7 @@ export function InstalledModelsView({
                     type="button"
                     className="locaryn-btn-ghost"
                     style={{ color: "var(--danger)", fontSize: 12 }}
-                    onClick={() => void onDeleteModel(model.rawTag)}
+                    onClick={() => void handleDelete(model.rawTag)}
                   >
                     <Icon name="trash" size={15} /> Supprimer
                   </button>

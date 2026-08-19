@@ -2387,6 +2387,32 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
 
 const LARGE_LOCAL_MODELS: ModelFamily[] = [
   {
+    id: "qwen3.8-27b-gguf",
+    name: "Qwen3.8 27B (GGUF + Vision)",
+    brand: "Alibaba / Qwen / ggml-org",
+    description:
+      "Qwen3.8 27B multimodal et raisonnant, proposé dans le format GGUF compatible avec le moteur local llama.cpp. Le projecteur vision adapté est installé automatiquement.",
+    license: "Apache-2.0",
+    contextWindow: "262k",
+    releaseDate: "2026-08",
+    releaseYear: 2026,
+    vision: true,
+    reasoning: true,
+    instruct: true,
+    finetunable: true,
+    source: "seed",
+    variants: [
+      {
+        size: "27B",
+        params: 27,
+        tag: "https://huggingface.co/ggml-org/Qwen3.8-27B-GGUF",
+        quants: ["Q4_K_M", "Q8_0", "BF16"],
+        storageGb: 18.3,
+        instruct: true,
+      },
+    ],
+  },
+  {
     id: "deepseek-r1-70b-gguf",
     name: "DeepSeek-R1 Distill Llama 70B (GGUF)",
     brand: "DeepSeek / bartowski",
