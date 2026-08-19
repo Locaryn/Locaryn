@@ -25,11 +25,11 @@ jobs:
           TAG="${GITHUB_REF_NAME#v}"
           [ -n "$TAG" ] || TAG="1.0.0"
           NAME="${{ github.event.repository.name }}"
-          mkdir -p dist
-          zip -r "dist/${NAME}-v${TAG}.zip" . -x ".git/*" ".github/*" "target/*" "dist/*"
+          mkdir -p out
+          zip -r "out/${NAME}-v${TAG}.zip" . -x ".git/*" ".github/*" "target/*" "out/*"
       - uses: softprops/action-gh-release@v2
         with:
           draft: false
           name: "${{ github.event.repository.name }} ${{ github.ref_name }}"
-          files: dist/*.zip
+          files: out/*.zip
           generate_release_notes: true

@@ -2,7 +2,7 @@
   "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
   "apiVersion": "0.1",
   "name": "plugin-image-gen",
-  "version": "1.4.0",
+  "version": "1.4.2",
   "description": "Extension autonome de génération et modification d'images avec son moteur stable-diffusion.cpp, ses modèles et son interface.",
   "author": "Locaryn Team",
   "license": "Apache-2.0",
