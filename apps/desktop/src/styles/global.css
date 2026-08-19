@@ -152,6 +152,9 @@ body.locaryn-resizing .locaryn-resizer::after {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 .locaryn-logo {
   display: inline-flex;
@@ -171,7 +174,12 @@ body.locaryn-resizing .locaryn-resizer::after {
 .locaryn-sep {
   color: var(--text-faint);
 }
-.locaryn-project {
+.locaryn-conversation-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-dim);
   font-weight: 600;
 }
@@ -1108,6 +1116,40 @@ body.locaryn-resizing .locaryn-resizer::after {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-1) 0 0;
+}
+/* The active model is a long, user-facing title (often a full GGUF tag).
+   Keep it inside the composer and let the context gauge use the remaining
+   width instead of allowing the button to grow past the card. */
+.locaryn-composer-model-row {
+  min-width: 0;
+  width: 100%;
+  gap: var(--space-2);
+}
+.locaryn-btn-ghost.locaryn-model-picker,
+.locaryn-composer-core-badge {
+  min-width: 0;
+  max-width: 65%;
+  flex: 1 1 55%;
+  overflow: hidden;
+}
+.locaryn-model-picker {
+  justify-content: flex-start;
+  text-align: left;
+}
+.locaryn-model-picker-label,
+.locaryn-composer-model-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-model-picker-label {
+  display: block;
+}
+.locaryn-composer-model-row .locaryn-ctx-gauge-wrap {
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 45%;
 }
 .locaryn-composer-hint {
   flex: 1;
@@ -2669,13 +2711,16 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
   background: color-mix(in srgb, currentColor 16%, transparent);
 }
 
-/* Long HuggingFace model names must wrap, not overflow their card */
+/* Long model titles stay on one line and expose their full value through the
+   native tooltip supplied by the component. */
 .locaryn-box-name,
 .locaryn-box-brand,
 .locaryn-model-name {
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  display: block;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Badges must not squeeze the name down to a few pixels: let them wrap and
    keep at least half the header width for the model name. */
@@ -2696,6 +2741,13 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
 
 /* Sidebar entries: one line with an ellipsis, never a horizontal scroll */
 .locaryn-tree-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-session-label {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4972,10 +5024,29 @@ pre.md-code {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   background: var(--bg);
   padding: 6px 10px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border);
+}
+.locaryn-quick-model-info {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.locaryn-quick-model-name,
+.locaryn-quick-model-tag {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-quick-model-name {
+  display: block;
+}
+.locaryn-quick-model-tag {
+  display: inline-block;
+  max-width: 100%;
 }
 
 .locaryn-box-variant-info {
@@ -5333,7 +5404,16 @@ pre.md-code {
   font-size: 12px;
 }
 
+.locaryn-footer-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+  overflow: hidden;
+}
 .locaryn-footer-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(560px, 48vw);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5999,6 +6079,8 @@ pre.md-code {
   padding: 20px;
 }
 .locaryn-notif-item {
+  width: 100%;
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -6008,9 +6090,11 @@ pre.md-code {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 .locaryn-notif-item-label {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6018,8 +6102,13 @@ pre.md-code {
   font-size: var(--text-xs);
 }
 .locaryn-notif-status {
+  min-width: 0;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
 }
 .locaryn-notif-running {
   color: var(--accent);

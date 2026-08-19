@@ -167,10 +167,10 @@ export function ModelResidency() {
         onClick={() => (open ? setOpen(false) : void openPicker())}
         title={
           loaded
-            ? status?.pinned
-              ? "En mémoire et épinglé — il y reste jusqu'à l'éjection"
-              : `En mémoire — déchargement après ${minutes(status?.idle_timeout_seconds ?? 1800)} sans activité`
-            : "Choisir un modèle à charger en mémoire"
+            ? (status?.model ?? "modèle inconnu")
+            : busy === "load" && picked
+              ? `Chargement de ${picked}`
+              : "Choisir un modèle à charger en mémoire"
         }
         aria-expanded={open}
       >

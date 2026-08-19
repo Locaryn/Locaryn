@@ -359,7 +359,7 @@ async fn main() -> anyhow::Result<()> {
         // Vitesses mesurées : ce que chaque modèle donne sur cette machine.
         .route("/v1/metrics/models", get(list_model_metrics))
         .route("/v1/models/pull", post(media::pull_model))
-        .route("/v1/models/:name", delete(media::remove_model))
+        .route("/v1/models/*name", delete(media::remove_model))
         .route("/v1/media/models", get(media::list_models))
         .route("/v1/media/image", post(media::generate_image))
         .route("/v1/media/audio", post(media::generate_audio))

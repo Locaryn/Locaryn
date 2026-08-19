@@ -200,7 +200,9 @@ export function SessionRow({
           ) : bullet === "dot" ? (
             <span className="locaryn-history-session-bullet" aria-hidden="true" />
           ) : null}{" "}
-          {label}
+          <span className="locaryn-session-label" title={label}>
+            {label}
+          </span>
           {session.ephemeral && <span className="locaryn-ephemeral-dot" title="Éphémère" />}
         </button>
       )}

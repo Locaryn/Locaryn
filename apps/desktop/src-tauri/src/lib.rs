@@ -664,20 +664,36 @@ async fn session_workspace(core: State<'_, Core>, session_id: Uuid) -> Result<St
     Ok(project.path)
 }
 
-/// Persist an assistant message (e.g. a finished image generation) so it stays
-/// in the conversation after switching chats.
+/// Persist a message contributed by an enabled extension. The host owns only
+/// the conversation store; the extension owns the artifact and its UI.
+#[tauri::command]
+async fn append_chat_message(
+    core: State<'_, Core>,
+    session_id: Uuid,
+    role: String,
+    content: String,
+) -> Result<(), String> {
+    let role = match role.as_str() {
+        "user" => MessageRole::User,
+        "assistant" => MessageRole::Assistant,
+        _ => return Err("rôle de message d'extension invalide".into()),
+    };
+    core.storage
+        .messages
+        .append(session_id, role, &content)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Legacy assistant-only alias kept for already installed extensions.
 #[tauri::command]
 async fn append_assistant_message(
     core: State<'_, Core>,
     session_id: Uuid,
     content: String,
 ) -> Result<(), String> {
-    core.storage
-        .messages
-        .append(session_id, MessageRole::Assistant, &content)
-        .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    append_chat_message(core, session_id, "assistant".into(), content).await
 }
 
 // ============================================================================
@@ -2451,37 +2467,6 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
             .unwrap_or(true)
     }
 
-    /// Pick the single best representative from a list of weight file paths.
-    /// Prefer the same extensions everywhere so the frontend/backend agree.
-    fn representative_weight(files: &mut [std::path::PathBuf]) -> Option<&std::path::PathBuf> {
-        fn score(path: &std::path::Path) -> u8 {
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-            // Lower score = preferred. Match the frontend priority in modelList.ts.
-            match ext.as_str() {
-                "pth" => 0,
-                "onnx" => 1,
-                "bin" => 2,
-                "safetensors" => 3,
-                "pt" => 4,
-                "gguf" => 5,
-                _ => 6,
-            }
-        }
-        files.sort_by(|a, b| {
-            let ord = score(a).cmp(&score(b));
-            if ord != std::cmp::Ordering::Equal {
-                return ord;
-            }
-            // Shorter name wins as a tie-breaker.
-            a.as_os_str().len().cmp(&b.as_os_str().len())
-        });
-        files.first()
-    }
-
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -2509,7 +2494,30 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
                 .filter(|p| is_weight_file(p) && !is_partial(p))
                 .collect();
 
-            if let Some(rep) = representative_weight(&mut weight_files) {
+            // A repository can contain several quantisations or revisions.
+            // Keep one representative per model/shard group instead of
+            // collapsing the directory to whichever file happened to sort
+            // first. This is what lets the library show Q4 and Q8 separately.
+            let mut groups: HashMap<String, std::path::PathBuf> = HashMap::new();
+            for file in weight_files.drain(..) {
+                let rel = file
+                    .strip_prefix(&path)
+                    .unwrap_or(&file)
+                    .to_string_lossy()
+                    .to_string();
+                if !is_text_chat_model(&rel) {
+                    continue;
+                }
+                let key = hf_shard_group(&rel);
+                let replace = groups
+                    .get(&key)
+                    .map(|existing| rel.len() < existing.to_string_lossy().len())
+                    .unwrap_or(true);
+                if replace {
+                    groups.insert(key, file);
+                }
+            }
+            for rep in groups.values() {
                 let rel = rep
                     .strip_prefix(&path)
                     .unwrap_or(rep)
@@ -2556,6 +2564,148 @@ pub struct PullProgressEvent {
     pub percentage: f64,
 }
 
+/// A HuggingFace model choice. `files` contains one complete model variant:
+/// either a single GGUF or every shard belonging to one safetensors variant.
+/// Support files (tokenizer/config) are kept separate so quantisations and
+/// alternate checkpoints are never downloaded by accident.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct HfModelSelection {
+    pub repo: String,
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub support_files: Vec<String>,
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct HfModelCandidate {
+    pub id: String,
+    pub label: String,
+    pub files: Vec<String>,
+    pub total_bytes: u64,
+    pub format: String,
+    pub quantization: Option<String>,
+    pub variant: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct HfRepoInspection {
+    pub repo: String,
+    pub candidates: Vec<HfModelCandidate>,
+    pub support_files: Vec<String>,
+    pub total_bytes: u64,
+}
+
+#[derive(Debug, Clone)]
+struct PullAggregate {
+    /// Bytes already downloaded across every file in the plan.
+    completed: u64,
+    /// Sum of the expected sizes of every file in the plan.
+    total: u64,
+    /// Expected size of the file currently being streamed. Used to reconcile
+    /// HEAD metadata with the final response without double-counting it.
+    current_expected: u64,
+}
+
+/// A failed or cancelled installation must not leave a multi-gigabyte `.part`
+/// file behind. The guard is committed only after the atomic rename succeeds;
+/// every earlier return path removes the partial file, including HTTP errors,
+/// stream errors, cancellation and write failures.
+struct PartialDownloadGuard {
+    path: std::path::PathBuf,
+    committed: bool,
+}
+
+impl PartialDownloadGuard {
+    fn new(path: &std::path::Path) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            committed: false,
+        }
+    }
+
+    fn commit(&mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for PartialDownloadGuard {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+fn remove_empty_parent_dirs(start: &std::path::Path, stop: &std::path::Path) {
+    let mut current = start.to_path_buf();
+    while current.starts_with(stop) && current != stop {
+        let empty = std::fs::read_dir(&current)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false);
+        if !empty || std::fs::remove_dir(&current).is_err() {
+            break;
+        }
+        let Some(parent) = current.parent() else { break };
+        current = parent.to_path_buf();
+    }
+}
+
+/// Remove only artifacts created by one failed HuggingFace selection. Existing
+/// variants in the same repository directory are deliberately preserved.
+fn cleanup_failed_hf_selection(
+    dest_dir: &std::path::Path,
+    models_dir: &std::path::Path,
+    selected_paths: &[(String, u64)],
+    created_files: &[std::path::PathBuf],
+) {
+    for path in created_files {
+        let _ = std::fs::remove_file(path);
+    }
+    for (relative, _) in selected_paths {
+        let output = dest_dir.join(relative);
+        let _ = std::fs::remove_file(output.with_extension("part"));
+    }
+    remove_empty_parent_dirs(dest_dir, models_dir);
+}
+
+/// Send one progress event for the whole download plan. Individual files may
+/// change the status text, but they must never reset the byte counters: the UI
+/// represents one download task, not one task per repository file.
+fn send_aggregate_progress(
+    on_event: &Channel<PullProgressEvent>,
+    aggregate: &PullAggregate,
+    status: impl Into<String>,
+) {
+    let percentage = if aggregate.total > 0 {
+        (aggregate.completed as f64 / aggregate.total as f64 * 100.0).min(100.0)
+    } else {
+        0.0
+    };
+    let _ = on_event.send(PullProgressEvent {
+        status: status.into(),
+        completed: aggregate.completed,
+        total: aggregate.total,
+        percentage,
+    });
+}
+
+async fn remote_content_length(http: &reqwest::Client, url: &str, hf_token: &str) -> u64 {
+    let mut request = http.head(url);
+    if !hf_token.is_empty() && url.starts_with("https://huggingface.co/") {
+        request = request.header("Authorization", format!("Bearer {hf_token}"));
+    }
+    request
+        .send()
+        .await
+        .ok()
+        .and_then(|response| response.content_length())
+        .unwrap_or(0)
+}
+
 /// Derive a clean on-disk filename from a download URL: last path segment,
 /// query string stripped, percent-decoding for %20 etc. left as-is.
 fn filename_from_url(url: &str) -> String {
@@ -2568,6 +2718,257 @@ fn filename_from_url(url: &str) -> String {
         .to_string()
 }
 
+fn sibling_json_url(url: &str) -> String {
+    let no_query = url.split(['?', '#']).next().unwrap_or(url);
+    format!("{no_query}.json")
+}
+
+fn normalize_hf_repo(source: &str) -> Result<String, String> {
+    let raw = source.trim();
+    let url = if raw.starts_with("hf.co/") {
+        format!("https://huggingface.co/{}", &raw[6..])
+    } else if !raw.starts_with("http") && raw.matches('/').count() == 1 {
+        format!("https://huggingface.co/{raw}")
+    } else {
+        raw.to_string()
+    };
+    let repo = url
+        .strip_prefix("https://huggingface.co/")
+        .ok_or_else(|| "La source doit être un dépôt HuggingFace https://huggingface.co/auteur/modele.".to_string())?
+        .trim_end_matches('/')
+        .split("/resolve/")
+        .next()
+        .unwrap_or("")
+        .split("/blob/")
+        .next()
+        .unwrap_or("")
+        .split("/tree/")
+        .next()
+        .unwrap_or("");
+    if repo.is_empty() || repo.matches('/').count() != 1 || repo.contains("..") || repo.contains('?') {
+        return Err("Dépôt HuggingFace invalide : utilisez auteur/nom-du-repo.".into());
+    }
+    Ok(repo.to_string())
+}
+
+fn is_hf_weight_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    let weight = [".gguf", ".safetensors", ".ckpt", ".bin", ".pth", ".pt", ".onnx"]
+        .iter()
+        .any(|ext| lower.ends_with(ext));
+    if !weight {
+        return false;
+    }
+    // These are dependencies/components, not model variants the user should
+    // choose. Without this filter a repo such as XTTS (model.pth + dvae.pth +
+    // mel_stats.pth) would incorrectly ask the user which internal component
+    // to install.
+    ![
+        "mmproj",
+        "text_encoder",
+        "tokenizer",
+        "vocab",
+        "merges",
+        "spiece",
+        "vae",
+        "clip",
+        "t5xxl",
+        "dvae",
+        "mel_stats",
+        "vocoder",
+        "speaker",
+        "conditioning",
+        "projector",
+        "projection",
+        "adapter",
+        "lora",
+        "optimizer",
+        "scheduler",
+        "ema",
+        "unet/",
+        "transformer/",
+        "text-encoder/",
+        "vae/",
+    ]
+    .iter()
+    .all(|part| !lower.contains(part))
+}
+
+fn hf_shard_group(path: &str) -> String {
+    let lower = path.to_ascii_lowercase();
+    // Match every shard number, not only `00001`: otherwise a 3-shard model
+    // becomes three apparent models because only the first filename matches.
+    for marker in ["-of-", "_of_", "_of-"] {
+        if let Some(of_pos) = lower.find(marker) {
+            let mut digits_start = of_pos;
+            while digits_start > 0
+                && lower.as_bytes()[digits_start - 1].is_ascii_digit()
+            {
+                digits_start -= 1;
+            }
+            if digits_start < of_pos
+                && digits_start > 0
+                && matches!(lower.as_bytes()[digits_start - 1], b'-' | b'_' | b'.')
+            {
+                return path[..digits_start - 1].to_string();
+            }
+        }
+    }
+    path.to_string()
+}
+
+fn hf_quantization(path: &str) -> Option<String> {
+    let lower = path.to_ascii_lowercase();
+    [
+        "q2_k_s", "q2_k", "q3_k_s", "q3_k_m", "q3_k_l", "q4_0", "q4_1", "q4_k_s",
+        "q4_k_m", "q5_0", "q5_1", "q5_k_s", "q5_k_m", "q6_k", "q8_0", "f16", "fp16",
+        "bf16", "int8",
+    ]
+    .iter()
+    .find(|q| lower.contains(**q))
+    .map(|q| q.to_ascii_uppercase())
+}
+
+fn hf_candidate_variant(path: &str, quantization: Option<&str>) -> String {
+    let mut stem = path.trim_end_matches(|c: char| c == '/' ).to_string();
+    if let Some(q) = quantization {
+        let lower = stem.to_ascii_lowercase();
+        if let Some(pos) = lower.find(&q.to_ascii_lowercase()) {
+            stem.truncate(pos);
+        }
+    }
+    for ext in [".safetensors", ".gguf", ".ckpt", ".onnx", ".pth", ".pt", ".bin"] {
+        if stem.to_ascii_lowercase().ends_with(ext) {
+            stem.truncate(stem.len() - ext.len());
+            break;
+        }
+    }
+    stem.trim_end_matches(['-', '_', '.', '/']).to_string()
+}
+
+async fn fetch_hf_tree(
+    http: &reqwest::Client,
+    repo: &str,
+    hf_token: &str,
+) -> Result<Vec<(String, u64)>, String> {
+    let tree_url = format!("https://huggingface.co/api/models/{repo}/tree/main?recursive=true");
+    let mut request = http.get(tree_url);
+    if !hf_token.is_empty() {
+        request = request.header("Authorization", format!("Bearer {hf_token}"));
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("liste HuggingFace impossible : {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("HuggingFace a répondu HTTP {}.", response.status()));
+    }
+    let entries: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("réponse HuggingFace illisible : {e}"))?;
+    Ok(entries
+        .iter()
+        .filter(|entry| entry.get("type").and_then(|v| v.as_str()) == Some("file"))
+        .filter_map(|entry| {
+            Some((
+                entry.get("path")?.as_str()?.to_string(),
+                entry.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
+            ))
+        })
+        .filter(|(path, _)| {
+            !path.contains("..")
+                && !path.starts_with("eval/")
+                && !path.starts_with("samples/")
+                && path != ".gitattributes"
+        })
+        .collect())
+}
+
+/// Inspect a repository before downloading it. A repository often contains
+/// Q3/Q4/Q5/Q8 files, several instruct variants, or sharded checkpoints. The
+/// UI uses this answer to offer exactly one complete candidate instead of
+/// silently downloading every version.
+#[tauri::command]
+async fn inspect_huggingface_repo(
+    source: String,
+    hf_token: Option<String>,
+) -> Result<HfRepoInspection, String> {
+    let repo = normalize_hf_repo(&source)?;
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .user_agent("locaryn-desktop")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let files = fetch_hf_tree(&http, &repo, hf_token.as_deref().unwrap_or("")).await?;
+    let mut groups: std::collections::BTreeMap<String, Vec<(String, u64)>> =
+        std::collections::BTreeMap::new();
+    let mut support = Vec::new();
+    for (path, size) in files {
+        if is_hf_weight_path(&path) {
+            groups.entry(hf_shard_group(&path)).or_default().push((path, size));
+        } else {
+            let lower = path.to_ascii_lowercase();
+            let useful = lower.ends_with("config.json")
+                || lower.ends_with("tokenizer.json")
+                || lower.ends_with("tokenizer_config.json")
+                || lower.ends_with("special_tokens_map.json")
+                || lower.ends_with("generation_config.json")
+                || lower.ends_with("chat_template.jinja")
+                || lower.ends_with(".safetensors.index.json");
+            if useful && size <= 16 * 1024 * 1024 {
+                support.push(path);
+            }
+        }
+    }
+    support.sort();
+    support.dedup();
+
+    let mut candidates = Vec::new();
+    for (group, mut members) in groups {
+        members.sort_by(|a, b| a.0.cmp(&b.0));
+        let files: Vec<String> = members.iter().map(|(path, _)| path.clone()).collect();
+        let total_bytes = members.iter().map(|(_, size)| *size).sum();
+        let quantization = hf_quantization(&group);
+        let variant = Some(hf_candidate_variant(&group, quantization.as_deref()));
+        let format = group
+            .rsplit('.')
+            .next()
+            .unwrap_or("model")
+            .to_ascii_lowercase();
+        let label = format!(
+            "{}{}{}",
+            variant.as_deref().unwrap_or(&group),
+            quantization
+                .as_deref()
+                .map(|q| format!(" — {q}"))
+                .unwrap_or_default(),
+            if members.len() > 1 {
+                format!(" — {} shards", members.len())
+            } else {
+                String::new()
+            }
+        );
+        candidates.push(HfModelCandidate {
+            id: group.replace('/', "::"),
+            label,
+            files,
+            total_bytes,
+            format,
+            quantization,
+            variant,
+        });
+    }
+    candidates.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+    let total_bytes = candidates.iter().map(|c| c.total_bytes).sum();
+    Ok(HfRepoInspection {
+        repo,
+        candidates,
+        support_files: support,
+        total_bytes,
+    })
+}
+
 #[tauri::command]
 async fn pull_model(
     core: State<'_, Core>,
@@ -2576,6 +2977,7 @@ async fn pull_model(
     heretic: Option<bool>,
     consent: Option<bool>,
     hf_token: Option<String>,
+    selection: Option<HfModelSelection>,
     on_event: Channel<PullProgressEvent>,
 ) -> Result<(), String> {
     let url = model.trim().to_string();
@@ -2600,7 +3002,15 @@ async fn pull_model(
     }
 
     if let Some(client) = core.remote_client() {
-        match client.pull_model(&_endpoint, &url, heretic, consent).await {
+        let selection_value = selection
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|e| e.to_string())?;
+        match client
+            .pull_model(&_endpoint, &url, heretic, consent, selection_value.as_ref())
+            .await
+        {
             Ok(mut byte_stream) => {
                 use futures::StreamExt;
                 let mut buffer = String::new();
@@ -2669,6 +3079,16 @@ async fn pull_model(
         }
     }
 
+    // A selected HuggingFace candidate is deliberately handled as a local
+    // repository plan. Falling back to the old repo-wide download here would
+    // undo the user's choice and fetch every quantisation again.
+    if selection.is_some() {
+        if !url.starts_with("https://huggingface.co/") || url.contains("/resolve/") {
+            return Err("Une sélection de variante doit venir d'un dépôt HuggingFace.".into());
+        }
+        return pull_hf_repo(&core, &url, &on_event, &hf_token, selection.as_ref()).await;
+    }
+
     // ── Repo-level download: if the URL points to a HuggingFace repository
     // (not a /resolve/main/<file> direct link), download the entire repo as a
     // ZIP archive and extract it into a subdirectory under models_dir. This
@@ -2679,16 +3099,17 @@ async fn pull_model(
         && !url.contains("/resolve/")
         && !url.contains("/blob/");
     if is_hf_repo {
-        return pull_hf_repo(&core, &url, &on_event, &hf_token).await;
+        return pull_hf_repo(&core, &url, &on_event, &hf_token, None).await;
     }
 
     // Refuse repository pages or directory URLs; we need a direct file link.
-    if !url.ends_with(".gguf")
-        && !url.ends_with(".safetensors")
-        && !url.ends_with(".onnx")
-        && !url.ends_with(".bin")
-        && !url.ends_with(".pth")
-        && !url.ends_with(".pt")
+    // Check the path filename rather than the full URL so `?download=true`
+    // (common in HuggingFace links) does not make a valid model look invalid.
+    let file_name = filename_from_url(&url);
+    let file_lower = file_name.to_ascii_lowercase();
+    if ![".gguf", ".safetensors", ".onnx", ".bin", ".pth", ".pt"]
+        .iter()
+        .any(|ext| file_lower.ends_with(ext))
     {
         return Err(
             "L'URL doit pointer vers un fichier modèle direct (.gguf, .safetensors, .onnx, .bin). \
@@ -2705,9 +3126,55 @@ async fn pull_model(
 
     let models_dir = locaryn_config::models_dir();
     std::fs::create_dir_all(&models_dir).map_err(|e| e.to_string())?;
-    let file_name = filename_from_url(&url);
     let final_path = models_dir.join(&file_name);
     let part_path = models_dir.join(format!("{file_name}.part"));
+
+    // Direct downloads may install companion files afterwards. Resolve their
+    // sizes before starting the main request and keep one byte-based progress
+    // bar for the complete plan. This prevents a VAE/encoder/config download
+    // from looking like a second download that restarted at 0%.
+    let planned_companions = image_companions_for(&file_name, heretic.unwrap_or(false));
+    let piper_companion = {
+        let lower = file_name.to_ascii_lowercase();
+        let url_lower = url.to_ascii_lowercase();
+        (lower.ends_with(".onnx")
+            && !lower.contains("kokoro")
+            && !url_lower.contains("kokoro"))
+        .then(|| (sibling_json_url(&url), format!("{file_name}.json")))
+    };
+    let main_size = remote_content_length(&core.http, &url, &hf_token).await;
+    let mut aggregate = PullAggregate {
+        completed: 0,
+        total: main_size,
+        current_expected: main_size,
+    };
+    if final_path.exists() {
+        let existing_size = std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0);
+        if aggregate.total == 0 {
+            aggregate.total = existing_size;
+        }
+        aggregate.completed = existing_size;
+    }
+    for comp in &planned_companions {
+        let path = models_dir.join(comp.file);
+        if path.exists() {
+            let _ = std::fs::remove_file(path.with_extension("part"));
+        } else {
+            aggregate.total = aggregate
+                .total
+                .saturating_add(remote_content_length(&core.http, comp.url, &hf_token).await);
+        }
+    }
+    if let Some((comp_url, comp_file)) = &piper_companion {
+        let comp_path = models_dir.join(comp_file);
+        if comp_path.exists() {
+            let _ = std::fs::remove_file(comp_path.with_extension("part"));
+        } else {
+            aggregate.total = aggregate
+                .total
+                .saturating_add(remote_content_length(&core.http, comp_url, &hf_token).await);
+        }
+    }
 
     // Register a cancellation token so cancel_pull_model can really stop us,
     // and always deregister on the way out (success, error, or cancel).
@@ -2716,17 +3183,29 @@ async fn pull_model(
         .lock()
         .await
         .insert(file_name.clone(), cancel.clone());
-    let result = do_pull(
-        &core,
-        &url,
-        &file_name,
-        &final_path,
-        &part_path,
-        &on_event,
-        &cancel,
-        &hf_token,
-    )
-    .await;
+    let result = if final_path.exists() {
+        // A completed file never needs its old resume marker.
+        let _ = std::fs::remove_file(&part_path);
+        send_aggregate_progress(
+            &on_event,
+            &aggregate,
+            format!("{file_name} déjà installé — vérification des fichiers associés…"),
+        );
+        Ok(())
+    } else {
+        do_pull_with_aggregate(
+            &core,
+            &url,
+            &file_name,
+            &final_path,
+            &part_path,
+            &on_event,
+            &cancel,
+            &hf_token,
+            Some(&mut aggregate),
+        )
+        .await
+    };
     core.pull_cancels.lock().await.remove(&file_name);
     result?;
 
@@ -2740,13 +3219,23 @@ async fn pull_model(
         heretic.unwrap_or(false),
         &on_event,
         &hf_token,
+        Some(&mut aggregate),
     )
     .await
     {
         tracing::warn!(error = %e, "companion install failed (model itself is installed)");
     }
     // Auto-setup: Piper TTS voices ship a .json config file next to the .onnx.
-    if let Err(e) = install_audio_companions(&core, &url, &file_name, &on_event, &hf_token).await {
+    if let Err(e) = install_audio_companions(
+        &core,
+        &url,
+        &file_name,
+        &on_event,
+        &hf_token,
+        Some(&mut aggregate),
+    )
+    .await
+    {
         tracing::warn!(error = %e, "audio companion install failed (model itself is installed)");
     }
     Ok(())
@@ -2761,151 +3250,146 @@ async fn pull_hf_repo(
     url: &str,
     on_event: &Channel<PullProgressEvent>,
     hf_token: &str,
+    selection: Option<&HfModelSelection>,
 ) -> Result<(), String> {
-    // HuggingFace does NOT support archive/main.zip for most repos (404).
-    // Instead, we use the Tree API to list all files recursively, then download
-    // each file individually via resolve/main/<path>. This works for all repos
-    // including multi-file TTS models (XTTS, Kokoro, Qwen3-TTS, etc.).
-
-    // Normalize: strip trailing slashes, extract repo id (author/name)
-    let clean = url.trim_end_matches('/');
-    let repo_id = clean
-        .strip_prefix("https://huggingface.co/")
-        .unwrap_or(clean);
-    // Remove any trailing /tree/main or /blob/... suffix
-    let repo_id = repo_id
-        .split("/tree/")
-        .next()
-        .unwrap_or(repo_id)
-        .split("/blob/")
-        .next()
-        .unwrap_or(repo_id);
+    let repo_id = normalize_hf_repo(url)?;
+    if let Some(choice) = selection {
+        if normalize_hf_repo(&choice.repo)? != repo_id {
+            return Err("La variante sélectionnée ne vient pas de ce dépôt HuggingFace.".into());
+        }
+    }
 
     let dir_name = repo_id.replace('/', "__");
     let models_dir = locaryn_config::models_dir();
     let dest_dir = models_dir.join(&dir_name);
-
-    // If the directory already exists, skip the download.
-    if dest_dir.exists() && dest_dir.is_dir() {
-        let _ = on_event.send(PullProgressEvent {
-            status: format!("Le depot {repo_id} est deja installe."),
-            completed: 0,
-            total: 0,
-            percentage: 100.0,
-        });
-        return Ok(());
-    }
-
-    // Step 1: List all files via the HuggingFace Tree API (recursive).
-    let tree_url = format!("https://huggingface.co/api/models/{repo_id}/tree/main?recursive=true");
-
     let _ = on_event.send(PullProgressEvent {
-        status: format!("Liste des fichiers du depot {repo_id}..."),
+        status: format!("Liste des fichiers du dépôt {repo_id}…"),
         completed: 0,
         total: 0,
         percentage: 0.0,
     });
 
-    let client = reqwest::Client::builder()
+    let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
+        .user_agent("locaryn-desktop")
         .build()
         .map_err(|e| e.to_string())?;
+    let files = fetch_hf_tree(&http, &repo_id, hf_token).await?;
+    let available: std::collections::HashMap<String, u64> = files.into_iter().collect();
+    let selected_paths: Vec<(String, u64)> = if let Some(choice) = selection {
+        let mut paths = choice.files.clone();
+        paths.extend(choice.support_files.clone());
+        paths.sort();
+        paths.dedup();
+        paths
+            .into_iter()
+            .map(|path| {
+                if path.is_empty() || path.starts_with('/') || path.contains("..") || path.contains('\\') {
+                    return Err("Chemin de fichier HuggingFace invalide.".to_string());
+                }
+                let size = available
+                    .get(&path)
+                    .copied()
+                    .ok_or_else(|| format!("Le fichier sélectionné n'existe plus dans {repo_id} : {path}"))?;
+                Ok((path, size))
+            })
+            .collect::<Result<Vec<_>, String>>()?
+    } else {
+        available.into_iter().collect()
+    };
 
-    let mut req = client.get(&tree_url);
-    if !hf_token.is_empty() {
-        req = req.header("Authorization", format!("Bearer {hf_token}"));
+    if selected_paths.is_empty() {
+        return Err(format!("Aucun fichier à télécharger dans le dépôt {repo_id}."));
     }
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| format!("Tree API error: {e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!(
-            "Impossible de lister les fichiers du depot {} (HTTP {})",
-            repo_id,
-            resp.status()
-        ));
-    }
-
-    let tree_entries: Vec<serde_json::Value> = resp
-        .json()
-        .await
-        .map_err(|e| format!("Erreur parsing Tree API: {e}"))?;
-
-    // Filter: only files, skip eval/ samples/ .gitattributes (not needed for inference)
-    let file_paths: Vec<String> = tree_entries
-        .iter()
-        .filter(|e| e.get("type").and_then(|v| v.as_str()) == Some("file"))
-        .filter_map(|e| {
-            e.get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        })
-        .filter(|p| !p.starts_with("eval/") && !p.starts_with("samples/") && p != ".gitattributes")
-        .collect();
-
-    if file_paths.is_empty() {
-        return Err(format!("Aucun fichier trouve dans le depot {repo_id}"));
-    }
-
-    let total = file_paths.len();
+    let total_files = selected_paths.len();
+    let total_bytes: u64 = selected_paths.iter().map(|(_, size)| *size).sum();
     let _ = on_event.send(PullProgressEvent {
-        status: format!("{total} fichiers a telecharger"),
+        status: if selection.is_some() {
+            format!("Variante sélectionnée : {total_files} fichier(s) — les autres versions sont ignorées")
+        } else {
+            format!("{total_files} fichiers du dépôt")
+        },
         completed: 0,
-        total: total as u64,
+        total: total_bytes,
         percentage: 0.0,
     });
 
-    // Step 2: Download each file via resolve/main/<path>
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-
     let cancel = tokio_util::sync::CancellationToken::new();
+    let cancel_key = format!("{dir_name}::repo");
+    core.pull_cancels
+        .lock()
+        .await
+        .insert(cancel_key.clone(), cancel.clone());
 
-    for (i, file_path) in file_paths.iter().enumerate() {
-        if cancel.is_cancelled() {
-            return Err("Telechargement annule".into());
+    let mut aggregate = PullAggregate {
+        completed: 0,
+        total: total_bytes,
+        current_expected: 0,
+    };
+    // Keep the repository directory reusable: if a selected variant fails,
+    // remove only files created by this attempt, never another quantisation
+    // already installed under the same HuggingFace repository.
+    let mut created_files: Vec<std::path::PathBuf> = Vec::new();
+    let result = async {
+        for (i, (file_path, expected_size)) in selected_paths.iter().enumerate() {
+            if cancel.is_cancelled() {
+                return Err("Téléchargement annulé".into());
+            }
+            let out_path = dest_dir.join(file_path);
+            let part_path = out_path.with_extension("part");
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            if out_path.exists() {
+                // A previous crash may have left a stale partial next to an
+                // otherwise complete file. It is never needed in that case.
+                let _ = std::fs::remove_file(&part_path);
+                aggregate.completed = aggregate.completed.saturating_add(*expected_size);
+                continue;
+            }
+            let dl_url = format!("https://huggingface.co/{repo_id}/resolve/main/{file_path}");
+            let file_name = file_path.rsplit('/').next().unwrap_or(file_path);
+            let _ = on_event.send(PullProgressEvent {
+                status: format!("Fichier {}/{} : {}", i + 1, total_files, file_name),
+                completed: aggregate.completed,
+                total: aggregate.total,
+                percentage: if aggregate.total > 0 {
+                    aggregate.completed as f64 / aggregate.total as f64 * 100.0
+                } else {
+                    0.0
+                },
+            });
+            aggregate.current_expected = *expected_size;
+            do_pull_with_aggregate(
+                core,
+                &dl_url,
+                file_name,
+                &out_path,
+                &part_path,
+                on_event,
+                &cancel,
+                hf_token,
+                Some(&mut aggregate),
+            )
+            .await?;
+            created_files.push(out_path);
         }
-
-        let dl_url = format!("https://huggingface.co/{repo_id}/resolve/main/{file_path}");
-
-        let out_path = dest_dir.join(file_path);
-        if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-
-        let file_name = file_path.rsplit('/').next().unwrap_or(file_path);
-        let pct = ((i + 1) as f64 / total as f64) * 100.0;
-        let _ = on_event.send(PullProgressEvent {
-            status: format!("[{}/{}] {}", i + 1, total, file_name),
-            completed: (i + 1) as u64,
-            total: total as u64,
-            percentage: pct,
-        });
-
-        // Use do_pull for each file (handles streaming + progress)
-        let part_path = out_path.with_extension("part");
-        let file_name_owned = file_name.to_string();
-        do_pull(
-            core,
-            &dl_url,
-            &file_name_owned,
-            &out_path,
-            &part_path,
-            on_event,
-            &cancel,
-            hf_token,
-        )
-        .await?;
+        Ok::<(), String>(())
+    }
+    .await;
+    core.pull_cancels.lock().await.remove(&cancel_key);
+    if let Err(error) = result {
+        cleanup_failed_hf_selection(&dest_dir, &models_dir, &selected_paths, &created_files);
+        return Err(error);
     }
 
     let _ = on_event.send(PullProgressEvent {
-        status: format!("Depot {repo_id} installe avec succes ({total} fichiers)"),
-        completed: total as u64,
-        total: total as u64,
+        status: format!("Variante du dépôt {repo_id} installée ({total_files} fichier(s))"),
+        completed: aggregate.completed,
+        total: aggregate.total,
         percentage: 100.0,
     });
-
     Ok(())
 }
 // ============================================================================
@@ -2920,7 +3404,7 @@ async fn pull_hf_repo(
 // structure n'apporterait rien ici : ils n'ont pas de vie commune ailleurs.
 #[allow(clippy::too_many_arguments)]
 async fn do_pull(
-    _core: &Core,
+    core: &Core,
     url: &str,
     file_name: &str,
     final_path: &std::path::Path,
@@ -2929,9 +3413,39 @@ async fn do_pull(
     cancel: &tokio_util::sync::CancellationToken,
     hf_token: &str,
 ) -> Result<(), String> {
+    do_pull_with_aggregate(
+        core,
+        url,
+        file_name,
+        final_path,
+        part_path,
+        on_event,
+        cancel,
+        hf_token,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn do_pull_with_aggregate(
+    _core: &Core,
+    url: &str,
+    file_name: &str,
+    final_path: &std::path::Path,
+    part_path: &std::path::Path,
+    on_event: &Channel<PullProgressEvent>,
+    cancel: &tokio_util::sync::CancellationToken,
+    hf_token: &str,
+    mut aggregate: Option<&mut PullAggregate>,
+) -> Result<(), String> {
     use futures::StreamExt;
 
-    // Check for resumable partial download.
+    // A partial file is never a durable installation artifact. If this call
+    // fails, the guard removes it instead of silently preserving a resumable
+    // multi-gigabyte remainder that the UI cannot manage later.
+    let mut partial_cleanup = PartialDownloadGuard::new(part_path);
+
     let mut offset: u64 = 0;
     if part_path.exists() {
         offset = std::fs::metadata(part_path).map(|m| m.len()).unwrap_or(0);
@@ -2962,18 +3476,54 @@ async fn do_pull(
         return Err(format!("HTTP {} for {url}", resp.status()));
     }
 
-    let total = resp.content_length().map(|l| l + offset).unwrap_or(0);
+    // Some servers ignore Range and answer 200 with the complete file. Do not
+    // append that body to the partial file: restart that one file cleanly while
+    // keeping the aggregate progress of the other files intact.
+    if offset > 0 && resp.status().as_u16() == 200 {
+        offset = 0;
+    }
 
-    let _ = on_event.send(PullProgressEvent {
-        status: format!("Telechargement de {file_name}..."),
-        completed: offset,
-        total,
-        percentage: if total > 0 {
-            (offset as f64 / total as f64) * 100.0
-        } else {
-            0.0
-        },
-    });
+    let total = resp.content_length().map(|l| l + offset).unwrap_or(0);
+    if let Some(overall) = aggregate.as_deref_mut() {
+        // Reconcile the expected size with the actual response. This keeps the
+        // denominator equal to the sum of all files even when a HEAD request
+        // was unavailable or a CDN returned a different size.
+        if total > 0 {
+            if overall.current_expected > 0 {
+                if total >= overall.current_expected {
+                    overall.total = overall
+                        .total
+                        .saturating_add(total - overall.current_expected);
+                } else {
+                    overall.total = overall
+                        .total
+                        .saturating_sub(overall.current_expected - total);
+                }
+            } else {
+                overall.total = overall.total.saturating_add(total);
+            }
+        }
+        overall.current_expected = 0;
+        // The `.part` bytes were already received during an earlier attempt.
+        // Count them once so resume never makes the global bar jump backwards.
+        overall.completed = overall.completed.saturating_add(offset);
+    }
+
+    let (completed, event_total) = if let Some(overall) = aggregate.as_deref() {
+        (overall.completed, overall.total)
+    } else {
+        (offset, total)
+    };            let _ = on_event.send(PullProgressEvent {
+                status: format!("Téléchargement de {file_name}…"),
+                completed,
+                total: event_total,
+                percentage: if event_total > 0 {
+                    (completed as f64 / event_total as f64 * 100.0).min(100.0)
+                } else {
+                    0.0
+                },
+            });
+
 
     // Open the partial file for append (or create new).
     // Use tokio::fs for async I/O.
@@ -3007,19 +3557,29 @@ async fn do_pull(
             .await
             .map_err(|e| format!("write error: {e}"))?;
         downloaded += chunk.len() as u64;
+        if let Some(overall) = aggregate.as_deref_mut() {
+            overall.completed = overall.completed.saturating_add(chunk.len() as u64);
+        }
 
-        // Report progress at most every 200ms to avoid flooding IPC.
+        // Report progress at most every 200ms to avoid flooding IPC. In an
+        // HF repository this is the aggregate of every selected file, not the
+        // percentage of the file currently visible in the status text.
         if last_report.elapsed() > std::time::Duration::from_millis(200) {
-            let pct = if total > 0 {
-                (downloaded as f64 / total as f64) * 100.0
+            let (completed, event_total) = if let Some(overall) = aggregate.as_deref() {
+                (overall.completed, overall.total)
+            } else {
+                (downloaded, total)
+            };
+            let pct = if event_total > 0 {
+                completed as f64 / event_total as f64 * 100.0
             } else {
                 0.0
             };
             let _ = on_event.send(PullProgressEvent {
-                status: format!("Telechargement de {file_name}..."),
-                completed: downloaded,
-                total,
-                percentage: pct,
+                status: format!("Téléchargement de {file_name}…"),
+                completed,
+                total: event_total,
+                percentage: pct.min(100.0),
             });
             last_report = std::time::Instant::now();
         }
@@ -3035,12 +3595,27 @@ async fn do_pull(
     // Rename .part -> final name.
     std::fs::rename(part_path, final_path)
         .map_err(|e| format!("cannot rename partial file: {e}"))?;
+    partial_cleanup.commit();
 
+    let (completed, event_total, percentage) = if let Some(overall) = aggregate.as_deref() {
+        let total = overall.total;
+        (
+            overall.completed,
+            total,
+            if total > 0 {
+                (overall.completed as f64 / total as f64 * 100.0).min(100.0)
+            } else {
+                0.0
+            },
+        )
+    } else {
+        (downloaded, if total > 0 { total } else { downloaded }, 100.0)
+    };
     let _ = on_event.send(PullProgressEvent {
-        status: format!("{file_name} installe avec succes"),
-        completed: downloaded,
-        total: if total > 0 { total } else { downloaded },
-        percentage: 100.0,
+        status: format!("{file_name} installé"),
+        completed,
+        total: event_total,
+        percentage,
     });
 
     Ok(())
@@ -3078,6 +3653,7 @@ async fn install_audio_companions(
     installed_file: &str,
     on_event: &Channel<PullProgressEvent>,
     hf_token: &str,
+    mut aggregate: Option<&mut PullAggregate>,
 ) -> Result<(), String> {
     let lower = installed_file.to_ascii_lowercase();
 
@@ -3093,23 +3669,42 @@ async fn install_audio_companions(
         }
         // Standard Piper .onnx → fetch the .onnx.json config sibling.
         let models_dir = locaryn_config::models_dir();
-        let json_url = format!("{url}.json");
+        let json_url = sibling_json_url(url);
         let json_name = format!("{installed_file}.json");
         let dest = models_dir.join(&json_name);
         if dest.exists() {
+            let _ = std::fs::remove_file(dest.with_extension("part"));
             return Ok(());
         }
         tracing::info!(file = %json_name, "installing Piper audio companion");
-        let _ = on_event.send(PullProgressEvent {
-            status: format!("Installation automatique : {json_name}"),
-            completed: 0,
-            total: 0,
-            percentage: 0.0,
-        });
+        let expected = remote_content_length(&core.http, &json_url, hf_token).await;
+        if let Some(overall) = aggregate.as_deref_mut() {
+            overall.current_expected = expected;
+            send_aggregate_progress(
+                on_event,
+                overall,
+                format!("Installation automatique : {json_name}"),
+            );
+        } else {
+            let _ = on_event.send(PullProgressEvent {
+                status: format!("Installation automatique : {json_name}"),
+                completed: 0,
+                total: 0,
+                percentage: 0.0,
+            });
+        }
         let part = models_dir.join(format!("{json_name}.part"));
         let cancel = tokio_util::sync::CancellationToken::new();
-        return do_pull(
-            core, &json_url, &json_name, &dest, &part, on_event, &cancel, hf_token,
+        return do_pull_with_aggregate(
+            core,
+            &json_url,
+            &json_name,
+            &dest,
+            &part,
+            on_event,
+            &cancel,
+            hf_token,
+            aggregate.as_deref_mut(),
         )
         .await;
     }
@@ -3481,6 +4076,19 @@ async fn migrate_legacy_z_image_vae(
     Ok(())
 }
 
+fn image_companions_for(installed_file: &str, heretic: bool) -> Vec<&'static Companion> {
+    let lower = installed_file.to_ascii_lowercase();
+    if lower.contains("z_image") || lower.contains("z-image") || lower.contains("z_img") {
+        if heretic {
+            vec![&HERETIC_ENCODER, &Z_IMAGE_VAE]
+        } else {
+            vec![&Z_IMAGE_ENCODER, &Z_IMAGE_VAE]
+        }
+    } else {
+        Vec::new()
+    }
+}
+
 /// Download the companions a freshly installed image model needs.
 async fn install_image_companions(
     core: &Core,
@@ -3488,35 +4096,15 @@ async fn install_image_companions(
     heretic: bool,
     on_event: &Channel<PullProgressEvent>,
     hf_token: &str,
+    mut aggregate: Option<&mut PullAggregate>,
 ) -> Result<(), String> {
-    let lower = installed_file.to_ascii_lowercase();
-    let is_z_image =
-        lower.contains("z_image") || lower.contains("z-image") || lower.contains("z_img");
-
-    // The old code installed the Z-Image/FLUX VAE for every Stable Diffusion
-    // checkpoint as well. Apart from wasting a large download, that companion
-    // is the wrong architecture for SD 1.5/SDXL. Only Z-Image needs this
-    // automatic pair; other families are validated by `sd_engine` instead of
-    // silently receiving an incompatible VAE.
-    if !is_z_image {
-        return Ok(());
-    }
-
     let models_dir = locaryn_config::models_dir();
-
-    let companions: Vec<&Companion> = if is_z_image {
-        if heretic {
-            vec![&Z_IMAGE_VAE, &HERETIC_ENCODER]
-        } else {
-            vec![&Z_IMAGE_VAE, &Z_IMAGE_ENCODER]
-        }
-    } else {
-        vec![&Z_IMAGE_VAE]
-    };
+    let companions = image_companions_for(installed_file, heretic);
 
     for comp in companions {
         let dest = models_dir.join(comp.file);
         if dest.exists() {
+            let _ = std::fs::remove_file(dest.with_extension("part"));
             continue;
         }
         tracing::info!(
@@ -3524,16 +4112,34 @@ async fn install_image_companions(
             "installing image companion: {}",
             comp.label
         );
-        let _ = on_event.send(PullProgressEvent {
-            status: format!("Installation automatique : {} ({})", comp.label, comp.file),
-            completed: 0,
-            total: 0,
-            percentage: 0.0,
-        });
+        let expected = remote_content_length(&core.http, comp.url, hf_token).await;
+        if let Some(overall) = aggregate.as_deref_mut() {
+            overall.current_expected = expected;
+            send_aggregate_progress(
+                on_event,
+                overall,
+                format!("Installation automatique : {} ({})", comp.label, comp.file),
+            );
+        } else {
+            let _ = on_event.send(PullProgressEvent {
+                status: format!("Installation automatique : {} ({})", comp.label, comp.file),
+                completed: 0,
+                total: 0,
+                percentage: 0.0,
+            });
+        }
         let part = models_dir.join(format!("{}.part", comp.file));
         let cancel = tokio_util::sync::CancellationToken::new();
-        if let Err(e) = do_pull(
-            core, comp.url, comp.file, &dest, &part, on_event, &cancel, hf_token,
+        if let Err(e) = do_pull_with_aggregate(
+            core,
+            comp.url,
+            comp.file,
+            &dest,
+            &part,
+            on_event,
+            &cancel,
+            hf_token,
+            aggregate.as_deref_mut(),
         )
         .await
         {
@@ -7835,69 +8441,124 @@ pub(crate) fn probe_hardware() -> Result<HardwareSpec, String> {
 // Model management
 // ============================================================================
 
-#[tauri::command]
-async fn delete_model_cmd(
-    core: State<'_, Core>,
-    _endpoint: String,
-    model: String,
+fn is_model_weight_path(path: &std::path::Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let name = name.strip_suffix(".part").unwrap_or(name);
+    ["gguf", "safetensors", "onnx", "pth", "pt", "bin"]
+        .iter()
+        .any(|ext| name.to_ascii_lowercase().ends_with(&format!(".{ext}")))
+}
+
+/// Remove one model and all of its shards, without deleting another
+/// quantisation stored in the same repository directory. Partial files are
+/// included so a failed install can also be cleaned by the same command.
+fn delete_local_model_artifacts(
+    models_dir: &std::path::Path,
+    model: &str,
 ) -> Result<(), String> {
-    if let Some(client) = core.remote_client() {
-        if let Ok(_) = client.delete_model(&model).await {
-            return Ok(());
-        }
-    }
-    let models_dir = locaryn_config::models_dir();
-    let resolved = resolve_model_path(&models_dir, &model);
+    let direct = models_dir.join(model);
+    let resolved = if direct.exists() || direct.with_extension("part").exists() {
+        direct
+    } else {
+        resolve_model_path(models_dir, model)
+    };
 
     if resolved.is_dir() {
-        std::fs::remove_dir_all(&resolved).map_err(|e| e.to_string())?;
-        tracing::info!(model = %model, "deleted model directory");
-        return Ok(());
-    }
-    if resolved.is_file() {
-        std::fs::remove_file(&resolved).map_err(|e| e.to_string())?;
-        tracing::info!(model = %model, "deleted model file");
+        std::fs::remove_dir_all(&resolved).map_err(|e| {
+            format!("Impossible de supprimer le dossier modèle {} : {e}", resolved.display())
+        })?;
         return Ok(());
     }
 
-    // Fuzzy fallback: walk models_dir and match by exact or substring.
-    let cleaned = model
-        .split('/')
-        .last()
-        .unwrap_or(&model)
-        .split('\\')
-        .last()
-        .unwrap_or(&model);
-    let lower_tag = cleaned.to_lowercase();
-    let mut deleted_any = false;
-    if let Ok(entries) = std::fs::read_dir(&models_dir) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            // Try exact match first, then name-contains-tag.
-            if name.to_lowercase() == lower_tag || name.to_lowercase().contains(&lower_tag) {
-                if p.is_dir() {
-                    std::fs::remove_dir_all(&p)
-                        .map_err(|e| format!("Impossible de supprimer le dossier {name}: {e}"))?;
-                } else if p.is_file() {
-                    std::fs::remove_file(&p)
-                        .map_err(|e| format!("Impossible de supprimer le fichier {name}: {e}"))?;
-                } else {
-                    continue;
+    let mut targets: Vec<std::path::PathBuf> = Vec::new();
+    if resolved.is_file() || resolved.with_extension("part").is_file() {
+        targets.push(resolved.clone());
+    }
+
+    // The installed-model list exposes one representative shard as
+    // `repo/file`. Expand that identity to every shard of the same variant.
+    if let Ok(relative) = resolved.strip_prefix(models_dir) {
+        if let Some(first) = relative.components().next() {
+            let repo_dir = models_dir.join(first.as_os_str());
+            if repo_dir.is_dir() {
+                let relative_model = resolved
+                    .strip_prefix(&repo_dir)
+                    .unwrap_or(&resolved)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let model_key = relative_model.strip_suffix(".part").unwrap_or(&relative_model);
+                if is_model_weight_path(std::path::Path::new(model_key)) {
+                    let group = hf_shard_group(model_key);
+                    for file in walkdir_recursive(&repo_dir, 8) {
+                        if !file.is_file() || !is_model_weight_path(&file) {
+                            continue;
+                        }
+                        let rel = file
+                            .strip_prefix(&repo_dir)
+                            .unwrap_or(&file)
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        let clean = rel.strip_suffix(".part").unwrap_or(&rel);
+                        if hf_shard_group(clean) == group && !targets.contains(&file) {
+                            targets.push(file);
+                        }
+                    }
                 }
-                tracing::info!(model = %name, "deleted via fuzzy match");
-                deleted_any = true;
             }
         }
     }
 
-    if !deleted_any {
+    let mut deleted = false;
+    for target in targets {
+        if target.is_file() {
+            std::fs::remove_file(&target).map_err(|e| {
+                format!("Impossible de supprimer le fichier {} : {e}", target.display())
+            })?;
+            deleted = true;
+        }
+        let partial = target.with_extension("part");
+        if partial.is_file() {
+            std::fs::remove_file(&partial).map_err(|e| {
+                format!("Impossible de supprimer le fichier partiel {} : {e}", partial.display())
+            })?;
+            deleted = true;
+        }
+    }
+    if !deleted {
         return Err(format!(
             "Aucun modèle trouvé correspondant à '{}' dans {}",
             model,
             models_dir.display()
         ));
     }
+    if let Some(parent) = resolved.parent() {
+        remove_empty_parent_dirs(parent, models_dir);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_model_cmd(
+    core: State<'_, Core>,
+    _endpoint: String,
+    model: String,
+) -> Result<(), String> {
+    let model = model.trim().replace('\\', "/");
+    if model.is_empty() || model.starts_with('/') || model.contains("..") {
+        return Err("nom de modèle invalide".into());
+    }
+    if let Some(client) = core.remote_client() {
+        // In remote mode the server is authoritative. Do not silently fall
+        // back to deleting a similarly named local file when the server says
+        // deletion failed.
+        return client
+            .delete_model(&model)
+            .await
+            .map_err(|e| format!("suppression distante impossible : {e}"));
+    }
+    let models_dir = locaryn_config::models_dir();
+    delete_local_model_artifacts(&models_dir, &model)?;
+    tracing::info!(model = %model, "deleted model artifacts");
     Ok(())
 }
 
@@ -8798,6 +9459,7 @@ pub fn run() {
             update_project,
             free_chat_project,
             session_workspace,
+            append_chat_message,
             append_assistant_message,
             suggest_followups,
             plan_task,
@@ -8830,6 +9492,7 @@ pub fn run() {
             airllm::airllm_uninstall,
             airllm::configure_airllm_provider,
             list_models,
+            inspect_huggingface_repo,
             app_info,
             region_edit::edit_region,
             client_cert::client_certificate_status,
@@ -8934,6 +9597,7 @@ pub fn run() {
             extensions::list_extension_commands,
             extensions::resolve_extension_command,
             extensions::read_extension_asset,
+            extensions::invoke_extension_tool,
             extensions::browse_extension_catalog,
             extensions::refresh_extension_catalog,
             extensions::catalog_entry_details,
@@ -8987,8 +9651,9 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::summarise_python_error;
+    use super::{hf_candidate_variant, hf_quantization, hf_shard_group, summarise_python_error};
     use std::process::Command;
+    use uuid::Uuid;
 
     /// Une configuration sans `app.windows` compile, se lance, et n'affiche
     /// rien — c'est exactement ce qui est arrivé à l'application mobile en
@@ -9006,8 +9671,76 @@ mod tests {
         );
     }
 
+    #[test]
+    fn huggingface_shards_stay_one_variant_and_quantisations_stay_distinct() {
+        assert_eq!(
+            hf_shard_group("model-Q4_K_M-00001-of-00003.gguf"),
+            "model-Q4_K_M"
+        );
+        assert_eq!(
+            hf_shard_group("model-Q4_K_M-00003-of-00003.gguf"),
+            "model-Q4_K_M"
+        );
+        assert_ne!(
+            hf_shard_group("model-Q4_K_M.gguf"),
+            hf_shard_group("model-Q8_0.gguf")
+        );
+        assert_eq!(hf_quantization("model-Q3_K_M.gguf").as_deref(), Some("Q3_K_M"));
+        assert_eq!(
+            hf_candidate_variant("models/Champion-Inst-Q3_K_M.gguf", Some("Q3_K_M")),
+            "models/Champion-Inst"
+        );
+    }
+
     /// Real sd.cpp output: the bar redraws with carriage returns, so a whole
     /// render can arrive as a single line holding every step.
+    #[test]
+    fn failed_partial_downloads_are_removed_but_committed_files_stay() {
+        let path = std::env::temp_dir().join(format!("locaryn-partial-{}", Uuid::new_v4()));
+        std::fs::write(&path, b"partial").unwrap();
+        {
+            let _guard = super::PartialDownloadGuard::new(&path);
+        }
+        assert!(!path.exists(), "un téléchargement échoué ne doit pas laisser son .part");
+
+        std::fs::write(&path, b"complete").unwrap();
+        {
+            let mut guard = super::PartialDownloadGuard::new(&path);
+            guard.commit();
+        }
+        assert!(path.exists(), "un fichier validé ne doit pas être supprimé");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn supprimer_une_quantisation_supprime_tous_ses_shards_et_preserve_les_autres() {
+        let root = std::env::temp_dir().join(format!("locaryn-models-{}", Uuid::new_v4()));
+        let repo = root.join("author__repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        for file in [
+            "model-Q4_K_M-00001-of-00002.gguf",
+            "model-Q4_K_M-00002-of-00002.gguf",
+            "model-Q8_0.gguf",
+            "config.json",
+        ] {
+            std::fs::write(repo.join(file), b"model").unwrap();
+        }
+        std::fs::write(repo.join("model-Q4_K_M-00003-of-00002.gguf.part"), b"partial").unwrap();
+
+        super::delete_local_model_artifacts(
+            &root,
+            "author__repo/model-Q4_K_M-00001-of-00002.gguf",
+        )
+        .unwrap();
+
+        assert!(!repo.join("model-Q4_K_M-00001-of-00002.gguf").exists());
+        assert!(!repo.join("model-Q4_K_M-00002-of-00002.gguf").exists());
+        assert!(!repo.join("model-Q4_K_M-00003-of-00002.gguf.part").exists());
+        assert!(repo.join("model-Q8_0.gguf").exists());
+        assert!(repo.join("config.json").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn sd_progress_is_read_from_the_redrawn_bar() {
         let line = "[INFO ]   |=======>       | 1/7 - 17.40s/it  |==============>    | 2/7 - 7.16s/it                      |=====================>  | 3/7 - 6.15s/it";

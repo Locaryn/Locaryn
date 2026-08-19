@@ -142,6 +142,38 @@ pub async fn reload(core: &Core) -> Result<(), String> {
         for (name, entry) in &p.mcp {
             let scoped = format!("{}__{}", sanitize_server(&row.name), sanitize_server(name));
             let mut entry = entry.clone();
+            // Only generic extension paths are injected by the host. The
+            // extension owns the meaning of its private data, models and
+            // media directories; Locaryn must not know whether a plugin uses
+            // them for images, audio, video or another capability.
+            let extension_data_dir = locaryn_config::storage_root()
+                .join("extensions")
+                .join(sanitize_server(&row.name));
+            let _ = std::fs::create_dir_all(&extension_data_dir);
+            entry.env.insert(
+                "LOCARYN_DATA_DIR".to_string(),
+                locaryn_config::storage_root().display().to_string(),
+            );
+            entry.env.insert(
+                "LOCARYN_EXTENSION_DATA_DIR".to_string(),
+                extension_data_dir.display().to_string(),
+            );
+            entry.env.insert(
+                "LOCARYN_EXTENSION_MODELS_DIR".to_string(),
+                extension_data_dir.join("models").display().to_string(),
+            );
+            entry.env.insert(
+                "LOCARYN_EXTENSION_MEDIA_DIR".to_string(),
+                extension_data_dir.join("media").display().to_string(),
+            );
+            entry.env.insert(
+                "LOCARYN_PLUGIN_ROOT".to_string(),
+                p.root.display().to_string(),
+            );
+            entry.env.insert(
+                "LOCARYN_PLUGIN_BIN_DIR".to_string(),
+                p.root.join("bin").display().to_string(),
+            );
             entry.owner = Some(row.name.clone());
             desired.insert(scoped, entry);
         }
@@ -554,6 +586,38 @@ pub async fn read_extension_asset(
     }
 
     std::fs::read_to_string(&target).map_err(|e| format!("lecture asset impossible : {e}"))
+}
+
+/// Invoke an MCP tool exposed by an enabled extension. This is deliberately
+/// generic: the host does not know whether the tool generates an image,
+/// synthesizes audio, or performs another extension-owned operation.
+#[tauri::command]
+pub async fn invoke_extension_tool(
+    core: State<'_, Core>,
+    tool: String,
+    args: serde_json::Value,
+) -> Result<String, String> {
+    let clients: Vec<Arc<dyn McpClient>> = {
+        let running = core.mcp.running.read().await;
+        running.values().cloned().collect()
+    };
+    if clients.is_empty() {
+        return Err("aucune extension active n'expose de serveur MCP".into());
+    }
+    for client in clients {
+        let Ok(capabilities) = client.discover().await else {
+            continue;
+        };
+        if !capabilities.tools.iter().any(|entry| entry.name == tool) {
+            continue;
+        }
+        let value = client.invoke_tool(&tool, &args).await.map_err(|error| error.to_string())?;
+        return Ok(value
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| value.to_string()));
+    }
+    Err(format!("aucune extension active n'expose « {tool} »"))
 }
 
 #[tauri::command]

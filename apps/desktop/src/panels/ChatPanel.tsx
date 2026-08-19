@@ -1,10 +1,8 @@
 import { Icon, isIconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ImageGenPanel } from "../components/ImageGenPanel";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
-import { ImageIntentCard } from "../components/chat/ImageIntentCard";
 import { MessageBubble } from "../components/chat/MessageBubble";
 import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
@@ -15,9 +13,6 @@ import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import { FREE_CHAT_PATH } from "../lib/constants";
 import {
   type ConnectionMode,
-  type ExtensionComposerAction,
-  IMAGE_QUALITIES,
-  type ImageIntent,
   type ReasoningLevel,
   type Session,
   type StreamEvent,
@@ -28,12 +23,10 @@ import {
 } from "../lib/core";
 import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
-import { setImageResultHandler, startImageGeneration, toImageUrl } from "../lib/imageJobs";
 import { loadMediaObjectUrl } from "../lib/media";
 import { pluginBridge } from "../lib/pluginBridge";
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
-  type SlashAction,
   type SlashCommand,
   type SlashSuggestion,
   argToSize,
@@ -50,7 +43,6 @@ type ChatItem =
       role: "user" | "assistant";
       text: string;
       images?: string[];
-      imagePaths?: Array<string | undefined>;
     }
   | {
       id: string;
@@ -70,15 +62,7 @@ type ChatItem =
       output: string;
     }
   | { id: string; kind: "log"; text: string }
-  | {
-      id: string;
-      kind: "intent";
-      intent: ImageIntent;
-      model: string;
-      /** Original message, replayed as a normal turn when refused. */
-      original: string;
-      decided?: "accepted" | "refused";
-    };
+;
 
 type Attachment = { id: string; dataUrl: string; base64: string; name: string };
 type QueuedMessage = { id: string; text: string; attachments: Attachment[] };
@@ -100,8 +84,6 @@ type Props = {
   ephemeral?: boolean;
   ctxSize?: number;
   onOpenMarketplace?: () => void;
-  forceOpenImageGen?: boolean;
-  onImageGenClosed?: () => void;
   /** Home screen: create (and auto-name) a chat from the very first prompt. */
   onCreateSessionForPrompt?: (
     firstPrompt: string,
@@ -136,14 +118,6 @@ const SUGGESTIONS = [
 /** In "auto" mode, force JSON only when the prompt actually asks for it. */
 function wantsJson(prompt: string): boolean {
   return /\b(json|structur\w+|sch[ée]ma|format\w*\s+json|cl[ée]s?\/valeurs?)\b/i.test(prompt);
-}
-
-/** Cheap local guess: is this message plausibly asking for an image?
- *  Only then do we pay for a model round-trip to confirm and translate it. */
-function looksLikeImageRequest(text: string): boolean {
-  return /(image|photo|dessin|dessine|logo|ic[oô]ne|illustration|visuel|rendu|affiche|picture|draw|render)/i.test(
-    text,
-  );
 }
 
 /** Pull inline `![](…)` images out of a stored message so they render as
@@ -223,8 +197,6 @@ export function ChatPanel({
   ephemeral,
   ctxSize,
   onOpenMarketplace,
-  forceOpenImageGen,
-  onImageGenClosed,
   onCreateSessionForPrompt,
   onOpenSettings,
   onNewChat,
@@ -247,14 +219,10 @@ export function ChatPanel({
   const [activeModel, setActiveModel] = useState<string>("");
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [quickModelOpen, setQuickModelOpen] = useState(false);
-  const [imageGenOpen, setImageGenOpen] = useState(false);
   const [ragOpen, setRagOpen] = useState(false);
   /** Indexed chunk count — shown on the Documents chip so the feature is discoverable. */
   const [ragCount, setRagCount] = useState(0);
   const [isLocalModel, setIsLocalModel] = useState(true);
-  /** First installed diffusion checkpoint — used when a chat message is
-   *  routed to image generation. */
-  const [activeImageModel, setActiveImageModel] = useState("");
   /** Where the agent works: a local folder, an SSH server, a remote environment, or standalone. */
   const [workspace, setWorkspace] = useState<WorkspaceSelection>({
     kind: "none",
@@ -273,10 +241,7 @@ export function ChatPanel({
   // Commandes apportees par les plugins actifs. Rechargees au montage :
   // installer ou desactiver une extension change la palette sans redemarrage.
   const [extCommands, setExtCommands] = useState<SlashCommand[]>([]);
-  const [composerError, setComposerError] = useState<string | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
-  /** Resolution requested through a slash argument (e.g. "/image max"). */
-  const [slashSize, setSlashSize] = useState<number | null>(null);
   /** Set by /plan: the next message is executed as a step-by-step plan. */
   const [planNext, setPlanNext] = useState(false);
 
@@ -327,24 +292,6 @@ export function ChatPanel({
 
   useEffect(() => {
     refreshActiveModel();
-    core
-      .getModelPreferences()
-      .then((prefs) => {
-        if (prefs.image_model) {
-          setActiveImageModel(prefs.image_model);
-        } else {
-          core
-            .listImageModels()
-            .then((l) => setActiveImageModel(l[0] ?? ""))
-            .catch(() => {});
-        }
-      })
-      .catch(() => {
-        core
-          .listImageModels()
-          .then((l) => setActiveImageModel(l[0] ?? ""))
-          .catch(() => {});
-      });
   }, [refreshActiveModel]);
 
   // A chat inside a project works in that folder — reflect it in the picker.
@@ -443,33 +390,23 @@ export function ChatPanel({
     };
   }, [projectId, ragOpen]);
 
-  // Background image generations deliver their finished image into the chat
-  // they were requested from. It is also persisted (see imageJobs), so it is
-  // still there after switching chats; only append live if this chat is the one.
+  // Extensions can add assistant content (for example a generated artifact)
+  // through the generic plugin bridge. Persisted content is also inserted in
+  // the live stream so the user sees it without changing conversations.
   useEffect(() => {
-    setImageResultHandler((r) => {
-      if (r.sessionId && r.sessionId !== sessionId) return;
-      setItems((prev) => [
-        ...prev,
-        {
-          id: nextId("msg"),
-          kind: "msg",
-          role: "assistant",
-          text: `${r.simulated ? "(simulation) " : ""}Image générée — « ${r.prompt} »`,
-          images: [r.url],
-          imagePaths: [r.path],
-        },
-      ]);
-    });
-    return () => setImageResultHandler(null);
+    const onPluginMessage = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; content?: string }>).detail;
+      if (!detail?.content || (detail.sessionId && detail.sessionId !== sessionId)) return;
+      const parsed = storedMessageItems({
+        id: nextId("plugin-msg"),
+        role: "assistant",
+        content: detail.content,
+      });
+      if (parsed.length > 0) setItems((prev) => [...prev, ...parsed]);
+    };
+    window.addEventListener("locaryn:chat-message", onPluginMessage);
+    return () => window.removeEventListener("locaryn:chat-message", onPluginMessage);
   }, [sessionId]);
-
-  // External trigger to open image gen panel (from Marketplace / Installed views)
-  useEffect(() => {
-    if (forceOpenImageGen) {
-      setImageGenOpen(true);
-    }
-  }, [forceOpenImageGen]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -700,6 +637,20 @@ export function ChatPanel({
       return;
     }
 
+    // An extension may claim a composer message (for example an image plugin).
+    // It owns the follow-up UI and MCP call; the native agent must not also see it.
+    if (!textOverride && imgs.length === 0 && !text.startsWith("/")) {
+      try {
+        if (await pluginBridge.dispatchSubmit(text)) {
+          setInput("");
+          if (inputRef.current) inputRef.current.style.height = "auto";
+          return;
+        }
+      } catch {
+        // A broken plugin must never block the ordinary chat path.
+      }
+    }
+
     if (!textOverride) {
       setInput("");
       setAttachments([]);
@@ -716,32 +667,6 @@ export function ChatPanel({
       ...prev,
       { id: nextId("msg"), kind: "msg", role: "user", text, images: imgs.map((a) => a.dataUrl) },
     ]);
-
-    // A plain sentence like "je veux une image d'un chat" should reach the image
-    // generator, not the chat model. The local pre-filter avoids a model call on
-    // every message; the model then confirms and translates the prompt, and the
-    // user always gets the final say.
-    if (
-      !textOverride &&
-      text &&
-      !text.startsWith("/") &&
-      imgs.length === 0 &&
-      looksLikeImageRequest(text)
-    ) {
-      try {
-        const intent = await core.detectImageRequest(text);
-        if (intent.is_image && intent.english_prompt) {
-          setItems((prev) => [
-            ...prev,
-            { id: nextId("intent"), kind: "intent", intent, model: activeModel, original: text },
-          ]);
-          setStreaming(false);
-          return;
-        }
-      } catch {
-        // Detection unavailable — fall through to a normal answer.
-      }
-    }
 
     const t0 = Date.now();
 
@@ -934,15 +859,8 @@ export function ChatPanel({
     const raw = input.trim();
     setInput("");
     setSlash(null);
-    setSlashSize(size ?? null);
     if (inputRef.current) inputRef.current.style.height = "auto";
     switch (cmd.action) {
-      case "image":
-        setImageGenOpen(true);
-        break;
-      case "edit-image":
-        setImageGenOpen(true);
-        break;
       case "documents":
         if (projectId) setRagOpen(true);
         break;
@@ -1088,11 +1006,12 @@ export function ChatPanel({
       () => {
         if (canSend) sendRef.current();
       },
+      sessionId,
     );
     return () => {
       pluginBridge.unregisterChatContext();
     };
-  }, [input, canSend]);
+  }, [input, canSend, sessionId]);
 
   // Context calculations
   const usedTokens = items.reduce((acc, it) => {
@@ -1178,52 +1097,11 @@ export function ChatPanel({
                       role={it.role}
                       text={it.text}
                       images={it.images}
-                      imagePaths={it.imagePaths}
                       canEdit={i === lastUserIdx && !streaming}
                       onEdit={editLastUserMessage}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}
                     />
                   </div>
-                );
-              }
-              if (it.kind === "intent") {
-                return (
-                  <ImageIntentCard
-                    key={it.id}
-                    intent={it.intent}
-                    model={it.model}
-                    decided={it.decided}
-                    onAccept={(quality) => {
-                      const px = IMAGE_QUALITIES.find((q) => q.id === quality)?.px;
-                      setItems((prev) =>
-                        prev.map((x, j) =>
-                          j === i && x.kind === "intent" ? { ...x, decided: "accepted" } : x,
-                        ),
-                      );
-                      void (async () => {
-                        const info = await core
-                          .appInfo()
-                          .catch(() => ({ data_dir: "C:/Users/Public" }));
-                        startImageGeneration({
-                          model: activeImageModel || it.model,
-                          prompt: it.intent.english_prompt,
-                          outputDir: `${info.data_dir}/generated_images`,
-                          width: px,
-                          height: px,
-                          sessionId,
-                        });
-                      })();
-                    }}
-                    onRefuse={() => {
-                      setItems((prev) =>
-                        prev.map((x, j) =>
-                          j === i && x.kind === "intent" ? { ...x, decided: "refused" } : x,
-                        ),
-                      );
-                      // Answer the original message as a normal chat turn.
-                      send(it.original);
-                    }}
-                  />
                 );
               }
               if (it.kind === "audio") {
@@ -1468,15 +1346,6 @@ export function ChatPanel({
               <Icon name="models" size={15} /> Documents
               {ragCount > 0 && <span className="locaryn-chip-state">{ragCount}</span>}
             </button>
-            {composerError && (
-              <span
-                className="locaryn-composer-hint"
-                style={{ color: "var(--danger)", flex: "none" }}
-                title={composerError}
-              >
-                {composerError.length > 60 ? `${composerError.slice(0, 57)}…` : composerError}
-              </span>
-            )}
             <span className="locaryn-composer-hint">
               Entrée pour envoyer · Shift+Entrée pour saut de ligne
             </span>
@@ -1500,6 +1369,7 @@ export function ChatPanel({
 
           {/* Context gauge & In-Chat Model Quick Switcher Bar */}
           <div
+            className="locaryn-composer-model-row"
             style={{
               display: "flex",
               justifyContent: "space-between",
@@ -1513,6 +1383,7 @@ export function ChatPanel({
                 conversation — le badge le dit, à la place du sélecteur. */}
             {coreName ? (
               <span
+                className="locaryn-composer-core-badge"
                 style={{
                   fontSize: "11px",
                   display: "flex",
@@ -1529,13 +1400,15 @@ export function ChatPanel({
                 <span style={{ display: "inline-flex" }}>
                   <Icon name="extensions" size={14} />
                 </span>
-                <span style={{ fontWeight: 700 }}>Noyau : {coreName}</span>
+                <span className="locaryn-composer-model-label" style={{ fontWeight: 700 }}>
+                  Noyau : {coreName}
+                </span>
               </span>
             ) : (
               /* Model Quick Picker pill */
               <button
                 type="button"
-                className="locaryn-btn-ghost"
+                className="locaryn-btn-ghost locaryn-model-picker"
                 style={{
                   fontSize: "11px",
                   display: "flex",
@@ -1551,12 +1424,18 @@ export function ChatPanel({
                   refreshActiveModel();
                   setQuickModelOpen(true);
                 }}
-                title="Changer rapidement parmi vos modèles installés"
+                title={
+                  activeModel
+                    ? `Modèle actif : ${activeModel}`
+                    : "Choisir un modèle parmi ceux installés"
+                }
               >
                 <span style={{ display: "inline-flex" }}>
                   <Icon name={isLocalModel ? "cpu" : "cloud"} size={14} />
                 </span>
-                <span style={{ fontWeight: 700 }}>{activeModel || "Choisir un modèle"}</span>
+                <span className="locaryn-model-picker-label" style={{ fontWeight: 700 }}>
+                  {activeModel || "Choisir un modèle"}
+                </span>
                 <span style={{ fontSize: "9px", color: "var(--text-faint)" }}>▾</span>
               </button>
             )}
@@ -1581,40 +1460,6 @@ export function ChatPanel({
           </div>
         </div>
       </div>
-
-      {imageGenOpen && (
-        <ImageGenPanel
-          installedModels={installedModels}
-          sessionId={sessionId}
-          forcedSize={slashSize}
-          onClose={() => {
-            setImageGenOpen(false);
-            setSlashSize(null);
-            onImageGenClosed?.();
-          }}
-          onImageGenerated={(path) => {
-            const url = toImageUrl(path);
-            setItems((prev) => [
-              ...prev,
-              {
-                id: nextId("msg"),
-                kind: "msg",
-                role: "assistant",
-                text: `Image générée localement :\n\n![Image](${url})`,
-                images: [url],
-              },
-            ]);
-          }}
-          onInstallRequested={async (tag, consent) => {
-            const providers = await core.listProviders();
-            const active = providers.find((p) => p.is_active) ?? providers[0];
-            if (active) {
-              await core.pullModel(active.endpoint, tag, undefined, undefined, consent);
-              await refreshActiveModel();
-            }
-          }}
-        />
-      )}
 
       {ragOpen && projectId && <RagPanel projectId={projectId} onClose={() => setRagOpen(false)} />}
 

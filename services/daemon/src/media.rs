@@ -23,6 +23,80 @@ use tokio::io::AsyncWriteExt;
 
 use crate::DaemonState;
 
+fn is_chat_weight(path: &std::path::Path) -> bool {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if !ext.eq_ignore_ascii_case("gguf") && !ext.eq_ignore_ascii_case("safetensors") {
+        return false;
+    }
+    let name = path.to_string_lossy().to_ascii_lowercase();
+    !name.ends_with(".part")
+        && !name.ends_with(".tmp")
+        && ![
+            "diffusion",
+            "stable-diffusion",
+            "flux",
+            "vae",
+            "mmproj",
+            "text_encoder",
+            "text-encoder",
+            "clip",
+            "tts",
+            "kokoro",
+            "xtts",
+            "vocoder",
+            "musicgen",
+            "audio",
+            "embed",
+        ]
+        .iter()
+        .any(|part| name.contains(part))
+}
+
+fn is_model_weight_path(path: &std::path::Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let name = name.strip_suffix(".part").unwrap_or(name);
+    ["gguf", "safetensors", "onnx", "pth", "pt", "bin"]
+        .iter()
+        .any(|ext| name.to_ascii_lowercase().ends_with(&format!(".{ext}")))
+}
+
+fn model_shard_group(path: &str) -> String {
+    let lower = path.to_ascii_lowercase();
+    for marker in ["-of-", "_of_", "_of-"] {
+        if let Some(of_pos) = lower.find(marker) {
+            let mut start = of_pos;
+            while start > 0 && lower.as_bytes()[start - 1].is_ascii_digit() {
+                start -= 1;
+            }
+            if start < of_pos
+                && start > 0
+                && matches!(lower.as_bytes()[start - 1], b'-' | b'_' | b'.')
+            {
+                return path[..start - 1].to_string();
+            }
+        }
+    }
+    path.to_string()
+}
+
+fn walk_model_files(dir: &std::path::Path, depth: usize) -> Vec<std::path::PathBuf> {
+    if depth == 0 {
+        return Vec::new();
+    }
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                files.extend(walk_model_files(&path, depth - 1));
+            } else if path.is_file() {
+                files.push(path);
+            }
+        }
+    }
+    files
+}
+
 fn list_chat_models() -> Vec<String> {
     let models_dir = locaryn_config::models_dir();
     let mut names = Vec::new();
@@ -30,28 +104,56 @@ fn list_chat_models() -> Vec<String> {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if (ext.eq_ignore_ascii_case("gguf") || ext.eq_ignore_ascii_case("safetensors"))
-                        && !path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .is_some_and(|n| n.ends_with(".part") || n.ends_with(".tmp"))
-                    {
-                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                            names.push(name.to_string());
-                        }
-                    }
-                }
-            } else if path.is_dir() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if !name.starts_with('.') {
+                if is_chat_weight(&path) {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         names.push(name.to_string());
                     }
                 }
+                continue;
+            }
+            if !path.is_dir() {
+                continue;
+            }
+            let dir_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            if dir_name.starts_with('.') {
+                continue;
+            }
+            let mut groups: std::collections::HashMap<String, std::path::PathBuf> =
+                std::collections::HashMap::new();
+            for file in walk_model_files(&path, 5) {
+                if !is_chat_weight(&file) {
+                    continue;
+                }
+                let rel = file
+                    .strip_prefix(&path)
+                    .unwrap_or(&file)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let key = model_shard_group(&rel);
+                let replace = groups
+                    .get(&key)
+                    .map(|existing| rel.len() < existing.to_string_lossy().len())
+                    .unwrap_or(true);
+                if replace {
+                    groups.insert(key, file);
+                }
+            }
+            for file in groups.values() {
+                let rel = file
+                    .strip_prefix(&path)
+                    .unwrap_or(file)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                names.push(format!("{dir_name}/{rel}"));
             }
         }
     }
     names.sort();
+    names.dedup();
     names
 }
 
@@ -350,7 +452,7 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
         // Dépôt complet (TTS multi-fichiers : Kokoro, Qwen3…).
         ModelKind::Repo => {
             let dest_dir = models_dir.join(&file_name);
-            if dest_dir.exists() && dest_dir.is_dir() {
+            if body.selection.is_none() && dest_dir.exists() && dest_dir.is_dir() {
                 return (
                     StatusCode::CONFLICT,
                     Json(serde_json::json!({
@@ -361,6 +463,15 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
             }
             match list_repo_files(&client, &url).await {
                 Ok((repo_id, fichiers)) => {
+                    let fichiers = match body.selection.as_ref() {
+                        Some(choice) => match select_repo_files(&repo_id, fichiers, choice) {
+                            Ok(files) => files,
+                            Err(msg) => {
+                                return err_response(StatusCode::BAD_REQUEST, "bad_request", &msg);
+                            }
+                        },
+                        None => fichiers,
+                    };
                     let total: u64 = fichiers.iter().map(|(_, s)| s).sum();
                     (
                         Preparé::Depot {
@@ -380,6 +491,7 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
         ModelKind::File => {
             let dest = models_dir.join(&file_name);
             if dest.exists() {
+                let _ = std::fs::remove_file(dest.with_extension("part"));
                 return (
                     StatusCode::CONFLICT,
                     Json(serde_json::json!({
@@ -393,7 +505,10 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
             // d'image comptent dans le même total, pour que 100 % veuille
             // vraiment dire « tout est là ».
             let mut total = head_length(&client, &url).await.unwrap_or(0);
-            let compagnons = companions_for(&file_name);
+            let compagnons: Vec<Companion> = companions_for(&file_name)
+                .into_iter()
+                .filter(|comp| !models_dir.join(comp.file).exists())
+                .collect();
             for comp in &compagnons {
                 total += head_length(&client, comp.url).await.unwrap_or(0);
             }
@@ -469,6 +584,72 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
     sse.into_response()
 }
 
+/// Remove one local model identity and every shard belonging to that variant.
+/// Other quantisations in the same repository directory stay untouched.
+fn remove_model_artifacts(name: &str) -> Result<(), String> {
+    let models_dir = locaryn_config::models_dir();
+    let path = models_dir.join(name);
+    let partial = path.with_extension("part");
+    let mut targets = Vec::new();
+    if path.is_file() || partial.is_file() {
+        targets.push(path.clone());
+    }
+
+    if let Ok(relative) = path.strip_prefix(&models_dir) {
+        if let Some(first) = relative.components().next() {
+            let repo_dir = models_dir.join(first.as_os_str());
+            if repo_dir.is_dir() {
+                let relative_model = path
+                    .strip_prefix(&repo_dir)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let model_key = relative_model.strip_suffix(".part").unwrap_or(&relative_model);
+                if is_model_weight_path(std::path::Path::new(model_key)) {
+                    let group = model_shard_group(model_key);
+                    for file in walk_model_files(&repo_dir, 8) {
+                        if !file.is_file() || !is_model_weight_path(&file) {
+                            continue;
+                        }
+                        let rel = file
+                            .strip_prefix(&repo_dir)
+                            .unwrap_or(&file)
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        let clean = rel.strip_suffix(".part").unwrap_or(&rel);
+                        if model_shard_group(clean) == group && !targets.contains(&file) {
+                            targets.push(file);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut deleted = false;
+    for target in targets {
+        if target.is_file() {
+            std::fs::remove_file(&target)
+                .map_err(|e| format!("suppression de {} impossible : {e}", target.display()))?;
+            deleted = true;
+        }
+        let target_part = target.with_extension("part");
+        if target_part.is_file() {
+            std::fs::remove_file(&target_part).map_err(|e| {
+                format!("suppression du fichier partiel {} impossible : {e}", target_part.display())
+            })?;
+            deleted = true;
+        }
+    }
+    if !deleted {
+        return Err(format!("{name} n'est pas installé sur ce serveur."));
+    }
+    if let Some(parent) = path.parent() {
+        remove_empty_parent_dirs(parent, &models_dir);
+    }
+    Ok(())
+}
+
 /// DELETE /v1/models/{name} — retirer un modèle installé du serveur.
 ///
 /// Un fichier unique (`.gguf`, `.onnx`…) est effacé ; un dépôt HuggingFace
@@ -476,7 +657,7 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
 /// sont pas touchés : plusieurs modèles les partagent, et retirer un modèle
 /// ne doit pas en casser un autre.
 pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>) -> Response {
-    let name = name.trim().to_string();
+    let name = name.trim().replace('\\', "/");
     if !nom_modele_valide(&name) {
         return err_response(
             StatusCode::BAD_REQUEST,
@@ -484,9 +665,16 @@ pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>
             "Nom de modèle invalide.",
         );
     }
-    let path = locaryn_config::models_dir().join(&name);
+    let models_dir = locaryn_config::models_dir();
+    let path = models_dir.join(&name);
     let meta = match tokio::fs::symlink_metadata(&path).await {
         Ok(m) => m,
+        Err(_) if path.with_extension("part").is_file() => {
+            match remove_model_artifacts(&name) {
+                Ok(()) => return Json(serde_json::json!({ "removed": name })).into_response(),
+                Err(e) => return err_response(StatusCode::NOT_FOUND, "not_found", &e),
+            }
+        }
         Err(_) => {
             return err_response(
                 StatusCode::NOT_FOUND,
@@ -497,29 +685,32 @@ pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>
     };
     // Un lien symbolique est effacé comme tel, jamais suivi : on ne peut pas
     // faire sortir le retrait du dossier des modèles par un détour.
-    let resultat = if meta.file_type().is_dir() {
-        tokio::fs::remove_dir_all(&path).await
-    } else {
-        tokio::fs::remove_file(&path).await
-    };
-    match resultat {
+    if meta.file_type().is_dir() {
+        return match tokio::fs::remove_dir_all(&path).await {
+            Ok(()) => Json(serde_json::json!({ "removed": name })).into_response(),
+            Err(e) => err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "remove_failed",
+                &format!("Impossible de retirer {name} : {e}"),
+            ),
+        };
+    }
+    match remove_model_artifacts(&name) {
         Ok(()) => Json(serde_json::json!({ "removed": name })).into_response(),
-        Err(e) => err_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "remove_failed",
-            &format!("Impossible de retirer {name} : {e}"),
-        ),
+        Err(e) => err_response(StatusCode::NOT_FOUND, "not_found", &e),
     }
 }
 
 /// Un nom de modèle est-il sûr à utiliser comme chemin, sans sortir du
-/// dossier des modèles ? Ni séparateur, ni remontée, ni fichier caché.
+/// dossier des modèles ? Les sous-chemins `repo/variant.gguf` sont autorisés
+/// pour pouvoir supprimer une quantisation précise d'un dépôt multi-modèles.
 fn nom_modele_valide(name: &str) -> bool {
     !name.is_empty()
-        && !name.starts_with('.')
-        && !name.contains('/')
+        && !name.starts_with('/')
         && !name.contains('\\')
-        && !name.contains("..")
+        && name.split('/').all(|part| {
+            !part.is_empty() && part != "." && part != ".." && !part.starts_with('.')
+        })
 }
 
 /// Ce qu'il faut télécharger, une fois l'adresse acceptée.
@@ -554,6 +745,48 @@ struct PullProgress {
     total: AtomicU64,
     fait: AtomicU64,
     prochain_seuil: AtomicU64,
+}
+
+/// A partial file is not an installed model. Remove it on every failed or
+/// cancelled download; only the final rename makes the guard commit.
+struct PartialDownloadGuard {
+    path: std::path::PathBuf,
+    committed: bool,
+}
+
+impl PartialDownloadGuard {
+    fn new(path: &std::path::Path) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            committed: false,
+        }
+    }
+
+    fn commit(&mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for PartialDownloadGuard {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+fn remove_empty_parent_dirs(start: &std::path::Path, stop: &std::path::Path) {
+    let mut current = start.to_path_buf();
+    while current.starts_with(stop) && current != stop {
+        let empty = std::fs::read_dir(&current)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false);
+        if !empty || std::fs::remove_dir(&current).is_err() {
+            break;
+        }
+        let Some(parent) = current.parent() else { break };
+        current = parent.to_path_buf();
+    }
 }
 
 impl PullProgress {
@@ -640,6 +873,55 @@ async fn head_length(client: &reqwest::Client, url: &str) -> Option<u64> {
         .and_then(|r| r.content_length())
 }
 
+/// Keep only the model files selected in the desktop selector, plus its small
+/// tokenizer/config support files. The server rechecks the tree so a stale UI
+/// cannot make it download a different path (or a whole repository).
+fn select_repo_files(
+    repo_id: &str,
+    available: Vec<(String, u64)>,
+    choice: &serde_json::Value,
+) -> Result<Vec<(String, u64)>, String> {
+    let selected_repo = choice
+        .get("repo")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches("https://huggingface.co/")
+        .trim_start_matches("hf.co/")
+        .trim_end_matches('/')
+        .to_string();
+    if selected_repo != repo_id {
+        return Err("La variante sélectionnée ne vient pas de ce dépôt HuggingFace.".into());
+    }
+    let mut paths = Vec::new();
+    for key in ["files", "support_files"] {
+        if let Some(items) = choice.get(key).and_then(|value| value.as_array()) {
+            for item in items {
+                let path = item
+                    .as_str()
+                    .ok_or_else(|| "Chemin de variante HuggingFace invalide.".to_string())?;
+                if path.is_empty() || path.starts_with('/') || path.contains("..") || path.contains('\\') {
+                    return Err("Chemin de variante HuggingFace invalide.".into());
+                }
+                paths.push(path.to_string());
+            }
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    if paths.is_empty() {
+        return Err("La variante HuggingFace ne contient aucun fichier.".into());
+    }
+    let mut result = Vec::with_capacity(paths.len());
+    for path in paths {
+        let Some((_, size)) = available.iter().find(|(candidate, _)| candidate == &path) else {
+            return Err(format!("Le fichier sélectionné n'existe plus dans le dépôt : {path}"));
+        };
+        result.push((path, *size));
+    }
+    Ok(result)
+}
+
 /// Ce qu'on peut installer : un fichier unique, ou un dépôt HuggingFace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModelKind {
@@ -655,6 +937,10 @@ pub struct PullBody {
     pub name: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    /// Optional candidate selected after inspecting a multi-variant HF repo.
+    /// Without it, legacy callers may still request a complete repository.
+    #[serde(default)]
+    pub selection: Option<serde_json::Value>,
 }
 
 /// Décider de ce que désigne une adresse, et du nom sous lequel le modèle
@@ -745,6 +1031,7 @@ async fn download_to(
     part: &std::path::Path,
     progress: &PullProgress,
 ) -> Result<u64, String> {
+    let mut partial_cleanup = PartialDownloadGuard::new(part);
     let resp = client
         .get(url)
         .send()
@@ -773,6 +1060,7 @@ async fn download_to(
     out.flush().await.map_err(|e| format!("écriture : {e}"))?;
     drop(out);
     std::fs::rename(part, dest).map_err(|e| format!("finalisation : {e}"))?;
+    partial_cleanup.commit();
     Ok(total)
 }
 
@@ -825,7 +1113,12 @@ async fn list_repo_files(
             Some((path, size))
         })
         .filter(|(p, _)| {
-            !p.starts_with("eval/") && !p.starts_with("samples/") && p != ".gitattributes"
+            !p.starts_with("/")
+                && !p.contains("..")
+                && !p.contains('\\')
+                && !p.starts_with("eval/")
+                && !p.starts_with("samples/")
+                && p != ".gitattributes"
         })
         .collect();
     if fichiers.is_empty() {
@@ -848,22 +1141,52 @@ async fn pull_repo_files(
         .user_agent("locaryn-daemon")
         .build()
         .map_err(|e| format!("client : {e}"))?;
-    let mut total: u64 = 0;
-    for (i, (path, _)) in fichiers.iter().enumerate() {
-        let out = dest_dir.join(path);
-        if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("dossier : {e}"))?;
+    let models_dir = locaryn_config::models_dir();
+    let mut created_files: Vec<std::path::PathBuf> = Vec::new();
+    let result = async {
+        let mut total: u64 = 0;
+        for (i, (path, expected_size)) in fichiers.iter().enumerate() {
+            let out = dest_dir.join(path);
+            let part = out.with_extension("part");
+            let existed = out.exists();
+            if let Some(parent) = out.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("dossier : {e}"))?;
+            }
+            progress.noter(&format!("Fichier {}/{}…", i + 1, fichiers.len()));
+            tracing::info!(file = %path, position = i + 1, total = fichiers.len(), "dépôt HuggingFace");
+            let dl = format!("https://huggingface.co/{repo_id}/resolve/main/{path}");
+            if existed {
+                // A completed model never needs a stale resume marker left by
+                // an earlier crash.
+                let _ = std::fs::remove_file(&part);
+                total = total.saturating_add(*expected_size);
+                continue;
+            }
+            match download_to(&dl_client, &dl, &out, &part, progress).await {
+                Ok(n) => {
+                    total += n;
+                    if !existed {
+                        created_files.push(out);
+                    }
+                }
+                Err(e) => return Err(format!("{path} : {e}")),
+            }
         }
-        progress.noter(&format!("Fichier {}/{}…", i + 1, fichiers.len()));
-        tracing::info!(file = %path, position = i + 1, total = fichiers.len(), "dépôt HuggingFace");
-        let dl = format!("https://huggingface.co/{repo_id}/resolve/main/{path}");
-        let part = out.with_extension("part");
-        match download_to(&dl_client, &dl, &out, &part, progress).await {
-            Ok(n) => total += n,
-            Err(e) => return Err(format!("{path} : {e}")),
-        }
+        Ok::<u64, String>(total)
     }
-    Ok(total)
+    .await;
+
+    if let Err(error) = result {
+        // A repository install is one transaction from the user's point of
+        // view. Remove files completed by this attempt, but preserve files
+        // belonging to another already-installed variant in the same repo.
+        for file in &created_files {
+            let _ = std::fs::remove_file(file);
+        }
+        remove_empty_parent_dirs(dest_dir, &models_dir);
+        return Err(error);
+    }
+    result
 }
 
 /// Les poids compagnons qu'un checkpoint d'image exige pour générer.
@@ -915,6 +1238,7 @@ async fn install_image_companions(
     for comp in compagnons {
         let dest = models_dir.join(comp.file);
         if dest.exists() {
+            let _ = std::fs::remove_file(dest.with_extension("part"));
             continue;
         }
         progress.noter(&format!("Compagnon : {}…", comp.label));
@@ -970,12 +1294,50 @@ mod tests {
     }
 
     #[test]
-    fn les_noms_de_modèles_restent_dans_le_dossier() {
+    fn les_variantes_et_les_shards_restent_distincts() {
+        assert_eq!(
+            model_shard_group("model-Q4_K_M-00002-of-00003.gguf"),
+            "model-Q4_K_M"
+        );
+        assert_ne!(
+            model_shard_group("model-Q4_K_M.gguf"),
+            model_shard_group("model-Q8_0.gguf")
+        );
+    }
+
+    #[test]
+    fn les_fichiers_partiels_sont_supprimes_si_le_telechargement_echoue() {
+        let path = std::env::temp_dir().join(format!(
+            "locaryn-daemon-part-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"partial").unwrap();
+        {
+            let _guard = super::PartialDownloadGuard::new(&path);
+        }
+        assert!(!path.exists());
+
+        std::fs::write(&path, b"complete").unwrap();
+        {
+            let mut guard = super::PartialDownloadGuard::new(&path);
+            guard.commit();
+        }
+        assert!(path.exists());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn les_noms_de_modeles_restent_dans_le_dossier() {
         assert!(nom_modele_valide("z_image_turbo-Q8_0.gguf"));
         assert!(nom_modele_valide("hexgrad__Kokoro-82M"));
-        // Jamais de remontée, de séparateur ou de fichier caché.
+        assert!(nom_modele_valide("hexgrad__repo/model-Q4_K_M.gguf"));
+        // Les sous-chemins sont nécessaires pour supprimer une variante ; les
+        // remontées, fichiers cachés et séparateurs Windows restent interdits.
         assert!(!nom_modele_valide("../secret.gguf"));
-        assert!(!nom_modele_valide("a/b.gguf"));
+        assert!(!nom_modele_valide("a/../b.gguf"));
         assert!(!nom_modele_valide("a\\b.gguf"));
         assert!(!nom_modele_valide(".cache"));
         assert!(!nom_modele_valide(""));

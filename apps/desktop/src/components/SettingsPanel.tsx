@@ -2,7 +2,6 @@ import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import { type AppInfo, core } from "../lib/core";
-import { IMAGE_GEN_MODELS } from "../lib/modelRegistry";
 import { ModelBrowser } from "./ModelBrowser";
 import { PerformancePanel } from "./PerformancePanel";
 
@@ -127,12 +126,6 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
       if (!models.includes(tag)) {
         await core.pullModel(endpoint.trim(), tag, undefined, undefined, consent);
         await refreshModels();
-      }
-      // If it's an image gen model (tag starts with x/ or is in IMAGE_GEN_MODELS), we just install it.
-      // We don't want to set it as the active LLM text model.
-      const isImage = IMAGE_GEN_MODELS.some((f) => f.variants.some((v) => v.tag === tag));
-      if (tag.startsWith("x/") || isImage) {
-        return;
       }
       setModel(tag);
       await core.configureProvider(endpoint.trim(), tag);

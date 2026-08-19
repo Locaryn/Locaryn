@@ -1,10 +1,10 @@
 {
-  "version": "0.3.17",
+  "version": "0.3.18",
   "pub_date": "2026-08-19T00:00:00Z",
-  "notes": "Locaryn v0.3.17 - le bouton retour d'Android ferme les menus et les fenêtres au lieu de quitter l'application (tiroir, menu, modales, catégories de réglages), « Chat et agent » retiré du menu (l'accueil est déjà le chat), historique des conversations déplacé dans Compte (téléphone et bureau), notifications push réparées sur Android 13+ (permission manquante), synchronisation plus rapide (tiroir relu à l'ouverture, fil toutes les 3 s)",
+  "notes": "Locaryn v0.3.18 - titre de la conversation active affiché dans la barre supérieure, progression agrégée des téléchargements multi-fichiers, nettoyage des téléchargements échoués et sélection des variantes Hugging Face.",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.17/Locaryn_0.3.17_x64-setup.exe",
+      "url": "https://github.com/Locaryn/Locaryn/releases/download/v0.3.18/Locaryn_0.3.18_x64-setup.exe",
       "signature": ""
     }
   }

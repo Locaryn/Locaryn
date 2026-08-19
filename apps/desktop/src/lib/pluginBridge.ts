@@ -1,3 +1,4 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { core } from "./core";
 
 /**
@@ -11,6 +12,15 @@ export interface LocarynPluginAPI {
     setText: (text: string) => void;
     insertText: (text: string) => void;
     submit: () => void;
+    getSessionId: () => string | null;
+    appendMessage: (role: "user" | "assistant", content: string) => Promise<void>;
+    appendAssistantMessage: (content: string) => Promise<void>;
+    /** Let an extension consume a composer message before the native agent. */
+    onSubmit: (handler: (text: string) => boolean | Promise<boolean>) => () => void;
+  };
+  files: {
+    /** Convert a host-owned path to a URL usable by an extension web component. */
+    assetUrl: (path: string) => string;
   };
   audio: {
     isRecordingSupported: () => boolean;
@@ -32,6 +42,8 @@ class PluginBridgeManager {
   private currentInputGetter: (() => string) | null = null;
   private currentInputSetter: ((text: string) => void) | null = null;
   private currentSubmitter: (() => void) | null = null;
+  private currentSessionId: string | null = null;
+  private submitHandlers = new Set<(text: string) => boolean | Promise<boolean>>();
   private eventListeners: Map<string, Set<(data: unknown) => void>> = new Map();
 
   constructor() {
@@ -42,16 +54,30 @@ class PluginBridgeManager {
     getText: () => string,
     setText: (text: string) => void,
     submit: () => void,
+    sessionId: string | null = null,
   ) {
     this.currentInputGetter = getText;
     this.currentInputSetter = setText;
     this.currentSubmitter = submit;
+    this.currentSessionId = sessionId;
   }
 
   public unregisterChatContext() {
     this.currentInputGetter = null;
     this.currentInputSetter = null;
     this.currentSubmitter = null;
+    this.currentSessionId = null;
+  }
+
+  public async dispatchSubmit(text: string): Promise<boolean> {
+    for (const handler of [...this.submitHandlers]) {
+      try {
+        if (await handler(text)) return true;
+      } catch (error) {
+        console.error("[Locaryn Plugin Bridge] submit handler failed:", error);
+      }
+    }
+    return false;
   }
 
   private setupGlobalAPI() {
@@ -74,6 +100,37 @@ class PluginBridgeManager {
         submit: () => {
           this.currentSubmitter?.();
         },
+        getSessionId: () => this.currentSessionId,
+        appendMessage: async (role: "user" | "assistant", content: string) => {
+          const sessionId = this.currentSessionId;
+          if (!sessionId) throw new Error("Aucune conversation active.");
+          await core.appendChatMessage(sessionId, role, content);
+          window.dispatchEvent(
+            new CustomEvent("locaryn:chat-message", {
+              detail: { sessionId, role, content },
+            }),
+          );
+        },
+        appendAssistantMessage: async (content: string) => {
+          const sessionId = this.currentSessionId;
+          if (!sessionId) throw new Error("Aucune conversation active.");
+          await core.appendAssistantMessage(sessionId, content);
+          window.dispatchEvent(
+            new CustomEvent("locaryn:chat-message", {
+              detail: { sessionId, role: "assistant", content },
+            }),
+          );
+        },
+        onSubmit: (handler: (text: string) => boolean | Promise<boolean>) => {
+          this.submitHandlers.add(handler);
+          return () => this.submitHandlers.delete(handler);
+        },
+      },
+      files: {
+        assetUrl: (path: string) => {
+          if (path.startsWith("data:") || /^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return path;
+          return convertFileSrc(path.replace(/\\/g, "/"));
+        },
       },
       audio: {
         isRecordingSupported: () => {
@@ -88,8 +145,17 @@ class PluginBridgeManager {
       },
       tools: {
         invoke: async (toolName: string, input: string | Record<string, unknown>) => {
-          const raw = typeof input === "string" ? input : JSON.stringify(input);
-          return core.runComposerTool(toolName, raw);
+          const args =
+            typeof input === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(input) as Record<string, unknown>;
+                  } catch {
+                    return { text: input };
+                  }
+                })()
+              : input;
+          return core.invokeExtensionTool(toolName, args);
         },
       },
       ui: {

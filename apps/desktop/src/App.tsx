@@ -16,6 +16,7 @@ import { TopBar } from "./components/TopBar";
 import { useTheme } from "./hooks/useTheme";
 import { FREE_CHAT_PATH } from "./lib/constants";
 import {
+  type HfModelSelection,
   type Health,
   type InstalledExtension,
   type Project,
@@ -112,7 +113,6 @@ export function App() {
     return () => setRunReveal(null);
   }, []);
   const [showBottom, setShowBottom] = useState(false);
-  const [showImageGen, setShowImageGen] = useState(false);
   /** Chat governance dialog (the shield button in the top bar). */
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   /** Project whose settings dialog is open (from the sidebar menu). */
@@ -310,9 +310,7 @@ export function App() {
       const p = await core.listProviders();
       const active = p.find((pr) => pr.is_active) ?? p[0];
       const chatModels = active ? await core.listModels(active.endpoint).catch(() => []) : [];
-      const imageModels = await core.listImageModels().catch(() => []);
-      const allInstalled = Array.from(new Set([...chatModels, ...imageModels]));
-      setInstalledModels(allInstalled);
+      setInstalledModels(chatModels);
     } catch {
       setInstalledModels([]);
     }
@@ -557,9 +555,7 @@ export function App() {
               setSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
             }
           }
-          if (activeSession?.id === s.id) {
-            setActiveSession(newS);
-          }
+          setActiveSession((current) => (current?.id === s.id ? newS : current));
         })
         .catch((e) => {
           console.warn("Title generation failed:", e);
@@ -587,6 +583,7 @@ export function App() {
     onProgress?: (pct: number) => void,
     heretic?: boolean,
     consent?: boolean,
+    selection?: HfModelSelection,
   ) {
     const p = await core.listProviders();
     const active = p.find((pr) => pr.is_active) ?? p[0];
@@ -612,6 +609,7 @@ export function App() {
         },
         heretic,
         consent,
+        selection,
       );
       setDownloadProgress({ tag, progress: 100, status: "Téléchargement terminé" });
       taskCenter.done(taskId);
@@ -641,15 +639,24 @@ export function App() {
     const p = await core.listProviders();
     const active = p.find((pr) => pr.is_active) ?? p[0];
     if (active) {
+      let deleted = false;
       try {
         await core.deleteModel(active.endpoint, tag);
+        deleted = true;
       } catch (e) {
+        const message = String(e).replace(/^Error:\s*/, "");
         console.error("Delete failed", e);
+        window.alert(`Suppression impossible : ${message}`);
+      }
+
+      if (!deleted) {
+        await refreshHealth();
+        return;
       }
 
       if (health?.active_provider?.model === tag) {
         const remaining = installedModels.filter((m) => m !== tag);
-        await core.configureProvider(active.endpoint, remaining[0]);
+        await core.configureProvider(active.endpoint, remaining[0] ?? null);
       }
 
       await refreshHealth();
@@ -758,7 +765,9 @@ export function App() {
         onSelectView={(v) => setActiveView(v)}
         mode={health?.mode ?? "local"}
         demo={health?.version.includes("demo") ?? false}
-        project={activeProject?.name ?? "syncho"}
+        conversationTitle={
+          activeSession?.ephemeral ? "Conversation éphémère" : (activeSession?.title ?? null)
+        }
         provider={health?.active_provider ?? null}
         showPreview={showPreview}
         showBottom={showBottom}
@@ -1010,8 +1019,6 @@ export function App() {
             }}
             onAddSsh={() => setActiveView("connectors")}
             onOpenMarketplace={() => setActiveView("models")}
-            forceOpenImageGen={showImageGen}
-            onImageGenClosed={() => setShowImageGen(false)}
             activeCapabilities={activeCapabilities}
           />
         )}
@@ -1043,12 +1050,6 @@ export function App() {
                 setActiveView("chat");
                 refreshHealth();
               }}
-              onOpenImageGen={() => {
-                setActiveView("chat");
-                // Le ChatPanel ouvrira le panneau image via son état interne
-                // On passe par le state global imageGenOpen
-                setTimeout(() => setShowImageGen(true), 50);
-              }}
               onLaunchAirllm={async (repo) => {
                 try {
                   await core.configureAirllmProvider(repo);
@@ -1076,13 +1077,8 @@ export function App() {
               setActiveView("chat");
               refreshHealth();
             }}
-            onOpenImageGen={() => {
-              setActiveView("chat");
-              setTimeout(() => setShowImageGen(true), 50);
-            }}
             onDeleteModel={handleDeleteModel}
             onOpenMarketplace={() => setActiveView("models")}
-            activeCapabilities={activeCapabilities}
           />
         )}
 
@@ -1117,24 +1113,8 @@ export function App() {
         {activeView === "studio" && (
           <StudioView
             installedModels={installedModels}
-            installedImageModels={installedModels}
             extensions={activeExtensions}
-            onOpenImageGen={() => {
-              setActiveView("chat");
-              setShowImageGen(true);
-            }}
             onCloseAudioGen={() => setActiveView("chat")}
-            onSendImageToChat={async (url, label) => {
-              // Append the image to the active chat session, then switch to chat view.
-              if (activeSession) {
-                try {
-                  await core.appendAssistantMessage(activeSession.id, `${label}\n\n![](${url})`);
-                } catch (e) {
-                  console.warn("Failed to append image message:", e);
-                }
-              }
-              setActiveView("chat");
-            }}
           />
         )}
 
@@ -1283,6 +1263,7 @@ export function App() {
           <ModelResidency />
         </div>
         <div
+          className="locaryn-footer-actions"
           style={{
             display: "flex",
             gap: "10px",
@@ -1293,7 +1274,10 @@ export function App() {
         >
           {downloadProgress && (
             <>
-              <span className="locaryn-footer-text">
+              <span
+                className="locaryn-footer-text"
+                title={downloadProgress.status ?? `Téléchargement de ${downloadProgress.tag}`}
+              >
                 {downloadProgress.status
                   ? `${downloadProgress.status} (${downloadProgress.progress} %)`
                   : `Téléchargement de ${downloadProgress.tag} — ${downloadProgress.progress} %`}
@@ -1321,12 +1305,7 @@ export function App() {
             </>
           )}
           {/* Notification center — always visible (downloads, generations, workflows). */}
-          <TaskCenter
-            onReopenImageGen={() => {
-              setActiveView("chat");
-              setTimeout(() => setShowImageGen(true), 50);
-            }}
-          />
+          <TaskCenter />
         </div>
       </footer>
     </div>

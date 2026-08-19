@@ -1,6 +1,14 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type ModelMetric, core } from "../lib/core";
+import {
+  formatBytes,
+  getHfToken,
+  type HfModelCandidate,
+  type HfModelSelection,
+  type HfRepoInspection,
+  type ModelMetric,
+  core,
+} from "../lib/core";
 import {
   MODEL_CATEGORIES,
   type ModelCategory,
@@ -11,7 +19,6 @@ import {
   fetchHuggingFaceModels,
   fetchHuggingFaceTTSModels,
   isCloudOnlyFamily,
-  looksLikeImageModel,
 } from "../lib/modelRegistry";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { HardwareBenchmarkModal } from "./HardwareBenchmarkModal";
@@ -26,6 +33,7 @@ type Props = {
     onProgress?: (pct: number) => void,
     heretic?: boolean,
     consent?: boolean,
+    selection?: HfModelSelection,
   ) => Promise<void> | void;
   /** Cancel an active model download in progress. */
   onCancelInstall?: () => Promise<void> | void;
@@ -37,8 +45,6 @@ type Props = {
   onOpenTraining?: () => void;
   /** Select an installed model for Chat view. */
   onSelectModelForChat?: (tag: string) => void;
-  /** Open ImageGen modal. */
-  onOpenImageGen?: () => void;
   /** Launch an AirLLM model: activates the AirLlm provider and opens Chat. */
   onLaunchAirllm?: (repo: string) => void;
   /** Active extension capabilities currently installed/enabled. */
@@ -300,7 +306,7 @@ function fmtTokPerSec(t: number): string {
   return t >= 10 ? `${Math.round(t)} tok/s` : `${t.toFixed(1)} tok/s`;
 }
 
-function isVariantInstalled(tag: string, installedSet: Set<string>): boolean {
+function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?: string): boolean {
   if (!tag) return false;
   if (installedSet.has(tag)) return true;
   if (installedSet.has(`${tag}:latest`)) return true;
@@ -312,8 +318,14 @@ function isVariantInstalled(tag: string, installedSet: Set<string>): boolean {
     const repoPart = tag.replace("https://huggingface.co/", "").replace(/\/+$/, "");
     const dirName = repoPart.replace("/", "__");
     if (installedSet.has(dirName)) return true;
-    for (const inst of installedSet) {
-      if (inst.startsWith(`${dirName}/`) || inst === dirName) return true;
+    const hint = variantHint?.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    if (hint) {
+      for (const inst of installedSet) {
+        const normalized = inst.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        if (inst.toLowerCase().startsWith(`${dirName.toLowerCase()}/`) && normalized.includes(hint)) {
+          return true;
+        }
+      }
     }
   }
 
@@ -335,7 +347,6 @@ export function ModelBrowser({
   onDelete,
   onOpenTraining,
   onSelectModelForChat,
-  onOpenImageGen,
   onLaunchAirllm,
   installed = [],
   activeCapabilities = [],
@@ -470,6 +481,18 @@ export function ModelBrowser({
     tag: string;
     heretic: boolean;
   } | null>(null);
+  /** Repository inspection is deliberately explicit: a HF repo may contain
+   * Q3/Q4/Q8, instruct/base and several sharded checkpoints. */
+  const [repoInspection, setRepoInspection] = useState<HfRepoInspection | null>(null);
+  const [repoInstallContext, setRepoInstallContext] = useState<{
+    source: string;
+    familyName: string;
+    heretic: boolean;
+    consent: boolean;
+  } | null>(null);
+  const [repoCandidateId, setRepoCandidateId] = useState<string>("");
+  const [repoInspecting, setRepoInspecting] = useState(false);
+  const [repoInspectionError, setRepoInspectionError] = useState<string | null>(null);
 
   const installedSet = useMemo(() => new Set(installed), [installed]);
 
@@ -717,32 +740,110 @@ export function ModelBrowser({
     }
   }
 
+  function hfRepoSource(tag: string): string | null {
+    const source = tag.startsWith("hf.co/")
+      ? `https://huggingface.co/${tag.slice(6)}`
+      : tag;
+    if (!source.startsWith("https://huggingface.co/")) return null;
+    if (source.includes("/resolve/") || source.includes("/blob/")) return null;
+    return source.replace(/\/+$/, "");
+  }
+
+  function makeSelection(inspection: HfRepoInspection, candidate: HfModelCandidate): HfModelSelection {
+    return {
+      repo: inspection.repo,
+      files: candidate.files,
+      support_files: inspection.support_files,
+      label: candidate.label,
+    };
+  }
+
   /** `heretic` = uncensored family: the backend then auto-installs the
    *  abliterated companions so the model works without any manual setup. */
   function requestInstall(tag: string, familyName: string, heretic: boolean) {
     if (classifyModel(`${familyName} ${tag}`).risk !== "safe") {
       setPendingNsfwInstall({ tag, heretic });
       setNsfwGateOpen(true);
-    } else {
-      handleInstallModel(tag, heretic);
+      return;
     }
+    void beginModelInstall(tag, familyName, heretic, false);
   }
 
-  async function handleInstallModel(tag: string, heretic?: boolean, consent = false) {
-    setInstallProgress((prev) => ({ ...prev, [tag]: 0 }));
+  async function beginModelInstall(
+    tag: string,
+    familyName: string,
+    heretic: boolean,
+    consent: boolean,
+    selection?: HfModelSelection,
+  ) {
+    let chosenSelection = selection;
+    const repo = !chosenSelection ? hfRepoSource(tag) : null;
+    if (repo) {
+      setRepoInspecting(true);
+      setRepoInspectionError(null);
+      setRepoInspection({
+        repo: repo.replace("https://huggingface.co/", ""),
+        candidates: [],
+        support_files: [],
+        total_bytes: 0,
+      });
+      setRepoInstallContext({ source: repo, familyName, heretic, consent });
+      try {
+        const inspection = await core.inspectHuggingFaceRepo(repo, getHfToken());
+        if (inspection.candidates.length > 1) {
+          setRepoInspection(inspection);
+          setRepoInstallContext({ source: repo, familyName, heretic, consent });
+          setRepoCandidateId(inspection.candidates[0].id);
+          return;
+        }
+        if (inspection.candidates.length === 1) {
+          chosenSelection = makeSelection(inspection, inspection.candidates[0]);
+        } else if (inspection.support_files.length > 0) {
+          // Repositories such as some TTS packages have no conventional
+          // weight extension. Keep the old full-repository behaviour, but make
+          // that choice explicit in the selector below.
+          chosenSelection = undefined;
+        }
+      } catch (e) {
+        setRepoInspectionError(String(e).replace(/^Error:\s*/, ""));
+        setRepoInspection({ repo: repo.replace("https://huggingface.co/", ""), candidates: [], support_files: [], total_bytes: 0 });
+        setRepoInstallContext({ source: repo, familyName, heretic, consent });
+        return;
+      } finally {
+        setRepoInspecting(false);
+      }
+    }
+
+    setRepoInspection(null);
+    setRepoInstallContext(null);
+    await handleInstallModel(tag, heretic, consent, chosenSelection);
+  }
+
+  async function handleInstallModel(
+    tag: string,
+    heretic?: boolean,
+    consent = false,
+    selection?: HfModelSelection,
+  ) {
+    // One global pull is allowed by the desktop shell; keep the progress key
+    // equal to the repository/file tag so the card remains in sync after the
+    // user chose a candidate in the modal.
+    const progressKey = tag;
+    setInstallProgress((prev) => ({ ...prev, [progressKey]: 0 }));
     try {
       await onInstall(
         tag,
         (pct) => {
-          setInstallProgress((prev) => ({ ...prev, [tag]: pct }));
+          setInstallProgress((prev) => ({ ...prev, [progressKey]: pct }));
         },
         heretic,
         consent,
+        selection,
       );
     } finally {
       setInstallProgress((prev) => {
         const copy = { ...prev };
-        delete copy[tag];
+        delete copy[progressKey];
         return copy;
       });
     }
@@ -753,8 +854,22 @@ export function ModelBrowser({
     if (pendingNsfwInstall) {
       const { tag, heretic } = pendingNsfwInstall;
       setPendingNsfwInstall(null);
-      handleInstallModel(tag, heretic, true);
+      void beginModelInstall(tag, tag, heretic, true);
     }
+  }
+
+  function confirmRepoCandidate() {
+    if (!repoInspection || !repoInstallContext) return;
+    const candidate = repoInspection.candidates.find((item) => item.id === repoCandidateId);
+    if (!candidate) return;
+    const { source, familyName, heretic, consent } = repoInstallContext;
+    void beginModelInstall(
+      source,
+      familyName,
+      heretic,
+      consent,
+      makeSelection(repoInspection, candidate),
+    );
   }
 
   async function handleCancelInstall(tag: string) {
@@ -1443,8 +1558,12 @@ export function ModelBrowser({
               <div key={f.id} className={`locaryn-box-card locaryn-compat-${compat.level}`}>
                 <div className="locaryn-box-head">
                   <div style={{ minWidth: 140, flex: "1 1 55%" }}>
-                    <span className="locaryn-box-brand">{f.brand}</span>
-                    <h3 className="locaryn-box-name">{f.name}</h3>
+                    <span className="locaryn-box-brand" title={f.brand}>
+                      {f.brand}
+                    </span>
+                    <h3 className="locaryn-box-name" title={f.name}>
+                      {f.name}
+                    </h3>
                   </div>
                   <div className="locaryn-box-badges">
                     <span
@@ -1604,8 +1723,8 @@ export function ModelBrowser({
                       const targetTag = getQuantTag(v.tag, activeQuant);
                       const targetStorageGb = getQuantStorageGb(v.storageGb, activeQuant);
                       const isInstalled =
-                        isVariantInstalled(targetTag, installedSet) ||
-                        isVariantInstalled(v.tag, installedSet);
+                        isVariantInstalled(targetTag, installedSet, activeQuant) ||
+                        isVariantInstalled(v.tag, installedSet, activeQuant);
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
@@ -1667,27 +1786,15 @@ export function ModelBrowser({
                             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                               {isInstalled ? (
                                 <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                  {f.imageGen || looksLikeImageModel(targetTag) ? (
-                                    <button
-                                      type="button"
-                                      className="locaryn-btn-primary"
-                                      style={{ padding: "3px 8px", fontSize: "11px" }}
-                                      onClick={() => onOpenImageGen?.()}
-                                      title="Ouvrir la génération d'images avec ce modèle"
-                                    >
-                                      <Icon name="studio" size={15} /> Générer
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="locaryn-btn-primary"
-                                      style={{ padding: "3px 8px", fontSize: "11px" }}
-                                      onClick={() => onSelectModelForChat?.(targetTag)}
-                                      title="Utiliser ce modèle dans le Chat"
-                                    >
-                                      <Icon name="chat" size={15} /> Utiliser
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    className="locaryn-btn-primary"
+                                    style={{ padding: "3px 8px", fontSize: "11px" }}
+                                    onClick={() => onSelectModelForChat?.(targetTag)}
+                                    title="Utiliser ce modèle dans le Chat"
+                                  >
+                                    <Icon name="chat" size={15} /> Utiliser
+                                  </button>
                                   <button
                                     type="button"
                                     className="locaryn-btn-ghost"
@@ -1836,8 +1943,12 @@ export function ModelBrowser({
                       aria-expanded={open}
                     >
                       <div className="locaryn-model-title">
-                        <span className="locaryn-model-name">{f.name}</span>
-                        <span className="locaryn-model-brand">{f.brand}</span>
+                        <span className="locaryn-model-name" title={f.name}>
+                          {f.name}
+                        </span>
+                        <span className="locaryn-model-brand" title={f.brand}>
+                          {f.brand}
+                        </span>
                       </div>
                       <div className="locaryn-model-badges">
                         <span className="locaryn-tag locaryn-tag-soft">
@@ -1918,8 +2029,8 @@ export function ModelBrowser({
                       const targetTag = getQuantTag(v.tag, activeQuant);
                       const targetStorageGb = getQuantStorageGb(v.storageGb, activeQuant);
                       const isInstalled =
-                        isVariantInstalled(targetTag, installedSet) ||
-                        isVariantInstalled(v.tag, installedSet);
+                        isVariantInstalled(targetTag, installedSet, activeQuant) ||
+                        isVariantInstalled(v.tag, installedSet, activeQuant);
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
@@ -1964,27 +2075,15 @@ export function ModelBrowser({
                             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                               {isInstalled ? (
                                 <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                  {f.imageGen || looksLikeImageModel(targetTag) ? (
-                                    <button
-                                      type="button"
-                                      className="locaryn-btn-primary"
-                                      style={{ padding: "3px 8px", fontSize: "11px" }}
-                                      onClick={() => onOpenImageGen?.()}
-                                      title="Ouvrir la génération d'images avec ce modèle"
-                                    >
-                                      <Icon name="studio" size={15} /> Générer
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="locaryn-btn-primary"
-                                      style={{ padding: "3px 8px", fontSize: "11px" }}
-                                      onClick={() => onSelectModelForChat?.(targetTag)}
-                                      title="Utiliser ce modèle dans le Chat"
-                                    >
-                                      <Icon name="chat" size={15} /> Utiliser
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    className="locaryn-btn-primary"
+                                    style={{ padding: "3px 8px", fontSize: "11px" }}
+                                    onClick={() => onSelectModelForChat?.(targetTag)}
+                                    title="Utiliser ce modèle dans le Chat"
+                                  >
+                                    <Icon name="chat" size={15} /> Utiliser
+                                  </button>
                                   <button
                                     type="button"
                                     className="locaryn-btn-ghost"
@@ -2203,6 +2302,192 @@ export function ModelBrowser({
           setPendingNsfwInstall(null);
         }}
       />
+
+      {/* HuggingFace variant selector. A repository is not a model: it can
+          contain many quantisations and several checkpoints. */}
+      {repoInspection && repoInstallContext && (
+        <div
+          className="locaryn-settings-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !repoInspecting) {
+              setRepoInspection(null);
+              setRepoInstallContext(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !repoInspecting) {
+              setRepoInspection(null);
+              setRepoInstallContext(null);
+            }
+          }}
+        >
+          <div
+            className="locaryn-card"
+            style={{
+              width: "680px",
+              maxWidth: "94vw",
+              maxHeight: "86vh",
+              overflowY: "auto",
+              margin: "48px auto",
+              border: "1px solid var(--border-strong)",
+              boxShadow: "0 16px 40px rgba(0,0,0,0.85)",
+            }}
+          >
+            <div className="locaryn-field-head" style={{ marginBottom: "12px" }}>
+              <div>
+                <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Icon name="models" size={17} /> Choisir le modèle à installer
+                </h3>
+                <span style={{ fontSize: "var(--text-xs)", color: "var(--text-faint)" }}>
+                  {repoInspection.repo} — une seule variante sera téléchargée, pas tout le dépôt.
+                </span>
+              </div>
+              <button
+                type="button"
+                className="locaryn-icon-btn"
+                onClick={() => {
+                  if (!repoInspecting) {
+                    setRepoInspection(null);
+                    setRepoInstallContext(null);
+                  }
+                }}
+                disabled={repoInspecting}
+                aria-label="Fermer"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+
+            {repoInspecting ? (
+              <div style={{ padding: "24px 8px", color: "var(--text-dim)", textAlign: "center" }}>
+                <span className="locaryn-spin" style={{ display: "inline-flex", marginRight: "8px" }}>
+                  <Icon name="refresh" size={16} />
+                </span>
+                Analyse des fichiers et des quantifications HuggingFace…
+              </div>
+            ) : repoInspectionError ? (
+              <div
+                style={{
+                  padding: "12px",
+                  border: "1px solid var(--danger)",
+                  borderRadius: "var(--radius-sm)",
+                  color: "var(--danger)",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {repoInspectionError}
+              </div>
+            ) : repoInspection.candidates.length === 0 ? (
+              <div style={{ color: "var(--text-dim)", lineHeight: 1.5 }}>
+                Aucun fichier de poids standard n'a été identifié. Ce dépôt semble être un
+                paquet multi-fichiers (par exemple un modèle TTS). Installer le dépôt complet
+                téléchargera aussi ses fichiers de configuration.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: "7px" }}>
+                {repoInspection.candidates.map((candidate) => {
+                  const selected = candidate.id === repoCandidateId;
+                  return (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      onClick={() => setRepoCandidateId(candidate.id)}
+                      style={{
+                        textAlign: "left",
+                        display: "grid",
+                        gridTemplateColumns: "20px 1fr auto",
+                        gap: "10px",
+                        alignItems: "center",
+                        padding: "11px 12px",
+                        borderRadius: "var(--radius-sm)",
+                        border: selected
+                          ? "1px solid var(--accent)"
+                          : "1px solid var(--border-strong)",
+                        background: selected ? "rgba(111,156,127,0.12)" : "var(--surface)",
+                        color: "var(--text)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: "14px",
+                          height: "14px",
+                          borderRadius: "50%",
+                          border: selected
+                            ? "4px solid var(--accent)"
+                            : "1px solid var(--text-faint)",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <span style={{ minWidth: 0 }}>
+                        <strong style={{ display: "block", overflowWrap: "anywhere" }}>
+                          {candidate.label}
+                        </strong>
+                        <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
+                          {candidate.format.toUpperCase()}
+                          {candidate.quantization ? ` · ${candidate.quantization}` : ""}
+                          {candidate.variant ? ` · ${candidate.variant}` : ""}
+                          {candidate.files.length > 1 ? ` · ${candidate.files.length} shards` : ""}
+                        </span>
+                      </span>
+                      <span style={{ fontSize: "11px", color: "var(--text-dim)", whiteSpace: "nowrap" }}>
+                        {formatBytes(candidate.total_bytes)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div
+              className="locaryn-field-actions"
+              style={{ justifyContent: "space-between", gap: "8px", marginTop: "16px" }}
+            >
+              <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
+                {repoInspection.candidates.length > 0
+                  ? `${repoInspection.candidates.length} variante(s) détectée(s) · ${formatBytes(repoInspection.total_bytes)} au total dans le dépôt`
+                  : "Les fichiers alternatifs ne seront pas ciblés automatiquement."}
+              </span>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  onClick={() => {
+                    setRepoInspection(null);
+                    setRepoInstallContext(null);
+                  }}
+                  disabled={repoInspecting}
+                >
+                  Annuler
+                </button>
+                {repoInspection.candidates.length > 0 ? (
+                  <button
+                    type="button"
+                    className="locaryn-btn-primary"
+                    onClick={confirmRepoCandidate}
+                    disabled={!repoCandidateId || repoInspecting}
+                  >
+                    <Icon name="download" size={14} /> Installer cette variante
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="locaryn-btn-primary"
+                    onClick={() => {
+                      const { source, familyName, heretic, consent } = repoInstallContext;
+                      void beginModelInstall(source, familyName, heretic, consent);
+                    }}
+                    disabled={repoInspecting || Boolean(repoInspectionError)}
+                  >
+                    <Icon name="download" size={14} /> Installer le dépôt complet
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Custom Model / HuggingFace download modal */}
       {customDownloadModalOpen && (

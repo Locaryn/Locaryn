@@ -4,8 +4,6 @@ import { type AppTask, TASK_META, taskCenter, useTasks } from "../lib/taskCenter
 
 type Props = {
   onOpenResult?: (t: AppTask) => void;
-  /** Reopen the image-generation panel for a live/completed generation. */
-  onReopenImageGen?: () => void;
 };
 
 async function copyText(text: string): Promise<boolean> {
@@ -35,10 +33,9 @@ async function copyText(text: string): Promise<boolean> {
  * Footer status bar + expandable notification center (bottom-right). Shows every
  * background task — downloads, image generations, model edits, workflows —
  * colour-coded by type so they are trivial to tell apart. Clicking the footer
- * expands the panel; clicking a generation/edit task reopens the image popup;
- * clicking anywhere else closes the panel.
+ * expands the panel; completed artifacts can open their generic result view.
  */
-export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
+export function TaskCenter({ onOpenResult }: Props) {
   const tasks = useTasks();
   const [open, setOpen] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<{ id: string; text: string } | null>(null);
@@ -136,8 +133,7 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                 const isError = t.status === "error" && Boolean(t.error);
                 const actionable =
                   isError ||
-                  (t.status !== "error" &&
-                    (t.type === "generation" || t.type === "edit" || Boolean(t.resultImageUrl)));
+                  t.status !== "error" && Boolean(t.resultImageUrl);
                 const activate = async () => {
                   if (isError && t.error) {
                     const copied = await copyText(t.error);
@@ -150,10 +146,7 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                     }, 1800);
                     return;
                   }
-                  if (t.type === "generation" || t.type === "edit") {
-                    onReopenImageGen?.();
-                    setOpen(false);
-                  } else if (t.resultImageUrl) {
+                  if (t.resultImageUrl) {
                     onOpenResult?.(t);
                   }
                 };
@@ -181,8 +174,8 @@ export function TaskCenter({ onOpenResult, onReopenImageGen }: Props) {
                     title={
                       isError
                         ? "Copier le détail de l'erreur"
-                        : t.type === "generation" || t.type === "edit"
-                          ? "Rouvrir la génération d'images"
+                        : t.resultImageUrl
+                          ? "Ouvrir le résultat"
                           : undefined
                     }
                   >

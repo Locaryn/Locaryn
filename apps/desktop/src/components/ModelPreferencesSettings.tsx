@@ -1,5 +1,4 @@
 import { Icon } from "@locaryn/ui-core";
-import { ImageSettings } from "./ImageSettings";
 import { MicroModelSetting } from "./MicroModelSetting";
 import { TtsModelSetting } from "./TtsModelSetting";
 
@@ -11,9 +10,6 @@ export function ModelPreferencesSettings({
 }) {
   const hasTts =
     activeCapabilities.includes("voice-tts") || activeCapabilities.includes("voice-cloning");
-  const hasImage =
-    activeCapabilities.includes("image-gen") || activeCapabilities.includes("image-editor");
-
   return (
     <div className="locaryn-model-preferences">
       <div className="locaryn-model-preferences-intro">
@@ -53,18 +49,6 @@ export function ModelPreferencesSettings({
           </section>
         )}
 
-        {hasImage && (
-          <section className="locaryn-model-preference-card">
-            <div className="locaryn-model-preference-heading">
-              <Icon name="studio" size={17} />
-              <div>
-                <h4>Génération d'images</h4>
-                <p>Qualité, résolution et mémoire utilisés par défaut pour les images.</p>
-              </div>
-            </div>
-            <ImageSettings />
-          </section>
-        )}
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ type Props = {
   onSelectView: (view: string) => void;
   mode: ConnectionMode;
   demo: boolean;
-  project: string;
+  conversationTitle: string | null;
   provider: ProviderSummary | null;
   showPreview: boolean;
   showBottom: boolean;
@@ -46,7 +46,7 @@ export function TopBar({
   activeView,
   mode,
   demo,
-  project,
+  conversationTitle,
   provider,
   showPreview,
   showBottom,
@@ -61,6 +61,8 @@ export function TopBar({
   isEphemeral = false,
 }: Props) {
   const isChatView = activeView === "chat";
+  const chatTitle = conversationTitle?.trim() || "Nouvelle conversation";
+  const viewTitle = VIEW_TITLES[activeView] || "Navigation";
 
   return (
     <header className="locaryn-topbar">
@@ -96,8 +98,11 @@ export function TopBar({
         <span className="locaryn-sep" aria-hidden="true">
           /
         </span>
-        <span className="locaryn-project">
-          {isChatView ? project : VIEW_TITLES[activeView] || "Navigation"}
+        <span
+          className="locaryn-conversation-title"
+          title={isChatView ? chatTitle : viewTitle}
+        >
+          {isChatView ? chatTitle : viewTitle}
         </span>
         {demo && <span className="locaryn-demo-badge">demo</span>}
       </div>
@@ -130,7 +135,10 @@ export function TopBar({
             </button>
           )}
 
-          <span className="locaryn-provider-badge" title={provider?.endpoint ?? "no model"}>
+          <span
+            className="locaryn-provider-badge"
+            title={provider?.model ?? provider?.endpoint ?? "no model"}
+          >
             <span
               className={`locaryn-health-dot ${provider ? "locaryn-health-ok" : "locaryn-health-off"}`}
               aria-hidden="true"

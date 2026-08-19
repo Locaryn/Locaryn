@@ -1,15 +1,12 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { core } from "../lib/core";
-import { dedupeModelsByDirectory } from "../lib/modelList";
 import {
-  IMAGE_GEN_MODELS,
   type ModelFamily,
   SEED_CATALOG,
   classifyModel,
   fetchFullRegistry,
   isChatModel,
-  looksLikeImageModel,
 } from "../lib/modelRegistry";
 
 type Props = {
@@ -28,7 +25,7 @@ export interface ModelOptionItem {
   brand: string;
   isLocal: boolean;
   size: string;
-  category: "text" | "image" | "code" | "reasoning" | "vision";
+  category: "text" | "code" | "reasoning" | "vision";
   categoryLabel: string;
   icon: IconName;
 }
@@ -46,7 +43,7 @@ export function QuickModelSelector({
   const [activeTab, setActiveTab] = useState<"all" | "text" | "code" | "reasoning" | "vision">(
     "all",
   );
-  const [registry, setRegistry] = useState<ModelFamily[]>([...SEED_CATALOG, ...IMAGE_GEN_MODELS]);
+  const [registry, setRegistry] = useState<ModelFamily[]>(SEED_CATALOG);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -57,9 +54,9 @@ export function QuickModelSelector({
 
   const dedupedModels = useMemo(
     () =>
-      dedupeModelsByDirectory(
-        installedModels.length > 0 ? installedModels : ([activeModel].filter(Boolean) as string[]),
-      ),
+      Array.from(
+        new Set(installedModels.length > 0 ? installedModels : ([activeModel].filter(Boolean) as string[])),
+      ).sort((a, b) => a.localeCompare(b)),
     [installedModels, activeModel],
   );
 
@@ -101,11 +98,7 @@ export function QuickModelSelector({
           let categoryLabel = "Texte";
           let icon: IconName = "chat";
 
-          if (kind === "image-gen") {
-            category = "image";
-            categoryLabel = "Image";
-            icon = "image";
-          } else if (kind === "code") {
+          if (kind === "code") {
             category = "code";
             categoryLabel = "Code";
             icon = "cpu";
@@ -135,7 +128,7 @@ export function QuickModelSelector({
           };
         })
         // Only offer models suitable for chat (LLM / vision / code / reasoning) and strictly 100% local.
-        // Exclude image-gen, TTS, music, video, 3D, and remote cloud endpoints.
+        // Specialized media models are owned by their extensions.
         .filter((o) => isChatModel(o.tag) && o.isLocal)
     );
   }, [dedupedModels, isProviderLocal, registry]);
@@ -207,7 +200,7 @@ export function QuickModelSelector({
 
         {/* Category Tabs (Text to Text, Code, Reasoning, Vision...) */}
         <p style={{ margin: "0 0 10px", fontSize: "11px", color: "var(--text-faint)" }}>
-          Les modèles de génération d’image se gèrent dans le panneau “Génération d’Images IA”.
+          Les fonctionnalités spécialisées sont fournies par leurs extensions.
         </p>
         <div style={{ display: "flex", gap: "4px", marginBottom: "10px", flexWrap: "wrap" }}>
           <button
@@ -313,7 +306,7 @@ export function QuickModelSelector({
                     onClose();
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div className="locaryn-quick-model-info" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <div
                       style={{
                         width: "30px",
@@ -331,11 +324,17 @@ export function QuickModelSelector({
                       <Icon name={item.icon} size={16} />
                     </div>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text)" }}>
+                      <div
+                        className="locaryn-quick-model-name"
+                        style={{ fontWeight: 600, fontSize: "13px", color: "var(--text)" }}
+                        title={item.name}
+                      >
                         {item.name}
                       </div>
                       <div
+                        className="locaryn-quick-model-tag"
                         style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}
+                        title={`${item.brand} — ${item.tag}`}
                       >
                         {item.brand} — <code style={{ fontSize: "10px" }}>{item.tag}</code>
                       </div>

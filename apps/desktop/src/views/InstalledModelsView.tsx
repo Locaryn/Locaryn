@@ -2,133 +2,98 @@ import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { SpeedBadge, findMetric } from "../components/SpeedBadge";
 import { type ModelMetric, core } from "../lib/core";
-import { dedupeModelsByDirectory } from "../lib/modelList";
-import { IMAGE_GEN_MODELS } from "../lib/modelRegistry";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 
 type Props = {
   installedModels: string[];
   onSelectModelForChat: (modelTag: string) => void;
-  onOpenImageGen?: () => void;
   onDeleteModel?: (modelTag: string) => Promise<void> | void;
   onOpenMarketplace?: () => void;
-  activeCapabilities?: string[];
 };
+
+type InstalledModelIdentity = {
+  model: string;
+  quantization: string | null;
+  format: string;
+};
+
+/** Keep the identity visible when a repository contains several choices. */
+function identifyInstalledModel(rawTag: string): InstalledModelIdentity {
+  const normalized = rawTag.replace(/\\/g, "/");
+  const fileName = normalized.split("/").pop() ?? normalized;
+  const formatMatch = fileName.match(/\\.([a-z0-9]+)$/i);
+  const format = formatMatch?.[1]?.toUpperCase() ?? "MODEL";
+  const stem = formatMatch ? fileName.slice(0, -formatMatch[0].length) : fileName;
+  const withoutShard = stem.replace(/[-_.]\\d{5}-of-\\d{5}$/i, "");
+  const quantMatch = withoutShard.match(
+    /(?:^|[-_.])((?:Q[2-8](?:_[K0-9]+)*|F(?:P)?16|BF16|INT8))(?:$|[-_.])/i,
+  );
+  const quantization = quantMatch?.[1]?.toUpperCase() ?? null;
+  const model = (quantMatch
+    ? withoutShard.slice(0, quantMatch.index ?? withoutShard.length)
+    : withoutShard
+  ).replace(/[-_.]+$/, "");
+  return { model: model || withoutShard, quantization, format };
+}
 
 export function InstalledModelsView({
   installedModels,
   onSelectModelForChat,
-  onOpenImageGen,
   onDeleteModel,
   onOpenMarketplace,
-  activeCapabilities = [],
 }: Props) {
   const [query, setQuery] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "text" | "image">("all");
   const [riskFilter, setRiskFilter] = useState<"all" | "safe" | "uncensored" | "nsfw">("all");
   const [activatingModel, setActivatingModel] = useState<string | null>(null);
-
-  // Real weights directory, read from the backend. Hardcoding it broke
-  // "Ouvrir le dossier" on any machine that is not the dev box.
   const [modelsDir, setModelsDir] = useState("");
-  useEffect(() => {
-    core
-      .appInfo()
-      .then((i) => setModelsDir(i.models_dir || `${i.data_dir}/models`))
-      .catch(() => {});
-  }, []);
-
-  const dedupedModels = useMemo(() => dedupeModelsByDirectory(installedModels), [installedModels]);
-
-  /**
-   * Vitesses mesurées ici. Chargées une fois : elles bougent au rythme des
-   * générations, pas à celui du défilement.
-   */
   const [metrics, setMetrics] = useState<ModelMetric[]>([]);
+  // The backend already groups shards, but deliberately keeps separate
+  // quantisations/variants. Do not collapse by directory here or Q4 and Q8
+  // from the same HuggingFace repository would appear as one model again.
+  const dedupedModels = useMemo(
+    () => Array.from(new Set(installedModels)).sort((a, b) => a.localeCompare(b)),
+    [installedModels],
+  );
+
   useEffect(() => {
-    void core
-      .listModelMetrics()
-      .then(setMetrics)
-      .catch(() => setMetrics([]));
+    core.appInfo().then((info) => setModelsDir(info.models_dir || `${info.data_dir}/models`)).catch(() => {});
+    void core.listModelMetrics().then(setMetrics).catch(() => setMetrics([]));
   }, []);
 
-  const parsedModels = useMemo(() => {
-    return dedupedModels.map((m) => {
-      const mLower = m.toLowerCase();
-      const isImage =
-        mLower.includes("z-image") ||
-        mLower.includes("z_image") ||
-        mLower.includes("image") ||
-        mLower.includes("flux") ||
-        mLower.includes("stable-diffusion") ||
-        mLower.includes("stable_diffusion") ||
-        mLower.includes("sdxl") ||
-        mLower.includes("sd_xl") ||
-        mLower.includes("sd15") ||
-        mLower.includes("sd_1") ||
-        mLower.includes("pony") ||
-        mLower.includes("realistic") ||
-        mLower.includes("vision") ||
-        mLower.includes("mmproj") ||
-        mLower.includes("diffusion") ||
-        mLower.includes("ae.safetensors") ||
-        mLower.endsWith(".png") ||
-        IMAGE_GEN_MODELS.some((f) =>
-          f.variants.some((v) => {
-            const fileName = v.tag.split("/").pop()!.toLowerCase();
-            return mLower.includes(fileName) || fileName.includes(mLower) || mLower.includes(f.id);
-          }),
-        );
-
-      const isGguf = m.toLowerCase().endsWith(".gguf");
-      const cleanName = m.replace(/^http.*[/\\]/, "").replace(/:latest$/, "");
-      const classification = classifyModel(m, { uncensored: undefined });
-
-      return {
-        rawTag: m,
-        cleanName,
-        isImage,
-        isGguf,
-        isNsfw: classification.risk !== "safe",
-        risk: classification.risk,
-        fullPath: `${modelsDir}\\${cleanName}`,
-        engine: isImage ? "sd.exe" : "llama-server",
-      };
-    });
-    // modelsDir arrive de facon asynchrone : sans lui dans les dependances,
-    // fullPath resterait construit sur une chaine vide jusqu au prochain
-    // changement de la liste, et « Ouvrir le dossier » pointerait a cote.
-  }, [dedupedModels, modelsDir]);
+  const parsedModels = useMemo(
+    () =>
+      dedupedModels.map((rawTag) => {
+        const cleanName = rawTag.replace(/^http.*[/\\]/, "").replace(/:latest$/, "");
+        const classification = classifyModel(rawTag, { uncensored: undefined });
+        const identity = identifyInstalledModel(rawTag);
+        return {
+          rawTag,
+          cleanName,
+          ...identity,
+          risk: classification.risk,
+          fullPath: `${modelsDir}\\${cleanName}`,
+        };
+      }),
+    [dedupedModels, modelsDir],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return parsedModels.filter((m) => {
-      if (filterType === "text" && m.isImage) return false;
-      if (filterType === "image" && !m.isImage) return false;
-      if (riskFilter === "safe" && m.risk !== "safe") return false;
-      if (riskFilter === "uncensored" && m.risk !== "uncensored") return false;
-      if (riskFilter === "nsfw" && m.risk !== "nsfw") return false;
-      if (q && !m.cleanName.toLowerCase().includes(q) && !m.rawTag.toLowerCase().includes(q)) {
-        return false;
-      }
-      return true;
+    return parsedModels.filter((model) => {
+      if (riskFilter !== "all" && model.risk !== riskFilter) return false;
+      return !q || model.cleanName.toLowerCase().includes(q) || model.rawTag.toLowerCase().includes(q);
     });
-    // `riskFilter` manquait : le mémo ne se recalculait pas quand on changeait
-    // le filtre de risque, donc la liste restait telle quelle sous les yeux de
-    // l'utilisateur — le filtre avait l'air cassé.
-  }, [parsedModels, query, filterType, riskFilter]);
+  }, [parsedModels, query, riskFilter]);
 
   async function handleUseForChat(model: string) {
     setActivatingModel(model);
     try {
       const providers = await core.listProviders();
-      const active = providers.find((p) => p.is_active) ?? providers[0];
-      if (active) {
-        await core.configureProvider(active.endpoint, model);
-      }
+      const active = providers.find((provider) => provider.is_active) ?? providers[0];
+      if (active) await core.configureProvider(active.endpoint, model);
       onSelectModelForChat(model);
-    } catch (e) {
-      console.error("Failed to set active model:", e);
+    } catch (error) {
+      console.error("Failed to set active model:", error);
       onSelectModelForChat(model);
     } finally {
       setActivatingModel(null);
@@ -138,290 +103,81 @@ export function InstalledModelsView({
   async function handleOpenFolder(filePath?: string) {
     try {
       await core.openModelsFolder(filePath);
-    } catch (e) {
-      console.error("Failed to open folder:", e);
+    } catch (error) {
+      console.error("Failed to open folder:", error);
     }
   }
 
   return (
     <div className="locaryn-view-container">
-      {/* ── View Header ── */}
       <div className="locaryn-view-header">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
           <div>
-            <h2>
-              <Icon name="models" size={18} /> Mes Modèles Installés ({dedupedModels.length})
-            </h2>
-            <p className="locaryn-view-desc">
-              Gérez vos modèles d'IA stockés localement sur votre disque. Ouvrez leur emplacement ou
-              sélectionnez-les directement pour vos chats et générations.
-            </p>
+            <h2><Icon name="models" size={18} /> Mes modèles installés ({dedupedModels.length})</h2>
+            <p className="locaryn-view-desc">Gérez les modèles de conversation stockés localement.</p>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              style={{ fontSize: "12px", border: "1px solid var(--border-strong)" }}
-              onClick={() => handleOpenFolder(modelsDir)}
-            >
-              <Icon name="project" size={15} /> Ouvrir le dossier des modèles
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="locaryn-btn-ghost" onClick={() => handleOpenFolder(modelsDir)}>
+              <Icon name="project" size={15} /> Ouvrir le dossier
             </button>
-            {onOpenMarketplace && (
-              <button
-                type="button"
-                className="locaryn-btn-primary"
-                style={{ fontSize: "12px" }}
-                onClick={onOpenMarketplace}
-              >
-                <Icon name="marketplace" size={15} /> Explorer le Marketplace
-              </button>
-            )}
+            {onOpenMarketplace && <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}><Icon name="marketplace" size={15} /> Marketplace</button>}
           </div>
         </div>
       </div>
 
-      {/* ── Controls Bar ── */}
-      <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px" }}>
-        <input
-          type="text"
-          className="locaryn-input"
-          style={{ flex: 1, fontSize: "13px" }}
-          placeholder="Filtrer mes modèles installés (Gemma, Qwen, DeepSeek, SD...)"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-
-        <div style={{ display: "flex", gap: "4px" }}>
-          <button
-            type="button"
-            className={`locaryn-chip${filterType === "all" ? " locaryn-chip-on" : ""}`}
-            onClick={() => setFilterType("all")}
-          >
-            Tous ({dedupedModels.length})
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16 }}>
+        <input className="locaryn-input" style={{ flex: 1, fontSize: 13 }} placeholder="Filtrer mes modèles installés…" value={query} onChange={(event) => setQuery(event.target.value)} />
+        {(["safe", "uncensored", "nsfw"] as const).map((risk) => (
+          <button key={risk} type="button" className={`locaryn-chip${riskFilter === risk ? " locaryn-chip-on" : ""}`} onClick={() => setRiskFilter((current) => (current === risk ? "all" : risk))}>
+            {risk === "safe" ? <Icon name="shield" size={14} /> : risk === "uncensored" ? <Icon name="lock" size={14} /> : <Icon name="warning" size={14} />} {risk === "safe" ? "Safe" : risk === "uncensored" ? "Sans limite" : "NSFW"}
           </button>
-          <button
-            type="button"
-            className={`locaryn-chip${filterType === "text" ? " locaryn-chip-on" : ""}`}
-            onClick={() => setFilterType("text")}
-          >
-            <Icon name="chat" size={15} /> LLM Texte
-          </button>
-          {activeCapabilities.some((c) => c === "image-gen" || c === "image-editor") && (
-            <button
-              type="button"
-              className={`locaryn-chip${filterType === "image" ? " locaryn-chip-on" : ""}`}
-              onClick={() => setFilterType("image")}
-            >
-              <Icon name="studio" size={15} /> Modèles Image
-            </button>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: "4px" }}>
-          <button
-            type="button"
-            className={`locaryn-chip${riskFilter === "safe" ? " locaryn-chip-on" : ""}`}
-            onClick={() => setRiskFilter((prev) => (prev === "safe" ? "all" : "safe"))}
-          >
-            <Icon name="shield" size={14} /> Safe
-          </button>
-          <button
-            type="button"
-            className={`locaryn-chip${riskFilter === "uncensored" ? " locaryn-chip-on" : ""}`}
-            onClick={() => setRiskFilter((prev) => (prev === "uncensored" ? "all" : "uncensored"))}
-          >
-            <Icon name="lock" size={14} /> Sans limite
-          </button>
-          <button
-            type="button"
-            className={`locaryn-chip${riskFilter === "nsfw" ? " locaryn-chip-on" : ""}`}
-            onClick={() => setRiskFilter((prev) => (prev === "nsfw" ? "all" : "nsfw"))}
-          >
-            <Icon name="warning" size={14} /> NSFW
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* ── Empty state ── */}
       {filtered.length === 0 && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "48px 24px",
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "12px",
-          }}
-        >
+        <div className="locaryn-card" style={{ textAlign: "center", padding: 48 }}>
           <Icon name="models" size={36} />
-          <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--text)" }}>
-            {installedModels.length === 0
-              ? "Aucun modèle installé localement"
-              : "Aucun modèle ne correspond à votre recherche"}
+          <div style={{ fontSize: 15, fontWeight: 700, marginTop: 12 }}>
+            {installedModels.length === 0 ? "Aucun modèle installé localement" : "Aucun modèle ne correspond à votre recherche"}
           </div>
-          <p style={{ fontSize: "13px", color: "var(--text-faint)", maxWidth: "420px", margin: 0 }}>
-            {installedModels.length === 0
-              ? "Allez dans le Marketplace pour télécharger des modèles d'IA texte ou image exécutables hors-ligne."
-              : "Essayez de modifier votre terme de recherche ou de réinitialiser le filtre."}
-          </p>
-          {onOpenMarketplace && (
-            <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}>
-              <Icon name="marketplace" size={15} /> Télécharger un modèle depuis le Marketplace
-            </button>
-          )}
+          {onOpenMarketplace && <button type="button" className="locaryn-btn-primary" style={{ marginTop: 16 }} onClick={onOpenMarketplace}><Icon name="marketplace" size={15} /> Télécharger un modèle</button>}
         </div>
       )}
 
-      {/* ── Models List / Cards ── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-          gap: "12px",
-        }}
-      >
-        {filtered.map((m) => (
-          <div
-            key={m.rawTag}
-            className="locaryn-box-card"
-            style={{
-              padding: "16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "10px",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius)",
-            }}
-          >
-            {/* Title & Engine tag */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: "8px",
-              }}
-            >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                {" "}
-                <span className="locaryn-box-brand" style={{ fontSize: "10px" }}>
-                  {m.isImage ? "IMAGE" : "TEXTE"} · {m.engine}
-                </span>
-                <SpeedBadge metric={findMetric(metrics, m.rawTag, m.isImage ? "image" : "chat")} />
-                {(() => {
-                  const c = classifyModel(m.rawTag);
-                  if (c.risk === "safe") return null;
-                  return (
-                    <span
-                      className="locaryn-tag"
-                      style={{
-                        background: "rgba(204,125,114,0.2)",
-                        color: "var(--danger)",
-                        border: "1px solid rgba(204,125,114,0.4)",
-                        fontSize: "10px",
-                        marginLeft: "6px",
-                      }}
-                      title={nsfwReason(m.rawTag) ?? c.label}
-                    >
-                      {c.icon} {c.label}
-                    </span>
-                  );
-                })()}
-                <h3
-                  className="locaryn-box-name"
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    margin: "2px 0 0",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  {m.cleanName}
-                </h3>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+        {filtered.map((model) => {
+          const classification = classifyModel(model.rawTag);
+          return (
+            <div key={model.rawTag} className="locaryn-box-card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <span className="locaryn-box-brand" style={{ fontSize: 10 }}>TEXTE · llama-server</span>
+                  <SpeedBadge metric={findMetric(metrics, model.rawTag, "chat")} />
+                  {classification.risk !== "safe" && <span className="locaryn-tag" style={{ color: "var(--danger)", marginLeft: 6 }} title={nsfwReason(model.rawTag) ?? classification.label}>{classification.icon} {classification.label}</span>}
+                  <h3
+                    className="locaryn-box-name"
+                    style={{ fontSize: 14, margin: "4px 0 0" }}
+                    title={model.model}
+                  >
+                    {model.model}
+                  </h3>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>
+                    <span className="locaryn-tag locaryn-tag-soft">Variante</span>
+                    {model.quantization && <span className="locaryn-tag">{model.quantization}</span>}
+                    <span className="locaryn-tag locaryn-tag-soft">{model.format}</span>
+                  </div>
+                </div>
+                <span className="locaryn-tag locaryn-tag-installed" style={{ fontSize: 10 }}>Stocké</span>
               </div>
-              <span
-                className="locaryn-tag locaryn-tag-installed"
-                style={{ fontSize: "10px", padding: "2px 6px" }}
-              >
-                Stocké localement
-              </span>
+              <div style={{ fontSize: 11, color: "var(--text-faint)", background: "var(--bg)", padding: "6px 8px", borderRadius: "var(--radius-xs)", wordBreak: "break-all", fontFamily: "var(--font-mono)" }}><Icon name="project" size={14} /> {model.fullPath}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: "auto" }}>
+                <button type="button" className="locaryn-btn-primary" style={{ flex: 1, fontSize: 12 }} disabled={activatingModel === model.rawTag} onClick={() => void handleUseForChat(model.rawTag)}>{activatingModel === model.rawTag ? "Sélection…" : "Utiliser dans le chat"}</button>
+                <button type="button" className="locaryn-btn-ghost" style={{ fontSize: 12 }} onClick={() => void handleOpenFolder(model.fullPath)}><Icon name="project" size={15} /> Emplacement</button>
+                {onDeleteModel && <button type="button" className="locaryn-btn-ghost" style={{ color: "var(--danger)", fontSize: 12 }} onClick={() => void onDeleteModel(model.rawTag)}><Icon name="trash" size={15} /> Supprimer</button>}
+              </div>
             </div>
-
-            {/* Path info */}
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--text-faint)",
-                background: "var(--bg)",
-                padding: "6px 8px",
-                borderRadius: "var(--radius-xs)",
-                border: "1px solid var(--border)",
-                wordBreak: "break-all",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              <Icon name="project" size={14} /> {m.fullPath}
-            </div>
-
-            {/* Actions Bar */}
-            <div
-              style={{
-                display: "flex",
-                gap: "6px",
-                flexWrap: "wrap",
-                marginTop: "auto",
-                paddingTop: "6px",
-              }}
-            >
-              {m.isImage ? (
-                <button
-                  type="button"
-                  className="locaryn-btn-primary"
-                  style={{ flex: 1, fontSize: "12px", whiteSpace: "nowrap" }}
-                  onClick={() => onOpenImageGen?.()}
-                >
-                  <Icon name="studio" size={15} /> Générer des images
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="locaryn-btn-primary"
-                  style={{ flex: 1, fontSize: "12px", whiteSpace: "nowrap" }}
-                  disabled={activatingModel === m.rawTag}
-                  onClick={() => handleUseForChat(m.rawTag)}
-                >
-                  {activatingModel === m.rawTag ? "Sélection…" : "Utiliser dans le Chat"}
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="locaryn-btn-ghost"
-                style={{ fontSize: "12px", padding: "4px 8px" }}
-                onClick={() => handleOpenFolder(m.fullPath)}
-                title="Ouvrir l'emplacement de ce fichier sur le disque"
-              >
-                <Icon name="project" size={15} /> Emplacement
-              </button>
-
-              {onDeleteModel && (
-                <button
-                  type="button"
-                  className="locaryn-btn-ghost"
-                  style={{ color: "var(--danger)", fontSize: "12px", padding: "4px 8px" }}
-                  onClick={() => onDeleteModel(m.rawTag)}
-                  title="Supprimer ce modèle pour libérer de l'espace disque"
-                >
-                  <Icon name="trash" size={15} /> Supprimer
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -2,64 +2,61 @@
   "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
   "apiVersion": "0.1",
   "name": "plugin-image-gen",
-  "version": "1.1.0",
-  "description": "Extension de génération et modification d'images (Stable Diffusion, Flux, Z-Image, Krea).",
+  "version": "1.3.0",
+  "description": "Extension autonome de génération et modification d'images avec son moteur stable-diffusion.cpp, ses modèles et son interface.",
   "author": "Locaryn Team",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Locaryn/plugin-image-gen",
   "repository": "https://github.com/Locaryn/plugin-image-gen",
-  "keywords": ["image-generation", "stable-diffusion", "flux", "text-to-image", "diffusion"],
+  "keywords": ["image-generation", "image-editing", "stable-diffusion", "flux", "z-image", "text-to-image"],
   "permissions": {
-    "files_read": true,
-    "files_write": true,
-    "shell": false
+    "mcp": {
+      "reason": "Lancer le moteur image local fourni par l'extension."
+    },
+    "files.read": {
+      "reason": "Lire les modèles et les images source du stockage de l'extension."
+    },
+    "files.write": {
+      "reason": "Écrire les modèles téléchargés, le runtime et les images produites par l'extension."
+    },
+    "network": {
+      "reason": "Télécharger les modèles et les runtimes depuis leurs sources HTTPS."
+    }
   },
-  "capabilities": ["image-gen"],
+  "components": {
+    "skills": ["SKILL.md"],
+    "mcp": "mcp/mcp.json"
+  },
+  "capabilities": ["image-gen", "image-editor"],
   "ui_contributions": {
     "slots": [
       {
-        "id": "studio-image-tab",
+        "id": "image-gen-studio",
         "slot": "studio.tabs",
         "order": 10,
-        "label": "Génération Image",
+        "label": "Génération d'image",
         "icon": "image",
         "type": "custom-element",
         "entry": "dist/ui.js",
         "tag": "locaryn-image-gen-panel",
-        "hint": "Studio de génération et retouche d'images locales"
+        "hint": "Génération et retouche locales dans l'extension image-gen"
       },
       {
-        "id": "composer-image-btn",
+        "id": "image-gen-composer",
         "slot": "composer.toolbar",
         "order": 20,
         "label": "Image",
         "icon": "image",
-        "action": "event",
-        "value": "locaryn:open-image-gen",
-        "hint": "Générer une image depuis le prompt"
-      },
-      {
-        "id": "sd-engine",
-        "slot": "engines.runtimes",
-        "order": 20,
-        "label": "stable-diffusion.cpp",
-        "icon": "image",
-        "category": "Génération d'images",
-        "hint": "Moteur de diffusion locale pour modèles SD 1.5, SDXL, Flux et retouche",
-        "value": "sd-server / pipeline stable-diffusion"
+        "type": "custom-element",
+        "entry": "dist/ui.js",
+        "tag": "locaryn-image-gen-button",
+        "hint": "Ouvrir le générateur d'image de l'extension"
       }
     ],
     "nav_items": [
       {
         "id": "studio",
         "label": "Studio de génération",
-        "icon": "image"
-      }
-    ],
-    "studio_tabs": [
-      {
-        "id": "image",
-        "label": "Génération Image",
         "icon": "image"
       }
     ]

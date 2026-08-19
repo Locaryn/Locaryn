@@ -663,16 +663,34 @@ export interface ModelParams {
   seed: number;
 }
 
-/** Result of an image generation. `simulated` = placeholder, NOT a real render.
- *  `path` is the absolute disk path to the generated image; use `convertFileSrc`
- *  to turn it into a displayable URL. */
+/** Kept as a wire type for already-installed extensions; image generation UI
+ * is supplied by the image plugin, not by the host application. */
 export interface GeneratedImage {
-  /** The first (or only) image. */
   path: string;
   simulated: boolean;
-  /** Every image produced, `path` included. Longer than one when several
-   *  variants were requested in a single run. */
   variants?: string[];
+}
+
+export interface RegionEditResult {
+  path: string;
+  mask_path: string;
+  coverage: number;
+  confidence: number;
+  pieces: number;
+  largest: number;
+}
+
+export interface RegionEditArgs {
+  image: string;
+  target: string;
+  mode: "recolor" | "replace" | "preview";
+  color?: string;
+  prompt?: string;
+  model?: string;
+  outputDir: string;
+  steps?: number;
+  cfgScale?: number;
+  strength?: number;
 }
 
 /** Sampling and cloning-style controls for Qwen3-TTS.
@@ -785,46 +803,6 @@ export interface SavePresetArgs {
   language?: string;
   engine?: string;
   settings: VoiceSettings;
-}
-
-// ── Region editing ─────────────────────────────────────────────────────
-// Change one named part of an image and nothing else. The region is picked
-// from a plain description, so this is not limited to clothing.
-
-export interface RegionEditResult {
-  path: string;
-  /** Where the mask landed, so the UI can show what was selected. */
-  mask_path: string;
-  /** Share of the image covered by the mask, as a percentage. */
-  coverage: number;
-  /** Segmenter confidence, 0-1. */
-  confidence: number;
-  /** Connected pieces the selection breaks into. One or two means a real
-   *  object; five scattered blobs means the description was too vague — a
-   *  signal confidence alone misses, since tiling can score 0.88 on a
-   *  selection spread across a wall, a door and a shelf. */
-  pieces: number;
-  /** Share of the selection held by its largest piece, 0-1. */
-  largest: number;
-}
-
-export interface RegionEditArgs {
-  /** Disk path or `data:` URL. */
-  image: string;
-  /** What to select, in plain words: "the t-shirt", "the wooden shelf". */
-  target: string;
-  /** "recolor" keeps the fabric and rewrites the colour exactly;
-   *  "replace" redraws the region with the diffusion engine. */
-  mode: "recolor" | "replace" | "preview";
-  /** Target colour for "recolor", as #RRGGBB. */
-  color?: string;
-  /** What to draw instead, for "replace". */
-  prompt?: string;
-  model?: string;
-  outputDir: string;
-  steps?: number;
-  cfgScale?: number;
-  strength?: number;
 }
 
 // ── Server mode ────────────────────────────────────────────────────────
@@ -1035,11 +1013,20 @@ export interface GeneratedAudio {
 export interface ImageIntent {
   is_image: boolean;
   is_edit: boolean;
-  /** Prompt rewritten in English (diffusion models are trained on English). */
   english_prompt: string;
-  /** "draft" | "standard" | "high" | "max" */
   quality: string;
   reason: string;
+}
+
+export interface ImageDefaults {
+  quality: string;
+  width: number;
+  height: number;
+  steps: number;
+  cfg_scale: number;
+  vram_mode: string;
+  negative_prompt: string;
+  variants: number;
 }
 
 /** A plan produced by the model for a substantial request. */
@@ -1050,41 +1037,36 @@ export interface TaskPlan {
   steps: string[];
 }
 
-/** Defaults applied to every image generation unless explicitly overridden. */
-export interface ImageDefaults {
-  /** "draft" | "standard" | "high" | "max" | "custom" */
-  quality: string;
-  width: number;
-  height: number;
-  /** 0 = let the model family decide. */
-  steps: number;
-  cfg_scale: number;
-  vram_mode: string;
-  negative_prompt: string;
-  /** How many variants to render per request, 1-8. */
-  variants: number;
-}
-
 /** Defaults for model-backed features outside the main conversation. */
 export interface ModelPreferences {
   /** Null means the Studio chooses the first installed TTS model. */
   tts_model: string | null;
-  /** Null means the first installed image diffusion model. */
-  image_model?: string | null;
 }
 
-/** Named quality presets → pixels. Shared by the settings UI and slash args. */
-export const IMAGE_QUALITIES: { id: string; label: string; px: number; hint: string }[] = [
-  { id: "draft", label: "Brouillon", px: 256, hint: "Le plus rapide — icônes, essais" },
-  { id: "standard", label: "Standard", px: 512, hint: "Bon compromis vitesse/qualité" },
-  { id: "high", label: "Haute", px: 768, hint: "Plus détaillé, plus lent" },
-  { id: "max", label: "Maximale", px: 1024, hint: "Qualité maximale, le plus lent" },
-];
+/** One complete model choice inside a HuggingFace repository. */
+export interface HfModelCandidate {
+  id: string;
+  label: string;
+  files: string[];
+  total_bytes: number;
+  format: string;
+  quantization: string | null;
+  variant: string | null;
+}
 
-/** RAM/VRAM dispatch for image generation — lets big models run on any PC.
- *  gpu = all on GPU (fastest); auto = sd.cpp places modules by free memory;
- *  lowvram = weights kept in RAM, streamed into VRAM on demand. */
-export type VramMode = "gpu" | "auto" | "lowvram";
+export interface HfRepoInspection {
+  repo: string;
+  candidates: HfModelCandidate[];
+  support_files: string[];
+  total_bytes: number;
+}
+
+export interface HfModelSelection {
+  repo: string;
+  files: string[];
+  support_files?: string[];
+  label?: string | null;
+}
 
 /** State of the managed llama.cpp runtime. */
 export interface LlamaRuntimeStatus {
@@ -1128,9 +1110,10 @@ export interface RuntimeCapabilities {
   runtime_installed: boolean;
   runtime_version: string | null;
   chat: boolean;
+  /** Legacy capability bit retained for extension compatibility. */
+  image_gen: boolean;
   vision: boolean;
   embeddings: boolean;
-  image_gen: boolean;
   finetune: boolean;
   distributed: boolean;
   speculative_decoding: boolean;
@@ -1342,16 +1325,18 @@ export interface CoreApi {
   sessionWorkspace(sessionId: string): Promise<string>;
   /** A plan the model produced for a substantial request. */
   planTask(request: string): Promise<TaskPlan>;
+  /** Legacy wire method used by older image extensions. */
+  getImageDefaults(): Promise<ImageDefaults>;
+  setImageDefaults(config: ImageDefaults): Promise<void>;
   /** Should this message be routed to the image generator? Prepares the
    *  English prompt; the user always confirms before anything is generated. */
   detectImageRequest(message: string): Promise<ImageIntent>;
   /** Background call: 1-click next-step suggestions after an answer. */
   suggestFollowups(answer: string): Promise<string[]>;
-  /** Persist an assistant message (e.g. a generated image) into a session. */
+  /** Persist a message contributed by an extension without exposing its runtime. */
+  appendChatMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<void>;
+  /** Legacy convenience for assistant artifacts contributed by extensions. */
   appendAssistantMessage(sessionId: string, content: string): Promise<void>;
-  /** Saved image-generation defaults (quality, resolution, VRAM mode). */
-  getImageDefaults(): Promise<ImageDefaults>;
-  setImageDefaults(config: ImageDefaults): Promise<void>;
   /** Defaults for secondary model-backed features in the account profile. */
   getModelPreferences(): Promise<ModelPreferences>;
   setModelPreferences(preferences: ModelPreferences): Promise<void>;
@@ -1413,6 +1398,9 @@ export interface CoreApi {
   setActiveProvider(id: string): Promise<Provider>;
   configureProvider(endpoint: string, model: string | null): Promise<Provider>;
   listModels(endpoint: string): Promise<string[]>;
+  /** Legacy image-plugin discovery bridge. */
+  listImageModels(): Promise<string[]>;
+  hasAbliteratedEncoder(): Promise<boolean>;
   appInfo(): Promise<AppInfo>;
   getLocalProfile(): Promise<LocalProfile>;
   setLocalProfile(displayName: string): Promise<LocalProfile>;
@@ -1441,8 +1429,6 @@ export interface CoreApi {
   deleteVoicePreset(id: string): Promise<void>;
   /** Which preset settings the given model will actually use. */
   voicePresetSupport(model: string): Promise<EngineSupport>;
-
-  /** Edit one named region, leaving everything else untouched. */
   editRegion(
     args: RegionEditArgs,
     onProgress?: (pct: number, detail?: string) => void,
@@ -1567,6 +1553,8 @@ export interface CoreApi {
   stopMcpServer(name: string): Promise<void>;
   /** Invoke a tool through the same MCP client used by the agent runtime. */
   invokeMcpTool(name: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
+  /** Invoke a tool exposed by any enabled extension through the generic bridge. */
+  invokeExtensionTool(tool: string, args: Record<string, unknown>): Promise<string>;
 
   /** Android SDK, AVDs et émulateurs présents sur cette machine. Lecture seule. */
   diagnoseAndroidVm(): Promise<AndroidVmStatus>;
@@ -1589,7 +1577,7 @@ export interface CoreApi {
   removeTestAudio(path: string): Promise<void>;
   /** Copy a generated voice note to a user-selected destination. */
   saveAudioAs(sourcePath: string, destinationPath: string): Promise<void>;
-  /** Copy a generated image to a user-selected destination. */
+  /** Legacy image artifact action; generation itself belongs to a plugin. */
   saveImageAs(sourcePath: string, destinationPath: string): Promise<void>;
   listSshServers(): Promise<SshServer[]>;
   testSshConnection(
@@ -1611,14 +1599,17 @@ export interface CoreApi {
   approveToolCall: (decision: ToolApprovalDecision) => Promise<void>;
   updateProviderModelParams(params: ModelParams): Promise<void>;
   getProviderModelParams(): Promise<ModelParams>;
-  /** Install a model. `heretic` also auto-installs the uncensored companion
-   *  weights (abliterated encoder) so the setup works with zero extra steps. */
+  /** Inspect a HuggingFace repository before downloading one variant. */
+  inspectHuggingFaceRepo(source: string, hfToken?: string): Promise<HfRepoInspection>;
+  /** Install a model. `selection` prevents a multi-variant HF repository from
+   * downloading every quantisation and checkpoint. */
   pullModel(
     endpoint: string,
     model: string,
     onProgress?: (pct: number, status?: string) => void,
     heretic?: boolean,
     consent?: boolean,
+    selection?: HfModelSelection,
   ): Promise<void>;
   /** Cancel one download (by model URL/name) or all when omitted. */
   cancelPullModel(model?: string): Promise<void>;
@@ -1641,11 +1632,6 @@ export interface CoreApi {
   ragClear(projectId: string): Promise<void>;
   /** Preview retrieval: top-k chunks for a query (also used to test the index). */
   ragSearch(projectId: string, query: string, k?: number): Promise<RagHit[]>;
-  /** Diffusion checkpoints only (aux files like VAE/text-encoder hidden). */
-  listImageModels(): Promise<string[]>;
-  /** True when an abliterated ("heretic") text encoder is installed, enabling
-   *  the uncensored Z-Image variant in the image model picker. */
-  hasAbliteratedEncoder(): Promise<boolean>;
   /** List local TTS/speech synthesis models. */
   listAudioModels(): Promise<string[]>;
   /** List available Kokoro voice names for a given Kokoro model. */
@@ -1727,18 +1713,16 @@ export interface CoreApi {
     model: string,
     prompt: string,
     outputDir: string,
-    inputImage?: string,
-    negativePrompt?: string,
-    steps?: number,
-    cfgScale?: number,
-    width?: number,
-    height?: number,
-    vramMode?: VramMode,
-    uncensored?: boolean,
-    consent?: boolean,
-    /** Render this many variants in one run (1-8). One model load instead of
-     *  several: measured 3 images in 140 s versus 181 s run separately. */
-    variants?: number,
+    inputImage?: string | null,
+    negativePrompt?: string | null,
+    steps?: number | null,
+    cfgScale?: number | null,
+    width?: number | null,
+    height?: number | null,
+    vramMode?: string | null,
+    uncensored?: boolean | null,
+    consent?: boolean | null,
+    variants?: number | null,
     onProgress?: (pct: number, detail?: string) => void,
   ): Promise<GeneratedImage>;
   checkHardware(): Promise<HardwareSpec>;
@@ -1803,6 +1787,8 @@ const tauriCore: CoreApi = {
   suggestFollowups: (answer) => invoke<string[]>("suggest_followups", { answer }),
   planTask: (request) => invoke<TaskPlan>("plan_task", { request }),
   detectImageRequest: (message) => invoke<ImageIntent>("detect_image_request", { message }),
+  appendChatMessage: (sessionId, role, content) =>
+    invoke<void>("append_chat_message", { sessionId, role, content }),
   appendAssistantMessage: (sessionId, content) =>
     invoke<void>("append_assistant_message", { sessionId, content }),
   planModelRuntime: (model) => invoke<RuntimePlan>("plan_model_runtime", { model }),
@@ -2030,6 +2016,7 @@ const tauriCore: CoreApi = {
   startMcpServer: (name) => invoke<string[]>("start_mcp_server", { name }),
   stopMcpServer: (name) => invoke<void>("stop_mcp_server", { name }),
   invokeMcpTool: (name, tool, args) => invoke<unknown>("invoke_mcp_tool", { name, tool, args }),
+  invokeExtensionTool: (tool, args) => invoke<string>("invoke_extension_tool", { tool, args }),
   diagnoseAndroidVm: () => invoke<AndroidVmStatus>("diagnose_android_vm"),
   setupAndroidVm: (args: AndroidVmSetupArgs) =>
     invoke<AndroidVmStatus>("setup_android_vm", { args }),
@@ -2065,7 +2052,12 @@ const tauriCore: CoreApi = {
 
   updateProviderModelParams: (params) => invoke("update_provider_model_params", { params }),
   getProviderModelParams: () => invoke<ModelParams>("get_provider_model_params"),
-  pullModel: (endpoint, model, onProgress, heretic, consent) => {
+  inspectHuggingFaceRepo: (source, hfToken) =>
+    invoke<HfRepoInspection>("inspect_huggingface_repo", {
+      source,
+      hfToken: hfToken || null,
+    }),
+  pullModel: (endpoint, model, onProgress, heretic, consent, selection) => {
     const chan = new Channel<{
       status: string;
       completed: number;
@@ -2086,6 +2078,7 @@ const tauriCore: CoreApi = {
       heretic: heretic ?? null,
       consent: consent ?? null,
       hfToken: hfToken || null,
+      selection: selection ?? null,
       onEvent: chan,
     });
   },
@@ -3171,6 +3164,7 @@ const demoCore: CoreApi = {
     name: "Conversations libres",
   }),
   sessionWorkspace: async () => "/tmp/locaryn-demo",
+  appendChatMessage: async () => {},
   appendAssistantMessage: async () => {},
   detectImageRequest: async (message) => {
     const m =
@@ -3257,6 +3251,7 @@ const demoCore: CoreApi = {
   archiveSession: async () => {},
   archivedSessions: async () => [],
   runComposerTool: async (_tool: string, text: string) => text,
+  invokeExtensionTool: async (_tool: string, _args: Record<string, unknown>) => "{}",
   moveSession: async () => {},
   suggestProject: async () => ({ project_id: null }),
   mergeSessions: async () => {},
@@ -3440,6 +3435,31 @@ const demoCore: CoreApi = {
     };
     return p;
   },
+  inspectHuggingFaceRepo: async (source) => ({
+    repo: source.replace(/^https?:\/\/huggingface\.co\//, "").replace(/^hf\.co\//, ""),
+    candidates: [
+      {
+        id: "demo-q4",
+        label: "Model Instruct — Q4_K_M",
+        files: ["model-Q4_K_M.gguf"],
+        total_bytes: 4_200_000_000,
+        format: "gguf",
+        quantization: "Q4_K_M",
+        variant: "Model Instruct",
+      },
+      {
+        id: "demo-q8",
+        label: "Model Instruct — Q8_0",
+        files: ["model-Q8_0.gguf"],
+        total_bytes: 7_900_000_000,
+        format: "gguf",
+        quantization: "Q8_0",
+        variant: "Model Instruct",
+      },
+    ],
+    support_files: ["config.json", "tokenizer.json"],
+    total_bytes: 12_100_000_000,
+  }),
   pullModel: async (_endpoint, model, onProgress, _heretic, consent) => {
     if (
       /nsfw|uncensored|pony|urpm|realisticvision|abyssorangemix|counterfeit|flux.*uncensored|hunyuanvideo.*nsfw|wan2.*nsfw/i.test(
