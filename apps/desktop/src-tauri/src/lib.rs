@@ -2982,7 +2982,7 @@ fn hf_quantization(path: &str) -> Option<String> {
     let lower = path.to_ascii_lowercase();
     [
         "q2_k_s", "q2_k", "q3_k_s", "q3_k_m", "q3_k_l", "q4_0", "q4_1", "q4_k_s", "q4_k_m", "q5_0",
-        "q5_1", "q5_k_s", "q5_k_m", "q6_k", "q8_0", "f16", "fp16", "bf16", "int8",
+        "q5_1", "q5_k_s", "q5_k_m", "q6_k", "q8_0", "bf16", "fp16", "f16", "int8",
     ]
     .iter()
     .find(|q| lower.contains(**q))
