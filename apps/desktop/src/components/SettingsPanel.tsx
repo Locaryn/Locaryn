@@ -1,7 +1,8 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import type { UseThemeReturn } from "../hooks/useTheme";
-import { type AppInfo, core } from "../lib/core";
+import { type AppInfo, type InstalledExtension, core } from "../lib/core";
+import type { ModelDownloadSource } from "../lib/modelRegistry";
 import { ModelBrowser } from "./ModelBrowser";
 import { PerformancePanel } from "./PerformancePanel";
 
@@ -11,6 +12,8 @@ type Props = {
   onProviderChanged?: () => void;
   /** Open the full-page application settings (everything, not just this chat). */
   onOpenFullSettings?: () => void;
+  activeCapabilities?: string[];
+  activeExtensions?: InstalledExtension[];
 };
 
 type Tab = "provider" | "performance";
@@ -20,7 +23,13 @@ type Conn = "idle" | "testing" | "ok" | "error";
  *  the app point at a server that isn't there ("Aucun modèle local n'a répondu"). */
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8080";
 
-export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: Props) {
+export function SettingsPanel({
+  theme,
+  onProviderChanged,
+  onOpenFullSettings,
+  activeCapabilities = [],
+  activeExtensions = [],
+}: Props) {
   const { settingsOpen, setSettingsOpen } = theme;
   const [tab, setTab] = useState<Tab>("provider");
 
@@ -121,10 +130,20 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
     _onProgress?: (pct: number) => void,
     _heretic?: boolean,
     consent?: boolean,
+    _selection?: unknown,
+    downloads?: ModelDownloadSource[],
   ) {
     try {
       if (!models.includes(tag)) {
-        await core.pullModel(endpoint.trim(), tag, undefined, undefined, consent);
+        await core.pullModel(
+          endpoint.trim(),
+          tag,
+          undefined,
+          undefined,
+          consent,
+          undefined,
+          downloads,
+        );
         await refreshModels();
       }
       setModel(tag);
@@ -226,7 +245,12 @@ export function SettingsPanel({ theme, onProviderChanged, onOpenFullSettings }: 
                 </div>
 
                 {modelView === "browse" ? (
-                  <ModelBrowser onInstall={useCatalogModel} installed={models} />
+                  <ModelBrowser
+                    onInstall={useCatalogModel}
+                    installed={models}
+                    activeCapabilities={activeCapabilities}
+                    activeExtensions={activeExtensions}
+                  />
                 ) : (
                   <>
                     <div className="locaryn-field">

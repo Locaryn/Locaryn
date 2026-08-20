@@ -2654,6 +2654,55 @@ pub struct PullProgressEvent {
     pub percentage: f64,
 }
 
+/// One additional file in an installation plan declared by an enabled
+/// extension catalogue. The desktop core deliberately knows neither model
+/// families nor vendor URLs; it only validates and executes this generic plan.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplaceCompanionDownload {
+    pub url: String,
+    pub file: String,
+    pub label: Option<String>,
+}
+
+fn validate_marketplace_companions(
+    companions: Vec<MarketplaceCompanionDownload>,
+) -> Result<Vec<MarketplaceCompanionDownload>, String> {
+    if companions.len() > 16 {
+        return Err("Un plan d'installation ne peut pas ajouter plus de 16 fichiers.".into());
+    }
+    let mut seen = std::collections::HashSet::new();
+    for companion in &companions {
+        let parsed = reqwest::Url::parse(&companion.url)
+            .map_err(|_| format!("Adresse de fichier compagnon invalide : {}", companion.url))?;
+        if parsed.scheme() != "https" || parsed.host_str().is_none() {
+            return Err(format!(
+                "Le fichier compagnon {} doit utiliser une adresse HTTPS.",
+                companion.file
+            ));
+        }
+        let path = std::path::Path::new(&companion.file);
+        let mut components = path.components();
+        if path.is_absolute()
+            || !matches!(components.next(), Some(std::path::Component::Normal(_)))
+            || components.next().is_some()
+            || companion.file.ends_with(".part")
+        {
+            return Err(format!(
+                "Nom de fichier compagnon non sûr : {}",
+                companion.file
+            ));
+        }
+        if !seen.insert(companion.file.to_ascii_lowercase()) {
+            return Err(format!(
+                "Fichier compagnon déclaré deux fois : {}",
+                companion.file
+            ));
+        }
+    }
+    Ok(companions)
+}
+
 /// A HuggingFace model choice. `files` contains one complete model variant:
 /// either a single GGUF or every shard belonging to one safetensors variant.
 /// Support files (tokenizer/config) are kept separate so quantisations and
@@ -3168,6 +3217,7 @@ async fn pull_model(
     consent: Option<bool>,
     hf_token: Option<String>,
     selection: Option<HfModelSelection>,
+    companions: Option<Vec<MarketplaceCompanionDownload>>,
     on_event: Channel<PullProgressEvent>,
 ) -> Result<(), String> {
     let url = model.trim().to_string();
@@ -3183,6 +3233,7 @@ async fn pull_model(
         url
     };
     let hf_token = hf_token.unwrap_or_default();
+    let planned_companions = validate_marketplace_companions(companions.unwrap_or_default())?;
     if !url.starts_with("http") {
         return Err(
             "Pour installer un modèle, utilisez un identifiant HuggingFace (ex: stablediffusionapi/deliberate-v2) \
@@ -3197,8 +3248,17 @@ async fn pull_model(
             .map(serde_json::to_value)
             .transpose()
             .map_err(|e| e.to_string())?;
+        let companions_value =
+            serde_json::to_value(&planned_companions).map_err(|e| e.to_string())?;
         match client
-            .pull_model(&_endpoint, &url, heretic, consent, selection_value.as_ref())
+            .pull_model(
+                &_endpoint,
+                &url,
+                heretic,
+                consent,
+                selection_value.as_ref(),
+                Some(&companions_value),
+            )
             .await
         {
             Ok(mut byte_stream) => {
@@ -3273,6 +3333,11 @@ async fn pull_model(
     // repository plan. Falling back to the old repo-wide download here would
     // undo the user's choice and fetch every quantisation again.
     if selection.is_some() {
+        if !planned_companions.is_empty() {
+            return Err(
+                "Les fichiers compagnons ne sont acceptés qu'avec un fichier modèle direct.".into(),
+            );
+        }
         if !url.starts_with("https://huggingface.co/") || url.contains("/resolve/") {
             return Err("Une sélection de variante doit venir d'un dépôt HuggingFace.".into());
         }
@@ -3289,6 +3354,11 @@ async fn pull_model(
         && !url.contains("/resolve/")
         && !url.contains("/blob/");
     if is_hf_repo {
+        if !planned_companions.is_empty() {
+            return Err(
+                "Les fichiers compagnons ne sont acceptés qu'avec un fichier modèle direct.".into(),
+            );
+        }
         return pull_hf_repo(&core, &url, &on_event, &hf_token, None).await;
     }
 
@@ -3323,7 +3393,6 @@ async fn pull_model(
     // sizes before starting the main request and keep one byte-based progress
     // bar for the complete plan. This prevents a VAE/encoder/config download
     // from looking like a second download that restarted at 0%.
-    let planned_companions = image_companions_for(&file_name, heretic.unwrap_or(false));
     let piper_companion = {
         let lower = file_name.to_ascii_lowercase();
         let url_lower = url.to_ascii_lowercase();
@@ -3344,13 +3413,13 @@ async fn pull_model(
         aggregate.completed = existing_size;
     }
     for comp in &planned_companions {
-        let path = models_dir.join(comp.file);
+        let path = models_dir.join(&comp.file);
         if path.exists() {
             let _ = std::fs::remove_file(path.with_extension("part"));
         } else {
             aggregate.total = aggregate
                 .total
-                .saturating_add(remote_content_length(&core.http, comp.url, &hf_token).await);
+                .saturating_add(remote_content_length(&core.http, &comp.url, &hf_token).await);
         }
     }
     if let Some((comp_url, comp_file)) = &piper_companion {
@@ -3397,21 +3466,14 @@ async fn pull_model(
     core.pull_cancels.lock().await.remove(&file_name);
     result?;
 
-    // Auto-setup: diffusion-only checkpoints cannot generate alone. Fetch the
-    // family-specific VAE and text encoders so one Marketplace action installs
-    // a complete, runnable image stack.
-    if let Err(e) = install_image_companions(
+    install_declared_companions(
         &core,
-        &file_name,
-        heretic.unwrap_or(false),
+        &planned_companions,
         &on_event,
         &hf_token,
         Some(&mut aggregate),
     )
-    .await
-    {
-        tracing::warn!(error = %e, "companion install failed (model itself is installed)");
-    }
+    .await?;
     // Auto-setup: Piper TTS voices ship a .json config file next to the .onnx.
     if let Err(e) = install_audio_companions(
         &core,
@@ -4155,95 +4217,35 @@ async fn install_kokoro_companions(
     Ok(())
 }
 
-/// Companion weights an image checkpoint needs to actually generate.
-struct Companion {
-    url: &'static str,
-    file: &'static str,
-    label: &'static str,
-}
-
-const FLUX_VAE: Companion = Companion {
-    // Z-Image uses the FLUX VAE. The ONNX decoder that was previously
-    // downloaded here cannot be read by stable-diffusion.cpp's `--vae` flag
-    // and ends in the opaque "get sd version from file failed" error.
-    url: "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors",
-    file: "ae.safetensors",
-    label: "VAE compatible stable-diffusion.cpp",
-};
-
-const FLUX_CLIP_L: Companion = Companion {
-    url: "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
-    file: "clip_l.safetensors",
-    label: "encodeur CLIP-L",
-};
-
-const FLUX_T5XXL: Companion = Companion {
-    url: "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors",
-    file: "t5xxl_fp16.safetensors",
-    label: "encodeur T5-XXL",
-};
-
-const Z_IMAGE_ENCODER: Companion = Companion {
-    url: "https://huggingface.co/second-state/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-    file: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-    label: "encodeur de texte",
-};
-
-const HERETIC_ENCODER: Companion = Companion {
-    url: "https://huggingface.co/onnx-community/Z-Image-AbliteratedV1/resolve/main/Z-Image-AbliteratedV1.Q4_K_M.gguf",
-    file: "Z-Image-AbliteratedV1.Q4_K_M.gguf",
-    label: "encodeur ablitere (heretic)",
-};
-
-fn image_companions_for(installed_file: &str, heretic: bool) -> Vec<&'static Companion> {
-    let lower = installed_file.to_ascii_lowercase();
-    if lower.contains("z_image") || lower.contains("z-image") || lower.contains("z_img") {
-        if heretic {
-            vec![&HERETIC_ENCODER, &FLUX_VAE]
-        } else {
-            vec![&Z_IMAGE_ENCODER, &FLUX_VAE]
-        }
-    } else if lower.contains("flux1") || lower.contains("flux.1") || lower.contains("flux_1") {
-        vec![&FLUX_VAE, &FLUX_CLIP_L, &FLUX_T5XXL]
-    } else {
-        Vec::new()
-    }
-}
-
-/// Download the companions a freshly installed image model needs.
-async fn install_image_companions(
+/// Download the extra files an enabled extension declared for this install.
+async fn install_declared_companions(
     core: &Core,
-    installed_file: &str,
-    heretic: bool,
+    companions: &[MarketplaceCompanionDownload],
     on_event: &Channel<PullProgressEvent>,
     hf_token: &str,
     mut aggregate: Option<&mut PullAggregate>,
 ) -> Result<(), String> {
     let models_dir = locaryn_config::models_dir();
-    let companions = image_companions_for(installed_file, heretic);
 
     for comp in companions {
-        let dest = models_dir.join(comp.file);
+        let label = comp.label.as_deref().unwrap_or(&comp.file);
+        let dest = models_dir.join(&comp.file);
         if dest.exists() {
             let _ = std::fs::remove_file(dest.with_extension("part"));
             continue;
         }
-        tracing::info!(
-            file = comp.file,
-            "installing image companion: {}",
-            comp.label
-        );
-        let expected = remote_content_length(&core.http, comp.url, hf_token).await;
+        tracing::info!(file = comp.file, "installing declared companion: {label}");
+        let expected = remote_content_length(&core.http, &comp.url, hf_token).await;
         if let Some(overall) = aggregate.as_deref_mut() {
             overall.current_expected = expected;
             send_aggregate_progress(
                 on_event,
                 overall,
-                format!("Installation automatique : {} ({})", comp.label, comp.file),
+                format!("Installation automatique : {label} ({})", comp.file),
             );
         } else {
             let _ = on_event.send(PullProgressEvent {
-                status: format!("Installation automatique : {} ({})", comp.label, comp.file),
+                status: format!("Installation automatique : {label} ({})", comp.file),
                 completed: 0,
                 total: 0,
                 percentage: 0.0,
@@ -4251,10 +4253,10 @@ async fn install_image_companions(
         }
         let part = models_dir.join(format!("{}.part", comp.file));
         let cancel = tokio_util::sync::CancellationToken::new();
-        if let Err(e) = do_pull_with_aggregate(
+        do_pull_with_aggregate(
             core,
-            comp.url,
-            comp.file,
+            &comp.url,
+            &comp.file,
             &dest,
             &part,
             on_event,
@@ -4262,10 +4264,7 @@ async fn install_image_companions(
             hf_token,
             aggregate.as_deref_mut(),
         )
-        .await
-        {
-            tracing::warn!(error = %e, file = comp.file, "companion download failed");
-        }
+        .await?;
     }
 
     Ok(())
@@ -9082,24 +9081,34 @@ mod tests {
     }
 
     #[test]
-    fn marketplace_image_downloads_include_family_companions() {
-        let z_image = super::image_companions_for("z_image_turbo-Q8_0.gguf", false);
-        assert_eq!(
-            z_image.iter().map(|item| item.file).collect::<Vec<_>>(),
-            ["Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "ae.safetensors"]
-        );
+    fn marketplace_companion_plan_is_generic_and_path_safe() {
+        let valid =
+            super::validate_marketplace_companions(vec![super::MarketplaceCompanionDownload {
+                url: "https://models.example/weights/encoder.gguf".into(),
+                file: "encoder.gguf".into(),
+                label: Some("encodeur".into()),
+            }])
+            .expect("a generic HTTPS companion should be accepted");
+        assert_eq!(valid[0].file, "encoder.gguf");
 
-        let flux = super::image_companions_for("flux1-schnell-Q4_0.gguf", false);
-        assert_eq!(
-            flux.iter().map(|item| item.file).collect::<Vec<_>>(),
-            [
-                "ae.safetensors",
-                "clip_l.safetensors",
-                "t5xxl_fp16.safetensors"
-            ]
-        );
-
-        assert!(super::image_companions_for("sdxl-turbo-Q4_0.gguf", false).is_empty());
+        for file in ["../outside.gguf", "nested/file.gguf", "partial.gguf.part"] {
+            assert!(super::validate_marketplace_companions(vec![
+                super::MarketplaceCompanionDownload {
+                    url: "https://models.example/file.gguf".into(),
+                    file: file.into(),
+                    label: None,
+                },
+            ])
+            .is_err());
+        }
+        assert!(super::validate_marketplace_companions(vec![
+            super::MarketplaceCompanionDownload {
+                url: "http://models.example/file.gguf".into(),
+                file: "file.gguf".into(),
+                label: None,
+            },
+        ])
+        .is_err());
     }
 
     /// Real sd.cpp output: the bar redraws with carriage returns, so a whole

@@ -293,8 +293,9 @@ pub struct AudioGenBody {
 ///    dépôt complet est téléchargé dans `models_dir/{proprietaire}__{depot}`,
 ///    la forme qu'attendent les moteurs Kokoro et Qwen3-TTS.
 ///
-/// Un checkpoint d'image seul ne produit rien : ses compagnons (VAE, encodeur
-/// de texte) sont récupérés automatiquement, comme sur l'ordinateur.
+/// Des fichiers supplémentaires peuvent être déclarés par le catalogue de
+/// l'extension qui possède l'entrée. Le daemon valide puis exécute ce plan sans
+/// connaître de famille de modèle ni d'adresse fournisseur.
 ///
 /// La réponse est un flux d'événements (SSE) : chaque `data:` porte un point
 /// d'avancement `{ downloaded, total, percentage, message }`, et le dernier
@@ -325,6 +326,17 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
                 .into_response();
         }
     };
+    let declared_companions = match validate_marketplace_companions(body.companions) {
+        Ok(companions) => companions,
+        Err(message) => return err_response(StatusCode::BAD_REQUEST, "bad_request", &message),
+    };
+    if kind == ModelKind::Repo && !declared_companions.is_empty() {
+        return err_response(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "Les fichiers compagnons ne sont acceptés qu'avec un fichier modèle direct.",
+        );
+    }
 
     let models_dir = locaryn_config::models_dir();
     if let Err(e) = std::fs::create_dir_all(&models_dir) {
@@ -395,7 +407,12 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
         // Un fichier unique ; déjà présent = déjà installé.
         ModelKind::File => {
             let dest = models_dir.join(&file_name);
-            if dest.exists() {
+            let already_installed = dest.exists();
+            let compagnons: Vec<MarketplaceCompanionDownload> = declared_companions
+                .into_iter()
+                .filter(|comp| !models_dir.join(&comp.file).exists())
+                .collect();
+            if already_installed && compagnons.is_empty() {
                 let _ = std::fs::remove_file(dest.with_extension("part"));
                 return (
                     StatusCode::CONFLICT,
@@ -406,22 +423,23 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
                     .into_response();
             }
             // La taille connue d'avance (HEAD) permet à la barre d'afficher un
-            // vrai pourcentage dès la première seconde — et les compagnons
-            // d'image comptent dans le même total, pour que 100 % veuille
+            // vrai pourcentage dès la première seconde — et les fichiers
+            // déclarés comptent dans le même total, pour que 100 % veuille
             // vraiment dire « tout est là ».
-            let mut total = head_length(&client, &url).await.unwrap_or(0);
-            let compagnons: Vec<Companion> = companions_for(&file_name)
-                .into_iter()
-                .filter(|comp| !models_dir.join(comp.file).exists())
-                .collect();
+            let mut total = if already_installed {
+                0
+            } else {
+                head_length(&client, &url).await.unwrap_or(0)
+            };
             for comp in &compagnons {
-                total += head_length(&client, comp.url).await.unwrap_or(0);
+                total += head_length(&client, &comp.url).await.unwrap_or(0);
             }
             (
                 Preparé::Fichier {
                     dest,
                     part: models_dir.join(format!("{file_name}.part")),
                     compagnons,
+                    already_installed,
                 },
                 total,
             )
@@ -448,13 +466,27 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
                 dest,
                 part,
                 compagnons,
-            } => match download_to(&client, &url, &dest, &part, &progress).await {
+                already_installed,
+            } => match if already_installed {
+                std::fs::metadata(&dest)
+                    .map(|metadata| metadata.len())
+                    .map_err(|error| error.to_string())
+            } else {
+                download_to(&client, &url, &dest, &part, &progress).await
+            } {
                 Ok(size) => {
                     if !compagnons.is_empty() {
                         progress.noter("Installation des compagnons…");
-                        let _ = install_image_companions(&client, &compagnons, &progress).await;
+                        if let Err(message) =
+                            install_declared_companions(&client, &compagnons, &progress).await
+                        {
+                            Err(message)
+                        } else {
+                            Ok((file_name, size))
+                        }
+                    } else {
+                        Ok((file_name, size))
                     }
-                    Ok((file_name, size))
                 }
                 Err(msg) => {
                     let _ = std::fs::remove_file(&part);
@@ -563,7 +595,7 @@ fn remove_model_artifacts(name: &str) -> Result<(), String> {
 /// DELETE /v1/models/{name} — retirer un modèle installé du serveur.
 ///
 /// Un fichier unique (`.gguf`, `.onnx`…) est effacé ; un dépôt HuggingFace
-/// est effacé avec son dossier. Les compagnons d'image (VAE, encodeur) ne
+/// est effacé avec son dossier. Les fichiers partagés déclarés en complément ne
 /// sont pas touchés : plusieurs modèles les partagent, et retirer un modèle
 /// ne doit pas en casser un autre.
 pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>) -> Response {
@@ -631,11 +663,12 @@ enum Preparé {
         dest_dir: std::path::PathBuf,
         fichiers: Vec<(String, u64)>,
     },
-    /// Un fichier unique, plus les compagnons d'image éventuels.
+    /// Un fichier unique, plus les fichiers déclarés par son extension.
     Fichier {
         dest: std::path::PathBuf,
         part: std::path::PathBuf,
-        compagnons: Vec<Companion>,
+        compagnons: Vec<MarketplaceCompanionDownload>,
+        already_installed: bool,
     },
 }
 
@@ -859,6 +892,8 @@ pub struct PullBody {
     /// Without it, legacy callers may still request a complete repository.
     #[serde(default)]
     pub selection: Option<serde_json::Value>,
+    #[serde(default)]
+    pub companions: Vec<MarketplaceCompanionDownload>,
 }
 
 /// Décider de ce que désigne une adresse, et du nom sous lequel le modèle
@@ -1107,64 +1142,70 @@ async fn pull_repo_files(
     result
 }
 
-/// Les poids compagnons qu'un checkpoint d'image exige pour générer.
-#[derive(Clone, Copy)]
-struct Companion {
-    url: &'static str,
-    file: &'static str,
-    label: &'static str,
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplaceCompanionDownload {
+    url: String,
+    file: String,
+    label: Option<String>,
 }
 
-const Z_IMAGE_VAE: Companion = Companion {
-    url: "https://huggingface.co/onnx-community/z_image-vae-fp32-fix/resolve/main/decoder_fp32_fix.onnx",
-    file: "z_image-vae-fp32-fix.onnx",
-    label: "décodeur VAE",
-};
-
-const Z_IMAGE_ENCODER: Companion = Companion {
-    url: "https://huggingface.co/second-state/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-    file: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-    label: "encodeur de texte",
-};
-
-/// Quels compagnons un checkpoint d'image exige, s'il en exige : Z-Image et
-/// Stable Diffusion ne génèrent rien sans leur VAE ; Z-Image exige en plus son
-/// encodeur de texte.
-fn companions_for(installed_file: &str) -> Vec<Companion> {
-    let lower = installed_file.to_ascii_lowercase();
-    let is_z_image = lower.contains("z_image") || lower.contains("z-image");
-    let is_sd =
-        lower.contains("stable-diffusion") || lower.contains("sd_xl") || lower.contains("sd15");
-    if is_z_image {
-        vec![Z_IMAGE_VAE, Z_IMAGE_ENCODER]
-    } else if is_sd {
-        vec![Z_IMAGE_VAE]
-    } else {
-        Vec::new()
+fn validate_marketplace_companions(
+    companions: Vec<MarketplaceCompanionDownload>,
+) -> Result<Vec<MarketplaceCompanionDownload>, String> {
+    if companions.len() > 16 {
+        return Err("Un plan d'installation ne peut pas ajouter plus de 16 fichiers.".into());
     }
+    let mut seen = std::collections::HashSet::new();
+    for companion in &companions {
+        let parsed = reqwest::Url::parse(&companion.url)
+            .map_err(|_| format!("Adresse de fichier compagnon invalide : {}", companion.url))?;
+        if parsed.scheme() != "https" || parsed.host_str().is_none() {
+            return Err(format!(
+                "Le fichier compagnon {} doit utiliser une adresse HTTPS.",
+                companion.file
+            ));
+        }
+        let path = std::path::Path::new(&companion.file);
+        let mut components = path.components();
+        if path.is_absolute()
+            || !matches!(components.next(), Some(std::path::Component::Normal(_)))
+            || components.next().is_some()
+            || companion.file.ends_with(".part")
+        {
+            return Err(format!(
+                "Nom de fichier compagnon non sûr : {}",
+                companion.file
+            ));
+        }
+        if !seen.insert(companion.file.to_ascii_lowercase()) {
+            return Err(format!(
+                "Fichier compagnon déclaré deux fois : {}",
+                companion.file
+            ));
+        }
+    }
+    Ok(companions)
 }
 
-/// Poser les poids compagnons d'un checkpoint d'image à côté de lui, comme le
-/// fait le bureau, sans faire échouer l'installation si un compagnon refuse.
-/// Leurs tailles comptent déjà dans le total de la barre, annoncé d'avance.
-async fn install_image_companions(
+/// Install every validated extra file declared by the extension catalogue.
+async fn install_declared_companions(
     client: &reqwest::Client,
-    compagnons: &[Companion],
+    compagnons: &[MarketplaceCompanionDownload],
     progress: &PullProgress,
 ) -> Result<(), String> {
     let models_dir = locaryn_config::models_dir();
     for comp in compagnons {
-        let dest = models_dir.join(comp.file);
+        let label = comp.label.as_deref().unwrap_or(&comp.file);
+        let dest = models_dir.join(&comp.file);
         if dest.exists() {
             let _ = std::fs::remove_file(dest.with_extension("part"));
             continue;
         }
-        progress.noter(&format!("Compagnon : {}…", comp.label));
-        tracing::info!(file = comp.file, "compagnon : {}", comp.label);
+        progress.noter(&format!("Compagnon : {label}…"));
+        tracing::info!(file = comp.file, "compagnon déclaré : {label}");
         let part = models_dir.join(format!("{}.part", comp.file));
-        if let Err(e) = download_to(client, comp.url, &dest, &part, progress).await {
-            tracing::warn!(error = %e, file = comp.file, "compagnon non installé");
-        }
+        download_to(client, &comp.url, &dest, &part, progress).await?;
     }
     Ok(())
 }
@@ -1176,12 +1217,11 @@ mod tests {
     #[test]
     fn les_adresses_valides_sont_classées() {
         // Un fichier direct : le nom du fichier est retenu.
-        let (name, kind) = classify_model_url(
-            "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf",
-        )
-        .unwrap();
+        let (name, kind) =
+            classify_model_url("https://models.example/owner/repo/resolve/main/model-Q4_K_M.gguf")
+                .unwrap();
         assert_eq!(kind, ModelKind::File);
-        assert_eq!(name, "z_image_turbo-Q8_0.gguf");
+        assert_eq!(name, "model-Q4_K_M.gguf");
 
         // Un dépôt HuggingFace : le nom devient propriétaire__dépôt.
         let (name, kind) = classify_model_url("https://huggingface.co/hexgrad/Kokoro-82M").unwrap();
@@ -1209,6 +1249,28 @@ mod tests {
         );
         assert!(filename_from_url("https://x/.cache").is_none());
         assert!(filename_from_url("https://x/..").is_none());
+    }
+
+    #[test]
+    fn les_compagnons_declares_restent_generiques_et_surs() {
+        let valid = validate_marketplace_companions(vec![MarketplaceCompanionDownload {
+            url: "https://models.example/encoder.gguf".into(),
+            file: "encoder.gguf".into(),
+            label: Some("encodeur".into()),
+        }])
+        .unwrap();
+        assert_eq!(valid[0].file, "encoder.gguf");
+
+        for file in ["../outside.gguf", "nested/file.gguf", "partial.gguf.part"] {
+            assert!(
+                validate_marketplace_companions(vec![MarketplaceCompanionDownload {
+                    url: "https://models.example/file.gguf".into(),
+                    file: file.into(),
+                    label: None,
+                }])
+                .is_err()
+            );
+        }
     }
 
     #[test]

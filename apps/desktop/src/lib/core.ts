@@ -1600,7 +1600,8 @@ export interface CoreApi {
   /** Inspect a HuggingFace repository before downloading one variant. */
   inspectHuggingFaceRepo(source: string, hfToken?: string): Promise<HfRepoInspection>;
   /** Install a model. `selection` prevents a multi-variant HF repository from
-   * downloading every quantisation and checkpoint. */
+   * downloading every quantisation and checkpoint. `downloads` is a validated
+   * companion-file plan supplied by an enabled extension catalogue. */
   pullModel(
     endpoint: string,
     model: string,
@@ -1608,6 +1609,7 @@ export interface CoreApi {
     heretic?: boolean,
     consent?: boolean,
     selection?: HfModelSelection,
+    downloads?: import("./modelRegistry").ModelDownloadSource[],
   ): Promise<void>;
   /** Cancel one download (by model URL/name) or all when omitted. */
   cancelPullModel(model?: string): Promise<void>;
@@ -2040,7 +2042,7 @@ const tauriCore: CoreApi = {
       source,
       hfToken: hfToken || null,
     }),
-  pullModel: (endpoint, model, onProgress, heretic, consent, selection) => {
+  pullModel: (endpoint, model, onProgress, heretic, consent, selection, downloads) => {
     const chan = new Channel<{
       status: string;
       completed: number;
@@ -2062,6 +2064,7 @@ const tauriCore: CoreApi = {
       consent: consent ?? null,
       hfToken: hfToken || null,
       selection: selection ?? null,
+      companions: downloads ?? null,
       onEvent: chan,
     });
   },

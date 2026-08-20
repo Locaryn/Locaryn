@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  type CatalogueModel,
-  MODEL_CATALOGUE,
-  type MediaModel,
-  type ModelPullProgress,
-  api,
-} from "../lib/core";
+import { type MediaModel, type ModelPullProgress, api } from "../lib/core";
 import { useCoucheRetour } from "../lib/navigation";
 import { notifyModelDownloaded } from "../lib/notifications";
 import { Screen } from "./Screen";
@@ -271,7 +265,7 @@ export function Models({ onBack, initialTab }: Props) {
     void reload();
   }, [reload]);
 
-  async function install(m: MarketplaceModelItem | CatalogueModel) {
+  async function install(m: MarketplaceModelItem) {
     setBusy(m.url);
     setError(null);
     setProgress({

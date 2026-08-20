@@ -16,6 +16,15 @@ export interface ModelVariant {
   quants: string[];
   storageGb: number;
   instruct?: boolean;
+  /** Additional files declared by the extension that owns this catalogue entry. */
+  downloads?: ModelDownloadSource[];
+}
+
+/** One companion file in an extension-owned model installation plan. */
+export interface ModelDownloadSource {
+  url: string;
+  file: string;
+  label?: string;
 }
 
 export interface ModelFamily {
@@ -49,6 +58,10 @@ export interface ModelFamily {
   textAnalysis?: boolean;
   imageEditing?: boolean;
   questionAnswering?: boolean;
+  /** Data-driven capabilities used by extension-contributed Marketplace filters. */
+  marketplaceCapabilities?: string[];
+  /** Enabled extension that supplied this family. Absent for the native catalogue. */
+  marketplaceOwner?: string;
   variants: ModelVariant[];
   /** Number of pulls from Ollama registry (for sorting by popularity). */
   pulls?: number;
@@ -232,7 +245,6 @@ export function classifyModel(modelName: string): ModelClassification {
 
   // 2. Check specialized registries (TTS, Image, Video, Music, 3D)
   const specializedRegistries = [
-    ...IMAGE_GEN_MODELS.map((f) => ({ family: f, flag: "image-gen" as const })),
     ...TTS_MODELS.map((f) => ({ family: f, flag: "tts" as const })),
     ...MUSIC_MODELS.map((f) => ({ family: f, flag: "music-gen" as const })),
     ...VIDEO_MODELS.map((f) => ({ family: f, flag: "video-gen" as const })),
@@ -371,45 +383,86 @@ export const SIZE_BUCKETS: SizeBucket[] = [
 
 // ── Category filter ─────────────────────────────────────────────────────────
 
-export type ModelCategory =
-  | "all"
-  | "chat"
-  | "code"
-  | "vision"
-  | "reasoning"
-  | "image-gen"
-  | "speech-synthesis"
-  | "video-generation"
-  | "language-translation"
-  | "3d-modeling"
-  | "music-generation"
-  | "object-detection"
-  | "text-analysis"
-  | "image-editing"
-  | "question-answering"
-  | "audio";
+export type ModelCategory = string;
 
-export const MODEL_CATEGORIES: { id: ModelCategory; label: string; icon: string }[] = [
-  { id: "all", label: "Tous", icon: "models" },
-  { id: "chat", label: "Chat / Instruct", icon: "chat" },
-  { id: "code", label: "Code", icon: "cpu" },
-  { id: "vision", label: "Vision", icon: "image" },
-  { id: "reasoning", label: "Raisonnement", icon: "memory" },
-  { id: "image-gen", label: "Image Gen", icon: "image" },
-  { id: "speech-synthesis", label: "Synthèse vocale", icon: "mic" },
-  { id: "video-generation", label: "Vidéo", icon: "video" },
-  { id: "language-translation", label: "Traduction", icon: "translate" },
-  { id: "3d-modeling", label: "3D", icon: "extensions" },
-  { id: "music-generation", label: "Musique", icon: "music" },
-  { id: "object-detection", label: "Détection", icon: "target" },
-  { id: "text-analysis", label: "Analyse texte", icon: "chart" },
-  { id: "image-editing", label: "Édition image", icon: "edit" },
-  { id: "question-answering", label: "Q&R", icon: "question" },
+/** A Marketplace filter. Extensions append entries using `marketplace.catalogs`. */
+export interface ModelCategoryDefinition {
+  id: ModelCategory;
+  label: string;
+  icon: string;
+  /** A family is included when it declares at least one matching capability. */
+  matches: string[];
+  /** Optional runtime capabilities required before the filter is visible. */
+  requires?: string[];
+}
+
+export const MODEL_CATEGORIES: ModelCategoryDefinition[] = [
+  { id: "all", label: "Tous", icon: "models", matches: [] },
+  { id: "chat", label: "Chat / Instruct", icon: "chat", matches: ["chat"] },
+  { id: "code", label: "Code", icon: "cpu", matches: ["code"] },
+  { id: "vision", label: "Vision", icon: "image", matches: ["vision"] },
+  { id: "reasoning", label: "Raisonnement", icon: "memory", matches: ["reasoning"] },
+  {
+    id: "speech-synthesis",
+    label: "Synthèse vocale",
+    icon: "mic",
+    matches: ["voice-tts"],
+    requires: ["voice-tts", "voice-cloning"],
+  },
+  {
+    id: "video-generation",
+    label: "Vidéo",
+    icon: "video",
+    matches: ["video-gen"],
+    requires: ["video-gen"],
+  },
+  {
+    id: "language-translation",
+    label: "Traduction",
+    icon: "translate",
+    matches: ["translation"],
+    requires: ["translation"],
+  },
+  {
+    id: "3d-modeling",
+    label: "3D",
+    icon: "extensions",
+    matches: ["3d-gen"],
+    requires: ["3d-gen"],
+  },
+  {
+    id: "music-generation",
+    label: "Musique",
+    icon: "music",
+    matches: ["music-gen"],
+    requires: ["music-gen"],
+  },
+  {
+    id: "object-detection",
+    label: "Détection",
+    icon: "target",
+    matches: ["vision-ocr"],
+    requires: ["vision-ocr"],
+  },
+  {
+    id: "text-analysis",
+    label: "Analyse texte",
+    icon: "chart",
+    matches: ["text-analysis"],
+    requires: ["text-analysis"],
+  },
+  {
+    id: "question-answering",
+    label: "Q&R",
+    icon: "question",
+    matches: ["rag-qa"],
+    requires: ["rag-qa"],
+  },
 ];
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const CACHE_KEY = "locaryn_model_registry_cache_v17";
+const CACHE_KEY = "locaryn_model_registry_cache_v18";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const QUANTS_SMALL = ["q4_K_M", "q5_K_M", "q8_0", "fp16"];
@@ -449,248 +502,6 @@ export function looksLikeImageModel(tagOrName: string): boolean {
   const aux = ["mmproj-", "vae", "clip", "t5xxl", "text_encoder", "text-encoder"];
   return diffusion.some((p) => n.includes(p)) && !aux.some((p) => n.includes(p));
 }
-
-// ── Image Generation Models ─────────────────────────────────────────────────
-
-export const IMAGE_GEN_MODELS: ModelFamily[] = [
-  {
-    id: "krea-2-turbo",
-    name: "Krea 2 Turbo (GGUF)",
-    brand: "Krea",
-    description:
-      "Modèle Krea 2 Turbo en GGUF (quantisations Q2 à Q8). Rendu photographique, peu d'étapes. " +
-      "Nécessite un VAE et un encodeur de texte séparés — le dépôt GGUF ne contient que le modèle de diffusion.",
-    license: "Voir la licence Krea",
-    contextWindow: "N/A",
-    releaseDate: "2025-10",
-    releaseYear: 2025,
-    imageGen: true,
-    variants: [
-      {
-        size: "Q4_K_M",
-        params: 12,
-        tag: "https://huggingface.co/vantagewithai/Krea-2-Turbo-GGUF/resolve/main/krea2_turbo-Q4_K_M.gguf",
-        quants: ["Q4_K_M"],
-        storageGb: 7.5,
-      },
-      {
-        size: "Q6_K",
-        params: 12,
-        tag: "https://huggingface.co/vantagewithai/Krea-2-Turbo-GGUF/resolve/main/krea2_turbo-Q6_K.gguf",
-        quants: ["Q6_K"],
-        storageGb: 10.6,
-      },
-      {
-        size: "Q8_0",
-        params: 12,
-        tag: "https://huggingface.co/vantagewithai/Krea-2-Turbo-GGUF/resolve/main/krea2_turbo-Q8_0.gguf",
-        quants: ["Q8_0"],
-        storageGb: 13.7,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "z-image-turbo",
-    name: "Z-Image Turbo (GGUF)",
-    brand: "Z-Image / LeeJet",
-    description:
-      "Modèle ultra-rapide (1 à 4 steps) en haute fidélité visuelle. Optimisé pour GPU & CPU.",
-    license: "Apache-2.0",
-    contextWindow: "N/A",
-    releaseDate: "2024-11",
-    releaseYear: 2024,
-    imageGen: true,
-    variants: [
-      {
-        size: "6B",
-        params: 6,
-        tag: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf",
-        quants: ["Q8_0"],
-        storageGb: 6.5,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "z-image-turbo-heretic",
-    name: "Z-Image Turbo — sans limite (Heretic)",
-    brand: "Z-Image / Heretic",
-    description:
-      "Z-Image Turbo avec encodeur de texte abliteré (méthode heretic) : le modèle ne refuse plus de prompt. " +
-      "L'installation met en place automatiquement le VAE et l'encodeur sans garde-fous. " +
-      "Vous êtes responsable de ce que vous générez.",
-    license: "Apache-2.0",
-    contextWindow: "N/A",
-    releaseDate: "2026-01",
-    releaseYear: 2026,
-    imageGen: true,
-    uncensored: true,
-    variants: [
-      {
-        size: "6B",
-        params: 6,
-        tag: "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf",
-        quants: ["Q8_0"],
-        storageGb: 9.0,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "sd-1-5",
-    name: "Stable Diffusion 1.5 (GGUF)",
-    brand: "RunwayML / SecondState",
-    description:
-      "Modèle d'image léger (1.5 Go) ultra-rapide. Fonctionne parfaitement sur tout GPU/CPU.",
-    license: "OpenRail",
-    contextWindow: "N/A",
-    releaseDate: "2024-05",
-    releaseYear: 2024,
-    imageGen: true,
-    uncensored: true,
-    variants: [
-      {
-        size: "1B",
-        params: 1,
-        tag: "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/resolve/main/stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
-        quants: ["Q4_0", "Q8_0", "f16"],
-        storageGb: 1.5,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "sdxl-turbo",
-    name: "SDXL Turbo (GGUF)",
-    brand: "Stability AI / SecondState",
-    description: "Modèle SDXL temps réel sub-seconde (1-step generation) haute qualité 1024x1024.",
-    license: "OpenRail",
-    contextWindow: "N/A",
-    releaseDate: "2024-01",
-    releaseYear: 2024,
-    imageGen: true,
-    variants: [
-      {
-        size: "7B",
-        params: 7,
-        tag: "https://huggingface.co/second-state/SDXL-Turbo-GGUF/resolve/main/sdxl-turbo-Q4_0.gguf",
-        quants: ["Q4_0", "Q8_0"],
-        storageGb: 3.1,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "sdxl-base-1-0",
-    name: "Stable Diffusion XL 1.0 (GGUF)",
-    brand: "Stability AI / City96",
-    description:
-      "Le modèle phare SDXL 1024x1024 d'une qualité artistique professionnelle exceptionnelle.",
-    license: "OpenRail",
-    contextWindow: "N/A",
-    releaseDate: "2024-03",
-    releaseYear: 2024,
-    imageGen: true,
-    variants: [
-      {
-        size: "7B",
-        params: 7,
-        tag: "https://huggingface.co/city96/SDXL-1.0-gguf/resolve/main/sdxl-1.0-Q4_0.gguf",
-        quants: ["Q4_0", "Q8_0"],
-        storageGb: 3.8,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "flux1-schnell",
-    name: "FLUX.1 Schnell (GGUF)",
-    brand: "Black Forest Labs / City96",
-    description: "Modèle de génération d'images haute résolution sub-seconde (4 steps).",
-    license: "Apache-2.0",
-    contextWindow: "N/A",
-    releaseDate: "2024-08",
-    releaseYear: 2024,
-    imageGen: true,
-    variants: [
-      {
-        size: "12B",
-        params: 12,
-        tag: "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_0.gguf",
-        quants: ["Q4_0", "Q5_0", "Q8_0"],
-        storageGb: 6.7,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "flux1-dev",
-    name: "FLUX.1 Dev (GGUF - 12B)",
-    brand: "Black Forest Labs / City96",
-    description:
-      "Le modèle d'image d'art le plus puissant au monde. Fidélité photoréaliste ultime.",
-    license: "Non-Commercial",
-    contextWindow: "N/A",
-    releaseDate: "2024-08",
-    releaseYear: 2024,
-    imageGen: true,
-    variants: [
-      {
-        size: "12B",
-        params: 12,
-        tag: "https://huggingface.co/city96/FLUX.1-dev-gguf/resolve/main/flux1-dev-Q4_0.gguf",
-        quants: ["Q4_0", "Q8_0"],
-        storageGb: 7.2,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "sd-3-5-medium",
-    name: "Stable Diffusion 3.5 Medium (GGUF)",
-    brand: "Stability AI / City96",
-    description:
-      "La toute dernière architecture SD 3.5 (2.5B) avec rendu de texte parfait et anatomie corrigée.",
-    license: "Community License",
-    contextWindow: "N/A",
-    releaseDate: "2024-10",
-    releaseYear: 2024,
-    imageGen: true,
-    variants: [
-      {
-        size: "3B",
-        params: 3,
-        tag: "https://huggingface.co/city96/stable-diffusion-3.5-medium-gguf/resolve/main/sd3.5_medium-Q4_0.gguf",
-        quants: ["Q4_0", "Q8_0"],
-        storageGb: 2.1,
-      },
-    ],
-    source: "seed",
-  },
-  {
-    id: "flux1-schnell-uncensored",
-    name: "FLUX.1 Schnell — sans limite",
-    brand: "Black Forest Labs / Community",
-    description: "Variante non-filtrée de FLUX.1 Schnell pour l'art libre sans restriction.",
-    license: "Open Weights",
-    contextWindow: "N/A",
-    releaseDate: "2024-09",
-    releaseYear: 2024,
-    imageGen: true,
-    uncensored: true,
-    variants: [
-      {
-        size: "12B — sans limite",
-        params: 12,
-        tag: "https://huggingface.co/city96/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-Q4_0.gguf",
-        quants: ["Q4_0"],
-        storageGb: 6.7,
-      },
-    ],
-    source: "seed",
-  },
-];
 
 // ── Speech Synthesis / TTS Models ──────────────────────────────────────────
 
@@ -2621,9 +2432,6 @@ function ollamaLibraryToFamilies(models: OllamaLibraryModel[]): ModelFamily[] {
       `${m.name} ${m.description}`,
     );
     const isAudio = isTTS || /audio|voice|whisper|omni/i.test(`${m.name} ${m.description}`);
-    const isImageGen = /image.*gen|text.*to.*image|diffusion|flux|stable/i.test(
-      `${m.name} ${m.description}`,
-    );
     const isVideoGen = /video.*gen|text.to.video|video.diffusion|wan2.1|sora|ltx/i.test(
       `${m.name} ${m.description}`,
     );
@@ -2636,15 +2444,12 @@ function ollamaLibraryToFamilies(models: OllamaLibraryModel[]): ModelFamily[] {
     const isTextAnalysis = /sentiment|classification|analysis|ner|embed|semantic/i.test(
       `${m.name} ${m.description}`,
     );
-    const isImageEditing = /image.*edit|inpaint|outpaint|upscale|restoration/i.test(
-      `${m.name} ${m.description}`,
-    );
     const isQuestionAnswering = /question.*answer|qa|extractive.qa/i.test(
       `${m.name} ${m.description}`,
     );
     const isInstruct =
       /instruct|chat/i.test(`${m.name} ${m.description}`) ||
-      (!isImageGen && !isTTS && !isVideoGen && !isMusicGen && !is3D);
+      (!isTTS && !isVideoGen && !isMusicGen && !is3D);
 
     const variants: ModelVariant[] = tags
       .filter((t) => !t.toLowerCase().includes("cloud"))
@@ -2689,7 +2494,6 @@ function ollamaLibraryToFamilies(models: OllamaLibraryModel[]): ModelFamily[] {
       code: isCode,
       reasoning: isReasoning,
       instruct: isInstruct,
-      imageGen: isImageGen,
       tts: isTTS,
       videoGen: isVideoGen,
       musicGen: isMusicGen,
@@ -2697,7 +2501,6 @@ function ollamaLibraryToFamilies(models: OllamaLibraryModel[]): ModelFamily[] {
       translation: isTranslation,
       objectDetection: isObjectDetection,
       textAnalysis: isTextAnalysis,
-      imageEditing: isImageEditing,
       questionAnswering: isQuestionAnswering,
       finetunable: true,
       variants: dedupedVariants,
@@ -2721,7 +2524,6 @@ function guessBrand(name: string): string {
   if (n.startsWith("glm") || n.startsWith("chatglm")) return "Zhipu AI";
   if (n.startsWith("nemotron")) return "NVIDIA";
   if (n.startsWith("kimi")) return "Moonshot AI";
-  if (n.startsWith("flux") || n.startsWith("z-image") || n.includes("image")) return "Image Gen";
   if (n.startsWith("starcoder")) return "Hugging Face";
   if (n.startsWith("yi")) return "01.AI";
   if (n.startsWith("internlm")) return "Shanghai AI Lab";
@@ -2867,7 +2669,7 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
 // up automatically on the next refresh.
 
 const KNOWN_HF_REPOS = new Set(
-  [...TTS_MODELS, ...MUSIC_MODELS, ...VIDEO_MODELS, ...MODEL3D_MODELS, ...IMAGE_GEN_MODELS]
+  [...TTS_MODELS, ...MUSIC_MODELS, ...VIDEO_MODELS, ...MODEL3D_MODELS]
     .flatMap((f) => f.variants.map((v) => v.tag))
     .filter((t) => t.startsWith("https://huggingface.co/") && !t.includes("/resolve/"))
     .map((t) => t.replace("https://huggingface.co/", "").replace(/\/+$/, "").toLowerCase()),
@@ -3018,7 +2820,6 @@ function mergeFamilies(...sources: ModelFamily[][]): ModelFamily[] {
 
 export interface RegistryResult {
   families: ModelFamily[];
-  imageGenModels: ModelFamily[];
   ttsModels: ModelFamily[];
   brands: string[];
   loading: boolean;
@@ -3041,16 +2842,13 @@ export async function fetchFullRegistry(
       SEED_CATALOG,
       LARGE_LOCAL_MODELS,
       AIRLLM_CATALOG_MODELS,
-      IMAGE_GEN_MODELS,
       TTS_MODELS,
       cached.families,
     );
-    const imageGen = all.filter((f) => f.imageGen);
     const tts = all.filter((f) => f.tts);
     const brands = Array.from(new Set(all.map((f) => f.brand))).sort();
     return {
       families: all,
-      imageGenModels: imageGen,
       ttsModels: tts,
       brands,
       loading: false,
@@ -3075,7 +2873,6 @@ export async function fetchFullRegistry(
     SEED_CATALOG,
     LARGE_LOCAL_MODELS,
     AIRLLM_CATALOG_MODELS,
-    IMAGE_GEN_MODELS,
     TTS_MODELS,
     ollamaFamilies,
     hfModels,
@@ -3085,13 +2882,11 @@ export async function fetchFullRegistry(
   // 5. Cache
   saveCache(allFamilies);
 
-  const imageGen = allFamilies.filter((f) => f.imageGen);
   const tts = allFamilies.filter((f) => f.tts);
   const brands = Array.from(new Set(allFamilies.map((f) => f.brand))).sort();
 
   return {
     families: allFamilies,
-    imageGenModels: imageGen,
     ttsModels: tts,
     brands,
     loading: false,
@@ -3106,25 +2901,8 @@ export function clearRegistryCache(): void {
   localStorage.removeItem(CACHE_KEY);
 }
 
-/**
- * Check if any image generation model is installed locally.
- */
-export function findInstalledImageGenModel(installedTags: string[]): string | null {
-  const imageGenTags = IMAGE_GEN_MODELS.flatMap((f) => f.variants.map((v) => v.tag));
-  const installed = new Set(installedTags.map((t) => t.replace(/:latest$/, "")));
-  for (const tag of imageGenTags) {
-    if (installed.has(tag) || installed.has(`${tag}:latest`)) return tag;
-  }
-  return null;
-}
-
 // ── Re-export for backward compat ───────────────────────────────────────────
 
 /** @deprecated Use fetchFullRegistry() instead */
-export const MODEL_CATALOG = [
-  ...SEED_CATALOG,
-  ...LARGE_LOCAL_MODELS,
-  ...AIRLLM_CATALOG_MODELS,
-  ...IMAGE_GEN_MODELS,
-];
+export const MODEL_CATALOG = [...SEED_CATALOG, ...LARGE_LOCAL_MODELS, ...AIRLLM_CATALOG_MODELS];
 export const BRANDS = Array.from(new Set(MODEL_CATALOG.map((f) => f.brand))).sort();

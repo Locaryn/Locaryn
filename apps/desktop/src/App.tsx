@@ -27,6 +27,7 @@ import {
 } from "./lib/core";
 import { parseInstallLink, setPendingInstall } from "./lib/deepLink";
 import { pickFolder } from "./lib/dialog";
+import type { ModelDownloadSource } from "./lib/modelRegistry";
 import { setRunReveal } from "./lib/runPanel";
 import { taskCenter } from "./lib/taskCenter";
 import { BottomPanel } from "./panels/BottomPanel";
@@ -589,6 +590,7 @@ export function App() {
     heretic?: boolean,
     consent?: boolean,
     selection?: HfModelSelection,
+    downloads?: ModelDownloadSource[],
   ) {
     const p = await core.listProviders();
     const active = p.find((pr) => pr.is_active) ?? p[0];
@@ -603,7 +605,6 @@ export function App() {
     });
 
     try {
-      // `heretic` makes the backend auto-install the uncensored companions.
       await core.pullModel(
         active.endpoint,
         tag,
@@ -615,6 +616,7 @@ export function App() {
         heretic,
         consent,
         selection,
+        downloads,
       );
       setDownloadProgress({ tag, progress: 100, status: "Téléchargement terminé" });
       taskCenter.done(taskId);
@@ -917,6 +919,8 @@ export function App() {
           theme={theme}
           onProviderChanged={refreshHealth}
           onOpenFullSettings={() => setActiveView("settings")}
+          activeCapabilities={activeCapabilities}
+          activeExtensions={activeExtensions}
         />
       )}
 
@@ -1043,6 +1047,7 @@ export function App() {
               onDelete={handleDeleteModel}
               installed={installedModels}
               activeCapabilities={activeCapabilities}
+              activeExtensions={activeExtensions}
               onOpenTraining={() => setActiveView("training")}
               onSelectModelForChat={async (tag) => {
                 try {

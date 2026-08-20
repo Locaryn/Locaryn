@@ -603,6 +603,7 @@ impl LocarynClient {
         heretic: Option<bool>,
         consent: Option<bool>,
         selection: Option<&serde_json::Value>,
+        companions: Option<&serde_json::Value>,
     ) -> Result<impl futures::Stream<Item = Result<bytes::Bytes, SdkError>> + Send, SdkError> {
         let body = serde_json::json!({
             "endpoint": endpoint,
@@ -610,6 +611,7 @@ impl LocarynClient {
             "heretic": heretic.unwrap_or(false),
             "consent": consent.unwrap_or(false),
             "selection": selection,
+            "companions": companions,
         });
         let resp = self
             .add_auth(self.http.post(self.url("/v1/models/pull")).json(&body))

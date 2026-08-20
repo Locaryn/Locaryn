@@ -4,14 +4,21 @@ import {
   type HfModelCandidate,
   type HfModelSelection,
   type HfRepoInspection,
+  type InstalledExtension,
   type ModelMetric,
   core,
   formatBytes,
   getHfToken,
 } from "../lib/core";
 import {
+  type ExtensionMarketplaceCatalog,
+  loadExtensionMarketplaces,
+} from "../lib/extensionMarketplace";
+import {
   MODEL_CATEGORIES,
   type ModelCategory,
+  type ModelCategoryDefinition,
+  type ModelDownloadSource,
   type ModelFamily,
   SIZE_BUCKETS,
   clearRegistryCache,
@@ -34,6 +41,7 @@ type Props = {
     heretic?: boolean,
     consent?: boolean,
     selection?: HfModelSelection,
+    downloads?: ModelDownloadSource[],
   ) => Promise<void> | void;
   /** Cancel an active model download in progress. */
   onCancelInstall?: () => Promise<void> | void;
@@ -49,6 +57,8 @@ type Props = {
   onLaunchAirllm?: (repo: string) => void;
   /** Active extension capabilities currently installed/enabled. */
   activeCapabilities?: string[];
+  /** Enabled extensions may contribute data-only Marketplace catalogues. */
+  activeExtensions?: InstalledExtension[];
 };
 
 /**
@@ -95,21 +105,6 @@ function getAirllmEntry(f: ModelFamily): { repo: string; sizeGb: number } | unde
   return undefined;
 }
 
-/** Required capabilities for specialized categories in the model catalogue. */
-const CATEGORY_CAPABILITIES: Record<string, string[]> = {
-  "image-gen": ["image-gen"],
-  "image-editing": ["image-editor", "image-gen"],
-  "speech-synthesis": ["voice-tts", "voice-cloning"],
-  audio: ["voice-tts", "voice-cloning", "music-gen"],
-  "video-generation": ["video-gen"],
-  "3d-modeling": ["3d-gen"],
-  "music-generation": ["music-gen"],
-  "object-detection": ["vision-ocr"],
-  "text-analysis": ["text-analysis"],
-  "question-answering": ["rag-qa"],
-  "language-translation": ["translation"],
-};
-
 /**
  * Hides every specialized family unless an enabled extension owns the
  * corresponding capability. This is deliberately applied before cards,
@@ -121,10 +116,8 @@ export function isFamilyAvailableForCapabilities(
   activeCapabilities: string[],
 ): boolean {
   const has = (capability: string) => activeCapabilities.includes(capability);
-  const hasImage = has("image-gen") || has("image-editor");
   const hasTts = has("voice-tts") || has("voice-cloning");
 
-  if ((family.imageGen || family.imageEditing) && !hasImage) return false;
   if (family.tts && !hasTts) return false;
   if (family.videoGen && !has("video-gen")) return false;
   if (family.musicGen && !has("music-gen")) return false;
@@ -135,6 +128,30 @@ export function isFamilyAvailableForCapabilities(
   if (family.translation && !family.instruct && !has("translation")) return false;
   return true;
 }
+
+function familyMarketplaceCapabilities(family: ModelFamily): Set<string> {
+  const capabilities = new Set(family.marketplaceCapabilities ?? []);
+  if (family.instruct) capabilities.add("chat");
+  if (family.code) capabilities.add("code");
+  if (family.vision) capabilities.add("vision");
+  if (family.reasoning) capabilities.add("reasoning");
+  if (family.tts) capabilities.add("voice-tts");
+  if (family.voiceCloning) capabilities.add("voice-cloning");
+  if (family.videoGen) capabilities.add("video-gen");
+  if (family.translation) capabilities.add("translation");
+  if (family.model3d) capabilities.add("3d-gen");
+  if (family.musicGen) capabilities.add("music-gen");
+  if (family.objectDetection) capabilities.add("vision-ocr");
+  if (family.textAnalysis) capabilities.add("text-analysis");
+  if (family.questionAnswering) capabilities.add("rag-qa");
+  if (family.audio) capabilities.add("audio");
+  return capabilities;
+}
+
+const EMPTY_EXTENSION_MARKETPLACE: ExtensionMarketplaceCatalog = {
+  categories: [],
+  models: [],
+};
 
 /** Une capacité annoncée : son icône et son nom. */
 type Pastille = { icon: IconName; label: string };
@@ -379,6 +396,7 @@ export function ModelBrowser({
   onLaunchAirllm,
   installed = [],
   activeCapabilities = [],
+  activeExtensions = [],
 }: Props) {
   const [query, setQuery] = useState("");
   /**
@@ -409,14 +427,38 @@ export function ModelBrowser({
     return () => document.removeEventListener("mousedown", onDocDown);
   }, [addMenuOpen]);
 
-  // Filtrer les onglets de catégories selon les plugins actifs
-  const visibleCategories = useMemo(() => {
-    return MODEL_CATEGORIES.filter((cat) => {
-      const required = CATEGORY_CAPABILITIES[cat.id];
-      if (!required) return true;
-      return required.some((cap) => activeCapabilities.includes(cap));
+  const [extensionMarketplace, setExtensionMarketplace] = useState<ExtensionMarketplaceCatalog>(
+    EMPTY_EXTENSION_MARKETPLACE,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    // Remove stale extension rows synchronously when a plugin is disabled or
+    // uninstalled; the replacement catalogue is loaded immediately after.
+    setExtensionMarketplace(EMPTY_EXTENSION_MARKETPLACE);
+    void loadExtensionMarketplaces(activeExtensions, core.readExtensionAsset).then((catalogue) => {
+      if (!cancelled) setExtensionMarketplace(catalogue);
     });
-  }, [activeCapabilities]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeExtensions]);
+
+  const marketplaceCategories = useMemo(() => {
+    const categories = new Map<string, ModelCategoryDefinition>();
+    for (const item of [...MODEL_CATEGORIES, ...extensionMarketplace.categories]) {
+      if (!categories.has(item.id)) categories.set(item.id, item);
+    }
+    return [...categories.values()];
+  }, [extensionMarketplace.categories]);
+
+  // An extension's filters exist only while its data slot is enabled.
+  const visibleCategories = useMemo(() => {
+    return marketplaceCategories.filter((category) => {
+      if (!category.requires?.length) return true;
+      return category.requires.some((capability) => activeCapabilities.includes(capability));
+    });
+  }, [activeCapabilities, marketplaceCategories]);
 
   const [category, setCategory] = useState<ModelCategory>("all");
 
@@ -509,6 +551,7 @@ export function ModelBrowser({
   const [pendingNsfwInstall, setPendingNsfwInstall] = useState<{
     tag: string;
     heretic: boolean;
+    downloads?: ModelDownloadSource[];
   } | null>(null);
   /** Repository inspection is deliberately explicit: a HF repo may contain
    * Q3/Q4/Q8, instruct/base and several sharded checkpoints. */
@@ -518,6 +561,7 @@ export function ModelBrowser({
     familyName: string;
     heretic: boolean;
     consent: boolean;
+    downloads?: ModelDownloadSource[];
   } | null>(null);
   const [repoCandidateId, setRepoCandidateId] = useState<string>("");
   const [repoInspecting, setRepoInspecting] = useState(false);
@@ -601,10 +645,10 @@ export function ModelBrowser({
 
   const capabilityFamilies = useMemo(
     () =>
-      [...registryModels, ...liveApiModels].filter((family) =>
+      [...registryModels, ...liveApiModels, ...extensionMarketplace.models].filter((family) =>
         isFamilyAvailableForCapabilities(family, activeCapabilities),
       ),
-    [registryModels, liveApiModels, activeCapabilities],
+    [registryModels, liveApiModels, extensionMarketplace.models, activeCapabilities],
   );
 
   const allBrands = useMemo(() => {
@@ -632,6 +676,7 @@ export function ModelBrowser({
     const q = query.trim().toLowerCase();
     const bucket = SIZE_BUCKETS.find((b) => b.id === size);
     const catalogSource = capabilityFamilies;
+    const activeCategory = visibleCategories.find((item) => item.id === category);
 
     return catalogSource
       .map((f) => {
@@ -661,21 +706,15 @@ export function ModelBrowser({
 
         if (matchingVariants.length === 0) return null;
 
-        if (category === "code" && !f.code) return null;
-        if (category === "vision" && !f.vision) return null;
-        if (category === "reasoning" && !f.reasoning) return null;
-        if (category === "image-gen" && !f.imageGen) return null;
-        if (category === "speech-synthesis" && !f.tts) return null;
-        if (category === "video-generation" && !f.videoGen) return null;
-        if (category === "language-translation" && !f.translation) return null;
-        if (category === "3d-modeling" && !f.model3d) return null;
-        if (category === "music-generation" && !f.musicGen) return null;
-        if (category === "object-detection" && !f.objectDetection) return null;
-        if (category === "text-analysis" && !f.textAnalysis) return null;
-        if (category === "image-editing" && !f.imageEditing) return null;
-        if (category === "question-answering" && !f.questionAnswering) return null;
-        if (category === "audio" && !f.audio && !f.tts && !f.musicGen) return null;
-        if (category === "chat" && !f.instruct) return null;
+        if (
+          activeCategory &&
+          activeCategory.id !== "all" &&
+          !activeCategory.matches.some((capability) =>
+            familyMarketplaceCapabilities(f).has(capability),
+          )
+        ) {
+          return null;
+        }
 
         if (brand !== "all" && f.brand !== brand) return null;
         if (yearFilter !== "all" && f.releaseYear.toString() !== yearFilter) return null;
@@ -734,6 +773,7 @@ export function ModelBrowser({
     onlyFavorites,
     favorites,
     capabilityFamilies,
+    visibleCategories,
     hardwareSpec,
     airllmEnabled,
   ]);
@@ -780,15 +820,18 @@ export function ModelBrowser({
     };
   }
 
-  /** `heretic` = uncensored family: the backend then auto-installs the
-   *  abliterated companions so the model works without any manual setup. */
-  function requestInstall(tag: string, familyName: string, heretic: boolean) {
+  function requestInstall(
+    tag: string,
+    familyName: string,
+    heretic: boolean,
+    downloads?: ModelDownloadSource[],
+  ) {
     if (classifyModel(`${familyName} ${tag}`).risk !== "safe") {
-      setPendingNsfwInstall({ tag, heretic });
+      setPendingNsfwInstall({ tag, heretic, downloads });
       setNsfwGateOpen(true);
       return;
     }
-    void beginModelInstall(tag, familyName, heretic, false);
+    void beginModelInstall(tag, familyName, heretic, false, undefined, downloads);
   }
 
   async function beginModelInstall(
@@ -797,6 +840,7 @@ export function ModelBrowser({
     heretic: boolean,
     consent: boolean,
     selection?: HfModelSelection,
+    downloads?: ModelDownloadSource[],
   ) {
     let chosenSelection = selection;
     const repo = !chosenSelection ? hfRepoSource(tag) : null;
@@ -811,12 +855,12 @@ export function ModelBrowser({
         warning: null,
         suggested_repo: null,
       });
-      setRepoInstallContext({ source: repo, familyName, heretic, consent });
+      setRepoInstallContext({ source: repo, familyName, heretic, consent, downloads });
       try {
         const inspection = await core.inspectHuggingFaceRepo(repo, getHfToken());
         if (inspection.candidates.length > 1 || inspection.warning || inspection.suggested_repo) {
           setRepoInspection(inspection);
-          setRepoInstallContext({ source: repo, familyName, heretic, consent });
+          setRepoInstallContext({ source: repo, familyName, heretic, consent, downloads });
           setRepoCandidateId(inspection.candidates[0]?.id ?? "");
           return;
         }
@@ -838,7 +882,7 @@ export function ModelBrowser({
           warning: null,
           suggested_repo: null,
         });
-        setRepoInstallContext({ source: repo, familyName, heretic, consent });
+        setRepoInstallContext({ source: repo, familyName, heretic, consent, downloads });
         return;
       } finally {
         setRepoInspecting(false);
@@ -847,7 +891,7 @@ export function ModelBrowser({
 
     setRepoInspection(null);
     setRepoInstallContext(null);
-    await handleInstallModel(tag, heretic, consent, chosenSelection);
+    await handleInstallModel(tag, heretic, consent, chosenSelection, downloads);
   }
 
   async function handleInstallModel(
@@ -855,6 +899,7 @@ export function ModelBrowser({
     heretic?: boolean,
     consent = false,
     selection?: HfModelSelection,
+    downloads?: ModelDownloadSource[],
   ) {
     // One global pull is allowed by the desktop shell; keep the progress key
     // equal to the repository/file tag so the card remains in sync after the
@@ -870,6 +915,7 @@ export function ModelBrowser({
         heretic,
         consent,
         selection,
+        downloads,
       );
     } finally {
       setInstallProgress((prev) => {
@@ -883,9 +929,9 @@ export function ModelBrowser({
   function confirmNsfwInstall() {
     setNsfwGateOpen(false);
     if (pendingNsfwInstall) {
-      const { tag, heretic } = pendingNsfwInstall;
+      const { tag, heretic, downloads } = pendingNsfwInstall;
       setPendingNsfwInstall(null);
-      void beginModelInstall(tag, tag, heretic, true);
+      void beginModelInstall(tag, tag, heretic, true, undefined, downloads);
     }
   }
 
@@ -893,23 +939,24 @@ export function ModelBrowser({
     if (!repoInspection || !repoInstallContext) return;
     const candidate = repoInspection.candidates.find((item) => item.id === repoCandidateId);
     if (!candidate) return;
-    const { source, familyName, heretic, consent } = repoInstallContext;
+    const { source, familyName, heretic, consent, downloads } = repoInstallContext;
     void beginModelInstall(
       source,
       familyName,
       heretic,
       consent,
       makeSelection(repoInspection, candidate),
+      downloads,
     );
   }
 
   function inspectSuggestedRepo() {
     if (!repoInspection?.suggested_repo || !repoInstallContext) return;
-    const { familyName, heretic, consent } = repoInstallContext;
+    const { familyName, heretic, consent, downloads } = repoInstallContext;
     const source = `https://huggingface.co/${repoInspection.suggested_repo}`;
     setRepoInspection(null);
     setRepoInstallContext(null);
-    void beginModelInstall(source, familyName, heretic, consent);
+    void beginModelInstall(source, familyName, heretic, consent, undefined, downloads);
   }
 
   async function handleCancelInstall(tag: string) {
@@ -1916,7 +1963,12 @@ export function ModelBrowser({
                                   type="button"
                                   className="locaryn-btn-primary locaryn-variant-use"
                                   onClick={() =>
-                                    requestInstall(targetTag, f.name, Boolean(f.uncensored))
+                                    requestInstall(
+                                      targetTag,
+                                      f.name,
+                                      Boolean(f.uncensored),
+                                      v.downloads,
+                                    )
                                   }
                                   title={`Installer la quantisation ${activeQuant}`}
                                 >
@@ -2205,7 +2257,12 @@ export function ModelBrowser({
                                   type="button"
                                   className="locaryn-btn-primary locaryn-variant-use"
                                   onClick={() =>
-                                    requestInstall(targetTag, f.name, Boolean(f.uncensored))
+                                    requestInstall(
+                                      targetTag,
+                                      f.name,
+                                      Boolean(f.uncensored),
+                                      v.downloads,
+                                    )
                                   }
                                   title={`Installer la quantisation ${activeQuant}`}
                                 >
@@ -2558,8 +2615,16 @@ export function ModelBrowser({
                     type="button"
                     className="locaryn-btn-primary"
                     onClick={() => {
-                      const { source, familyName, heretic, consent } = repoInstallContext;
-                      void beginModelInstall(source, familyName, heretic, consent);
+                      const { source, familyName, heretic, consent, downloads } =
+                        repoInstallContext;
+                      void beginModelInstall(
+                        source,
+                        familyName,
+                        heretic,
+                        consent,
+                        undefined,
+                        downloads,
+                      );
                     }}
                     disabled={repoInspecting || Boolean(repoInspectionError)}
                   >
