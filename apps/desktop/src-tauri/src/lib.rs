@@ -3715,15 +3715,7 @@ async fn install_audio_companions(
         let part = models_dir.join(format!("{json_name}.part"));
         let cancel = tokio_util::sync::CancellationToken::new();
         return do_pull_with_aggregate(
-            core,
-            &json_url,
-            &json_name,
-            &dest,
-            &part,
-            on_event,
-            &cancel,
-            hf_token,
-            aggregate,
+            core, &json_url, &json_name, &dest, &part, on_event, &cancel, hf_token, aggregate,
         )
         .await;
     }
