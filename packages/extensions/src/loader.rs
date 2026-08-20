@@ -505,6 +505,42 @@ mod tests {
         d
     }
 
+    /// Une extension apporte ses modèles au catalogue par un slot de données.
+    /// Le chargeur doit le conserver tel quel : sans lui, la liste arrive vide
+    /// et l'écran des modèles ne montre rien, sans erreur.
+    #[test]
+    fn a_data_slot_survives_loading() {
+        let root = tmp("data-slot");
+        std::fs::write(
+            root.join("plugin.json"),
+            r#"{
+              "apiVersion": "0.1",
+              "name": "avec-catalogue",
+              "version": "1.0.0",
+              "ui_contributions": {
+                "slots": [
+                  {
+                    "id": "catalogue",
+                    "slot": "marketplace.catalogs",
+                    "type": "data",
+                    "entry": "dist/marketplace.json"
+                  }
+                ]
+              }
+            }"#,
+        )
+        .unwrap();
+
+        let plugin = load(&root).expect("manifeste lisible");
+        let slots = &plugin.manifest.ui_contributions.slots;
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].slot, "marketplace.catalogs");
+        assert_eq!(slots[0].kind, "data");
+        assert_eq!(slots[0].entry.as_deref(), Some("dist/marketplace.json"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn loads_the_bundled_example_plugin() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))

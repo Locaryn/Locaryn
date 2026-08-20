@@ -607,7 +607,15 @@ pub async fn read_extension_asset(
 /// lisait n'importe quel fichier de la machine.
 fn confined_asset_path(asset_path: &str) -> Result<&str, String> {
     let clean = asset_path.trim_start_matches(['/', '\\']);
+    // `is_absolute` dépend de la plateforme de compilation : `C:/…` passe pour
+    // relatif sous Unix. Le préfixe de lecteur est donc écarté à la main, pour
+    // que la règle ne change pas selon l'endroit où le code est compilé.
+    let drive_prefix = clean
+        .as_bytes()
+        .get(1)
+        .is_some_and(|byte| *byte == b':' && clean.as_bytes()[0].is_ascii_alphabetic());
     let refuse = clean.is_empty()
+        || drive_prefix
         || std::path::Path::new(clean).is_absolute()
         || clean
             .split(['/', '\\'])
@@ -1743,7 +1751,12 @@ mod tests {
         assert!(confined_asset_path("../../secrets.txt").is_err());
         assert!(confined_asset_path("dist/../../etc/passwd").is_err());
         assert!(confined_asset_path("").is_err());
+        // Rejeté sur toute plateforme : la règle ne peut pas dépendre de
+        // l'endroit où le binaire a été compilé.
         assert!(confined_asset_path("C:/Windows/win.ini").is_err());
+        // Une barre de tête est une écriture du chemin dans le manifeste, pas
+        // une racine : elle reste confinée au dossier de l'extension.
+        assert_eq!(confined_asset_path("/etc/passwd").unwrap(), "etc/passwd");
     }
 
     #[test]
