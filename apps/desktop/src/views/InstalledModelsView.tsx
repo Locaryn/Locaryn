@@ -60,6 +60,10 @@ type StoredEntry = {
   title: string;
   /** Ligne d'en-tête : qui charge ce modèle. */
   brand: string;
+  /** Le nom sous lequel ce modèle se filtre. Une puce par valeur présente :
+   *  la liste se remplit d'elle-même quand une extension arrive, sans que le
+   *  socle ait à connaître les catégories qui existent. */
+  group: string;
   tags: string[];
   path: string;
   hint?: string;
@@ -74,6 +78,7 @@ export function InstalledModelsView({
 }: Props) {
   const [query, setQuery] = useState("");
   const [riskFilter, setRiskFilter] = useState<"all" | "safe" | "uncensored" | "nsfw">("all");
+  const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [activatingModel, setActivatingModel] = useState<string | null>(null);
   const [modelsDir, setModelsDir] = useState("");
   const [metrics, setMetrics] = useState<ModelMetric[]>([]);
@@ -146,6 +151,7 @@ export function InstalledModelsView({
         kind: "chat",
         title: identity.model,
         brand: "TEXTE · llama-server",
+        group: "Conversation",
         tags: [identity.quantization, identity.format].filter((tag): tag is string => !!tag),
         path: `${modelsDir}\\${cleanName}`,
       };
@@ -159,6 +165,7 @@ export function InstalledModelsView({
         kind: "extension",
         title: identity.model,
         brand: owner ? owner.toUpperCase() : "AUCUNE EXTENSION",
+        group: owner ?? "Non revendiqué",
         tags: [identity.quantization, identity.format, humanSize(weight.size_bytes)].filter(
           (tag): tag is string => !!tag,
         ),
@@ -174,6 +181,7 @@ export function InstalledModelsView({
       kind: "incompatible",
       title: name,
       brand: "TRANSFORMERS",
+      group: "Non exécutable",
       tags: ["SAFETENSORS"],
       path: `${modelsDir}\\${name}`,
       hint: "Le moteur de conversation local ne charge pas ce dépôt. Gardé ici pour pouvoir libérer l'espace disque.",
@@ -184,9 +192,25 @@ export function InstalledModelsView({
     );
   }, [dedupedModels, otherWeights, weightOwners, incompatibleModels, modelsDir]);
 
+  // Une puce par famille réellement présente, dans l'ordre où elles arrivent.
+  const groups = useMemo(() => {
+    const seen: string[] = [];
+    for (const entry of entries) {
+      if (!seen.includes(entry.group)) seen.push(entry.group);
+    }
+    return seen;
+  }, [entries]);
+
+  // Une famille qui disparaît — dernière extension retirée — ne doit pas
+  // laisser un filtre actif sur du vide.
+  useEffect(() => {
+    if (groupFilter && !groups.includes(groupFilter)) setGroupFilter(null);
+  }, [groups, groupFilter]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return entries.filter((entry) => {
+      if (groupFilter && entry.group !== groupFilter) return false;
       if (riskFilter !== "all" && classifyModel(entry.tag).risk !== riskFilter) return false;
       if (!q) return true;
       return (
@@ -195,7 +219,7 @@ export function InstalledModelsView({
         entry.brand.toLowerCase().includes(q)
       );
     });
-  }, [entries, query, riskFilter]);
+  }, [entries, query, riskFilter, groupFilter]);
 
   async function handleUseForChat(model: string) {
     setActivatingModel(model);
@@ -274,6 +298,36 @@ export function InstalledModelsView({
           </div>
         </div>
       </div>
+
+      {groups.length > 1 && (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <button
+            type="button"
+            className={`locaryn-chip${groupFilter === null ? " locaryn-chip-on" : ""}`}
+            onClick={() => setGroupFilter(null)}
+          >
+            Tous ({entries.length})
+          </button>
+          {groups.map((group) => (
+            <button
+              key={group}
+              type="button"
+              className={`locaryn-chip${groupFilter === group ? " locaryn-chip-on" : ""}`}
+              onClick={() => setGroupFilter((current) => (current === group ? null : group))}
+            >
+              {group} ({entries.filter((entry) => entry.group === group).length})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16 }}>
         <input

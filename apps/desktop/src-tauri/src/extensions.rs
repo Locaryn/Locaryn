@@ -952,9 +952,31 @@ async fn reinstall_from_source(
     scope: ExtensionScope,
     source: &str,
 ) -> Result<InstalledExtension, String> {
-    let outcome = locaryn_extensions::install(&core.http, source.trim(), scope, None)
-        .await
-        .map_err(|e| e.to_string())?;
+    // Libérer les fichiers avant de les remplacer : le serveur du plugin tient
+    // son propre exécutable ouvert, et Windows refuse alors de l'écraser.
+    stop_plugin_mcp(core, name).await;
+
+    let outcome = match locaryn_extensions::install(&core.http, source.trim(), scope, None).await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            // L'extension reste celle d'avant : lui rendre son serveur plutôt
+            // que de la laisser installée et muette après un échec.
+            let _ = reload(core).await;
+            let raison = error.to_string();
+            return Err(
+                if raison.to_lowercase().contains("denied")
+                    || raison.contains("accès refusé")
+                    || raison.contains("os error 5")
+                {
+                    format!(
+                    "{raison} — un fichier de l'extension est encore ouvert.                      Fermez ce qui l'utilise, ou redémarrez l'application, puis réessayez."
+                )
+                } else {
+                    raison
+                },
+            );
+        }
+    };
 
     let requested: Vec<Permission> =
         locaryn_extensions::manifest::requested_permissions(&outcome.manifest)
@@ -1389,7 +1411,13 @@ pub async fn set_extension_config(
 
 /// Stop and restart every MCP server this plugin registered, so a change to
 /// its files takes effect now rather than at the next launch.
-async fn restart_plugin_mcp(core: &Core, plugin_name: &str) -> Result<(), String> {
+/// Arrêter les serveurs MCP d'un plugin, sans recharger le runtime.
+///
+/// À faire **avant** de remplacer ses fichiers : sous Windows, un exécutable en
+/// cours d'exécution ne peut être ni supprimé ni écrasé. La mise à jour d'une
+/// extension qui embarque son serveur échouait donc sur « accès refusé », et
+/// l'utilisateur restait sur l'ancienne version sans savoir pourquoi.
+async fn stop_plugin_mcp(core: &Core, plugin_name: &str) {
     let prefix = format!("{}__", sanitize_server(plugin_name));
     let names: Vec<String> = {
         let rt = core.extensions.read().await;
@@ -1404,6 +1432,10 @@ async fn restart_plugin_mcp(core: &Core, plugin_name: &str) -> Result<(), String
             let _ = client.shutdown().await;
         }
     }
+}
+
+async fn restart_plugin_mcp(core: &Core, plugin_name: &str) -> Result<(), String> {
+    stop_plugin_mcp(core, plugin_name).await;
     reload(core).await?;
     Ok(())
 }
