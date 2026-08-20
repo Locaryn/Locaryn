@@ -170,18 +170,27 @@ pub fn normalise_candidates(raw: &str) -> Result<Vec<String>, String> {
     if let Some(("http", rest)) = raw.split_once("://") {
         let rest = rest.trim_end_matches('/');
         let host_port = with_default_port(rest);
-        return Ok(vec![format!("http://{host_port}"), format!("https://{host_port}")]);
+        return Ok(vec![
+            format!("http://{host_port}"),
+            format!("https://{host_port}"),
+        ]);
     }
     if let Some(("https", rest)) = raw.split_once("://") {
         let rest = rest.trim_end_matches('/');
         let host_port = with_default_port(rest);
-        return Ok(vec![format!("https://{host_port}"), format!("http://{host_port}")]);
+        return Ok(vec![
+            format!("https://{host_port}"),
+            format!("http://{host_port}"),
+        ]);
     }
     if raw.contains("://") {
         return Err(format!("Adresse inattendue : « {raw} »."));
     }
     let host_port = with_default_port(raw);
-    Ok(vec![format!("http://{host_port}"), format!("https://{host_port}")])
+    Ok(vec![
+        format!("http://{host_port}"),
+        format!("https://{host_port}"),
+    ])
 }
 
 fn with_default_port(rest: &str) -> String {
@@ -1131,7 +1140,8 @@ async fn list_archived() -> Result<Vec<ArchivedConversation>, String> {
             };
             out.push(ArchivedConversation {
                 id: id.to_string(),
-                title: s.get("title")
+                title: s
+                    .get("title")
                     .and_then(|v| v.as_str())
                     .filter(|t| !t.trim().is_empty())
                     .unwrap_or("Conversation")
@@ -1206,13 +1216,16 @@ async fn load_conversation(id: String) -> Result<Vec<ChatTurn>, String> {
                         continue;
                     }
                     if let Some(artifact_id) = artifact.get("id").and_then(|i| i.as_str()) {
-                        if let Ok(image) = fetch_artifact(&client, &base, &session.token, artifact_id).await {
+                        if let Ok(image) =
+                            fetch_artifact(&client, &base, &session.token, artifact_id).await
+                        {
                             images.push(image);
                         }
                     }
                 }
                 if !images.is_empty() {
-                    if let Some(turn) = turns.iter_mut().rev().find(|turn| turn.role == "assistant") {
+                    if let Some(turn) = turns.iter_mut().rev().find(|turn| turn.role == "assistant")
+                    {
                         turn.images = images;
                     } else {
                         turns.push(ChatTurn {

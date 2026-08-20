@@ -362,7 +362,7 @@ pub async fn edit_region(
     // The webview cannot hand over a disk path, so an attached image arrives
     // base64-encoded; everything downstream wants a file.
     let source = if args.image.starts_with("data:") {
-        crate::decode_data_url_to_temp(&args.image)?
+        decode_data_url_to_temp(&args.image)?
     } else {
         std::path::PathBuf::from(&args.image)
     };
@@ -594,6 +594,37 @@ async fn run_python(
         ));
     }
     Ok((coverage, confidence, pieces, largest))
+}
+
+/// Écrit une image reçue en data URL dans un fichier temporaire.
+///
+/// Vivait dans le module racine du temps où la génération d'images était une
+/// fonction du socle ; elle est partie avec, et seule l'édition de région s'en
+/// sert encore.
+fn decode_data_url_to_temp(data_url: &str) -> Result<std::path::PathBuf, String> {
+    use base64::Engine as _;
+    let (meta, payload) = data_url
+        .split_once(",")
+        .ok_or("image source invalide (pas une data URL)")?;
+    let ext = if meta.contains("jpeg") || meta.contains("jpg") {
+        "jpg"
+    } else if meta.contains("webp") {
+        "webp"
+    } else {
+        "png"
+    };
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload.trim())
+        .map_err(|e| format!("décodage base64: {e}"))?;
+    let path = locaryn_config::ensure_temp_dir().join(format!(
+        "region_edit_source_{}.{ext}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    ));
+    std::fs::write(&path, bytes).map_err(|e| format!("écriture image source: {e}"))?;
+    Ok(path)
 }
 
 #[cfg(test)]

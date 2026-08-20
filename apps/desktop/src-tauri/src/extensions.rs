@@ -166,6 +166,26 @@ pub async fn reload(core: &Core) -> Result<(), String> {
                 "LOCARYN_EXTENSION_MEDIA_DIR".to_string(),
                 extension_data_dir.join("media").display().to_string(),
             );
+            // La bibliothèque de poids de l'utilisateur, telle quelle. C'est
+            // un chemin générique — l'hôte ignore ce qu'une extension y
+            // reconnaîtra — mais sans lui une extension ne voit que son propre
+            // dossier, vide au premier lancement : les modèles déjà
+            // téléchargés restaient invisibles et tout semblait à réinstaller.
+            entry.env.insert(
+                "LOCARYN_MODELS_DIR".to_string(),
+                locaryn_config::models_dir().display().to_string(),
+            );
+            // Les préférences de modèles du compte, telles qu'écrites. Le
+            // socle ne dit pas à quoi elles servent : une extension y lit la
+            // clé qui la concerne, et suit le choix de l'utilisateur au lieu
+            // de prendre le premier modèle venu.
+            entry.env.insert(
+                "LOCARYN_MODEL_PREFERENCES_FILE".to_string(),
+                core.data_dir
+                    .join("model_preferences.json")
+                    .display()
+                    .to_string(),
+            );
             entry.env.insert(
                 "LOCARYN_PLUGIN_ROOT".to_string(),
                 p.root.display().to_string(),
@@ -387,6 +407,19 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
             },
         };
 
+        // Une extension active dont la permission `mcp` n'a jamais été
+        // accordée est enregistrée, visible, cochée — et pourtant son serveur
+        // n'est pas démarré : la boucle de rechargement la saute. Sans ce
+        // signal, l'utilisateur ne voit qu'un panneau vide et conclut que
+        // l'extension est cassée.
+        let mut load_errors = load_errors;
+        if row.enabled && components.mcp_servers > 0 && !row.granted.contains(&Permission::Mcp) {
+            load_errors.push(
+                "permission « mcp » non accordée : le serveur de cette extension n'est pas démarré, ses outils et ses modèles restent indisponibles."
+                    .to_string(),
+            );
+        }
+
         let requested = manifest
             .as_ref()
             .map(locaryn_extensions::manifest::requested_permissions)
@@ -588,6 +621,30 @@ pub async fn read_extension_asset(
     std::fs::read_to_string(&target).map_err(|e| format!("lecture asset impossible : {e}"))
 }
 
+/// Pourquoi aucun serveur d'extension ne tourne, en une phrase actionnable.
+///
+/// « aucune extension active n'expose de serveur MCP » est vrai mais muet :
+/// l'utilisateur a bien installé et activé l'extension, et ne peut pas deviner
+/// qu'il lui manque une permission ou que le paquet installé ne contient pas
+/// son serveur.
+async fn raison_absence_serveur(core: &Core) -> String {
+    let Ok(rows) = core.storage.extensions.list().await else {
+        return "aucune extension active n'expose de serveur MCP".to_string();
+    };
+    let manquantes: Vec<String> = rows
+        .iter()
+        .filter(|row| row.enabled && !row.granted.contains(&Permission::Mcp))
+        .map(|row| row.name.clone())
+        .collect();
+    if manquantes.is_empty() {
+        return "aucune extension active n'expose de serveur MCP".to_string();
+    }
+    format!(
+        "la permission « mcp » n'est pas accordée à {} — ouvrez Paramètres › Extensions pour l'accorder, son serveur ne démarre pas sans elle.",
+        manquantes.join(", ")
+    )
+}
+
 /// Invoke an MCP tool exposed by an enabled extension. This is deliberately
 /// generic: the host does not know whether the tool generates an image,
 /// synthesizes audio, or performs another extension-owned operation.
@@ -602,7 +659,7 @@ pub async fn invoke_extension_tool(
         running.values().cloned().collect()
     };
     if clients.is_empty() {
-        return Err("aucune extension active n'expose de serveur MCP".into());
+        return Err(raison_absence_serveur(&core).await);
     }
     for client in clients {
         let Ok(capabilities) = client.discover().await else {
@@ -611,7 +668,10 @@ pub async fn invoke_extension_tool(
         if !capabilities.tools.iter().any(|entry| entry.name == tool) {
             continue;
         }
-        let value = client.invoke_tool(&tool, &args).await.map_err(|error| error.to_string())?;
+        let value = client
+            .invoke_tool(&tool, &args)
+            .await
+            .map_err(|error| error.to_string())?;
         return Ok(value
             .as_str()
             .map(str::to_string)

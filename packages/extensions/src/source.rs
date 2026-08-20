@@ -308,7 +308,16 @@ pub async fn fetch(
             git_ref,
             subdir,
         } => {
-            let bytes = download_github_zip(http, owner, repo, git_ref.as_deref()).await?;
+            // A released bundle first: an extension that ships a compiled
+            // server (its MCP binary, a runtime) can only be complete there.
+            // The source archive carries no build output, so installing from
+            // it silently produces a plugin whose server never starts.
+            // Repositories that publish no bundle keep the old path.
+            let bytes =
+                match download_github_release_bundle(http, owner, repo, git_ref.as_deref()).await {
+                    Some(bytes) => bytes,
+                    None => download_github_zip(http, owner, repo, git_ref.as_deref()).await?,
+                };
             extract_zip_stripping_root(&bytes, dest)?;
             resolve_subdir(dest, subdir.as_deref())
         }
@@ -340,6 +349,121 @@ fn resolve_subdir(root: &Path, subdir: Option<&str>) -> Result<PathBuf, SourceEr
         )));
     }
     Ok(p)
+}
+
+/// The platform tokens this build looks for in a release asset name.
+///
+/// Kept deliberately loose — an extension may name its bundle
+/// `plugin-image-gen-v1.4.2-windows-x86_64.zip` or `…-win64.zip`; both must
+/// match, because a mismatch here is indistinguishable from "no bundle
+/// published" and silently falls back to the source archive.
+fn platform_tokens() -> (&'static [&'static str], &'static [&'static str]) {
+    let os: &[&str] = if cfg!(target_os = "windows") {
+        &["windows", "win64", "win32", "win", "pc-windows"]
+    } else if cfg!(target_os = "macos") {
+        &["macos", "darwin", "apple", "osx"]
+    } else {
+        &["linux", "unknown-linux"]
+    };
+    let arch: &[&str] = if cfg!(target_arch = "aarch64") {
+        &["aarch64", "arm64"]
+    } else {
+        &["x86_64", "x64", "amd64"]
+    };
+    (os, arch)
+}
+
+/// Every OS token, so an asset built for another platform can be told apart
+/// from one that is platform-independent.
+const ALL_OS_TOKENS: &[&str] = &[
+    "windows", "win64", "win32", "macos", "darwin", "apple", "osx", "linux",
+];
+
+/// Pick the release asset that fits this machine.
+///
+/// Preference order: an asset naming both this OS and this architecture, then
+/// one naming only this OS, then one naming no OS at all (a bundle with
+/// nothing platform-specific in it). An asset built for another platform is
+/// never returned — installing it would be worse than falling back to sources.
+fn choose_release_asset(assets: &[(String, String)]) -> Option<String> {
+    let (os_tokens, arch_tokens) = platform_tokens();
+    let named = |name: &str, tokens: &[&str]| {
+        let lower = name.to_ascii_lowercase();
+        tokens.iter().any(|t| lower.contains(t))
+    };
+    let zips: Vec<&(String, String)> = assets
+        .iter()
+        .filter(|(name, _)| name.to_ascii_lowercase().ends_with(".zip"))
+        .collect();
+
+    if let Some((_, url)) = zips
+        .iter()
+        .find(|(name, _)| named(name, os_tokens) && named(name, arch_tokens))
+    {
+        return Some(url.clone());
+    }
+    if let Some((_, url)) = zips.iter().find(|(name, _)| named(name, os_tokens)) {
+        return Some(url.clone());
+    }
+    zips.iter()
+        .find(|(name, _)| !named(name, ALL_OS_TOKENS))
+        .map(|(_, url)| url.clone())
+}
+
+/// Download the release bundle matching this platform, or `None` when the
+/// repository publishes none.
+///
+/// Every failure — no release, rate limit, unreadable payload — answers `None`
+/// so the caller falls back to the source archive rather than aborting an
+/// install that would otherwise have worked.
+async fn download_github_release_bundle(
+    http: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+    git_ref: Option<&str>,
+) -> Option<Vec<u8>> {
+    // A ref that looks like a version pins the release; anything else (a
+    // branch, a commit) has no release of its own and reads as "latest".
+    let endpoint = match git_ref {
+        Some(r) if r.starts_with('v') && r[1..].starts_with(|c: char| c.is_ascii_digit()) => {
+            format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{r}")
+        }
+        _ => format!("https://api.github.com/repos/{owner}/{repo}/releases/latest"),
+    };
+
+    let resp = http
+        .get(&endpoint)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body = resp.json::<serde_json::Value>().await.ok()?;
+    let assets: Vec<(String, String)> = body
+        .get("assets")?
+        .as_array()?
+        .iter()
+        .filter_map(|a| {
+            Some((
+                a.get("name")?.as_str()?.to_string(),
+                a.get("browser_download_url")?.as_str()?.to_string(),
+            ))
+        })
+        .collect();
+
+    let url = choose_release_asset(&assets)?;
+    let resp = http
+        .get(&url)
+        .header("Accept", "application/octet-stream")
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.bytes().await.ok().map(|b| b.to_vec())
 }
 
 /// GitHub's codeload endpoint serves a zip of any ref without authentication.
@@ -563,8 +687,20 @@ fn extract_zip_stripping_root(bytes: &[u8], dest: &Path) -> Result<(), SourceErr
         }
         let mut buf = Vec::with_capacity(f.size() as usize);
         f.read_to_end(&mut buf)?;
+        let mode = f.unix_mode();
         let mut handle = std::fs::File::create(&out)?;
         handle.write_all(&buf)?;
+        drop(handle);
+        // A bundle ships its server binary; extracted without its executable
+        // bit it cannot be spawned, and the extension looks installed while
+        // nothing it provides ever runs.
+        #[cfg(unix)]
+        if let Some(mode) = mode {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(mode))?;
+        }
+        #[cfg(not(unix))]
+        let _ = mode;
     }
     Ok(())
 }
@@ -777,5 +913,55 @@ mod tests {
         let tmp = std::env::temp_dir().join("locaryn-src-test");
         std::fs::create_dir_all(&tmp).unwrap();
         assert!(resolve_subdir(&tmp, Some("../escape")).is_err());
+    }
+
+    fn asset(name: &str) -> (String, String) {
+        (name.to_string(), format!("https://example.test/{name}"))
+    }
+
+    #[test]
+    fn release_asset_prefers_this_os_and_arch() {
+        let (os_tokens, arch_tokens) = platform_tokens();
+        let mine = format!(
+            "plugin-image-gen-v1.4.2-{}-{}.zip",
+            os_tokens[0], arch_tokens[0]
+        );
+        let assets = vec![
+            asset("plugin-image-gen-v1.4.2-linux-x86_64.zip"),
+            asset("plugin-image-gen-v1.4.2-windows-x86_64.zip"),
+            asset("plugin-image-gen-v1.4.2-macos-aarch64.zip"),
+            asset("plugin-image-gen-v1.4.2-macos-x86_64.zip"),
+        ];
+        let chosen = choose_release_asset(&assets).expect("un paquet pour cette plateforme");
+        assert!(chosen.ends_with(&mine), "choisi {chosen}, attendu {mine}");
+    }
+
+    #[test]
+    fn release_asset_falls_back_to_a_platform_neutral_bundle() {
+        let assets = vec![asset("plugin-figures-v1.0.0.zip")];
+        assert_eq!(
+            choose_release_asset(&assets).as_deref(),
+            Some("https://example.test/plugin-figures-v1.0.0.zip")
+        );
+    }
+
+    /// Installer le paquet d'une autre plateforme serait pire que retomber sur
+    /// les sources : le binaire livré ne s'exécuterait pas ici.
+    #[test]
+    fn release_asset_never_picks_another_platform() {
+        let foreign = if cfg!(target_os = "windows") {
+            "plugin-image-gen-v1.4.2-linux-x86_64.zip"
+        } else {
+            "plugin-image-gen-v1.4.2-windows-x86_64.zip"
+        };
+        assert_eq!(choose_release_asset(&[asset(foreign)]), None);
+    }
+
+    /// Les notes de version et les sommes de contrôle voyagent avec les
+    /// paquets ; seule une archive doit être retenue.
+    #[test]
+    fn release_asset_ignores_non_zip_files() {
+        let assets = vec![asset("checksums.txt"), asset("plugin-notes.md")];
+        assert_eq!(choose_release_asset(&assets), None);
     }
 }

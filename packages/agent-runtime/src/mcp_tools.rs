@@ -89,7 +89,9 @@ pub async fn dispatch_mcp_tool(
     prefixed_or_clean_name: &str,
     args: &serde_json::Value,
 ) -> ToolResult {
-    let (server_name, tool_name, client) = if let Some((server, tool)) = parse_mcp_tool_name(prefixed_or_clean_name) {
+    let (server_name, tool_name, client) = if let Some((server, tool)) =
+        parse_mcp_tool_name(prefixed_or_clean_name)
+    {
         let client = {
             let r = state.running.read().await;
             r.get(&server).cloned()

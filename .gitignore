@@ -147,14 +147,6 @@ coverage/
 
 # Extension personnelle, hors du dépôt de l'application
 
-# ── Extension SnapMCP / astreinte ──────────────────────────────────────
-# Produit distinct, avec son propre dépôt. Le garder ici en ferait deux
-# sources de vérité pour une même chose, et un lanceur versionné qui pointe
-# vers un dossier absent du dépôt ne peut fonctionner chez personne.
-.snap-astreinte/
-Lancer-SnapMCP.bat
-Lancer-Banc-SnapMCP.bat
-.snapmcp/
 .updater-keys/
 # Clé de signature Android : même statut que la clé de l'updater — elle vit sur
 # la machine du propriétaire et dans les secrets GitHub, jamais ici.

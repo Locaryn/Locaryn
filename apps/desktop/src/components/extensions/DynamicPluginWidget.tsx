@@ -22,6 +22,8 @@ const loadedScripts = new Set<string>();
 export function DynamicPluginWidget({ contribution, context, className, style }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Vrai une fois l'élément personnalisé réellement posé dans le conteneur. */
+  const [mounted, setMounted] = useState(false);
   const customElementContainerRef = useRef<HTMLDivElement | null>(null);
 
   // ── Chargement dynamique du script / custom element si requis ──────────
@@ -54,6 +56,7 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
       .catch((err) => {
         if (!cancelled) {
           console.warn(`[Plugin UI] Impossible de lire l'asset pour ${contribution.id}:`, err);
+          setError(String(err));
         }
       });
 
@@ -63,17 +66,30 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
   }, [contribution.id, contribution.extensionId, contribution.entry, contribution.type]);
 
   function mountCustomElement() {
-    if (!customElementContainerRef.current || !contribution.tag) return;
+    const host = customElementContainerRef.current;
+    if (!host || !contribution.tag) return;
     const tag = contribution.tag.toLowerCase();
     if (!customElements.get(tag)) {
-      // Le Custom Element n'est pas encore défini par le script
+      // Le script est passé sans définir l'élément qu'il annonce : le dire,
+      // plutôt que de laisser un cadre vide qu'on ne peut pas diagnostiquer.
+      if (loadedScripts.has(`${contribution.extensionId}:${contribution.entry}`)) {
+        setError(`l'extension n'a pas défini l'élément « ${tag} »`);
+      }
       return;
     }
-    // Nettoyer et monter l'élément
-    customElementContainerRef.current.innerHTML = "";
+    // Déjà monté : ne pas recréer l'élément. Ce montage tournait à chaque
+    // rendu du parent, et chaque passage repartait d'un panneau vierge —
+    // saisie perdue, requêtes relancées, résultat effacé.
+    if (host.firstElementChild?.tagName.toLowerCase() === tag) {
+      (host.firstElementChild as unknown as { context?: unknown }).context = context;
+      return;
+    }
+    host.innerHTML = "";
     const el = document.createElement(tag);
     (el as unknown as { context?: unknown }).context = context;
-    customElementContainerRef.current.appendChild(el);
+    host.appendChild(el);
+    setMounted(true);
+    setError(null);
   }
 
   useEffect(() => {
@@ -85,11 +101,18 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
   // ── Rendu Custom Element ─────────────────────────────────────────────
   if (contribution.type === "custom-element") {
     return (
-      <div
-        ref={customElementContainerRef}
-        className={className}
-        style={{ display: "block", width: "100%", ...style }}
-      />
+      <div className={className} style={{ display: "block", width: "100%", ...style }}>
+        <div ref={customElementContainerRef} style={{ display: "block", width: "100%" }} />
+        {!mounted && (
+          <div className="locaryn-card" style={{ padding: 32, textAlign: "center" }}>
+            <p className="locaryn-field-hint" style={{ margin: 0 }}>
+              {error
+                ? `Interface indisponible — ${error}`
+                : `Chargement de l'interface fournie par ${contribution.extensionName}…`}
+            </p>
+          </div>
+        )}
+      </div>
     );
   }
 

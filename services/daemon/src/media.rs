@@ -502,7 +502,9 @@ fn remove_model_artifacts(name: &str) -> Result<(), String> {
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                let model_key = relative_model.strip_suffix(".part").unwrap_or(&relative_model);
+                let model_key = relative_model
+                    .strip_suffix(".part")
+                    .unwrap_or(&relative_model);
                 if is_model_weight_path(std::path::Path::new(model_key)) {
                     let group = model_shard_group(model_key);
                     for file in walk_model_files(&repo_dir, 8) {
@@ -534,7 +536,10 @@ fn remove_model_artifacts(name: &str) -> Result<(), String> {
         let target_part = target.with_extension("part");
         if target_part.is_file() {
             std::fs::remove_file(&target_part).map_err(|e| {
-                format!("suppression du fichier partiel {} impossible : {e}", target_part.display())
+                format!(
+                    "suppression du fichier partiel {} impossible : {e}",
+                    target_part.display()
+                )
             })?;
             deleted = true;
         }
@@ -567,12 +572,10 @@ pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>
     let path = models_dir.join(&name);
     let meta = match tokio::fs::symlink_metadata(&path).await {
         Ok(m) => m,
-        Err(_) if path.with_extension("part").is_file() => {
-            match remove_model_artifacts(&name) {
-                Ok(()) => return Json(serde_json::json!({ "removed": name })).into_response(),
-                Err(e) => return err_response(StatusCode::NOT_FOUND, "not_found", &e),
-            }
-        }
+        Err(_) if path.with_extension("part").is_file() => match remove_model_artifacts(&name) {
+            Ok(()) => return Json(serde_json::json!({ "removed": name })).into_response(),
+            Err(e) => return err_response(StatusCode::NOT_FOUND, "not_found", &e),
+        },
         Err(_) => {
             return err_response(
                 StatusCode::NOT_FOUND,
@@ -606,9 +609,9 @@ fn nom_modele_valide(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with('/')
         && !name.contains('\\')
-        && name.split('/').all(|part| {
-            !part.is_empty() && part != "." && part != ".." && !part.starts_with('.')
-        })
+        && name
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != ".." && !part.starts_with('.'))
 }
 
 /// Ce qu'il faut télécharger, une fois l'adresse acceptée.
@@ -682,7 +685,9 @@ fn remove_empty_parent_dirs(start: &std::path::Path, stop: &std::path::Path) {
         if !empty || std::fs::remove_dir(&current).is_err() {
             break;
         }
-        let Some(parent) = current.parent() else { break };
+        let Some(parent) = current.parent() else {
+            break;
+        };
         current = parent.to_path_buf();
     }
 }
@@ -798,7 +803,11 @@ fn select_repo_files(
                 let path = item
                     .as_str()
                     .ok_or_else(|| "Chemin de variante HuggingFace invalide.".to_string())?;
-                if path.is_empty() || path.starts_with('/') || path.contains("..") || path.contains('\\') {
+                if path.is_empty()
+                    || path.starts_with('/')
+                    || path.contains("..")
+                    || path.contains('\\')
+                {
                     return Err("Chemin de variante HuggingFace invalide.".into());
                 }
                 paths.push(path.to_string());
@@ -813,7 +822,9 @@ fn select_repo_files(
     let mut result = Vec::with_capacity(paths.len());
     for path in paths {
         let Some((_, size)) = available.iter().find(|(candidate, _)| candidate == &path) else {
-            return Err(format!("Le fichier sélectionné n'existe plus dans le dépôt : {path}"));
+            return Err(format!(
+                "Le fichier sélectionné n'existe plus dans le dépôt : {path}"
+            ));
         };
         result.push((path, *size));
     }

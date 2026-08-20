@@ -711,7 +711,8 @@ fn find_skills(dir: &Path) -> Vec<String> {
         let folder = dir.join(folder_name);
         if folder.is_dir() {
             if let Ok(rd) = std::fs::read_dir(&folder) {
-                let mut entries: Vec<PathBuf> = rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+                let mut entries: Vec<PathBuf> =
+                    rd.filter_map(|e| e.ok()).map(|e| e.path()).collect();
                 entries.sort();
                 for p in entries {
                     if p.is_dir() {
@@ -742,7 +743,13 @@ fn find_skills(dir: &Path) -> Vec<String> {
         }
     }
 
-    for candidate in ["SKILL.md", "skill.md", "prompt.md", "PROMPT.md", "figures.md"] {
+    for candidate in [
+        "SKILL.md",
+        "skill.md",
+        "prompt.md",
+        "PROMPT.md",
+        "figures.md",
+    ] {
         if dir.join(candidate).is_file() && !out.contains(&candidate.to_string()) {
             out.push(candidate.to_string());
         }

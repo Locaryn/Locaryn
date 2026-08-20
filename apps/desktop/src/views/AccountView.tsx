@@ -160,7 +160,7 @@ export function AccountView({
           className={`locaryn-account-nav-item${section === "conversations" ? " locaryn-active" : ""}`}
           onClick={() => setSection("conversations")}
         >
-          <span className="locaryn-account-nav-icon">
+          <span className="locaryn-account-nav-icon locaryn-account-nav-icon-conversations">
             <Icon name="chat" size={15} />
           </span>
           <span className="locaryn-account-nav-text">

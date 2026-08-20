@@ -375,14 +375,22 @@ export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }
         );
       default: {
         const tab = tabs.find((candidate) => candidate.id === active);
-        return tab?.contribution ? (
+        // Seule une contribution qui apporte sa propre interface a un panneau.
+        // Un onglet déclaré à l'ancienne (`studio_tabs`) n'en a pas : sans ce
+        // filtre, le corps de l'onglet affichait le bouton d'action générique,
+        // seul au milieu de la page.
+        const fournitUnPanneau =
+          tab?.contribution?.type === "custom-element" && !!tab.contribution.entry;
+        return fournitUnPanneau && tab?.contribution ? (
           <div style={{ width: "100%" }}>
             <DynamicPluginWidget contribution={tab.contribution} />
           </div>
         ) : (
           placeholder(
             tab?.label ?? active,
-            tab?.source ? `Onglet apporté par ${tab.source}.` : "Onglet inconnu.",
+            tab?.source
+              ? `${tab.source} annonce cet onglet mais ne fournit pas d'interface pour le remplir.`
+              : "Onglet inconnu.",
           )
         );
       }

@@ -663,14 +663,6 @@ export interface ModelParams {
   seed: number;
 }
 
-/** Kept as a wire type for already-installed extensions; image generation UI
- * is supplied by the image plugin, not by the host application. */
-export interface GeneratedImage {
-  path: string;
-  simulated: boolean;
-  variants?: string[];
-}
-
 export interface RegionEditResult {
   path: string;
   mask_path: string;
@@ -1400,9 +1392,6 @@ export interface CoreApi {
   setActiveProvider(id: string): Promise<Provider>;
   configureProvider(endpoint: string, model: string | null): Promise<Provider>;
   listModels(endpoint: string): Promise<string[]>;
-  /** Legacy image-plugin discovery bridge. */
-  listImageModels(): Promise<string[]>;
-  hasAbliteratedEncoder(): Promise<boolean>;
   appInfo(): Promise<AppInfo>;
   getLocalProfile(): Promise<LocalProfile>;
   setLocalProfile(displayName: string): Promise<LocalProfile>;
@@ -1711,22 +1700,6 @@ export interface CoreApi {
     variant?: "vulkan" | "cpu",
     onProgress?: (pct: number, status?: string) => void,
   ): Promise<LlamaRuntimeStatus>;
-  generateImage(
-    model: string,
-    prompt: string,
-    outputDir: string,
-    inputImage?: string | null,
-    negativePrompt?: string | null,
-    steps?: number | null,
-    cfgScale?: number | null,
-    width?: number | null,
-    height?: number | null,
-    vramMode?: string | null,
-    uncensored?: boolean | null,
-    consent?: boolean | null,
-    variants?: number | null,
-    onProgress?: (pct: number, detail?: string) => void,
-  ): Promise<GeneratedImage>;
   checkHardware(): Promise<HardwareSpec>;
 
   /** Ce qui est actuellement en mémoire, et si le minuteur peut y toucher. */
@@ -2100,8 +2073,6 @@ const tauriCore: CoreApi = {
   ragClear: (projectId) => invoke<void>("rag_clear", { projectId }),
   ragSearch: (projectId, query, k) =>
     invoke<RagHit[]>("rag_search", { projectId, query, k: k ?? null }),
-  listImageModels: () => invoke<string[]>("list_image_models"),
-  hasAbliteratedEncoder: () => invoke<boolean>("has_abliterated_encoder"),
   listAudioModels: () => invoke<string[]>("list_audio_models").catch(() => []),
   listKokoroVoices: (model) => invoke<string[]>("list_kokoro_voices", { model }).catch(() => []),
   pickVoiceReference: () => invoke<string | null>("pick_voice_reference"),
@@ -2235,41 +2206,6 @@ const tauriCore: CoreApi = {
     return invoke<LlamaRuntimeStatus>("setup_llama_runtime", {
       variant: variant ?? null,
       onEvent: chan,
-    });
-  },
-  generateImage: (
-    model,
-    prompt,
-    outputDir,
-    inputImage,
-    negativePrompt,
-    steps,
-    cfgScale,
-    width,
-    height,
-    vramMode,
-    uncensored,
-    consent,
-    variants,
-    onProgress,
-  ) => {
-    const chan = new Channel<{ progress: number; detail?: string }>();
-    if (onProgress) chan.onmessage = (m) => onProgress(m.progress, m.detail);
-    return invoke<GeneratedImage>("generate_image", {
-      model,
-      prompt,
-      outputDir,
-      inputImage: inputImage ?? null,
-      negativePrompt: negativePrompt ?? null,
-      steps: steps ?? null,
-      cfgScale: cfgScale ?? null,
-      width: width ?? null,
-      height: height ?? null,
-      vramMode: vramMode ?? null,
-      uncensored: uncensored ?? null,
-      consent: consent ?? null,
-      variants: variants ?? null,
-      onProgress: chan,
     });
   },
   checkHardware: () => invoke("check_hardware"),
@@ -4207,12 +4143,6 @@ const demoCore: CoreApi = {
   async ragSearch(_projectId, query) {
     return [{ source: "demo.md", text: `(demo) extrait pertinent pour « ${query} »`, score: 0.82 }];
   },
-  async listImageModels() {
-    return ["z_image_turbo-Q8_0.gguf", "sd_xl_turbo_1.0.q8_0.gguf"];
-  },
-  async hasAbliteratedEncoder() {
-    return true;
-  },
   async llamaRuntimeStatus() {
     return {
       installed: true,
@@ -4233,37 +4163,6 @@ const demoCore: CoreApi = {
       up_to_date: true,
       pinned: "b10088",
       path: "C:/Users/you/.locaryn/data/bin/llama",
-    };
-  },
-  async generateImage(
-    _model,
-    _prompt,
-    _outputDir,
-    _in,
-    _neg,
-    steps,
-    _cfg,
-    _w,
-    _h,
-    _vram,
-    _unc,
-    consent,
-    _variants,
-    onProgress,
-  ) {
-    // Demo: simulate a step-by-step generation so the progress bar is testable.
-    const total = steps ?? 8;
-    for (let i = 1; i <= total; i++) {
-      await sleep(400);
-      onProgress?.(Math.round((i / total) * 100), `étape ${i}/${total}`);
-    }
-    return {
-      // Demo mode has no real file, so we keep an inline data URL in the path
-      // field. The consumer treats data: URLs as already-displayable.
-      path: `data:image/svg+xml;base64,${btoa(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#1e2022"/><text x="50%" y="50%" fill="#6f9c7f" font-size="28" text-anchor="middle">demo</text></svg>',
-      )}`,
-      simulated: true,
     };
   },
   async listAudioModels() {

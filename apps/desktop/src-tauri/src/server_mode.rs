@@ -331,7 +331,11 @@ mod win_job {
     const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
     const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: u32 = 9;
 
+    // Ces alias portent le nom exact de l'API Windows : les renommer
+    // rendrait la déclaration illisible face au prototype officiel.
+    #[allow(clippy::upper_case_acronyms)]
     type HANDLE = *mut std::ffi::c_void;
+    #[allow(clippy::upper_case_acronyms)]
     type BOOL = i32;
 
     extern "system" {

@@ -394,18 +394,48 @@ pub async fn sync_mcp_servers(state: &DaemonState) {
         let safe_name: String = record
             .name
             .chars()
-            .map(|character| if character.is_ascii_alphanumeric() || character == '-' || character == '_' { character } else { '-' })
+            .map(|character| {
+                if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+                    character
+                } else {
+                    '-'
+                }
+            })
             .collect();
         let extension_data_dir = state.data_dir.join("extensions").join(&safe_name);
         let _ = std::fs::create_dir_all(&extension_data_dir);
         for (server_name, mut server) in loaded.mcp {
-            let scoped = format!("{}__{}", safe_name, server_name);
-            server.env.insert("LOCARYN_DATA_DIR".into(), state.data_dir.display().to_string());
-            server.env.insert("LOCARYN_EXTENSION_DATA_DIR".into(), extension_data_dir.display().to_string());
-            server.env.insert("LOCARYN_EXTENSION_MODELS_DIR".into(), extension_data_dir.join("models").display().to_string());
-            server.env.insert("LOCARYN_EXTENSION_MEDIA_DIR".into(), extension_data_dir.join("media").display().to_string());
-            server.env.insert("LOCARYN_PLUGIN_ROOT".into(), root.display().to_string());
-            server.env.insert("LOCARYN_PLUGIN_BIN_DIR".into(), root.join("bin").display().to_string());
+            let scoped = format!("{safe_name}__{server_name}");
+            server.env.insert(
+                "LOCARYN_DATA_DIR".into(),
+                state.data_dir.display().to_string(),
+            );
+            server.env.insert(
+                "LOCARYN_EXTENSION_DATA_DIR".into(),
+                extension_data_dir.display().to_string(),
+            );
+            server.env.insert(
+                "LOCARYN_EXTENSION_MODELS_DIR".into(),
+                extension_data_dir.join("models").display().to_string(),
+            );
+            server.env.insert(
+                "LOCARYN_EXTENSION_MEDIA_DIR".into(),
+                extension_data_dir.join("media").display().to_string(),
+            );
+            // Même raison que côté bureau : sans la bibliothèque de poids de
+            // l'utilisateur, une extension ne voit que son dossier privé et
+            // croit qu'aucun modèle n'est installé.
+            server.env.insert(
+                "LOCARYN_MODELS_DIR".into(),
+                locaryn_config::models_dir().display().to_string(),
+            );
+            server
+                .env
+                .insert("LOCARYN_PLUGIN_ROOT".into(), root.display().to_string());
+            server.env.insert(
+                "LOCARYN_PLUGIN_BIN_DIR".into(),
+                root.join("bin").display().to_string(),
+            );
             server.owner = Some(entry.name.clone());
             desired.insert(scoped, server);
         }
@@ -446,7 +476,9 @@ pub async fn sync_mcp_servers(state: &DaemonState) {
                 tracing::info!(server = %name, tools = capabilities.tools.len(), "serveur MCP d'extension démarré");
                 state.mcp_state.running.write().await.insert(name, client);
             }
-            Err(error) => tracing::warn!(server = %name, error = %error, "serveur MCP d'extension indisponible"),
+            Err(error) => {
+                tracing::warn!(server = %name, error = %error, "serveur MCP d'extension indisponible")
+            }
         }
     }
 }
@@ -796,7 +828,10 @@ pub async fn read_extension_asset(
         .extensions
         .list()
         .into_iter()
-        .find(|entry| (entry.name == body.extension_id || entry.id.to_string() == body.extension_id) && entry.enabled)
+        .find(|entry| {
+            (entry.name == body.extension_id || entry.id.to_string() == body.extension_id)
+                && entry.enabled
+        })
         .and_then(|entry| entry.manifest_path.parent().map(|path| path.to_path_buf()))
     else {
         return (
@@ -807,9 +842,11 @@ pub async fn read_extension_asset(
     };
 
     let relative = std::path::Path::new(&body.asset_path);
-    if relative.is_absolute() || relative.components().any(|component| {
-        matches!(component, std::path::Component::ParentDir)
-    }) {
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": { "code": "bad_request", "message": "asset hors du dossier de l'extension" } })),
@@ -822,7 +859,12 @@ pub async fn read_extension_asset(
     };
     let target = match std::fs::canonicalize(root.join(relative)) {
         Ok(path) if path.starts_with(&root) => path,
-        Ok(_) => return extension_asset_error(StatusCode::FORBIDDEN, "asset hors du dossier de l'extension".into()),
+        Ok(_) => {
+            return extension_asset_error(
+                StatusCode::FORBIDDEN,
+                "asset hors du dossier de l'extension".into(),
+            )
+        }
         Err(error) => return extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
     };
     match tokio::fs::read_to_string(&target).await {
@@ -847,14 +889,25 @@ pub async fn get_extension_media(
     };
     let target = match std::fs::canonicalize(&requested) {
         Ok(path) if path.starts_with(&root) && path.is_file() => path,
-        Ok(_) => return extension_asset_error(StatusCode::FORBIDDEN, "fichier d'extension invalide".into()),
+        Ok(_) => {
+            return extension_asset_error(
+                StatusCode::FORBIDDEN,
+                "fichier d'extension invalide".into(),
+            )
+        }
         Err(error) => return extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
     };
     let bytes = match tokio::fs::read(&target).await {
         Ok(bytes) => bytes,
         Err(error) => return extension_asset_error(StatusCode::NOT_FOUND, error.to_string()),
     };
-    let mime = match target.extension().and_then(|extension| extension.to_str()).unwrap_or_default().to_ascii_lowercase().as_str() {
+    let mime = match target
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",

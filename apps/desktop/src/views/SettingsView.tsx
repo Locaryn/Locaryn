@@ -127,7 +127,7 @@ export function SettingsView({
 }: Props) {
   const { settings, updateAccent, resetTheme } = theme;
   const { lang, setLang } = useI18n();
-  const [section, setSection] = useState<Section>(initialSection ?? "engine");
+  const [section, setSection] = useState<Section>(initialSection ?? "account");
   const [info, setInfo] = useState<AppInfo | null>(null);
 
   useEffect(() => {

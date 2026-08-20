@@ -522,10 +522,8 @@ fn save_image_as(source_path: String, destination_path: String) -> Result<(), St
     // Older frontend builds used `<data_dir>/generated_images`; accept that
     // legacy location as well so their already displayed images remain
     // saveable after the storage-root correction.
-    let legacy_root = std::fs::canonicalize(
-        locaryn_config::default_data_dir().join("generated_images"),
-    )
-    .ok();
+    let legacy_root =
+        std::fs::canonicalize(locaryn_config::default_data_dir().join("generated_images")).ok();
     if ![generated_root.as_deref(), legacy_root.as_deref()]
         .into_iter()
         .flatten()
@@ -2249,12 +2247,12 @@ async fn configure_provider(
     Ok(provider)
 }
 
-/// Is this weight file part of the IMAGE pipeline rather than a chat model?
+/// Ce fichier de poids appartient-il à la chaîne image plutôt qu'au chat ?
 ///
-/// Single source of truth for both listings: `list_models` (chat) excludes
-/// these, `list_image_models` selects the diffusion ones among them. Without a
-/// shared rule the two lists drifted and diffusion checkpoints showed up as
-/// selectable chat models.
+/// Le socle ne sait plus générer d'image — c'est l'affaire d'une extension —
+/// mais il doit toujours écarter ces fichiers de la liste des modèles de
+/// conversation : un checkpoint de diffusion choisi comme modèle de chat fait
+/// retomber l'agent sur un stub, en silence.
 fn is_image_asset(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
     const DIFFUSION: &[&str] = &[
@@ -2293,29 +2291,6 @@ fn is_image_asset(file_name: &str) -> bool {
     DIFFUSION.iter().any(|p| n.contains(p)) || AUX.iter().any(|p| n.contains(p))
 }
 
-/// Diffusion checkpoint (a model that can actually render an image), as opposed
-/// to a companion file (VAE, text encoder, projector) that cannot be selected.
-fn is_diffusion_checkpoint(file_name: &str) -> bool {
-    let n = file_name.to_ascii_lowercase();
-    let is_valid_ext = n.ends_with(".gguf") || n.ends_with(".safetensors") || n.ends_with(".ckpt");
-    if !is_valid_ext {
-        return false;
-    }
-    const AUX: &[&str] = &[
-        "mmproj-",
-        "ae.safetensors",
-        "vae",
-        "clip",
-        "t5xxl",
-        "text_encoder",
-        "text-encoder",
-        "abliterat",
-        "qwen",
-        "embed",
-    ];
-    is_image_asset(file_name) && !AUX.iter().any(|p| n.contains(p))
-}
-
 /// Resolve a model specification (filename, HuggingFace repo tag, URL) to its actual file/dir path in `models_dir`.
 pub(crate) fn resolve_model_path(
     models_dir: &std::path::Path,
@@ -2328,10 +2303,10 @@ pub(crate) fn resolve_model_path(
     // Extract base filename if raw_name is a URL or has path separators
     let cleaned = raw_name
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or(raw_name)
         .split('\\')
-        .last()
+        .next_back()
         .unwrap_or(raw_name);
     let candidate = models_dir.join(cleaned);
     if candidate.exists() {
@@ -2668,7 +2643,9 @@ fn remove_empty_parent_dirs(start: &std::path::Path, stop: &std::path::Path) {
         if !empty || std::fs::remove_dir(&current).is_err() {
             break;
         }
-        let Some(parent) = current.parent() else { break };
+        let Some(parent) = current.parent() else {
+            break;
+        };
         current = parent.to_path_buf();
     }
 }
@@ -2744,8 +2721,8 @@ fn sibling_json_url(url: &str) -> String {
 
 fn normalize_hf_repo(source: &str) -> Result<String, String> {
     let raw = source.trim();
-    let url = if raw.starts_with("hf.co/") {
-        format!("https://huggingface.co/{}", &raw[6..])
+    let url = if let Some(rest) = raw.strip_prefix("hf.co/") {
+        format!("https://huggingface.co/{rest}")
     } else if !raw.starts_with("http") && raw.matches('/').count() == 1 {
         format!("https://huggingface.co/{raw}")
     } else {
@@ -2753,7 +2730,10 @@ fn normalize_hf_repo(source: &str) -> Result<String, String> {
     };
     let repo = url
         .strip_prefix("https://huggingface.co/")
-        .ok_or_else(|| "La source doit être un dépôt HuggingFace https://huggingface.co/auteur/modele.".to_string())?
+        .ok_or_else(|| {
+            "La source doit être un dépôt HuggingFace https://huggingface.co/auteur/modele."
+                .to_string()
+        })?
         .trim_end_matches('/')
         .split("/resolve/")
         .next()
@@ -2764,7 +2744,11 @@ fn normalize_hf_repo(source: &str) -> Result<String, String> {
         .split("/tree/")
         .next()
         .unwrap_or("");
-    if repo.is_empty() || repo.matches('/').count() != 1 || repo.contains("..") || repo.contains('?') {
+    if repo.is_empty()
+        || repo.matches('/').count() != 1
+        || repo.contains("..")
+        || repo.contains('?')
+    {
         return Err("Dépôt HuggingFace invalide : utilisez auteur/nom-du-repo.".into());
     }
     Ok(repo.to_string())
@@ -2772,9 +2756,17 @@ fn normalize_hf_repo(source: &str) -> Result<String, String> {
 
 fn is_hf_weight_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    let weight = [".gguf", ".safetensors", ".ckpt", ".bin", ".pth", ".pt", ".onnx"]
-        .iter()
-        .any(|ext| lower.ends_with(ext));
+    let weight = [
+        ".gguf",
+        ".safetensors",
+        ".ckpt",
+        ".bin",
+        ".pth",
+        ".pt",
+        ".onnx",
+    ]
+    .iter()
+    .any(|ext| lower.ends_with(ext));
     if !weight {
         return false;
     }
@@ -2820,9 +2812,7 @@ fn hf_shard_group(path: &str) -> String {
     for marker in ["-of-", "_of_", "_of-"] {
         if let Some(of_pos) = lower.find(marker) {
             let mut digits_start = of_pos;
-            while digits_start > 0
-                && lower.as_bytes()[digits_start - 1].is_ascii_digit()
-            {
+            while digits_start > 0 && lower.as_bytes()[digits_start - 1].is_ascii_digit() {
                 digits_start -= 1;
             }
             if digits_start < of_pos
@@ -2839,9 +2829,8 @@ fn hf_shard_group(path: &str) -> String {
 fn hf_quantization(path: &str) -> Option<String> {
     let lower = path.to_ascii_lowercase();
     [
-        "q2_k_s", "q2_k", "q3_k_s", "q3_k_m", "q3_k_l", "q4_0", "q4_1", "q4_k_s",
-        "q4_k_m", "q5_0", "q5_1", "q5_k_s", "q5_k_m", "q6_k", "q8_0", "f16", "fp16",
-        "bf16", "int8",
+        "q2_k_s", "q2_k", "q3_k_s", "q3_k_m", "q3_k_l", "q4_0", "q4_1", "q4_k_s", "q4_k_m", "q5_0",
+        "q5_1", "q5_k_s", "q5_k_m", "q6_k", "q8_0", "f16", "fp16", "bf16", "int8",
     ]
     .iter()
     .find(|q| lower.contains(**q))
@@ -2849,14 +2838,22 @@ fn hf_quantization(path: &str) -> Option<String> {
 }
 
 fn hf_candidate_variant(path: &str, quantization: Option<&str>) -> String {
-    let mut stem = path.trim_end_matches(|c: char| c == '/' ).to_string();
+    let mut stem = path.trim_end_matches('/').to_string();
     if let Some(q) = quantization {
         let lower = stem.to_ascii_lowercase();
         if let Some(pos) = lower.find(&q.to_ascii_lowercase()) {
             stem.truncate(pos);
         }
     }
-    for ext in [".safetensors", ".gguf", ".ckpt", ".onnx", ".pth", ".pt", ".bin"] {
+    for ext in [
+        ".safetensors",
+        ".gguf",
+        ".ckpt",
+        ".onnx",
+        ".pth",
+        ".pt",
+        ".bin",
+    ] {
         if stem.to_ascii_lowercase().ends_with(ext) {
             stem.truncate(stem.len() - ext.len());
             break;
@@ -2925,7 +2922,10 @@ async fn inspect_huggingface_repo(
     let mut support = Vec::new();
     for (path, size) in files {
         if is_hf_weight_path(&path) {
-            groups.entry(hf_shard_group(&path)).or_default().push((path, size));
+            groups
+                .entry(hf_shard_group(&path))
+                .or_default()
+                .push((path, size));
         } else {
             let lower = path.to_ascii_lowercase();
             let useful = lower.ends_with("config.json")
@@ -2989,6 +2989,7 @@ async fn inspect_huggingface_repo(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn pull_model(
     core: State<'_, Core>,
     _endpoint: String,
@@ -3156,10 +3157,8 @@ async fn pull_model(
     let piper_companion = {
         let lower = file_name.to_ascii_lowercase();
         let url_lower = url.to_ascii_lowercase();
-        (lower.ends_with(".onnx")
-            && !lower.contains("kokoro")
-            && !url_lower.contains("kokoro"))
-        .then(|| (sibling_json_url(&url), format!("{file_name}.json")))
+        (lower.ends_with(".onnx") && !lower.contains("kokoro") && !url_lower.contains("kokoro"))
+            .then(|| (sibling_json_url(&url), format!("{file_name}.json")))
     };
     let main_size = remote_content_length(&core.http, &url, &hf_token).await;
     let mut aggregate = PullAggregate {
@@ -3303,13 +3302,16 @@ async fn pull_hf_repo(
         paths
             .into_iter()
             .map(|path| {
-                if path.is_empty() || path.starts_with('/') || path.contains("..") || path.contains('\\') {
+                if path.is_empty()
+                    || path.starts_with('/')
+                    || path.contains("..")
+                    || path.contains('\\')
+                {
                     return Err("Chemin de fichier HuggingFace invalide.".to_string());
                 }
-                let size = available
-                    .get(&path)
-                    .copied()
-                    .ok_or_else(|| format!("Le fichier sélectionné n'existe plus dans {repo_id} : {path}"))?;
+                let size = available.get(&path).copied().ok_or_else(|| {
+                    format!("Le fichier sélectionné n'existe plus dans {repo_id} : {path}")
+                })?;
                 Ok((path, size))
             })
             .collect::<Result<Vec<_>, String>>()?
@@ -3318,7 +3320,9 @@ async fn pull_hf_repo(
     };
 
     if selected_paths.is_empty() {
-        return Err(format!("Aucun fichier à télécharger dans le dépôt {repo_id}."));
+        return Err(format!(
+            "Aucun fichier à télécharger dans le dépôt {repo_id}."
+        ));
     }
     let total_files = selected_paths.len();
     let total_bytes: u64 = selected_paths.iter().map(|(_, size)| *size).sum();
@@ -3433,15 +3437,7 @@ async fn do_pull(
     hf_token: &str,
 ) -> Result<(), String> {
     do_pull_with_aggregate(
-        core,
-        url,
-        file_name,
-        final_path,
-        part_path,
-        on_event,
-        cancel,
-        hf_token,
-        None,
+        core, url, file_name, final_path, part_path, on_event, cancel, hf_token, None,
     )
     .await
 }
@@ -3532,17 +3528,17 @@ async fn do_pull_with_aggregate(
         (overall.completed, overall.total)
     } else {
         (offset, total)
-    };            let _ = on_event.send(PullProgressEvent {
-                status: format!("Téléchargement de {file_name}…"),
-                completed,
-                total: event_total,
-                percentage: if event_total > 0 {
-                    (completed as f64 / event_total as f64 * 100.0).min(100.0)
-                } else {
-                    0.0
-                },
-            });
-
+    };
+    let _ = on_event.send(PullProgressEvent {
+        status: format!("Téléchargement de {file_name}…"),
+        completed,
+        total: event_total,
+        percentage: if event_total > 0 {
+            (completed as f64 / event_total as f64 * 100.0).min(100.0)
+        } else {
+            0.0
+        },
+    });
 
     // Open the partial file for append (or create new).
     // Use tokio::fs for async I/O.
@@ -3628,7 +3624,11 @@ async fn do_pull_with_aggregate(
             },
         )
     } else {
-        (downloaded, if total > 0 { total } else { downloaded }, 100.0)
+        (
+            downloaded,
+            if total > 0 { total } else { downloaded },
+            100.0,
+        )
     };
     let _ = on_event.send(PullProgressEvent {
         status: format!("{file_name} installé"),
@@ -3723,7 +3723,7 @@ async fn install_audio_companions(
             on_event,
             &cancel,
             hf_token,
-            aggregate.as_deref_mut(),
+            aggregate,
         )
         .await;
     }
@@ -4009,92 +4009,6 @@ const HERETIC_ENCODER: Companion = Companion {
     label: "encodeur ablitere (heretic)",
 };
 
-/// Replace the invalid ONNX VAE emitted by older builds with the official
-/// safetensors companion, but only when that legacy file is actually present.
-/// New installations use `install_image_companions`; this path is a one-time
-/// migration for users who already had a Z-Image checkpoint.
-async fn migrate_legacy_z_image_vae(
-    core: &Core,
-    on_progress: &Channel<serde_json::Value>,
-) -> Result<(), String> {
-    let models_dir = locaryn_config::models_dir();
-    let target = models_dir.join(Z_IMAGE_VAE.file);
-    if target.exists() {
-        return Ok(());
-    }
-
-    let legacy = std::fs::read_dir(&models_dir)
-        .ok()
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .any(|path| {
-            path.is_file()
-                && path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("onnx"))
-                && path
-                    .file_name()
-                    .is_some_and(|name| name.to_string_lossy().to_ascii_lowercase().contains("vae"))
-        });
-    if !legacy {
-        return Ok(());
-    }
-
-    on_progress
-        .send(serde_json::json!({
-            "progress": 2,
-            "detail": "migration du VAE Z-Image (format stable-diffusion.cpp)"
-        }))
-        .ok();
-    let response = core
-        .http
-        .get(Z_IMAGE_VAE.url)
-        .send()
-        .await
-        .map_err(|e| format!("téléchargement du VAE Z-Image : {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "téléchargement du VAE Z-Image : HTTP {}",
-            response.status()
-        ));
-    }
-
-    let part = target.with_extension("safetensors.part");
-    let total = response.content_length().unwrap_or(0);
-    let mut received = 0u64;
-    let mut stream = response.bytes_stream();
-    let mut file = tokio::fs::File::create(&part)
-        .await
-        .map_err(|e| format!("écriture du VAE Z-Image : {e}"))?;
-    use tokio::io::AsyncWriteExt;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("téléchargement du VAE Z-Image : {e}"))?;
-        received += chunk.len() as u64;
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("écriture du VAE Z-Image : {e}"))?;
-        if total > 0 {
-            let pct = 2 + ((received as f64 / total as f64) * 8.0).round() as u32;
-            on_progress
-                .send(serde_json::json!({
-                    "progress": pct,
-                    "detail": "téléchargement du VAE Z-Image"
-                }))
-                .ok();
-        }
-    }
-    file.flush()
-        .await
-        .map_err(|e| format!("écriture du VAE Z-Image : {e}"))?;
-    drop(file);
-    tokio::fs::rename(&part, &target)
-        .await
-        .map_err(|e| format!("installation du VAE Z-Image : {e}"))?;
-    Ok(())
-}
-
 fn image_companions_for(installed_file: &str, heretic: bool) -> Vec<&'static Companion> {
     let lower = installed_file.to_ascii_lowercase();
     if lower.contains("z_image") || lower.contains("z-image") || lower.contains("z_img") {
@@ -4229,20 +4143,6 @@ async fn approve_tool_call(
 // Image generation
 // ============================================================================
 
-/// Result of an image generation. `simulated` = placeholder, NOT a real render.
-/// The `path` is the absolute path to the saved image on disk.
-#[derive(Debug, Clone, Serialize)]
-struct GeneratedImage {
-    /// The first (or only) image. Kept as a plain field so callers that show a
-    /// single result need no changes.
-    path: String,
-    simulated: bool,
-    /// Every image produced, `path` included. Longer than one element when the
-    /// caller asked for several variants in a single run.
-    #[serde(default)]
-    variants: Vec<String>,
-}
-
 /// Result of an audio / TTS generation.
 #[derive(Debug, Clone, Serialize)]
 struct GeneratedAudio {
@@ -4287,787 +4187,6 @@ fn generate_test_wav(channels: u16, sample_rate: u32, _speed: f32) -> Vec<u8> {
     }
 
     wav
-}
-
-/// Generate a simple 512x512 test PNG with a colourful gradient.
-/// Pure Rust, zero external dependency.
-fn generate_test_png(w: u32, h: u32, prompt: &str) -> Vec<u8> {
-    // -- Pixels RGB --
-    let mut pixels: Vec<u8> = Vec::with_capacity((w * h * 3) as usize);
-    for y in 0..h {
-        for x in 0..w {
-            let r = ((x * 255) / w.max(1)) as u8;
-            let g = ((y * 255) / h.max(1)) as u8;
-            let b = (((x + y) * 255) / (w + h).max(1)) as u8;
-            pixels.push(r);
-            pixels.push(g);
-            pixels.push(b);
-        }
-    }
-
-    // -- Minimal PNG encoder (uncompressed via stored DEFLATE blocks) --
-    fn write_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
-        out.extend_from_slice(&(data.len() as u32).to_be_bytes());
-        out.extend_from_slice(kind);
-        out.extend_from_slice(data);
-        let mut crc = 0xffffffffu32;
-        for &b in kind.iter().chain(data.iter()) {
-            crc ^= b as u32;
-            for _ in 0..8 {
-                crc = if crc & 1 != 0 {
-                    (crc >> 1) ^ 0xedb88320
-                } else {
-                    crc >> 1
-                };
-            }
-        }
-        out.extend_from_slice(&(!crc).to_be_bytes());
-    }
-
-    let mut png = Vec::new();
-    png.extend_from_slice(&[137, 80, 78, 71, 13, 10, 26, 10]); // PNG signature
-
-    // IHDR
-    let mut ihdr = Vec::new();
-    ihdr.extend_from_slice(&w.to_be_bytes());
-    ihdr.extend_from_slice(&h.to_be_bytes());
-    ihdr.push(8); // bit depth
-    ihdr.push(2); // colour type RGB
-    ihdr.push(0); // compression
-    ihdr.push(0); // filter
-    ihdr.push(0); // interlace
-    write_chunk(&mut png, b"IHDR", &ihdr);
-
-    // IDAT — raw scanlines with filter byte 0, stored DEFLATE blocks
-    let mut raw = Vec::with_capacity((h as usize) * ((w as usize) * 3 + 1));
-    for _row in 0..h {
-        raw.push(0u8); // filter: none
-        raw.extend_from_slice(
-            &pixels[((_row as usize) * ((w as usize) * 3))
-                ..(((_row as usize) + 1) * ((w as usize) * 3))],
-        );
-    }
-
-    let mut idat = Vec::new();
-    idat.push(0x78);
-    idat.push(0x01); // zlib header
-                     // Stored blocks
-    let mut offset = 0;
-    while offset < raw.len() {
-        let remaining = raw.len() - offset;
-        let block_len = remaining.min(65535) as u16;
-        let is_last = remaining <= 65535;
-        idat.push(if is_last { 1 } else { 0 });
-        idat.extend_from_slice(&block_len.to_le_bytes());
-        idat.extend_from_slice(&(!block_len).to_le_bytes());
-        idat.extend_from_slice(&raw[offset..offset + block_len as usize]);
-        offset += block_len as usize;
-    }
-    // Adler-32 checksum (simplified)
-    let mut a: u32 = 1;
-    let mut b: u32 = 0;
-    for &byte in &raw {
-        a = (a + byte as u32) % 65521;
-        b = (b + a) % 65521;
-    }
-    let adler = (b << 16) | a;
-    idat.extend_from_slice(&adler.to_be_bytes());
-    write_chunk(&mut png, b"IDAT", &idat);
-
-    // IEND
-    write_chunk(&mut png, b"IEND", &[]);
-
-    let _ = prompt; // prompt would be embedded as text in a real render
-    png
-}
-
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-async fn generate_image(
-    core: State<'_, Core>,
-    model: String,
-    prompt: String,
-    output_dir: String,
-    input_image: Option<String>,
-    negative_prompt: Option<String>,
-    steps: Option<u32>,
-    cfg_scale: Option<f32>,
-    width: Option<u32>,
-    height: Option<u32>,
-    vram_mode: Option<String>,
-    uncensored: Option<bool>,
-    consent: Option<bool>,
-    // Render this many variants in one run. The weight load and prompt
-    // encoding are paid once, so several variants cost far less than several
-    // separate generations — useful when a prompt is expected to need tries.
-    variants: Option<u32>,
-    on_progress: Channel<serde_json::Value>,
-) -> Result<GeneratedImage, String> {
-    // Apply saved defaults for unspecified parameters.
-    let defaults = ImageDefaults::load(&core.data_dir);
-    let width = width.unwrap_or(defaults.width);
-    let height = height.unwrap_or(defaults.height);
-    let steps = steps.unwrap_or(if defaults.steps > 0 {
-        defaults.steps
-    } else {
-        8
-    });
-    let cfg_scale = cfg_scale.unwrap_or(if defaults.cfg_scale > 0.0 {
-        defaults.cfg_scale
-    } else {
-        7.0
-    });
-    let vram_mode = vram_mode.unwrap_or(defaults.vram_mode.clone());
-    let negative_prompt = negative_prompt.unwrap_or(defaults.negative_prompt.clone());
-
-    // Capped: each extra variant is another full sampling pass, and an
-    // unbounded value would look like a hang.
-    let variants = variants.unwrap_or(defaults.variants).clamp(1, 8);
-
-    let model = model.trim();
-
-    if is_nsfw_checkpoint(model) && !consent.unwrap_or(false) {
-        return Err("Ce modele est classe NSFW / sans garde-fous. \
-             Acceptez la responsabilite dans l'interface avant de generer."
-            .into());
-    }
-
-    let prompt = prompt.trim();
-    tracing::info!(
-        model = %model,
-        prompt = %prompt,
-        width, height, steps, "generating image"
-    );
-
-    let output_path = std::path::Path::new(&output_dir);
-    if !output_path.exists() {
-        std::fs::create_dir_all(output_path)
-            .map_err(|e| format!("cannot create output dir: {e}"))?;
-    }
-
-    let out_file_name = format!(
-        "img_{}.png",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    );
-    let out_file = output_path.join(&out_file_name);
-
-    // ── Route img2img to InstructPix2Pix (Python/diffusers) when sd.exe is
-    //    not installed. This is the real image-editing path: it decodes the
-    //    source image (base64 data URL from the webview), writes it to a temp
-    //    file, spawns a Python process running the InstructPix2Pix pipeline,
-    //    and captures the edited PNG. No sd.exe needed — just torch+diffusers.
-    let sd_bin = sd_engine::find_sd_binary();
-    let has_sd = sd_bin.is_some();
-
-    // ── img2img path: use InstructPix2Pix via Python when no sd.exe ──
-    if input_image.is_some() && !has_sd {
-        return run_img2img_ip2p(
-            &out_file,
-            input_image.as_deref().unwrap_or(""),
-            prompt,
-            if negative_prompt.is_empty() {
-                None
-            } else {
-                Some(negative_prompt.as_str())
-            },
-            steps,
-            cfg_scale,
-            &on_progress,
-        )
-        .await;
-    }
-
-    // ── txt2img path: simulation when no sd.exe ──
-    let simulation = !has_sd;
-
-    if simulation {
-        let _ = (model, input_image, vram_mode, uncensored);
-        on_progress
-            .send(serde_json::json!({"progress": 0, "detail": "initialisation"}))
-            .ok();
-        for i in 1..=steps {
-            on_progress
-                .send(serde_json::json!({
-                    "progress": ((i as f64 / steps as f64) * 100.0).round() as u32,
-                    "detail": format!("etape {}/{}", i, steps)
-                }))
-                .ok();
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        let png = generate_test_png(width, height, prompt);
-        std::fs::write(&out_file, png).map_err(|e| format!("cannot write image: {e}"))?;
-        on_progress
-            .send(serde_json::json!({"progress": 100, "detail": "termine"}))
-            .ok();
-        return Ok(GeneratedImage {
-            path: out_file.to_string_lossy().to_string(),
-            simulated: true,
-            variants: vec![out_file.to_string_lossy().to_string()],
-        });
-    }
-
-    // ── Real generation via stable-diffusion.cpp ────────────────────────
-    let sd_bin = sd_bin.ok_or("moteur d'images introuvable")?;
-    let models_dir = locaryn_config::models_dir();
-    let model_path = resolve_model_path(&models_dir, model);
-    if !model_path.exists() {
-        return Err(format!("modèle introuvable : {}", model_path.display()));
-    }
-
-    // Older Locaryn builds installed an ONNX decoder under the VAE slot. It
-    // cannot be passed to sd.cpp, but existing users should not have to delete
-    // and redownload their checkpoint manually: migrate that one companion on
-    // the first generation after the update.
-    if sd_engine::classify(model) == sd_engine::ModelFamily::ZImage {
-        migrate_legacy_z_image_vae(&core, &on_progress).await?;
-    }
-
-    // The caller's steps/cfg come from generic defaults that suit Stable
-    // Diffusion. Flow-matching models diverge into noise at CFG 7, so when the
-    // request still carries those defaults, use what the family actually wants.
-    let (fam_steps, fam_cfg) = sd_engine::default_sampling(model);
-    let steps = if steps == 20 || steps == 8 {
-        fam_steps
-    } else {
-        steps
-    };
-    let cfg_scale = if (cfg_scale - 7.0).abs() < f32::EPSILON {
-        fam_cfg
-    } else {
-        cfg_scale
-    };
-
-    let vram_gb = HARDWARE_CACHE
-        .get()
-        .map(|h| h.total_vram_gb as f32)
-        .unwrap_or_else(|| {
-            probe_hardware()
-                .map(|h| h.total_vram_gb as f32)
-                .unwrap_or(0.0)
-        });
-
-    // An init image arrives as a base64 data URL from the webview, which has
-    // no access to disk paths; decode it to scratch space first.
-    let init_tmp = match input_image.as_deref() {
-        Some(data) if !data.is_empty() => Some(decode_data_url_to_temp(data)?),
-        _ => None,
-    };
-
-    let args = sd_engine::build_args(&sd_engine::SdRequest {
-        model_path: &model_path,
-        models_dir: &models_dir,
-        prompt,
-        negative_prompt: if negative_prompt.is_empty() {
-            None
-        } else {
-            Some(&negative_prompt)
-        },
-        width,
-        height,
-        steps,
-        cfg_scale,
-        seed: 42,
-        out_file: &out_file,
-        init_image: init_tmp.as_deref(),
-        mask: None,
-        strength: 0.75,
-        vram_gb,
-        uncensored: uncensored.unwrap_or(false),
-        batch_count: variants,
-    })?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 5, "detail": "chargement du modèle"}))
-        .ok();
-
-    let mut command = tokio::process::Command::new(&sd_bin);
-    hide_tokio_console(&mut command);
-    let mut child = command
-        .args(&args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("lancement de sd: {e}"))?;
-
-    // sd.cpp writes its step counter to stderr; stream it so the UI advances
-    // instead of sitting still for the whole render.
-    use tokio::io::{AsyncBufReadExt, BufReader};
-    let stderr = child.stderr.take().ok_or("sd stderr indisponible")?;
-    let progress_chan = on_progress.clone();
-    let total_steps = steps.max(1);
-    let log = tokio::spawn(async move {
-        let mut tail = String::new();
-        let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if let Some(done) = parse_sd_step(&line) {
-                let pct = 5 + ((done as f64 / total_steps as f64) * 90.0).round() as u32;
-                progress_chan
-                    .send(serde_json::json!({
-                        "progress": pct.min(95),
-                        "detail": format!("étape {done}/{total_steps}")
-                    }))
-                    .ok();
-            }
-            if line.contains("[ERROR]") {
-                tail.push_str(line.trim());
-                tail.push('\n');
-            }
-        }
-        tail
-    });
-
-    // The exit status is not the verdict: what matters is which files landed,
-    // so a partially-failed batch still returns its usable images.
-    let _status = child
-        .wait()
-        .await
-        .map_err(|e| format!("attente de sd: {e}"))?;
-    let errors = log.await.unwrap_or_default();
-    if let Some(tmp) = &init_tmp {
-        let _ = std::fs::remove_file(tmp);
-    }
-
-    // sd.cpp numbers batch outputs itself; collect whichever landed. A partial
-    // batch is still worth returning — three usable variants out of four beats
-    // reporting failure and discarding them.
-    let (_, expected) = sd_engine::batch_output(&out_file, variants);
-    let produced: Vec<String> = expected
-        .iter()
-        .filter(|p| p.exists())
-        .map(|p| p.to_string_lossy().to_string())
-        .collect();
-
-    let first = produced.first().cloned().ok_or_else(|| {
-        format!(
-            "génération échouée : {}",
-            errors.lines().last().unwrap_or("aucune image écrite")
-        )
-    })?;
-
-    on_progress
-        .send(serde_json::json!({
-            "progress": 100,
-            "detail": if produced.len() > 1 {
-                format!("{} variantes générées", produced.len())
-            } else {
-                "terminé".to_string()
-            }
-        }))
-        .ok();
-    Ok(GeneratedImage {
-        path: first,
-        simulated: false,
-        variants: produced,
-    })
-}
-
-/// Pull the current step out of a stable-diffusion.cpp progress line.
-///
-/// The bar is drawn with carriage returns and looks like
-/// `  |====>      | 3/8 - 6.15s/it`, so the whole render can arrive as one
-/// long line. We scan for every `n/total` and take the last, which is the most
-/// recent step rather than a stale one from earlier in the buffer.
-fn parse_sd_step(line: &str) -> Option<u32> {
-    let mut latest = None;
-    for chunk in line.split('|') {
-        let chunk = chunk.trim();
-        let Some((left, right)) = chunk.split_once('/') else {
-            continue;
-        };
-        let done: u32 = left.trim().parse().ok()?;
-        // The denominator is followed by " - 6.15s/it"; keep only the digits.
-        let total: u32 = right
-            .trim()
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect::<String>()
-            .parse()
-            .ok()?;
-        if total > 0 && done <= total {
-            latest = Some(done);
-        }
-    }
-    latest
-}
-
-/// Decode a `data:image/...;base64,...` URL into a scratch file and return it.
-fn decode_data_url_to_temp(data_url: &str) -> Result<std::path::PathBuf, String> {
-    use base64::Engine as _;
-    let (meta, payload) = data_url
-        .split_once(",")
-        .ok_or("image source invalide (pas une data URL)")?;
-    let ext = if meta.contains("jpeg") || meta.contains("jpg") {
-        "jpg"
-    } else if meta.contains("webp") {
-        "webp"
-    } else {
-        "png"
-    };
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(payload.trim())
-        .map_err(|e| format!("décodage base64: {e}"))?;
-    let path = locaryn_config::ensure_temp_dir().join(format!(
-        "sd_init_{}.{ext}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    ));
-    std::fs::write(&path, bytes).map_err(|e| format!("écriture image source: {e}"))?;
-    Ok(path)
-}
-
-/// Run InstructPix2Pix image editing via a Python subprocess.
-///
-/// `input_image_data` is a base64 data URL (e.g. `data:image/jpeg;base64,...`)
-/// from the webview's file input. We decode it to a temp file, then spawn
-/// a Python script that loads the InstructPix2Pix model from HuggingFace and
-/// applies the instruction to the image. The edited PNG is written to
-/// `out_file`.
-async fn run_img2img_ip2p(
-    out_file: &std::path::Path,
-    input_image_data: &str,
-    prompt: &str,
-    negative_prompt: Option<&str>,
-    steps: u32,
-    cfg_scale: f32,
-    on_progress: &Channel<serde_json::Value>,
-) -> Result<GeneratedImage, String> {
-    use base64::Engine as _;
-
-    // ── Decode the base64 data URL to a temp file ──
-    on_progress
-        .send(serde_json::json!({"progress": 5, "detail": "decodage image source"}))
-        .ok();
-
-    let (mime, b64_data) = if let Some(stripped) = input_image_data.strip_prefix("data:") {
-        // Format: data:image/jpeg;base64,<data>
-        if let Some(semi) = stripped.find(';') {
-            let mime = &stripped[..semi];
-            let rest = &stripped[semi + 1..];
-            if let Some(comma) = rest.find(',') {
-                (mime.to_string(), &rest[comma + 1..])
-            } else {
-                return Err("data URL mal formee (pas de virgule)".into());
-            }
-        } else {
-            return Err("data URL mal formee (pas de point-virgule)".into());
-        }
-    } else {
-        // Not a data URL — treat as a file path.
-        if std::path::Path::new(input_image_data).exists() {
-            // It's a direct file path; skip base64 decoding.
-            return run_img2img_ip2p_file(
-                out_file,
-                std::path::Path::new(input_image_data),
-                prompt,
-                negative_prompt,
-                steps,
-                cfg_scale,
-                on_progress,
-            )
-            .await;
-        }
-        return Err("format d'image source non reconnu".to_string());
-    };
-
-    // Decode base64
-    let img_bytes = base64::engine::general_purpose::STANDARD
-        .decode(b64_data.trim())
-        .map_err(|e| format!("decodage base64: {e}"))?;
-
-    // Write to a temp file with the correct extension
-    let ext = match mime.as_str() {
-        "image/png" => "png",
-        "image/jpeg" | "image/jpg" => "jpg",
-        "image/webp" => "webp",
-        _ => "png",
-    };
-    // Locaryn's own scratch dir, not the OS one: decoded source images run to
-    // tens of megabytes each and the system drive is the one that fills up.
-    let temp_dir = locaryn_config::ensure_temp_dir();
-    let temp_input = temp_dir.join(format!(
-        "locaryn_img2img_input_{}.{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
-        ext
-    ));
-    std::fs::write(&temp_input, &img_bytes).map_err(|e| format!("ecriture temp input: {e}"))?;
-
-    let result = run_img2img_ip2p_file(
-        out_file,
-        &temp_input,
-        prompt,
-        negative_prompt,
-        steps,
-        cfg_scale,
-        on_progress,
-    )
-    .await;
-
-    // Clean up temp file regardless of success/failure
-    let _ = std::fs::remove_file(&temp_input);
-
-    result
-}
-
-/// Run InstructPix2Pix with a file path as the source image (no base64 decode).
-async fn run_img2img_ip2p_file(
-    out_file: &std::path::Path,
-    input_file: &std::path::Path,
-    prompt: &str,
-    negative_prompt: Option<&str>,
-    steps: u32,
-    cfg_scale: f32,
-    on_progress: &Channel<serde_json::Value>,
-) -> Result<GeneratedImage, String> {
-    let python = find_python().ok_or_else(|| {
-        "Python non trouve. Installez Python 3.10+ avec torch et diffusers.".to_string()
-    })?;
-
-    // image_guidance_scale: how closely to follow the original image.
-    // Lower = more deviation, higher = closer to original. 1.2-1.5 is the
-    // sweet spot for color/style edits. We use 1.5 for subtle changes.
-    let image_cfg = 1.5;
-
-    // Build the Python script inline — same pattern as run_tts_kokoro.
-    // The script loads InstructPix2Pix, applies the instruction, saves to stdout.
-    let script = format!(
-        r#"
-import sys, os
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
-
-input_path = r"{input}"
-output_path = r"{output}"
-instruction = {instruction_literal}
-neg_prompt = {neg_prompt_literal}
-steps = {steps}
-cfg_text = {cfg_text}
-cfg_image = {cfg_image}
-
-import torch
-from diffusers import StableDiffusionInstructPix2PixPipeline
-from PIL import Image
-
-# Load model (cached after first download)
-model_id = "timbrooks/instruct-pix2pix"
-# Ask for the fp16 safetensors explicitly. Left to itself the loader pulls
-# every variant the repo publishes — fp32 and fp16, .bin and .safetensors —
-# which is four times the download for weights we never touch. The .bin
-# pickles cannot be loaded here at all (torch < 2.6 is refused by
-# transformers over CVE-2025-32434), so they are pure waste.
-_load = dict(
-    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-    safety_checker=None,
-    requires_safety_checker=False,
-    use_safetensors=True,
-)
-try:
-    pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-        model_id, variant="fp16", **_load)
-except Exception:
-    # Older caches may only hold the full-precision safetensors.
-    pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, **_load)
-
-if torch.cuda.is_available():
-    try:
-        pipe.enable_model_cpu_offload()
-    except Exception:
-        pipe = pipe.to("cuda")
-else:
-    pipe = pipe.to("cpu")
-
-# Load and resize input image
-img = Image.open(input_path).convert("RGB")
-w, h = img.size
-max_dim = 512
-if max(w, h) > max_dim:
-    ratio = max_dim / max(w, h)
-    new_w = int(w * ratio) // 8 * 8
-    new_h = int(h * ratio) // 8 * 8
-    img = img.resize((new_w, new_h), Image.LANCZOS)
-
-generator = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu").manual_seed(42)
-
-# Run the edit
-kwargs = dict(
-    prompt=instruction,
-    image=img,
-    num_inference_steps=steps,
-    image_guidance_scale=cfg_image,
-    guidance_scale=cfg_text,
-    generator=generator,
-)
-if neg_prompt:
-    kwargs["negative_prompt"] = neg_prompt
-
-output = pipe(**kwargs)
-result = output.images[0]
-result.save(output_path, "PNG")
-print(output_path, flush=True)
-"#,
-        input = input_file.display(),
-        output = out_file.display(),
-        instruction_literal = python_string_literal(prompt),
-        neg_prompt_literal = match negative_prompt {
-            Some(np) => python_string_literal(np),
-            None => "None".to_string(),
-        },
-        steps = steps,
-        cfg_text = cfg_scale,
-        cfg_image = image_cfg,
-    );
-
-    on_progress
-        .send(serde_json::json!({"progress": 10, "detail": "InstructPix2Pix : chargement modele"}))
-        .ok();
-
-    let mut command = tokio::process::Command::new(&python);
-    hide_tokio_console(&mut command);
-    let child = command
-        .envs(python_env())
-        .kill_on_drop(true)
-        .arg("-c")
-        .arg(&script)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("python spawn: {e}"))?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 30, "detail": "InstructPix2Pix : edition en cours"}))
-        .ok();
-
-    // Timeout: 5 minutes max. kill_on_drop(true) ensures the Python
-    // process is killed when the timeout drops the future (and child).
-    // wait_with_output() reads stdout/stderr concurrently, avoiding
-    // pipe-buffer deadlock that child.wait() + sequential reads can cause.
-    let output = match tokio::time::timeout(
-        std::time::Duration::from_secs(300),
-        child.wait_with_output(),
-    )
-    .await
-    {
-        Ok(result) => result.map_err(|e| format!("python wait: {e}"))?,
-        Err(_) => {
-            return Err("InstructPix2Pix : timeout (5 min). Le telechargement du modele est peut-etre en cours ou le GPU est bloque.".into());
-        }
-    };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "InstructPix2Pix a echoue: {stderr}
-{stdout}"
-        ));
-    }
-
-    // The script prints the output path to stdout.
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let result_path = stdout.trim();
-
-    // Verify the output file exists
-    if !out_file.exists() {
-        if !result_path.is_empty() && std::path::Path::new(result_path).exists() {
-            std::fs::copy(result_path, out_file).map_err(|e| format!("copie resultat: {e}"))?;
-        } else {
-            return Err(format!("fichier resultat non trouve. stdout: {stdout}"));
-        }
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "InstructPix2Pix : termine"}))
-        .ok();
-
-    Ok(GeneratedImage {
-        path: out_file.to_string_lossy().to_string(),
-        simulated: false,
-        variants: vec![out_file.to_string_lossy().to_string()],
-    })
-}
-
-/// Escape a Rust string into a Python string literal (double-quoted).
-fn python_string_literal(s: &str) -> String {
-    let escaped = s
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\0', "\\0");
-    format!("\"{escaped}\"")
-}
-
-#[tauri::command]
-async fn list_image_models(core: State<'_, Core>) -> Result<Vec<String>, String> {
-    if let Some(client) = core.remote_client() {
-        if let Ok(val) = client.list_media_models(Some("image")).await {
-            if let Some(models) = val.get("models").and_then(|m| m.as_array()) {
-                let mut names: Vec<String> = models
-                    .iter()
-                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                    .collect();
-                names.sort();
-                names.dedup();
-                return Ok(names);
-            }
-        }
-    }
-    let models_dir = locaryn_config::models_dir();
-    let mut names: Vec<String> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&models_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    let lower = name.to_ascii_lowercase();
-                    let is_partial = lower.ends_with(".part") || lower.ends_with(".tmp");
-                    // Same classifier as the chat listing, so a model is never in both.
-                    if is_diffusion_checkpoint(name) && !is_partial {
-                        names.push(name.to_string());
-                    }
-                }
-            } else if path.is_dir() {
-                if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-                    let has_model_index = path.join("model_index.json").exists();
-                    let has_unet = path.join("unet").exists();
-                    let lower = dir_name.to_ascii_lowercase();
-                    if has_model_index
-                        || has_unet
-                        || lower.contains("diffusion")
-                        || lower.contains("deliberate")
-                    {
-                        names.push(dir_name.to_string());
-                    }
-                }
-            }
-        }
-    }
-    names.sort();
-    names.dedup();
-    Ok(names)
-}
-
-/// True when an abliterated ("heretic") text encoder is installed.
-#[tauri::command]
-fn has_abliterated_encoder() -> bool {
-    let models_dir = locaryn_config::models_dir();
-    if let Ok(entries) = std::fs::read_dir(&models_dir) {
-        for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.to_ascii_lowercase().contains("abliterated") {
-                    return true;
-                }
-            }
-        }
-    }
-    false
 }
 
 // ============================================================================
@@ -8409,33 +7528,33 @@ pub(crate) fn probe_hardware() -> Result<HardwareSpec, String> {
             .output()
     }
     .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| {
-            s.lines()
-                .next()
-                .and_then(|l| l.trim().parse::<f32>().ok())
-                .map(|mb| (mb / 1024.0).round() as u32)
-        })
-        .or_else(|| {
-            if cfg!(target_os = "windows") {
-                let mut command = std::process::Command::new("wmic");
-                hide_std_console(&mut command);
-                command
-                    .args(["path", "win32_VideoController", "get", "AdapterRAM"])
-                    .output()
-                    .ok()
-                    .and_then(|o| String::from_utf8(o.stdout).ok())
-                    .and_then(|s| {
-                        s.lines()
-                            .filter_map(|l| l.trim().parse::<u64>().ok())
-                            .max()
-                            .map(|bytes| (bytes / (1024 * 1024 * 1024)) as u32)
-                    })
-            } else {
-                None
-            }
-        })
-        .unwrap_or(0);
+    .and_then(|o| String::from_utf8(o.stdout).ok())
+    .and_then(|s| {
+        s.lines()
+            .next()
+            .and_then(|l| l.trim().parse::<f32>().ok())
+            .map(|mb| (mb / 1024.0).round() as u32)
+    })
+    .or_else(|| {
+        if cfg!(target_os = "windows") {
+            let mut command = std::process::Command::new("wmic");
+            hide_std_console(&mut command);
+            command
+                .args(["path", "win32_VideoController", "get", "AdapterRAM"])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .and_then(|s| {
+                    s.lines()
+                        .filter_map(|l| l.trim().parse::<u64>().ok())
+                        .max()
+                        .map(|bytes| (bytes / (1024 * 1024 * 1024)) as u32)
+                })
+        } else {
+            None
+        }
+    })
+    .unwrap_or(0);
 
     let cpu_cores = std::thread::available_parallelism()
         .map(|n| n.get() as u32)
@@ -8471,10 +7590,7 @@ fn is_model_weight_path(path: &std::path::Path) -> bool {
 /// Remove one model and all of its shards, without deleting another
 /// quantisation stored in the same repository directory. Partial files are
 /// included so a failed install can also be cleaned by the same command.
-fn delete_local_model_artifacts(
-    models_dir: &std::path::Path,
-    model: &str,
-) -> Result<(), String> {
+fn delete_local_model_artifacts(models_dir: &std::path::Path, model: &str) -> Result<(), String> {
     let direct = models_dir.join(model);
     let resolved = if direct.exists() || direct.with_extension("part").exists() {
         direct
@@ -8484,7 +7600,10 @@ fn delete_local_model_artifacts(
 
     if resolved.is_dir() {
         std::fs::remove_dir_all(&resolved).map_err(|e| {
-            format!("Impossible de supprimer le dossier modèle {} : {e}", resolved.display())
+            format!(
+                "Impossible de supprimer le dossier modèle {} : {e}",
+                resolved.display()
+            )
         })?;
         return Ok(());
     }
@@ -8505,7 +7624,9 @@ fn delete_local_model_artifacts(
                     .unwrap_or(&resolved)
                     .to_string_lossy()
                     .replace('\\', "/");
-                let model_key = relative_model.strip_suffix(".part").unwrap_or(&relative_model);
+                let model_key = relative_model
+                    .strip_suffix(".part")
+                    .unwrap_or(&relative_model);
                 if is_model_weight_path(std::path::Path::new(model_key)) {
                     let group = hf_shard_group(model_key);
                     for file in walkdir_recursive(&repo_dir, 8) {
@@ -8531,14 +7652,20 @@ fn delete_local_model_artifacts(
     for target in targets {
         if target.is_file() {
             std::fs::remove_file(&target).map_err(|e| {
-                format!("Impossible de supprimer le fichier {} : {e}", target.display())
+                format!(
+                    "Impossible de supprimer le fichier {} : {e}",
+                    target.display()
+                )
             })?;
             deleted = true;
         }
         let partial = target.with_extension("part");
         if partial.is_file() {
             std::fs::remove_file(&partial).map_err(|e| {
-                format!("Impossible de supprimer le fichier partiel {} : {e}", partial.display())
+                format!(
+                    "Impossible de supprimer le fichier partiel {} : {e}",
+                    partial.display()
+                )
             })?;
             deleted = true;
         }
@@ -8668,12 +7795,14 @@ fn plan_model_runtime(_core: State<'_, Core>, model: String) -> Result<RuntimePl
     let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let size_gb = size_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
 
-    let hw = HARDWARE_CACHE.get().cloned().unwrap_or_else(|| probe_hardware().unwrap_or(HardwareSpec {
-        total_ram_gb: 16,
-        total_vram_gb: 0,
-        recommended_size_label: "tiny (1-7B)".to_string(),
-        cpu_cores: 4,
-    }));
+    let hw = HARDWARE_CACHE.get().cloned().unwrap_or_else(|| {
+        probe_hardware().unwrap_or(HardwareSpec {
+            total_ram_gb: 16,
+            total_vram_gb: 0,
+            recommended_size_label: "tiny (1-7B)".to_string(),
+            cpu_cores: 4,
+        })
+    });
     let vram_gb = hw.total_vram_gb as f64;
     let ram_gb = hw.total_ram_gb as f64;
 
@@ -9560,9 +8689,6 @@ pub fn run() {
             rag_clear,
             rag_search,
             search_ollama_library,
-            list_image_models,
-            has_abliterated_encoder,
-            generate_image,
             list_audio_models,
             list_kokoro_voices,
             generate_audio,
@@ -9655,13 +8781,12 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Locaryn desktop")
-        .run(|_app, event| match event {
-            tauri::RunEvent::Exit => {
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
                 // Covers shutdown paths other than the tray menu as well. The
                 // child is killed before the desktop process disappears.
                 server_mode::stop_daemon();
             }
-            _ => {}
         });
 }
 
@@ -9704,7 +8829,10 @@ mod tests {
             hf_shard_group("model-Q4_K_M.gguf"),
             hf_shard_group("model-Q8_0.gguf")
         );
-        assert_eq!(hf_quantization("model-Q3_K_M.gguf").as_deref(), Some("Q3_K_M"));
+        assert_eq!(
+            hf_quantization("model-Q3_K_M.gguf").as_deref(),
+            Some("Q3_K_M")
+        );
         assert_eq!(
             hf_candidate_variant("models/Champion-Inst-Q3_K_M.gguf", Some("Q3_K_M")),
             "models/Champion-Inst"
@@ -9720,7 +8848,10 @@ mod tests {
         {
             let _guard = super::PartialDownloadGuard::new(&path);
         }
-        assert!(!path.exists(), "un téléchargement échoué ne doit pas laisser son .part");
+        assert!(
+            !path.exists(),
+            "un téléchargement échoué ne doit pas laisser son .part"
+        );
 
         std::fs::write(&path, b"complete").unwrap();
         {
@@ -9744,13 +8875,14 @@ mod tests {
         ] {
             std::fs::write(repo.join(file), b"model").unwrap();
         }
-        std::fs::write(repo.join("model-Q4_K_M-00003-of-00002.gguf.part"), b"partial").unwrap();
-
-        super::delete_local_model_artifacts(
-            &root,
-            "author__repo/model-Q4_K_M-00001-of-00002.gguf",
+        std::fs::write(
+            repo.join("model-Q4_K_M-00003-of-00002.gguf.part"),
+            b"partial",
         )
         .unwrap();
+
+        super::delete_local_model_artifacts(&root, "author__repo/model-Q4_K_M-00001-of-00002.gguf")
+            .unwrap();
 
         assert!(!repo.join("model-Q4_K_M-00001-of-00002.gguf").exists());
         assert!(!repo.join("model-Q4_K_M-00002-of-00002.gguf").exists());
@@ -9758,27 +8890,6 @@ mod tests {
         assert!(repo.join("model-Q8_0.gguf").exists());
         assert!(repo.join("config.json").exists());
         let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn sd_progress_is_read_from_the_redrawn_bar() {
-        let line = "[INFO ]   |=======>       | 1/7 - 17.40s/it  |==============>    | 2/7 - 7.16s/it                      |=====================>  | 3/7 - 6.15s/it";
-        assert_eq!(
-            super::parse_sd_step(line),
-            Some(3),
-            "doit rendre l etape la plus recente"
-        );
-
-        assert_eq!(super::parse_sd_step("  |==>   | 1/21 - 8.56s/it"), Some(1));
-        assert_eq!(
-            super::parse_sd_step("|##########| 452/452 - 945.11MB/s"),
-            Some(452)
-        );
-        assert_eq!(
-            super::parse_sd_step("[INFO ] sampling completed, taking 54.63s"),
-            None
-        );
-        assert_eq!(super::parse_sd_step(""), None);
     }
 
     /// Built from the traceback the user actually reported: absl banners, a

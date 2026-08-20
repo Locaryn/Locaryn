@@ -4464,17 +4464,20 @@ pre.md-code {
    COMPTE — mémoire et préférences des modèles
    ═══════════════════════════════════════════════════════════ */
 .locaryn-account-nav-icon-models,
-.locaryn-account-nav-icon-memory {
+.locaryn-account-nav-icon-memory,
+.locaryn-account-nav-icon-conversations {
   background: var(--surface-hover);
   color: var(--text-dim);
 }
 .locaryn-account-nav-item.locaryn-active .locaryn-account-nav-icon-models,
-.locaryn-account-nav-item.locaryn-active .locaryn-account-nav-icon-memory {
+.locaryn-account-nav-item.locaryn-active .locaryn-account-nav-icon-memory,
+.locaryn-account-nav-item.locaryn-active .locaryn-account-nav-icon-conversations {
   background: color-mix(in srgb, var(--accent) 18%, var(--surface));
   color: var(--accent);
 }
 .locaryn-account-nav-icon-models svg,
-.locaryn-account-nav-icon-memory svg {
+.locaryn-account-nav-icon-memory svg,
+.locaryn-account-nav-icon-conversations svg {
   display: block;
 }
 
