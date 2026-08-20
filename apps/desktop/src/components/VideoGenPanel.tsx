@@ -462,7 +462,7 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
 
       {/* ── Errors ── */}
       {error && (
-        <div className="img-gen-error" style={{ marginBottom: 16 }}>
+        <div className="locaryn-gen-error" style={{ marginBottom: 16 }}>
           <Icon name="warning" size={15} />
           <span>{error}</span>
         </div>
@@ -485,9 +485,9 @@ export function VideoGenPanel({ installedModels, onClose, inline }: Props) {
       <div className="locaryn-field-actions" style={{ justifyContent: "space-between" }}>
         {jobRunning && (
           <div style={{ flex: 1, marginRight: 12 }}>
-            <div className="img-gen-progress-bar">
+            <div className="locaryn-gen-progress-bar">
               <div
-                className="img-gen-progress-fill"
+                className="locaryn-gen-progress-fill"
                 style={{ width: `${taskProgress?.progress ?? 0}%` }}
               />
             </div>

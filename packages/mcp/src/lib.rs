@@ -211,6 +211,18 @@ impl StdioTransport {
         // would fail to find the very interpreter that is running it.
         cmd.envs(env);
 
+        // Un serveur stdio est un programme console : Windows lui ouvre une
+        // fenêtre de terminal, qui reste au premier plan au-dessus de
+        // l'application tant que le serveur tourne. Personne ne l'a demandée et
+        // on ne peut pas la fermer sans tuer le serveur.
+        // `tokio::process::Command` porte `creation_flags` en propre : pas
+        // d'extension à importer.
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
         let mut child = cmd.spawn().map_err(|e| {
             McpError::Transport(format!(
                 "spawn {command}: {e}. Vérifiez que « {command} » se lance depuis un terminal."

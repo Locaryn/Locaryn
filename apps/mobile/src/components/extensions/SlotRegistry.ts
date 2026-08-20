@@ -5,6 +5,25 @@ export interface ResolvedSlotContribution extends ExtensionUiSlotContribution {
   extensionName: string;
 }
 
+/** La surface sur laquelle cette interface tourne. */
+export const SURFACE = "mobile";
+
+/**
+ * Cette contribution vise-t-elle la surface courante ?
+ *
+ * Sans `platforms`, oui. Une extension qui a conçu un grand panneau pour
+ * l'ordinateur peut lui donner ici une forme à part — ou n'en donner aucune,
+ * plutôt que de laisser un écran inutilisable sur un téléphone.
+ */
+export function targetsSurface(
+  contribution: { platforms?: string[] },
+  surface: string = SURFACE,
+): boolean {
+  const platforms = contribution.platforms;
+  if (!platforms || platforms.length === 0) return true;
+  return platforms.some((platform) => platform.trim().toLowerCase() === surface);
+}
+
 /**
  * Registre universel des points d'extension (Slots) pour l'application mobile.
  * Découvre et ordonne les contributions des extensions installées et actives.
@@ -21,7 +40,7 @@ export function getSlotContributions(
     // 1. Contributions explicites définies dans `ui.slots`
     if (ext.ui.slots && Array.isArray(ext.ui.slots)) {
       for (const slotContrib of ext.ui.slots) {
-        if (slotContrib.slot === slotName) {
+        if (slotContrib.slot === slotName && targetsSurface(slotContrib)) {
           results.push({
             ...slotContrib,
             order: slotContrib.order ?? 100,

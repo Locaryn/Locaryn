@@ -403,6 +403,15 @@ pub struct ExtensionUiSlotContribution {
     pub tag: Option<String>,
     #[serde(default)]
     pub category: Option<String>,
+    /// Les surfaces où cette contribution existe : `desktop`, `mobile`, `web`.
+    ///
+    /// Vide — le cas courant — veut dire « partout ». Une extension qui veut
+    /// une forme par surface déclare deux contributions au même slot, chacune
+    /// avec ses plateformes, son `type` et son `entry` : un grand panneau sur
+    /// l'ordinateur, une feuille compacte sur le téléphone. L'hôte ne choisit
+    /// pas à sa place, il montre ce qui vise la surface où il tourne.
+    #[serde(default)]
+    pub platforms: Vec<String>,
 }
 
 fn ordre_slot_defaut() -> i32 {

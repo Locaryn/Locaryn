@@ -100,6 +100,10 @@ export interface ExtensionUiSlotContribution {
   value?: string;
   tag?: string;
   entry?: string;
+  /** Surfaces où cette contribution existe : "desktop", "mobile", "web".
+   *  Absente ou vide : partout. Une extension peut donc réserver son grand
+   *  panneau à l'ordinateur et donner au téléphone une forme à lui. */
+  platforms?: string[];
 }
 
 /** Ce qu'une extension ajoute à l'interface du téléphone. */

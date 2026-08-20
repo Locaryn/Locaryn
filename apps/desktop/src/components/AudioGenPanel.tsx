@@ -923,7 +923,7 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
 
           {/* Error display */}
           {error && (
-            <div className="img-gen-error" style={{ marginBottom: 0 }}>
+            <div className="locaryn-gen-error" style={{ marginBottom: 0 }}>
               <Icon name="warning" size={15} />
               <span>{error}</span>
             </div>
@@ -1022,9 +1022,9 @@ export function AudioGenPanel({ installedModels, onClose, inline }: Props) {
             </div>
             {jobRunning && taskProgress && (
               <div style={{ marginTop: 8 }}>
-                <div className="img-gen-progress-bar">
+                <div className="locaryn-gen-progress-bar">
                   <div
-                    className="img-gen-progress-fill"
+                    className="locaryn-gen-progress-fill"
                     style={{ width: `${taskProgress.progress ?? 0}%` }}
                   />
                 </div>

@@ -128,6 +128,7 @@ fn to_slot_contribution(
         entry: s.entry.clone(),
         tag: s.tag.clone(),
         category: s.category.clone(),
+        platforms: s.platforms.clone(),
     }
 }
 

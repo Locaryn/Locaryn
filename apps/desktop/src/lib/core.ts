@@ -406,6 +406,11 @@ export interface ExtensionUiSlotContribution {
   entry?: string | null;
   tag?: string | null;
   category?: string | null;
+  /** Surfaces où cette contribution existe : "desktop", "mobile", "web".
+   *  Absente ou vide : partout. Une extension déclare deux contributions au
+   *  même slot, chacune ciblant sa surface, pour donner deux formes du même
+   *  écran — un panneau large ici, autre chose sur le téléphone. */
+  platforms?: string[];
 }
 
 export interface ExtensionUi {

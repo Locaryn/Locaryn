@@ -300,6 +300,13 @@ pub struct UiSlotContribution {
     /// Catégorie ou domaine (ex: `image`, `audio`, `video`).
     #[serde(default)]
     pub category: Option<String>,
+    /// Surfaces visées : `desktop`, `mobile`, `web`. Vide = toutes.
+    ///
+    /// Deux contributions au même slot, chacune avec ses plateformes, donnent
+    /// deux formes du même écran — un panneau large sur l'ordinateur, autre
+    /// chose sur le téléphone.
+    #[serde(default)]
+    pub platforms: Vec<String>,
 }
 
 fn ordre_par_defaut() -> i32 {

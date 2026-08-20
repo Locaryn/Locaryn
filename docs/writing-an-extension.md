@@ -163,6 +163,61 @@ de l'application restent le socle, vos contributions s'ajoutent à côté. Le
 détail du format et son état de mise en œuvre exact sont dans
 [`extensions-interop.md`](extensions-interop.md#52-contributions-dinterface).
 
+### Une forme par surface
+
+`ui_contributions.slots` est la forme générale : chaque entrée nomme un slot,
+un type de rendu et, si besoin, les surfaces qu'elle vise.
+
+```json
+"slots": [
+  {
+    "id": "atelier-large",
+    "slot": "studio.tabs",
+    "type": "custom-element",
+    "entry": "dist/desktop.js",
+    "tag": "mon-atelier",
+    "platforms": ["desktop"]
+  },
+  {
+    "id": "atelier-compact",
+    "slot": "studio.tabs",
+    "type": "custom-element",
+    "entry": "dist/mobile.js",
+    "tag": "mon-atelier-compact",
+    "platforms": ["mobile"]
+  }
+]
+```
+
+`platforms` accepte `desktop`, `mobile` et `web`. **Absent ou vide : partout** —
+c'est le cas courant, et il ne coûte rien à écrire. Déclarez deux contributions
+au même slot quand un écran conçu pour une grande fenêtre n'a pas de sens tel
+quel sur un téléphone : vous en donnez une autre forme, ou vous n'en donnez
+aucune. L'hôte ne décide pas à votre place, il affiche ce qui vise la surface
+où il tourne.
+
+### Votre panneau hérite du thème
+
+Un `custom-element` est monté **dans le document**, sans racine fantôme. Les
+classes de l'application s'appliquent donc directement à ce que vous écrivez :
+n'emportez pas votre propre feuille de style, servez-vous de la leur et votre
+panneau suivra le thème, les couleurs et les espacements sans rien faire.
+
+Le vocabulaire utile : `locaryn-card` et `locaryn-box-card` (blocs),
+`locaryn-btn-primary` / `locaryn-btn-ghost` (boutons), `locaryn-chip` et
+`locaryn-chip-on` (filtres), `locaryn-input`, `locaryn-select`,
+`locaryn-textarea`, `locaryn-tag`, `locaryn-field-hint`. Pour un panneau de
+génération, la famille `locaryn-gen-*` donne la mise en page complète :
+`locaryn-gen-split` (deux colonnes qui se replient en une sur petit écran),
+`locaryn-gen-col`, `locaryn-gen-block`, `locaryn-gen-label`,
+`locaryn-gen-tabs`, `locaryn-gen-choices`, `locaryn-gen-canvas`,
+`locaryn-gen-thumbs`, `locaryn-gen-error`, `locaryn-gen-lightbox`.
+
+Pour ouvrir un écran de l'application depuis votre panneau — le catalogue de
+modèles, les réglages — appelez
+`locaryn.ui.dispatchAction("navigate", { view: "models" })` plutôt que de
+recopier chez vous ce que l'application sait déjà faire.
+
 ---
 
 ## Permissions : demandez peu, expliquez pourquoi

@@ -541,6 +541,58 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Deux formes du même écran, une par surface : c'est ce qui permet à une
+    /// extension de poser un grand panneau sur l'ordinateur et autre chose sur
+    /// le téléphone, sans que l'hôte ait à connaître l'extension.
+    #[test]
+    fn a_slot_can_target_one_surface_at_a_time() {
+        let root = tmp("slot-platforms");
+        std::fs::write(
+            root.join("plugin.json"),
+            r#"{
+              "apiVersion": "0.1",
+              "name": "deux-formes",
+              "version": "1.0.0",
+              "ui_contributions": {
+                "slots": [
+                  {
+                    "id": "grand-panneau",
+                    "slot": "studio.tabs",
+                    "type": "custom-element",
+                    "entry": "dist/desktop.js",
+                    "tag": "x-grand",
+                    "platforms": ["desktop"]
+                  },
+                  {
+                    "id": "feuille",
+                    "slot": "studio.tabs",
+                    "type": "custom-element",
+                    "entry": "dist/mobile.js",
+                    "tag": "x-feuille",
+                    "platforms": ["mobile", "web"]
+                  },
+                  { "id": "partout", "slot": "studio.tabs", "type": "action" }
+                ]
+              }
+            }"#,
+        )
+        .unwrap();
+
+        let plugin = load(&root).expect("manifeste lisible");
+        let slots = &plugin.manifest.ui.slots;
+        assert_eq!(slots.len(), 3);
+        assert_eq!(slots[0].platforms, vec!["desktop".to_string()]);
+        assert_eq!(
+            slots[1].platforms,
+            vec!["mobile".to_string(), "web".to_string()]
+        );
+        // Sans `platforms`, la contribution vise toutes les surfaces : c'est le
+        // cas courant, et il ne doit rien coûter à écrire.
+        assert!(slots[2].platforms.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn loads_the_bundled_example_plugin() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
