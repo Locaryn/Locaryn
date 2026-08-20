@@ -3397,10 +3397,9 @@ async fn pull_model(
     core.pull_cancels.lock().await.remove(&file_name);
     result?;
 
-    // Auto-setup: a diffusion checkpoint alone cannot generate. Z-Image needs a
-    // VAE and a text encoder; the uncensored ("heretic") setup additionally
-    // needs the abliterated encoder. Fetch whatever is missing so installing one
-    // entry from the marketplace yields a fully working model.
+    // Auto-setup: diffusion-only checkpoints cannot generate alone. Fetch the
+    // family-specific VAE and text encoders so one Marketplace action installs
+    // a complete, runnable image stack.
     if let Err(e) = install_image_companions(
         &core,
         &file_name,
@@ -4163,13 +4162,25 @@ struct Companion {
     label: &'static str,
 }
 
-const Z_IMAGE_VAE: Companion = Companion {
+const FLUX_VAE: Companion = Companion {
     // Z-Image uses the FLUX VAE. The ONNX decoder that was previously
     // downloaded here cannot be read by stable-diffusion.cpp's `--vae` flag
     // and ends in the opaque "get sd version from file failed" error.
     url: "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors",
     file: "ae.safetensors",
     label: "VAE compatible stable-diffusion.cpp",
+};
+
+const FLUX_CLIP_L: Companion = Companion {
+    url: "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
+    file: "clip_l.safetensors",
+    label: "encodeur CLIP-L",
+};
+
+const FLUX_T5XXL: Companion = Companion {
+    url: "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors",
+    file: "t5xxl_fp16.safetensors",
+    label: "encodeur T5-XXL",
 };
 
 const Z_IMAGE_ENCODER: Companion = Companion {
@@ -4188,10 +4199,12 @@ fn image_companions_for(installed_file: &str, heretic: bool) -> Vec<&'static Com
     let lower = installed_file.to_ascii_lowercase();
     if lower.contains("z_image") || lower.contains("z-image") || lower.contains("z_img") {
         if heretic {
-            vec![&HERETIC_ENCODER, &Z_IMAGE_VAE]
+            vec![&HERETIC_ENCODER, &FLUX_VAE]
         } else {
-            vec![&Z_IMAGE_ENCODER, &Z_IMAGE_VAE]
+            vec![&Z_IMAGE_ENCODER, &FLUX_VAE]
         }
+    } else if lower.contains("flux1") || lower.contains("flux.1") || lower.contains("flux_1") {
+        vec![&FLUX_VAE, &FLUX_CLIP_L, &FLUX_T5XXL]
     } else {
         Vec::new()
     }
@@ -9066,6 +9079,27 @@ mod tests {
             preferred_mmproj(&projectors).as_deref(),
             Some("mmproj-Qwen3.8-27B-Q8_0.gguf")
         );
+    }
+
+    #[test]
+    fn marketplace_image_downloads_include_family_companions() {
+        let z_image = super::image_companions_for("z_image_turbo-Q8_0.gguf", false);
+        assert_eq!(
+            z_image.iter().map(|item| item.file).collect::<Vec<_>>(),
+            ["Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "ae.safetensors"]
+        );
+
+        let flux = super::image_companions_for("flux1-schnell-Q4_0.gguf", false);
+        assert_eq!(
+            flux.iter().map(|item| item.file).collect::<Vec<_>>(),
+            [
+                "ae.safetensors",
+                "clip_l.safetensors",
+                "t5xxl_fp16.safetensors"
+            ]
+        );
+
+        assert!(super::image_companions_for("sdxl-turbo-Q4_0.gguf", false).is_empty());
     }
 
     /// Real sd.cpp output: the bar redraws with carriage returns, so a whole

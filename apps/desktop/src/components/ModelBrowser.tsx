@@ -110,6 +110,32 @@ const CATEGORY_CAPABILITIES: Record<string, string[]> = {
   "language-translation": ["translation"],
 };
 
+/**
+ * Hides every specialized family unless an enabled extension owns the
+ * corresponding capability. This is deliberately applied before cards,
+ * brands and years are derived so uninstalling a plugin removes all of its
+ * Marketplace traces in the same render.
+ */
+export function isFamilyAvailableForCapabilities(
+  family: ModelFamily,
+  activeCapabilities: string[],
+): boolean {
+  const has = (capability: string) => activeCapabilities.includes(capability);
+  const hasImage = has("image-gen") || has("image-editor");
+  const hasTts = has("voice-tts") || has("voice-cloning");
+
+  if ((family.imageGen || family.imageEditing) && !hasImage) return false;
+  if (family.tts && !hasTts) return false;
+  if (family.videoGen && !has("video-gen")) return false;
+  if (family.musicGen && !has("music-gen")) return false;
+  if (family.model3d && !has("3d-gen")) return false;
+  if (family.objectDetection && !family.instruct && !has("vision-ocr")) return false;
+  if (family.textAnalysis && !family.instruct && !has("text-analysis")) return false;
+  if (family.questionAnswering && !family.instruct && !has("rag-qa")) return false;
+  if (family.translation && !family.instruct && !has("translation")) return false;
+  return true;
+}
+
 /** Une capacité annoncée : son icône et son nom. */
 type Pastille = { icon: IconName; label: string };
 
@@ -573,25 +599,39 @@ export function ModelBrowser({
     return () => clearInterval(interval);
   }, []);
 
+  const capabilityFamilies = useMemo(
+    () =>
+      [...registryModels, ...liveApiModels].filter((family) =>
+        isFamilyAvailableForCapabilities(family, activeCapabilities),
+      ),
+    [registryModels, liveApiModels, activeCapabilities],
+  );
+
   const allBrands = useMemo(() => {
-    const combined = [...registryModels, ...liveApiModels];
-    return Array.from(new Set(combined.map((f) => f.brand)))
+    return Array.from(new Set(capabilityFamilies.map((f) => f.brand)))
       .filter(
         (b) => b && !b.toLowerCase().includes("claude") && !b.toLowerCase().includes("anthropic"),
       )
       .sort();
-  }, [registryModels, liveApiModels]);
+  }, [capabilityFamilies]);
 
   const years = useMemo(() => {
-    const combined = [...registryModels, ...liveApiModels];
-    const ySet = new Set(combined.map((f) => f.releaseYear));
+    const ySet = new Set(capabilityFamilies.map((f) => f.releaseYear));
     return Array.from(ySet).sort((a, b) => b - a);
-  }, [registryModels, liveApiModels]);
+  }, [capabilityFamilies]);
+
+  useEffect(() => {
+    if (brand !== "all" && !allBrands.includes(brand)) setBrand("all");
+  }, [brand, allBrands]);
+
+  useEffect(() => {
+    if (yearFilter !== "all" && !years.includes(Number(yearFilter))) setYearFilter("all");
+  }, [yearFilter, years]);
 
   const families = useMemo(() => {
     const q = query.trim().toLowerCase();
     const bucket = SIZE_BUCKETS.find((b) => b.id === size);
-    const catalogSource = [...registryModels, ...liveApiModels];
+    const catalogSource = capabilityFamilies;
 
     return catalogSource
       .map((f) => {
@@ -620,29 +660,6 @@ export function ModelBrowser({
         });
 
         if (matchingVariants.length === 0) return null;
-
-        // Exclure les modèles des modalités spécialisées si le plugin correspondant n'est pas installé
-        const hasImage =
-          activeCapabilities.includes("image-gen") || activeCapabilities.includes("image-editor");
-        const hasTts =
-          activeCapabilities.includes("voice-tts") || activeCapabilities.includes("voice-cloning");
-        const hasMusic = activeCapabilities.includes("music-gen");
-        const hasVideo = activeCapabilities.includes("video-gen");
-        const has3d = activeCapabilities.includes("3d-gen");
-        const hasOcr = activeCapabilities.includes("vision-ocr");
-        const hasTextAnalysis = activeCapabilities.includes("text-analysis");
-        const hasQa = activeCapabilities.includes("rag-qa");
-        const hasTranslation = activeCapabilities.includes("translation");
-
-        if ((f.imageGen || f.imageEditing) && !hasImage) return null;
-        if (f.tts && !hasTts) return null;
-        if (f.videoGen && !hasVideo) return null;
-        if (f.musicGen && !hasMusic) return null;
-        if (f.model3d && !has3d) return null;
-        if (f.objectDetection && !f.instruct && !hasOcr) return null;
-        if (f.textAnalysis && !f.instruct && !hasTextAnalysis) return null;
-        if (f.questionAnswering && !f.instruct && !hasQa) return null;
-        if (f.translation && !f.instruct && !hasTranslation) return null;
 
         if (category === "code" && !f.code) return null;
         if (category === "vision" && !f.vision) return null;
@@ -716,11 +733,9 @@ export function ModelBrowser({
     onlyRecommended,
     onlyFavorites,
     favorites,
-    registryModels,
-    liveApiModels,
+    capabilityFamilies,
     hardwareSpec,
     airllmEnabled,
-    activeCapabilities,
   ]);
 
   function toggleCardExpand(id: string) {
@@ -1662,7 +1677,7 @@ export function ModelBrowser({
                         <Icon name="marketplace" size={15} /> HuggingFace
                       </span>
                     )}
-                    {capBadges(f).map((c) => (
+                    {capBadges(f, activeCapabilities).map((c) => (
                       <span key={c.label} className="locaryn-tag">
                         <Icon name={c.icon} size={13} /> {c.label}
                       </span>
@@ -2016,7 +2031,7 @@ export function ModelBrowser({
                             <Icon name="marketplace" size={15} /> HuggingFace
                           </span>
                         )}
-                        {capBadges(f).map((c) => (
+                        {capBadges(f, activeCapabilities).map((c) => (
                           <span key={c.label} className="locaryn-tag">
                             <Icon name={c.icon} size={13} /> {c.label}
                           </span>

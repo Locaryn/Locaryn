@@ -3,6 +3,7 @@ import type { ExtensionUiSlotContribution, InstalledExtension } from "../../lib/
 export interface ResolvedSlotContribution extends ExtensionUiSlotContribution {
   extensionId: string;
   extensionName: string;
+  extensionVersion: string;
 }
 
 /**
@@ -27,6 +28,7 @@ export function getSlotContributions(
             order: slotContrib.order ?? 100,
             extensionId: ext.id,
             extensionName: ext.display_name || ext.name,
+            extensionVersion: ext.version,
           });
         }
       }
@@ -49,6 +51,7 @@ export function getSlotContributions(
             value: ca.value,
             extensionId: ext.id,
             extensionName: ext.display_name || ext.name,
+            extensionVersion: ext.version,
           });
         }
       }
@@ -66,6 +69,7 @@ export function getSlotContributions(
             icon: tab.icon,
             extensionId: ext.id,
             extensionName: ext.display_name || ext.name,
+            extensionVersion: ext.version,
           });
         }
       }
@@ -83,6 +87,7 @@ export function getSlotContributions(
             icon: nav.icon,
             extensionId: ext.id,
             extensionName: ext.display_name || ext.name,
+            extensionVersion: ext.version,
           });
         }
       }

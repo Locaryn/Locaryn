@@ -1,6 +1,4 @@
 import { Icon } from "@locaryn/ui-core";
-import { useEffect, useState } from "react";
-import { core } from "../lib/core";
 import { ImageModelSetting } from "./ImageModelSetting";
 import { MicroModelSetting } from "./MicroModelSetting";
 import { TtsModelSetting } from "./TtsModelSetting";
@@ -11,33 +9,10 @@ export function ModelPreferencesSettings({
 }: {
   activeCapabilities?: string[];
 }) {
-  const [caps, setCaps] = useState<string[]>(activeCapabilities);
-
-  useEffect(() => {
-    if (activeCapabilities.length > 0) {
-      setCaps(activeCapabilities);
-      return;
-    }
-    let cancelled = false;
-    core
-      .listExtensions()
-      .then((exts) => {
-        if (cancelled) return;
-        const discovered = exts.filter((e) => e.enabled).flatMap((e) => e.capabilities ?? []);
-        if (discovered.length > 0) {
-          setCaps(discovered);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [activeCapabilities]);
-
   const hasTts =
-    caps.includes("voice-tts") || caps.includes("voice-cloning") || activeCapabilities.length === 0;
+    activeCapabilities.includes("voice-tts") || activeCapabilities.includes("voice-cloning");
   const hasImageGen =
-    caps.includes("image-gen") || caps.includes("image-editor") || activeCapabilities.length === 0;
+    activeCapabilities.includes("image-gen") || activeCapabilities.includes("image-editor");
   return (
     <div className="locaryn-model-preferences">
       <div className="locaryn-model-preferences-intro">

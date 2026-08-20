@@ -31,7 +31,7 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     if (contribution.type !== "custom-element" && contribution.type !== "script") return;
     if (!contribution.entry) return;
 
-    const scriptKey = `${contribution.extensionId}:${contribution.entry}`;
+    const scriptKey = `${contribution.extensionId}@${contribution.extensionVersion}:${contribution.entry}`;
     if (loadedScripts.has(scriptKey)) {
       mountCustomElement();
       return;
@@ -69,7 +69,13 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     return () => {
       cancelled = true;
     };
-  }, [contribution.id, contribution.extensionId, contribution.entry, contribution.type]);
+  }, [
+    contribution.id,
+    contribution.extensionId,
+    contribution.extensionVersion,
+    contribution.entry,
+    contribution.type,
+  ]);
 
   function mountCustomElement() {
     const host = customElementContainerRef.current;
@@ -78,7 +84,11 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     if (!customElements.get(tag)) {
       // Le script est passé sans définir l'élément qu'il annonce : le dire,
       // plutôt que de laisser un cadre vide qu'on ne peut pas diagnostiquer.
-      if (loadedScripts.has(`${contribution.extensionId}:${contribution.entry}`)) {
+      if (
+        loadedScripts.has(
+          `${contribution.extensionId}@${contribution.extensionVersion}:${contribution.entry}`,
+        )
+      ) {
         setError(`l'extension n'a pas défini l'élément « ${tag} »`);
       }
       return;
@@ -87,11 +97,24 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     // rendu du parent, et chaque passage repartait d'un panneau vierge —
     // saisie perdue, requêtes relancées, résultat effacé.
     if (host.firstElementChild?.tagName.toLowerCase() === tag) {
-      (host.firstElementChild as unknown as { context?: unknown }).context = context;
+      const existing = host.firstElementChild as unknown as {
+        context?: unknown;
+        pluginUpdated?: () => void;
+      };
+      existing.context = context;
+      const renderedVersion = host.firstElementChild.getAttribute("data-locaryn-extension-version");
+      if (renderedVersion !== contribution.extensionVersion) {
+        host.firstElementChild.setAttribute(
+          "data-locaryn-extension-version",
+          contribution.extensionVersion,
+        );
+        existing.pluginUpdated?.();
+      }
       return;
     }
     host.innerHTML = "";
     const el = document.createElement(tag);
+    el.setAttribute("data-locaryn-extension-version", contribution.extensionVersion);
     (el as unknown as { context?: unknown }).context = context;
     host.appendChild(el);
     setMounted(true);

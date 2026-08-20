@@ -79,6 +79,8 @@ export function App() {
    * catalogue de modèles suivent la même liste.
    */
   const [activeCapabilities, setActiveCapabilities] = useState<string[]>([]);
+  /** Ignore an older extension scan if a newer install/remove event finishes first. */
+  const capabilitiesRefreshId = useRef(0);
   /** Noyaux alternatifs installés (extensions avec une section `core`). */
   const [installedCores, setInstalledCores] = useState<InstalledExtension[]>([]);
   /** Les extensions actives : la navigation et le Studio en tirent leurs
@@ -167,8 +169,10 @@ export function App() {
    * d'images, et disparaître quand on la retire.
    */
   const refreshCapabilities = useCallback(async () => {
+    const refreshId = ++capabilitiesRefreshId.current;
     try {
       const installed = await core.listExtensions();
+      if (refreshId !== capabilitiesRefreshId.current) return;
       const caps = new Set<string>();
       for (const ext of installed) {
         if (!ext.enabled) continue;
@@ -185,6 +189,7 @@ export function App() {
       setInstalledCores(installed.filter((e) => e.core != null && e.enabled));
       setActiveExtensions(installed.filter((e) => e.enabled));
     } catch {
+      if (refreshId !== capabilitiesRefreshId.current) return;
       // Registre illisible : on n'invente pas de capacités. L'interface se
       // réduit à ce qui marche sans extension.
       setActiveCapabilities([]);
