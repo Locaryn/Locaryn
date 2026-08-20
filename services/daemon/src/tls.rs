@@ -120,9 +120,16 @@ fn fingerprint(der: &[u8]) -> String {
 }
 
 fn hostname() -> anyhow::Result<String> {
-    let out = std::process::Command::new(if cfg!(windows) { "hostname" } else { "uname" })
-        .args(if cfg!(windows) { vec![] } else { vec!["-n"] })
-        .output()?;
+    let mut command = std::process::Command::new(if cfg!(windows) { "hostname" } else { "uname" });
+    command.args(if cfg!(windows) { vec![] } else { vec!["-n"] });
+    // Sans ce drapeau, une console clignote au démarrage du service.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let out = command.output()?;
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 

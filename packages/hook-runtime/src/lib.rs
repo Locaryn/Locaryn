@@ -225,6 +225,14 @@ pub fn run_hook(action: &HookAction, env: &HashMap<String, String>) -> Result<St
         c
     };
     cmd.envs(env);
+    // Même raison que pour un serveur MCP : sans ce drapeau, chaque hook fait
+    // clignoter une fenêtre de console au-dessus de l'application.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     let mut child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

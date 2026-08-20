@@ -6,6 +6,20 @@ Claude Code — voir [`extensions-interop.md`](extensions-interop.md). Pour la
 mécanique interne — cycle de vie, bac à sable, chargement runtime — voir
 [`architecture/09-extension-model.md`](architecture/09-extension-model.md).
 
+**Au programme**
+
+- [Le principe : deux produits, deux dépôts](#le-principe--deux-produits-deux-dépôts)
+- [Comment quelqu'un installe la vôtre](#comment-quelquun-installe-la-vôtre)
+- [L'extension minimale](#lextension-minimale)
+- [Ce qu'une extension peut apporter](#ce-quune-extension-peut-apporter)
+- [Modeler l'interface](#modeler-linterface--poser-ses-boutons-son-onglet-ses-réglages) — dont [une forme par surface](#une-forme-par-surface) et [hériter du thème](#votre-panneau-hérite-du-thème)
+- [Permissions](#permissions--demandez-peu-expliquez-pourquoi)
+- [Le pont `window.locaryn`](#le-pont--ce-quun-panneau-peut-demander-à-lapplication)
+- [Une extension qui embarque du code](#une-extension-qui-embarque-du-code) — dont [le piège du paquet publié](#le-piège-du-paquet-publié)
+- [Apporter ses modèles au catalogue](#apporter-ses-modèles-au-catalogue)
+- [Publier, versionner, mettre à jour](#publier-versionner-mettre-à-jour)
+- [Quand ça ne marche pas](#quand-ça-ne-marche-pas)
+
 ---
 
 ## Le principe : deux produits, deux dépôts
@@ -93,6 +107,8 @@ et LSP — vit dans [`examples/plugins/my-plugin`](../examples/plugins/my-plugin
 | **Hooks** | `hooks/hooks.json` | Du code déclenché sur un événement de l'application |
 | **MCP** | `mcp/mcp.json` | Des serveurs MCP, donc des outils réels |
 | **LSP** | `lsp/lsp.json` | Un serveur de langage |
+| **Interface** | `ui_contributions` du manifeste | Un onglet, un bouton, une section de réglages, un panneau entier |
+| **Catalogue** | un slot `marketplace.catalogs` | Des modèles ajoutés au catalogue de l'application |
 
 Aucun n'est obligatoire. Une extension qui n'apporte qu'une commande est une
 extension parfaitement valable.
@@ -243,6 +259,228 @@ installations.
 
 Ce qui n'est pas demandé n'est pas accessible. Une permission peut être
 retirée après coup sans désinstaller l'extension.
+
+---
+
+## Le pont : ce qu'un panneau peut demander à l'application
+
+Un script d'extension reçoit `window.locaryn`. C'est toute la surface : rien
+d'autre de l'application n'est accessible depuis un panneau.
+
+```js
+const app = window.locaryn;
+
+// Appeler un outil — le vôtre ou celui d'une autre extension active. L'hôte le
+// cherche parmi tous les serveurs MCP démarrés : vous nommez un outil, pas un
+// serveur.
+const res = await app.tools.invoke("generate_image", { prompt: "a red fox" });
+
+// Le champ de saisie et la conversation en cours.
+app.chat.getText();
+app.chat.insertText("texte ajouté au champ");
+app.chat.submit();
+await app.chat.appendAssistantMessage("![](…)"); // écrit dans la conversation
+
+// Un chemin de l'hôte, en URL affichable dans une balise img.
+const url = app.files.assetUrl("/chemin/vers/image.png");
+
+// Un message court, dans le style de l'application.
+app.ui.showToast("Terminé", "success");
+
+// Ouvrir un écran de l'application au lieu de le recopier chez vous.
+app.ui.dispatchAction("navigate", { view: "models" });
+
+// Événements entre vos propres composants.
+const off = app.events.on("mon-evenement", (data) => { /* … */ });
+app.events.emit("mon-evenement", { valeur: 1 });
+```
+
+Le pont ne donne accès ni au disque, ni au réseau, ni aux processus. Pour cela
+il faut un serveur MCP — du code à vous, hors du navigateur.
+
+---
+
+## Une extension qui embarque du code
+
+Une commande ou une règle sont des fichiers texte. Dès que votre extension doit
+lire un disque, lancer un moteur ou télécharger quelque chose, il lui faut un
+**serveur MCP** : un programme à vous que l'application démarre et interroge.
+
+```json
+// mcp/mcp.json
+{
+  "mcpServers": {
+    "mon-moteur": {
+      "command": "${LOCARYN_PLUGIN_ROOT}/bin/mon-serveur",
+      "args": [],
+      "transport": "stdio",
+      "auto_start": true
+    }
+  }
+}
+```
+
+L'application injecte dans son environnement des chemins **génériques** — elle
+ne sait pas ce que vous en ferez :
+
+| Variable | Ce qu'elle désigne |
+|---|---|
+| `LOCARYN_PLUGIN_ROOT` | le dossier de votre extension, tel qu'installé |
+| `LOCARYN_PLUGIN_BIN_DIR` | son sous-dossier `bin/` |
+| `LOCARYN_EXTENSION_DATA_DIR` | un dossier privé, à vous seul |
+| `LOCARYN_EXTENSION_MODELS_DIR` | vos poids, dans ce dossier privé |
+| `LOCARYN_EXTENSION_MEDIA_DIR` | ce que vous produisez |
+| `LOCARYN_MODELS_DIR` | la bibliothèque de poids de l'utilisateur |
+| `LOCARYN_DATA_DIR` | la racine de stockage choisie par l'utilisateur |
+| `LOCARYN_MODEL_PREFERENCES_FILE` | les préférences de modèles du compte, telles quelles |
+
+Lisez `LOCARYN_MODELS_DIR`. Sans lui, votre extension ne voit que son dossier
+privé — vide au premier lancement — et annonce qu'aucun modèle n'est installé
+alors que l'utilisateur a déjà tout téléchargé.
+
+### Le piège du paquet publié
+
+**`bin/` est presque toujours dans votre `.gitignore`.** L'archive des sources
+d'un dépôt GitHub ne contient donc pas votre binaire, et une extension installée
+depuis les sources s'active, s'affiche, et ne fait rien.
+
+L'application cherche pour cette raison **d'abord un paquet de release**, et ne
+retombe sur les sources qu'à défaut. Votre CI doit donc compiler par plateforme
+et publier une archive nommée avec l'OS et l'architecture :
+
+```
+mon-extension-v1.2.0-windows-x86_64.zip
+mon-extension-v1.2.0-linux-x86_64.zip
+mon-extension-v1.2.0-macos-aarch64.zip
+```
+
+L'archive contient ce qui tourne chez l'utilisateur, sans vos sources :
+`plugin.json`, `bin/`, `dist/`, `mcp/`, `SKILL.md`, `README`, `LICENSE`.
+Vérifiez la présence de `bin/` dans l'archive avant de publier — c'est une ligne
+de CI, et elle vous épargne une version installable mais inerte.
+
+Un paquet destiné à une autre plateforme n'est jamais retenu : mieux vaut
+retomber sur les sources que d'installer un binaire qui ne démarrera pas.
+
+---
+
+## Apporter ses modèles au catalogue
+
+Ne dressez pas la liste de vos modèles dans votre propre panneau : elle se fige
+à la version du paquet, et les adresses qu'elle contient finissent par répondre
+404 ou 401. Déclarez un **slot de données**, et vos modèles apparaissent dans le
+catalogue de l'application, avec les autres.
+
+```json
+{
+  "id": "mon-catalogue",
+  "slot": "marketplace.catalogs",
+  "type": "data",
+  "entry": "dist/marketplace.json"
+}
+```
+
+```json
+// dist/marketplace.json
+{
+  "schemaVersion": 1,
+  "refreshUrl": "https://raw.githubusercontent.com/vous/extension/main/dist/marketplace.json",
+  "owns": ["mon-prefixe", "autre-motif"],
+  "categories": [
+    {
+      "id": "ma-categorie",
+      "label": "Ma catégorie",
+      "icon": "image",
+      "matches": ["ma-capacite"],
+      "requires": ["ma-capacite"]
+    }
+  ],
+  "models": [
+    {
+      "id": "mon-modele",
+      "name": "Mon modèle",
+      "brand": "Auteur",
+      "description": "Ce qu'il fait, et pour qui.",
+      "license": "Apache-2.0",
+      "releaseDate": "2026-01-15",
+      "releaseYear": 2026,
+      "capabilities": ["ma-capacite"],
+      "variants": [
+        {
+          "size": "Q4_K · 6B",
+          "params": 6,
+          "storageGb": 6.2,
+          "quants": ["q4_K"],
+          "tag": "https://huggingface.co/…/poids.gguf",
+          "downloads": [
+            {
+              "url": "https://huggingface.co/…/vae.safetensors",
+              "file": "vae.safetensors",
+              "label": "VAE"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Ce qu'il faut retenir :
+
+- **`refreshUrl`** est relue au lancement. Votre catalogue continue d'évoluer
+  après la publication du paquet, sans réinstallation. Hors-ligne, l'application
+  reprend la dernière copie valide, puis le fichier livré — jamais rien de moins.
+- **`downloads`** liste les fichiers compagnons que votre moteur exige (VAE,
+  encodeurs). L'application les installe avec le modèle. Un modèle livré sans
+  ses compagnons s'installe, puis échoue au premier usage.
+- **`owns`** revendique les poids **déjà** présents sur le disque : des
+  fragments de nom, en minuscules. C'est ce qui fait apparaître dans « Mes
+  modèles installés » ce que l'utilisateur avait téléchargé avant votre
+  extension, en disant qui s'en sert.
+- **`requires`** ne montre votre filtre que si la capacité correspondante est
+  active : votre catégorie disparaît proprement quand votre extension est
+  désactivée.
+- **Vérifiez chaque adresse** avant de publier. Un dépôt privé ou sous licence à
+  accepter répond 401, et l'installation échoue chez l'utilisateur, pas chez
+  vous. Une vérification en CI coûte dix lignes.
+
+---
+
+## Publier, versionner, mettre à jour
+
+1. La version du manifeste fait foi. Montez-la à chaque publication.
+2. Posez un tag `vX.Y.Z` ; votre CI construit et publie les archives.
+3. L'application compare la version installée à celle de votre branche
+   principale et propose la mise à jour.
+4. Une mise à jour **conserve** l'identité de l'extension, son état actif et les
+   permissions déjà accordées. Une permission que votre manifeste cesse de
+   demander est retirée ; une nouvelle est soumise à l'utilisateur.
+
+---
+
+## Quand ça ne marche pas
+
+Trois causes couvrent l'essentiel des extensions « installées mais inertes » :
+
+| Symptôme | Cause probable | Vérification |
+|---|---|---|
+| Panneau vide, aucun outil | permission `mcp` jamais accordée | Réglages → Extensions : la fiche nomme la permission manquante |
+| Serveur qui ne démarre pas | `bin/` absent du paquet installé | ouvrez le dossier de l'extension et cherchez votre binaire |
+| Modèles introuvables | vous ne lisez que votre dossier privé | lisez aussi `LOCARYN_MODELS_DIR` |
+
+L'appel d'outil qui échoue nomme la cause : l'application ne répond pas
+« indisponible », elle dit ce qui manque et où le corriger.
+
+---
+
+## Une extension complète, à lire
+
+[`plugin-image-gen`](https://github.com/Locaryn/plugin-image-gen) met tout cela
+en œuvre : un serveur MCP compilé et publié par plateforme, un panneau de Studio
+rendu avec les classes de l'application, un catalogue de modèles qui se
+rafraîchit, une compétence qui explique au modèle comment appeler l'outil. C'est
+l'exemple de référence quand ce guide reste abstrait.
 
 ---
 

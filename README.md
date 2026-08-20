@@ -118,6 +118,22 @@ Locaryn dispose d'une collection d'extensions officielles modulaires prêtes à 
 | **`plugin-travel-tunnel`** | Tunnels chiffrés pour accès extérieur (Cloudflare, ngrok, devtunnel) | Mode Voyage / Remote |
 | **`plugin-translation`** | Traduction neuronale multi-langues de haute fidélité | Outils de traduction |
 
+### 🛠 Écrire la vôtre
+
+Une extension est un **produit distinct** : votre dépôt, votre rythme, votre nom.
+Rien ne se soumet nulle part — vous publiez, l'utilisateur colle l'adresse.
+
+Le guide complet est dans **[`docs/writing-an-extension.md`](docs/writing-an-extension.md)** :
+manifeste minimal, composants (skills, commandes, agents, règles, hooks, MCP,
+LSP), contributions d'interface avec une forme par plateforme, panneau qui hérite
+du thème de l'application, serveur MCP compilé et publié par plateforme,
+catalogue de modèles qui se rafraîchit tout seul, permissions, publication et
+mise à jour.
+
+L'exemple minimal vit dans [`examples/plugins/my-plugin`](examples/plugins/my-plugin) ;
+l'exemple complet, avec binaire, panneau et catalogue, est
+[`plugin-image-gen`](https://github.com/Locaryn/plugin-image-gen).
+
 ---
 
 ## 🧠 Studio de Modèles : Entraînement & Oblitération RepE
