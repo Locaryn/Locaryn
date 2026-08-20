@@ -363,8 +363,20 @@ async fn init_core() -> anyhow::Result<Core> {
         }
     });
 
+    // Le `User-Agent` n'est pas décoratif : l'API GitHub refuse une requête
+    // qui n'en porte pas. Sans lui, la recherche du paquet publié d'une
+    // extension échouait en 403 et l'installation repartait des sources, sans
+    // les binaires compilés.
+    //
+    // Et pas de délai global : ce client sert aussi à télécharger les paquets
+    // d'extensions. Six secondes suffisaient à une sonde HEAD, pas à une
+    // archive de quelques mégaoctets. Le délai de connexion écarte un hôte
+    // injoignable, le délai de lecture une connexion qui n'avance plus ; un
+    // téléchargement lent mais vivant va jusqu'au bout.
     let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(6))
+        .user_agent(concat!("locaryn/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .read_timeout(std::time::Duration::from_secs(30))
         .build()
         .unwrap_or_default();
 
@@ -2452,27 +2464,6 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
     let models_dir = locaryn_config::models_dir();
     let mut names: Vec<String> = Vec::new();
 
-    fn is_weight_file(path: &std::path::Path) -> bool {
-        path.extension()
-            .and_then(|x| x.to_str())
-            .map(|x| {
-                x.eq_ignore_ascii_case("gguf")
-                    || x.eq_ignore_ascii_case("safetensors")
-                    || x.eq_ignore_ascii_case("onnx")
-                    || x.eq_ignore_ascii_case("pth")
-                    || x.eq_ignore_ascii_case("pt")
-                    || x.eq_ignore_ascii_case("bin")
-            })
-            .unwrap_or(false)
-    }
-
-    fn is_partial(path: &std::path::Path) -> bool {
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n.ends_with(".part") || n.ends_with(".tmp") || n.ends_with(".zip"))
-            .unwrap_or(true)
-    }
-
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -2611,6 +2602,111 @@ async fn list_incompatible_models(core: State<'_, Core>) -> Result<Vec<String>, 
     names.sort();
     names.dedup();
     Ok(names)
+}
+
+/// Un fichier que l'un des moteurs sait charger comme poids de modèle.
+fn is_weight_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|x| x.to_str())
+        .map(|x| {
+            x.eq_ignore_ascii_case("gguf")
+                || x.eq_ignore_ascii_case("safetensors")
+                || x.eq_ignore_ascii_case("onnx")
+                || x.eq_ignore_ascii_case("pth")
+                || x.eq_ignore_ascii_case("pt")
+                || x.eq_ignore_ascii_case("bin")
+        })
+        .unwrap_or(false)
+}
+
+/// Un téléchargement inachevé, ou une archive qui n'a pas encore été ouverte.
+fn is_partial(path: &std::path::Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.ends_with(".part") || n.ends_with(".tmp") || n.ends_with(".zip"))
+        .unwrap_or(true)
+}
+
+/// Un fichier de poids stocké que le moteur de conversation ne sait pas
+/// charger, avec sa taille.
+#[derive(Debug, Clone, Serialize)]
+struct StoredWeight {
+    /// Chemin relatif au dossier de modèles, tel qu'une extension le nomme.
+    name: String,
+    size_bytes: u64,
+}
+
+/// Les poids présents dans le dossier de modèles que la conversation n'utilise
+/// pas.
+///
+/// `list_models` ne renvoie que ce que llama-server peut charger : tout le
+/// reste — poids de diffusion, dépôts d'un autre moteur — disparaissait de
+/// l'écran des modèles installés, alors que les fichiers sont bien là et
+/// occupent l'espace disque. L'hôte les énumère sans savoir à quoi ils
+/// servent ; c'est le catalogue d'une extension qui les revendique.
+#[tauri::command]
+async fn list_non_chat_models(core: State<'_, Core>) -> Result<Vec<StoredWeight>, String> {
+    if core.remote_client().is_some() {
+        return Ok(Vec::new());
+    }
+    let models_dir = locaryn_config::models_dir();
+    let incompatible: std::collections::HashSet<String> =
+        list_incompatible_models(core).await?.into_iter().collect();
+
+    fn weight_size(path: &std::path::Path) -> u64 {
+        std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
+    }
+
+    let mut out: Vec<StoredWeight> = Vec::new();
+    let Ok(entries) = std::fs::read_dir(&models_dir) else {
+        return Ok(out);
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+
+        if path.is_file() {
+            if is_weight_file(&path) && !is_partial(&path) && !is_text_chat_model(&name) {
+                out.push(StoredWeight {
+                    name,
+                    size_bytes: weight_size(&path),
+                });
+            }
+            continue;
+        }
+        if !path.is_dir() || incompatible.contains(&name) {
+            continue;
+        }
+        let weights: Vec<std::path::PathBuf> = walkdir_recursive(&path, 5)
+            .into_iter()
+            .filter(|file| is_weight_file(file) && !is_partial(file))
+            .collect();
+        if weights.is_empty() {
+            continue;
+        }
+        // Un dépôt qui contient un poids utilisable en conversation est déjà
+        // listé par `list_models` : ne pas le compter deux fois.
+        let usable_for_chat = weights.iter().any(|file| {
+            file.strip_prefix(&path)
+                .map(|rel| is_text_chat_model(&rel.to_string_lossy()))
+                .unwrap_or(false)
+        });
+        if usable_for_chat {
+            continue;
+        }
+        out.push(StoredWeight {
+            name,
+            size_bytes: weights.iter().map(|file| weight_size(file)).sum(),
+        });
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
 }
 
 fn is_safetensors_layout_file(path: &std::path::Path) -> bool {
@@ -8844,6 +8940,7 @@ pub fn run() {
             airllm::configure_airllm_provider,
             list_models,
             list_incompatible_models,
+            list_non_chat_models,
             inspect_huggingface_repo,
             app_info,
             region_edit::edit_region,
@@ -8946,6 +9043,7 @@ pub fn run() {
             extensions::list_extension_commands,
             extensions::resolve_extension_command,
             extensions::read_extension_asset,
+            extensions::refresh_extension_asset,
             extensions::invoke_extension_tool,
             extensions::browse_extension_catalog,
             extensions::refresh_extension_catalog,

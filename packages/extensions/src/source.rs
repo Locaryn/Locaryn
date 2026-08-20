@@ -19,6 +19,18 @@
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 
+/// L'API GitHub refuse toute requête sans `User-Agent` : elle répond 403, ce
+/// qui est indiscernable d'un dépôt sans release. L'installation retombait
+/// alors sur l'archive des sources — sans le binaire compilé du serveur MCP —
+/// et l'extension s'installait muette et inerte. Le client appelant peut être
+/// n'importe lequel : l'en-tête est posé ici, sur la requête.
+const GITHUB_USER_AGENT: &str = concat!("locaryn/", env!("CARGO_PKG_VERSION"));
+
+fn github_get(http: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
+    http.get(url)
+        .header(reqwest::header::USER_AGENT, GITHUB_USER_AGENT)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SourceError {
     #[error("io error: {0}")]
@@ -431,8 +443,7 @@ async fn download_github_release_bundle(
         _ => format!("https://api.github.com/repos/{owner}/{repo}/releases/latest"),
     };
 
-    let resp = http
-        .get(&endpoint)
+    let resp = github_get(http, &endpoint)
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
@@ -454,8 +465,7 @@ async fn download_github_release_bundle(
         .collect();
 
     let url = choose_release_asset(&assets)?;
-    let resp = http
-        .get(&url)
+    let resp = github_get(http, &url)
         .header("Accept", "application/octet-stream")
         .send()
         .await
@@ -492,7 +502,7 @@ async fn download_github_zip(
     let mut last_status = None;
     for cand in &candidates {
         let url = format!("https://codeload.github.com/{owner}/{repo}/zip/{cand}");
-        match http.get(&url).send().await {
+        match github_get(http, &url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 let bytes = resp
                     .bytes()
@@ -508,8 +518,7 @@ async fn download_github_zip(
     // Neither conventional branch existed — ask for the real default branch.
     if git_ref.is_none() {
         let api = format!("https://api.github.com/repos/{owner}/{repo}");
-        if let Ok(resp) = http
-            .get(&api)
+        if let Ok(resp) = github_get(http, &api)
             .header("Accept", "application/vnd.github+json")
             .send()
             .await
@@ -520,8 +529,7 @@ async fn download_github_zip(
                         let url = format!(
                             "https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{branch}"
                         );
-                        let resp = http
-                            .get(&url)
+                        let resp = github_get(http, &url)
                             .send()
                             .await
                             .map_err(|e| SourceError::Http(e.to_string()))?;
@@ -584,8 +592,7 @@ pub async fn latest_github_version(
         "opencode.json",
     ] {
         let url = format!("https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{prefix}{name}");
-        let resp = http
-            .get(&url)
+        let resp = github_get(http, &url)
             .send()
             .await
             .map_err(|e| SourceError::Http(e.to_string()))?;
@@ -765,6 +772,23 @@ pub fn copy_dir(src: &Path, dest: &Path) -> Result<(), SourceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sans cet en-tête, GitHub répond 403 et l'installation retombe sur
+    /// l'archive des sources : une extension livrée sans son binaire.
+    #[test]
+    fn github_requests_carry_a_user_agent() {
+        let http = reqwest::Client::new();
+        let request = github_get(&http, "https://api.github.com/repos/a/b")
+            .build()
+            .expect("requête construite");
+        assert_eq!(
+            request
+                .headers()
+                .get(reqwest::header::USER_AGENT)
+                .and_then(|value| value.to_str().ok()),
+            Some(GITHUB_USER_AGENT)
+        );
+    }
 
     #[test]
     fn parses_bare_owner_repo() {

@@ -123,6 +123,10 @@ struct ExtensionRow {
 struct ExtensionPermissionRow {
     permission: String,
     granted: i64,
+    /// `NULL` tant que l'utilisateur n'a rien tranché. Une permission refusée
+    /// et une permission jamais soumise se lisent toutes deux `granted = 0` :
+    /// seule cette date les distingue.
+    decided_at: Option<String>,
 }
 
 #[cfg(feature = "ssh-connector")]
@@ -1867,6 +1871,10 @@ pub struct ExtensionRecord {
     pub enabled: bool,
     pub requested: Vec<Permission>,
     pub granted: Vec<Permission>,
+    /// Demandées par le manifeste, jamais soumises à l'utilisateur. Une
+    /// extension active qui en garde une ne fonctionne qu'à moitié, sans que
+    /// personne ait rien refusé.
+    pub undecided: Vec<Permission>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -2109,7 +2117,7 @@ impl ExtensionRepo {
     async fn hydrate(&self, r: ExtensionRow) -> Result<ExtensionRecord, StorageError> {
         let id = uid(&r.id)?;
         let perms = sqlx::query_as::<_, ExtensionPermissionRow>(
-            "SELECT permission, granted FROM extension_permissions \
+            "SELECT permission, granted, decided_at FROM extension_permissions \
              WHERE extension_id = ? ORDER BY permission ASC",
         )
         .bind(&r.id)
@@ -2133,6 +2141,11 @@ impl ExtensionRepo {
             granted: perms
                 .iter()
                 .filter(|p| bool_from_i64(p.granted))
+                .map(|p| Permission::from_token(&p.permission))
+                .collect(),
+            undecided: perms
+                .iter()
+                .filter(|p| p.decided_at.is_none())
                 .map(|p| Permission::from_token(&p.permission))
                 .collect(),
             created_at: dt(&r.created_at)?,

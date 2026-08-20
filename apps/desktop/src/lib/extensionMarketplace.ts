@@ -9,9 +9,23 @@ import type {
 export interface ExtensionMarketplaceCatalog {
   categories: ModelCategoryDefinition[];
   models: ModelFamily[];
+  /** Ce que chaque extension revendique parmi les poids déjà sur le disque. */
+  claims: ExtensionWeightClaim[];
 }
 
-const EMPTY_CATALOG: ExtensionMarketplaceCatalog = { categories: [], models: [] };
+/** Les motifs par lesquels une extension reconnaît ses propres poids.
+ *
+ *  L'hôte énumère les fichiers que la conversation n'utilise pas sans savoir à
+ *  quoi ils servent ; sans cette revendication, des modèles installés de
+ *  longue date n'apparaissent nulle part. */
+export interface ExtensionWeightClaim {
+  extensionId: string;
+  /** Fragments de nom, en minuscules. Un poids appartient à l'extension dès
+   *  qu'il en contient un. */
+  patterns: string[];
+}
+
+const EMPTY_CATALOG: ExtensionMarketplaceCatalog = { categories: [], models: [], claims: [] };
 
 function strings(value: unknown): string[] {
   return Array.isArray(value)
@@ -176,10 +190,33 @@ export function parseExtensionMarketplace(
         ];
       })
     : [];
-  return { categories, models };
+  // `owns` complète les fichiers déclarés par les téléchargements : un poids
+  // installé avant que l'extension existe n'est nommé nulle part ailleurs.
+  const declaredFiles = models.flatMap((model) =>
+    model.variants.flatMap((item) => (item.downloads ?? []).map((source) => source.file)),
+  );
+  const patterns = [...strings(root.owns), ...declaredFiles]
+    .map((pattern) => pattern.trim().toLowerCase())
+    .filter((pattern) => pattern.length >= 3);
+  const claims: ExtensionWeightClaim[] =
+    patterns.length > 0 ? [{ extensionId, patterns: [...new Set(patterns)] }] : [];
+  return { categories, models, claims };
 }
 
-/** Load every enabled extension catalogue declared through a data slot. */
+/** L'extension qui revendique ce poids, s'il en est une. */
+export function claimantOf(weightName: string, claims: ExtensionWeightClaim[]): string | null {
+  const lower = weightName.toLowerCase();
+  return (
+    claims.find((claim) => claim.patterns.some((pattern) => lower.includes(pattern)))
+      ?.extensionId ?? null
+  );
+}
+
+/** Load every enabled extension catalogue declared through a data slot.
+ *
+ *  `readAsset` est fourni par l'appelant : passez la variante qui suit
+ *  l'adresse de rafraîchissement pour que le catalogue livré ne fige pas la
+ *  liste des modèles à la version du paquet. */
 export async function loadExtensionMarketplaces(
   extensions: InstalledExtension[],
   readAsset: (extensionId: string, path: string) => Promise<string>,
@@ -201,5 +238,6 @@ export async function loadExtensionMarketplaces(
   return {
     categories: catalogues.flatMap((catalogue) => catalogue.categories),
     models: catalogues.flatMap((catalogue) => catalogue.models),
+    claims: catalogues.flatMap((catalogue) => catalogue.claims),
   };
 }

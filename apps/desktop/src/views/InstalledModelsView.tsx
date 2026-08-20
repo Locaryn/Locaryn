@@ -1,7 +1,8 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { SpeedBadge, findMetric } from "../components/SpeedBadge";
-import { type ModelMetric, core } from "../lib/core";
+import { type InstalledExtension, type ModelMetric, type StoredWeight, core } from "../lib/core";
+import { claimantOf, loadExtensionMarketplaces } from "../lib/extensionMarketplace";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 
 type Props = {
@@ -9,7 +10,17 @@ type Props = {
   onSelectModelForChat: (modelTag: string) => void;
   onDeleteModel?: (modelTag: string) => Promise<void> | void;
   onOpenMarketplace?: () => void;
+  /** Extensions actives : chacune revendique ses propres poids par catalogue. */
+  extensions?: InstalledExtension[];
 };
+
+/** Une taille lisible, pour un écran dont le sujet est la place occupée. */
+function humanSize(bytes: number): string {
+  if (bytes <= 0) return "—";
+  const gb = bytes / 1024 ** 3;
+  if (gb >= 1) return `${gb.toFixed(gb >= 10 ? 0 : 1)} Go`;
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} Mo`;
+}
 
 type InstalledModelIdentity = {
   model: string;
@@ -40,6 +51,7 @@ export function InstalledModelsView({
   onSelectModelForChat,
   onDeleteModel,
   onOpenMarketplace,
+  extensions = [],
 }: Props) {
   const [query, setQuery] = useState("");
   const [riskFilter, setRiskFilter] = useState<"all" | "safe" | "uncensored" | "nsfw">("all");
@@ -47,6 +59,10 @@ export function InstalledModelsView({
   const [modelsDir, setModelsDir] = useState("");
   const [metrics, setMetrics] = useState<ModelMetric[]>([]);
   const [incompatibleModels, setIncompatibleModels] = useState<string[]>([]);
+  // Les poids que la conversation ne charge pas. Ils étaient simplement
+  // absents de cet écran : installés, occupant des gigaoctets, invisibles.
+  const [otherWeights, setOtherWeights] = useState<StoredWeight[]>([]);
+  const [weightOwners, setWeightOwners] = useState<Record<string, string>>({});
   // The backend already groups shards, but deliberately keeps separate
   // quantisations/variants. Do not collapse by directory here or Q4 and Q8
   // from the same HuggingFace repository would appear as one model again.
@@ -68,7 +84,36 @@ export function InstalledModelsView({
       .listIncompatibleModels()
       .then(setIncompatibleModels)
       .catch(() => setIncompatibleModels([]));
+    void core
+      .listNonChatModels()
+      .then(setOtherWeights)
+      .catch(() => setOtherWeights([]));
   }, []);
+
+  // Qui revendique quoi. Le socle ignore à quoi sert un poids ; seule
+  // l'extension qui le gère sait le reconnaître, par son catalogue.
+  useEffect(() => {
+    let cancelled = false;
+    if (otherWeights.length === 0) {
+      setWeightOwners({});
+      return;
+    }
+    void loadExtensionMarketplaces(extensions, core.refreshExtensionAsset).then((catalogue) => {
+      if (cancelled) return;
+      const names = new Map(
+        extensions.map((ext) => [ext.id, ext.display_name || ext.name] as const),
+      );
+      const owners: Record<string, string> = {};
+      for (const weight of otherWeights) {
+        const owner = claimantOf(weight.name, catalogue.claims);
+        if (owner) owners[weight.name] = names.get(owner) ?? owner;
+      }
+      setWeightOwners(owners);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [extensions, otherWeights]);
 
   const parsedModels = useMemo(
     () =>
@@ -120,15 +165,23 @@ export function InstalledModelsView({
     }
   }
 
-  async function handleDelete(model: string, incompatible = false) {
+  type DeleteKind = "chat" | "incompatible" | "extension";
+
+  async function handleDelete(model: string, kind: DeleteKind = "chat") {
     if (!onDeleteModel) return;
-    const detail = incompatible
-      ? "Ce dépôt Transformers complet sera supprimé définitivement, y compris tous ses shards Safetensors."
-      : "Tous les shards de cette variante seront supprimés définitivement.";
+    const detail =
+      kind === "incompatible"
+        ? "Ce dépôt Transformers complet sera supprimé définitivement, y compris tous ses shards Safetensors."
+        : kind === "extension"
+          ? "Ces poids seront supprimés définitivement. L'extension qui les utilise ne les retrouvera pas."
+          : "Tous les shards de cette variante seront supprimés définitivement.";
     if (!window.confirm(`Supprimer « ${model} » ?\n\n${detail}`)) return;
     await onDeleteModel(model);
-    if (incompatible) {
+    if (kind === "incompatible") {
       setIncompatibleModels((current) => current.filter((item) => item !== model));
+    }
+    if (kind === "extension") {
+      setOtherWeights((current) => current.filter((item) => item.name !== model));
     }
   }
 
@@ -146,10 +199,11 @@ export function InstalledModelsView({
           <div>
             <h2>
               <Icon name="models" size={18} /> Mes modèles installés (
-              {dedupedModels.length + incompatibleModels.length})
+              {dedupedModels.length + incompatibleModels.length + otherWeights.length})
             </h2>
             <p className="locaryn-view-desc">
-              Gérez les modèles de conversation stockés localement.
+              Gérez les modèles stockés localement : ceux de la conversation, et ceux qu'une
+              extension utilise.
             </p>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -214,7 +268,56 @@ export function InstalledModelsView({
                     type="button"
                     className="locaryn-btn-ghost"
                     style={{ color: "var(--danger)" }}
-                    onClick={() => void handleDelete(model, true)}
+                    onClick={() => void handleDelete(model, "incompatible")}
+                  >
+                    <Icon name="trash" size={14} /> Supprimer
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {otherWeights.length > 0 && (
+        <div className="locaryn-card" style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+            <Icon name="extensions" size={18} />
+            <div>
+              <strong>Poids utilisés par les extensions</strong>
+              <div style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 3 }}>
+                Le moteur de conversation ne les charge pas. Ils restent listés ici : ils occupent
+                de la place, et l'extension qui les revendique s'en sert telle quelle.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {otherWeights.map((weight) => (
+              <div
+                key={weight.name}
+                className="locaryn-box-card"
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: 12 }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong style={{ overflowWrap: "anywhere" }}>{weight.name}</strong>
+                  <div style={{ color: "var(--text-faint)", fontSize: 11, marginTop: 3 }}>
+                    {humanSize(weight.size_bytes)} ·{" "}
+                    {weightOwners[weight.name] ?? "aucune extension installée ne le revendique"}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  onClick={() => void handleOpenFolder(`${modelsDir}\\${weight.name}`)}
+                >
+                  <Icon name="project" size={14} /> Emplacement
+                </button>
+                {onDeleteModel && (
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost"
+                    style={{ color: "var(--danger)" }}
+                    onClick={() => void handleDelete(weight.name, "extension")}
                   >
                     <Icon name="trash" size={14} /> Supprimer
                   </button>
@@ -229,7 +332,7 @@ export function InstalledModelsView({
         <input
           className="locaryn-input"
           style={{ flex: 1, fontSize: 13 }}
-          placeholder="Filtrer mes modèles installés…"
+          placeholder="Filtrer mes modèles de conversation…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />

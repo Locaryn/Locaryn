@@ -283,6 +283,10 @@ fn entry_to_installed(
                 permission: p.clone(),
                 reason: r.reason.clone(),
                 granted: e.permissions.granted.contains(p),
+                // Le registre du service ne garde pas la date de décision :
+                // il ne peut pas distinguer un refus d'une question jamais
+                // posée, et ne prétend donc rien.
+                undecided: false,
             })
             .collect(),
         // Une capacité hors de la liste canonique ne crée aucun écran : on

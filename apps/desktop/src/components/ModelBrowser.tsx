@@ -151,6 +151,7 @@ function familyMarketplaceCapabilities(family: ModelFamily): Set<string> {
 const EMPTY_EXTENSION_MARKETPLACE: ExtensionMarketplaceCatalog = {
   categories: [],
   models: [],
+  claims: [],
 };
 
 /** Une capacité annoncée : son icône et son nom. */
@@ -436,9 +437,11 @@ export function ModelBrowser({
     // Remove stale extension rows synchronously when a plugin is disabled or
     // uninstalled; the replacement catalogue is loaded immediately after.
     setExtensionMarketplace(EMPTY_EXTENSION_MARKETPLACE);
-    void loadExtensionMarketplaces(activeExtensions, core.readExtensionAsset).then((catalogue) => {
-      if (!cancelled) setExtensionMarketplace(catalogue);
-    });
+    void loadExtensionMarketplaces(activeExtensions, core.refreshExtensionAsset).then(
+      (catalogue) => {
+        if (!cancelled) setExtensionMarketplace(catalogue);
+      },
+    );
     return () => {
       cancelled = true;
     };

@@ -114,6 +114,13 @@ function componentSummary(e: InstalledExtension): string {
   return parts.length ? parts.join(" · ") : "aucun composant";
 }
 
+/** Permissions demandées par le manifeste que l'utilisateur n'a jamais
+ *  tranchées. Ni accordées ni refusées : la question ne lui a pas été posée,
+ *  et l'extension tourne amputée sans que rien ne le dise. */
+function undecidedPermissions(ext: InstalledExtension): ExtensionPermission[] {
+  return ext.permissions.filter((p) => p.undecided).map((p) => p.permission);
+}
+
 export function ExtensionsSettings() {
   // Le daemon fait foi pour les labels ; en cas de silence (daemon arrêté),
   // on garde la copie embarquée à la compilation.
@@ -149,8 +156,10 @@ export function ExtensionsSettings() {
   const [permissionExt, setPermissionExt] = useState<{
     ext: InstalledExtension;
     grants: Set<ExtensionPermission>;
-    /** "install" = extension fraîchement installée ; "edit" = permissions déjà accordées. */
-    ctx: "install" | "edit";
+    /** "install" = extension fraîchement installée ; "edit" = permissions déjà
+     *  accordées ; "pending" = extension déjà là dont personne n'a jamais
+     *  tranché les autorisations. */
+    ctx: "install" | "edit" | "pending";
   } | null>(null);
   // Version disponible sur la source GitHub, par id d'extension. Rempli au
   // chargement et après chaque mise à jour ; vide hors-ligne ou pour les
@@ -188,6 +197,10 @@ export function ExtensionsSettings() {
   // Drapeau d'annulation du lot : vérifié entre chaque extension, jamais
   // pendant une mise à jour — l'itération en cours va jusqu'au bout.
   const batchCancelRef = useRef(false);
+  // Extensions dont la fenêtre d'autorisations a déjà été présentée pendant
+  // cette session. Sans ce garde-fou, fermer la fenêtre par Échap la ferait
+  // revenir au rafraîchissement suivant, en boucle.
+  const permissionsAskedRef = useRef<Set<string>>(new Set());
 
   // Échap ferme la fenêtre de permissions (installation ou édition). La
   // fenêtre d'ajout gère la sienne.
@@ -237,6 +250,27 @@ export function ExtensionsSettings() {
       setError(String(e));
     }
   }, [publishInstalled]);
+
+  // Une extension active dont les autorisations n'ont jamais été soumises est
+  // à moitié installée : son serveur MCP ne démarre pas, ses outils et ses
+  // modèles restent introuvables, et rien à l'écran ne l'explique. La question
+  // se pose donc d'elle-même, une fois par extension et par session.
+  useEffect(() => {
+    if (permissionExt || installDialog.open) return;
+    const pending = installed.find(
+      (ext) =>
+        ext.enabled &&
+        !permissionsAskedRef.current.has(ext.id) &&
+        undecidedPermissions(ext).length > 0,
+    );
+    if (!pending) return;
+    permissionsAskedRef.current.add(pending.id);
+    setPermissionExt({
+      ext: pending,
+      grants: new Set(pending.permissions.map((p) => p.permission)),
+      ctx: "pending",
+    });
+  }, [installed, permissionExt, installDialog.open]);
 
   /** Compare les versions installées à la source GitHub. Silencieux hors-ligne. */
   const refreshUpdates = useCallback(async (force = false) => {
@@ -454,13 +488,33 @@ export function ExtensionsSettings() {
     setPermissionExt(null);
     if (ctx === "install") {
       await finishInstall(ext, enable);
-    } else {
-      await loadInstalled();
-      setNotice(`Permissions de ${ext.name} enregistrées.`);
+      return;
     }
+    await loadInstalled();
+    if (ctx === "pending") {
+      await refreshUpdates(true);
+      setNotice(
+        enable
+          ? `Autorisations de ${ext.name} enregistrées — ${componentSummary(ext)}.`
+          : `Autorisations de ${ext.name} enregistrées, extension laissée inactive.`,
+      );
+      return;
+    }
+    setNotice(`Permissions de ${ext.name} enregistrées.`);
   }
 
   async function toggleEnabled(e: InstalledExtension) {
+    // Activer sans avoir tranché les autorisations produit une extension
+    // allumée mais muette. La fenêtre pose la question, puis active.
+    if (!e.enabled && undecidedPermissions(e).length > 0) {
+      permissionsAskedRef.current.add(e.id);
+      setPermissionExt({
+        ext: e,
+        grants: new Set(e.permissions.map((p) => p.permission)),
+        ctx: "pending",
+      });
+      return;
+    }
     setBusy(e.id);
     setError(null);
     try {
@@ -1203,7 +1257,9 @@ export function ExtensionsSettings() {
                           {e.permissions
                             .map(
                               (p) =>
-                                `${PERMISSION_LABELS[p.permission]}${p.granted ? "" : " (refusée)"}`,
+                                `${PERMISSION_LABELS[p.permission]}${
+                                  p.granted ? "" : p.undecided ? " (jamais demandée)" : " (refusée)"
+                                }`,
                             )
                             .join(", ")}
                         </p>

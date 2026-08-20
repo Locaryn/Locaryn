@@ -430,6 +430,7 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
                 permission: perm.clone(),
                 reason: req.reason.clone(),
                 granted: row.granted.contains(perm),
+                undecided: row.undecided.contains(perm),
             })
             .collect();
 
@@ -595,6 +596,38 @@ pub async fn read_extension_asset(
     extension_id: String,
     asset_path: String,
 ) -> Result<String, String> {
+    let target = asset_file(&core, &extension_id, &asset_path).await?;
+    std::fs::read_to_string(&target).map_err(|e| format!("lecture asset impossible : {e}"))
+}
+
+/// Le chemin relatif que l'on accepte de lire, confiné au dossier de
+/// l'extension.
+///
+/// `asset_path` vient de l'interface. Sans cette vérification, `../../` y
+/// lisait n'importe quel fichier de la machine.
+fn confined_asset_path(asset_path: &str) -> Result<&str, String> {
+    let clean = asset_path.trim_start_matches(['/', '\\']);
+    let refuse = clean.is_empty()
+        || std::path::Path::new(clean).is_absolute()
+        || clean
+            .split(['/', '\\'])
+            .any(|segment| segment == ".." || segment.is_empty());
+    if refuse {
+        return Err(format!("chemin d'asset invalide : {asset_path}"));
+    }
+    Ok(clean)
+}
+
+/// Le fichier désigné par `asset_path` dans l'arborescence de l'extension.
+///
+/// Le chemin vient de l'interface : il est confiné au dossier de l'extension.
+/// Sans cette vérification, `../../` y lisait n'importe quel fichier de la
+/// machine.
+async fn asset_file(
+    core: &Core,
+    extension_id: &str,
+    asset_path: &str,
+) -> Result<std::path::PathBuf, String> {
     let rows = core
         .storage
         .extensions
@@ -606,19 +639,113 @@ pub async fn read_extension_asset(
         .find(|r| r.id.to_string() == extension_id || r.name == extension_id)
         .ok_or_else(|| format!("extension « {extension_id} » introuvable"))?;
 
-    let root_opt = plugin_root(&row.manifest_path);
-    let root_dir = match root_opt {
-        Some(p) => p,
-        None => std::path::PathBuf::from(&row.manifest_path),
-    };
+    let root_dir = plugin_root(&row.manifest_path)
+        .unwrap_or_else(|| std::path::PathBuf::from(&row.manifest_path));
 
-    let clean_path = asset_path.trim_start_matches(['/', '\\']);
-    let target = root_dir.join(clean_path);
+    let target = root_dir.join(confined_asset_path(asset_path)?);
     if !target.exists() {
         return Err(format!("asset introuvable : {}", target.display()));
     }
+    Ok(target)
+}
 
-    std::fs::read_to_string(&target).map_err(|e| format!("lecture asset impossible : {e}"))
+/// Où l'on garde la dernière version distante d'un asset de données.
+fn asset_cache_file(extension_name: &str, asset_path: &str) -> std::path::PathBuf {
+    let file: String = asset_path
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    locaryn_config::storage_root()
+        .join("extensions")
+        .join(sanitize_server(extension_name))
+        .join("cache")
+        .join(file)
+}
+
+/// Un remplacement plausible de l'asset livré : même famille de document.
+///
+/// L'hôte ne lit pas le contenu — il ne sait pas ce qu'une extension y met. Il
+/// vérifie seulement que la réponse distante est du JSON et annonce la même
+/// version de schéma que le fichier livré, pour ne pas remplacer un catalogue
+/// par une page d'erreur.
+fn replaces_asset(local: &str, remote: &str) -> bool {
+    let (Ok(local), Ok(remote)) = (
+        serde_json::from_str::<serde_json::Value>(local),
+        serde_json::from_str::<serde_json::Value>(remote),
+    ) else {
+        return false;
+    };
+    remote.is_object() && remote.get("schemaVersion") == local.get("schemaVersion")
+}
+
+/// Relire un asset de données en suivant l'adresse de mise à jour qu'il
+/// déclare lui-même dans `refreshUrl`.
+///
+/// Un catalogue figé dans un paquet vieillit : l'extension publie donc une
+/// adresse, l'hôte la relit et garde la dernière copie valide. Hors-ligne, ou
+/// si la réponse ne ressemble pas au document livré, c'est le fichier du
+/// paquet qui sert — jamais rien de moins.
+#[tauri::command]
+pub async fn refresh_extension_asset(
+    core: State<'_, Core>,
+    extension_id: String,
+    asset_path: String,
+) -> Result<String, String> {
+    let target = asset_file(&core, &extension_id, &asset_path).await?;
+    let local =
+        std::fs::read_to_string(&target).map_err(|e| format!("lecture asset impossible : {e}"))?;
+
+    let name = target
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or(&extension_id)
+        .to_string();
+    let cache = asset_cache_file(&name, &asset_path);
+    let cached = std::fs::read_to_string(&cache).ok();
+
+    let url = serde_json::from_str::<serde_json::Value>(&local)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("refreshUrl")
+                .and_then(|u| u.as_str())
+                .map(str::to_string)
+        })
+        .filter(|url| url.starts_with("https://"));
+
+    if let Some(url) = url {
+        match core.http.get(&url).send().await {
+            Ok(response) if response.status().is_success() => match response.text().await {
+                Ok(remote) if replaces_asset(&local, &remote) => {
+                    if let Some(dir) = cache.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    let _ = std::fs::write(&cache, &remote);
+                    return Ok(remote);
+                }
+                Ok(_) => tracing::warn!(url = %url, "catalogue distant ignoré : forme inattendue"),
+                Err(error) => tracing::warn!(url = %url, %error, "catalogue distant illisible"),
+            },
+            Ok(response) => {
+                tracing::warn!(url = %url, status = %response.status(), "catalogue distant refusé")
+            }
+            Err(error) => tracing::warn!(url = %url, %error, "catalogue distant injoignable"),
+        }
+    }
+
+    // Hors-ligne : la dernière copie valide vaut mieux que le paquet d'origine,
+    // qui peut dater de plusieurs versions.
+    match cached {
+        Some(cached) if replaces_asset(&local, &cached) => Ok(cached),
+        _ => Ok(local),
+    }
 }
 
 /// Pourquoi aucun serveur d'extension ne tourne, en une phrase actionnable.
@@ -1608,6 +1735,30 @@ pub async fn catalog_entry_details(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_asset_path_never_escapes_the_extension() {
+        assert_eq!(confined_asset_path("dist/ui.js").unwrap(), "dist/ui.js");
+        assert_eq!(confined_asset_path("/dist/ui.js").unwrap(), "dist/ui.js");
+        assert!(confined_asset_path("../../secrets.txt").is_err());
+        assert!(confined_asset_path("dist/../../etc/passwd").is_err());
+        assert!(confined_asset_path("").is_err());
+        assert!(confined_asset_path("C:/Windows/win.ini").is_err());
+    }
+
+    #[test]
+    fn a_remote_catalogue_replaces_only_a_document_of_the_same_shape() {
+        let local = r#"{"schemaVersion":1,"models":[]}"#;
+        assert!(replaces_asset(
+            local,
+            r#"{"schemaVersion":1,"models":[{"id":"x"}]}"#
+        ));
+        // Une page d'erreur, une redirection HTML, un schéma d'une autre
+        // version : le fichier livré reste en place.
+        assert!(!replaces_asset(local, "<html>404</html>"));
+        assert!(!replaces_asset(local, r#"{"schemaVersion":2}"#));
+        assert!(!replaces_asset(local, "[]"));
+    }
 
     #[test]
     fn server_names_stay_callable() {

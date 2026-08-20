@@ -194,6 +194,8 @@ async fn main() -> anyhow::Result<()> {
         extensions,
         mcp_state,
         http: reqwest::Client::builder()
+            // L'API GitHub rejette une requête sans `User-Agent`.
+            .user_agent(concat!("locaryn-daemon/", env!("CARGO_PKG_VERSION")))
             .timeout(std::time::Duration::from_secs(600))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new()),

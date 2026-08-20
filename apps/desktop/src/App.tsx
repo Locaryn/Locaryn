@@ -8,7 +8,7 @@ import { ConnectorsSettings } from "./components/ConnectorsSettings";
 import { ExtensionsSettings } from "./components/ExtensionsSettings";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
-import { CAPABILITY_GATED_VIEWS, NavDrawer } from "./components/NavDrawer";
+import { CAPABILITY_GATED_VIEWS, NAVIGABLE_VIEWS, NavDrawer } from "./components/NavDrawer";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { TaskCenter } from "./components/TaskCenter";
@@ -207,6 +207,19 @@ export function App() {
     window.addEventListener("locaryn:extensions-changed", onChange);
     return () => window.removeEventListener("locaryn:extensions-changed", onChange);
   }, [refreshCapabilities]);
+
+  // Une extension peut demander l'ouverture d'un écran de l'hôte plutôt que
+  // de recopier chez elle ce que l'application sait déjà faire. Le nom de la
+  // vue est le seul argument : l'hôte ne fournit rien d'autre, et une vue
+  // inconnue ne fait rien.
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const view = (event as CustomEvent<{ view?: unknown }>).detail?.view;
+      if (typeof view === "string" && NAVIGABLE_VIEWS.includes(view)) setActiveView(view);
+    };
+    window.addEventListener("locaryn:action:navigate", onNavigate);
+    return () => window.removeEventListener("locaryn:action:navigate", onNavigate);
+  }, []);
 
   // Retirer l'extension qui portait l'écran ouvert laisserait la personne
   // devant une vue qui n'existe plus. On revient au chat plutôt que d'afficher
@@ -1089,6 +1102,7 @@ export function App() {
             }}
             onDeleteModel={handleDeleteModel}
             onOpenMarketplace={() => setActiveView("models")}
+            extensions={activeExtensions}
           />
         )}
 

@@ -117,6 +117,10 @@ if (CAPACITES_HORS_CANONIQUE.length > 0) {
   );
 }
 
+/** Les écrans qu'une extension peut demander d'ouvrir. La liste vient du menu :
+ *  ce qui n'y figure pas n'est pas une destination. */
+export const NAVIGABLE_VIEWS: string[] = BASE_NAV_ITEMS.map((item) => item.id);
+
 /**
  * Les écrans qui n'existent que si une extension les apporte, et ce qu'ils
  * exigent. Dérivé de la même liste que le menu : une entrée cachée du menu et

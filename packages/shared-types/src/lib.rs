@@ -351,6 +351,12 @@ pub struct ExtensionPermissionState {
     /// Why the plugin says it needs this. Shown verbatim in the approval modal.
     pub reason: Option<String>,
     pub granted: bool,
+    /// Vrai tant que l'utilisateur n'a jamais tranché. `granted = false` seul
+    /// ne dit pas s'il a refusé ou si la question ne lui a jamais été posée ;
+    /// la seconde n'est pas une décision, c'est une extension à moitié
+    /// installée qu'il faut lui soumettre.
+    #[serde(default)]
+    pub undecided: bool,
 }
 
 /// Ce qu'une extension ajoute à l'interface.

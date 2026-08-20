@@ -339,11 +339,22 @@ export interface ExtensionComponents {
   lsp_adapters: number;
 }
 
+/** Un poids présent sur le disque, avec la place qu'il occupe. */
+export interface StoredWeight {
+  /** Chemin relatif au dossier de modèles. */
+  name: string;
+  size_bytes: number;
+}
+
 export interface ExtensionPermissionState {
   permission: ExtensionPermission;
   /** The plugin's own justification. Shown verbatim — it is not ours to edit. */
   reason: string | null;
   granted: boolean;
+  /** Vrai tant que l'utilisateur n'a jamais tranché : ni accordée ni refusée.
+   *  Une extension active dans cet état ne démarre pas son serveur MCP, et
+   *  rien à l'écran ne le dit — d'où la distinction. */
+  undecided?: boolean;
 }
 
 /** Une entrée d'interface apportée par une extension. */
@@ -1399,6 +1410,9 @@ export interface CoreApi {
   listModels(endpoint: string): Promise<string[]>;
   /** Transformers repos present on disk but not loadable by llama.cpp. */
   listIncompatibleModels(): Promise<string[]>;
+  /** Poids stockés que le moteur de conversation ne charge pas. L'hôte ne sait
+   *  pas à quoi ils servent ; une extension les revendique par son catalogue. */
+  listNonChatModels(): Promise<StoredWeight[]>;
   appInfo(): Promise<AppInfo>;
   getLocalProfile(): Promise<LocalProfile>;
   setLocalProfile(displayName: string): Promise<LocalProfile>;
@@ -1516,6 +1530,10 @@ export interface CoreApi {
   resolveExtensionCommand(name: string, args: string): Promise<string>;
   /** Lit le contenu textuel d'un asset d'extension (script, html, style). */
   readExtensionAsset(extensionId: string, assetPath: string): Promise<string>;
+  /** Comme `readExtensionAsset`, mais suit l'adresse `refreshUrl` que l'asset
+   *  déclare : un catalogue livré dans un paquet ne vieillit plus. Repli sur
+   *  la dernière copie valide, puis sur le fichier du paquet. */
+  refreshExtensionAsset(extensionId: string, assetPath: string): Promise<string>;
   /** Reads the last refresh. Filtering happens in Rust. */
   browseExtensionCatalog(opts?: {
     query?: string;
@@ -1877,6 +1895,7 @@ const tauriCore: CoreApi = {
   configureAirllmProvider: (repo) => invoke<Provider>("configure_airllm_provider", { repo }),
   listModels: (endpoint) => invoke<string[]>("list_models", { endpoint }),
   listIncompatibleModels: () => invoke<string[]>("list_incompatible_models"),
+  listNonChatModels: () => invoke<StoredWeight[]>("list_non_chat_models"),
   appInfo: () => invoke<AppInfo>("app_info"),
   getLocalProfile: () => invoke<LocalProfile>("get_local_profile"),
   setLocalProfile: (displayName) => invoke<LocalProfile>("set_local_profile", { displayName }),
@@ -1965,6 +1984,8 @@ const tauriCore: CoreApi = {
     invoke<string>("resolve_extension_command", { name, args }),
   readExtensionAsset: (extensionId, assetPath) =>
     invoke<string>("read_extension_asset", { extensionId, assetPath }),
+  refreshExtensionAsset: (extensionId, assetPath) =>
+    invoke<string>("refresh_extension_asset", { extensionId, assetPath }),
   browseExtensionCatalog: (opts) =>
     invoke<CatalogSnapshot>("browse_extension_catalog", {
       query: opts?.query ?? null,
@@ -3413,6 +3434,7 @@ const demoCore: CoreApi = {
     return demoModels;
   },
   listIncompatibleModels: async () => [],
+  listNonChatModels: async () => [],
   airllmStatus: async () => ({
     python: true,
     pythonPath: "demo-python",
@@ -3915,6 +3937,7 @@ const demoCore: CoreApi = {
       ]),
   resolveExtensionCommand: async (name, args) => `[${name}] ${args}`.trim(),
   readExtensionAsset: async (_extensionId, _assetPath) => "",
+  refreshExtensionAsset: async (_extensionId, _assetPath) => "",
   browseExtensionCatalog: async (opts) => {
     const q = (opts?.query ?? "").toLowerCase();
     const entries = demoCatalog
