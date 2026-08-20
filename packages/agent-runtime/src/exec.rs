@@ -142,12 +142,18 @@ pub async fn execute_tool_call(
         }
         denial
     } else {
-        let result = if tool.starts_with(crate::mcp_tools::MCP_PREFIX) {
+        // Un nom court appartient à une extension dès lors que le socle ne
+        // le sert pas lui-même : c'est sous ce nom-là que le modèle appelle.
+        let result = if tool.starts_with(crate::mcp_tools::MCP_PREFIX)
+            || !crate::tools::is_native_tool(tool)
+        {
             match mcp {
                 Some(mcp) => crate::mcp_tools::dispatch_mcp_tool(mcp, tool, &args).await,
                 None => crate::tools::ToolResult {
                     ok: false,
-                    output: "MCP state not available".into(),
+                    output: format!(
+                        "outil « {tool} » inconnu : aucune extension active ne l'expose."
+                    ),
                     artifact: None,
                 },
             }

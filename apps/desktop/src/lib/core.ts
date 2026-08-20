@@ -2770,6 +2770,59 @@ let demoExtensions: InstalledExtension[] = [
     created_at: "2026-08-18T05:00:00Z",
     updated_at: "2026-08-18T05:00:00Z",
   },
+  {
+    id: "demo-image-gen",
+    name: "plugin-image-gen",
+    display_name: "plugin-image-gen",
+    version: "1.4.6",
+    api_version: "0.1",
+    description:
+      "Génération et modification d'images avec son moteur stable-diffusion.cpp, ses modèles et son interface",
+    author: "Locaryn Team",
+    homepage: "https://github.com/Locaryn/plugin-image-gen",
+    kind: "plugin",
+    scope: "user",
+    ecosystem: "locaryn",
+    source: "github:Locaryn/plugin-image-gen",
+    install_dir: "~/.locaryn/plugins/plugin-image-gen",
+    enabled: true,
+    components: {
+      skills: 1,
+      commands: 0,
+      agents: 0,
+      rules: 0,
+      hooks: 0,
+      mcp_servers: 1,
+      lsp_adapters: 0,
+    },
+    permissions: [
+      { permission: "mcp", reason: "Lancer le moteur image local", granted: true },
+      { permission: "files_read", reason: "Lire les modèles et les images source", granted: true },
+      { permission: "files_write", reason: "Écrire les images produites", granted: true },
+      { permission: "network", reason: "Télécharger les modèles", granted: true },
+    ],
+    load_errors: [],
+    capabilities: ["image-gen", "image-editor"],
+    ui: {
+      nav_items: [{ id: "studio", label: "Studio de génération", icon: "image" }],
+      studio_tabs: [],
+      slots: [
+        {
+          id: "image-gen-studio",
+          slot: "studio.tabs",
+          order: 10,
+          type: "custom-element",
+          label: "Génération d'image",
+          icon: "image",
+          entry: "dist/ui.js",
+          tag: "locaryn-image-gen-panel",
+          hint: "Génération et retouche locales dans l'extension image-gen",
+        },
+      ],
+    },
+    created_at: "2026-08-18T14:29:27Z",
+    updated_at: "2026-08-20T01:00:00Z",
+  },
 ];
 
 // Un schéma de démonstration, pour que le rendu du formulaire soit exerçable
@@ -3189,7 +3242,22 @@ const demoCore: CoreApi = {
   archiveSession: async () => {},
   archivedSessions: async () => [],
   runComposerTool: async (_tool: string, text: string) => text,
-  invokeExtensionTool: async (_tool: string, _args: Record<string, unknown>) => "{}",
+  invokeExtensionTool: async (tool: string, _args: Record<string, unknown>) => {
+    // La démo répond comme le ferait le serveur MCP d'une extension : un objet
+    // JSON encodé en texte. Sans cela, tout écran qui interroge une extension
+    // reste vide hors Tauri, sans dire pourquoi.
+    if (tool === "list_image_models") {
+      return JSON.stringify({
+        models: [
+          "z_image_turbo-Q8_0.gguf",
+          "flux1-schnell-Q4_0.gguf",
+          "sd_xl_turbo_1.0.q8_0.gguf",
+          "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
+        ],
+      });
+    }
+    return "{}";
+  },
   moveSession: async () => {},
   suggestProject: async () => ({ project_id: null }),
   mergeSessions: async () => {},

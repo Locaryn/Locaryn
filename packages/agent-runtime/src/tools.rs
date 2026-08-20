@@ -601,6 +601,24 @@ fn normalize_path(p: &Path) -> PathBuf {
 }
 
 /// Dispatch a tool call to its implementation. Returns the tool's output.
+/// Les outils que le socle exécute lui-même.
+///
+/// Tout le reste appartient à une extension : c'est ce qui permet de router un
+/// appel sur son nom court sans que le socle ait à connaître les extensions
+/// installées.
+pub const NATIVE_TOOLS: &[&str] = &[
+    "read_file",
+    "write_file",
+    "search",
+    "run_command",
+    "generate_speech",
+];
+
+/// Vrai quand le socle sait exécuter cet outil sans passer par une extension.
+pub fn is_native_tool(tool_name: &str) -> bool {
+    NATIVE_TOOLS.contains(&tool_name)
+}
+
 pub async fn dispatch_tool(
     tool_name: &str,
     args: &serde_json::Value,
@@ -857,6 +875,26 @@ pub fn ollama_tools_json(specs: &[ToolSpec]) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La liste des outils natifs décide du routage : un nom oublié ici part
+    /// vers MCP et revient « inconnu », un nom en trop y capture un outil
+    /// d'extension. Les deux doivent rester d'accord avec `dispatch_tool`.
+    #[tokio::test]
+    async fn native_tool_list_matches_the_dispatch_table() {
+        let ctx = ToolContext {
+            project_path: std::env::temp_dir(),
+            ..Default::default()
+        };
+        for name in NATIVE_TOOLS {
+            let result = dispatch_tool(name, &serde_json::json!({}), &ctx).await;
+            assert!(
+                !result.output.starts_with("unknown tool"),
+                "{name} est annoncé natif mais dispatch_tool ne le connaît pas"
+            );
+        }
+        assert!(!is_native_tool("generate_image"));
+        assert!(is_native_tool("generate_speech"));
+    }
 
     #[test]
     fn resolve_rejects_escape() {

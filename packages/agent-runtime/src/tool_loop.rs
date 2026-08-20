@@ -419,13 +419,17 @@ async fn process_chunk(
                 }
 
                 // Dispatch the tool — route MCP calls to the MCP provider.
-                let result = if tool_name.starts_with(crate::mcp_tools::MCP_PREFIX) {
+                let result = if tool_name.starts_with(crate::mcp_tools::MCP_PREFIX)
+                    || !crate::tools::is_native_tool(tool_name)
+                {
                     if let Some(ref mcp) = mcp_state {
                         crate::mcp_tools::dispatch_mcp_tool(mcp, tool_name, &args).await
                     } else {
                         crate::tools::ToolResult {
                             ok: false,
-                            output: "MCP state not available".into(),
+                            output: format!(
+                                "outil « {tool_name} » inconnu : aucune extension active ne l'expose."
+                            ),
                             artifact: None,
                         }
                     }

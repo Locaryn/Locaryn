@@ -8884,6 +8884,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// Le marqueur d'image traverse deux langages : il est écrit ici et relu
+    /// par `splitInlineImages` côté interface, qui fait un `JSON.parse` du
+    /// contenu. Un chemin Windows contient des antislashs — s'il n'était pas
+    /// encodé en JSON, l'analyse échouerait et l'image générée disparaîtrait
+    /// du fil sans erreur.
+    #[test]
+    fn image_marker_carries_a_json_encoded_path() {
+        let marqueur = super::image_marker(r"D:\Documents\Syncho\media\img_1.png");
+        assert!(marqueur.starts_with("<!--locaryn-image:"));
+        assert!(marqueur.ends_with("-->"));
+        let encode = marqueur
+            .trim_start_matches("<!--locaryn-image:")
+            .trim_end_matches("-->");
+        let decode: String = serde_json::from_str(encode).expect("un chemin JSON relisible");
+        assert_eq!(decode, r"D:\Documents\Syncho\media\img_1.png");
+        // Rejoué vers le modèle, le marqueur ne doit plus rien laisser paraître.
+        assert_eq!(
+            super::strip_ui_markers(&format!(
+                "Voici l'image.
+{marqueur}"
+            )),
+            "Voici l'image."
+        );
+    }
+
     /// Built from the traceback the user actually reported: absl banners, a
     /// SoX warning and a full traceback around one meaningful ValueError.
     #[test]

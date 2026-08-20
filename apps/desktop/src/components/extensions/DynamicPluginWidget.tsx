@@ -41,7 +41,13 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     core
       .readExtensionAsset(contribution.extensionId, contribution.entry)
       .then((code) => {
-        if (cancelled || !code) return;
+        if (cancelled) return;
+        // Un asset vide laissait le cadre sur « Chargement… » indéfiniment :
+        // l'extension annonce une interface qu'elle ne livre pas.
+        if (!code) {
+          setError(`l'extension ne fournit pas ${contribution.entry}`);
+          return;
+        }
         try {
           // Évaluation isolée du script du plugin avec injection du SDK Locaryn
           const execute = new Function("locaryn", "core", code);

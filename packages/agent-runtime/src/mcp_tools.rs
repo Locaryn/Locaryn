@@ -25,10 +25,47 @@ pub fn mcp_tool_name(server_name: &str, tool_name: &str) -> String {
 
 /// Split a prefixed name back into `(server_name, tool_name)`.
 /// Returns `None` if the name doesn't look like an MCP tool.
+///
+/// Le nom d'un serveur d'extension est `<plugin>__<serveur>` : il contient
+/// déjà le séparateur. Découper au premier `__` rendait « plugin-image-gen »
+/// comme serveur, introuvable dans la table des serveurs actifs. Le nom d'outil
+/// est le dernier segment ; c'est [`resolve_mcp_tool_name`] qui tranche pour de
+/// bon, en confrontant le nom aux serveurs réellement démarrés.
 pub fn parse_mcp_tool_name(prefixed: &str) -> Option<(String, String)> {
     let rest = prefixed.strip_prefix(MCP_PREFIX)?;
-    let (server, tool) = rest.split_once(SEP)?;
+    let (server, tool) = rest.rsplit_once(SEP)?;
     Some((server.to_string(), tool.to_string()))
+}
+
+/// Trouver le serveur et l'outil d'un nom préfixé, connaissant les serveurs
+/// démarrés.
+///
+/// Le découpage par position ne peut pas savoir où finit un nom de serveur qui
+/// contient le séparateur. La liste des serveurs actifs, elle, le sait : on
+/// retient le nom le plus long qui préfixe l'appel. Sans serveur correspondant,
+/// on retombe sur le découpage par position, pour produire un message d'erreur
+/// qui nomme le serveur attendu.
+pub fn resolve_mcp_tool_name(prefixed: &str, running: &[String]) -> Option<(String, String)> {
+    let rest = prefixed.strip_prefix(MCP_PREFIX)?;
+    let mut best: Option<(String, String)> = None;
+    for server in running {
+        let Some(tool) = rest
+            .strip_prefix(server.as_str())
+            .and_then(|tail| tail.strip_prefix(SEP))
+        else {
+            continue;
+        };
+        if tool.is_empty() {
+            continue;
+        }
+        let longer = best
+            .as_ref()
+            .is_none_or(|(current, _)| server.len() > current.len());
+        if longer {
+            best = Some((server.clone(), tool.to_string()));
+        }
+    }
+    best.or_else(|| parse_mcp_tool_name(prefixed))
 }
 
 /// Collect tool specs from all running MCP servers by calling `discover()`
@@ -89,8 +126,12 @@ pub async fn dispatch_mcp_tool(
     prefixed_or_clean_name: &str,
     args: &serde_json::Value,
 ) -> ToolResult {
+    let running_names: Vec<String> = {
+        let r = state.running.read().await;
+        r.keys().cloned().collect()
+    };
     let (server_name, tool_name, client) = if let Some((server, tool)) =
-        parse_mcp_tool_name(prefixed_or_clean_name)
+        resolve_mcp_tool_name(prefixed_or_clean_name, &running_names)
     {
         let client = {
             let r = state.running.read().await;
@@ -183,4 +224,66 @@ fn artifact_from_mcp_value(value: &serde_json::Value) -> Option<ToolArtifact> {
         kind,
         path: path.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ce que le serveur MCP de plugin-image-gen renvoie réellement, relevé sur
+    /// une génération. Le transport enveloppe l'objet dans une chaîne de texte,
+    /// et c'est cette chaîne que reçoit `artifact_from_mcp_value`. Si ce
+    /// contrat casse, l'image générée redevient un chemin dans une phrase.
+    #[test]
+    fn image_plugin_result_yields_a_displayable_artifact() {
+        let brut = serde_json::Value::String(
+            r#"{"artifacts":[{"kind":"image_png","path":"D:/media/img_1787192753769.png"}],"model":"stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf","paths":["D:/media/img_1787192753769.png"]}"#
+                .to_string(),
+        );
+        let artefact = artifact_from_mcp_value(&brut).expect("un artefact affichable");
+        assert_eq!(artefact.kind, locaryn_shared_types::ArtifactKind::ImagePng);
+        assert_eq!(artefact.path, "D:/media/img_1787192753769.png");
+    }
+
+    /// Un outil qui ne produit pas de fichier ne doit pas fabriquer d'artefact.
+    #[test]
+    fn a_plain_result_produces_no_artifact() {
+        let brut = serde_json::Value::String(r#"{"models":["a.gguf","b.gguf"]}"#.to_string());
+        assert!(artifact_from_mcp_value(&brut).is_none());
+    }
+
+    /// Le nom court est celui que le modèle emploie : il doit rester
+    /// reconnaissable comme non préfixé, pour que le routage l'envoie vers MCP
+    /// au lieu de la table des outils natifs.
+    #[test]
+    fn clean_tool_names_are_not_mcp_prefixed() {
+        assert!(parse_mcp_tool_name("generate_image").is_none());
+        assert!(resolve_mcp_tool_name("generate_image", &[]).is_none());
+    }
+
+    /// Le serveur d'une extension s'appelle `<plugin>__<serveur>` : son nom
+    /// contient le séparateur, et seul le registre des serveurs démarrés dit où
+    /// il s'arrête.
+    #[test]
+    fn a_server_name_containing_the_separator_is_resolved() {
+        let running = vec!["plugin-image-gen__image-gen".to_string()];
+        assert_eq!(
+            resolve_mcp_tool_name("mcp__plugin-image-gen__image-gen__generate_image", &running),
+            Some((
+                "plugin-image-gen__image-gen".to_string(),
+                "generate_image".to_string()
+            ))
+        );
+    }
+
+    /// Entre deux serveurs dont l'un préfixe l'autre, c'est le plus long qui
+    /// correspond réellement à l'appel.
+    #[test]
+    fn the_longest_matching_server_wins() {
+        let running = vec!["image".to_string(), "image__gen".to_string()];
+        assert_eq!(
+            resolve_mcp_tool_name("mcp__image__gen__generate_image", &running),
+            Some(("image__gen".to_string(), "generate_image".to_string()))
+        );
+    }
 }
