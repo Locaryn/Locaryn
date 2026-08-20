@@ -532,7 +532,7 @@ mod tests {
         .unwrap();
 
         let plugin = load(&root).expect("manifeste lisible");
-        let slots = &plugin.manifest.ui_contributions.slots;
+        let slots = &plugin.manifest.ui.slots;
         assert_eq!(slots.len(), 1);
         assert_eq!(slots[0].slot, "marketplace.catalogs");
         assert_eq!(slots[0].kind, "data");
