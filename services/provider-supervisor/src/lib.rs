@@ -583,6 +583,33 @@ pub fn which(name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Où se trouve `llama-server`, s'il est là.
+///
+/// Trois emplacements, dans cet ordre : le runtime géré par l'application
+/// (`bin/llama/`), l'ancien dossier plat, puis le chemin du système. Cette
+/// fonction est publique parce que l'écran des réglages doit répondre la même
+/// chose que le lanceur : il regardait ailleurs, annonçait « non installé »
+/// pour un runtime présent, et « installé » pour un runtime que le lanceur ne
+/// trouvait pas. Le nom de l'exécutable suit la plateforme — la version
+/// codée en dur pour Windows rendait la réponse fausse partout ailleurs.
+pub fn llama_server_path() -> Option<PathBuf> {
+    let exe_name = if cfg!(windows) {
+        "llama-server.exe"
+    } else {
+        "llama-server"
+    };
+    let bin_root = locaryn_config::bin_dir();
+    let managed = bin_root.join("llama").join(exe_name);
+    if managed.exists() {
+        return Some(managed);
+    }
+    let legacy = bin_root.join(exe_name);
+    if legacy.exists() {
+        return Some(legacy);
+    }
+    which("llama-server")
+}
+
 /// Spawn `ollama serve` as a detached child process.
 ///
 /// We set `OLLAMA_HOST=127.0.0.1:11434` to guarantee loopback binding even
@@ -653,29 +680,11 @@ async fn spawn_llama_server(
     // Binary resolution: prefer the managed runtime (data_dir/bin/llama —
     // installed/updated by the app, pinned modern build), then the legacy
     // flat bin dir, then PATH.
-    let exe_name = if cfg!(windows) {
-        "llama-server.exe"
-    } else {
-        "llama-server"
-    };
-    let bin_root = locaryn_config::bin_dir();
-    let managed = bin_root.join("llama").join(exe_name);
-    let legacy = bin_root.join(exe_name);
-    let bin = if managed.exists() {
-        managed
-    } else if legacy.exists() {
-        tracing::warn!(
-            "using legacy llama-server from data_dir/bin — install the managed runtime \
-             (Settings → System) for an up-to-date build"
-        );
-        legacy
-    } else if let Some(p) = which("llama-server") {
-        p
-    } else {
-        return Err(SupervisorError::BinaryNotFound(
+    let bin = llama_server_path().ok_or_else(|| {
+        SupervisorError::BinaryNotFound(
             "llama-server — installez le runtime depuis Paramètres → Système".into(),
-        ));
-    };
+        )
+    })?;
 
     let model_name = active_model.unwrap_or("model.gguf");
     let model_file = if model_name.starts_with("http") {
