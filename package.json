@@ -1,11 +1,14 @@
 {
   "name": "locaryn-workspace",
-  "version": "0.3.34",
+  "version": "0.3.35",
   "private": true,
   "description": "Open-core agentic coding platform — desktop + CLI + secured remote server, sharing one Rust core.",
   "license": "Apache-2.0",
   "packageManager": "pnpm@9.12.0",
-  "engines": { "node": ">=22", "pnpm": ">=9" },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
   "scripts": {
     "install:all": "pnpm install",
     "build": "pnpm -r build",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Locaryn",
-  "version": "0.3.34",
+  "version": "0.3.35",
   "identifier": "dev.locaryn.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -25,13 +25,21 @@
       "csp": "default-src 'self' asset: http://asset.localhost https://asset.localhost; img-src 'self' data: asset: http://asset.localhost https://asset.localhost blob:; media-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; connect-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "deb", "appimage", "dmg", "app"],
+    "targets": [
+      "nsis",
+      "deb",
+      "appimage",
+      "dmg",
+      "app"
+    ],
     "createUpdaterArtifacts": true,
     "shortDescription": "Locaryn — plateforme de développement assisté par IA, en local",
     "longDescription": "Locaryn fait tourner des modèles sur votre machine : conversation, agent de code, génération d'images et de voix. L'application embarque le service Locaryn et la commande « locaryn », de sorte qu'elle peut aussi servir d'autres appareils sur le réseau local et se piloter depuis un terminal.",
@@ -46,19 +54,29 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["French", "English"]
+        "languages": [
+          "French",
+          "English"
+        ]
       }
     },
-    "externalBin": ["binaries/locaryn-daemon", "binaries/locaryn"]
+    "externalBin": [
+      "binaries/locaryn-daemon",
+      "binaries/locaryn"
+    ]
   },
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["locaryn"]
+        "schemes": [
+          "locaryn"
+        ]
       }
     },
     "updater": {
-      "endpoints": ["https://github.com/Locaryn/Locaryn/releases/latest/download/latest.json"],
+      "endpoints": [
+        "https://github.com/Locaryn/Locaryn/releases/latest/download/latest.json"
+      ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU5QkMwNjMzNTNFMDJFODIKUldTQ0x1QlRNd2E4NlVCYmNTKzY0Q3A2YmFvL29pbHdXejlFVWI1M3VYcWZEdlJLcWIxUkt0TzMK"
     }
   }

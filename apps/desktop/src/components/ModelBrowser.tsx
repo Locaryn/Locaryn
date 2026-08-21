@@ -569,6 +569,8 @@ export function ModelBrowser({
   const [repoCandidateId, setRepoCandidateId] = useState<string>("");
   const [repoInspecting, setRepoInspecting] = useState(false);
   const [repoInspectionError, setRepoInspectionError] = useState<string | null>(null);
+  const [showQuantGuideDetails, setShowQuantGuideDetails] = useState(false);
+  const [quantFilter, setQuantFilter] = useState<"all" | "recommended" | "light" | "quality">("all");
 
   const installedSet = useMemo(() => new Set(installed), [installed]);
 
@@ -801,8 +803,337 @@ export function ModelBrowser({
     }
   }
 
+  interface QuantAdvice {
+    badge: string;
+    badgeStyle: { background: string; color: string; border: string };
+    advice: string;
+    detail: string;
+    priority: number;
+    isRecommended: boolean;
+    category: "recommended" | "high" | "max" | "light" | "raw" | "default";
+  }
+
+  function getQuantizationAdvice(quant?: string | null, format?: string | null): QuantAdvice {
+    const q = (quant || "").toUpperCase();
+
+    // --- Q4 Variants ---
+    if (q.includes("Q4_K_M")) {
+      return {
+        badge: "⭐ Recommandé (K-Quant Medium)",
+        badgeStyle: {
+          background: "rgba(101, 211, 145, 0.15)",
+          color: "#65d391",
+          border: "1px solid rgba(101, 211, 145, 0.35)",
+        },
+        advice:
+          "Standard d'or recommandé : compresse intelligemment chaque couche selon son importance. Meilleur équilibre vitesse / mémoire / qualité.",
+        detail: "Standard universel pour 90% des usages.",
+        priority: 100,
+        isRecommended: true,
+        category: "recommended",
+      };
+    }
+    if (q.includes("Q4_K_S")) {
+      return {
+        badge: "⭐ K-Quant Compact (Small)",
+        badgeStyle: {
+          background: "rgba(101, 211, 145, 0.15)",
+          color: "#65d391",
+          border: "1px solid rgba(101, 211, 145, 0.35)",
+        },
+        advice:
+          "Variante 4-bit plus légère que Q4_K_M : gagne ~10% de RAM avec une qualité quasi identique.",
+        detail: "Idéal si vous êtes un peu juste en mémoire.",
+        priority: 96,
+        isRecommended: true,
+        category: "recommended",
+      };
+    }
+    if (q.includes("Q4_K_L") || q.includes("Q4_K_XL")) {
+      return {
+        badge: "⭐ K-Quant Large",
+        badgeStyle: {
+          background: "rgba(101, 211, 145, 0.15)",
+          color: "#65d391",
+          border: "1px solid rgba(101, 211, 145, 0.35)",
+        },
+        advice:
+          "K-Quant renforcé en précision sur les couches d'attention critiques.",
+        detail: "Légèrement plus lourd que Q4_K_M pour un gain subtil.",
+        priority: 94,
+        isRecommended: true,
+        category: "recommended",
+      };
+    }
+    if (q.includes("Q4_0_4_4") || q.includes("Q4_0_8_8") || q.includes("Q4_0_4_8")) {
+      return {
+        badge: "⚡ 4-bit Vectorisé (ARM / NPU)",
+        badgeStyle: {
+          background: "rgba(110, 168, 254, 0.15)",
+          color: "#6ea8fe",
+          border: "1px solid rgba(110, 168, 254, 0.35)",
+        },
+        advice:
+          "4-bit structuré par blocs, optimisé pour l'accélération matricielle parallèle sur puces ARM / Apple Silicon.",
+        detail: "Excellente vitesse d'inférence sur puces ARM.",
+        priority: 88,
+        isRecommended: false,
+        category: "recommended",
+      };
+    }
+    if (q === "Q4_0" || q === "Q4_K") {
+      return {
+        badge: "⚡ 4-bit Uniforme (Legacy)",
+        badgeStyle: {
+          background: "rgba(251, 191, 36, 0.15)",
+          color: "#fbbf24",
+          border: "1px solid rgba(251, 191, 36, 0.35)",
+        },
+        advice:
+          "Quantification 4-bit uniforme simple. Très rapide et universelle, mais un peu moins fine que Q4_K_M.",
+        detail: "Format classique universel.",
+        priority: 85,
+        isRecommended: false,
+        category: "recommended",
+      };
+    }
+    if (q === "Q4_1") {
+      return {
+        badge: "⚡ 4-bit Uniforme + Offset",
+        badgeStyle: {
+          background: "rgba(251, 191, 36, 0.15)",
+          color: "#fbbf24",
+          border: "1px solid rgba(251, 191, 36, 0.35)",
+        },
+        advice:
+          "4-bit uniforme avec offset pour une fidélité légèrement supérieure à Q4_0.",
+        detail: "Variante de Q4_0.",
+        priority: 84,
+        isRecommended: false,
+        category: "recommended",
+      };
+    }
+
+    // --- Q5 Variants ---
+    if (q.includes("Q5_K_M")) {
+      return {
+        badge: "🎯 5-bit K-Quant Medium",
+        badgeStyle: {
+          background: "rgba(110, 168, 254, 0.15)",
+          color: "#6ea8fe",
+          border: "1px solid rgba(110, 168, 254, 0.35)",
+        },
+        advice:
+          "Raisonnement accru (logique, code, maths). Qualité quasi indiscernable du modèle complet.",
+        detail: "Idéal si vous avez 16-32 Go de mémoire.",
+        priority: 92,
+        isRecommended: false,
+        category: "high",
+      };
+    }
+    if (q.includes("Q5_K_S") || q.includes("Q5_0") || q.includes("Q5_1") || q.includes("Q5_K")) {
+      return {
+        badge: "🎯 5-bit Compact",
+        badgeStyle: {
+          background: "rgba(110, 168, 254, 0.15)",
+          color: "#6ea8fe",
+          border: "1px solid rgba(110, 168, 254, 0.35)",
+        },
+        advice: "Excellente fidélité avec ~15% de mémoire en moins que Q6_K.",
+        detail: "Alternative 5-bit équilibrée.",
+        priority: 89,
+        isRecommended: false,
+        category: "high",
+      };
+    }
+
+    // --- Q6 & Q8 Variants ---
+    if (q.includes("Q6_K")) {
+      return {
+        badge: "💎 6-bit K-Quant (Qualité / RAM)",
+        badgeStyle: {
+          background: "rgba(192, 132, 252, 0.15)",
+          color: "#c084fc",
+          border: "1px solid rgba(192, 132, 252, 0.35)",
+        },
+        advice:
+          "99.5% de la qualité de Q8_0 tout en économisant ~20% de RAM. Souvent le meilleur choix haut de gamme.",
+        detail: "Privilégiez Q6_K face à Q8_0 pour économiser 20% d'espace sans perte perceptible.",
+        priority: 82,
+        isRecommended: false,
+        category: "max",
+      };
+    }
+    if (q.includes("Q8_0") || q.includes("Q8_1") || q.includes("Q8_K")) {
+      return {
+        badge: "💎 8-bit Pleine Fidélité (Sans perte)",
+        badgeStyle: {
+          background: "rgba(192, 132, 252, 0.15)",
+          color: "#c084fc",
+          border: "1px solid rgba(192, 132, 252, 0.35)",
+        },
+        advice:
+          "Reproduction parfaite et sans aucune altération du modèle original. Exige beaucoup de RAM/VRAM.",
+        detail: "À choisir uniquement si votre machine dispose d'une grande marge de mémoire.",
+        priority: 78,
+        isRecommended: false,
+        category: "max",
+      };
+    }
+
+    // --- IQ (Importance Matrix) Variants ---
+    if (q.includes("IQ4")) {
+      return {
+        badge: "🧠 I-Matrix 4-bit Calibré",
+        badgeStyle: {
+          background: "rgba(101, 211, 145, 0.15)",
+          color: "#65d391",
+          border: "1px solid rgba(101, 211, 145, 0.35)",
+        },
+        advice:
+          "Compression 4-bit guidée par matrice d'importance (imatrix) pour une précision supérieure à Q4_0.",
+        detail: "Excellente qualité compressée par calibration.",
+        priority: 91,
+        isRecommended: false,
+        category: "recommended",
+      };
+    }
+    if (q.includes("IQ3")) {
+      return {
+        badge: "🧠 I-Matrix 3-bit Calibré",
+        badgeStyle: {
+          background: "rgba(251, 191, 36, 0.15)",
+          color: "#fbbf24",
+          border: "1px solid rgba(251, 191, 36, 0.35)",
+        },
+        advice:
+          "Quantification 3-bit calibrée par imatrix : préserve la cohérence textuelle bien mieux que Q3_K classique.",
+        detail: "Idéal pour faire tourner un gros modèle avec peu de mémoire.",
+        priority: 72,
+        isRecommended: false,
+        category: "light",
+      };
+    }
+    if (q.includes("IQ2") || q.includes("IQ1")) {
+      return {
+        badge: "🧠 I-Matrix Ultra-Compact",
+        badgeStyle: {
+          background: "rgba(251, 191, 36, 0.15)",
+          color: "#fbbf24",
+          border: "1px solid rgba(251, 191, 36, 0.35)",
+        },
+        advice:
+          "Compression extrême (1 à 2 bits) calibrée par imatrix pour faire tourner de gros modèles sur 4-6 Go de RAM.",
+        detail: "Permet de tester de grands modèles sur très petit matériel.",
+        priority: 50,
+        isRecommended: false,
+        category: "light",
+      };
+    }
+
+    // --- Q3 Variants ---
+    if (q.includes("Q3_K_M")) {
+      return {
+        badge: "⚡ 3-bit K-Quant Medium",
+        badgeStyle: {
+          background: "rgba(251, 191, 36, 0.15)",
+          color: "#fbbf24",
+          border: "1px solid rgba(251, 191, 36, 0.35)",
+        },
+        advice:
+          "Compromis pour réduire l'empreinte mémoire sous les 8 Go tout en gardant des phrases bien structurées.",
+        detail: "Pour PC portables ou configurations 8 Go.",
+        priority: 65,
+        isRecommended: false,
+        category: "light",
+      };
+    }
+    if (q.includes("Q3_K_S") || q.includes("Q3_K_L") || q.includes("Q3_K_XL") || q.includes("Q3_K")) {
+      return {
+        badge: "⚡ 3-bit K-Quant",
+        badgeStyle: {
+          background: "rgba(251, 191, 36, 0.15)",
+          color: "#fbbf24",
+          border: "1px solid rgba(251, 191, 36, 0.35)",
+        },
+        advice: "Quantification 3-bit ultra-légère pour machines très contraintes en mémoire.",
+        detail: "Très économe en RAM.",
+        priority: 62,
+        isRecommended: false,
+        category: "light",
+      };
+    }
+
+    // --- Q2 Variants ---
+    if (q.includes("Q2_K")) {
+      return {
+        badge: "⚡ 2-bit Extrême",
+        badgeStyle: {
+          background: "rgba(251, 191, 36, 0.15)",
+          color: "#fbbf24",
+          border: "1px solid rgba(251, 191, 36, 0.35)",
+        },
+        advice:
+          "Compression maximale en 2-bit (dégradation possible, réservé aux tests sur matériel très limité).",
+        detail: "Très faible mémoire mais perte de précision possible.",
+        priority: 45,
+        isRecommended: false,
+        category: "light",
+      };
+    }
+
+    // --- Full Precision / Raw ---
+    if (q.includes("F16") || q.includes("FP16") || q.includes("BF16") || q.includes("FP32")) {
+      return {
+        badge: "📦 Poids bruts (Non compressé)",
+        badgeStyle: {
+          background: "rgba(255, 255, 255, 0.08)",
+          color: "var(--text-faint)",
+          border: "1px solid var(--border)",
+        },
+        advice:
+          "Modèle 16/32-bit d'origine. Très lourd et inutilement gourmand pour une exécution locale standard.",
+        detail: "À éviter sauf besoin spécifique d'archivage ou conversion.",
+        priority: 20,
+        isRecommended: false,
+        category: "raw",
+      };
+    }
+
+    return {
+      badge: (format || "Modèle").toUpperCase(),
+      badgeStyle: {
+        background: "rgba(255, 255, 255, 0.06)",
+        color: "var(--text-dim)",
+        border: "1px solid var(--border)",
+      },
+      advice: "Variante standard disponible dans le dépôt.",
+      detail: "Fichier de poids du modèle.",
+      priority: 50,
+      isRecommended: false,
+      category: "default",
+    };
+  }
+
+  function estimateRamUsage(bytes: number): string {
+    const gb = bytes / (1024 * 1024 * 1024);
+    const minRam = (gb + 0.8).toFixed(1);
+    return `~${minRam} Go RAM min`;
+  }
+
   function hfRepoSource(tag: string): string | null {
-    const source = tag.startsWith("hf.co/") ? `https://huggingface.co/${tag.slice(6)}` : tag;
+    const trimmed = tag.trim();
+    if (!trimmed) return null;
+    let source = trimmed.startsWith("hf.co/")
+      ? `https://huggingface.co/${trimmed.slice(6)}`
+      : trimmed;
+    if (
+      !source.startsWith("http") &&
+      !source.includes(":") &&
+      (source.match(/\//g) || []).length === 1
+    ) {
+      source = `https://huggingface.co/${source}`;
+    }
     if (!source.startsWith("https://huggingface.co/")) return null;
     if (source.includes("/resolve/") || source.includes("/blob/")) return null;
     return source.replace(/\/+$/, "");
@@ -861,14 +1192,25 @@ export function ModelBrowser({
       setRepoInstallContext({ source: repo, familyName, heretic, consent, downloads });
       try {
         const inspection = await core.inspectHuggingFaceRepo(repo, getHfToken());
-        if (inspection.candidates.length > 1 || inspection.warning || inspection.suggested_repo) {
-          setRepoInspection(inspection);
+        const sortedCandidates = [...inspection.candidates].sort((a, b) => {
+          const adviceA = getQuantizationAdvice(a.quantization, a.format);
+          const adviceB = getQuantizationAdvice(b.quantization, b.format);
+          return adviceB.priority - adviceA.priority;
+        });
+        const bestCandidate =
+          sortedCandidates.find(
+            (c) => getQuantizationAdvice(c.quantization, c.format).isRecommended,
+          ) ?? sortedCandidates[0];
+
+        if (sortedCandidates.length > 1 || inspection.warning || inspection.suggested_repo) {
+          setRepoInspection({ ...inspection, candidates: sortedCandidates });
           setRepoInstallContext({ source: repo, familyName, heretic, consent, downloads });
-          setRepoCandidateId(inspection.candidates[0]?.id ?? "");
+          setRepoCandidateId(bestCandidate?.id ?? "");
+          setQuantFilter("all");
           return;
         }
-        if (inspection.candidates.length === 1) {
-          chosenSelection = makeSelection(inspection, inspection.candidates[0]);
+        if (sortedCandidates.length === 1) {
+          chosenSelection = makeSelection(inspection, sortedCandidates[0]);
         } else if (inspection.support_files.length > 0) {
           // Repositories such as some TTS packages have no conventional
           // weight extension. Keep the old full-repository behaviour, but make
@@ -2511,64 +2853,360 @@ export function ModelBrowser({
                 aussi ses fichiers de configuration.
               </div>
             ) : (
-              <div style={{ display: "grid", gap: "7px" }}>
-                {repoInspection.candidates.map((candidate) => {
-                  const selected = candidate.id === repoCandidateId;
-                  return (
-                    <button
-                      key={candidate.id}
-                      type="button"
-                      onClick={() => setRepoCandidateId(candidate.id)}
+              <div>
+                {/* Educational Guide Box with Expandable Suffix Decoder */}
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    background: "rgba(110, 168, 254, 0.08)",
+                    border: "1px solid rgba(110, 168, 254, 0.22)",
+                    borderRadius: "var(--radius-sm)",
+                    marginBottom: "12px",
+                    fontSize: "12px",
+                    lineHeight: 1.5,
+                    color: "var(--text)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: "4px",
+                      flexWrap: "wrap",
+                      gap: "6px",
+                    }}
+                  >
+                    <div
                       style={{
-                        textAlign: "left",
-                        display: "grid",
-                        gridTemplateColumns: "20px 1fr auto",
-                        gap: "10px",
+                        fontWeight: 700,
+                        color: "var(--accent, #6ea8fe)",
+                        display: "flex",
                         alignItems: "center",
-                        padding: "11px 12px",
-                        borderRadius: "var(--radius-sm)",
-                        border: selected
-                          ? "1px solid var(--accent)"
-                          : "1px solid var(--border-strong)",
-                        background: selected ? "rgba(111,156,127,0.12)" : "var(--surface)",
-                        color: "var(--text)",
-                        cursor: "pointer",
+                        gap: "6px",
                       }}
                     >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          width: "14px",
-                          height: "14px",
-                          borderRadius: "50%",
-                          border: selected
-                            ? "4px solid var(--accent)"
-                            : "1px solid var(--text-faint)",
-                          boxSizing: "border-box",
-                        }}
-                      />
-                      <span style={{ minWidth: 0 }}>
-                        <strong style={{ display: "block", overflowWrap: "anywhere" }}>
-                          {candidate.label}
-                        </strong>
-                        <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-                          {candidate.format.toUpperCase()}
-                          {candidate.quantization ? ` · ${candidate.quantization}` : ""}
-                          {candidate.variant ? ` · ${candidate.variant}` : ""}
-                          {candidate.files.length > 1 ? ` · ${candidate.files.length} shards` : ""}
-                          {candidate.support_files.length > 0
-                            ? ` · ${candidate.support_files.length} compagnon(s)`
-                            : ""}
-                        </span>
-                      </span>
-                      <span
-                        style={{ fontSize: "11px", color: "var(--text-dim)", whiteSpace: "nowrap" }}
-                      >
-                        {formatBytes(candidate.total_bytes)}
-                      </span>
+                      <span>💡</span> Guide de choix de la quantification
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowQuantGuideDetails(!showQuantGuideDetails)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--accent, #6ea8fe)",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        padding: 0,
+                      }}
+                    >
+                      {showQuantGuideDetails
+                        ? "Masquer les détails ▲"
+                        : "Comprendre les suffixes (_K_M, _0, IQ, Q6_K vs Q8_0) ▼"}
                     </button>
-                  );
-                })}
+                  </div>
+                  La quantification compresse le modèle pour tourner localement avec fluidité sans
+                  saturer votre mémoire vive (RAM) ou carte graphique (VRAM).
+                  <div
+                    style={{
+                      marginTop: "6px",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: "6px",
+                      fontSize: "11px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "6px 8px",
+                        background: "rgba(0,0,0,0.25)",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      <strong style={{ color: "#65d391" }}>⭐ Q4_K_M (Recommandé)</strong>
+                      <div style={{ color: "var(--text-dim)" }}>
+                        Équilibre parfait vitesse / intelligence.
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        padding: "6px 8px",
+                        background: "rgba(0,0,0,0.25)",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      <strong style={{ color: "#fbbf24" }}>⚡ Q3_K / IQ (Ultra léger)</strong>
+                      <div style={{ color: "var(--text-dim)" }}>
+                        Pour PC modestes ou cartes 4-8 Go.
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        padding: "6px 8px",
+                        background: "rgba(0,0,0,0.25)",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      <strong style={{ color: "#c084fc" }}>💎 Q6_K / Q8_0 (Qualité max)</strong>
+                      <div style={{ color: "var(--text-dim)" }}>
+                        Fidélité maximale, requiert plus de RAM.
+                      </div>
+                    </div>
+                  </div>
+
+                  {showQuantGuideDetails && (
+                    <div
+                      style={{
+                        marginTop: "10px",
+                        padding: "10px 12px",
+                        background: "rgba(0,0,0,0.35)",
+                        borderRadius: "6px",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "6px",
+                        fontSize: "11px",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <div>
+                        <strong style={{ color: "#65d391" }}>• Q4_K_M vs Q4_0 :</strong> <code>_K_M</code> (K-Quant adaptatif) compresse intelligemment chaque couche selon son importance, préservant la précision sur l'attention critique. <code>Q4_0</code> applique une compression 4-bit uniforme (plus ancienne et un peu moins précise).
+                      </div>
+                      <div>
+                        <strong style={{ color: "#c084fc" }}>• Q6_K vs Q8_0 :</strong> <code>Q6_K</code> offre 99.5% de la qualité de <code>Q8_0</code> tout en économisant ~20% d'espace mémoire. Si vous voulez la qualité maximale, <code>Q6_K</code> est souvent le meilleur choix pragmatique.
+                      </div>
+                      <div>
+                        <strong style={{ color: "#fbbf24" }}>• IQ (Importance Matrix) :</strong> Ces versions (ex: <code>IQ3_M</code>, <code>IQ4_XS</code>) utilisent une matrice de calibration pour préserver un maximum de cohérence tout en réduisant drastiquement le poids.
+                      </div>
+                      <div>
+                        <strong style={{ color: "#6ea8fe" }}>• _K_S / _K_M / _K_L :</strong> <code>S</code> = Small (légèrement allégé), <code>M</code> = Medium (recommandé), <code>L</code> = Large (précision renforcée).
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Filter chips */}
+                {repoInspection.candidates.length > 4 && (
+                  <div
+                    style={{ display: "flex", gap: "6px", marginBottom: "12px", flexWrap: "wrap" }}
+                  >
+                    <button
+                      type="button"
+                      className={`locaryn-chip ${quantFilter === "all" ? "locaryn-chip-on" : ""}`}
+                      onClick={() => setQuantFilter("all")}
+                      style={{ fontSize: "11px", padding: "4px 9px" }}
+                    >
+                      Toutes ({repoInspection.candidates.length})
+                    </button>
+                    {repoInspection.candidates.filter(
+                      (c) => getQuantizationAdvice(c.quantization, c.format).isRecommended,
+                    ).length > 0 && (
+                      <button
+                        type="button"
+                        className={`locaryn-chip ${quantFilter === "recommended" ? "locaryn-chip-on" : ""}`}
+                        onClick={() => setQuantFilter("recommended")}
+                        style={{ fontSize: "11px", padding: "4px 9px" }}
+                      >
+                        ⭐ Recommandées (
+                        {
+                          repoInspection.candidates.filter(
+                            (c) => getQuantizationAdvice(c.quantization, c.format).isRecommended,
+                          ).length
+                        }
+                        )
+                      </button>
+                    )}
+                    {repoInspection.candidates.filter(
+                      (c) => getQuantizationAdvice(c.quantization, c.format).category === "light",
+                    ).length > 0 && (
+                      <button
+                        type="button"
+                        className={`locaryn-chip ${quantFilter === "light" ? "locaryn-chip-on" : ""}`}
+                        onClick={() => setQuantFilter("light")}
+                        style={{ fontSize: "11px", padding: "4px 9px" }}
+                      >
+                        ⚡ Légères (Q2/Q3/IQ)
+                      </button>
+                    )}
+                    {repoInspection.candidates.filter((c) => {
+                      const cat = getQuantizationAdvice(c.quantization, c.format).category;
+                      return cat === "high" || cat === "max";
+                    }).length > 0 && (
+                      <button
+                        type="button"
+                        className={`locaryn-chip ${quantFilter === "quality" ? "locaryn-chip-on" : ""}`}
+                        onClick={() => setQuantFilter("quality")}
+                        style={{ fontSize: "11px", padding: "4px 9px" }}
+                      >
+                        💎 Haute fidélité (Q5/Q6/Q8)
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Candidate Cards */}
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "8px",
+                    maxHeight: "380px",
+                    overflowY: "auto",
+                    paddingRight: "4px",
+                  }}
+                >
+                  {repoInspection.candidates
+                    .filter((candidate) => {
+                      if (quantFilter === "all") return true;
+                      const advice = getQuantizationAdvice(
+                        candidate.quantization,
+                        candidate.format,
+                      );
+                      if (quantFilter === "recommended") return advice.isRecommended;
+                      if (quantFilter === "light") return advice.category === "light";
+                      if (quantFilter === "quality")
+                        return advice.category === "high" || advice.category === "max";
+                      return true;
+                    })
+                    .map((candidate) => {
+                      const selected = candidate.id === repoCandidateId;
+                      const advice = getQuantizationAdvice(
+                        candidate.quantization,
+                        candidate.format,
+                      );
+                      return (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          onClick={() => setRepoCandidateId(candidate.id)}
+                          style={{
+                            textAlign: "left",
+                            display: "grid",
+                            gridTemplateColumns: "20px 1fr auto",
+                            gap: "12px",
+                            alignItems: "center",
+                            padding: "12px 14px",
+                            borderRadius: "var(--radius-sm)",
+                            border: selected
+                              ? "1px solid var(--accent, #6ea8fe)"
+                              : "1px solid var(--border-strong, rgba(255,255,255,0.12))",
+                            background: selected
+                              ? "rgba(110, 168, 254, 0.12)"
+                              : "var(--surface, rgba(255,255,255,0.03))",
+                            color: "var(--text)",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              width: "16px",
+                              height: "16px",
+                              borderRadius: "50%",
+                              border: selected
+                                ? "5px solid var(--accent, #6ea8fe)"
+                                : "1px solid var(--text-faint, rgba(255,255,255,0.3))",
+                              boxSizing: "border-box",
+                              background: selected ? "#fff" : "transparent",
+                            }}
+                          />
+                          <span
+                            style={{
+                              minWidth: 0,
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "4px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <strong style={{ fontSize: "13px", overflowWrap: "anywhere" }}>
+                                {candidate.label}
+                              </strong>
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 700,
+                                  padding: "2px 7px",
+                                  borderRadius: "99px",
+                                  ...advice.badgeStyle,
+                                }}
+                              >
+                                {advice.badge}
+                              </span>
+                              {candidate.quantization && (
+                                <span
+                                  style={{
+                                    fontSize: "10px",
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    background: "rgba(255,255,255,0.06)",
+                                    color: "var(--text-dim)",
+                                  }}
+                                >
+                                  {candidate.quantization}
+                                </span>
+                              )}
+                            </div>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "var(--text)",
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {advice.advice}
+                            </span>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "10px",
+                                fontSize: "10px",
+                                color: "var(--text-faint)",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <span style={{ color: "var(--accent, #6ea8fe)", fontWeight: 600 }}>
+                                💾 {estimateRamUsage(candidate.total_bytes)}
+                              </span>
+                              {(candidate.files.length > 1 ||
+                                candidate.support_files.length > 0) && (
+                                <span>
+                                  {candidate.files.length > 1
+                                    ? `${candidate.files.length} shards de poids `
+                                    : ""}
+                                  {candidate.support_files.length > 0
+                                    ? `· ${candidate.support_files.length} fichier(s) compagnon(s)`
+                                    : ""}
+                                </span>
+                              )}
+                            </div>
+                          </span>
+                          <div style={{ textAlign: "right" }}>
+                            <span
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: 700,
+                                color: "var(--text)",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {formatBytes(candidate.total_bytes)}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
               </div>
             )}
 
@@ -2687,9 +3325,14 @@ export function ModelBrowser({
                 e.preventDefault();
                 const trimmed = customTagInput.trim();
                 if (!trimmed) return;
-                requestInstall(trimmed, trimmed, false);
-                setCustomTagInput("");
                 setCustomDownloadModalOpen(false);
+                setCustomTagInput("");
+                const repo = hfRepoSource(trimmed);
+                if (repo) {
+                  void beginModelInstall(repo, trimmed, false, false);
+                } else {
+                  requestInstall(trimmed, trimmed, false);
+                }
               }}
             >
               <div style={{ marginBottom: "16px" }}>
