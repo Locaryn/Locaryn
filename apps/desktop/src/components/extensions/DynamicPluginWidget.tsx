@@ -19,6 +19,18 @@ interface Props {
 
 const loadedScripts = new Set<string>();
 
+/** Quelle version d'extension a réellement enregistré chaque élément.
+ *
+ *  Un élément personnalisé ne se redéfinit pas : `customElements.define` lève
+ *  sur un nom déjà pris, et les extensions s'en gardent donc par un
+ *  `if (!customElements.get(tag))`. La conséquence est silencieuse — le script
+ *  de la nouvelle version s'exécute, sa classe est ignorée, et le panneau
+ *  continue de tourner sur le code de l'ancienne. Après une mise à jour, on
+ *  voyait la version monter dans la liste des extensions sans qu'aucun
+ *  changement d'interface n'apparaisse. Seul un rechargement de la vue
+ *  remplace la définition. */
+const registeredTags = new Map<string, string>();
+
 export function DynamicPluginWidget({ contribution, context, className, style }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,11 +60,26 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
           setError(`l'extension ne fournit pas ${contribution.entry}`);
           return;
         }
+        const tag = contribution.tag?.toLowerCase();
+        // La classe en place vient d'une autre version : ce script ne peut pas
+        // la remplacer. Recharger est le seul moyen, et c'est sans risque —
+        // l'application se réhydrate depuis le socle.
+        if (tag && customElements.get(tag)) {
+          const registered = registeredTags.get(tag);
+          if (registered !== undefined && registered !== contribution.extensionVersion) {
+            registeredTags.delete(tag);
+            window.location.reload();
+            return;
+          }
+        }
         try {
           // Évaluation isolée du script du plugin avec injection du SDK Locaryn
           const execute = new Function("locaryn", "core", code);
           execute((window as unknown as { locaryn?: unknown }).locaryn || pluginBridge, core);
           loadedScripts.add(scriptKey);
+          if (tag && customElements.get(tag)) {
+            registeredTags.set(tag, contribution.extensionVersion);
+          }
           mountCustomElement();
         } catch (err) {
           console.error(`[Plugin UI] Erreur d'exécution pour ${contribution.id}:`, err);
@@ -75,6 +102,7 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     contribution.extensionVersion,
     contribution.entry,
     contribution.type,
+    contribution.tag,
   ]);
 
   function mountCustomElement() {
