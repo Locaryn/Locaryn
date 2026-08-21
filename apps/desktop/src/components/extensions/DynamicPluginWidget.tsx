@@ -2,7 +2,7 @@ import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { core } from "../../lib/core";
 import { pluginBridge } from "../../lib/pluginBridge";
-import type { ResolvedSlotContribution } from "./SlotRegistry";
+import { type ResolvedSlotContribution, SURFACE } from "./SlotRegistry";
 
 interface Props {
   contribution: ResolvedSlotContribution;
@@ -143,6 +143,9 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     host.innerHTML = "";
     const el = document.createElement(tag);
     el.setAttribute("data-locaryn-extension-version", contribution.extensionVersion);
+    // Lisible depuis CSS sans une ligne de script :
+    // `mon-panneau[data-locaryn-surface="desktop"] { … }`.
+    el.setAttribute("data-locaryn-surface", SURFACE);
     (el as unknown as { context?: unknown }).context = context;
     host.appendChild(el);
     setMounted(true);

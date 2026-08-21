@@ -1,7 +1,7 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/core";
-import type { ResolvedSlotContribution } from "./SlotRegistry";
+import { type ResolvedSlotContribution, SURFACE } from "./SlotRegistry";
 
 interface Props {
   contribution: ResolvedSlotContribution;
@@ -26,6 +26,8 @@ type PluginApi = {
     submit: () => void;
     getSessionId: () => string | null;
   };
+  /** Où ce panneau tourne : `desktop`, `mobile` ou `web`. */
+  surface: string;
   files: { assetUrl: (path: string) => string };
   tools: { invoke: (tool: string, input: string | Record<string, unknown>) => Promise<unknown> };
   ui: {
@@ -46,6 +48,7 @@ function installBridge(): PluginApi {
   if (target.locaryn) return target.locaryn;
   const plugin: PluginApi = {
     version: "1.0.0",
+    surface: SURFACE,
     chat: {
       getText: () => "",
       setText: () => {},
@@ -119,6 +122,9 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     const mount = () => {
       if (cancelled || !container.current || !customElements.get(tag)) return;
       const element = document.createElement(tag);
+      // Lisible depuis CSS sans une ligne de script :
+      // `mon-panneau[data-locaryn-surface="mobile"] { … }`.
+      element.setAttribute("data-locaryn-surface", SURFACE);
       (element as unknown as { context?: unknown }).context = context;
       container.current.replaceChildren(element);
     };

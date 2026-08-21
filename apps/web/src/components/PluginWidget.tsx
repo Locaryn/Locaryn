@@ -21,6 +21,8 @@ type WebPluginApi = {
     getSessionId: () => string | null;
     appendAssistantMessage?: (content: string) => Promise<void>;
   };
+  /** Où ce panneau tourne : `desktop`, `mobile` ou `web`. */
+  surface: string;
   files: { assetUrl: (path: string) => string };
   tools: { invoke: (tool: string, input: string | Record<string, unknown>) => Promise<unknown> };
   ui: {
@@ -41,6 +43,7 @@ function bridge(): WebPluginApi {
   if (global.locaryn) return global.locaryn;
   const pluginApi: WebPluginApi = {
     version: "1.0.0",
+    surface: SURFACE,
     chat: {
       getText: () => "",
       setText: () => {},
@@ -97,12 +100,31 @@ function bridge(): WebPluginApi {
   return pluginApi;
 }
 
+/** La surface sur laquelle cette interface tourne. */
+export const SURFACE = "web";
+
+/**
+ * Cette contribution vise-t-elle la surface courante ?
+ *
+ * Sans `platforms`, oui. Le bureau et le téléphone respectaient déjà ce champ ;
+ * le web l'ignorait, et un panneau explicitement réservé à l'ordinateur
+ * s'affichait quand même dans le navigateur.
+ */
+export function targetsSurface(
+  contribution: { platforms?: string[] },
+  surface: string = SURFACE,
+): boolean {
+  const platforms = contribution.platforms;
+  if (!platforms || platforms.length === 0) return true;
+  return platforms.some((platform) => platform.trim().toLowerCase() === surface);
+}
+
 function resolvedContribution(extensions: PhoneExtension[], slot: string): WebPluginContribution[] {
   return extensions
     .filter((extension) => extension.enabled)
     .flatMap((extension) =>
       (extension.ui?.slots ?? [])
-        .filter((contribution) => contribution.slot === slot)
+        .filter((contribution) => contribution.slot === slot && targetsSurface(contribution))
         .map((contribution) => ({
           ...contribution,
           extensionId: extension.name,
@@ -132,7 +154,11 @@ export function PluginWidget({ contribution }: Props) {
 
     const mount = () => {
       if (cancelled || !container.current || !customElements.get(tag)) return;
-      container.current.replaceChildren(document.createElement(tag));
+      const element = document.createElement(tag);
+      // Lisible depuis CSS sans une ligne de script :
+      // `mon-panneau[data-locaryn-surface="web"] { … }`.
+      element.setAttribute("data-locaryn-surface", SURFACE);
+      container.current.replaceChildren(element);
     };
 
     const key = `${contribution.extensionId}:${contribution.entry}`;

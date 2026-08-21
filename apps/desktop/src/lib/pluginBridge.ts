@@ -7,6 +7,13 @@ import { core } from "./core";
  */
 export interface LocarynPluginAPI {
   version: string;
+  /** Où ce panneau tourne : `desktop`, `mobile` ou `web`.
+   *
+   *  Une extension peut déclarer une contribution par plateforme, avec son
+   *  propre fichier et sa propre balise. Mais un panneau unique qui s'adapte
+   *  reste souvent plus simple à tenir que trois panneaux qui divergent — et
+   *  pour ça il lui faut savoir où il est. */
+  surface: "desktop" | "mobile" | "web";
   chat: {
     getText: () => string;
     setText: (text: string) => void;
@@ -83,6 +90,7 @@ class PluginBridgeManager {
   private setupGlobalAPI() {
     const api: LocarynPluginAPI = {
       version: "1.0.0",
+      surface: "desktop",
       chat: {
         getText: () => this.currentInputGetter?.() ?? "",
         setText: (text: string) => {

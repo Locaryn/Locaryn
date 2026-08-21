@@ -212,6 +212,49 @@ quel sur un téléphone : vous en donnez une autre forme, ou vous n'en donnez
 aucune. L'hôte ne décide pas à votre place, il affiche ce qui vise la surface
 où il tourne.
 
+### Savoir où l'on tourne
+
+Déclarer une contribution par plateforme convient quand les écrans n'ont rien
+à voir. Mais trois panneaux séparés divergent avec le temps, et le plus souvent
+un seul suffit s'il sait où il est. Deux moyens, l'un pour le style, l'autre
+pour le comportement.
+
+L'hôte pose la surface sur votre élément :
+
+```css
+mon-panneau[data-locaryn-surface="mobile"] .colonne {
+  grid-template-columns: 1fr;   /* une seule colonne sur un téléphone */
+}
+mon-panneau[data-locaryn-surface="web"] .apercu {
+  max-height: 60vh;             /* la page défile déjà, ne la doublez pas */
+}
+```
+
+Et il la nomme dans le pont, pour ce que le CSS ne sait pas faire — un mode
+tactile, une résolution par défaut plus basse, un envoi désactivé faute de
+moteur local :
+
+```js
+var surface = (window.locaryn && window.locaryn.surface) || "desktop";
+if (surface === "mobile") this.variants = 1;
+```
+
+Ces deux leviers valent partout : `desktop`, `mobile` et `web` posent le même
+attribut et renseignent le même champ.
+
+Pour le reste, laissez faire la place disponible plutôt que la plateforme. Une
+grille en `auto-fit` s'arrange d'une fenêtre étroite comme d'un téléphone sans
+qu'aucune taille d'écran soit devinée à l'avance :
+
+```css
+grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+```
+
+Une largeur de fenêtre n'est pas une plateforme : un ordinateur en fenêtre
+réduite mérite la même mise en page qu'une tablette. Réservez `platforms` et
+`data-locaryn-surface` à ce qui diffère vraiment — le tactile, le défilement de
+la page hôte, ce que la machine peut calculer.
+
 ### Votre panneau hérite du thème
 
 Un `custom-element` est monté **dans le document**, sans racine fantôme. Les

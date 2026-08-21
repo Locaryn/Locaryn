@@ -56,6 +56,9 @@ export interface ExtensionUiSlotContribution {
   value?: string;
   tag?: string;
   entry?: string;
+  /** `desktop`, `mobile`, `web`. Absent ou vide : partout. */
+  platforms?: string[];
+  category?: string | null;
 }
 
 export interface PhoneExtension {
