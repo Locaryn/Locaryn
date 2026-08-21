@@ -1764,12 +1764,22 @@ async fn send_message(
     let active_provider = core.storage.providers.active().await.ok().flatten();
 
     // Ensure the local runtime is running (llama-server or the AirLLM server).
+    //
+    // La cause d'un démarrage raté se perdait dans les journaux : le message
+    // affiché disait « le modèle n'a pas pu être atteint » et renvoyait
+    // vérifier une installation qui, elle, était bonne. Le superviseur sait
+    // pourtant si c'est le binaire qui manque, le fichier de poids qui n'est
+    // pas là où on le cherche, ou le démarrage qui a expiré. On garde sa
+    // réponse pour la donner à qui la lit.
+    let mut panne_du_moteur: Option<String> = None;
     if let Some(ref p) = active_provider {
         if matches!(p.engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm) {
-            if let Err(e) = core.supervisor.ensure_running(p.engine).await {
-                tracing::warn!(error = %e, "supervisor could not ensure runtime running");
-            } else {
-                core.supervisor.note_activity(p.engine).await;
+            match core.supervisor.ensure_running(p.engine).await {
+                Ok(_) => core.supervisor.note_activity(p.engine).await,
+                Err(e) => {
+                    tracing::warn!(error = %e, "supervisor could not ensure runtime running");
+                    panne_du_moteur = Some(e.to_string());
+                }
             }
         }
     }
@@ -1955,10 +1965,15 @@ async fn send_message(
                     Ok(stream) => stream,
                     Err(e) => {
                         tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
-                        no_model_stream(&format!(
-                        "Le modèle{} n'a pas pu être atteint. Vérifiez qu'un modèle est bien sélectionné et installé.",
-                        model.as_deref().map(|m| format!(" \"{m}\"")).unwrap_or_default()
-                    ))
+                        no_model_stream(&match &panne_du_moteur {
+                            Some(cause) => {
+                                format!("Le moteur local n'a pas démarré : {cause}")
+                            }
+                            None => format!(
+                                "Le modèle{} n'a pas pu être atteint. Vérifiez qu'un modèle est bien sélectionné et installé.",
+                                model.as_deref().map(|m| format!(" \"{m}\"")).unwrap_or_default()
+                            ),
+                        })
                     }
                 }
             }

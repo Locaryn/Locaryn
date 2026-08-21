@@ -72,13 +72,13 @@ impl Default for SupervisorConfig {
 
 #[derive(Debug, Error)]
 pub enum SupervisorError {
-    #[error("engine {0:?} is not running")]
+    #[error("le moteur {0:?} ne tourne pas")]
     NotRunning(ProviderEngine),
-    #[error("engine {0:?} failed to start within {1:?}")]
+    #[error("le moteur {0:?} n'a pas démarré en {1:?}")]
     StartupTimeout(ProviderEngine, Duration),
-    #[error("spawn failed for {0:?}: {1}")]
+    #[error("démarrage impossible ({0:?}) : {1}")]
     SpawnFailed(ProviderEngine, String),
-    #[error("binary not found on PATH: {0}")]
+    #[error("exécutable introuvable : {0}")]
     BinaryNotFound(String),
     #[error("storage error: {0}")]
     Storage(#[from] locaryn_storage::StorageError),
@@ -673,7 +673,7 @@ async fn spawn_llama_server(
         p
     } else {
         return Err(SupervisorError::BinaryNotFound(
-            "llama-server (install it from Settings → System → Runtime)".into(),
+            "llama-server — installez le runtime depuis Paramètres → Système".into(),
         ));
     };
 
@@ -693,7 +693,10 @@ async fn spawn_llama_server(
     if !full_model_path.exists() {
         return Err(SupervisorError::SpawnFailed(
             ProviderEngine::LlamaCpp,
-            format!("Model not found: {}", full_model_path.display()),
+            format!(
+                "fichier de poids introuvable — {}",
+                full_model_path.display()
+            ),
         ));
     }
 

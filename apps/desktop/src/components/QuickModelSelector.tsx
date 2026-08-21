@@ -312,7 +312,16 @@ export function QuickModelSelector({
                 >
                   <div
                     className="locaryn-quick-model-info"
-                    style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      // Un nom de modèle peut être un chemin de dépôt entier.
+                      // Sans plancher à zéro, la ligne refusait de rétrécir et
+                      // le nom passait sous les étiquettes de droite.
+                      minWidth: 0,
+                      flex: "1 1 auto",
+                    }}
                   >
                     <div
                       style={{
@@ -330,17 +339,31 @@ export function QuickModelSelector({
                     >
                       <Icon name={item.icon} size={16} />
                     </div>
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <div
                         className="locaryn-quick-model-name"
-                        style={{ fontWeight: 600, fontSize: "13px", color: "var(--text)" }}
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          color: "var(--text)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
                         title={item.name}
                       >
                         {item.name}
                       </div>
                       <div
                         className="locaryn-quick-model-tag"
-                        style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}
+                        style={{
+                          fontSize: "11px",
+                          color: "var(--text-faint)",
+                          marginTop: "2px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
                         title={`${item.brand} — ${item.tag}`}
                       >
                         {item.brand} — <code style={{ fontSize: "10px" }}>{item.tag}</code>
@@ -348,7 +371,17 @@ export function QuickModelSelector({
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      // Les étiquettes gardent leur place : c'est le nom qui
+                      // cède, avec des points de suspension et son texte
+                      // complet en infobulle.
+                      flexShrink: 0,
+                    }}
+                  >
                     <span
                       style={{
                         fontSize: "10px",
@@ -357,6 +390,7 @@ export function QuickModelSelector({
                         background: "rgba(255,255,255,0.06)",
                         color: "var(--text-faint)",
                         border: "1px solid var(--border)",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {item.categoryLabel}
