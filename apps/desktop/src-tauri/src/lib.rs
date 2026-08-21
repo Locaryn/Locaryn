@@ -3968,13 +3968,79 @@ async fn do_pull_with_aggregate(
     let mut stream = resp.bytes_stream();
     let mut downloaded = offset;
     let mut last_report = std::time::Instant::now();
+    // Une connexion qui lâche au milieu d'un fichier de plusieurs gigaoctets
+    // n'est pas un incident rare, c'est l'ordinaire. Jusqu'ici la première
+    // coupure remontait « stream error: error decoding response body » et le
+    // garde effaçait le fichier partiel : sur une ligne un peu instable, un
+    // gros modèle ne pouvait jamais arriver au bout. On rouvre la connexion là
+    // où elle s'est arrêtée, ce que le serveur sait faire — c'est le même
+    // mécanisme que la reprise entre deux lancements.
+    let mut reprises_restantes = 4u32;
 
-    while let Some(chunk_result) = stream.next().await {
+    loop {
+        let suite = stream.next().await;
+        let Some(chunk_result) = suite else {
+            break;
+        };
         if cancel.is_cancelled() {
             return Err("Telechargement annule".into());
         }
 
-        let chunk = chunk_result.map_err(|e| format!("stream error: {e}"))?;
+        let chunk = match chunk_result {
+            Ok(chunk) => chunk,
+            Err(coupure) => {
+                if reprises_restantes == 0 {
+                    return Err(format!("stream error: {coupure}"));
+                }
+                reprises_restantes -= 1;
+                // Ce qui est déjà écrit doit atteindre le disque avant qu'on
+                // demande la suite à partir de ce point.
+                writer
+                    .flush()
+                    .await
+                    .map_err(|e| format!("write error: {e}"))?;
+                tracing::warn!(
+                    error = %coupure, %file_name, downloaded,
+                    "flux interrompu — reprise à l'octet courant"
+                );
+                let _ = on_event.send(PullProgressEvent {
+                    status: format!("Reprise de {file_name}…"),
+                    completed: aggregate
+                        .as_deref()
+                        .map(|overall| overall.completed)
+                        .unwrap_or(downloaded),
+                    total: event_total,
+                    percentage: if event_total > 0 {
+                        (downloaded as f64 / event_total as f64 * 100.0).min(100.0)
+                    } else {
+                        0.0
+                    },
+                });
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                let mut reprise = client
+                    .get(url)
+                    .header("Range", format!("bytes={downloaded}-"));
+                if !hf_token.is_empty() && url.starts_with("https://huggingface.co/") {
+                    reprise = reprise.header("Authorization", format!("Bearer {hf_token}"));
+                }
+                let reponse = match reprise.send().await {
+                    Ok(reponse) => reponse,
+                    Err(echec) => {
+                        tracing::warn!(error = %echec, "reprise refusée");
+                        continue;
+                    }
+                };
+                // Un serveur qui répond 200 renvoie le fichier entier : le
+                // recoller après ce qui est déjà écrit produirait une archive
+                // corrompue. Mieux vaut rendre la panne d'origine.
+                if reponse.status().as_u16() != 206 {
+                    return Err(format!("stream error: {coupure}"));
+                }
+                stream = reponse.bytes_stream();
+                continue;
+            }
+        };
         writer
             .write_all(&chunk)
             .await
@@ -8794,6 +8860,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {

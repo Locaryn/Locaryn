@@ -54,6 +54,11 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 anyhow = { workspace = true }
 tauri-plugin-dialog = "2"
+# Les bannières du système, pour ce qui se termine quand la fenêtre est
+# réduite. Ce greffon tire `notify-rust`, dont la 4.18 exige rustc 1.89 alors
+# que le dépôt épingle 1.88 : le verrou le retient en 4.11, et la résolution
+# échouera bruyamment si quelqu'un le relâche sans monter la chaîne d'outils.
+tauri-plugin-notification = "2"
 url = "2"
 base64 = "0.22"
 # Disk capacity reporting for the storage settings (free space per volume).
