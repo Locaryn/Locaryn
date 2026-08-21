@@ -191,7 +191,7 @@ struct StdioTransport {
     stdin: tokio::process::ChildStdin,
     stdout: tokio::io::BufReader<tokio::process::ChildStdout>,
     next_id: std::sync::atomic::AtomicU64,
-    _child: tokio::process::Child,
+    child: tokio::process::Child,
 }
 
 impl StdioTransport {
@@ -204,7 +204,11 @@ impl StdioTransport {
         cmd.args(args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+            .stderr(std::process::Stdio::piped())
+            // Un transport lâché sans arrêt explicite — panique, erreur de
+            // démarrage — emportait son serveur avec lui jusqu'au prochain
+            // redémarrage de la machine.
+            .kill_on_drop(true);
 
         // Add to the environment, never replace it. Configurations set one
         // API key; clearing the rest would take PATH with it, and the server
@@ -242,8 +246,32 @@ impl StdioTransport {
             stdin,
             stdout: tokio::io::BufReader::new(stdout),
             next_id: std::sync::atomic::AtomicU64::new(1),
-            _child: child,
+            child,
         })
+    }
+
+    /// Rendre le processus, et attendre qu'il soit vraiment parti.
+    ///
+    /// Tant qu'il vit, Windows garde son exécutable verrouillé : remplacer ou
+    /// désinstaller l'extension échouait sur « Accès refusé (os error 5) »,
+    /// même après l'avoir désactivée — l'arrêt demandé ne faisait rien.
+    ///
+    /// D'abord fermer l'entrée standard : un serveur correct sort de lui-même
+    /// sur une fin de flux, en terminant ce qu'il écrivait. On ne le tue que
+    /// s'il ne l'a pas fait, et on le récolte ensuite — un zombie tient le
+    /// verrou aussi bien qu'un vivant.
+    async fn shutdown(&mut self) -> Result<(), McpError> {
+        use tokio::io::AsyncWriteExt as _;
+        let _ = self.stdin.shutdown().await;
+        let grace = std::time::Duration::from_millis(1500);
+        if tokio::time::timeout(grace, self.child.wait())
+            .await
+            .is_err()
+        {
+            let _ = self.child.start_kill();
+            let _ = self.child.wait().await;
+        }
+        Ok(())
     }
 
     async fn call(
@@ -983,7 +1011,7 @@ impl McpClient for StdioClient {
     }
 
     async fn shutdown(&self) -> Result<(), McpError> {
-        Ok(())
+        self.transport.lock().await.shutdown().await
     }
 }
 

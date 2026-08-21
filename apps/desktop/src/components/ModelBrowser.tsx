@@ -568,6 +568,10 @@ export function ModelBrowser({
   } | null>(null);
   const [repoCandidateId, setRepoCandidateId] = useState<string>("");
   const [repoInspecting, setRepoInspecting] = useState(false);
+  /** Quand la fenêtre de choix s'est ouverte, en millisecondes. Le clic qui
+   *  l'ouvre se termine après elle : sans ce délai, il retombe sur le fond de
+   *  la nouvelle fenêtre et la referme aussitôt. */
+  const repoInspectionOpenedAt = useRef(0);
   const [repoInspectionError, setRepoInspectionError] = useState<string | null>(null);
   const [showQuantGuideDetails, setShowQuantGuideDetails] = useState(false);
   const [quantFilter, setQuantFilter] = useState<"all" | "recommended" | "light" | "quality">(
@@ -1180,12 +1184,17 @@ export function ModelBrowser({
     consent: boolean,
     selection?: HfModelSelection,
     downloads?: ModelDownloadSource[],
+    // « Installer le dépôt complet » est déjà une décision prise devant la
+    // liste. Sans ce drapeau, l'appel repassait par l'inspection, qui rouvrait
+    // la même fenêtre : le bouton ne pouvait rien installer.
+    skipInspection = false,
   ) {
-    let chosenSelection = selection;
-    const repo = !chosenSelection ? hfRepoSource(tag) : null;
+    const chosenSelection = selection;
+    const repo = !chosenSelection && !skipInspection ? hfRepoSource(tag) : null;
     if (repo) {
       setRepoInspecting(true);
       setRepoInspectionError(null);
+      repoInspectionOpenedAt.current = Date.now();
       setRepoInspection({
         repo: repo.replace("https://huggingface.co/", ""),
         candidates: [],
@@ -1207,21 +1216,16 @@ export function ModelBrowser({
             (c) => getQuantizationAdvice(c.quantization, c.format).isRecommended,
           ) ?? sortedCandidates[0];
 
-        if (sortedCandidates.length > 1 || inspection.warning || inspection.suggested_repo) {
-          setRepoInspection({ ...inspection, candidates: sortedCandidates });
-          setRepoInstallContext({ source: repo, familyName, heretic, consent, downloads });
-          setRepoCandidateId(bestCandidate?.id ?? "");
-          setQuantFilter("all");
-          return;
-        }
-        if (sortedCandidates.length === 1) {
-          chosenSelection = makeSelection(inspection, sortedCandidates[0]);
-        } else if (inspection.support_files.length > 0) {
-          // Repositories such as some TTS packages have no conventional
-          // weight extension. Keep the old full-repository behaviour, but make
-          // that choice explicit in the selector below.
-          chosenSelection = undefined;
-        }
+        // Le dépôt est présenté, toujours. La condition d'avant exigeait
+        // *plusieurs* variantes : un dépôt qui n'en expose qu'une — ou aucune,
+        // comme un paquet TTS multi-fichiers — refermait la fenêtre au bout
+        // d'une demi-seconde et téléchargeait tout sans rien demander. Ce que
+        // l'utilisateur choisit, il doit le voir avant que ça descende.
+        setRepoInspection({ ...inspection, candidates: sortedCandidates });
+        setRepoInstallContext({ source: repo, familyName, heretic, consent, downloads });
+        setRepoCandidateId(bestCandidate?.id ?? "");
+        setQuantFilter("all");
+        return;
       } catch (e) {
         setRepoInspectionError(String(e).replace(/^Error:\s*/, ""));
         setRepoInspection({
@@ -2756,6 +2760,7 @@ export function ModelBrowser({
         <div
           className="locaryn-settings-backdrop"
           onClick={(e) => {
+            if (Date.now() - repoInspectionOpenedAt.current < 400) return;
             if (e.target === e.currentTarget && !repoInspecting) {
               setRepoInspection(null);
               setRepoInstallContext(null);
@@ -3274,6 +3279,8 @@ export function ModelBrowser({
                     onClick={() => {
                       const { source, familyName, heretic, consent, downloads } =
                         repoInstallContext;
+                      setRepoInspection(null);
+                      setRepoInstallContext(null);
                       void beginModelInstall(
                         source,
                         familyName,
@@ -3281,6 +3288,7 @@ export function ModelBrowser({
                         consent,
                         undefined,
                         downloads,
+                        true,
                       );
                     }}
                     disabled={repoInspecting || Boolean(repoInspectionError)}

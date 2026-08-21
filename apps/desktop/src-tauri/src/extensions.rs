@@ -1229,6 +1229,16 @@ pub async fn remove_extension(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "extension introuvable".to_string())?;
 
+    // Rendre son serveur avant d'effacer ses fichiers : tant qu'il tourne,
+    // Windows garde son exécutable verrouillé et la suppression échoue sur
+    // « Accès refusé », en laissant l'extension à moitié désinstallée.
+    stop_plugin_mcp(&core, &record.name).await;
+
+    // Rendre son serveur avant d'effacer ses fichiers : tant qu'il tourne,
+    // Windows garde son exécutable verrouillé, la suppression échoue sur
+    // « Accès refusé » et l'extension reste à moitié désinstallée.
+    stop_plugin_mcp(&core, &record.name).await;
+
     core.storage
         .extensions
         .delete(uid)
