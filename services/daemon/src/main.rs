@@ -1920,6 +1920,8 @@ async fn suggest_project(State(s): State<Arc<DaemonState>>, Path(id): Path<Strin
     }) else {
         return rien();
     };
+    // « Celui déjà chargé » : pas d'échange de modèle en VRAM pour un titre.
+    let micro = locaryn_config::micro_effectif(&micro, p.model.as_deref());
 
     let echange = match s.storage.messages.list_for_session(session_id).await {
         Ok(msgs) => resume_des_messages(&msgs, 6),
@@ -1994,6 +1996,8 @@ async fn merge_sessions(
     }) else {
         return introuvable("aucun moteur actif");
     };
+    // « Celui déjà chargé » : pas d'échange de modèle en VRAM pour une micro-tâche.
+    let micro = locaryn_config::micro_effectif(&micro, p.model.as_deref());
 
     let (Ok(msgs_accueil), Ok(msgs_source)) = (
         s.storage.messages.list_for_session(accueil_id).await,
@@ -2349,6 +2353,9 @@ fn spawn_profil_de_l_utilisateur(s: Arc<DaemonState>, session_id: Uuid) {
         }) else {
             return;
         };
+        // « Celui déjà chargé » : pas d'échange de modèle en VRAM pour une
+        // micro-tâche.
+        let micro = locaryn_config::micro_effectif(&micro, p.model.as_deref());
 
         let client = reqwest::Client::new();
         let faits =
@@ -2430,7 +2437,9 @@ fn spawn_titre_du_modele(s: Arc<DaemonState>, session_id: Uuid, premiere_demande
         let projet = projet.filter(|n| n != "Conversations libres");
 
         let client = reqwest::Client::new();
-        let modele = micro;
+        // « Celui déjà chargé » : nommer une conversation ne justifie pas de
+        // sortir le modèle de discussion de la VRAM pour en charger un autre.
+        let modele = locaryn_config::micro_effectif(&micro, p.model.as_deref());
         let demande = locaryn_agent_runtime::titling::TitleRequest {
             first_message: premiere_demande,
             first_reply: None,

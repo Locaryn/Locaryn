@@ -1325,7 +1325,9 @@ export interface CoreApi {
    *  English prompt; the user always confirms before anything is generated. */
   detectImageRequest(message: string): Promise<ImageIntent>;
   /** Background call: 1-click next-step suggestions after an answer. */
-  suggestFollowups(answer: string): Promise<string[]>;
+  /** `question` est le message auquel la réponse répond : sans lui, les
+   *  suggestions ne savent pas de quoi parle la conversation. */
+  suggestFollowups(answer: string, question?: string): Promise<string[]>;
   /** Persist a message contributed by an extension without exposing its runtime. */
   appendChatMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<void>;
   /** Legacy convenience for assistant artifacts contributed by extensions. */
@@ -1764,7 +1766,8 @@ const tauriCore: CoreApi = {
   archiveProject: (id) => invoke<void>("archive_project", { id }),
   freeChatProject: () => invoke<Project>("free_chat_project"),
   sessionWorkspace: (sessionId) => invoke<string>("session_workspace", { sessionId }),
-  suggestFollowups: (answer) => invoke<string[]>("suggest_followups", { answer }),
+  suggestFollowups: (answer, question) =>
+    invoke<string[]>("suggest_followups", { answer, question }),
   planTask: (request) => invoke<TaskPlan>("plan_task", { request }),
   detectImageRequest: (message) => invoke<ImageIntent>("detect_image_request", { message }),
   appendChatMessage: (sessionId, role, content) =>

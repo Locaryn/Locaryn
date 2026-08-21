@@ -39,6 +39,8 @@ pub struct Config {
 pub struct AssistanceConfig {
     /// Le modèle des micro-tâches. `None` : aucun, donc rien ne tourne.
     #[serde(default)]
+    /// Le modèle des micro-tâches. `None` : aucune ne tourne.
+    /// [`MICRO_MODEL_ACTIF`] : celui de la conversation en cours.
     pub micro_model: Option<String>,
 }
 
@@ -647,9 +649,49 @@ fn apply_env(cfg: &mut Config) {
     }
 }
 
+/// Ce qu'on écrit dans `assistance.micro_model` pour dire « celui déjà chargé ».
+///
+/// Nommer un petit modèle dédié a un coût que personne n'annonce : le moteur
+/// n'en tient qu'un à la fois, donc chaque titre de conversation sort le
+/// modèle de discussion de la VRAM, charge le petit, puis recharge le premier.
+/// Sur une carte de 6 Go ces deux échanges coûtent bien plus que la
+/// micro-tâche elle-même. Réutiliser celui qui est déjà là ne coûte rien.
+pub const MICRO_MODEL_ACTIF: &str = "@actif";
+
+/// Le modèle qui exécutera réellement la micro-tâche.
+///
+/// Résout [`MICRO_MODEL_ACTIF`] vers le modèle de conversation. Si aucun n'est
+/// actif, on rend la valeur telle quelle : l'appelant échouera sur un nom
+/// inconnu plutôt que sur un choix silencieusement différent de celui affiché.
+pub fn micro_effectif(choisi: &str, modele_actif: Option<&str>) -> String {
+    if choisi.trim() == MICRO_MODEL_ACTIF {
+        return modele_actif.unwrap_or(choisi).to_string();
+    }
+    choisi.to_string()
+}
+
 #[cfg(test)]
 mod path_tests {
     use super::*;
+
+    /// Le sentinelle dit « celui déjà chargé » : il doit se résoudre vers le
+    /// modèle de conversation, sinon le moteur échangerait deux modèles en
+    /// VRAM pour écrire un titre de cinq mots.
+    #[test]
+    fn le_modele_actif_remplace_le_sentinelle() {
+        assert_eq!(
+            micro_effectif(MICRO_MODEL_ACTIF, Some("Qwen3-4B.gguf")),
+            "Qwen3-4B.gguf"
+        );
+        // Un nom explicite n'est jamais remplacé.
+        assert_eq!(
+            micro_effectif("petit.gguf", Some("Qwen3-4B.gguf")),
+            "petit.gguf"
+        );
+        // Sans modèle actif, on rend la valeur telle quelle : l'appelant
+        // échouera sur un nom inconnu plutôt que sur un choix silencieux.
+        assert_eq!(micro_effectif(MICRO_MODEL_ACTIF, None), MICRO_MODEL_ACTIF);
+    }
 
     /// The env override is the one knob testable in-process: `global_dir()`
     /// resolves the real home directory, so the pointer-file path cannot be

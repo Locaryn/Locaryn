@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { type MicroModel, core } from "../lib/core";
 
+/** Ce qu'on enregistre pour dire « celui de la conversation », côté socle
+ *  `locaryn_config::MICRO_MODEL_ACTIF`. */
+const MODELE_ACTIF = "@actif";
+
 /**
  * Le modèle des micro-tâches.
  *
@@ -38,10 +42,8 @@ export function MicroModelSetting() {
     <div className="locaryn-field locaryn-micro-model-setting">
       <div className="locaryn-field-label">Modèle des petites tâches</div>
       <p className="locaryn-field-hint">
-        Il nomme les conversations d'après leur sujet, pour qu'une liste se lise. Prenez un petit
-        modèle — un Qwen 1,5 à 3 milliards, un Gemma compact : la question est courte et la réponse
-        tient en cinq mots. Sans modèle désigné, rien de tout cela ne tourne, et le titre reste la
-        première phrase.
+        Il nomme les conversations d'après leur sujet, pour qu'une liste se lise. Sans modèle
+        désigné, rien de tout cela ne tourne, et le titre reste la première phrase.
       </p>
 
       <select
@@ -51,12 +53,19 @@ export function MicroModelSetting() {
         onChange={(e) => void choose(e.target.value || null)}
       >
         <option value="">Aucun — ne rien nommer automatiquement</option>
+        <option value={MODELE_ACTIF}>Celui déjà chargé — le modèle de la conversation</option>
         {state?.available.map((m) => (
           <option key={m} value={m}>
             {m}
           </option>
         ))}
       </select>
+
+      <p className="locaryn-field-hint">
+        {state?.model === MODELE_ACTIF
+          ? "Rien n'est chargé ni déchargé : la petite tâche passe par le modèle déjà en mémoire. C'est le choix le plus rapide, et le seul qui ne prenne pas de VRAM."
+          : "Un modèle dédié — un Qwen 1,5 à 3 milliards, un Gemma compact — répond mieux à ces questions courtes, mais le moteur n'en tient qu'un à la fois : chaque titre sort le modèle de conversation de la mémoire, charge celui-ci, puis recharge l'autre."}
+      </p>
 
       <p className="locaryn-field-hint">
         Un titre que vous écrivez vous-même n'est jamais remplacé.

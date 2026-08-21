@@ -1117,7 +1117,11 @@ async fn compact_history(
 /// after `answer`. Returns short actionable prompts the UI shows as one-click
 /// chips. Never persisted to the conversation — it's an invisible side call.
 #[tauri::command]
-async fn suggest_followups(core: State<'_, Core>, answer: String) -> Result<Vec<String>, String> {
+async fn suggest_followups(
+    core: State<'_, Core>,
+    answer: String,
+    question: Option<String>,
+) -> Result<Vec<String>, String> {
     let provider = core
         .storage
         .providers
@@ -1146,16 +1150,42 @@ async fn suggest_followups(core: State<'_, Core>, answer: String) -> Result<Vec<
         "{}/v1/chat/completions",
         provider.endpoint.trim_end_matches('/')
     );
+    // La demande de la personne, pas seulement la réponse : sans elle, le
+    // modèle ne sait pas de quoi on parle et retombe sur des formules
+    // générales — « ajuster le style », « vérifier la précision » — qui
+    // reviennent à chaque tour quel que soit le sujet.
+    let demande: String = question
+        .as_deref()
+        .map(str::trim)
+        .filter(|texte| !texte.is_empty())
+        .map(|texte| texte.chars().take(400).collect())
+        .unwrap_or_default();
+    let echange = if demande.is_empty() {
+        format!("Réponse de l'assistant :\n\n{tail}")
+    } else {
+        format!("Message de la personne :\n\n{demande}\n\nRéponse de l'assistant :\n\n{tail}")
+    };
+
     let body = serde_json::json!({
         "model": provider.model.clone().unwrap_or_else(|| "default".into()),
         "messages": [
             { "role": "system", "content":
-              "Tu proposes les prochaines étapes utiles après une réponse d'assistant de code. \
-               Réponds UNIQUEMENT en JSON: {\"suggestions\":[\"...\",\"...\",\"...\"]}. \
-               Maximum 3 suggestions, chacune une action courte (< 60 caractères), \
-               formulée à l'impératif, dans la MÊME LANGUE que la réponse analysée. \
-               Pas de redite de ce qui est déjà fait.                Tu peux proposer une commande de l'app quand c'est pertinent :                '/image brouillon' (visuel jetable, 256px, rapide),                '/image max' (visuel soigné, 1024px), '/documents' (indexer des fichiers).                Choisis la qualité selon l'enjeu : un projet perso rapide n'a pas besoin de 1024px." },
-            { "role": "user", "content": format!("Réponse de l'assistant:\n\n{tail}\n\nQue proposer ensuite ?") }
+              "Tu proposes ce que la personne peut faire juste après, dans la conversation \
+               en cours. Réponds UNIQUEMENT en JSON : {\"suggestions\":[\"...\"]}. \
+               Trois au maximum, chacune une action courte (moins de 60 caractères), à \
+               l'impératif, dans la MÊME LANGUE que la réponse.\n\
+               Règles :\n\
+               - Si la réponse pose une question ou propose quelque chose, la première \
+                 suggestion y répond directement : « Génère cette image », « Applique ce \
+                 correctif ». C'est le prolongement naturel de l'échange.\n\
+               - Reprends les mots de la conversation. « Ajoute une lumière de fin de \
+                 journée » vaut mieux que « Ajuster le style » : la seconde conviendrait \
+                 à n'importe quelle réponse, donc à aucune.\n\
+               - Ne propose jamais ce qui vient d'être fait, ni une variante de la même \
+                 idée trois fois.\n\
+               - Écris des phrases ordinaires. N'invente pas de commande de \
+                 l'application : ce que la personne peut dire suffit." },
+            { "role": "user", "content": format!("{echange}\n\nQue proposer ensuite ?") }
         ],
         "response_format": { "type": "json_object" },
         "max_tokens": 220,
@@ -8315,9 +8345,12 @@ async fn modele_de_plongement(core: &Core) -> Result<(String, String), String> {
         .ok()
         .and_then(|c| c.assistance.micro_model)
         .filter(|m| !m.trim().is_empty());
-    let modele = micro
-        .or(actif.model)
-        .ok_or_else(|| "Le moteur actif n'annonce aucun modèle.".to_string())?;
+    let modele = match micro {
+        Some(choisi) => locaryn_config::micro_effectif(&choisi, actif.model.as_deref()),
+        None => actif
+            .model
+            .ok_or_else(|| "Le moteur actif n'annonce aucun modèle.".to_string())?,
+    };
     Ok((actif.endpoint, modele))
 }
 

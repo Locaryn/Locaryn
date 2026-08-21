@@ -776,7 +776,7 @@ export function ChatPanel({
       if (lastAnswer) {
         setFollowupsLoading(true);
         core
-          .suggestFollowups(lastAnswer)
+          .suggestFollowups(lastAnswer, text)
           .then((s) => setFollowups(s.slice(0, 3)))
           .catch(() => setFollowups([]))
           .finally(() => setFollowupsLoading(false));
