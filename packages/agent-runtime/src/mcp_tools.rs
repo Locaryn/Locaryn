@@ -27,7 +27,7 @@ pub fn mcp_tool_name(server_name: &str, tool_name: &str) -> String {
 /// Returns `None` if the name doesn't look like an MCP tool.
 ///
 /// Le nom d'un serveur d'extension est `<plugin>__<serveur>` : il contient
-/// déjà le séparateur. Découper au premier `__` rendait « plugin-image-gen »
+/// déjà le séparateur. Découper au premier `__` rendait « plugin-image »
 /// comme serveur, introuvable dans la table des serveurs actifs. Le nom d'outil
 /// est le dernier segment ; c'est [`resolve_mcp_tool_name`] qui tranche pour de
 /// bon, en confrontant le nom aux serveurs réellement démarrés.
@@ -230,7 +230,7 @@ fn artifact_from_mcp_value(value: &serde_json::Value) -> Option<ToolArtifact> {
 mod tests {
     use super::*;
 
-    /// Ce que le serveur MCP de plugin-image-gen renvoie réellement, relevé sur
+    /// Ce que le serveur MCP de plugin-image renvoie réellement, relevé sur
     /// une génération. Le transport enveloppe l'objet dans une chaîne de texte,
     /// et c'est cette chaîne que reçoit `artifact_from_mcp_value`. Si ce
     /// contrat casse, l'image générée redevient un chemin dans une phrase.
@@ -266,11 +266,11 @@ mod tests {
     /// il s'arrête.
     #[test]
     fn a_server_name_containing_the_separator_is_resolved() {
-        let running = vec!["plugin-image-gen__image-gen".to_string()];
+        let running = vec!["plugin-image__image-gen".to_string()];
         assert_eq!(
-            resolve_mcp_tool_name("mcp__plugin-image-gen__image-gen__generate_image", &running),
+            resolve_mcp_tool_name("mcp__plugin-image__image-gen__generate_image", &running),
             Some((
-                "plugin-image-gen__image-gen".to_string(),
+                "plugin-image__image-gen".to_string(),
                 "generate_image".to_string()
             ))
         );

@@ -186,6 +186,27 @@ pub async fn reload(core: &Core) -> Result<(), String> {
                     .display()
                     .to_string(),
             );
+            // Les faits que seul le socle mesure : la VRAM de la carte,
+            // l'interpréteur Python qu'il gère, et les dossiers de cache et de
+            // travail qu'il tient hors du disque système. Une extension qui
+            // les ignore doit deviner : celle de l'image répartissait ses
+            // poids « au cas où », et un rendu d'une minute en prenait trois.
+            if let Some(vram) = host_vram_gb() {
+                entry
+                    .env
+                    .insert("LOCARYN_VRAM_GB".to_string(), format!("{vram:.2}"));
+            }
+            if let Some(python) = host_python() {
+                entry.env.insert("LOCARYN_PYTHON".to_string(), python);
+            }
+            entry.env.insert(
+                "LOCARYN_HF_CACHE_DIR".to_string(),
+                locaryn_config::hf_cache_dir().display().to_string(),
+            );
+            entry.env.insert(
+                "LOCARYN_TEMP_DIR".to_string(),
+                locaryn_config::ensure_temp_dir().display().to_string(),
+            );
             entry.env.insert(
                 "LOCARYN_PLUGIN_ROOT".to_string(),
                 p.root.display().to_string(),
@@ -245,6 +266,20 @@ pub async fn reload(core: &Core) -> Result<(), String> {
 /// MCP server names become part of the tool names the model sees
 /// (`mcp__<serveur>__<outil>`), so anything outside `[A-Za-z0-9_-]` would
 /// produce tools nobody can call.
+/// La VRAM de la carte, en Gio, telle que le socle l'a déjà sondée.
+fn host_vram_gb() -> Option<f32> {
+    let hardware = crate::HARDWARE_CACHE
+        .get()
+        .cloned()
+        .or_else(|| crate::probe_hardware().ok())?;
+    (hardware.total_vram_gb > 0).then_some(hardware.total_vram_gb as f32)
+}
+
+/// L'interpréteur Python que le socle utilise pour ses propres travaux.
+fn host_python() -> Option<String> {
+    crate::find_python().filter(|path| path != "python")
+}
+
 fn sanitize_server(s: &str) -> String {
     s.chars()
         .map(|c| {

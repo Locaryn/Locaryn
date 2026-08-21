@@ -280,13 +280,8 @@ export function ExtensionInstallDialog({
                       [
                         {
                           icon: "image",
-                          label: "Génération d'images",
-                          repo: "Locaryn/plugin-image-gen",
-                        },
-                        {
-                          icon: "edit",
-                          label: "Édition d'images",
-                          repo: "Locaryn/plugin-image-editor",
+                          label: "Images",
+                          repo: "Locaryn/plugin-image",
                         },
                         { icon: "video", label: "Vidéo", repo: "Locaryn/plugin-video-gen" },
                         { icon: "cube", label: "3D", repo: "Locaryn/plugin-3d-gen" },

@@ -434,6 +434,17 @@ pub async fn sync_mcp_servers(state: &DaemonState) {
                 "LOCARYN_MODELS_DIR".into(),
                 locaryn_config::models_dir().display().to_string(),
             );
+            // Les dossiers de cache et de travail que le socle tient hors du
+            // disque système. Une extension qui les ignore écrit dans
+            // `~/.cache`, et c'est ainsi qu'un disque système se remplit.
+            server.env.insert(
+                "LOCARYN_HF_CACHE_DIR".into(),
+                locaryn_config::hf_cache_dir().display().to_string(),
+            );
+            server.env.insert(
+                "LOCARYN_TEMP_DIR".into(),
+                locaryn_config::ensure_temp_dir().display().to_string(),
+            );
             server
                 .env
                 .insert("LOCARYN_PLUGIN_ROOT".into(), root.display().to_string());
@@ -642,7 +653,7 @@ pub async fn install_extension(
 
 /// Ramener `owner/repo` à ce qu'il désigne vraiment.
 ///
-/// On accepte ce qu'une personne écrit : `Locaryn/locaryn-image-gen`,
+/// On accepte ce qu'une personne écrit : `Locaryn/locaryn-image`,
 /// l'adresse complète du dépôt, ou la forme `github:owner/repo`. Tout le
 /// reste est refusé — une source arbitraire téléchargée et exécutée par le
 /// service serait une porte d'entrée, pas une commodité.
@@ -1067,15 +1078,15 @@ mod catalogue_tests {
     #[test]
     fn les_formes_courantes_donnent_le_meme_depot() {
         for source in [
-            "Locaryn/locaryn-image-gen",
-            "github:Locaryn/locaryn-image-gen",
-            "https://github.com/Locaryn/locaryn-image-gen",
-            "https://github.com/Locaryn/locaryn-image-gen.git",
-            "https://github.com/Locaryn/locaryn-image-gen/",
+            "Locaryn/locaryn-image",
+            "github:Locaryn/locaryn-image",
+            "https://github.com/Locaryn/locaryn-image",
+            "https://github.com/Locaryn/locaryn-image.git",
+            "https://github.com/Locaryn/locaryn-image/",
         ] {
             assert_eq!(
                 parse_repo(source).unwrap(),
-                ("Locaryn".to_string(), "locaryn-image-gen".to_string()),
+                ("Locaryn".to_string(), "locaryn-image".to_string()),
                 "source : {source}"
             );
         }

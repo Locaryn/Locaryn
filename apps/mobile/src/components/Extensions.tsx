@@ -24,12 +24,12 @@ interface CatalogItem {
 
 const FULL_CATALOGUE: CatalogItem[] = [
   {
-    repo: "Locaryn/plugin-image-gen",
-    name: "plugin-image-gen",
-    label: "Génération d'images",
-    note: "Studio créatif et production visuelle par diffusion",
+    repo: "Locaryn/plugin-image",
+    name: "plugin-image",
+    label: "Images",
+    note: "Génération par diffusion et retouche ciblée d'une zone",
     ecosystem: "locaryn",
-    capabilities: ["image-gen"],
+    capabilities: ["image-gen", "image-editor"],
   },
   {
     repo: "Locaryn/plugin-voice-tts",
@@ -38,14 +38,6 @@ const FULL_CATALOGUE: CatalogItem[] = [
     note: "Synthèse vocale réaliste et notes audio naturelles",
     ecosystem: "locaryn",
     capabilities: ["voice-tts"],
-  },
-  {
-    repo: "Locaryn/plugin-image-editor",
-    name: "plugin-image-editor",
-    label: "Retouche d'image (Inpainting)",
-    note: "Modification et retouche ciblée de zones d'images",
-    ecosystem: "locaryn",
-    capabilities: ["image-editor"],
   },
   {
     repo: "Locaryn/plugin-vision-ocr",
@@ -620,7 +612,7 @@ export function Extensions({ onBack, onChanged }: Props) {
             <form onSubmit={handleManualInstall}>
               <div className="lo-modal-body">
                 <p className="lo-hint">
-                  Indiquez un dépôt GitHub (ex: <code>Locaryn/plugin-image-gen</code>) ou une URL de
+                  Indiquez un dépôt GitHub (ex: <code>Locaryn/plugin-image</code>) ou une URL de
                   paquet d'extension.
                 </p>
                 <div>

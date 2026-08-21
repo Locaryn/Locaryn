@@ -7,7 +7,7 @@
 //! the argument building lives in this one crate instead of drifting apart.
 //!
 //! The host keeps generic audio generation here. Image generation belongs to
-//! the `plugin-image-gen` extension and is intentionally not a Locaryn host
+//! the `plugin-image` extension and is intentionally not a Locaryn host
 //! engine.
 
 pub mod audio;

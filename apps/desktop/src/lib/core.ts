@@ -679,28 +679,6 @@ export interface ModelParams {
   seed: number;
 }
 
-export interface RegionEditResult {
-  path: string;
-  mask_path: string;
-  coverage: number;
-  confidence: number;
-  pieces: number;
-  largest: number;
-}
-
-export interface RegionEditArgs {
-  image: string;
-  target: string;
-  mode: "recolor" | "replace" | "preview";
-  color?: string;
-  prompt?: string;
-  model?: string;
-  outputDir: string;
-  steps?: number;
-  cfgScale?: number;
-  strength?: number;
-}
-
 /** Sampling and cloning-style controls for Qwen3-TTS.
  *
  *  Defaults match the engine's own. The values the app used to hardcode
@@ -1446,11 +1424,6 @@ export interface CoreApi {
   deleteVoicePreset(id: string): Promise<void>;
   /** Which preset settings the given model will actually use. */
   voicePresetSupport(model: string): Promise<EngineSupport>;
-  editRegion(
-    args: RegionEditArgs,
-    onProgress?: (pct: number, detail?: string) => void,
-  ): Promise<RegionEditResult>;
-
   serverStatus(): Promise<ServerStatus>;
   setServerMode(enabled: boolean, port?: number): Promise<ServerStatus>;
   restartServer(): Promise<ServerStatus>;
@@ -1911,12 +1884,6 @@ const tauriCore: CoreApi = {
   saveVoicePreset: (args) => invoke<VoicePreset>("save_voice_preset", { args }),
   deleteVoicePreset: (id) => invoke("delete_voice_preset", { id }),
   voicePresetSupport: (model) => invoke<EngineSupport>("voice_preset_support", { model }),
-
-  editRegion: (args, onProgress) => {
-    const chan = new Channel<{ progress: number; detail?: string }>();
-    if (onProgress) chan.onmessage = (m) => onProgress(m.progress, m.detail);
-    return invoke<RegionEditResult>("edit_region", { args, onProgress: chan });
-  },
 
   serverStatus: () => invoke<ServerStatus>("server_status"),
   setServerMode: (enabled, port) =>
@@ -2809,19 +2776,19 @@ let demoExtensions: InstalledExtension[] = [
   },
   {
     id: "demo-image-gen",
-    name: "plugin-image-gen",
-    display_name: "plugin-image-gen",
+    name: "plugin-image",
+    display_name: "plugin-image",
     version: "1.4.6",
     api_version: "0.1",
     description:
       "Génération et modification d'images avec son moteur stable-diffusion.cpp, ses modèles et son interface",
     author: "Locaryn Team",
-    homepage: "https://github.com/Locaryn/plugin-image-gen",
+    homepage: "https://github.com/Locaryn/plugin-image",
     kind: "plugin",
     scope: "user",
     ecosystem: "locaryn",
-    source: "github:Locaryn/plugin-image-gen",
-    install_dir: "~/.locaryn/plugins/plugin-image-gen",
+    source: "github:Locaryn/plugin-image",
+    install_dir: "~/.locaryn/plugins/plugin-image",
     enabled: true,
     components: {
       skills: 1,
@@ -2845,14 +2812,14 @@ let demoExtensions: InstalledExtension[] = [
       studio_tabs: [],
       slots: [
         {
-          id: "image-gen-studio",
+          id: "image-studio",
           slot: "studio.tabs",
           order: 10,
           type: "custom-element",
           label: "Génération d'image",
           icon: "image",
           entry: "dist/ui.js",
-          tag: "locaryn-image-gen-panel",
+          tag: "locaryn-image-panel",
           hint: "Génération et retouche locales dans l'extension image-gen",
         },
       ],
@@ -3589,20 +3556,6 @@ const demoCore: CoreApi = {
     pauseScale: true,
     instruct: true,
   }),
-
-  editRegion: async (args, onProgress) => {
-    onProgress?.(10, "analyse de l'image");
-    await sleep(300);
-    onProgress?.(100, "termine");
-    return {
-      path: `${args.outputDir}/edit_demo.png`,
-      mask_path: "",
-      coverage: 18.3,
-      confidence: 0.97,
-      pieces: 1,
-      largest: 1,
-    };
-  },
 
   serverStatus: async () => ({
     running: false,

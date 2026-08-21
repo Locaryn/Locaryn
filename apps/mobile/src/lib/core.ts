@@ -195,9 +195,8 @@ export interface SettingsField {
  * en dur ne peut pas tomber en panne de réseau au pire moment.
  */
 export const CATALOGUE: { repo: string; label: string; note: string }[] = [
-  { repo: "Locaryn/plugin-image-gen", label: "Génération d'images", note: "Studio, images" },
+  { repo: "Locaryn/plugin-image", label: "Images", note: "Générer et retoucher" },
   { repo: "Locaryn/plugin-voice-tts", label: "Voix de synthèse", note: "Studio, voix" },
-  { repo: "Locaryn/plugin-image-editor", label: "Retouche d'image", note: "Modifier une zone" },
   { repo: "Locaryn/plugin-vision-ocr", label: "Vision et OCR", note: "Lire une image" },
   { repo: "Locaryn/plugin-translation", label: "Traduction", note: "Traduire un texte" },
   { repo: "Locaryn/plugin-text-analysis", label: "Analyse de texte", note: "Résumés, extraction" },
@@ -626,12 +625,12 @@ export const demoCore: typeof core = {
   figureSessions: async () => [],
   listExtensions: async () => [
     {
-      name: "plugin-image-gen",
-      display_name: "Génération d'images",
-      version: "0.1.0",
-      description: "Studio, images",
+      name: "plugin-image",
+      display_name: "Images",
+      version: "2.0.0",
+      description: "Générer et retoucher",
       enabled: true,
-      capabilities: ["image-gen"],
+      capabilities: ["image-gen", "image-editor"],
     },
   ],
   listCapabilities: async () => [],

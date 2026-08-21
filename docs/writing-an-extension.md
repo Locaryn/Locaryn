@@ -476,7 +476,7 @@ L'appel d'outil qui échoue nomme la cause : l'application ne répond pas
 
 ## Une extension complète, à lire
 
-[`plugin-image-gen`](https://github.com/Locaryn/plugin-image-gen) met tout cela
+[`plugin-image`](https://github.com/Locaryn/plugin-image) met tout cela
 en œuvre : un serveur MCP compilé et publié par plateforme, un panneau de Studio
 rendu avec les classes de l'application, un catalogue de modèles qui se
 rafraîchit, une compétence qui explique au modèle comment appeler l'outil. C'est

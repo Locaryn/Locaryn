@@ -366,7 +366,7 @@ fn resolve_subdir(root: &Path, subdir: Option<&str>) -> Result<PathBuf, SourceEr
 /// The platform tokens this build looks for in a release asset name.
 ///
 /// Kept deliberately loose — an extension may name its bundle
-/// `plugin-image-gen-v1.4.2-windows-x86_64.zip` or `…-win64.zip`; both must
+/// `plugin-image-v1.4.2-windows-x86_64.zip` or `…-win64.zip`; both must
 /// match, because a mismatch here is indistinguishable from "no bundle
 /// published" and silently falls back to the source archive.
 fn platform_tokens() -> (&'static [&'static str], &'static [&'static str]) {
@@ -947,14 +947,14 @@ mod tests {
     fn release_asset_prefers_this_os_and_arch() {
         let (os_tokens, arch_tokens) = platform_tokens();
         let mine = format!(
-            "plugin-image-gen-v1.4.2-{}-{}.zip",
+            "plugin-image-v1.4.2-{}-{}.zip",
             os_tokens[0], arch_tokens[0]
         );
         let assets = vec![
-            asset("plugin-image-gen-v1.4.2-linux-x86_64.zip"),
-            asset("plugin-image-gen-v1.4.2-windows-x86_64.zip"),
-            asset("plugin-image-gen-v1.4.2-macos-aarch64.zip"),
-            asset("plugin-image-gen-v1.4.2-macos-x86_64.zip"),
+            asset("plugin-image-v1.4.2-linux-x86_64.zip"),
+            asset("plugin-image-v1.4.2-windows-x86_64.zip"),
+            asset("plugin-image-v1.4.2-macos-aarch64.zip"),
+            asset("plugin-image-v1.4.2-macos-x86_64.zip"),
         ];
         let chosen = choose_release_asset(&assets).expect("un paquet pour cette plateforme");
         assert!(chosen.ends_with(&mine), "choisi {chosen}, attendu {mine}");
@@ -974,9 +974,9 @@ mod tests {
     #[test]
     fn release_asset_never_picks_another_platform() {
         let foreign = if cfg!(target_os = "windows") {
-            "plugin-image-gen-v1.4.2-linux-x86_64.zip"
+            "plugin-image-v1.4.2-linux-x86_64.zip"
         } else {
-            "plugin-image-gen-v1.4.2-windows-x86_64.zip"
+            "plugin-image-v1.4.2-windows-x86_64.zip"
         };
         assert_eq!(choose_release_asset(&[asset(foreign)]), None);
     }

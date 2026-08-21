@@ -61,7 +61,7 @@ interface GalleryItem {
 
 /**
  * The host supplies only generic Studio slots. Image generation is not a
- * native Locaryn feature; plugin-image-gen contributes its own tab and UI.
+ * native Locaryn feature; plugin-image contributes its own tab and UI.
  */
 export function StudioView({ installedModels, onCloseAudioGen, extensions = [] }: Props) {
   const [active, setActive] = useState<string>("");

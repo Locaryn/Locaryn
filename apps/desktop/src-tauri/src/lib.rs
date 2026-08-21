@@ -18,8 +18,6 @@ mod local_profile;
 mod mcp_servers;
 mod memory;
 mod model_residency;
-mod region_edit;
-mod sd_engine;
 mod secure_client;
 mod server_mode;
 mod storage_root;
@@ -3126,8 +3124,12 @@ fn preferred_mmproj(projectors: &[(String, u64)]) -> Option<String> {
 fn hf_quantization(path: &str) -> Option<String> {
     let lower = path.to_ascii_lowercase();
     [
-        "q2_k_s", "q2_k", "q3_k_s", "q3_k_m", "q3_k_l", "q4_0", "q4_1", "q4_k_s", "q4_k_m", "q5_0",
-        "q5_1", "q5_k_s", "q5_k_m", "q6_k", "q8_0", "bf16", "fp16", "f16", "int8",
+        "iq4_nl", "iq4_xs", "iq3_xxs", "iq3_xs", "iq3_m", "iq3_s", "iq2_xxs", "iq2_xs", "iq2_s",
+        "iq2_m", "iq1_s", "iq1_m", "q4_0_8_8", "q4_0_4_8", "q4_0_4_4", "q2_k_s", "q2_k_l", "q2_k",
+        "q3_k_xl", "q3_k_l", "q3_k_m", "q3_k_s", "q3_k", "q4_k_xl", "q4_k_l", "q4_k_m", "q4_k_s",
+        "q4_k", "q4_0", "q4_1", "q5_k_xl", "q5_k_l", "q5_k_m", "q5_k_s", "q5_k", "q5_0", "q5_1",
+        "q6_k_l", "q6_k", "q8_0", "q8_1", "q8_k", "bf16", "fp16", "f16", "fp32", "f32", "int8",
+        "int4",
     ]
     .iter()
     .find(|q| lower.contains(**q))
@@ -8151,7 +8153,15 @@ pub struct RuntimeCapabilities {
 }
 
 #[tauri::command]
-fn runtime_capabilities(_core: State<'_, Core>) -> Result<RuntimeCapabilities, String> {
+async fn runtime_capabilities(core: State<'_, Core>) -> Result<RuntimeCapabilities, String> {
+    // La génération d'images n'est plus une fonction du socle : elle arrive
+    // avec une extension, qui apporte son moteur et ses poids. Sonder un
+    // `sd.exe` côté hôte répondait « non » alors que l'extension générait très
+    // bien, son binaire étant rangé chez elle.
+    let image_gen = extensions::active_capabilities(&core)
+        .await
+        .iter()
+        .any(|capability| capability == "image-gen");
     let llama_bin = locaryn_config::bin_dir().join("llama-server.exe");
     let runtime_installed = llama_bin.exists();
 
@@ -8161,7 +8171,7 @@ fn runtime_capabilities(_core: State<'_, Core>) -> Result<RuntimeCapabilities, S
         chat: runtime_installed,
         vision: false,
         embeddings: runtime_installed,
-        image_gen: sd_engine::find_sd_binary().is_some(),
+        image_gen,
         finetune: false,
         distributed: true,
         speculative_decoding: true,
@@ -8943,7 +8953,6 @@ pub fn run() {
             list_non_chat_models,
             inspect_huggingface_repo,
             app_info,
-            region_edit::edit_region,
             client_cert::client_certificate_status,
             client_cert::sign_in,
             client_cert::current_session,
