@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { ImageModelSetting } from "./ImageModelSetting";
 import { MicroModelSetting } from "./MicroModelSetting";
+import { SystemPromptSetting } from "./SystemPromptSetting";
 import { TtsModelSetting } from "./TtsModelSetting";
 
 /** Central preferences for every default model used outside ordinary chat. */
@@ -37,6 +38,7 @@ export function ModelPreferencesSettings({
             </div>
           </div>
           <MicroModelSetting />
+          <SystemPromptSetting />
         </section>
 
         {hasTts && (

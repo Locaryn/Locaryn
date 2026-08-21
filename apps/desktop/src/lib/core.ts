@@ -839,6 +839,12 @@ export type PairingMode = "local" | "tunnel" | "public";
  * besoin du gros modèle. Aucun n'est choisi par défaut — tant qu'il n'y en a
  * pas, ces services ne tournent pas.
  */
+/** Le caractère donné au modèle, s'il lui en a été donné un. */
+export interface SystemPrompt {
+  /** `null` : rien n'est posé devant le modèle — le cas par défaut. */
+  texte: string | null;
+}
+
 export interface MicroModel {
   model: string | null;
   available: string[];
@@ -1537,6 +1543,9 @@ export interface CoreApi {
   /** Le code d'appairage d'un téléphone : `local`, `public` ou `tunnel`. */
   pairingCode(mode: PairingMode, url?: string): Promise<PairingCode>;
   /** Le modèle qui nomme les conversations. `null` : aucun, rien ne tourne. */
+  systemPrompt(): Promise<SystemPrompt>;
+  /** `null` ou un texte vide : ne rien poser devant le modèle. */
+  setSystemPrompt(texte: string | null): Promise<SystemPrompt>;
   microModel(): Promise<MicroModel>;
   setMicroModel(model: string | null): Promise<MicroModel>;
 
@@ -1979,6 +1988,8 @@ const tauriCore: CoreApi = {
   setTravelMode: (provider) => invoke<TravelStatus>("set_travel_mode", { args: { provider } }),
   travelHomeCode: () => invoke<TravelStatus>("travel_home_code"),
   pairingCode: (mode, url) => invoke<PairingCode>("pairing_code", { mode, url }),
+  systemPrompt: () => invoke<SystemPrompt>("consigne_systeme"),
+  setSystemPrompt: (texte) => invoke<SystemPrompt>("definir_consigne_systeme", { texte }),
   microModel: () => invoke<MicroModel>("micro_model"),
   setMicroModel: (model) => invoke<MicroModel>("set_micro_model", { model }),
 
@@ -4002,6 +4013,8 @@ const demoCore: CoreApi = {
     url: mode === "local" ? "http://192.168.1.20:7474" : "https://exemple.invalide:7474",
     qr_svg: "",
   }),
+  systemPrompt: async () => ({ texte: null }),
+  setSystemPrompt: async (texte) => ({ texte }),
   microModel: async () => ({ model: null, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
   setMicroModel: async (model) => ({ model, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
 

@@ -138,6 +138,36 @@ pub async fn travel_home_code() -> Result<TravelStatus, String> {
     })
 }
 
+/// Le caractère que la personne donne au modèle, s'il lui en donne un.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsigneSysteme {
+    /// `None` : rien n'est posé devant le modèle — c'est le cas par défaut.
+    pub texte: Option<String>,
+}
+
+/// Ce qui est posé devant le modèle aujourd'hui.
+#[tauri::command]
+pub async fn consigne_systeme() -> Result<ConsigneSysteme, String> {
+    Ok(ConsigneSysteme {
+        texte: locaryn_config::load(None)
+            .ok()
+            .and_then(|c| c.assistance.system_prompt)
+            .filter(|texte| !texte.trim().is_empty()),
+    })
+}
+
+/// Écrire un caractère, ou n'en donner aucun.
+///
+/// `None` ou un texte vide : l'application ne pose rien, et le modèle répond
+/// exactement comme lancé hors d'elle.
+#[tauri::command]
+pub async fn definir_consigne_systeme(texte: Option<String>) -> Result<ConsigneSysteme, String> {
+    let choix = texte.filter(|t| !t.trim().is_empty());
+    locaryn_config::set_global("assistance", serde_json::json!({ "system_prompt": choix }))
+        .map_err(|e| e.to_string())?;
+    consigne_systeme().await
+}
+
 /// Le modèle des micro-tâches, et ce qu'on peut choisir.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MicroModel {

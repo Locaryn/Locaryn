@@ -1022,7 +1022,15 @@ async fn send_message(
     };
 
     let mcp_state = Some(s.mcp_state.clone());
+    // La consigne que la personne a écrite, si elle en a écrit une. Vide
+    // comprise : c'est ainsi qu'on demande à ne rien poser du tout devant le
+    // modèle.
+    let consigne_choisie = locaryn_config::load(None)
+        .ok()
+        .and_then(|c| c.assistance.system_prompt);
+
     let mut input = AgentInput {
+        system_override: consigne_choisie,
         session_id: session_uuid,
         message: body.content,
         mode: s.mode,

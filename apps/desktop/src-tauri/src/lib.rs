@@ -1930,7 +1930,28 @@ async fn send_message(
         .and_then(|f| f.tools)
         .filter(|t| !t.is_empty());
 
+    // La consigne que la personne a écrite, si elle en a écrit une.
+    //
+    // Une conversation éphémère repart de rien : c'est ce qu'on attend d'elle.
+    // Y traîner le caractère réglé dans le profil ferait d'un essai jetable la
+    // suite de tout le reste.
+    let session_ephemere = core
+        .storage
+        .sessions
+        .get(session_id)
+        .await
+        .map(|s| s.ephemeral)
+        .unwrap_or(false);
+    let consigne_choisie = if session_ephemere {
+        None
+    } else {
+        locaryn_config::load(None)
+            .ok()
+            .and_then(|c| c.assistance.system_prompt)
+    };
+
     let mut input = AgentInput {
+        system_override: consigne_choisie,
         session_id,
         message: agent_message,
         mode: core.mode,
@@ -9148,6 +9169,8 @@ pub fn run() {
             travel_mode::suggest_project,
             travel_mode::merge_sessions,
             travel_mode::micro_model,
+            travel_mode::consigne_systeme,
+            travel_mode::definir_consigne_systeme,
             travel_mode::set_micro_model,
             memory::list_memory,
             memory::list_model_metrics,

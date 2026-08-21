@@ -85,7 +85,22 @@ pub async fn run_tool_loop(
         {
             "role": "system",
             "content": crate::compose_system_prompt(
-                &system_prompt_for_dev_agent(),
+                &{
+                    // Même règle que l'autre boucle : la consigne de la
+                    // personne d'abord, la mécanique des outils ensuite, et
+                    // rien d'autre.
+                    let mut morceaux: Vec<String> = Vec::new();
+                    if let Some(consigne) = input
+                        .system_override
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|texte| !texte.is_empty())
+                    {
+                        morceaux.push(consigne.to_string());
+                    }
+                    morceaux.push(crate::tool_discipline_prompt());
+                    morceaux.join("\n\n")
+                },
                 input.extra_system.as_ref(),
             )
         },
@@ -489,16 +504,4 @@ fn risk_to_event_risk(risk: Option<crate::tools::Risk>) -> locaryn_events::Risk 
         Some(crate::tools::Risk::Critical) => locaryn_events::Risk::Critical,
         None => locaryn_events::Risk::High,
     }
-}
-
-fn system_prompt_for_dev_agent() -> String {
-    "You are Locaryn, an AI coding assistant with access to tools for interacting with the user's local project. \
-     \n\nCRITICAL RULES:\n\
-     1. DO NOT guess or hallucinate code or file contents. If you need to know what is in a file, you MUST use the `read_file` tool.\n\
-     2. DO NOT assume the directory structure. If you are unsure where a file is, use the `search` tool to find it.\
-     3. Use relative paths from the project root (e.g., `src/main.rs`, `Cargo.toml`). If a file is missing, the tool will report it and you should not invent content.\n\
-     4. Think step-by-step. Briefly explain your plan before calling a tool (e.g., 'I need to check the contents of main.rs.').\n\
-     5. Use tools iteratively. You can call tools multiple times to gather information.\n\
-     6. Once you have all required information from the tools, provide a direct, concise final answer without calling tools."
-        .to_string()
 }

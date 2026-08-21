@@ -42,6 +42,16 @@ pub struct AssistanceConfig {
     /// Le modèle des micro-tâches. `None` : aucune ne tourne.
     /// [`MICRO_MODEL_ACTIF`] : celui de la conversation en cours.
     pub micro_model: Option<String>,
+    /// La consigne système écrite par la personne, qui remplace celle de
+    /// l'application.
+    ///
+    /// `None` : celle par défaut. `Some(texte)` : celui-ci. `Some("")` :
+    /// aucune — le modèle répond avec son caractère propre, comme lancé hors
+    /// de l'application. Ce que le modèle installé accepte de faire regarde
+    /// son auteur et la personne qui l'a choisi, pas le programme qui le
+    /// lance.
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -535,6 +545,10 @@ fn parse_json_or_toml(raw: &str) -> Result<Config, ConfigError> {
                     Some(v.to_string())
                 };
             }
+            // Ici la chaîne vide a un sens — « aucune consigne » — et ne peut
+            // donc pas valoir effacement. C'est `null` qui rétablit celle de
+            // l'application.
+            "system_prompt" => cfg.assistance.system_prompt = Some(v.to_string()),
             _ => {}
         }
     }
@@ -570,6 +584,9 @@ fn merge(into: &mut Config, other: Config) {
     into.logging.json |= other.logging.json;
     if other.assistance.micro_model.is_some() {
         into.assistance.micro_model = other.assistance.micro_model;
+    }
+    if other.assistance.system_prompt.is_some() {
+        into.assistance.system_prompt = other.assistance.system_prompt;
     }
 }
 

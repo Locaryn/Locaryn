@@ -77,6 +77,7 @@ fn input(session: uuid::Uuid, message: &str) -> AgentInput {
         history: Vec::new(),
         mcp_state: None,
         extra_system: None,
+        system_override: None,
         capabilities: Vec::new(),
         tools: None,
         approval: Some(ApprovalHandle::new(YesGate)),

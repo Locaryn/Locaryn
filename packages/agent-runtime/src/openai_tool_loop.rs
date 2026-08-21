@@ -114,26 +114,32 @@ pub async fn run_openai_tool_loop(
         serde_json::json!(parts)
     };
 
-    // Le prompt d'agent développeur ne vaut que dans un projet. Hors projet on
-    // reste un assistant, mais un assistant qui sait de quoi il dispose : sans
-    // cette phrase, le modèle annonce qu'il ne peut pas générer d'image alors
-    // que l'outil lui est offert.
-    let base_prompt = if in_project {
-        system_prompt_for_dev_agent()
-    } else if all_tools.is_empty() {
-        "You are Locaryn, a helpful, concise AI assistant running on a local model.".to_string()
-    } else {
-        "You are Locaryn, a helpful, concise AI assistant running on a local model. \
-         You have tools available — use them instead of saying you cannot do something. \
-         Never claim you are unable to produce an image if an image tool is listed."
-            .to_string()
-    };
-    let system_prompt = crate::compose_system_prompt(&base_prompt, input.extra_system.as_ref());
+    // Rien n'est posé devant le modèle sauf ce que la personne a écrit et ce
+    // que la mécanique des outils exige. Sans consigne et sans outil, aucun
+    // message système n'est envoyé du tout : le modèle répond exactement comme
+    // lancé hors de l'application.
+    let mut morceaux: Vec<String> = Vec::new();
+    if let Some(consigne) = input
+        .system_override
+        .as_deref()
+        .map(str::trim)
+        .filter(|texte| !texte.is_empty())
+    {
+        morceaux.push(consigne.to_string());
+    }
+    if !all_tools.is_empty() {
+        morceaux.push(crate::tool_discipline_prompt());
+    }
+    let _ = in_project;
+    let system_prompt =
+        crate::compose_system_prompt(&morceaux.join("\n\n"), input.extra_system.as_ref());
 
     // system → prior turns (conversation memory) → the new user message.
-    let mut messages = serde_json::json!([
-        { "role": "system", "content": system_prompt }
-    ]);
+    let mut messages = if system_prompt.trim().is_empty() {
+        serde_json::json!([])
+    } else {
+        serde_json::json!([{ "role": "system", "content": system_prompt }])
+    };
     {
         let arr = messages.as_array_mut().expect("messages is an array");
         for turn in &input.history {
@@ -478,16 +484,4 @@ async fn stream_one_round(
         });
     }
     Ok(out)
-}
-
-fn system_prompt_for_dev_agent() -> String {
-    "You are Locaryn, an AI coding assistant with access to tools for interacting with the user's local project. \
-     \n\nCRITICAL RULES:\n\
-     1. DO NOT guess or hallucinate code or file contents. If you need to know what is in a file, you MUST use the `read_file` tool.\n\
-     2. DO NOT assume the directory structure. If you are unsure where a file is, use the `search` tool to find it.\
-     3. Use relative paths from the project root (e.g., `src/main.rs`, `Cargo.toml`). If a file is missing, the tool will report it and you should not invent content.\n\
-     4. Think step-by-step. Briefly explain your plan before calling a tool (e.g., 'I need to check the contents of main.rs.').\n\
-     5. Use tools iteratively. You can call tools multiple times to gather information.\n\
-     6. Once you have all required information from the tools, provide a direct, concise final answer without calling tools."
-        .to_string()
 }
