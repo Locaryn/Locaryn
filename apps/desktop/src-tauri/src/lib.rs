@@ -8562,51 +8562,12 @@ fn llama_runtime_status(_core: State<'_, Core>) -> Result<LlamaRuntimeStatus, St
         installed: found.is_some(),
         version: None,
         up_to_date: true,
-        pinned: "b10088".to_string(),
+        pinned: locaryn_provider_supervisor::LLAMA_BUILD.to_string(),
         path: found
             .unwrap_or_else(|| locaryn_config::bin_dir().join("llama").join("llama-server"))
             .to_string_lossy()
             .to_string(),
     })
-}
-
-/// Sortir l'archive du runtime dans `bin/llama/`.
-///
-/// À plat : les publications de llama.cpp rangent parfois les fichiers à la
-/// racine de l'archive, parfois sous `build/bin/`. Ce qui compte est que
-/// `llama-server` et les bibliothèques `ggml` finissent dans le même dossier —
-/// sous Windows, l'exécutable ne démarre pas sans les DLL à côté de lui.
-fn extraire_runtime_llama(archive: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
-    let fichier = std::fs::File::open(archive).map_err(|e| format!("archive illisible : {e}"))?;
-    let mut zip = zip::ZipArchive::new(fichier).map_err(|e| format!("archive invalide : {e}"))?;
-    std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
-
-    for index in 0..zip.len() {
-        let mut entree = zip.by_index(index).map_err(|e| e.to_string())?;
-        if entree.is_dir() {
-            continue;
-        }
-        let Some(nom) = entree
-            .enclosed_name()
-            .and_then(|chemin| chemin.file_name().map(|n| n.to_os_string()))
-        else {
-            // Un nom qui sort du dossier de destination est refusé, pas
-            // réécrit : une archive n'a pas à choisir où elle atterrit.
-            continue;
-        };
-        let cible = dest.join(&nom);
-        let mut sortie =
-            std::fs::File::create(&cible).map_err(|e| format!("écriture {nom:?} : {e}"))?;
-        std::io::copy(&mut entree, &mut sortie).map_err(|e| format!("extraction : {e}"))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Some(mode) = entree.unix_mode() {
-                let _ = std::fs::set_permissions(&cible, std::fs::Permissions::from_mode(mode));
-            }
-        }
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -8615,75 +8576,29 @@ async fn setup_llama_runtime(
     _variant: Option<String>,
     on_event: Channel<PullProgressEvent>,
 ) -> Result<LlamaRuntimeStatus, String> {
-    let bin_dir = locaryn_config::bin_dir();
-    let runtime_dir = bin_dir.join("llama");
-    std::fs::create_dir_all(&runtime_dir).map_err(|e| e.to_string())?;
-
-    // Download the pinned llama-server binary.
-    let url = if cfg!(target_os = "windows") {
-        "https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-win-vulkan-x64.zip"
-    } else if cfg!(target_os = "linux") {
-        "https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-ubuntu-x64.zip"
-    } else {
-        // Mieux vaut le dire que d'installer un binaire Linux sur un Mac et
-        // laisser le démarrage échouer sans que personne comprenne pourquoi.
-        return Err(
-            "Aucune version prête du moteur pour ce système. Installez llama.cpp \
-             (`brew install llama.cpp`) : l'application le trouvera sur le chemin."
-                .into(),
-        );
-    };
-
-    let zip_name = "llama-server.zip";
-    let zip_path = bin_dir.join(zip_name);
-    let part_path = bin_dir.join(format!("{zip_name}.part"));
-    let cancel = tokio_util::sync::CancellationToken::new();
-
-    let pull_event = PullProgressEvent {
-        status: "Téléchargement du moteur…".into(),
+    // Le bouton des réglages et le démarrage automatique passent par le même
+    // code : deux installations qui divergent, c'est une machine où le moteur
+    // est « installé » pour l'un et absent pour l'autre.
+    let _ = on_event.send(PullProgressEvent {
+        status: "Installation du moteur d'inférence…".into(),
         completed: 0,
         total: 0,
         percentage: 0.0,
-    };
-    let _ = on_event.send(pull_event);
-
-    do_pull(
-        &core, url, zip_name, &zip_path, &part_path, &on_event, &cancel, "",
-    )
-    .await?;
-
-    let _ = on_event.send(PullProgressEvent {
-        status: "Extraction du moteur…".into(),
-        completed: 0,
-        total: 0,
-        percentage: 99.0,
     });
-
-    // L'archive était téléchargée puis abandonnée telle quelle, et la commande
-    // renvoyait « installé » sans que rien ne le soit. On voyait donc
-    // l'installation réussir, le chat répondre « exécutable introuvable », et
-    // le journal conseillé rester introuvable lui aussi — il n'est écrit
-    // qu'au premier démarrage du moteur.
-    let extraction = extraire_runtime_llama(&zip_path, &runtime_dir);
-    let _ = std::fs::remove_file(&zip_path);
-    extraction?;
-
-    let bin = locaryn_provider_supervisor::llama_server_path().ok_or_else(|| {
-        "l'archive du moteur ne contenait pas llama-server : rien n'a été installé".to_string()
-    })?;
-
+    let bin = locaryn_provider_supervisor::provision_llama_server(&core.http)
+        .await
+        .map_err(|e| e.to_string())?;
     let _ = on_event.send(PullProgressEvent {
         status: "Moteur installé".into(),
         completed: 100,
         total: 100,
         percentage: 100.0,
     });
-
     Ok(LlamaRuntimeStatus {
         installed: true,
-        version: Some("b10088".to_string()),
+        version: Some(locaryn_provider_supervisor::LLAMA_BUILD.to_string()),
         up_to_date: true,
-        pinned: "b10088".to_string(),
+        pinned: locaryn_provider_supervisor::LLAMA_BUILD.to_string(),
         path: bin.to_string_lossy().to_string(),
     })
 }
@@ -9385,48 +9300,6 @@ mod tests {
         assert!(repo.join("model-Q8_0.gguf").exists());
         assert!(repo.join("config.json").exists());
         let _ = std::fs::remove_dir_all(root);
-    }
-
-    /// « Installer le moteur » téléchargeait l'archive et s'arrêtait là, en
-    /// renvoyant `installed: true`. L'écran annonçait donc une réussite, le
-    /// chat répondait « exécutable introuvable », et le journal conseillé
-    /// restait introuvable lui aussi — il n'est écrit qu'au premier démarrage.
-    #[test]
-    fn l_archive_du_moteur_est_mise_a_plat_dans_le_dossier_du_runtime() {
-        use std::io::Write as _;
-        let base = std::env::temp_dir().join(format!("locaryn_runtime_{}", Uuid::new_v4()));
-        std::fs::create_dir_all(&base).unwrap();
-        let archive = base.join("llama.zip");
-
-        // Les publications de llama.cpp rangent tantôt à la racine, tantôt
-        // sous `build/bin/` : les deux doivent aboutir au même dossier.
-        let fichier = std::fs::File::create(&archive).unwrap();
-        let mut zip = zip::ZipWriter::new(fichier);
-        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
-        for chemin in [
-            "llama-server.exe",
-            "ggml-base.dll",
-            "build/bin/ggml-vulkan.dll",
-        ] {
-            zip.start_file(chemin, options).unwrap();
-            zip.write_all(b"binaire").unwrap();
-        }
-        zip.finish().unwrap();
-
-        let dest = base.join("llama");
-        super::extraire_runtime_llama(&archive, &dest).unwrap();
-        for nom in ["llama-server.exe", "ggml-base.dll", "ggml-vulkan.dll"] {
-            assert!(
-                dest.join(nom).is_file(),
-                "{nom} devrait être extrait à plat"
-            );
-        }
-        assert!(
-            !dest.join("build").exists(),
-            "l'arborescence de l'archive ne doit pas être recopiée : sous Windows              l'exécutable ne démarre pas sans ses DLL à côté de lui"
-        );
-
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// Le filtre décidait le contraire de ce qu'il annonçait : `!all(!…)` se

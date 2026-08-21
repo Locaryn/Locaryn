@@ -46,15 +46,25 @@ function updateErrorMessage(e: unknown): string {
   const raw = errorMessage(e)
     .replace(/^Error:\s*/i, "")
     .trim();
-  const lower = raw.toLowerCase();
-  if (/signature|public key|pubkey|verify|verification/.test(lower)) {
+  // L'URL est retirée avant tout test : elle finit par « latest.json », donc
+  // le motif qui cherchait « json » ou « manifest » l'y trouvait toujours. Une
+  // panne réseau — « error sending request for url (…/latest.json) » — était
+  // ainsi annoncée comme un manifeste absent, et envoyait corriger une chaîne
+  // de publication qui n'avait rien.
+  const cause = raw.replace(/https?:\/\/\S+/g, "").toLowerCase();
+  if (/signature|public key|pubkey|verify|verification/.test(cause)) {
     return `Le manifeste GitHub est accessible, mais sa signature n'est pas acceptée. Installez la dernière version depuis GitHub, puis réessayez. (${raw})`;
   }
-  if (/404|not found|manifest|json/.test(lower)) {
-    return `Le manifeste de mise à jour est introuvable sur GitHub. La release doit publier « latest.json ». (${raw})`;
-  }
-  if (/network|connect|dns|timeout|timed out|tls|certificate|request failed|offline/.test(lower)) {
+  // Le transport d'abord : une requête qui ne part pas ne dit rien du contenu.
+  if (
+    /network|connect|dns|timeout|timed out|tls|certificate|request failed|sending request|offline|unreachable|refused|proxy/.test(
+      cause,
+    )
+  ) {
     return `GitHub est inaccessible depuis cette machine. Vérifiez la connexion, le proxy ou le pare-feu, puis réessayez. (${raw})`;
+  }
+  if (/404|not found|no such|missing/.test(cause)) {
+    return `Le manifeste de mise à jour est introuvable sur GitHub. La release doit publier « latest.json ». (${raw})`;
   }
   return raw || "La vérification a échoué sans détail fourni par le système.";
 }
