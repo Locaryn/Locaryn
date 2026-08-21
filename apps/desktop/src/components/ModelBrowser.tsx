@@ -570,7 +570,9 @@ export function ModelBrowser({
   const [repoInspecting, setRepoInspecting] = useState(false);
   const [repoInspectionError, setRepoInspectionError] = useState<string | null>(null);
   const [showQuantGuideDetails, setShowQuantGuideDetails] = useState(false);
-  const [quantFilter, setQuantFilter] = useState<"all" | "recommended" | "light" | "quality">("all");
+  const [quantFilter, setQuantFilter] = useState<"all" | "recommended" | "light" | "quality">(
+    "all",
+  );
 
   const installedSet = useMemo(() => new Set(installed), [installed]);
 
@@ -857,8 +859,7 @@ export function ModelBrowser({
           color: "#65d391",
           border: "1px solid rgba(101, 211, 145, 0.35)",
         },
-        advice:
-          "K-Quant renforcé en précision sur les couches d'attention critiques.",
+        advice: "K-Quant renforcé en précision sur les couches d'attention critiques.",
         detail: "Légèrement plus lourd que Q4_K_M pour un gain subtil.",
         priority: 94,
         isRecommended: true,
@@ -905,8 +906,7 @@ export function ModelBrowser({
           color: "#fbbf24",
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
-        advice:
-          "4-bit uniforme avec offset pour une fidélité légèrement supérieure à Q4_0.",
+        advice: "4-bit uniforme avec offset pour une fidélité légèrement supérieure à Q4_0.",
         detail: "Variante de Q4_0.",
         priority: 84,
         isRecommended: false,
@@ -1048,7 +1048,12 @@ export function ModelBrowser({
         category: "light",
       };
     }
-    if (q.includes("Q3_K_S") || q.includes("Q3_K_L") || q.includes("Q3_K_XL") || q.includes("Q3_K")) {
+    if (
+      q.includes("Q3_K_S") ||
+      q.includes("Q3_K_L") ||
+      q.includes("Q3_K_XL") ||
+      q.includes("Q3_K")
+    ) {
       return {
         badge: "⚡ 3-bit K-Quant",
         badgeStyle: {
@@ -2955,7 +2960,6 @@ export function ModelBrowser({
                       </div>
                     </div>
                   </div>
-
                   {showQuantGuideDetails && (
                     <div
                       style={{
@@ -2972,16 +2976,28 @@ export function ModelBrowser({
                       }}
                     >
                       <div>
-                        <strong style={{ color: "#65d391" }}>• Q4_K_M vs Q4_0 :</strong> <code>_K_M</code> (K-Quant adaptatif) compresse intelligemment chaque couche selon son importance, préservant la précision sur l'attention critique. <code>Q4_0</code> applique une compression 4-bit uniforme (plus ancienne et un peu moins précise).
+                        <strong style={{ color: "#65d391" }}>• Q4_K_M vs Q4_0 :</strong>{" "}
+                        <code>_K_M</code> (K-Quant adaptatif) compresse intelligemment chaque couche
+                        selon son importance, préservant la précision sur l'attention critique.{" "}
+                        <code>Q4_0</code> applique une compression 4-bit uniforme (plus ancienne et
+                        un peu moins précise).
                       </div>
                       <div>
-                        <strong style={{ color: "#c084fc" }}>• Q6_K vs Q8_0 :</strong> <code>Q6_K</code> offre 99.5% de la qualité de <code>Q8_0</code> tout en économisant ~20% d'espace mémoire. Si vous voulez la qualité maximale, <code>Q6_K</code> est souvent le meilleur choix pragmatique.
+                        <strong style={{ color: "#c084fc" }}>• Q6_K vs Q8_0 :</strong>{" "}
+                        <code>Q6_K</code> offre 99.5% de la qualité de <code>Q8_0</code> tout en
+                        économisant ~20% d'espace mémoire. Si vous voulez la qualité maximale,{" "}
+                        <code>Q6_K</code> est souvent le meilleur choix pragmatique.
                       </div>
                       <div>
-                        <strong style={{ color: "#fbbf24" }}>• IQ (Importance Matrix) :</strong> Ces versions (ex: <code>IQ3_M</code>, <code>IQ4_XS</code>) utilisent une matrice de calibration pour préserver un maximum de cohérence tout en réduisant drastiquement le poids.
+                        <strong style={{ color: "#fbbf24" }}>• IQ (Importance Matrix) :</strong> Ces
+                        versions (ex: <code>IQ3_M</code>, <code>IQ4_XS</code>) utilisent une matrice
+                        de calibration pour préserver un maximum de cohérence tout en réduisant
+                        drastiquement le poids.
                       </div>
                       <div>
-                        <strong style={{ color: "#6ea8fe" }}>• _K_S / _K_M / _K_L :</strong> <code>S</code> = Small (légèrement allégé), <code>M</code> = Medium (recommandé), <code>L</code> = Large (précision renforcée).
+                        <strong style={{ color: "#6ea8fe" }}>• _K_S / _K_M / _K_L :</strong>{" "}
+                        <code>S</code> = Small (légèrement allégé), <code>M</code> = Medium
+                        (recommandé), <code>L</code> = Large (précision renforcée).
                       </div>
                     </div>
                   )}
