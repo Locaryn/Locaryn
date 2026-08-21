@@ -3052,7 +3052,11 @@ fn is_hf_weight_path(path: &str) -> bool {
         "vae/",
     ]
     .iter()
-    .all(|part| !lower.contains(part))
+    // `any`, pas `!all(!…)` : la double négation d'origine se lisait comme
+    // « au moins un mot interdit est présent », soit exactement l'inverse.
+    // Aucun poids propre ne passait, tous les dépôts paraissaient vides de
+    // checkpoints, et l'interface n'avait plus qu'à proposer le dépôt entier.
+    .any(|part| lower.contains(part))
 }
 
 fn hf_shard_group(path: &str) -> String {
@@ -9108,7 +9112,8 @@ pub fn run() {
 mod tests {
     use super::{
         compatible_gguf_repo, find_python, hf_candidate_variant, hf_quantization, hf_shard_group,
-        is_safetensors_layout_file, is_text_chat_model, preferred_mmproj, summarise_python_error,
+        is_hf_weight_path, is_safetensors_layout_file, is_text_chat_model, preferred_mmproj,
+        summarise_python_error,
     };
     use std::process::Command;
     use uuid::Uuid;
@@ -9269,6 +9274,35 @@ mod tests {
         assert!(repo.join("model-Q8_0.gguf").exists());
         assert!(repo.join("config.json").exists());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Le filtre décidait le contraire de ce qu'il annonçait : `!all(!…)` se
+    /// lit « au moins un mot interdit est présent ». Chaque `.gguf` propre
+    /// était donc écarté, l'inspection d'un dépôt ne trouvait aucun
+    /// checkpoint, et la seule proposition restante était de tout télécharger.
+    #[test]
+    fn les_poids_ordinaires_sont_des_candidats_et_les_compagnons_non() {
+        for path in [
+            "Llama-3.2-3B-Instruct-uncensored-Q4_K_M.gguf",
+            "Llama-3.2-3B-Instruct-uncensored-IQ3_XS.gguf",
+            "model-00001-of-00003.safetensors",
+            "pytorch_model.bin",
+        ] {
+            assert!(is_hf_weight_path(path), "{path} devrait être un candidat");
+        }
+        for path in [
+            "mmproj-model-Q8_0.gguf",
+            "text_encoder/model.safetensors",
+            "tokenizer.json.bin",
+            "vae/diffusion_pytorch_model.safetensors",
+            "adapter_model.safetensors",
+            "README.md",
+        ] {
+            assert!(
+                !is_hf_weight_path(path),
+                "{path} ne devrait pas être offert"
+            );
+        }
     }
 
     /// Le marqueur d'image traverse deux langages : il est écrit ici et relu
