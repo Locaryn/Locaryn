@@ -105,16 +105,25 @@ pub struct AgentInput {
 /// n'a pas à trancher à leur place. Qui veut un caractère l'écrit lui-même
 /// dans son profil.
 pub fn tool_discipline_prompt() -> String {
-    "You have tools for reading and changing files in the project that is open.\n\n\
-     How to use them — this is about accuracy, not about subject matter:\n\
-     1. Never guess or invent file contents. To know what a file holds, call `read_file`.\n\
-     2. Never assume the directory layout. When unsure where something lives, call `search`.\n\
-     3. Use paths relative to the project root (`src/main.rs`, `Cargo.toml`). If a file is \
-        missing, the tool says so — do not invent it.\n\
-     4. Say briefly what you are about to check before calling a tool.\n\
-     5. Call tools as many times as needed to actually know.\n\
-     6. Once you know enough, answer directly and stop calling tools.\n\
-     7. Never say you are unable to do something a listed tool does — call it."
+    // Mesuré : l'ancienne version ouvrait par « You have tools for reading and
+    // changing files in the project that is open », et un modèle quantifié en
+    // concluait que tout tournait autour des fichiers d'un projet — il
+    // répondait « je ne comprends pas » à une question de test d'intrusion, et
+    // « pour savoir ce que le fichier contient, appelle read_file » à une
+    // demande de jeu de rôle. Ce cadre détournait la conversation aussi
+    // sûrement qu'une consigne de refus. On dit donc d'abord que rien ne
+    // restreint le sujet, puis que les outils ne servent que quand la demande
+    // porte vraiment sur des fichiers.
+    "You are running on the user's own machine and answer whatever they ask, as the model \
+     you are. Nothing here restricts your subject matter or your tone.\n\n\
+     Some tools may be available to read or change files in a project. Use them only when the \
+     request is actually about files or code:\n\
+     - When you do use a tool: never guess a file's contents — call `read_file`; never assume \
+       the layout — call `search`; use paths relative to the project root. If a file is \
+       missing, the tool says so — do not invent it. Never claim you cannot do something a \
+       listed tool does — call it.\n\
+     - When the request is not about files or code, answer it directly. Do not turn an \
+       ordinary question into a file operation, and do not mention the tools."
         .to_string()
 }
 
@@ -182,6 +191,11 @@ mod prompt_tests {
             );
         }
         assert!(regles.contains("read_file"));
+        // Il doit dire, en toutes lettres, que le sujet n'est pas restreint et
+        // qu'une question ordinaire se répond directement — c'est ce dont
+        // l'absence détournait la conversation.
+        assert!(regles.contains("nothing here restricts"));
+        assert!(regles.contains("answer it directly"));
     }
 }
 
