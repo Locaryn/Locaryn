@@ -46,6 +46,7 @@ export function SystemPromptSetting() {
   }
 
   const donne = state?.texte != null;
+  const [voirEnvoye, setVoirEnvoye] = useState(false);
 
   return (
     <div className="locaryn-field">
@@ -84,6 +85,30 @@ export function SystemPromptSetting() {
         {donne
           ? "Ce texte ouvre chaque conversation — sauf les éphémères, qui repartent toujours de rien."
           : "Rien n'est posé. Quand des outils sont offerts, l'assistant reçoit seulement de quoi s'en servir correctement : aller lire un fichier plutôt qu'en deviner le contenu."}
+      </p>
+
+      <button
+        type="button"
+        className="locaryn-btn-ghost"
+        style={{ alignSelf: "flex-start" }}
+        onClick={() => setVoirEnvoye((v) => !v)}
+      >
+        {voirEnvoye ? "Masquer" : "Voir ce qui est envoyé au modèle"}
+      </button>
+
+      {voirEnvoye && (
+        <pre
+          className="locaryn-code-block"
+          style={{ whiteSpace: "pre-wrap", maxHeight: 240, overflowY: "auto", fontSize: 11 }}
+        >
+          {state?.envoye?.trim() ? state.envoye : "(rien — aucun message système n'est envoyé)"}
+        </pre>
+      )}
+
+      <p className="locaryn-field-hint">
+        C'est le texte exact d'une conversation où des outils sont offerts. S'il est vide ou ne
+        contient que les règles d'outillage, alors un refus vient du modèle lui-même : c'est son
+        entraînement qui parle, et seul un autre modèle y changera quelque chose.
       </p>
 
       {error && <div className="locaryn-vp-error">{error}</div>}

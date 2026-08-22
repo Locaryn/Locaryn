@@ -118,6 +118,33 @@ pub fn tool_discipline_prompt() -> String {
         .to_string()
 }
 
+/// Le message système exact, tel qu'il part vers le modèle.
+///
+/// Trois morceaux, dans cet ordre : la consigne écrite par la personne (rien
+/// par défaut), la mécanique des outils quand il y en a, puis ce que les
+/// extensions actives ajoutent. Le résultat peut être vide — et dans ce cas
+/// aucun message système n'est envoyé du tout.
+///
+/// Cette fonction est publique pour que l'écran des réglages puisse afficher
+/// exactement ce que la boucle enverra. Deviner ce que l'application pose
+/// devant un modèle a coûté plusieurs échanges : une consigne oubliée se
+/// confond avec un modèle qui refuse de lui-même, et les deux se corrigent
+/// à des endroits opposés.
+pub fn assemble_system_prompt(
+    consigne: Option<&str>,
+    avec_outils: bool,
+    extra: Option<&String>,
+) -> String {
+    let mut morceaux: Vec<String> = Vec::new();
+    if let Some(texte) = consigne.map(str::trim).filter(|texte| !texte.is_empty()) {
+        morceaux.push(texte.to_string());
+    }
+    if avec_outils {
+        morceaux.push(tool_discipline_prompt());
+    }
+    compose_system_prompt(&morceaux.join("\n\n"), extra)
+}
+
 /// Append `extra` to a base system prompt, under a heading that tells the
 /// model where the text came from. Kept here so both tool loops compose the
 /// prompt identically.

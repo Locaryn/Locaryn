@@ -143,17 +143,24 @@ pub async fn travel_home_code() -> Result<TravelStatus, String> {
 pub struct ConsigneSysteme {
     /// `None` : rien n'est posé devant le modèle — c'est le cas par défaut.
     pub texte: Option<String>,
+    /// Le message système exact qu'une conversation ordinaire enverra, outils
+    /// compris. Vide quand rien n'est posé.
+    ///
+    /// Deviner ce que l'application met devant un modèle a coûté plusieurs
+    /// allers-retours : une consigne oubliée se confond avec un modèle qui
+    /// refuse de lui-même, et les deux se corrigent à des endroits opposés.
+    pub envoye: String,
 }
 
 /// Ce qui est posé devant le modèle aujourd'hui.
 #[tauri::command]
 pub async fn consigne_systeme() -> Result<ConsigneSysteme, String> {
-    Ok(ConsigneSysteme {
-        texte: locaryn_config::load(None)
-            .ok()
-            .and_then(|c| c.assistance.system_prompt)
-            .filter(|texte| !texte.trim().is_empty()),
-    })
+    let texte = locaryn_config::load(None)
+        .ok()
+        .and_then(|c| c.assistance.system_prompt)
+        .filter(|texte| !texte.trim().is_empty());
+    let envoye = locaryn_agent_runtime::assemble_system_prompt(texte.as_deref(), true, None);
+    Ok(ConsigneSysteme { texte, envoye })
 }
 
 /// Écrire un caractère, ou n'en donner aucun.

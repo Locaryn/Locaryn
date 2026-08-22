@@ -84,23 +84,12 @@ pub async fn run_tool_loop(
     let mut messages = serde_json::json!([
         {
             "role": "system",
-            "content": crate::compose_system_prompt(
-                &{
-                    // Même règle que l'autre boucle : la consigne de la
-                    // personne d'abord, la mécanique des outils ensuite, et
-                    // rien d'autre.
-                    let mut morceaux: Vec<String> = Vec::new();
-                    if let Some(consigne) = input
-                        .system_override
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|texte| !texte.is_empty())
-                    {
-                        morceaux.push(consigne.to_string());
-                    }
-                    morceaux.push(crate::tool_discipline_prompt());
-                    morceaux.join("\n\n")
-                },
+            // La même assemblée que l'autre boucle, et que ce que l'écran
+            // des réglages affiche : trois textes qui divergent, c'est un
+            // comportement qu'on ne peut plus expliquer.
+            "content": crate::assemble_system_prompt(
+                input.system_override.as_deref(),
+                true,
                 input.extra_system.as_ref(),
             )
         },

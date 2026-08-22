@@ -118,21 +118,17 @@ pub async fn run_openai_tool_loop(
     // que la mécanique des outils exige. Sans consigne et sans outil, aucun
     // message système n'est envoyé du tout : le modèle répond exactement comme
     // lancé hors de l'application.
-    let mut morceaux: Vec<String> = Vec::new();
-    if let Some(consigne) = input
-        .system_override
-        .as_deref()
-        .map(str::trim)
-        .filter(|texte| !texte.is_empty())
-    {
-        morceaux.push(consigne.to_string());
-    }
-    if !all_tools.is_empty() {
-        morceaux.push(crate::tool_discipline_prompt());
-    }
     let _ = in_project;
-    let system_prompt =
-        crate::compose_system_prompt(&morceaux.join("\n\n"), input.extra_system.as_ref());
+    let system_prompt = crate::assemble_system_prompt(
+        input.system_override.as_deref(),
+        !all_tools.is_empty(),
+        input.extra_system.as_ref(),
+    );
+    tracing::info!(
+        octets = system_prompt.len(),
+        outils = all_tools.len(),
+        "message système posé devant le modèle"
+    );
 
     // system → prior turns (conversation memory) → the new user message.
     let mut messages = if system_prompt.trim().is_empty() {

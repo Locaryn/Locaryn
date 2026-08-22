@@ -843,6 +843,8 @@ export type PairingMode = "local" | "tunnel" | "public";
 export interface SystemPrompt {
   /** `null` : rien n'est posé devant le modèle — le cas par défaut. */
   texte: string | null;
+  /** Le message système exact qu'une conversation avec outils enverra. */
+  envoye: string;
 }
 
 export interface MicroModel {
@@ -4013,8 +4015,8 @@ const demoCore: CoreApi = {
     url: mode === "local" ? "http://192.168.1.20:7474" : "https://exemple.invalide:7474",
     qr_svg: "",
   }),
-  systemPrompt: async () => ({ texte: null }),
-  setSystemPrompt: async (texte) => ({ texte }),
+  systemPrompt: async () => ({ texte: null, envoye: "" }),
+  setSystemPrompt: async (texte) => ({ texte, envoye: texte ?? "" }),
   microModel: async () => ({ model: null, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
   setMicroModel: async (model) => ({ model, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
 
