@@ -107,13 +107,13 @@ const BASE_NAV_ITEMS: NavItem[] = [
   },
   {
     id: "extensions",
-    label: "Extensions & Plugins",
+    label: "Extensions",
     icon: "extensions",
     category: "extensibility",
-    badge: "Modulaire",
-    desc: "Plugins officiels Locaryn, extensions compatibles et noyaux",
+    badge: "Locaryn & Tierces",
+    desc: "Extensions officielles, modules spécialisés, règles et compétences",
     tooltip:
-      "• Plugins : modules complets ajoutant des fonctionnalités UI et des moteurs d'inférence dédiés.\n• Extensions : packs compatibles (Claude Code, Gemini CLI, OpenCode) et règles déclaratives.\n• Noyaux : mémoires et agents alternatifs (ex: OpenClaw).",
+      "• Extensions Locaryn : modules officiels ajoutant des fonctionnalités UI, des moteurs d'inférence (image, 3D, voix, SSH) et des compétences d'agent.\n• Packs compatibles : règles et skills Claude Code, Gemini CLI, OpenCode.\n• Noyaux : mémoires et agents alternatifs.",
   },
   {
     id: "connectors",
