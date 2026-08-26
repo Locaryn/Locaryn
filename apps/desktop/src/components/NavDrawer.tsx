@@ -1,4 +1,5 @@
 import { Icon, type IconName, isCapability, isIconName } from "@locaryn/ui-core";
+import { useState } from "react";
 import type { ConnectionMode, InstalledExtension, ProviderSummary } from "../lib/core";
 import { ModalShell } from "./ModalShell";
 import { getSlotContributions } from "./extensions/SlotRegistry";
@@ -17,11 +18,16 @@ type Props = {
   extensions?: InstalledExtension[];
 };
 
+type NavCategory = "workspace" | "models" | "extensibility" | "system";
+
 type NavItem = {
   id: string;
   label: string;
   icon: IconName;
   desc: string;
+  category: NavCategory;
+  badge?: string;
+  tooltip?: string;
   /** If set, item is only rendered when at least one required capability is present. */
   requiredCapabilities?: string[];
 };
@@ -31,13 +37,18 @@ const BASE_NAV_ITEMS: NavItem[] = [
     id: "chat",
     label: "Chat et agent",
     icon: "chat",
+    category: "workspace",
     desc: "Environnement de chat principal, exécution de code et prompts",
+    tooltip: "Conversation avec les modèles d'IA, exécution d'ordres et d'outils",
   },
   {
     id: "studio",
     label: "Studio de génération",
     icon: "studio",
+    category: "workspace",
     desc: "Image, vidéo, audio, musique, 3D et édition multimodale",
+    badge: "Multimodal",
+    tooltip: "Espace de création multimédia apporté par vos plugins d'IA actifs",
     requiredCapabilities: [
       "image-gen",
       "image-editor",
@@ -55,77 +66,84 @@ const BASE_NAV_ITEMS: NavItem[] = [
     id: "figures",
     label: "Figures",
     icon: "figures",
+    category: "workspace",
     desc: "Un rôle, ses consignes, ses conversations",
+    tooltip: "Personnalités et agents spécialisés configurés",
     requiredCapabilities: ["figures"],
-  },
-  {
-    id: "installed",
-    label: "Mes modèles installés",
-    icon: "models",
-    desc: "Gérer vos modèles locaux, ouvrir le dossier et sélection rapide",
-  },
-  {
-    id: "models",
-    label: "Catalogue de modèles",
-    icon: "marketplace",
-    desc: "Découverte et installation de modèles locaux & HuggingFace",
   },
   {
     id: "batch",
     label: "Batch API (-50%)",
     icon: "speed",
+    category: "workspace",
     desc: "Traitement par lots asynchrone à moitié prix",
+    tooltip: "Exécution de requêtes par lots pour réduire le coût et la latence",
     requiredCapabilities: ["text-analysis", "batch-api"],
   },
   {
     id: "training",
-    label: "Entraînement et oblitération",
+    label: "Entraînement & Oblitération",
     icon: "shield",
+    category: "workspace",
     desc: "Studio d'entraînement LoRA et oblitération de modèles RepE",
+    tooltip: "Fine-tuning local et modification ciblée des représentations de modèles",
     requiredCapabilities: ["model-training"],
   },
   {
+    id: "models",
+    label: "Catalogue de modèles",
+    icon: "marketplace",
+    category: "models",
+    desc: "Découverte et installation de modèles locaux & HuggingFace",
+    tooltip: "Recherchez et installez des modèles GGUF et spécialisés certifiés",
+  },
+  {
+    id: "installed",
+    label: "Mes modèles installés",
+    icon: "models",
+    category: "models",
+    desc: "Gérer vos modèles locaux, ouvrir le dossier et sélection rapide",
+    tooltip: "Gestion du stockage local, suppression et choix des modèles résidents",
+  },
+  {
     id: "extensions",
-    label: "Extensions",
+    label: "Extensions & Plugins",
     icon: "extensions",
-    desc: "Extensions Locaryn, plugins compatibles et noyaux",
+    category: "extensibility",
+    badge: "Modulaire",
+    desc: "Plugins officiels Locaryn, extensions compatibles et noyaux",
+    tooltip:
+      "• Plugins : modules complets ajoutant des fonctionnalités UI et des moteurs d'inférence dédiés.\n• Extensions : packs compatibles (Claude Code, Gemini CLI, OpenCode) et règles déclaratives.\n• Noyaux : mémoires et agents alternatifs (ex: OpenClaw).",
   },
   {
     id: "connectors",
     label: "Connecteurs & MCP",
     icon: "server",
-    desc: "Connexions SSH, bases de données et serveurs MCP",
+    category: "extensibility",
+    badge: "Outils MCP",
+    desc: "Serveurs MCP, bases de données et outils externes",
+    tooltip:
+      "• Connecteurs & MCP : passerelles techniques (STDIO/HTTP) exposant des outils et fonctions aux modèles d'IA sans modifier l'interface utilisateur.",
   },
   {
     id: "settings",
     label: "Paramètres",
     icon: "settings",
+    category: "system",
     desc: "Configuration des moteurs d'inférence, thèmes et gouvernance",
+    tooltip: "Réglages de performance, GPU, stockage, langues et sécurité",
   },
 ];
 
-// Garde-fou : le socle ne référence que des capacités de la liste canonique
-// (`packages/shared-types/capabilities.json`). Une entrée qui exigerait un mot
-// inconnu ne pourrait jamais apparaître — autant le voir tout de suite.
-const CAPACITES_HORS_CANONIQUE = BASE_NAV_ITEMS.flatMap((i) => i.requiredCapabilities ?? []).filter(
-  (c) => !isCapability(c),
-);
-if (CAPACITES_HORS_CANONIQUE.length > 0) {
-  console.warn(
-    "capacités référencées par la navigation mais absentes de la liste canonique :",
-    CAPACITES_HORS_CANONIQUE,
-  );
-}
+const CATEGORY_TITLES: Record<NavCategory, string> = {
+  workspace: "ESPACES DE TRAVAIL & STUDIO",
+  models: "MODÈLES & INTELLIGENCE",
+  extensibility: "EXTENSIBILITÉ & INTÉGRATIONS",
+  system: "SYSTÈME & RÉGLAGES",
+};
 
-/** Les écrans qu'une extension peut demander d'ouvrir. La liste vient du menu :
- *  ce qui n'y figure pas n'est pas une destination. */
 export const NAVIGABLE_VIEWS: string[] = BASE_NAV_ITEMS.map((item) => item.id);
 
-/**
- * Les écrans qui n'existent que si une extension les apporte, et ce qu'ils
- * exigent. Dérivé de la même liste que le menu : une entrée cachée du menu et
- * un écran ouvert par un ancien clic doivent obéir à la même règle.
- */
 export const CAPABILITY_GATED_VIEWS: Record<string, string[]> = Object.fromEntries(
   BASE_NAV_ITEMS.filter((i) => i.requiredCapabilities?.length).map((i) => [
     i.id,
@@ -141,11 +159,10 @@ export function NavDrawer({
   activeCapabilities = [],
   extensions = [],
 }: Props) {
+  const [hoveredTooltip, setHoveredTooltip] = useState<string | null>(null);
+
   if (!isOpen) return null;
 
-  // Le socle d'abord : les entrées natives, filtrées par capacités. Puis ce
-  // que les extensions actives déclarent — une extension ne recouvre jamais
-  // un id natif, elle s'ajoute à côté.
   const visibleItems = BASE_NAV_ITEMS.filter((item) => {
     if (!item.requiredCapabilities || item.requiredCapabilities.length === 0) {
       return true;
@@ -164,25 +181,16 @@ export function NavDrawer({
         label: ni.label || ni.id,
         icon: (isIconName(ni.icon) ? ni.icon : "extensions") as IconName,
         desc: ni.hint || `Apporté par ${ni.extensionName}`,
+        category: "extensibility",
+        badge: "Plugin",
+        tooltip: `Fonctionnalité fournie par le plugin ${ni.extensionName}`,
       },
     ];
   });
 
-  const depuisExtensions: NavItem[] = extensions.flatMap((ext) =>
-    (ext.ui?.nav_items ?? []).flatMap((ni) => {
-      if (pris.has(ni.id)) return [];
-      pris.add(ni.id);
-      return [
-        {
-          id: ni.id,
-          label: ni.label,
-          icon: isIconName(ni.icon) ? ni.icon : "extensions",
-          desc: `Apporté par ${ext.display_name || ext.name}`,
-        },
-      ];
-    }),
-  );
-  const itemsAffiches = [...visibleItems, ...depuisSlots, ...depuisExtensions];
+  const itemsAffiches = [...visibleItems, ...depuisSlots];
+
+  const categoriesOrder: NavCategory[] = ["workspace", "models", "extensibility", "system"];
 
   return (
     <ModalShell
@@ -194,7 +202,7 @@ export function NavDrawer({
       <div className="locaryn-nav-drawer-head">
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span className="locaryn-logo-dot" />
-          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Navigation</strong>
+          <strong style={{ fontSize: "15px", letterSpacing: "-0.3px" }}>Navigation Locaryn</strong>
         </div>
         <button
           type="button"
@@ -208,50 +216,110 @@ export function NavDrawer({
       </div>
 
       <div className="locaryn-nav-drawer-body">
-        <span
-          className="locaryn-box-variants-title"
-          style={{ marginBottom: "8px", display: "block" }}
-        >
-          VUES PRINCIPALES
-        </span>
+        {categoriesOrder.map((cat) => {
+          const itemsInCat = itemsAffiches.filter((i) => i.category === cat);
+          if (itemsInCat.length === 0) return null;
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {itemsAffiches.map((item) => {
-            const isActive = activeView === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`locaryn-nav-drawer-item${isActive ? " locaryn-active" : ""}`}
-                onClick={() => {
-                  onSelectView(item.id);
-                  onClose();
+          return (
+            <div key={cat} style={{ marginBottom: "16px" }}>
+              <span
+                className="locaryn-box-variants-title"
+                style={{
+                  marginBottom: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  fontSize: "11px",
+                  letterSpacing: "0.6px",
+                  color: "var(--text-faint)",
                 }}
               >
-                <span className="locaryn-nav-drawer-icon">
-                  <Icon name={item.icon} />
-                </span>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-start",
-                    textAlign: "left",
-                  }}
-                >
-                  <span className="locaryn-nav-drawer-label">{item.label}</span>
-                  <span className="locaryn-nav-drawer-desc">{item.desc}</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+                <span>{CATEGORY_TITLES[cat]}</span>
+                {cat === "extensibility" && (
+                  <span style={{ fontSize: "10px", color: "var(--accent)" }}>
+                    Plugins · Extensions · MCP
+                  </span>
+                )}
+              </span>
 
-      <div className="locaryn-nav-drawer-foot">
-        <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-          Locaryn — la version exacte est dans Paramètres → À propos
-        </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                {itemsInCat.map((item) => {
+                  const isActive = activeView === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`locaryn-nav-drawer-item${isActive ? " locaryn-active" : ""}`}
+                      onClick={() => {
+                        onSelectView(item.id);
+                        onClose();
+                      }}
+                      onMouseEnter={() => setHoveredTooltip(item.tooltip || item.desc)}
+                      onMouseLeave={() => setHoveredTooltip(null)}
+                      title={item.tooltip || item.desc}
+                      style={{ position: "relative" }}
+                    >
+                      <span className="locaryn-nav-drawer-icon">
+                        <Icon name={item.icon} />
+                      </span>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "flex-start",
+                          textAlign: "left",
+                          flex: 1,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span className="locaryn-nav-drawer-label">{item.label}</span>
+                          {item.badge && (
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                padding: "1px 6px",
+                                borderRadius: "10px",
+                                background: "var(--surface-3, var(--border))",
+                                color: "var(--text-dim)",
+                                fontWeight: 500,
+                              }}
+                            >
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+                        <span className="locaryn-nav-drawer-desc">{item.desc}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        {hoveredTooltip && (
+          <div
+            className="locaryn-card"
+            style={{
+              padding: "10px 12px",
+              marginTop: "8px",
+              fontSize: "12px",
+              lineHeight: 1.4,
+              color: "var(--text-dim)",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-sm)",
+              whiteSpace: "pre-line",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+              <Icon name="extensions" size={13} />
+              <strong style={{ color: "var(--text)", fontSize: "11px" }}>Aperçu &amp; Rôle</strong>
+            </div>
+            {hoveredTooltip}
+          </div>
+        )}
       </div>
     </ModalShell>
   );

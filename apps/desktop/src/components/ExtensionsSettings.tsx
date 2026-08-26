@@ -708,23 +708,23 @@ export function ExtensionsSettings() {
     <div className="locaryn-ext-settings">
       <div className="locaryn-extension-intro">
         <div>
-          <h3>Extensions</h3>
+          <h3>Extensions, Plugins &amp; Noyaux</h3>
           <p>
-            Les extensions Locaryn ajoutent des capacités ou des écrans. Les plugins compatibles
-            viennent d'autres écosystèmes (Claude Code, Gemini CLI, OpenCode) et les noyaux sont
-            regroupés à part car ils pilotent une conversation entière. Les connexions SSH, bases de
-            données et serveurs MCP se gèrent dans « Connecteurs &amp; MCP ».
+            Les <strong>Plugins Locaryn</strong> sont des modules complets qui étendent les capacités de l'IA (moteurs d'inférence, serveurs MCP) et enrichissent l'interface utilisateur (Studio, barres d'outils, espaces de travail).
+            Les <strong>Extensions</strong> fournissent des compétences d'agent et règles déclaratives compatibles (Claude Code, Gemini CLI, OpenCode).
+            Les <strong>Noyaux</strong> remplacent le cerveau de conversation par une mémoire et un runtime alternatifs.
+            Les serveurs et outils de données se gèrent dans « Connecteurs &amp; MCP ».
           </p>
         </div>
         <div className="locaryn-extension-legend" aria-label="Types de paquets">
-          <span>
-            <strong>Extension</strong> · capacité Locaryn
+          <span title="Module complet avec intégration UI, slots déclaratifs et moteurs IA">
+            <strong>Plugin</strong> · intégration UI &amp; moteur IA
           </span>
-          <span>
-            <strong>Plugin</strong> · paquet compatible
+          <span title="Pack de compétences agentiques, règles ou adaptateur de compatibilité">
+            <strong>Extension</strong> · compétences &amp; règles déclaratives
           </span>
-          <span>
-            <strong>Noyau</strong> · mémoire et agent alternatifs
+          <span title="Agent autonome et système de mémoire persistante">
+            <strong>Noyau</strong> · mémoire &amp; agent alternatif
           </span>
         </div>
       </div>

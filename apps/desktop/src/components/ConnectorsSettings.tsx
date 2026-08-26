@@ -107,19 +107,18 @@ export function ConnectorsSettings() {
     <div className="locaryn-conn-settings">
       <div className="locaryn-connector-intro">
         <div>
-          <h3>Connecteurs &amp; serveurs MCP</h3>
+          <h3>Connecteurs &amp; Serveurs MCP</h3>
           <p>
-            Les connecteurs donnent accès à une machine ou à un service. Les serveurs MCP exposent
-            des outils à l'agent. Les extensions et plugins qui ajoutent des fonctionnalités à
-            l'application sont gérés séparément dans « Extensions ».
+            Les <strong>Connecteurs &amp; Serveurs MCP</strong> exposent des outils, contextes et accès de données externes (bases de données, fichiers, APIs distantes) directement aux modèles d'IA via le standard Model Context Protocol.
+            Contrairement aux <em>Plugins</em>, ils n'injectent pas d'écrans ou de composants graphiques dans l'application hôte.
           </p>
         </div>
         <div className="locaryn-connector-legend" aria-label="Familles de connecteurs">
-          <span>
-            <strong>Connecteur</strong> · accès à un service
-          </span>
-          <span>
+          <span title="Passerelle technique d'outils pour les modèles de langage">
             <strong>Serveur MCP</strong> · outils exposés à l'agent
+          </span>
+          <span title="Accès réseau ou machine sans modification d'UI">
+            <strong>Connecteur</strong> · pont de données ou service
           </span>
         </div>
       </div>
