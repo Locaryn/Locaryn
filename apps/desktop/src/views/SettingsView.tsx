@@ -29,17 +29,27 @@ const THEME_MODES: { value: ThemeMode; label: string; icon: IconName }[] = [
 
 export type Section =
   | "account"
+  | "extensions"
+  | "connectors"
+  | "projects"
   | "engine"
   | "performance"
   | "huggingface"
-  | "projects"
-  | "extensions"
-  | "connectors"
-  | "appearance"
-  | "language"
   | "server"
   | "storage"
+  | "appearance"
+  | "language"
   | "about";
+
+type SettingsCategory = "user" | "ai" | "server" | "system";
+
+type SectionDef = {
+  id: Section;
+  icon: IconName;
+  label: string;
+  desc: string;
+  category: SettingsCategory;
+};
 
 type Props = {
   theme: UseThemeReturn;
@@ -55,72 +65,107 @@ type Props = {
   onOpenMarketplace?: () => void;
 };
 
-const SECTIONS: { id: Section; icon: IconName; label: string; desc: string }[] = [
+const SECTIONS: SectionDef[] = [
+  // ── Espace Utilisateur & Outils ──
   {
     id: "account",
     icon: "private",
-    label: "Compte",
+    label: "Compte & Profil",
     desc: "Profil local, identité, préférences et mémoire",
-  },
-  {
-    id: "engine",
-    icon: "settings",
-    label: "Moteur IA & Noyau",
-    desc: "Runtime llama.cpp, configuration du noyau, offload et adaptateurs",
-  },
-  {
-    id: "performance",
-    icon: "speed",
-    label: "Performance",
-    desc: "GPU, cache KV, contexte, offload",
-  },
-  {
-    id: "huggingface",
-    icon: "marketplace",
-    label: "HuggingFace",
-    desc: "Token pour les dépôts restreints (modèles gated)",
-  },
-  {
-    id: "projects",
-    icon: "project",
-    label: "Projets",
-    desc: "Autorisations, base de connaissances, archivage",
+    category: "user",
   },
   {
     id: "extensions",
     icon: "extensions",
     label: "Morphs & Skills",
-    desc: "Morphs Locaryn (UI & moteurs), compétences et packs compatibles",
+    desc: "Morphs Locaryn (UI & moteurs), compétences et packs d'agents",
+    category: "user",
   },
   {
     id: "connectors",
     icon: "server",
     label: "Connecteurs & MCP",
     desc: "Serveurs MCP, bases de données et passerelles techniques",
+    category: "user",
   },
-  { id: "appearance", icon: "studio", label: "Apparence", desc: "Couleur d'accentuation, thème" },
-  { id: "language", icon: "chat", label: "Langue", desc: "Langue de l'interface" },
+  {
+    id: "projects",
+    icon: "project",
+    label: "Projets & Permissions",
+    desc: "Autorisations d'outils, base de connaissances, archivage",
+    category: "user",
+  },
+
+  // ── Intelligence Artificielle & Noyau ──
+  {
+    id: "engine",
+    icon: "settings",
+    label: "Moteur IA & Noyau",
+    desc: "Runtime llama.cpp, configuration du noyau, offload et adaptateurs",
+    category: "ai",
+  },
+  {
+    id: "performance",
+    icon: "speed",
+    label: "Performance & GPU",
+    desc: "GPU, cache KV, contexte, offload et benchmarks",
+    category: "ai",
+  },
+  {
+    id: "huggingface",
+    icon: "marketplace",
+    label: "HuggingFace",
+    desc: "Token pour les dépôts restreints (modèles gated)",
+    category: "ai",
+  },
+
+  // ── Serveur & Infrastructure ──
   {
     id: "server",
     icon: "server",
-    label: "Serveur & fonctions",
-    desc: "Service Locaryn, accès local et appairage",
+    label: "Serveur & Tunnels",
+    desc: "Service Locaryn, accès local, réseau et appairage",
+    category: "server",
   },
+
+  // ── Système & Préférences ──
   {
     id: "storage",
     icon: "models",
-    label: "Stockage",
+    label: "Stockage & Modèles",
     desc: "Emplacement des modèles, espace disque, nettoyage",
+    category: "system",
   },
-  { id: "about", icon: "warning", label: "À propos", desc: "Version, licences, système" },
+  {
+    id: "appearance",
+    icon: "studio",
+    label: "Apparence & Thème",
+    desc: "Couleur d'accentuation, mode sombre / clair",
+    category: "system",
+  },
+  {
+    id: "language",
+    icon: "chat",
+    label: "Langue",
+    desc: "Langue de l'interface utilisateur",
+    category: "system",
+  },
+  {
+    id: "about",
+    icon: "warning",
+    label: "À propos",
+    desc: "Version, licences et diagnostic système",
+    category: "system",
+  },
 ];
 
-/**
- * Full-page general settings, reached from the left navigation. Distinct from
- * the compact chat settings popup: this covers the whole application (engine,
- * projects, extensions, appearance, storage) while the popup only carries the
- * chat-scoped knobs. Shared sections are the same components in both.
- */
+const CATEGORY_HEADERS: Record<SettingsCategory, string> = {
+  user: "MON ESPACE & EXTENSIBILITÉ",
+  ai: "INTELLIGENCE ARTIFICIELLE & NOYAU",
+  server: "SERVEUR & ÉQUIPE",
+  system: "SYSTÈME & PRÉFÉRENCES",
+};
+
 export function SettingsView({
   theme,
   projects,
@@ -154,9 +199,6 @@ export function SettingsView({
     };
   }, []);
 
-  // Un lien locaryn://install?src=… doit atterrir sur la section Extensions.
-  // Le panneau consomme ensuite l'intention pour pré-remplir la fenêtre
-  // d'installation — on ne fait que naviguer ici.
   useEffect(() => {
     const check = () => {
       if (getPendingInstall()) setSection("extensions");
@@ -165,37 +207,62 @@ export function SettingsView({
     return subscribeDeepLink(check);
   }, []);
 
-  const current = SECTIONS.find((s) => s.id === section)!;
+  const current = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
   const remoteEnabled = activeCapabilities.includes("travel-tunnel");
+
+  const categoriesOrder: SettingsCategory[] = ["user", "ai", "server", "system"];
 
   return (
     <section className="locaryn-view-container locaryn-settings-page">
       <div className="locaryn-view-header">
-        <h2>Paramètres Système</h2>
+        <h2>Paramètres Système &amp; Profil</h2>
         <p className="locaryn-view-desc">
-          Tous les réglages de Locaryn. Les options propres à une conversation restent accessibles
-          depuis le panneau du chat.
+          Configuration générale de votre profil, de vos Morphs, de vos compétences et du moteur d'inférence.
         </p>
       </div>
 
       <div className="locaryn-settings-full">
         <nav className="locaryn-settings-full-nav">
-          {SECTIONS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
-              onClick={() => setSection(s.id)}
-            >
-              <span className="locaryn-settings-full-icon">
-                <Icon name={s.icon} />
-              </span>
-              <span className="locaryn-settings-full-text">
-                <span className="locaryn-settings-full-label">{s.label}</span>
-                <span className="locaryn-settings-full-desc">{s.desc}</span>
-              </span>
-            </button>
-          ))}
+          {categoriesOrder.map((cat) => {
+            const catSections = SECTIONS.filter((s) => s.category === cat);
+            if (catSections.length === 0) return null;
+
+            return (
+              <div key={cat} style={{ marginBottom: 12 }}>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.6px",
+                    color: "var(--text-faint)",
+                    padding: "4px 8px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {CATEGORY_HEADERS[cat]}
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {catSections.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
+                      onClick={() => setSection(s.id)}
+                    >
+                      <span className="locaryn-settings-full-icon">
+                        <Icon name={s.icon} />
+                      </span>
+                      <span className="locaryn-settings-full-text">
+                        <span className="locaryn-settings-full-label">{s.label}</span>
+                        <span className="locaryn-settings-full-desc">{s.desc}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div className="locaryn-settings-full-pane">

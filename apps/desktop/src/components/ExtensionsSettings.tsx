@@ -33,7 +33,7 @@ import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
 
 const ECOSYSTEM_FILTERS: { id: ExtensionEcosystem | "all"; label: string }[] = [
   { id: "all", label: "Tous" },
-  { id: "locaryn", label: "Officiel Locaryn (Certifié)" },
+  { id: "locaryn", label: "Morphs Officiels Locaryn (Certifiés)" },
   { id: "claude_code", label: ECOSYSTEM_LABELS.claude_code },
   { id: "gemini_cli", label: ECOSYSTEM_LABELS.gemini_cli },
   { id: "opencode", label: ECOSYSTEM_LABELS.opencode },
@@ -95,9 +95,9 @@ function installedExtensionKindLabel(e: InstalledExtension): string {
     case "cores":
       return "Noyau";
     case "plugins":
-      return "Plugin compatible";
+      return "Skill d'agent";
     default:
-      return "Extension Locaryn";
+      return "Morph Locaryn";
   }
 }
 
@@ -790,7 +790,7 @@ export function ExtensionsSettings() {
                 setInstallDialog({ open: true, kind: "extension", initialSource: zipPath });
               }
             }}
-            title="Importer une extension ou un plugin directement depuis une archive ZIP"
+            title="Importer un Morph ou un Skill directement depuis une archive ZIP"
           >
             📦 Importer ZIP…
           </button>
@@ -799,9 +799,9 @@ export function ExtensionsSettings() {
             className="locaryn-btn-primary"
             style={{ fontSize: 12, padding: "4px 12px" }}
             onClick={() => setInstallDialog({ open: true, kind: "extension" })}
-            title="Installer une extension ou un plugin depuis un dépôt, un dossier ou une archive"
+            title="Installer un Morph, un Skill ou un Noyau depuis un dépôt, un dossier ou une archive"
           >
-            + Installer une extension ou un plugin
+            + Installer un Morph ou un Skill
           </button>
         </div>
       </div>
@@ -812,8 +812,8 @@ export function ExtensionsSettings() {
           {(
             [
               ["all", `Tout (${installedCounts.all})`],
-              ["extensions", `Extensions Locaryn (${installedCounts.extensions})`],
-              ["plugins", `Plugins compatibles (${installedCounts.plugins})`],
+              ["extensions", `Morphs Locaryn (${installedCounts.extensions})`],
+              ["plugins", `Skills & Consignes (${installedCounts.plugins})`],
               ["cores", `Noyaux (${installedCounts.cores})`],
             ] as const
           ).map(([id, label]) => (
