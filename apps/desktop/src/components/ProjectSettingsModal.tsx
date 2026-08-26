@@ -18,7 +18,6 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
   const [requireWriteApproval, setRequireWriteApproval] = useState(true);
   const [requireShellApproval, setRequireShellApproval] = useState(true);
   const [allowedConnectors, setAllowedConnectors] = useState<Record<string, boolean>>({
-    ssh_server_1: true,
     postgres_mcp: false,
     brave_web_search: true,
     docker_engine: false,
@@ -166,36 +165,6 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <label
-            className="locaryn-checkbox-row"
-            style={{
-              background: "var(--bg)",
-              padding: "8px 12px",
-              borderRadius: "var(--radius-xs)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={allowedConnectors.ssh_server_1 ?? true}
-              onChange={() => toggleEnable("ssh_server_1")}
-            />
-            <div>
-              <span style={{ fontWeight: 700 }}>
-                <Icon name="server" size={15} /> Serveur SSH Distant
-              </span>
-              <span
-                style={{
-                  fontSize: "var(--text-xs)",
-                  color: "var(--text-faint)",
-                  display: "block",
-                }}
-              >
-                Permet à l'agent d'interagir avec votre serveur SSH lié.
-              </span>
-            </div>
-          </label>
-
           <label
             className="locaryn-checkbox-row"
             style={{

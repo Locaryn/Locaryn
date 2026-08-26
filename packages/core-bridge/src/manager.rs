@@ -105,13 +105,9 @@ pub trait CoreHost: Send + Sync {
 }
 
 fn loopback_only(url: &str) -> Result<(), String> {
-    let host = url
-        .trim_start_matches("http://")
-        .trim_start_matches("https://")
-        .split(['/', ':'])
-        .next()
-        .unwrap_or("");
-    if host == "127.0.0.1" || host == "localhost" || host == "::1" {
+    // La règle est la même pour un noyau et pour un moteur : elle vit donc
+    // une seule fois, dans le manifeste qui les décrit tous les deux.
+    if locaryn_extensions::manifest::is_loopback_url(url) {
         Ok(())
     } else {
         Err(format!(

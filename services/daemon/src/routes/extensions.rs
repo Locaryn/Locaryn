@@ -374,6 +374,46 @@ pub async fn restore_from_storage(state: &DaemonState) {
 /// mobile and web clients never launch plugin processes themselves, so an
 /// extension installed on the server would otherwise appear in `/v1/extensions`
 /// while its tools remained invisible to the agent.
+/// Republie tout ce que les extensions apportent au runtime : leurs serveurs
+/// MCP et leurs moteurs d'inférence.
+///
+/// Les deux suivent le même cycle — installation, activation, retrait — et les
+/// appeler ensemble évite qu'un moteur reste démarrable après le retrait de
+/// son extension parce qu'un site d'appel avait été oublié.
+pub async fn sync_extension_runtime(state: &DaemonState) {
+    sync_mcp_servers(state).await;
+    sync_extension_engines(state).await;
+}
+
+/// Donne au superviseur la liste des moteurs apportés par les extensions
+/// installées et actives.
+pub async fn sync_extension_engines(state: &DaemonState) {
+    let records = match state.storage.extensions.list().await {
+        Ok(records) => records,
+        Err(error) => {
+            tracing::warn!(error = %error, "moteurs d'extension : lecture du registre impossible");
+            return;
+        }
+    };
+    let sources: Vec<locaryn_provider_supervisor::extension_engine::EngineSource> = records
+        .into_iter()
+        .map(
+            |record| locaryn_provider_supervisor::extension_engine::EngineSource {
+                manifest_path: std::path::PathBuf::from(record.manifest_path),
+                enabled: record.enabled,
+            },
+        )
+        .collect();
+    let specs = locaryn_provider_supervisor::extension_engine::collect(&sources);
+    if !specs.is_empty() {
+        tracing::info!(
+            moteurs = ?specs.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+            "moteurs apportés par des extensions"
+        );
+    }
+    state.supervisor.set_extension_engines(specs).await;
+}
+
 pub async fn sync_mcp_servers(state: &DaemonState) {
     let records = match state.storage.extensions.list().await {
         Ok(records) => records,
@@ -396,62 +436,17 @@ pub async fn sync_mcp_servers(state: &DaemonState) {
         let Ok(loaded) = locaryn_extensions::loader::load(root) else {
             continue;
         };
-        let safe_name: String = record
-            .name
-            .chars()
-            .map(|character| {
-                if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
-                    character
-                } else {
-                    '-'
-                }
-            })
-            .collect();
-        let extension_data_dir = state.data_dir.join("extensions").join(&safe_name);
-        let _ = std::fs::create_dir_all(&extension_data_dir);
+        let safe_name = locaryn_extensions::hostpaths::sanitize_name(&record.name);
+        // Les chemins génériques vivent dans `hostpaths` : le bureau, le
+        // daemon et le superviseur doivent donner le **même** dossier privé à
+        // la même extension, sinon son serveur et son moteur travaillent
+        // chacun dans son coin.
+        let env_generique = locaryn_extensions::hostpaths::generic_env(&record.name, root);
         for (server_name, mut server) in loaded.mcp {
             let scoped = format!("{safe_name}__{server_name}");
-            server.env.insert(
-                "LOCARYN_DATA_DIR".into(),
-                state.data_dir.display().to_string(),
-            );
-            server.env.insert(
-                "LOCARYN_EXTENSION_DATA_DIR".into(),
-                extension_data_dir.display().to_string(),
-            );
-            server.env.insert(
-                "LOCARYN_EXTENSION_MODELS_DIR".into(),
-                extension_data_dir.join("models").display().to_string(),
-            );
-            server.env.insert(
-                "LOCARYN_EXTENSION_MEDIA_DIR".into(),
-                extension_data_dir.join("media").display().to_string(),
-            );
-            // Même raison que côté bureau : sans la bibliothèque de poids de
-            // l'utilisateur, une extension ne voit que son dossier privé et
-            // croit qu'aucun modèle n'est installé.
-            server.env.insert(
-                "LOCARYN_MODELS_DIR".into(),
-                locaryn_config::models_dir().display().to_string(),
-            );
-            // Les dossiers de cache et de travail que le socle tient hors du
-            // disque système. Une extension qui les ignore écrit dans
-            // `~/.cache`, et c'est ainsi qu'un disque système se remplit.
-            server.env.insert(
-                "LOCARYN_HF_CACHE_DIR".into(),
-                locaryn_config::hf_cache_dir().display().to_string(),
-            );
-            server.env.insert(
-                "LOCARYN_TEMP_DIR".into(),
-                locaryn_config::ensure_temp_dir().display().to_string(),
-            );
-            server
-                .env
-                .insert("LOCARYN_PLUGIN_ROOT".into(), root.display().to_string());
-            server.env.insert(
-                "LOCARYN_PLUGIN_BIN_DIR".into(),
-                root.join("bin").display().to_string(),
-            );
+            for (key, value) in &env_generique {
+                server.env.insert(key.clone(), value.clone());
+            }
             server.owner = Some(entry.name.clone());
             desired.insert(scoped, server);
         }
@@ -782,7 +777,7 @@ pub async fn enable_extension(
     match s.extensions.enable(&name) {
         Ok(()) => {
             persist_enabled(&s, &name, true).await;
-            sync_mcp_servers(&s).await;
+            sync_extension_runtime(&s).await;
             (
                 StatusCode::OK,
                 Json(serde_json::json!({ "status": "enabled", "name": name })),
@@ -801,7 +796,7 @@ pub async fn disable_extension(
     match s.extensions.disable(&name) {
         Ok(()) => {
             persist_enabled(&s, &name, false).await;
-            sync_mcp_servers(&s).await;
+            sync_extension_runtime(&s).await;
             (
                 StatusCode::OK,
                 Json(serde_json::json!({ "status": "disabled", "name": name })),
@@ -820,7 +815,7 @@ pub async fn remove_extension(
     match s.extensions.remove(&name) {
         Ok(()) => {
             persist_removed(&s, &name).await;
-            sync_mcp_servers(&s).await;
+            sync_extension_runtime(&s).await;
             (
                 StatusCode::OK,
                 Json(serde_json::json!({ "status": "removed", "name": name })),

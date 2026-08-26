@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, LoProgress, LoSpinner } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { type AppTask, TASK_META, taskCenter, useTasks } from "../lib/taskCenter";
 
@@ -30,10 +30,32 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 /**
- * Footer status bar + expandable notification center (bottom-right). Shows every
- * background task — downloads, image generations, model edits, workflows —
- * colour-coded by type so they are trivial to tell apart. Clicking the footer
- * expands the panel; completed artifacts can open their generic result view.
+ * Ce qui tourne, au centre de la barre d'état : une roue et un libellé en
+ * mono, rien d'autre. Muet quand il n'y a rien — une barre qui annonce
+ * « aucune tâche » occupe la place sans rien dire.
+ */
+export function RunningTask() {
+  const tasks = useTasks();
+  const running = tasks.filter((t) => t.status === "running");
+  if (running.length === 0) return null;
+  const first = running[0];
+  const rest = running.length - 1;
+  return (
+    <span className="locaryn-status-task">
+      <LoSpinner size="sm" />
+      <span className="locaryn-status-task-label" title={first.label}>
+        {first.detail ? `${first.label} — ${first.detail}` : first.label}
+      </span>
+      {rest > 0 && <span className="locaryn-status-task-more">+{rest}</span>}
+    </span>
+  );
+}
+
+/**
+ * Le centre de notifications, à droite de la barre d'état : une cloche qui
+ * sonne tant qu'il reste quelque chose à lire, et un panneau translucide qui
+ * s'ouvre au-dessus de la barre. Chaque entrée s'ignore seule ; « Tout
+ * effacer » vide la pile.
  */
 export function TaskCenter({ onOpenResult }: Props) {
   const tasks = useTasks();
@@ -55,6 +77,7 @@ export function TaskCenter({ onOpenResult }: Props) {
   }, [open]);
 
   const running = tasks.filter((t) => t.status === "running");
+  const unread = tasks.filter((t) => !t.read).length;
   const summary =
     running.length > 0
       ? `${running.length} tâche${running.length > 1 ? "s" : ""} en cours`
@@ -64,26 +87,22 @@ export function TaskCenter({ onOpenResult }: Props) {
 
   return (
     <>
-      {/* Footer status bar */}
+      {/* Cloche du centre de notifications */}
       <button
         ref={btnRef}
         type="button"
-        className={`locaryn-footer${running.length > 0 ? " locaryn-footer-active" : ""}`}
-        onClick={() => setOpen((v) => !v)}
-        title="Centre de notifications (téléchargements, générations, workflows)"
+        className={`locaryn-bell${unread > 0 ? " locaryn-bell-unread" : ""}`}
+        onClick={() => {
+          setOpen((v) => {
+            if (!v) taskCenter.markAllRead();
+            return !v;
+          });
+        }}
+        aria-expanded={open}
+        title={`Centre de notifications — ${summary}`}
       >
-        <span className="locaryn-footer-dot" data-on={running.length > 0} />
-        <span className="locaryn-footer-summary">{summary}</span>
-        {running.length > 0 && (
-          <span className="locaryn-footer-mini">
-            {running.slice(0, 3).map((t) => (
-              <span key={t.id} title={t.label} style={{ color: TASK_META[t.type].color }}>
-                {TASK_META[t.type].icon}
-              </span>
-            ))}
-          </span>
-        )}
-        <span className="locaryn-footer-chevron">{open ? "▾" : "▴"}</span>
+        <Icon name={unread > 0 ? "bell-ringing" : "bell"} size={16} />
+        {unread > 0 && <span className="locaryn-bell-count">{unread}</span>}
       </button>
 
       {/* Expandable notification panel (bottom-right) */}
@@ -104,9 +123,9 @@ export function TaskCenter({ onOpenResult }: Props) {
                 <button
                   type="button"
                   className="locaryn-notif-clear"
-                  onClick={() => taskCenter.clearFinished()}
+                  onClick={() => taskCenter.clearGallery()}
                 >
-                  Effacer terminées
+                  Tout effacer
                 </button>
               )}
               <button
@@ -178,7 +197,9 @@ export function TaskCenter({ onOpenResult }: Props) {
                     }
                   >
                     <div className="locaryn-notif-item-head">
-                      <span style={{ color: m.color }}>{m.icon}</span>
+                      <span style={{ color: m.color }} title={m.label}>
+                        <Icon name={m.icon} size={13} />
+                      </span>
                       <span className="locaryn-notif-item-label" title={t.label}>
                         {t.label}
                       </span>
@@ -190,6 +211,18 @@ export function TaskCenter({ onOpenResult }: Props) {
                           essai {t.attempt}
                         </span>
                       )}
+                      <button
+                        type="button"
+                        className="locaryn-notif-dismiss"
+                        aria-label="Ignorer cette notification"
+                        title="Ignorer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          taskCenter.remove(t.id);
+                        }}
+                      >
+                        <Icon name="close" size={12} />
+                      </button>
                       <span className={`locaryn-notif-status locaryn-notif-${t.status}`}>
                         {t.status === "running"
                           ? t.type === "workflow" && t.steps && t.steps.length
@@ -204,15 +237,11 @@ export function TaskCenter({ onOpenResult }: Props) {
                     {/* Workflow: dynamic step list (plan generated by the LLM) */}
                     {t.type === "workflow" && t.steps && t.steps.length > 0 ? (
                       <>
-                        <div className="locaryn-notif-bar">
-                          <div
-                            className="locaryn-notif-bar-fill"
-                            style={{
-                              width: `${Math.round(((t.stepIndex ?? 0) / t.steps.length) * 100)}%`,
-                              background: m.color,
-                            }}
-                          />
-                        </div>
+                        <LoProgress
+                          value={(t.stepIndex ?? 0) / t.steps.length}
+                          on="surface-2"
+                          label={t.label}
+                        />
                         <ol className="locaryn-wf-steps">
                           {t.steps.map((s, i) => {
                             const done = i < (t.stepIndex ?? 0);
@@ -235,12 +264,7 @@ export function TaskCenter({ onOpenResult }: Props) {
                     ) : (
                       t.status === "running" &&
                       typeof t.progress === "number" && (
-                        <div className="locaryn-notif-bar">
-                          <div
-                            className="locaryn-notif-bar-fill"
-                            style={{ width: `${t.progress}%`, background: m.color }}
-                          />
-                        </div>
+                        <LoProgress value={t.progress / 100} on="surface-2" label={t.label} />
                       )
                     )}
 

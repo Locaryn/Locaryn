@@ -313,7 +313,7 @@ export function ModelObliterator({
             className="locaryn-btn-primary"
             style={{
               background: disclaimerAccepted ? "var(--danger)" : "var(--border)",
-              color: "#fff",
+              color: disclaimerAccepted ? "var(--on-accent)" : "var(--text-faint)",
             }}
             disabled={!disclaimerAccepted || isProcessing}
             onClick={startObliteration}

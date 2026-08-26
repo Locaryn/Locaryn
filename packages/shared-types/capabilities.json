@@ -78,5 +78,10 @@
     "id": "batch-api",
     "label": "API batch",
     "description": "Traitement asynchrone par lots."
+  },
+  {
+    "id": "inference-engine",
+    "label": "Moteur d'inférence",
+    "description": "Apporte un serveur d'inférence local que Locaryn installe, démarre et supervise comme son runtime intégré."
   }
 ]

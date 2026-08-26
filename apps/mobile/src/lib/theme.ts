@@ -1,65 +1,54 @@
 /**
- * La couleur d'accentuation — la même palette que le bureau.
+ * Le thème du téléphone — mode sombre / clair et couleur d'accentuation.
  *
- * Les jetons de design vivent dans `packages-ui/tokens` (--accent, --accent-rgb)
- * et sont prévus pour être remplacés à l'exécution. C'est ce que fait
- * `useTheme` sur l'ordinateur ; ici, la même chose, en plus petit : six teintes
- * prédéfinies plus une couleur personnalisée, conservées sur l'appareil.
+ * La mécanique est celle de `@locaryn/ui-core` : la même que sur l'ordinateur
+ * et le web, pour que la dérivation de l'accent en mode clair ne diverge pas
+ * d'un client à l'autre. Ici on ne fait que la garder sur l'appareil.
  */
 
-export const ACCENT_PRESETS = [
-  { name: "Pine", hex: "#6F9C7F", rgb: "111,156,127" },
-  { name: "Sage", hex: "#88A98F", rgb: "136,169,143" },
-  { name: "Moss", hex: "#7E9B63", rgb: "126,155,99" },
-  { name: "Fern", hex: "#5F9C78", rgb: "95,156,120" },
-  { name: "Stone", hex: "#8E9188", rgb: "142,145,136" },
-  { name: "Clay", hex: "#B08D6A", rgb: "176,141,106" },
-] as const;
+import { ACCENT_PRESETS, type ThemeMode, applyTheme, resolveMode } from "@locaryn/ui-core";
 
-export interface Accent {
+export { ACCENT_PRESETS, type ThemeMode };
+
+export interface ReglageTheme {
+  /** Sombre, clair, ou le thème du système. */
+  mode: ThemeMode;
+  /** L'accent en mode sombre ; le mode clair l'assombrit tout seul. */
   hex: string;
-  rgb: string;
 }
 
 const STORAGE_KEY = "locaryn:theme-mobile";
 
-/** Convertir un hex (#RRGGBB) en « r,g,b » pour les compositions rgba(). */
-function hexToRgb(hex: string): string {
-  const m = hex.replace("#", "");
-  const r = Number.parseInt(m.substring(0, 2), 16);
-  const g = Number.parseInt(m.substring(2, 4), 16);
-  const b = Number.parseInt(m.substring(4, 6), 16);
-  return `${r},${g},${b}`;
-}
+const DEFAUT: ReglageTheme = { mode: "dark", hex: ACCENT_PRESETS[0].hex };
 
-/** L'accent enregistré, ou le défaut (Pine). */
-export function lireAccent(): Accent {
+/** Le réglage enregistré, ou le défaut. */
+export function lireTheme(): ReglageTheme {
   try {
     const brut = localStorage.getItem(STORAGE_KEY);
     if (brut) {
-      const p = JSON.parse(brut) as Partial<Accent>;
-      if (p?.hex && p?.rgb) return { hex: p.hex, rgb: p.rgb };
+      const p = JSON.parse(brut) as Partial<ReglageTheme>;
+      return {
+        mode: p.mode === "light" || p.mode === "system" ? p.mode : "dark",
+        hex: typeof p.hex === "string" ? p.hex : DEFAUT.hex,
+      };
     }
-  } catch {
-    // stockage illisible : on repart du défaut
+  } catch (err) {
+    console.warn("Thème illisible sur l'appareil, retour au défaut.", err);
   }
-  return { hex: ACCENT_PRESETS[0].hex, rgb: ACCENT_PRESETS[0].rgb };
+  return DEFAUT;
 }
 
-/** Pose l'accent sur les jetons CSS partagés, et le garde sur l'appareil. */
-export function appliquerAccent(accent: Accent): void {
-  const root = document.documentElement;
-  root.style.setProperty("--accent", accent.hex);
-  root.style.setProperty("--accent-rgb", accent.rgb);
-  root.style.setProperty("--accent-hex", accent.hex);
+/** Pose le thème sur les jetons CSS partagés, et le garde sur l'appareil. */
+export function appliquerTheme(reglage: ReglageTheme, anime = false): void {
+  applyTheme(reglage.mode, reglage.hex, anime);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(accent));
-  } catch {
-    // stockage indisponible : l'accent tient pour cette session
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(reglage));
+  } catch (err) {
+    console.warn("Thème non conservé : stockage indisponible.", err);
   }
 }
 
-/** Construire un Accent depuis n'importe quel hex valide. */
-export function accentDepuisHex(hex: string): Accent {
-  return { hex, rgb: hexToRgb(hex) };
+/** Le mode réellement rendu, une fois « system » résolu. */
+export function modeRendu(reglage: ReglageTheme) {
+  return resolveMode(reglage.mode);
 }

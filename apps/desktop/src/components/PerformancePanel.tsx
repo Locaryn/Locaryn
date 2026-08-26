@@ -59,7 +59,7 @@ const PROFILES: ProfileCard[] = [
       "Batch 1024",
     ],
     badge: "Recommandé",
-    badgeColor: "rgba(111, 156, 127, 0.9)",
+    badgeColor: "var(--accent)",
   },
   {
     id: "longctx",
@@ -74,14 +74,14 @@ const PROFILES: ProfileCard[] = [
       "llama.cpp géré",
     ],
     badge: "Contexte max",
-    badgeColor: "rgba(212, 160, 58, 0.9)",
+    badgeColor: "var(--warn)",
   },
 ];
 
 const KV_OPTIONS: { value: KvCacheType; label: string; desc: string; color: string }[] = [
-  { value: "f16", label: "FP16", desc: "Standard", color: "#6a6d68" },
-  { value: "q8_0", label: "Q8", desc: "÷2 VRAM", color: "#6f9c7f" },
-  { value: "q4_0", label: "Q4", desc: "÷4 VRAM (max réel)", color: "#d4a03a" },
+  { value: "f16", label: "FP16", desc: "Standard", color: "var(--text-faint)" },
+  { value: "q8_0", label: "Q8", desc: "÷2 VRAM", color: "var(--accent)" },
+  { value: "q4_0", label: "Q4", desc: "÷4 VRAM (max réel)", color: "var(--warn)" },
 ];
 
 const CTX_PRESETS = [
@@ -628,7 +628,7 @@ export function PerformancePanel() {
           <span className="perf-summary-label">Flash Attn</span>
           <span
             className="perf-summary-val"
-            style={{ color: cfg.flash_attention ? "#6f9c7f" : "#6a6d68" }}
+            style={{ color: cfg.flash_attention ? "var(--accent)" : "var(--text-faint)" }}
           >
             {cfg.flash_attention ? "ON" : "OFF"}
           </span>

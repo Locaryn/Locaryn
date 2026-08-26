@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, LoProgress } from "@locaryn/ui-core";
 import { useMemo, useState } from "react";
 
 export interface BatchJob {
@@ -132,7 +132,7 @@ export function BatchStudio() {
               <span style={{ fontSize: "10px", color: "var(--text-faint)", display: "block" }}>
                 ÉCONOMIE JETONS
               </span>
-              <strong style={{ color: "#64c878", fontSize: "14px" }}>
+              <strong style={{ color: "var(--accent-300)", fontSize: "14px" }}>
                 {totalSavedTokens.toLocaleString()} tokens
               </strong>
             </div>
@@ -207,7 +207,7 @@ export function BatchStudio() {
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: "11px", color: "#64c878" }}>
+          <span style={{ fontSize: "11px", color: "var(--accent-300)" }}>
             Réduction de 50 % appliquée automatiquement sur la facture de tokens.
           </span>
           <button
@@ -244,7 +244,7 @@ export function BatchStudio() {
                       <strong style={{ fontSize: "13px" }}>{j.name}</strong>
                       <span
                         className="locaryn-tag"
-                        style={{ background: "rgba(100, 200, 120, 0.15)", color: "#64c878" }}
+                        style={{ background: "var(--accent-fill)", color: "var(--accent-300)" }}
                       >
                         {j.provider}
                       </span>
@@ -289,11 +289,8 @@ export function BatchStudio() {
                 </div>
 
                 {j.status === "in_progress" && (
-                  <div
-                    className="locaryn-footer-progress-track"
-                    style={{ width: "100%", marginTop: "8px", height: "4px" }}
-                  >
-                    <div className="locaryn-footer-progress-fill" style={{ width: `${pct}%` }} />
+                  <div style={{ marginTop: "8px" }}>
+                    <LoProgress value={pct / 100} on="surface" label="Traitement du lot" />
                   </div>
                 )}
               </div>

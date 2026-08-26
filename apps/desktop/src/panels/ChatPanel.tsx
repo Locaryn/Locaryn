@@ -1,4 +1,4 @@
-import { Icon, isIconName } from "@locaryn/ui-core";
+import { Icon, LoMorph, isIconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
@@ -13,6 +13,7 @@ import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import { FREE_CHAT_PATH } from "../lib/constants";
 import {
   type ConnectionMode,
+  type InstalledExtension,
   type ReasoningLevel,
   type Session,
   type StreamEvent,
@@ -107,6 +108,7 @@ type Props = {
    *  Hermes…). Absent = noyau Locaryn natif. */
   coreName?: string | null;
   activeCapabilities?: string[];
+  extensions?: InstalledExtension[];
 };
 
 const SUGGESTIONS = [
@@ -229,6 +231,7 @@ export function ChatPanel({
   onSessionMoved,
   coreName,
   activeCapabilities = [],
+  extensions = [],
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -1172,9 +1175,7 @@ export function ChatPanel({
             })}
             {streaming && (
               <div className="locaryn-thinking" aria-live="polite">
-                <span className="locaryn-thinking-dot" />
-                <span className="locaryn-thinking-dot" />
-                <span className="locaryn-thinking-dot" />
+                <LoMorph label="Le modèle réfléchit" />
               </div>
             )}
 
@@ -1307,8 +1308,8 @@ export function ChatPanel({
             value={workspace}
             onChange={handleWorkspaceChange}
             onAddProject={onAddProject}
-            onAddSsh={onAddSsh}
             cloudConnected={connectionMode === "remote"}
+            extensions={extensions}
           />
         </div>
 

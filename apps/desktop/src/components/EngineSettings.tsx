@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   type AppInfo,
   type InferenceConfig,
+  type InferenceEngineInfo,
   type InstalledExtension,
   type LlamaRuntimeStatus,
   type LoraAdapter,
@@ -127,6 +128,225 @@ export const CAPS: { key: keyof RuntimeCapabilities; label: string; hint: string
     hint: "Cache 4/8-bit pour contexte long à VRAM égale",
   },
 ];
+
+/**
+ * Les moteurs qui calculent les jetons : le runtime integre et ceux qu'une
+ * extension apporte, dans une seule liste.
+ *
+ * Un moteur d'extension arrive avec ce que son manifeste declare — son nom, les
+ * formats de poids qu'il sert, ce qu'il exige de la machine. Rien ici n'est
+ * ecrit pour un moteur en particulier : la liste vient du socle.
+ */
+function ChatEngines() {
+  const [engines, setEngines] = useState<InferenceEngineInfo[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [journal, setJournal] = useState<{ engine: string; texte: string } | null>(null);
+
+  async function recharger() {
+    try {
+      setEngines(await core.listInferenceEngines());
+    } catch (e) {
+      setErreur(String(e).replace(/^Error:\s*/, ""));
+    }
+  }
+
+  useEffect(() => {
+    let annule = false;
+    core
+      .listInferenceEngines()
+      .then((liste) => {
+        if (!annule) setEngines(liste);
+      })
+      .catch(() => {
+        if (!annule) setEngines([]);
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
+
+  async function demarrer(engine: string) {
+    setBusy(engine);
+    setErreur(null);
+    setJournal(null);
+    try {
+      await core.startInferenceEngine(engine);
+      await recharger();
+    } catch (e) {
+      setErreur(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function arreter(engine: string) {
+    setBusy(engine);
+    setErreur(null);
+    try {
+      await core.stopInferenceEngine(engine);
+      await recharger();
+    } catch (e) {
+      setErreur(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function voirJournal(engine: string) {
+    try {
+      setJournal({ engine, texte: await core.inferenceEngineLog(engine, 120) });
+    } catch (e) {
+      setJournal({ engine, texte: String(e).replace(/^Error:\s*/, "") });
+    }
+  }
+
+  // Un moteur qu'aucune extension n'apporte et qui ne repond pas n'est pas un
+  // moteur installe : les lister tous ferait passer pour absents quatre
+  // runtimes que l'utilisateur n'a jamais demandes.
+  const visibles = (engines ?? []).filter(
+    (e) => e.extension !== null || e.healthy || e.active || e.engine === "llama_cpp",
+  );
+
+  if (engines === null) {
+    return (
+      <div className="locaryn-field">
+        <div className="locaryn-field-label">Moteurs de conversation</div>
+        <p className="locaryn-field-hint">Lecture de l'etat des moteurs…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="locaryn-field">
+      <div className="locaryn-field-label">Moteurs de conversation ({visibles.length})</div>
+      <p className="locaryn-field-hint">
+        Le moteur choisi calcule les reponses. Le runtime integre charge du GGUF ; une extension
+        peut en apporter un autre, avec ses propres formats de poids. Un seul est actif a la fois.
+      </p>
+
+      {erreur && (
+        <div className="locaryn-gen-error" style={{ marginTop: 10 }}>
+          {erreur}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
+          gap: 12,
+          marginTop: 12,
+        }}
+      >
+        {visibles.map((e) => (
+          <div
+            key={e.engine}
+            className="locaryn-box-card"
+            style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <Icon name={e.extension ? "extensions" : "cpu"} size={16} />
+                <strong style={{ fontSize: 13, color: "var(--text)" }}>{e.label}</strong>
+              </div>
+              <span className={e.active ? "locaryn-chip locaryn-chip-on" : "locaryn-chip"}>
+                {e.active ? "Actif" : e.healthy ? "En marche" : "Arrete"}
+              </span>
+            </div>
+
+            {e.extension && (
+              <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
+                Apporte par {e.extension}
+                {e.extensionVersion ? ` ${e.extensionVersion}` : ""}
+              </div>
+            )}
+
+            {e.formats.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {e.formats.map((f) => (
+                  <span key={f} className="locaryn-tag">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {e.model && (
+              <div style={{ fontSize: 11, color: "var(--text-dim)", wordBreak: "break-all" }}>
+                Modele : {e.model}
+              </div>
+            )}
+
+            {e.unmetRequirement && (
+              <p className="locaryn-field-hint" style={{ margin: 0, color: "var(--warn)" }}>
+                {e.unmetRequirement}
+              </p>
+            )}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+              <button
+                type="button"
+                className="locaryn-btn-primary"
+                style={{ minHeight: 40 }}
+                disabled={busy === e.engine || e.unmetRequirement !== null}
+                onClick={() => demarrer(e.engine)}
+              >
+                {busy === e.engine ? "…" : e.active ? "Redemarrer" : "Utiliser"}
+              </button>
+              {e.owned && (
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  style={{ minHeight: 40 }}
+                  disabled={busy === e.engine}
+                  onClick={() => arreter(e.engine)}
+                >
+                  Arreter
+                </button>
+              )}
+              {e.logPath && (
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  style={{ minHeight: 40 }}
+                  onClick={() => voirJournal(e.engine)}
+                >
+                  Journal
+                </button>
+              )}
+            </div>
+
+            {journal?.engine === e.engine && (
+              <pre
+                style={{
+                  margin: 0,
+                  maxHeight: 220,
+                  overflow: "auto",
+                  fontSize: 11,
+                  lineHeight: 1.45,
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: 8,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {journal.texte || "(journal vide)"}
+              </pre>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Local AI engine: managed llama.cpp runtime, what it can do, and LoRA adapters.
@@ -258,6 +478,9 @@ export function EngineSettings({
 
   return (
     <div className="locaryn-engine-tab">
+      {/* ── Moteurs de conversation : lus du socle, pas d'une liste écrite ici ── */}
+      <ChatEngines />
+
       {/* ── Moteurs IA actifs selon les plugins installés ── */}
       <div className="locaryn-field">
         <div className="locaryn-field-label">
@@ -308,7 +531,7 @@ export function EngineSettings({
                     padding: "2px 6px",
                     borderRadius: "4px",
                     background: "rgba(16, 185, 129, 0.15)",
-                    color: "#10b981",
+                    color: "var(--accent-300)",
                     fontWeight: 600,
                   }}
                 >

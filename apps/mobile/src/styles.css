@@ -1,34 +1,6 @@
 @import "../../../packages-ui/tokens/tokens.css";
-
-/* ── Sen, la même police que le desktop (embarquée en local) ── */
-@font-face {
-  font-family: "Sen";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/latin-400-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Sen";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("/fonts/latin-600-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Sen";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("/fonts/latin-700-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Sen";
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url("/fonts/latin-800-normal.woff2") format("woff2");
-}
+@import "../../../packages-ui/tokens/fonts.css";
+@import "../../../packages-ui/tokens/loading.css";
 
 /* ═══════════════════════════════════════════════════════════
    Locaryn — téléphone.
@@ -82,7 +54,7 @@ body {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 /* Un message qui doit se voir quel que soit l'écran en dessous. */
@@ -150,7 +122,7 @@ body {
   font-size: 15px;
   font-family: inherit;
   font-weight: 600;
-  color: #12140f;
+  color: var(--on-accent);
   background: var(--accent);
   border: none;
   border-radius: var(--radius);
@@ -196,16 +168,28 @@ body {
    faut pour que tout ce qu'elle contient atteigne la cible tactile minimale de
    44 px sans déborder. À 46 px, les boutons étaient rognés ou décentrés. */
 .lo-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 50px;
-  padding: 0 var(--space-3);
+  min-height: 52px;
+  /* Marges latérales du téléphone : 20px, comme partout ailleurs ici. */
+  padding: 0 var(--space-5);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--border);
   font-size: var(--text-base);
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text-dim);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lo-bar {
+    background: var(--surface);
+  }
 }
 
 /* Tout ce qui se touche dans la barre : même hauteur, texte centré sur les
@@ -214,7 +198,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
+  /* Un pouce ne vise pas à 40px : jamais sous 44 sur un téléphone. */
+  min-height: 44px;
 }
 .lo-dot {
   width: 7px;
@@ -371,7 +356,7 @@ body {
   cursor: pointer;
 }
 .lo-msg-copy:active {
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 
 /* La confirmation d'une copie ou d'un enregistrement. */
@@ -390,10 +375,21 @@ body {
   color: var(--text);
 }
 .lo-compose {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
   display: flex;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5) var(--space-4);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border-top: 1px solid var(--border);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lo-compose {
+    background: var(--surface);
+  }
 }
 .lo-compose .lo-input {
   flex: 1;
@@ -403,7 +399,7 @@ body {
   width: 48px;
   min-height: 48px;
   font-size: 17px;
-  color: #12140f;
+  color: var(--on-accent);
   background: var(--accent);
   border: none;
   border-radius: var(--radius);
@@ -526,28 +522,6 @@ body {
   white-space: nowrap;
   color: var(--text);
 }
-.lo-tabs {
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5) 0;
-  border-bottom: 1px solid var(--border);
-}
-.lo-tab {
-  flex: 1;
-  min-height: 44px;
-  font-size: 14px;
-  font-family: inherit;
-  color: var(--text-faint);
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-}
-.lo-tab-on {
-  color: var(--text);
-  font-weight: 600;
-  border-bottom-color: var(--accent);
-}
 .lo-studio {
   flex: 1;
   overflow-y: auto;
@@ -567,7 +541,7 @@ body {
 }
 .lo-chip {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
   font-size: 13px;
   font-family: inherit;
   color: var(--text-dim);
@@ -577,7 +551,7 @@ body {
   cursor: pointer;
 }
 .lo-chip-on {
-  color: #12140f;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: var(--accent);
   font-weight: 600;
@@ -731,6 +705,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-bar-menu {
   flex: none;
   min-width: 44px;
+  min-height: 44px;
   padding: 0;
   font-size: 18px;
   line-height: 1;
@@ -762,7 +737,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   display: flex;
   flex-direction: column;
   width: min(82vw, 320px);
-  background: var(--glass-bg-strong);
+  background: var(--glass-strong);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border-right: 1px solid var(--glass-border);
@@ -857,7 +832,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   font-size: 14px;
   font-weight: 600;
   text-align: left;
-  color: #12140f;
+  color: var(--on-accent);
   background: var(--accent);
   border: none;
   border-radius: var(--radius-sm);
@@ -871,7 +846,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   align-items: center;
   gap: 6px;
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 var(--space-3);
   font-family: inherit;
   font-size: 12px;
@@ -977,9 +952,9 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 }
 
 /* Un bouton d'action dans une carte : la cible tactile ne descend pas sous
-   40 px, même quand le texte est court. */
+   44 px, même quand le texte est court. */
 .lo-btn-small {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 12px;
   font-family: inherit;
   font-size: 13px;
@@ -993,7 +968,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   opacity: 0.5;
 }
 .lo-btn-small-on {
-  color: #12140f;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: transparent;
   font-weight: 600;
@@ -1027,7 +1002,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   flex-direction: column;
   padding: var(--space-2) var(--space-3);
   padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
-  background: var(--glass-bg-strong);
+  background: var(--glass-strong);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border-top: 1px solid var(--glass-border);
@@ -1092,7 +1067,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 
 /* Le mode éphémère armé : la pastille se remplit. */
 .lo-bar-action-on {
-  color: #12140f;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: transparent;
 }
@@ -1189,6 +1164,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-bar-icon {
   flex: none;
   min-width: 44px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1199,7 +1175,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   cursor: pointer;
 }
 .lo-bar-icon-on {
-  color: #12140f;
+  color: var(--on-accent);
   background: var(--accent);
 }
 
@@ -1225,7 +1201,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--text-muted);
+  color: var(--text-dim);
   white-space: pre-wrap;
   /* Un message de version peut être long : on en montre l'essentiel et le
      reste se déroule, plutôt que de pousser le bouton hors de l'écran. */
@@ -1233,41 +1209,6 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   overflow-y: auto;
 }
 
-/* Le téléchargement d'une mise à jour : une barre qui se remplit, ou qui
-   glisse quand le manifeste n'a pas donné de taille — un mouvement honnête
-   vaut mieux qu'un pourcentage inventé. */
-.lo-progress {
-  position: relative;
-  height: 6px;
-  margin-top: var(--space-3);
-  border-radius: 3px;
-  background: var(--bg);
-  overflow: hidden;
-}
-.lo-progress-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: var(--accent);
-  transition: width 120ms ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  .lo-progress-fill {
-    transition: none;
-  }
-}
-/* Indéterminé : un reflet qui glisse, et aucune largeur qui prétend savoir. */
-.lo-progress-indeterminate .lo-progress-fill {
-  width: 40%;
-  animation: lo-progress-glisse 1.2s ease-in-out infinite;
-}
-@keyframes lo-progress-glisse {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(250%);
-  }
-}
 .lo-progress-sizes {
   margin: var(--space-2) 0 0;
 }
@@ -1282,17 +1223,17 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
-  border: 1px solid var(--lo-border);
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: transparent;
-  color: var(--lo-text-dim);
+  color: var(--text-dim);
 }
 .lo-compose-action:active:not(:disabled) {
-  background: var(--lo-surface-2);
-  color: var(--lo-text);
+  background: var(--surface-2);
+  color: var(--text);
 }
 .lo-compose-action:disabled {
   opacity: 0.4;
@@ -1301,26 +1242,26 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 /* Un réglage d'extension : liste de choix, ou interrupteur. */
 .lo-select {
   min-width: 140px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 10px;
-  border: 1px solid var(--lo-border);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--lo-surface);
-  color: var(--lo-text);
+  background: var(--surface);
+  color: var(--text);
   font-size: 15px;
 }
 .lo-toggle {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
-  border: 1px solid var(--lo-border);
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: transparent;
-  color: var(--lo-text-dim);
+  color: var(--text-dim);
   font-size: 15px;
 }
 .lo-toggle-on {
-  border-color: var(--lo-accent);
-  color: var(--lo-accent);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* Le cadre de visée, et la sortie.
@@ -1490,15 +1431,6 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   }
 }
 
-@keyframes lo-fade-in {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
 .lo-figure-sessions {
   display: flex;
   flex-direction: column;
@@ -1530,22 +1462,56 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 }
 .lo-tab {
   flex: 1;
+  /* Un pouce ne vise pas à 31px : jamais sous 44 sur un téléphone. */
+  min-height: 44px;
   text-align: center;
-  padding: 7px 12px;
+  padding: 0 var(--space-3);
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-base);
+  font-weight: 500;
   color: var(--text-dim);
   background: transparent;
   border: none;
-  border-radius: var(--radius-pill, 9999px);
+  border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color var(--dur-fast) var(--ease);
 }
 .lo-tab-active {
-  background: var(--surface-hover);
+  background: var(--surface-2);
   color: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Choix qui s'excluent : thème, mode d'appairage ──
+   Même dessin que les onglets, mais posé dans un formulaire : ici l'accent
+   marque le choix retenu, parce qu'il n'y a rien d'autre de vif autour. */
+.lo-segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.lo-segment {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.lo-segment-on {
+  color: var(--on-accent);
+  background: var(--accent);
 }
 
 /* ── Filtres / Chips ── */
@@ -1579,7 +1545,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   white-space: nowrap;
 }
 .lo-chip-active {
-  background: rgba(var(--accent-rgb), 0.15);
+  background: var(--accent-fill);
   border-color: var(--accent);
   color: var(--text);
   font-weight: 600;
@@ -1594,7 +1560,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 }
 .lo-search-input {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 12px;
   font-size: 14px;
   font-family: inherit;
@@ -1606,21 +1572,6 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 }
 .lo-search-input:focus {
   border-color: var(--accent);
-}
-
-/* ── Barre de progression ── */
-.lo-progress-bar {
-  width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-  overflow: hidden;
-  margin: 6px 0;
-}
-.lo-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.2s ease;
 }
 
 /* ── Pop-up / Modale ── */
@@ -1702,24 +1653,6 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   background: var(--surface);
 }
 
-/* ── Chargement ──
-   Un anneau qui tourne : le même pour tout ce qui charge — la liste, une
-   conversation, une réponse. Une animation en mouvement vaut mieux qu'un
-   « … » statique qui ne dit pas si quelque chose se passe. */
-.lo-spinner {
-  width: 18px;
-  height: 18px;
-  flex: none;
-  border: 2px solid rgba(var(--accent-rgb), 0.25);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: lo-spin 0.8s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .lo-spinner {
-    animation-duration: 2s;
-  }
-}
 .lo-loading-row {
   display: flex;
   align-items: center;
@@ -1790,15 +1723,6 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   word-break: break-all;
 }
 
-@keyframes lo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* ── Paramètres : les mêmes catégories que le bureau ── */
 .lo-settings-intro {
   margin: 0 0 var(--space-2);
@@ -1857,7 +1781,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #12140f;
+  color: var(--on-accent);
 }
 .lo-custom-color {
   display: flex;
@@ -1865,8 +1789,8 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   gap: var(--space-2);
 }
 .lo-color-input {
-  width: 46px;
-  height: 40px;
+  width: 48px;
+  height: 44px;
   padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

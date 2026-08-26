@@ -1,0 +1,158 @@
+/* ═══════════════════════════════════════════════════════════
+   Locaryn — les quatre formes de chargement.
+
+   Le système n'en a que quatre. Ne pas en inventer d'autres :
+
+   1. Progression ondulée déterminée — tout chargement dont on
+      connaît la fin (téléchargement, quantification, indexation,
+      import, mise à jour).
+   2. Onde courte — le modèle réfléchit avant le premier jeton,
+      une commande courte s'exécute, une transcription démarre.
+   3. Squelette — listes en attente.
+   4. Rotateur — action courte sans progression connue.
+
+   Le dessin vit dans @locaryn/ui-core (LoProgress, LoMorph,
+   LoSkeleton, LoSpinner) ; ce fichier ne porte que la matière.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 1. Progression ondulée déterminée ──────────────────────
+   Deux copies du même tracé : le rail complet en --surface-3, la
+   part faite en --accent découpée à la valeur de progression. Les
+   deux ondulent ensemble ; un point marque la frontière. */
+.lo-progress {
+  position: relative;
+  height: 24px;
+  width: 100%;
+  overflow: hidden;
+}
+.lo-progress-rail,
+.lo-progress-done {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+}
+.lo-progress-rail {
+  right: 0;
+}
+.lo-progress-done {
+  transition: width var(--dur-slow) var(--ease);
+}
+.lo-progress svg {
+  display: block;
+  animation: lo-wave 0.9s linear infinite;
+}
+.lo-progress-head {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--surface), 0 0 10px rgba(var(--accent-rgb), 0.5);
+  transition: left var(--dur-slow) var(--ease);
+}
+/* Sur une surface autre que --surface, le cerclage du point doit
+   reprendre la couleur du fond réel. */
+.lo-progress[data-on="bg"] .lo-progress-head {
+  box-shadow: 0 0 0 3px var(--bg), 0 0 10px rgba(var(--accent-rgb), 0.5);
+}
+.lo-progress[data-on="surface-2"] .lo-progress-head {
+  box-shadow: 0 0 0 3px var(--surface-2), 0 0 10px rgba(var(--accent-rgb), 0.5);
+}
+
+/* ── 2. Onde courte ─────────────────────────────────────────
+   Un ruban de points suit un chemin guide, prend l'angle de la
+   coche et s'arrête dessus. La coche est droite, angle vif : seul
+   le trajet qui y mène est courbe. Le tracé est recalculé image
+   par image en JS — SMIL ne démarre pas de façon fiable. */
+.lo-morph {
+  display: block;
+  overflow: visible;
+}
+.lo-morph polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: miter;
+}
+.lo-morph circle {
+  fill: var(--accent);
+}
+
+/* ── 3. Squelette ───────────────────────────────────────────
+   Listes en attente. Rien d'autre : jamais sur un bouton, jamais
+   sur une valeur qui va simplement changer. */
+.lo-skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2));
+  background-size: 320px 100%;
+  animation: lo-shimmer 1.4s linear infinite;
+}
+
+/* ── 4. Rotateur ────────────────────────────────────────────
+   Action courte sans progression connue. */
+.lo-spinner {
+  display: inline-block;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--surface-3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: lo-spin 0.8s linear infinite;
+}
+.lo-spinner-sm {
+  width: 13px;
+  height: 13px;
+  border-width: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   L'interrupteur
+
+   Vit ici parce qu'il est partagé comme les chargements. La pastille
+   glisse ; le filet `--stroke-top` n'y touche pas — sur une surface
+   pleine, il dessinerait une barre blanche parasite.
+   ═══════════════════════════════════════════════════════════ */
+.lo-switch {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  cursor: pointer;
+  touch-action: pan-y;
+  transition: background var(--dur-med) var(--ease);
+}
+.lo-switch:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-accent);
+}
+.lo-switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.lo-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform var(--dur-med) var(--ease);
+}
+.lo-switch-on {
+  background: var(--accent);
+}
+.lo-switch-on .lo-switch-thumb {
+  transform: translateX(18px);
+  background: var(--on-accent);
+}

@@ -422,7 +422,7 @@ export function TrainingView({ onOpenModels }: Props) {
                     className="locaryn-btn-primary"
                     style={{
                       background: disclaimerAccepted ? "var(--danger)" : "var(--border)",
-                      color: "#fff",
+                      color: disclaimerAccepted ? "var(--on-accent)" : "var(--text-faint)",
                     }}
                     disabled={!disclaimerAccepted || isObliterating}
                     onClick={startObliteration}

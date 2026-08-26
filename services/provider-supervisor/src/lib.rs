@@ -29,7 +29,10 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 pub mod engine_manager;
+pub mod extension_engine;
 pub mod runtime_install;
+
+pub use extension_engine::ExtensionEngineSpec;
 
 // ============================================================================
 // Config
@@ -80,6 +83,8 @@ pub enum SupervisorError {
     SpawnFailed(ProviderEngine, String),
     #[error("exécutable introuvable : {0}")]
     BinaryNotFound(String),
+    #[error("moteur inconnu : {0} — l'extension qui l'apportait n'est plus installée ou active")]
+    UnknownEngine(String),
     #[error("storage error: {0}")]
     Storage(#[from] locaryn_storage::StorageError),
     #[error("io error: {0}")]
@@ -141,6 +146,13 @@ struct SupervisorInner {
     states: Mutex<HashMap<ProviderEngine, EngineState>>,
     storage: Storage,
     http: reqwest::Client,
+    /// Moteurs apportés par les extensions installées, par identifiant.
+    ///
+    /// L'hôte remplit ce registre depuis le registre d'extensions et le
+    /// remplace à chaque changement (installation, activation, retrait). Le
+    /// superviseur ne lit jamais le disque des extensions : il ne connaît que
+    /// ce qu'on lui a donné.
+    extension_engines: Mutex<HashMap<String, ExtensionEngineSpec>>,
 }
 
 impl Supervisor {
@@ -156,7 +168,87 @@ impl Supervisor {
                 states: Mutex::new(HashMap::new()),
                 storage,
                 http,
+                extension_engines: Mutex::new(HashMap::new()),
             }),
+        }
+    }
+
+    // -- moteurs apportés par les extensions -------------------------------
+
+    /// Remplace la liste des moteurs d'extension connus.
+    ///
+    /// Appelé par l'hôte au démarrage puis à chaque changement du registre
+    /// d'extensions. Remplacer plutôt qu'ajouter est volontaire : une
+    /// extension désactivée doit disparaître d'ici, sinon son moteur reste
+    /// démarrable alors que l'utilisateur l'a retirée.
+    ///
+    /// Les processus des moteurs qui disparaissent sont arrêtés — un runtime
+    /// dont l'extension n'existe plus ne doit pas continuer à occuper la
+    /// mémoire du GPU.
+    pub async fn set_extension_engines(&self, specs: Vec<ExtensionEngineSpec>) {
+        let nouveaux: HashMap<String, ExtensionEngineSpec> =
+            specs.into_iter().map(|s| (s.id.clone(), s)).collect();
+        let partis: Vec<String> = {
+            let mut registre = self.inner.extension_engines.lock().await;
+            let partis = registre
+                .keys()
+                .filter(|id| !nouveaux.contains_key(*id))
+                .cloned()
+                .collect();
+            *registre = nouveaux;
+            partis
+        };
+        for id in partis {
+            let engine = ProviderEngine::Extension(id.clone());
+            tracing::info!(moteur = %id, "moteur d'extension retiré — arrêt du runtime");
+            self.kill_owned(&engine).await;
+        }
+    }
+
+    /// La description d'un moteur d'extension, si ce moteur en est un et que
+    /// son extension est toujours installée.
+    pub async fn extension_engine_spec(
+        &self,
+        engine: &ProviderEngine,
+    ) -> Option<ExtensionEngineSpec> {
+        let id = engine.extension_id()?;
+        self.inner.extension_engines.lock().await.get(id).cloned()
+    }
+
+    /// Tous les moteurs apportés par des extensions, triés par nom affiché —
+    /// ce que l'écran des réglages liste à côté des runtimes intégrés.
+    pub async fn extension_engines(&self) -> Vec<ExtensionEngineSpec> {
+        let mut v: Vec<ExtensionEngineSpec> = self
+            .inner
+            .extension_engines
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect();
+        v.sort_by(|a, b| a.label.cmp(&b.label));
+        v
+    }
+
+    /// Le point d'entrée HTTP d'un moteur, intégré ou apporté.
+    pub async fn endpoint_for(&self, engine: &ProviderEngine) -> Option<String> {
+        if let Some(spec) = self.extension_engine_spec(engine).await {
+            return Some(spec.endpoint());
+        }
+        default_endpoint(engine).map(str::to_string)
+    }
+
+    /// Sonde un moteur. Un moteur d'extension utilise l'URL de sa propre
+    /// sonde ; les autres passent par `/v1/models`.
+    async fn probe(
+        &self,
+        engine: &ProviderEngine,
+        endpoint: &str,
+        spec: Option<&ExtensionEngineSpec>,
+    ) -> bool {
+        match spec {
+            Some(spec) => probe_url(&self.inner.http, &spec.health_url()).await,
+            None => healthcheck_engine(&self.inner.http, engine, endpoint).await,
         }
     }
 
@@ -169,11 +261,17 @@ impl Supervisor {
     /// and return.
     ///
     /// Returns the endpoint URL on success.
-    pub async fn ensure_running(&self, engine: ProviderEngine) -> Result<String, SupervisorError> {
-        let endpoint = default_endpoint(engine).to_string();
+    pub async fn ensure_running(&self, engine: &ProviderEngine) -> Result<String, SupervisorError> {
+        let spec = self.extension_engine_spec(engine).await;
+        let endpoint = match &spec {
+            Some(s) => s.endpoint(),
+            None => default_endpoint(engine)
+                .ok_or_else(|| SupervisorError::UnknownEngine(engine.as_token()))?
+                .to_string(),
+        };
 
         // Fast path: already healthy?
-        if healthcheck_engine(&self.inner.http, engine, &endpoint).await {
+        if self.probe(engine, &endpoint, spec.as_ref()).await {
             // Mark healthy in storage and return.
             let _ = self
                 .inner
@@ -184,8 +282,10 @@ impl Supervisor {
             return Ok(endpoint);
         }
 
-        // Not healthy — try to spawn it (managed engines: LlamaCpp + AirLlm).
-        if !matches!(engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm) {
+        // Not healthy — try to spawn it. Les runtimes gérés sont llama.cpp,
+        // AirLLM, et tout moteur qu'une extension décrit assez précisément
+        // pour être lancé.
+        if spec.is_none() && !matches!(engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm) {
             // For non-managed engines, we don't auto-spawn — just report the
             // endpoint and let the caller decide.
             let _ = self
@@ -194,7 +294,7 @@ impl Supervisor {
                 .providers
                 .set_status_by_engine(engine, ProviderStatus::Unhealthy)
                 .await;
-            return Err(SupervisorError::NotRunning(engine));
+            return Err(SupervisorError::NotRunning(engine.clone()));
         }
 
         tracing::info!(%endpoint, ?engine, "engine not running — auto-spawning runtime");
@@ -210,12 +310,14 @@ impl Supervisor {
             .set_status_by_engine(engine, ProviderStatus::Starting)
             .await;
 
-        // Spawn the runtime process (llama-server or the AirLLM Python server).
-        let child = match engine {
-            ProviderEngine::AirLlm => {
+        // Spawn the runtime process: llama-server, the AirLLM Python server,
+        // or le serveur décrit par une extension.
+        let child = match (&spec, engine) {
+            (Some(spec), _) => extension_engine::spawn(spec, active_model.as_deref()).await?,
+            (None, ProviderEngine::AirLlm) => {
                 spawn_airllm_server(&self.inner.cfg, active_model.as_deref()).await?
             }
-            _ => {
+            (None, _) => {
                 spawn_llama_server(&self.inner.cfg, active_model.as_deref(), &self.inner.http)
                     .await?
             }
@@ -225,9 +327,9 @@ impl Supervisor {
             let mut states = self.inner.states.lock().await;
             // A restart must not silently unpin: if the user pinned this
             // engine and the process died, it comes back pinned.
-            let pinned = states.get(&engine).is_some_and(|s| s.pinned);
+            let pinned = states.get(engine).is_some_and(|s| s.pinned);
             states.insert(
-                engine,
+                engine.clone(),
                 EngineState {
                     child: Some(child),
                     last_activity: Instant::now(),
@@ -241,21 +343,24 @@ impl Supervisor {
         // Wait for it to become healthy (poll until startup_timeout). AirLLM's
         // first load converts the layers and can take 10+ minutes, so it gets
         // a much longer startup budget than llama-server.
-        let startup_budget = if engine == ProviderEngine::AirLlm {
-            Duration::from_secs(30 * 60)
-        } else {
-            self.inner.cfg.startup_timeout
+        // Un premier chargement peut convertir des poids : AirLLM et les
+        // moteurs d'extension annoncent leur propre budget, le reste garde
+        // celui de la configuration.
+        let startup_budget = match (&spec, engine) {
+            (Some(spec), _) => spec.startup_timeout(),
+            (None, ProviderEngine::AirLlm) => Duration::from_secs(30 * 60),
+            (None, _) => self.inner.cfg.startup_timeout,
         };
         let deadline = Instant::now() + startup_budget;
         loop {
-            if healthcheck_engine(&self.inner.http, engine, &endpoint).await {
+            if self.probe(engine, &endpoint, spec.as_ref()).await {
                 let _ = self
                     .inner
                     .storage
                     .providers
                     .set_status_by_engine(engine, ProviderStatus::Healthy)
                     .await;
-                tracing::info!(%endpoint, "ollama is now healthy");
+                tracing::info!(%endpoint, moteur = %engine.as_token(), "moteur en marche");
                 return Ok(endpoint);
             }
             if Instant::now() >= deadline {
@@ -268,8 +373,8 @@ impl Supervisor {
                     .set_status_by_engine(engine, ProviderStatus::Unhealthy)
                     .await;
                 return Err(SupervisorError::StartupTimeout(
-                    engine,
-                    self.inner.cfg.startup_timeout,
+                    engine.clone(),
+                    startup_budget,
                 ));
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
@@ -277,17 +382,24 @@ impl Supervisor {
     }
 
     /// Record that the agent used this engine (resets the idle timer).
-    pub async fn note_activity(&self, engine: ProviderEngine) {
+    pub async fn note_activity(&self, engine: &ProviderEngine) {
         let mut states = self.inner.states.lock().await;
-        if let Some(s) = states.get_mut(&engine) {
+        if let Some(s) = states.get_mut(engine) {
             s.last_activity = Instant::now();
         }
     }
 
     /// Check whether an engine is currently healthy (does NOT spawn).
-    pub async fn is_healthy(&self, engine: ProviderEngine) -> bool {
-        let endpoint = default_endpoint(engine).to_string();
-        healthcheck_engine(&self.inner.http, engine, &endpoint).await
+    pub async fn is_healthy(&self, engine: &ProviderEngine) -> bool {
+        let spec = self.extension_engine_spec(engine).await;
+        let endpoint = match &spec {
+            Some(s) => s.endpoint(),
+            None => match default_endpoint(engine) {
+                Some(e) => e.to_string(),
+                None => return false,
+            },
+        };
+        self.probe(engine, &endpoint, spec.as_ref()).await
     }
 
     /// Keep this engine in memory regardless of the idle timer, or release it
@@ -296,9 +408,9 @@ impl Supervisor {
     /// Unpinning does not unload anything. It restores the ordinary rule —
     /// the engine goes when it has been idle long enough — because a user who
     /// stops pinning a model has not asked for it to disappear this instant.
-    pub async fn set_pinned(&self, engine: ProviderEngine, pinned: bool) {
+    pub async fn set_pinned(&self, engine: &ProviderEngine, pinned: bool) {
         let mut states = self.inner.states.lock().await;
-        if let Some(s) = states.get_mut(&engine) {
+        if let Some(s) = states.get_mut(engine) {
             s.pinned = pinned;
             // Unpinning restarts the clock rather than back-dating the
             // eviction: otherwise a long conversation would be evicted the
@@ -316,24 +428,24 @@ impl Supervisor {
     }
 
     /// Whether this engine is pinned in memory.
-    pub async fn is_pinned(&self, engine: ProviderEngine) -> bool {
+    pub async fn is_pinned(&self, engine: &ProviderEngine) -> bool {
         let states = self.inner.states.lock().await;
-        states.get(&engine).is_some_and(|s| s.pinned)
+        states.get(engine).is_some_and(|s| s.pinned)
     }
 
     /// Seconds since the last recorded activity, and whether the engine is
     /// pinned — what the status bar needs to explain itself.
-    pub async fn residency(&self, engine: ProviderEngine) -> Option<(u64, bool, bool)> {
+    pub async fn residency(&self, engine: &ProviderEngine) -> Option<(u64, bool, bool)> {
         let mut states = self.inner.states.lock().await;
         let timeout = self.inner.cfg.idle_timeout.as_secs();
-        states.get_mut(&engine).map(|s| {
+        states.get_mut(engine).map(|s| {
             let idle = Instant::now().duration_since(s.last_activity).as_secs();
             (idle.min(timeout), s.pinned, s.is_running())
         })
     }
 
     /// Manually stop a runtime we own. No-op if we don't own it.
-    pub async fn shutdown(&self, engine: ProviderEngine) -> Result<(), SupervisorError> {
+    pub async fn shutdown(&self, engine: &ProviderEngine) -> Result<(), SupervisorError> {
         self.kill_owned(engine).await;
         let _ = self
             .inner
@@ -359,24 +471,38 @@ impl Supervisor {
     /// Get a snapshot of the current runtime status for all known engines.
     /// Useful for the daemon's `/v1/supervisor/status` endpoint.
     pub async fn status_snapshot(&self) -> Vec<EngineSnapshot> {
-        let engines = [
+        // Les moteurs intégrés, puis ceux qu'apportent les extensions
+        // installées : l'écran des réglages les montre dans une seule liste.
+        let mut entrees: Vec<(ProviderEngine, String, Option<ExtensionEngineSpec>)> = [
             ProviderEngine::Ollama,
             ProviderEngine::LlamaCpp,
             ProviderEngine::Lmstudio,
             ProviderEngine::Vllm,
             ProviderEngine::AirLlm,
-        ];
-        let mut states = self.inner.states.lock().await;
-        let mut out = Vec::with_capacity(engines.len());
-        for e in engines {
-            let endpoint = default_endpoint(e).to_string();
-            let (owned, child_alive) = match states.get_mut(&e) {
-                Some(s) => (s.owned, s.is_running()),
-                None => (false, false),
+        ]
+        .into_iter()
+        .filter_map(|e| {
+            let endpoint = default_endpoint(&e)?.to_string();
+            Some((e, endpoint, None))
+        })
+        .collect();
+        for spec in self.extension_engines().await {
+            entrees.push((spec.engine(), spec.endpoint(), Some(spec)));
+        }
+
+        let mut out = Vec::with_capacity(entrees.len());
+        for (engine, endpoint, spec) in entrees {
+            let (owned, child_alive) = {
+                let mut states = self.inner.states.lock().await;
+                match states.get_mut(&engine) {
+                    Some(s) => (s.owned, s.is_running()),
+                    None => (false, false),
+                }
             };
-            let healthy = healthcheck_engine(&self.inner.http, e, &endpoint).await;
+            let healthy = self.probe(&engine, &endpoint, spec.as_ref()).await;
             out.push(EngineSnapshot {
-                engine: e,
+                label: spec.as_ref().map(|s| s.label.clone()),
+                engine,
                 endpoint,
                 healthy,
                 owned,
@@ -400,10 +526,18 @@ impl Supervisor {
             tokio::time::sleep(interval).await;
 
             let mut to_shutdown = Vec::new();
+            // Photographié hors du verrou des états : la sonde d'un moteur
+            // d'extension vit dans l'autre registre.
+            let extension_specs: HashMap<String, ExtensionEngineSpec> = self
+                .extension_engines()
+                .await
+                .into_iter()
+                .map(|s| (s.engine().as_token(), s))
+                .collect();
 
             {
                 let mut states = self.inner.states.lock().await;
-                for (&engine, state) in states.iter_mut() {
+                for (engine, state) in states.iter_mut() {
                     // Only manage engines we own.
                     if !state.owned {
                         continue;
@@ -424,9 +558,13 @@ impl Supervisor {
                         continue;
                     }
 
-                    // Healthcheck the HTTP endpoint.
-                    let healthy =
-                        healthcheck_engine(&self.inner.http, engine, &state.endpoint).await;
+                    // Healthcheck the HTTP endpoint. Un moteur d'extension a
+                    // sa propre sonde ; la lire ici évite de déclarer mort un
+                    // serveur qui n'expose pas `/v1/models`.
+                    let healthy = match extension_specs.get(engine.as_token().as_str()) {
+                        Some(spec) => probe_url(&self.inner.http, &spec.health_url()).await,
+                        None => healthcheck_engine(&self.inner.http, engine, &state.endpoint).await,
+                    };
                     let new_status = if healthy {
                         ProviderStatus::Healthy
                     } else {
@@ -451,19 +589,19 @@ impl Supervisor {
                             idle_secs = idle.as_secs(),
                             "runtime idle â€” shutting down"
                         );
-                        to_shutdown.push(engine);
+                        to_shutdown.push(engine.clone());
                     }
                 }
             }
 
             // Shutdown outside the lock to avoid holding it during kill.
             for engine in to_shutdown {
-                let _ = self.kill_owned(engine).await;
+                self.kill_owned(&engine).await;
                 let _ = self
                     .inner
                     .storage
                     .providers
-                    .set_status_by_engine(engine, ProviderStatus::Unknown)
+                    .set_status_by_engine(&engine, ProviderStatus::Unknown)
                     .await;
             }
         }
@@ -471,9 +609,9 @@ impl Supervisor {
 
     /// Kill a spawned child process (owned only). Removes the entry from the
     /// state map.
-    async fn kill_owned(&self, engine: ProviderEngine) {
+    async fn kill_owned(&self, engine: &ProviderEngine) {
         let mut states = self.inner.states.lock().await;
-        if let Some(mut state) = states.remove(&engine) {
+        if let Some(mut state) = states.remove(engine) {
             if state.owned {
                 if let Some(child) = state.child.as_mut() {
                     // Try graceful kill first (SIGTERM on Unix, Kill on Win).
@@ -518,6 +656,9 @@ impl Supervisor {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct EngineSnapshot {
     pub engine: ProviderEngine,
+    /// Nom affiché quand le moteur vient d'une extension. `None` pour les
+    /// runtimes intégrés, dont l'interface connaît déjà le nom.
+    pub label: Option<String>,
     pub endpoint: String,
     pub healthy: bool,
     /// True if the supervisor spawned this runtime (and can shut it down).
@@ -530,45 +671,48 @@ pub struct EngineSnapshot {
 // Free functions
 // ============================================================================
 
-/// Default loopback endpoint per engine.
-pub fn default_endpoint(e: ProviderEngine) -> &'static str {
+/// Adresse loopback par défaut d'un moteur intégré.
+///
+/// `None` pour un moteur apporté par une extension : son adresse est celle de
+/// son manifeste, et l'inventer ici ferait sonder un port au hasard.
+/// Utilisez [`Supervisor::endpoint_for`] pour couvrir les deux cas.
+pub fn default_endpoint(e: &ProviderEngine) -> Option<&'static str> {
     match e {
-        ProviderEngine::Ollama => "http://127.0.0.1:11434",
-        ProviderEngine::LlamaCpp => "http://127.0.0.1:8080",
-        ProviderEngine::Lmstudio => "http://127.0.0.1:1234",
-        ProviderEngine::Vllm => "http://127.0.0.1:8000",
-        ProviderEngine::OpenAiCompat => "http://127.0.0.1:8000",
-        ProviderEngine::AirLlm => "http://127.0.0.1:8090",
+        ProviderEngine::Ollama => Some("http://127.0.0.1:11434"),
+        ProviderEngine::LlamaCpp => Some("http://127.0.0.1:8080"),
+        ProviderEngine::Lmstudio => Some("http://127.0.0.1:1234"),
+        ProviderEngine::Vllm => Some("http://127.0.0.1:8000"),
+        ProviderEngine::OpenAiCompat => Some("http://127.0.0.1:8000"),
+        ProviderEngine::AirLlm => Some("http://127.0.0.1:8090"),
+        ProviderEngine::Extension(_) => None,
     }
+}
+
+/// Une requête `GET` qui répond 2xx : la sonde la plus simple, partagée par
+/// tous les chemins de santé.
+pub async fn probe_url(client: &reqwest::Client, url: &str) -> bool {
+    client
+        .get(url)
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
 
 /// Healthcheck an engine by hitting its HTTP endpoint.
 /// Returns `true` if the runtime responds with a 2xx status.
 pub async fn healthcheck_engine(
     client: &reqwest::Client,
-    engine: ProviderEngine,
+    engine: &ProviderEngine,
     endpoint: &str,
 ) -> bool {
     // Try the OpenAI-compatible /v1/models endpoint first (works for all
     // engines). Fall back to Ollama's native /api/version for Ollama.
-    let url = format!("{endpoint}/v1/models");
-    if client
-        .get(&url)
-        .send()
-        .await
-        .map(|r| r.status().is_success())
-        .unwrap_or(false)
-    {
+    if probe_url(client, &format!("{endpoint}/v1/models")).await {
         return true;
     }
     if matches!(engine, ProviderEngine::Ollama) {
-        let v = format!("{endpoint}/api/version");
-        return client
-            .get(&v)
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false);
+        return probe_url(client, &format!("{endpoint}/api/version")).await;
     }
     false
 }

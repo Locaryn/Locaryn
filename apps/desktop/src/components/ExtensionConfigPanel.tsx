@@ -434,18 +434,23 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                 value={String(value ?? "")}
                 onChange={(e) => set(key, e.target.value)}
               />
-              <button
-                type="button"
+              <label
                 className="locaryn-btn-ghost"
-                onClick={() =>
-                  core
-                    .pickVoiceReference?.()
-                    .then((p) => p && set(key, p))
-                    .catch(() => undefined)
-                }
+                style={{ display: "inline-flex", alignItems: "center", cursor: "pointer" }}
               >
                 Parcourir
-              </button>
+                <input
+                  type="file"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      const nativePath = (f as unknown as { path?: string }).path || f.name;
+                      set(key, nativePath);
+                    }
+                  }}
+                />
+              </label>
             </div>
           </div>
         );

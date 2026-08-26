@@ -1,3 +1,4 @@
+import { LoProgress } from "@locaryn/ui-core";
 import { open } from "@tauri-apps/plugin-shell";
 import { type Update, check } from "@tauri-apps/plugin-updater";
 import { useEffect, useRef, useState } from "react";
@@ -262,14 +263,11 @@ export function AboutSettings() {
           </div>
         </div>
         {downloading && updateState.total != null && updateState.total > 0 && (
-          <div className="locaryn-update-progress">
-            <div
-              className="locaryn-update-progress-fill"
-              style={{
-                width: `${Math.min(100, (updateState.downloaded / updateState.total) * 100)}%`,
-              }}
-            />
-          </div>
+          <LoProgress
+            value={updateState.downloaded / updateState.total}
+            on="surface"
+            label="Téléchargement de la mise à jour"
+          />
         )}
       </div>
 

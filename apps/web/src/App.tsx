@@ -1,3 +1,4 @@
+import { watchSystemMode } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "./components/Chat";
 import { Extensions } from "./components/Extensions";
@@ -10,6 +11,7 @@ import { SignIn } from "./components/SignIn";
 import { Studio } from "./components/Studio";
 import { type PhoneExtension, type WebStatus, api } from "./lib/core";
 import { isIOS, isStandalone, rememberDismissed, rememberInstalled, shouldPrompt } from "./lib/pwa";
+import { appliquerTheme, lireTheme } from "./lib/theme";
 
 type Screen = "loading" | "signin" | "chat" | Destination | "memory";
 
@@ -29,6 +31,16 @@ export function App() {
   const [extensions, setExtensions] = useState<PhoneExtension[]>([]);
   /** Une conversation neuve tenue par une figure, à ouvrir dans le chat. */
   const [figureChatId, setFigureChatId] = useState<string | null>(null);
+
+  // Le thème s'applique avant tout appel réseau : la page ne doit jamais
+  // apparaître dans le mauvais mode le temps d'une réponse. Tant que le
+  // réglage est « system », on suit le navigateur.
+  useEffect(() => {
+    const reglage = lireTheme();
+    appliquerTheme(reglage);
+    if (reglage.mode !== "system") return;
+    return watchSystemMode(() => appliquerTheme(reglage, true));
+  }, []);
 
   const refresh = useCallback(async () => {
     const s = await api.status();

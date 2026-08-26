@@ -189,83 +189,6 @@ export interface ToolApprovalDecision {
   note: string | null;
 }
 
-// ── SSH connector ──────────────────────────────────────────────────────────
-export type SshAuthMethod = "password" | "key" | "agent";
-export type SshAiAccess = "none" | "read_only" | "approval" | "trusted";
-export type SshStatus = "unknown" | "ok" | "error";
-
-export interface SshJump {
-  host: string;
-  port: number;
-  username: string;
-  auth_method: SshAuthMethod;
-  key_path: string | null;
-}
-
-export interface SshServer {
-  id: string;
-  name: string;
-  description: string;
-  host: string;
-  port: number;
-  username: string;
-  auth_method: SshAuthMethod;
-  key_path: string | null;
-  jump: SshJump | null;
-  host_key_algo: string | null;
-  host_key_sha256: string | null;
-  host_key_verified: boolean;
-  ai_access: SshAiAccess;
-  capabilities: unknown;
-  scope: string;
-  status: SshStatus;
-  enabled: boolean;
-  last_connected_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/** The form payload. `secret` is passed separately, never inside the draft. */
-export interface SshServerDraft {
-  name: string;
-  description: string;
-  host: string;
-  port: number;
-  username: string;
-  auth_method: SshAuthMethod;
-  key_path: string | null;
-  scope?: string;
-  jump: SshJump | null;
-}
-
-export interface SshServerPatch {
-  name?: string;
-  description?: string;
-  host?: string;
-  port?: number;
-  username?: string;
-  key_path?: string;
-}
-
-export interface SshProbeResult {
-  reachable: boolean;
-  os: string | null;
-  whoami: string | null;
-  can_read: boolean;
-  can_write: boolean;
-  is_sudoer: boolean;
-  host_key: { algo: string; sha256: string };
-  suggested_description: string;
-  test_token: string;
-}
-
-export type SshTestEvent =
-  | { type: "connecting" }
-  | { type: "authenticating" }
-  | { type: "probing"; step: string }
-  | { type: "done" }
-  | { type: "error"; message: string };
-
 export interface ConnectorType {
   type_id: string;
   display_name: string;
@@ -1070,6 +993,30 @@ export interface HfModelSelection {
 }
 
 /** State of the managed llama.cpp runtime. */
+/**
+ * Un moteur d'inférence : le runtime intégré, ou celui qu'une extension
+ * apporte. `engine` est le jeton (`llama_cpp`, `ext:mon-moteur`) que les
+ * commandes de démarrage et d'arrêt attendent.
+ */
+export interface InferenceEngineInfo {
+  engine: string;
+  label: string;
+  /** Extension qui l'apporte, `null` pour un runtime intégré. */
+  extension: string | null;
+  extensionVersion: string | null;
+  endpoint: string;
+  healthy: boolean;
+  /** Le processus a été lancé par l'application, donc elle peut l'arrêter. */
+  owned: boolean;
+  active: boolean;
+  model: string | null;
+  /** Formats de poids servis, en mots lisibles. */
+  formats: string[];
+  /** Ce qui manque sur cette machine, dans les mots de l'auteur du moteur. */
+  unmetRequirement: string | null;
+  logPath: string | null;
+}
+
 export interface LlamaRuntimeStatus {
   installed: boolean;
   version: string | null;
@@ -1329,9 +1276,6 @@ export interface CoreApi {
   /** Legacy wire method used by older image extensions. */
   getImageDefaults(): Promise<ImageDefaults>;
   setImageDefaults(config: ImageDefaults): Promise<void>;
-  /** Should this message be routed to the image generator? Prepares the
-   *  English prompt; the user always confirms before anything is generated. */
-  detectImageRequest(message: string): Promise<ImageIntent>;
   /** Background call: 1-click next-step suggestions after an answer. */
   /** `question` est le message auquel la réponse répond : sans lui, les
    *  suggestions ne savent pas de quoi parle la conversation. */
@@ -1586,21 +1530,6 @@ export interface CoreApi {
   saveAudioAs(sourcePath: string, destinationPath: string): Promise<void>;
   /** Legacy image artifact action; generation itself belongs to a plugin. */
   saveImageAs(sourcePath: string, destinationPath: string): Promise<void>;
-  listSshServers(): Promise<SshServer[]>;
-  testSshConnection(
-    draft: SshServerDraft,
-    secret: string | null,
-    onEvent: (ev: SshTestEvent) => void,
-  ): Promise<SshProbeResult>;
-  confirmSshHostKey(testToken: string): Promise<void>;
-  saveSshServer(
-    draft: SshServerDraft,
-    secret: string | null,
-    testToken: string,
-  ): Promise<SshServer>;
-  updateSshServer(id: string, patch: SshServerPatch): Promise<SshServer>;
-  setSshAiAccess(id: string, level: SshAiAccess): Promise<SshServer>;
-  deleteSshServer(id: string): Promise<void>;
 
   /** Send the user verdict+scope back to the runtime (doc 11 s6.5). */
   approveToolCall: (decision: ToolApprovalDecision) => Promise<void>;
@@ -1641,76 +1570,14 @@ export interface CoreApi {
   ragClear(projectId: string): Promise<void>;
   /** Preview retrieval: top-k chunks for a query (also used to test the index). */
   ragSearch(projectId: string, query: string, k?: number): Promise<RagHit[]>;
-  /** List local TTS/speech synthesis models. */
-  listAudioModels(): Promise<string[]>;
-  /** List available Kokoro voice names for a given Kokoro model. */
-  listKokoroVoices(model: string): Promise<string[]>;
-  /** Pick a voice reference audio file from disk. Returns null if cancelled. */
-  pickVoiceReference(): Promise<string | null>;
-  /** Generate music from a text prompt using a music generation model (Python-based).
-   *  Returns the absolute path to the generated audio file. */
-  /** Generate a 3D model from a text prompt or image using a local 3D
-   *  generation model (Shape-E, Point-E, TripoSR, etc. — Python-based).
-   *  Returns the absolute path to the generated 3D file (.obj/.glb/.ply). */
-  generate3D(
-    model: string,
-    prompt: string,
-    outputDir: string,
-    inputImage?: string | null,
-    negativePrompt?: string | null,
-    steps?: number | null,
-    cfgScale?: number | null,
-    format?: string | null,
-    onProgress?: (pct: number, detail?: string) => void,
-  ): Promise<GeneratedAudio>;
-
-  /** Generate music from a text prompt using a Python-based music generation
-   *  model. Returns the absolute path to the generated audio file. */
-  generateMusic(
-    model: string,
-    prompt: string,
-    outputDir: string,
-    duration?: number | null,
-    melodyReference?: string | null,
-    negativePrompt?: string | null,
-    steps?: number | null,
-    cfgScale?: number | null,
-    onProgress?: (pct: number, detail?: string) => void,
-  ): Promise<GeneratedAudio>;
-  /** Generate a video from a text prompt or image using a local video
-   *  generation model (Wan 2.1, LTX Video, SVD, etc. — Python-based).
-   *  Returns the absolute path to the generated video file. */
-  generateVideo(
-    model: string,
-    prompt: string,
-    outputDir: string,
-    duration?: number | null,
-    inputImage?: string | null,
-    negativePrompt?: string | null,
-    steps?: number | null,
-    cfgScale?: number | null,
-    width?: number | null,
-    height?: number | null,
-    onProgress?: (pct: number, detail?: string) => void,
-  ): Promise<GeneratedAudio>;
-  /** Synthesize speech from text. Returns the absolute path to the generated
-   *  audio file. */
-  generateAudio(
-    model: string,
-    text: string,
-    outputDir: string,
-    voiceReference?: string,
-    speaker?: string,
-    speed?: number,
-    pitch?: number,
-    energy?: number,
-    clarity?: number,
-    language?: string,
-    voiceDescription?: string,
-    designPrompt?: string,
-    sampling?: TtsSampling,
-    onProgress?: (pct: number, detail?: string) => void,
-  ): Promise<GeneratedAudio>;
+  /** Les moteurs d'inférence connus — intégrés et apportés par extension. */
+  listInferenceEngines(): Promise<InferenceEngineInfo[]>;
+  /** Rend un moteur actif et démarre son processus. */
+  startInferenceEngine(engine: string, model?: string): Promise<InferenceEngineInfo>;
+  /** Arrête le processus d'un moteur lancé par l'application. */
+  stopInferenceEngine(engine: string): Promise<void>;
+  /** La fin du journal d'un moteur d'extension — pourquoi il n'a pas démarré. */
+  inferenceEngineLog(engine: string, lines?: number): Promise<string>;
   /** Status of the managed llama.cpp runtime (installed / up to date). */
   llamaRuntimeStatus(): Promise<LlamaRuntimeStatus>;
   /** Download + install the pinned llama.cpp runtime, streaming progress. */
@@ -1780,7 +1647,6 @@ const tauriCore: CoreApi = {
   suggestFollowups: (answer, question) =>
     invoke<string[]>("suggest_followups", { answer, question }),
   planTask: (request) => invoke<TaskPlan>("plan_task", { request }),
-  detectImageRequest: (message) => invoke<ImageIntent>("detect_image_request", { message }),
   appendChatMessage: (sessionId, role, content) =>
     invoke<void>("append_chat_message", { sessionId, role, content }),
   appendAssistantMessage: (sessionId, content) =>
@@ -2030,18 +1896,6 @@ const tauriCore: CoreApi = {
     invoke<void>("save_audio_as", { sourcePath, destinationPath }),
   saveImageAs: (sourcePath, destinationPath) =>
     invoke<void>("save_image_as", { sourcePath, destinationPath }),
-  listSshServers: () => invoke<SshServer[]>("list_ssh_servers"),
-  testSshConnection(draft, secret, onEvent) {
-    const chan = new Channel<SshTestEvent>();
-    chan.onmessage = onEvent;
-    return invoke("test_ssh_connection", { draft, secret, onEvent: chan });
-  },
-  confirmSshHostKey: (testToken) => invoke("confirm_ssh_host_key", { testToken }),
-  saveSshServer: (draft, secret, testToken) =>
-    invoke<SshServer>("save_ssh_server", { draft, secret, testToken }),
-  updateSshServer: (id, patch) => invoke<SshServer>("update_ssh_server", { id, patch }),
-  setSshAiAccess: (id, level) => invoke<SshServer>("set_ssh_ai_access", { id, level }),
-  deleteSshServer: (id) => invoke("delete_ssh_server", { id }),
   approveToolCall: (decision) => invoke("approve_tool_call", { payload: decision }),
 
   updateProviderModelParams: (params) => invoke("update_provider_model_params", { params }),
@@ -2093,125 +1947,12 @@ const tauriCore: CoreApi = {
   ragClear: (projectId) => invoke<void>("rag_clear", { projectId }),
   ragSearch: (projectId, query, k) =>
     invoke<RagHit[]>("rag_search", { projectId, query, k: k ?? null }),
-  listAudioModels: () => invoke<string[]>("list_audio_models").catch(() => []),
-  listKokoroVoices: (model) => invoke<string[]>("list_kokoro_voices", { model }).catch(() => []),
-  pickVoiceReference: () => invoke<string | null>("pick_voice_reference"),
-  generateMusic: (
-    model,
-    prompt,
-    outputDir,
-    duration,
-    melodyReference,
-    negativePrompt,
-    steps,
-    cfgScale,
-    onProgress,
-  ) => {
-    const chan = new Channel<{ progress: number; detail?: string }>();
-    if (onProgress) chan.onmessage = (m) => onProgress(m.progress, m.detail);
-    return invoke<GeneratedAudio>("generate_music", {
-      model,
-      prompt,
-      outputDir,
-      duration: duration ?? null,
-      melodyReference: melodyReference ?? null,
-      negativePrompt: negativePrompt ?? null,
-      steps: steps ?? null,
-      cfgScale: cfgScale ?? null,
-      onProgress: chan,
-    });
-  },
-  generateVideo: (
-    model,
-    prompt,
-    outputDir,
-    duration,
-    inputImage,
-    negativePrompt,
-    steps,
-    cfgScale,
-    width,
-    height,
-    onProgress,
-  ) => {
-    const chan = new Channel<{ progress: number; detail?: string }>();
-    if (onProgress) chan.onmessage = (m) => onProgress(m.progress, m.detail);
-    return invoke<GeneratedAudio>("generate_video", {
-      model,
-      prompt,
-      outputDir,
-      duration: duration ?? null,
-      inputImage: inputImage ?? null,
-      negativePrompt: negativePrompt ?? null,
-      steps: steps ?? null,
-      cfgScale: cfgScale ?? null,
-      width: width ?? null,
-      height: height ?? null,
-      onProgress: chan,
-    });
-  },
-  generate3D: (
-    model,
-    prompt,
-    outputDir,
-    inputImage,
-    negativePrompt,
-    steps,
-    cfgScale,
-    format,
-    onProgress,
-  ) => {
-    const chan = new Channel<{ progress: number; detail?: string }>();
-    if (onProgress) chan.onmessage = (m) => onProgress(m.progress, m.detail);
-    return invoke<GeneratedAudio>("generate_3d", {
-      model,
-      prompt,
-      outputDir,
-      inputImage: inputImage ?? null,
-      negativePrompt: negativePrompt ?? null,
-      steps: steps ?? null,
-      cfgScale: cfgScale ?? null,
-      format: format ?? null,
-      onProgress: chan,
-    });
-  },
-  generateAudio: (
-    model,
-    text,
-    outputDir,
-    voiceReference,
-    speaker,
-    speed,
-    pitch,
-    energy,
-    clarity,
-    language,
-    voiceDescription,
-    designPrompt,
-    sampling,
-    onProgress,
-  ) => {
-    const chan = new Channel<{ progress: number; detail?: string }>();
-    if (onProgress) chan.onmessage = (m) => onProgress(m.progress, m.detail);
-    return invoke<GeneratedAudio>("generate_audio", {
-      model,
-      text,
-      outputDir,
-      voiceReference: voiceReference ?? null,
-      speaker: speaker ?? null,
-      speed: speed ?? null,
-      pitch: pitch ?? null,
-      energy: energy ?? null,
-      clarity: clarity ?? null,
-      language: language ?? null,
-      voiceDescription: voiceDescription ?? null,
-      designPrompt: designPrompt ?? null,
-      // Rust reads these through serde with camelCase renaming, so the shape
-      // crosses the boundary as-is.
-      sampling: sampling ?? null,
-      onProgress: chan,
-    });
-  },
+  listInferenceEngines: () => invoke<InferenceEngineInfo[]>("list_inference_engines"),
+  startInferenceEngine: (engine, model) =>
+    invoke<InferenceEngineInfo>("start_inference_engine", { engine, model: model ?? null }),
+  stopInferenceEngine: (engine) => invoke<void>("stop_inference_engine", { engine }),
+  inferenceEngineLog: (engine, lines) =>
+    invoke<string>("inference_engine_log", { engine, lines: lines ?? null }),
   llamaRuntimeStatus: () => invoke<LlamaRuntimeStatus>("llama_runtime_status"),
   setupLlamaRuntime: (variant, onProgress) => {
     const chan = new Channel<{
@@ -2386,18 +2127,6 @@ const demoModels = [
 ];
 
 const demoConnectorTypes: ConnectorType[] = [
-  {
-    type_id: "ssh",
-    display_name: "SSH Remote Server",
-    summary:
-      "Connexion serveur distant via SSH — exécution de commandes et administration assistée par l'IA.",
-    icon: "server",
-    category: "connector",
-    source: "built-in",
-    available: true,
-    supports_test: true,
-    install_hint: "",
-  },
   {
     type_id: "mcp_custom",
     display_name: "Serveur MCP Personnalisé",
@@ -2616,9 +2345,6 @@ const demoConnectorTypes: ConnectorType[] = [
     install_hint: "npx -y @brave/brave-search-mcp-server",
   },
 ];
-
-// Nothing is installed by default — the user adds connectors from Browse.
-let demoSshServers: SshServer[] = [];
 
 let demoSessionCounter = 2;
 
@@ -3177,19 +2903,6 @@ const demoCore: CoreApi = {
   sessionWorkspace: async () => "/tmp/locaryn-demo",
   appendChatMessage: async () => {},
   appendAssistantMessage: async () => {},
-  detectImageRequest: async (message) => {
-    const m =
-      /\b(image|photo|dessin|logo|ic[oô]ne|illustration|visuel|g[ée]n[èe]re[rz]?|dessine)\b/i.test(
-        message,
-      );
-    return {
-      is_image: m,
-      is_edit: /\b(modifie|[ée]dite|retouche|change)\b/i.test(message),
-      english_prompt: m ? `a high quality picture: ${message}` : "",
-      quality: /ic[oô]ne|rapide|brouillon/i.test(message) ? "draft" : "standard",
-      reason: m ? "La demande décrit un visuel à produire." : "",
-    };
-  },
   planTask: async (request) => ({
     needs_plan: /cr[ée]e|d[ée]veloppe|impl[ée]mente|corrige|refactor/i.test(request),
     needs_loop: /corrige|fix|marche pas|bug/i.test(request),
@@ -4091,73 +3804,6 @@ const demoCore: CoreApi = {
     link.click();
     link.remove();
   },
-  listSshServers: async () => demoSshServers,
-  async testSshConnection(draft, _secret, onEvent) {
-    onEvent({ type: "connecting" });
-    await sleep(450);
-    if (!draft.host.trim()) {
-      onEvent({ type: "error", message: "host is required" });
-      throw new Error("host is required");
-    }
-    onEvent({ type: "authenticating" });
-    await sleep(450);
-    onEvent({ type: "probing", step: "capabilities" });
-    await sleep(550);
-    onEvent({ type: "done" });
-    const user = draft.username || "deploy";
-    return {
-      reachable: true,
-      os: "Linux demo 6.5.0-x86_64",
-      whoami: user,
-      can_read: true,
-      can_write: draft.auth_method !== "agent",
-      is_sudoer: false,
-      host_key: {
-        algo: "ssh-ed25519",
-        sha256: `SHA256:demo${Math.random().toString(36).slice(2, 18)}`,
-      },
-      suggested_description: `Linux demo host reachable as ${user}@${draft.host}:${draft.port}. Read: yes. Write ($HOME): ${draft.auth_method !== "agent" ? "yes" : "no"}. Sudo: no.`,
-      test_token: "demo-token",
-    };
-  },
-  confirmSshHostKey: async () => {},
-  async saveSshServer(draft, _secret, _testToken) {
-    const s: SshServer = {
-      id: `demo-ssh-${Math.random().toString(36).slice(2, 7)}`,
-      name: draft.name,
-      description: draft.description || "saved in demo mode",
-      host: draft.host,
-      port: draft.port,
-      username: draft.username,
-      auth_method: draft.auth_method,
-      key_path: draft.key_path,
-      jump: draft.jump,
-      host_key_algo: "ssh-ed25519",
-      host_key_sha256: "SHA256:demoSaved",
-      host_key_verified: true,
-      ai_access: "none",
-      capabilities: null,
-      scope: draft.scope ?? "user",
-      status: "ok",
-      enabled: true,
-      last_connected_at: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    demoSshServers = [...demoSshServers, s];
-    return s;
-  },
-  async updateSshServer(id, patch) {
-    demoSshServers = demoSshServers.map((s) => (s.id === id ? { ...s, ...patch } : s));
-    return demoSshServers.find((s) => s.id === id) ?? demoSshServers[0];
-  },
-  async setSshAiAccess(id, level) {
-    demoSshServers = demoSshServers.map((s) => (s.id === id ? { ...s, ai_access: level } : s));
-    return demoSshServers.find((s) => s.id === id) ?? demoSshServers[0];
-  },
-  async deleteSshServer(id) {
-    demoSshServers = demoSshServers.filter((s) => s.id !== id);
-  },
   approveToolCall: async (decision) => {
     // Demo mode: simulate the roundtrip so the UI's pending state clears.
     await sleep(150);
@@ -4226,6 +3872,16 @@ const demoCore: CoreApi = {
   async ragSearch(_projectId, query) {
     return [{ source: "demo.md", text: `(demo) extrait pertinent pour « ${query} »`, score: 0.82 }];
   },
+  async listInferenceEngines() {
+    return [] as InferenceEngineInfo[];
+  },
+  async startInferenceEngine(engine: string) {
+    throw new Error(`Aucun socle local : impossible de démarrer « ${engine} » ici.`);
+  },
+  async stopInferenceEngine() {},
+  async inferenceEngineLog() {
+    return "";
+  },
   async llamaRuntimeStatus() {
     return {
       installed: true,
@@ -4246,107 +3902,6 @@ const demoCore: CoreApi = {
       up_to_date: true,
       pinned: "b10088",
       path: "C:/Users/you/.locaryn/data/bin/llama",
-    };
-  },
-  async listAudioModels() {
-    return ["piper-voices/en_US-amy-medium.onnx", "coqui-xtts-v2"];
-  },
-  async listKokoroVoices() {
-    return ["af_heart", "am_fenrir", "bf_siwis", "ff_siwis"];
-  },
-  async pickVoiceReference() {
-    // Demo mode: no real file picker available in the browser.
-    return null;
-  },
-  async generateMusic(
-    _model,
-    prompt,
-    _outputDir,
-    _duration,
-    _melodyRef,
-    _negPrompt,
-    _steps,
-    _cfgScale,
-    onProgress,
-  ) {
-    const total = 5;
-    for (let i = 1; i <= total; i++) {
-      await sleep(400);
-      onProgress?.(Math.round((i / total) * 100), `génération musicale ${i}/${total}`);
-    }
-    return {
-      path: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
-      simulated: true,
-    };
-  },
-  async generateVideo(
-    _model,
-    _prompt,
-    _outputDir,
-    _duration,
-    _inputImage,
-    _negPrompt,
-    _steps,
-    _cfgScale,
-    _width,
-    _height,
-    onProgress,
-  ) {
-    const total = 5;
-    for (let i = 1; i <= total; i++) {
-      await sleep(400);
-      onProgress?.(Math.round((i / total) * 100), `génération vidéo ${i}/${total}`);
-    }
-    return {
-      path: "",
-      simulated: true,
-    };
-  },
-  async generate3D(
-    _model,
-    _prompt,
-    _outputDir,
-    _inputImage,
-    _negPrompt,
-    _steps,
-    _cfgScale,
-    _format,
-    onProgress,
-  ) {
-    const total = 5;
-    for (let i = 1; i <= total; i++) {
-      await sleep(400);
-      onProgress?.(Math.round((i / total) * 100), `génération 3D ${i}/${total}`);
-    }
-    return {
-      path: "",
-      simulated: true,
-    };
-  },
-  async generateAudio(
-    _model,
-    _text,
-    _outputDir,
-    _voiceReference,
-    _speaker,
-    _speed,
-    _pitch,
-    _energy,
-    _clarity,
-    _language,
-    _voiceDescription,
-    _designPrompt,
-    _sampling,
-    onProgress,
-  ) {
-    const total = 5;
-    for (let i = 1; i <= total; i++) {
-      await sleep(300);
-      onProgress?.(Math.round((i / total) * 100), `étape audio ${i}/${total}`);
-    }
-    return {
-      path: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
-      simulated: true,
     };
   },
   async modelResidency() {

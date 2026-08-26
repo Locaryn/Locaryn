@@ -1,4 +1,4 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon, type IconName, LoSpinner } from "@locaryn/ui-core";
 import { useState } from "react";
 
 type Props = {
@@ -48,7 +48,7 @@ export function ToolCard({ tool, args, status, output }: Props) {
         <span className="locaryn-tool-summary">{argsSummary(args)}</span>
         <span className={`locaryn-tool-status locaryn-tool-status-${status}`}>
           {status === "running" ? (
-            <span className="locaryn-tool-spinner" aria-label="running" />
+            <LoSpinner size="sm" label="Outil en cours" />
           ) : status === "ok" ? (
             <Icon name="check" size={13} />
           ) : (

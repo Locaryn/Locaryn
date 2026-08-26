@@ -29,14 +29,13 @@ locaryn-core-bridge = { workspace = true }
 async-trait = { workspace = true }
 locaryn-preview = { workspace = true }
 locaryn-events = { workspace = true }
-locaryn-storage = { workspace = true, features = ["ssh-connector"] }
+locaryn-storage = { workspace = true }
 locaryn-config = { workspace = true }
 locaryn-hook-runtime = { workspace = true }
 locaryn-extensions = { workspace = true }
 locaryn-command-runtime = { workspace = true }
 locaryn-provider-supervisor = { workspace = true }
 locaryn-auth = { workspace = true, features = ["system-keychain"] }
-locaryn-ssh = { workspace = true }
 locaryn-mcp = { workspace = true }
 locaryn-travel = { workspace = true }
 locaryn-sdk = { workspace = true }

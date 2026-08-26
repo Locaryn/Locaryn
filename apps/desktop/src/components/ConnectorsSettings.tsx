@@ -1,27 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  type ConnectorType,
-  type McpServerInfo,
-  type SshAiAccess,
-  type SshServer,
-  core,
-} from "../lib/core";
+import { type ConnectorType, type McpServerInfo, core } from "../lib/core";
 import { ModalShell } from "./ModalShell";
-import { SshServerForm } from "./ssh/SshServerForm";
-
-const AI_ACCESS_OPTIONS: { value: SshAiAccess; label: string }[] = [
-  { value: "none", label: "Invisible pour l'IA" },
-  { value: "read_only", label: "Lecture seule" },
-  { value: "approval", label: "Demander confirmation" },
-  { value: "trusted", label: "Confiance totale" },
-];
 
 type ConnectorFilter = "all" | "connection" | "mcp";
 
 function isMcpType(type: ConnectorType): boolean {
-  // Le daemon appelle encore cette famille `extension` pour compatibilité de
-  // contrat ; dans l'interface, elle reste explicitement un serveur MCP et
-  // ne doit jamais être confondue avec une extension Locaryn.
   return type.category === "extension" || type.type_id.startsWith("mcp");
 }
 
@@ -33,12 +16,6 @@ export function ConnectorsSettings() {
   const [tab, setTab] = useState<"browse" | "installed">("browse");
   const [categoryFilter, setCategoryFilter] = useState<ConnectorFilter>("all");
   const [types, setTypes] = useState<ConnectorType[]>([]);
-  const [servers, setServers] = useState<SshServer[]>([]);
-  // Cette vue ne déduit jamais un état « installé » d'une carte du catalogue :
-  // seules les connexions SSH enregistrées et les serveurs MCP présents dans
-  // mcp.json sont des éléments configurés. Cela évite les compteurs fantômes
-  // et les cartes actives vides après un redémarrage.
-  const [sshFormOpen, setSshFormOpen] = useState(false);
 
   // Custom MCP Modal state
   const [mcpFormOpen, setMcpFormOpen] = useState(false);
@@ -51,15 +28,8 @@ export function ConnectorsSettings() {
 
   const refresh = useCallback(async () => {
     try {
-      setServers(await core.listSshServers());
-    } catch {
-      setServers([]);
-    }
-    try {
       setMcpServers(await core.listMcpServers());
     } catch {
-      /* Rien d'enregistré, ou mcp.json illisible : la vue reste exploitable
-         et une erreur apparaîtra lors de l'action qui échoue réellement. */
       setMcpServers([]);
     }
   }, []);
@@ -72,23 +42,6 @@ export function ConnectorsSettings() {
     refresh();
   }, [refresh]);
 
-  async function changeAiAccess(server: SshServer, level: SshAiAccess) {
-    await core.setSshAiAccess(server.id, level);
-    refresh();
-  }
-
-  async function removeSsh(server: SshServer) {
-    if (!window.confirm(`Supprimer "${server.name}" ?`)) return;
-    await core.deleteSshServer(server.id);
-    refresh();
-  }
-
-  /**
-   * Register the server, then start it straight away.
-   *
-   * Starting is what proves the command is right: the transport is lazy, so
-   * a typo would otherwise show up as a chat that quietly has no tools.
-   */
   async function saveCustomMcp() {
     const name = mcpName.trim();
     const target = mcpCommand.trim();
@@ -100,8 +53,6 @@ export function ConnectorsSettings() {
       try {
         await core.startMcpServer(name);
       } catch (e) {
-        // Registered but not reachable: keep it, say why. Removing it would
-        // throw away a command that is one character from working.
         setMcpError(String(e));
       }
       setMcpServers(await core.listMcpServers());
@@ -145,17 +96,12 @@ export function ConnectorsSettings() {
     }
   }
 
-  // Cette page ne montre que deux familles : les connexions (SSH, bases,
-  // services) et les serveurs MCP. Les plugins de fonctionnalités (LSP,
-  // Python, Playwright…) vivent dans Extensions, jamais ici.
   const connectorTypes = types.filter((t) => t.category === "connector" || isMcpType(t));
   const filteredTypes = connectorTypes.filter((t) => {
     if (categoryFilter === "all") return true;
     return categoryFilter === "mcp" ? isMcpType(t) : !isMcpType(t);
   });
-  // Un type de catalogue décrit une possibilité, pas une installation. Les
-  // seules installations réelles sont les serveurs persistés ci-dessous.
-  const activeCount = mcpServers.length + servers.length;
+  const activeCount = mcpServers.length;
 
   return (
     <div className="locaryn-conn-settings">
@@ -203,69 +149,68 @@ export function ConnectorsSettings() {
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            type="button"
-            className="locaryn-btn-primary"
-            style={{ fontSize: "12px", padding: "4px 12px" }}
-            onClick={() => setMcpFormOpen(true)}
-            title="Ajouter un serveur qui expose des outils via le protocole MCP"
-          >
-            + Ajouter un serveur MCP
-          </button>
-        </div>
-      </div>
-
-      {tab === "browse" ? (
-        <>
-          <div className="locaryn-size-chips" style={{ marginBottom: "16px" }}>
+        {tab === "browse" && (
+          <div style={{ display: "flex", gap: "6px" }}>
             <button
               type="button"
-              className={`locaryn-chip${categoryFilter === "all" ? " locaryn-chip-on" : ""}`}
+              className={`locaryn-filter-btn${categoryFilter === "all" ? " locaryn-active" : ""}`}
               onClick={() => setCategoryFilter("all")}
             >
               Tous
             </button>
             <button
               type="button"
-              className={`locaryn-chip${categoryFilter === "connection" ? " locaryn-chip-on" : ""}`}
-              onClick={() => setCategoryFilter("connection")}
-            >
-              Connecteurs
-            </button>
-            <button
-              type="button"
-              className={`locaryn-chip${categoryFilter === "mcp" ? " locaryn-chip-on" : ""}`}
+              className={`locaryn-filter-btn${categoryFilter === "mcp" ? " locaryn-active" : ""}`}
               onClick={() => setCategoryFilter("mcp")}
             >
               Serveurs MCP
+            </button>
+            <button
+              type="button"
+              className={`locaryn-filter-btn${categoryFilter === "connection" ? " locaryn-active" : ""}`}
+              onClick={() => setCategoryFilter("connection")}
+            >
+              Connexions
+            </button>
+          </div>
+        )}
+      </div>
+
+      {tab === "browse" ? (
+        <>
+          <div className="locaryn-connector-add-row" style={{ marginBottom: "16px" }}>
+            <button
+              type="button"
+              className="locaryn-btn-primary"
+              onClick={() => {
+                setMcpError(null);
+                setMcpFormOpen(true);
+              }}
+            >
+              + Ajouter un serveur MCP personnalisé…
             </button>
           </div>
 
           <div className="locaryn-model-grid">
             {filteredTypes.map((t) => {
-              const mcpType = isMcpType(t);
+              const isMcp = isMcpType(t);
               return (
-                <div key={t.type_id} className="locaryn-box-card" style={{ minHeight: "180px" }}>
+                <div key={t.type_id} className="locaryn-box-card">
                   <div className="locaryn-box-head">
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "24px" }} aria-hidden="true">
-                        {t.icon}
-                      </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span className="locaryn-connector-icon">{t.icon || "🔌"}</span>
                       <div>
                         <h3 className="locaryn-box-name">{t.display_name}</h3>
-                        <span className="locaryn-box-brand">{t.source}</span>
+                        <span className="locaryn-box-brand">{connectorCategoryLabel(t)}</span>
                       </div>
                     </div>
-                    <span className="locaryn-tag">{connectorCategoryLabel(t)}</span>
+                    {t.source === "built-in" && (
+                      <span className="locaryn-badge-builtin">Intégré</span>
+                    )}
                   </div>
-
                   <p className="locaryn-box-desc">{t.summary}</p>
                   {t.install_hint && (
-                    <code
-                      className="locaryn-connector-cmd"
-                      title="Commande qui lance ce serveur MCP"
-                    >
+                    <code className="locaryn-connector-cmd" title="Commande par défaut">
                       {t.install_hint}
                     </code>
                   )}
@@ -279,15 +224,7 @@ export function ConnectorsSettings() {
                       justifyContent: "flex-end",
                     }}
                   >
-                    {t.type_id === "ssh" ? (
-                      <button
-                        type="button"
-                        className="locaryn-btn-primary"
-                        onClick={() => setSshFormOpen(true)}
-                      >
-                        + Ajouter une connexion SSH
-                      </button>
-                    ) : mcpType ? (
+                    {isMcp ? (
                       <button
                         type="button"
                         className="locaryn-btn-primary"
@@ -312,14 +249,14 @@ export function ConnectorsSettings() {
       ) : (
         <div>
           <h3 style={{ fontSize: "var(--text-md)", marginBottom: "12px" }}>
-            Connecteurs configurés ({servers.length}) · Serveurs MCP ({mcpServers.length})
+            Serveurs MCP ({mcpServers.length})
           </h3>
           {activeCount === 0 ? (
             <div className="locaryn-card" style={{ padding: 20, marginBottom: 28 }}>
-              <strong>Aucun connecteur ou serveur MCP configuré</strong>
+              <strong>Aucun serveur MCP configuré</strong>
               <p className="locaryn-field-hint" style={{ margin: "6px 0 14px" }}>
                 Une carte du catalogue décrit une possibilité ; elle n'est comptée ici qu'après
-                l'ajout réel d'une connexion ou l'enregistrement d'un serveur MCP.
+                l'enregistrement d'un serveur MCP.
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
@@ -327,7 +264,7 @@ export function ConnectorsSettings() {
                   className="locaryn-btn-primary"
                   onClick={() => setTab("browse")}
                 >
-                  Parcourir les connecteurs
+                  Parcourir le catalogue
                 </button>
                 <button
                   type="button"
@@ -343,15 +280,7 @@ export function ConnectorsSettings() {
             </div>
           ) : null}
 
-          <h3 style={{ fontSize: "var(--text-md)", marginBottom: "12px" }}>
-            Serveurs MCP ({mcpServers.length})
-          </h3>
-          {mcpServers.length === 0 ? (
-            <p className="locaryn-field-hint" style={{ marginBottom: "28px" }}>
-              Aucun serveur MCP. Ajoutez-en un depuis l'onglet « Parcourir » — n'importe quel
-              serveur du protocole convient, y compris ceux prévus pour Claude Code ou Cursor.
-            </p>
-          ) : (
+          {mcpServers.length > 0 && (
             <div className="locaryn-model-grid" style={{ marginBottom: "28px" }}>
               {mcpServers.map((m) => (
                 <div key={m.name} className="locaryn-box-card">
@@ -412,89 +341,16 @@ export function ConnectorsSettings() {
               {mcpError}
             </div>
           )}
-
-          {servers.length > 0 && (
-            <>
-              <h3 style={{ fontSize: "var(--text-md)", marginBottom: "12px" }}>
-                Serveurs SSH enregistrés ({servers.length})
-              </h3>
-              <div className="locaryn-model-grid">
-                {servers.map((s) => (
-                  <div key={s.id} className="locaryn-box-card">
-                    <div className="locaryn-box-head">
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span
-                          className={`locaryn-health-dot ${
-                            s.status === "ok" ? "locaryn-health-ok" : "locaryn-health-off"
-                          }`}
-                        />
-                        <div>
-                          <h3 className="locaryn-box-name">{s.name}</h3>
-                          <span className="locaryn-box-brand">
-                            {s.username}@{s.host}:{s.port}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <p className="locaryn-box-desc">{s.description || "Serveur SSH distant"}</p>
-
-                    <div
-                      style={{
-                        marginTop: "auto",
-                        paddingTop: "12px",
-                        borderTop: "1px solid var(--border)",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "8px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <span style={{ fontSize: "11px", color: "var(--text-faint)" }}>
-                          Accès IA :
-                        </span>
-                        <select
-                          className="locaryn-select locaryn-select-sm"
-                          value={s.ai_access}
-                          onChange={(e) => changeAiAccess(s, e.target.value as SshAiAccess)}
-                        >
-                          {AI_ACCESS_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <button
-                        type="button"
-                        className="locaryn-btn-ghost"
-                        style={{ color: "var(--danger)", fontSize: "12px", alignSelf: "flex-end" }}
-                        onClick={() => removeSsh(s)}
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
         </div>
       )}
 
-      {/* Form modal to add custom MCP server */}
+      {/* Custom MCP Modal */}
       {mcpFormOpen && (
         <ModalShell
-          onClose={() => setMcpFormOpen(false)}
           label="Ajouter un serveur MCP"
-          className="locaryn-card locaryn-modal-card locaryn-mcp-modal"
+          onClose={() => setMcpFormOpen(false)}
+          style={{ maxWidth: 540 }}
         >
-          <h3>Ajouter un serveur MCP</h3>
           {mcpError && <div className="locaryn-vp-error">{mcpError}</div>}
           <div className="locaryn-field">
             <label htmlFor="mcp-name" className="locaryn-field-label">
@@ -563,17 +419,6 @@ export function ConnectorsSettings() {
             </button>
           </div>
         </ModalShell>
-      )}
-
-      {sshFormOpen && (
-        <SshServerForm
-          onClose={() => setSshFormOpen(false)}
-          onSaved={() => {
-            setSshFormOpen(false);
-            setTab("installed");
-            refresh();
-          }}
-        />
       )}
     </div>
   );

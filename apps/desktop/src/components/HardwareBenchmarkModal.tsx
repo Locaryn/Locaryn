@@ -292,7 +292,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               }}
             >
               <div>
-                <span style={{ fontWeight: 700, color: "#64c878" }}>
+                <span style={{ fontWeight: 700, color: "var(--accent-300)" }}>
                   <span className="locaryn-dot locaryn-dot-ok" /> {optimalCount} modèles à l'aise
                 </span>
                 <span
@@ -304,7 +304,11 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               </div>
               <span
                 className="locaryn-tag"
-                style={{ background: "#64c878", color: "#000", fontWeight: 700 }}
+                style={{
+                  background: "var(--accent-300)",
+                  color: "var(--on-accent)",
+                  fontWeight: 700,
+                }}
               >
                 Fluidité Maximale
               </span>
@@ -318,7 +322,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               }}
             >
               <div>
-                <span style={{ fontWeight: 700, color: "#dcb450" }}>
+                <span style={{ fontWeight: 700, color: "var(--warn)" }}>
                   <span className="locaryn-dot locaryn-dot-warn" /> {mediumCount} modèles via la RAM
                 </span>
                 <span
@@ -329,7 +333,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               </div>
               <span
                 className="locaryn-tag"
-                style={{ background: "#dcb450", color: "#000", fontWeight: 700 }}
+                style={{ background: "var(--warn)", color: "var(--on-accent)", fontWeight: 700 }}
               >
                 Vitesse Modérée
               </span>
@@ -355,7 +359,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               </div>
               <span
                 className="locaryn-tag"
-                style={{ background: "var(--danger)", color: "#fff", fontWeight: 700 }}
+                style={{ background: "var(--danger)", color: "var(--on-accent)", fontWeight: 700 }}
               >
                 Non Recommandé
               </span>
@@ -386,7 +390,7 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
           <button
             type="button"
             className="locaryn-btn-primary"
-            style={{ background: "var(--accent)", color: "#000" }}
+            style={{ background: "var(--accent)", color: "var(--on-accent)" }}
             onClick={() => {
               onApplyFilter(true, { total_ram_gb: ramGb, total_vram_gb: vramGb });
               onClose();

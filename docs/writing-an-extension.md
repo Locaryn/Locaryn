@@ -17,6 +17,7 @@ mécanique interne — cycle de vie, bac à sable, chargement runtime — voir
 - [Le pont `window.locaryn`](#le-pont--ce-quun-panneau-peut-demander-à-lapplication)
 - [Une extension qui embarque du code](#une-extension-qui-embarque-du-code) — dont [le piège du paquet publié](#le-piège-du-paquet-publié)
 - [Apporter ses modèles au catalogue](#apporter-ses-modèles-au-catalogue)
+- [Apporter un moteur d'inférence](#apporter-un-moteur-dinférence)
 - [Publier, versionner, mettre à jour](#publier-versionner-mettre-à-jour)
 - [Quand ça ne marche pas](#quand-ça-ne-marche-pas)
 
@@ -109,6 +110,7 @@ et LSP — vit dans [`examples/plugins/my-plugin`](../examples/plugins/my-plugin
 | **LSP** | `lsp/lsp.json` | Un serveur de langage |
 | **Interface** | `ui_contributions` du manifeste | Un onglet, un bouton, une section de réglages, un panneau entier |
 | **Catalogue** | un slot `marketplace.catalogs` | Des modèles ajoutés au catalogue de l'application |
+| **Moteur** | une section `engine` du manifeste | Un serveur d'inférence local que l'application installe, démarre et supervise |
 
 Aucun n'est obligatoire. Une extension qui n'apporte qu'une commande est une
 extension parfaitement valable.
@@ -487,6 +489,110 @@ Ce qu'il faut retenir :
 - **Vérifiez chaque adresse** avant de publier. Un dépôt privé ou sous licence à
   accepter répond 401, et l'installation échoue chez l'utilisateur, pas chez
   vous. Une vérification en CI coûte dix lignes.
+
+---
+
+## Apporter un moteur d'inférence
+
+Le runtime intégré charge du GGUF avec llama.cpp. Un autre moteur — un serveur
+compatible OpenAI qui sait charger d'autres formats de poids, répartir un modèle
+autrement, ou tirer parti d'un matériel particulier — s'ajoute par une section
+`engine`. L'application l'installe, le lance, le sonde et l'arrête comme le
+sien ; le moteur intégré n'est jamais remplacé, l'utilisateur choisit lequel est
+actif dans **Réglages → Moteur**.
+
+Un moteur n'est pas un noyau. Un [noyau](architecture/14-alternate-cores.md)
+change l'**agent** — sa boucle, sa mémoire, ses skills — et une session choisit
+le sien. Un moteur ne change que **qui calcule les jetons** : la boucle d'outils,
+l'approbation, le streaming et la persistance restent ceux de Locaryn.
+
+```json
+{
+  "capabilities": ["inference-engine"],
+  "engine": {
+    "id": "mon-moteur",
+    "label": "Mon moteur",
+    "driver": "openai_compat",
+    "api_url": "http://127.0.0.1:9100",
+    "port": 9100,
+    "install": {
+      "kind": "pip",
+      "package": "mon-moteur",
+      "version": "1.4.0",
+      "extras": ["accel"],
+      "probe_bin": "mon-moteur"
+    },
+    "lifecycle": {
+      "start": [
+        "{{plugin_bin_dir}}/mon-lanceur",
+        "serve", "--port", "{{port}}", "--model", "{{model_path}}"
+      ],
+      "env": { "HF_HOME": "{{hf_cache_dir}}" },
+      "health": { "method": "GET", "url": "{{endpoint}}/health", "retries": 120, "interval_ms": 5000 },
+      "requires_model": true
+    },
+    "model_formats": {
+      "files": ["safetensors"],
+      "directories": true,
+      "directory_markers": ["config.json"],
+      "hf_repo_ids": true
+    },
+    "startup_timeout_secs": 1800,
+    "requires": {
+      "os": ["linux"],
+      "gpu": "nvidia",
+      "min_ram_gb": 32,
+      "note": "Ce que l'utilisateur doit installer lui-même, dans vos mots."
+    }
+  }
+}
+```
+
+Ce qu'il faut retenir :
+
+- **`api_url` doit être en loopback.** Ce qui écoute ailleurs n'est pas un
+  runtime que l'application supervise : c'est un service distant, et l'accepter
+  ici enverrait les conversations à une adresse posée dans un manifeste.
+  L'installation est refusée sinon.
+- **`model_formats` décide de ce qui est choisissable.** Sans cette liste, un
+  répertoire de shards `safetensors` reste invisible dans l'écran des modèles,
+  parce que le runtime intégré ne lit que du GGUF. `directories` dit que votre
+  moteur charge un **répertoire** de checkpoint, et non un fichier : c'est alors
+  le nom du répertoire qui devient le modèle. `hf_repo_ids` dit que votre moteur
+  télécharge lui-même quand on lui donne `propriétaire/nom`.
+- **`lifecycle.start` est une liste d'arguments, jamais une ligne de shell.**
+  Substitutions disponibles : `{{port}}`, `{{model}}`, `{{model_path}}` (le
+  chemin résolu quand le modèle est sur le disque, le nom brut sinon),
+  `{{endpoint}}`, `{{models_url}}`, `{{plugin_root}}`, `{{plugin_bin_dir}}`,
+  `{{extension_data_dir}}`, `{{extension_models_dir}}`, `{{models_dir}}`,
+  `{{data_dir}}`, `{{hf_cache_dir}}`, `{{temp_dir}}`. Le processus reçoit en
+  plus les mêmes variables d'environnement qu'un serveur MCP de votre extension
+  — donc le **même** dossier privé.
+- **Livrez un lanceur, pas une ligne de commande savante.** Tout ce qui est
+  propre à votre moteur — un passage par WSL2, une traduction de chemins, un
+  nettoyage d'un serveur resté en place, un choix de backend — appartient à un
+  programme de votre `bin/`. L'application n'en saura rien, et c'est ce qui
+  permet à un autre moteur d'arriver demain sans qu'une ligne soit écrite pour
+  lui.
+- **`requires.note` est affichée telle quelle** quand la machine ne convient
+  pas, et le bouton « Utiliser » reste inactif. C'est le seul endroit où vous
+  pouvez dire quoi installer ; « moteur indisponible » n'aide personne.
+- **`startup_timeout_secs`** couvre le premier chargement, pas le démarrage du
+  processus. Un moteur qui convertit ses poids ou compile ses noyaux au premier
+  usage met des minutes : annoncez-les, sinon l'application déclare l'échec
+  pendant que le chargement se passe bien.
+- **La sortie du moteur est journalisée** dans
+  `engine-<id>.log`, et l'écran des réglages en montre la fin. C'est là que
+  l'utilisateur lira ce qui a manqué — écrivez-y des messages qu'il puisse
+  comprendre.
+- **Épinglez `install.version`.** Sans elle, chacun installe autre chose selon
+  le jour où il clique.
+
+Le moteur porte le jeton `ext:<id>` partout où l'application nomme un moteur :
+en base, sur le fil SSE, et dans `locaryn providers use ext:mon-moteur`.
+
+Une extension **désactivée** n'apporte plus son moteur, et son processus est
+arrêté : c'est ce que l'utilisateur attend quand il éteint une extension.
 
 ---
 

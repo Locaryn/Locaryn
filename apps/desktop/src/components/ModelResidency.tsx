@@ -12,7 +12,14 @@
 // avertissement.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type ModelFit, type ResidencyStatus, core } from "../lib/core";
+import {
+  type InferenceConfig,
+  type ModelFit,
+  type ModelMetric,
+  type ResidencyStatus,
+  core,
+} from "../lib/core";
+import { findMetric, formatSpeed } from "./SpeedBadge";
 
 /** Le point de l'indicateur : couleur et libellé disent la même chose, pour
  *  que l'information ne repose pas seulement sur la couleur. */
@@ -21,6 +28,30 @@ function stateDot(status: ResidencyStatus | null, busy: boolean): { cls: string;
   if (!status?.loaded) return { cls: "locaryn-res-dot idle", title: "Aucun modèle en mémoire" };
   if (status.pinned) return { cls: "locaryn-res-dot pinned", title: "En mémoire, épinglé" };
   return { cls: "locaryn-res-dot warm", title: "En mémoire, déchargement automatique" };
+}
+
+/**
+ * La quantification, lue dans le nom du fichier.
+ *
+ * Le moteur ne la renvoie pas : elle est dans le nom, par convention GGUF
+ * (`…-Q4_K_M.gguf`, `…-IQ3_XS.gguf`). Absente, on n'invente rien.
+ */
+function quantization(model: string | null | undefined): string | null {
+  if (!model) return null;
+  const m = model.match(/\b(I?Q\d(?:_[A-Z0-9]+)*|F16|F32|BF16)\b/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+/** Le débit mesuré pour ce modèle sur cette machine, s'il y en a un. */
+function debitMesure(metrics: ModelMetric[], model: string): string | null {
+  const metric = findMetric(metrics, model, "chat");
+  return metric ? formatSpeed(metric) : null;
+}
+
+/** Le contexte, écrit court : 32768 se lit mieux en « 32K ». */
+function contextLabel(tokens: number): string {
+  if (tokens >= 1024) return `${Math.round(tokens / 1024)}K`;
+  return String(tokens);
 }
 
 function minutes(seconds: number): string {
@@ -70,6 +101,10 @@ export function ModelResidency() {
   const [fit, setFit] = useState<ModelFit | null>(null);
   const [busy, setBusy] = useState<null | "fit" | "load" | "eject">(null);
   const [error, setError] = useState<string | null>(null);
+  /* La quantification, le débit et le contexte accompagnent le nom du modèle
+     dans la barre d'état : trois chiffres en mono, lus d'un coup d'œil. */
+  const [metrics, setMetrics] = useState<ModelMetric[]>([]);
+  const [config, setConfig] = useState<InferenceConfig | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
@@ -86,6 +121,21 @@ export function ModelResidency() {
     const t = setInterval(() => void refresh(), 15_000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  useEffect(() => {
+    core
+      .listModelMetrics()
+      .then(setMetrics)
+      .catch(() => {
+        // Pas de mesure : la barre montre le reste, elle n'invente pas un débit.
+      });
+    core
+      .getInferenceConfig()
+      .then(setConfig)
+      .catch(() => {
+        // Pas de configuration lisible : le contexte reste muet.
+      });
+  }, []);
 
   // Fermer au clic extérieur : le panneau recouvre le chat, il ne doit pas
   // rester ouvert par inadvertance.
@@ -156,6 +206,15 @@ export function ModelResidency() {
 
   const dot = stateDot(status, busy === "load");
   const loaded = status?.loaded === true;
+  // Trois faits sur le modèle chargé, chacun affiché seulement s'il existe :
+  // un chiffre absent est une information, un chiffre inventé n'en est pas une.
+  const facts = loaded
+    ? [
+        quantization(status?.model),
+        status?.model ? debitMesure(metrics, status.model) : null,
+        config ? `ctx ${contextLabel(config.context_length)}` : null,
+      ].filter((f): f is string => Boolean(f))
+    : [];
 
   return (
     <div className="locaryn-residency" ref={boxRef}>
@@ -180,6 +239,14 @@ export function ModelResidency() {
             ? (status?.model ?? "modèle inconnu")
             : "Aucun modèle chargé"}
       </button>
+
+      {facts.length > 0 && (
+        <span className="locaryn-res-facts">
+          {facts.map((f) => (
+            <span key={f}>{f}</span>
+          ))}
+        </span>
+      )}
 
       {loaded && !status?.pinned && (
         <span className="locaryn-res-hint">

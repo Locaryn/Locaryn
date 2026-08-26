@@ -1,4 +1,9 @@
-// @locaryn/ui-core — shared design tokens and primitives.
+// @locaryn/ui-core — primitives partagées par le bureau, le téléphone et le web.
+//
+// Les valeurs de design ne vivent PAS ici : la seule source de vérité est
+// `packages-ui/tokens/tokens.css`. Ce paquet ne porte que ce que le CSS ne
+// peut pas faire seul — les icônes, le vocabulaire des capacités, et les
+// quatre formes de chargement dont deux demandent du calcul.
 
 // Un seul jeu d'icônes pour l'ordinateur et le téléphone : deux dessins pour
 // la même idée, ce sont deux applications qui se contredisent de près.
@@ -15,78 +20,36 @@ export {
   type Capability,
 } from "./capabilities";
 
-export const tokens = {
-  /** Sen (Google Fonts) — UI font for all Locaryn interfaces. Bundled
-   *  locally in the desktop app; falls back to system sans-serif. */
-  fontFamily:
-    '"Sen", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-  /** Monospace stack for terminal / code — Sen is not monospace. */
-  fontFamilyMono: '"SFMono-Regular", ui-monospace, Menlo, Consolas, monospace',
-  bg: "#0e1116",
-  panel: "#161b22",
-  border: "#2a313c",
-  text: "#e6edf3",
-  textDim: "#9aa6b2",
-  green: "#2ea043",
-  blue: "#388bfd",
-  amber: "#d29922",
-  red: "#f85149",
-} as const;
+// Le thème : mode sombre / clair et couleur d'accentuation. Partagé pour que
+// la dérivation de l'accent en mode clair ne diverge pas d'un client à l'autre.
+export {
+  ACCENT_PRESETS,
+  accentForLight,
+  accentForMode,
+  applyTheme,
+  hexToChannels,
+  hexToRgb,
+  resolveMode,
+  systemMode,
+  watchSystemMode,
+  type AccentPreset,
+  type ResolvedMode,
+  type ThemeMode,
+} from "./theme";
 
-export type Variant = "primary" | "secondary" | "danger";
+// L'interrupteur : il se clique et il se tire. Un seul dessin, un seul geste,
+// sur les trois clients.
+export { LoSwitch, type LoSwitchProps } from "./switch";
 
-export interface ButtonProps {
-  variant?: Variant;
-  label: string;
-  onClick?: () => void;
-}
-
-export function Button({ variant = "primary", label, onClick }: ButtonProps) {
-  const bg =
-    variant === "primary" ? tokens.green : variant === "danger" ? tokens.red : tokens.panel;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        background: bg,
-        color: "#fff",
-        border: `1px solid ${tokens.border}`,
-        borderRadius: 6,
-        padding: "6px 12px",
-        cursor: "pointer",
-        fontWeight: 600,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-export function Panel({ title, children }: { title?: string; children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        background: tokens.panel,
-        border: `1px solid ${tokens.border}`,
-        borderRadius: 8,
-        padding: 12,
-      }}
-    >
-      {title && (
-        <div
-          style={{
-            color: tokens.textDim,
-            fontSize: 11,
-            textTransform: "uppercase",
-            letterSpacing: 0.6,
-            marginBottom: 8,
-          }}
-        >
-          {title}
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
+// Les quatre formes de chargement du système visuel. Il n'y en a que quatre,
+// et on n'en invente pas d'autres.
+export {
+  LoProgress,
+  LoMorph,
+  LoSkeleton,
+  LoSpinner,
+  type LoProgressProps,
+  type LoMorphProps,
+  type LoSkeletonProps,
+  type LoSpinnerProps,
+} from "./loading";

@@ -19,6 +19,7 @@ path = "src/main.rs"
 locaryn-shared-types = { workspace = true }
 locaryn-config = { workspace = true }
 locaryn-storage = { workspace = true }
+locaryn-extensions = { workspace = true }
 reqwest.workspace = true
 tokio = { workspace = true }
 serde = { workspace = true }

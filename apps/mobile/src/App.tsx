@@ -24,7 +24,7 @@ import {
 import { useCoucheRetour, useNavigation } from "./lib/navigation";
 import { surEchecReseau } from "./lib/reachability";
 import { annulerScan, isScannerAvailable, scan } from "./lib/scanner";
-import { appliquerAccent, lireAccent } from "./lib/theme";
+import { appliquerTheme, lireTheme } from "./lib/theme";
 
 type Screen = "signin" | "chat" | "memory" | Destination | (string & {});
 
@@ -70,10 +70,11 @@ export function App() {
    *  chaque navigation depuis le menu. */
   const [settingsInitial, setSettingsInitial] = useState<SettingsSection | null>(null);
 
-  // La couleur d'accent choisie dans Paramètres → Apparence s'applique dès le
-  // démarrage, pas seulement à l'ouverture des réglages.
+  // Le thème choisi dans Paramètres → Apparence s'applique dès le démarrage,
+  // pas seulement à l'ouverture des réglages. Sans fondu : au premier rendu,
+  // un voile se verrait comme un clignotement.
   useEffect(() => {
-    appliquerAccent(lireAccent());
+    appliquerTheme(lireTheme());
   }, []);
 
   // Le retour d'Android annule la confirmation d'appairage au lieu de quitter

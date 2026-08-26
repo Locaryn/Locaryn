@@ -12,17 +12,17 @@ const TRUST_LABELS: Record<TrustLevel, { label: string; hint: string; color: str
   trusted: {
     label: "Confiance",
     hint: "Les outils peu et moyennement risqués s'exécutent sans confirmation.",
-    color: "#5aa86a",
+    color: "var(--accent-300)",
   },
   untrusted: {
     label: "Prudent",
     hint: "Seuls les outils en lecture s'exécutent sans confirmation.",
-    color: "#d4a03a",
+    color: "var(--warn)",
   },
   sandbox: {
     label: "Bac à sable",
     hint: "Chaque outil demande une confirmation explicite.",
-    color: "#cc7d72",
+    color: "var(--danger)",
   },
 };
 

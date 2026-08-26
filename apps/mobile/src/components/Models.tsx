@@ -1,3 +1,4 @@
+import { LoProgress, LoSpinner } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type MediaModel, type ModelPullProgress, api } from "../lib/core";
 import { useCoucheRetour } from "../lib/navigation";
@@ -396,14 +397,11 @@ export function Models({ onBack, initialTab }: Props) {
             <span>Téléchargement en cours…</span>
             <span>{progress.percentage !== null ? `${progress.percentage}%` : ""}</span>
           </div>
-          <div className="lo-progress-bar">
-            <div
-              className="lo-progress-fill"
-              style={{
-                width: progress.percentage !== null ? `${progress.percentage}%` : "100%",
-              }}
-            />
-          </div>
+          {progress.percentage !== null ? (
+            <LoProgress value={progress.percentage / 100} on="surface" label="Téléchargement" />
+          ) : (
+            <LoSpinner size="sm" label="Téléchargement en préparation" />
+          )}
           {progress.message && <p className="lo-hint">{progress.message}</p>}
         </div>
       )}

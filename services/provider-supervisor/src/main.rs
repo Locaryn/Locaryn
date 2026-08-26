@@ -7,6 +7,7 @@
 
 use clap::{Parser, Subcommand};
 use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
+use locaryn_provider_supervisor::extension_engine::EngineSource as ExtensionEngineSpecSource;
 use locaryn_shared_types::ProviderEngine;
 
 #[derive(Parser)]
@@ -54,16 +55,39 @@ async fn main() -> anyhow::Result<()> {
     let db_path = data_dir.join("locaryn.db");
     let pool = locaryn_storage::open(&db_path).await?;
     let storage = locaryn_storage::Storage::new(pool);
-    let sup = Supervisor::new(SupervisorConfig::default(), storage);
+    let sup = Supervisor::new(SupervisorConfig::default(), storage.clone());
+
+    // Les moteurs apportés par les extensions installées. Sans cette étape,
+    // `locaryn-supervisor start ext:<id>` répondrait « moteur inconnu » alors
+    // que l'extension est bien là : le superviseur ne lit pas le disque des
+    // extensions, on le lui donne.
+    match storage.extensions.list().await {
+        Ok(rows) => {
+            let sources: Vec<ExtensionEngineSpecSource> = rows
+                .into_iter()
+                .map(|row| ExtensionEngineSpecSource {
+                    manifest_path: std::path::PathBuf::from(row.manifest_path),
+                    enabled: row.enabled,
+                })
+                .collect();
+            sup.set_extension_engines(locaryn_provider_supervisor::extension_engine::collect(
+                &sources,
+            ))
+            .await;
+        }
+        Err(e) => {
+            tracing::warn!(erreur = %e, "extensions illisibles — aucun moteur d'extension");
+        }
+    }
 
     match cli.cmd {
         Cmd::Status => {
             let snapshot = sup.status_snapshot().await;
-            println!("ENGINE       ENDPOINT                 HEALTHY  OWNED  ALIVE");
+            println!("ENGINE            ENDPOINT                 HEALTHY  OWNED  ALIVE");
             for s in snapshot {
                 println!(
-                    "{:<12} {:<24} {:<7}  {:<5}  {}",
-                    format!("{:?}", s.engine).to_lowercase(),
+                    "{:<17} {:<24} {:<7}  {:<5}  {}",
+                    s.engine.as_token(),
                     s.endpoint,
                     if s.healthy { "yes" } else { "no" },
                     if s.owned { "yes" } else { "no" },
@@ -74,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Cmd::Health { engine } => {
             let e = parse_engine(&engine)?;
-            let ok = sup.is_healthy(e).await;
+            let ok = sup.is_healthy(&e).await;
             println!("{engine}: {}", if ok { "healthy" } else { "unhealthy" });
             Ok(())
         }
@@ -83,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
             if let Some(m) = &model {
                 println!("(model override {m} noted — V1.1 passes it to the runtime)");
             }
-            match sup.ensure_running(e).await {
+            match sup.ensure_running(&e).await {
                 Ok(endpoint) => {
                     println!("✓ {engine} running on {endpoint}");
                     Ok(())
@@ -96,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Cmd::Stop { engine } => {
             let e = parse_engine(&engine)?;
-            sup.shutdown(e).await?;
+            sup.shutdown(&e).await?;
             println!("stopped {engine}");
             Ok(())
         }
@@ -111,12 +135,13 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
+/// Lit un nom de moteur d'argument. La table des jetons vit dans
+/// `shared-types` — la recopier ici a déjà produit des CLI qui acceptaient un
+/// moteur que l'application ne connaissait pas.
 fn parse_engine(s: &str) -> anyhow::Result<ProviderEngine> {
-    Ok(match s.to_lowercase().as_str() {
-        "ollama" => ProviderEngine::Ollama,
-        "llama_cpp" | "llama-cpp" | "llamacpp" => ProviderEngine::LlamaCpp,
-        "lmstudio" | "lm_studio" => ProviderEngine::Lmstudio,
-        "vllm" => ProviderEngine::Vllm,
-        other => anyhow::bail!("unknown engine: {other}"),
+    ProviderEngine::from_token(s).ok_or_else(|| {
+        anyhow::anyhow!(
+            "moteur inconnu : {s} — attendus : ollama, llama_cpp, lmstudio, vllm,              open_ai_compat, airllm, ou ext:<id> pour un moteur d'extension"
+        )
     })
 }

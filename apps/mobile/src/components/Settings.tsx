@@ -16,7 +16,13 @@ import {
   sendNotification,
   setPushEnabled,
 } from "../lib/notifications";
-import { ACCENT_PRESETS, accentDepuisHex, appliquerAccent, lireAccent } from "../lib/theme";
+import {
+  ACCENT_PRESETS,
+  type ReglageTheme,
+  type ThemeMode,
+  appliquerTheme,
+  lireTheme,
+} from "../lib/theme";
 import { ExtensionSettings } from "./ExtensionSettings";
 import { Screen } from "./Screen";
 import { VersionSection } from "./VersionSection";
@@ -120,6 +126,13 @@ const SECTIONS: { id: Section; icon: IconName; label: string; desc: string; conn
     { id: "about", icon: "warning", label: "À propos", desc: "Version, licences, système" },
   ];
 
+/** Les trois réglages de thème, dans l'ordre où ils se lisent. */
+const MODES_THEME: { value: ThemeMode; label: string; icon: IconName }[] = [
+  { value: "dark", label: "Sombre", icon: "moon" },
+  { value: "light", label: "Clair", icon: "sun" },
+  { value: "system", label: "Système", icon: "monitor" },
+];
+
 export function Settings({
   status,
   onBack,
@@ -165,7 +178,7 @@ export function Settings({
   const [notifError, setNotifError] = useState<string | null>(null);
 
   // ── Apparence ──
-  const [accent, setAccent] = useState(() => lireAccent());
+  const [theme, setTheme] = useState<ReglageTheme>(() => lireTheme());
 
   // Le retour d'Android referme ce qui est ouvert : la catégorie courante,
   // puis les modales — jamais l'application d'un seul coup.
@@ -194,9 +207,10 @@ export function Settings({
     void loadUserData();
   }, [loadUserData]);
 
-  function choisirAccent(a: { hex: string; rgb: string }) {
-    setAccent(a);
-    appliquerAccent(a);
+  /** Poser un réglage de thème : l'état, le document, et l'appareil. */
+  function choisirTheme(reglage: ReglageTheme) {
+    setTheme(reglage);
+    appliquerTheme(reglage, true);
   }
 
   async function handleTogglePush() {
@@ -500,17 +514,38 @@ export function Settings({
             />
           )}
 
-          {/* ── Apparence : la couleur d'accentuation ── */}
+          {/* ── Apparence : le mode, puis la couleur d'accentuation ── */}
           {section === "appearance" && (
             <section className="lo-section">
-              <h2 className="lo-section-title">Couleur d'accentuation</h2>
+              <h2 className="lo-section-title">Thème</h2>
+              <p className="lo-hint">
+                Sombre par défaut. En clair, l'accent s'assombrit tout seul pour rester lisible.
+              </p>
+              <div className="lo-segmented" style={{ marginTop: 12 }} role="group">
+                {MODES_THEME.map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    className={`lo-segment${theme.mode === m.value ? " lo-segment-on" : ""}`}
+                    aria-pressed={theme.mode === m.value}
+                    onClick={() => choisirTheme({ ...theme, mode: m.value })}
+                  >
+                    <Icon name={m.icon} size={15} />
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              <h2 className="lo-section-title" style={{ marginTop: 32 }}>
+                Couleur d'accentuation
+              </h2>
               <p className="lo-hint">
                 La teinte unique de l'interface. Sobre et naturelle par défaut — la même palette que
                 sur l'ordinateur.
               </p>
               <div className="lo-swatch-grid" style={{ marginTop: 12 }}>
                 {ACCENT_PRESETS.map((p) => {
-                  const actif = accent.hex.toLowerCase() === p.hex.toLowerCase();
+                  const actif = theme.hex.toLowerCase() === p.hex.toLowerCase();
                   return (
                     <button
                       key={p.hex}
@@ -520,7 +555,7 @@ export function Settings({
                       title={p.name}
                       aria-label={`Accent ${p.name}`}
                       aria-pressed={actif}
-                      onClick={() => choisirAccent({ hex: p.hex, rgb: p.rgb })}
+                      onClick={() => choisirTheme({ ...theme, hex: p.hex })}
                     >
                       {actif && (
                         <span className="lo-swatch-check">
@@ -534,20 +569,18 @@ export function Settings({
               <div className="lo-custom-color" style={{ marginTop: 16 }}>
                 <input
                   type="color"
-                  value={accent.hex}
-                  onChange={(e) => choisirAccent(accentDepuisHex(e.target.value))}
+                  value={theme.hex}
+                  onChange={(e) => choisirTheme({ ...theme, hex: e.target.value })}
                   className="lo-color-input"
                   aria-label="Couleur personnalisée"
                 />
-                <span className="lo-color-value">{accent.hex}</span>
+                <span className="lo-color-value">{theme.hex}</span>
               </div>
               <button
                 type="button"
                 className="lo-btn-ghost lo-settings-reset"
                 style={{ marginTop: 16 }}
-                onClick={() =>
-                  choisirAccent({ hex: ACCENT_PRESETS[0].hex, rgb: ACCENT_PRESETS[0].rgb })
-                }
+                onClick={() => choisirTheme({ mode: "dark", hex: ACCENT_PRESETS[0].hex })}
               >
                 Réinitialiser l'apparence
               </button>

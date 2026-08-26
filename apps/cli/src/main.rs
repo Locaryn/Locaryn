@@ -1486,12 +1486,13 @@ fn parse_trust(s: &str) -> anyhow::Result<locaryn_shared_types::TrustLevel> {
     })
 }
 
+/// Lit un nom de moteur d'argument. La table des jetons vit dans
+/// `shared-types` : la recopier ici a déjà donné une CLI qui acceptait des
+/// moteurs que l'application ne connaissait pas, et refusait les autres.
 fn parse_engine(s: &str) -> anyhow::Result<locaryn_shared_types::ProviderEngine> {
-    Ok(match s.to_lowercase().as_str() {
-        "ollama" => locaryn_shared_types::ProviderEngine::Ollama,
-        "llama_cpp" | "llama-cpp" => locaryn_shared_types::ProviderEngine::LlamaCpp,
-        "lmstudio" | "lm_studio" => locaryn_shared_types::ProviderEngine::Lmstudio,
-        "vllm" => locaryn_shared_types::ProviderEngine::Vllm,
-        _ => anyhow::bail!("unknown engine: {s}"),
+    locaryn_shared_types::ProviderEngine::from_token(s).ok_or_else(|| {
+        anyhow::anyhow!(
+            "moteur inconnu : {s} — attendus : ollama, llama_cpp, lmstudio, vllm,              open_ai_compat, airllm, ou ext:<id> pour un moteur apporté par une extension"
+        )
     })
 }

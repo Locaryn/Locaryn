@@ -1,6 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
-import { useEffect, useState } from "react";
-import { type SshAiAccess, type SshServer, type TrustLevel, core } from "../lib/core";
+import { type TrustLevel } from "../lib/core";
 import { ModalShell } from "./ModalShell";
 
 type Props = {
@@ -16,24 +15,7 @@ export function ChatPermissionsModal({
   trustLevel = "untrusted",
   onTrustLevelChange,
 }: Props) {
-  const [sshServers, setSshServers] = useState<SshServer[]>([]);
-
-  useEffect(() => {
-    if (isOpen) {
-      core
-        .listSshServers()
-        .then(setSshServers)
-        .catch(() => setSshServers([]));
-    }
-  }, [isOpen]);
-
   if (!isOpen) return null;
-
-  async function handleSshAccessChange(id: string, level: SshAiAccess) {
-    await core.setSshAiAccess(id, level);
-    const updated = await core.listSshServers();
-    setSshServers(updated);
-  }
 
   return (
     <ModalShell
@@ -55,7 +37,7 @@ export function ChatPermissionsModal({
         </button>
       </div>
 
-      {/* Section 1: Trust Level */}
+      {/* Section: Trust Level */}
       <div className="locaryn-field" style={{ marginBottom: "24px" }}>
         <label htmlFor="perm-trust" className="locaryn-field-label">
           Niveau de Confiance du Projet / Chat
@@ -74,50 +56,6 @@ export function ChatPermissionsModal({
           Définit l'autonomie accordée à l'agent IA pour exécuter des commandes et modifier votre
           code.
         </p>
-      </div>
-
-      {/* Section 2: Connector AI Access Gating */}
-      <div className="locaryn-field">
-        <div className="locaryn-field-label">Autorisations des connecteurs SSH</div>
-        <p className="locaryn-field-hint">
-          Définissez si l'agent IA peut accéder à vos serveurs SSH configurés et quel est son niveau
-          d'autonomie.
-        </p>
-
-        {sshServers.length === 0 ? (
-          <div className="locaryn-field-hint" style={{ fontStyle: "italic", marginTop: "8px" }}>
-            Aucun serveur SSH configuré dans « Connecteurs & MCP ».
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
-            {sshServers.map((server) => (
-              <div key={server.id} className="locaryn-box-variant-row">
-                <div>
-                  <span style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}>{server.name}</span>
-                  <span
-                    style={{
-                      fontSize: "var(--text-xs)",
-                      color: "var(--text-faint)",
-                      marginLeft: "8px",
-                    }}
-                  >
-                    {server.username}@{server.host}
-                  </span>
-                </div>
-                <select
-                  className="locaryn-select locaryn-select-sm"
-                  value={server.ai_access}
-                  onChange={(e) => handleSshAccessChange(server.id, e.target.value as SshAiAccess)}
-                >
-                  <option value="none">Invisible</option>
-                  <option value="read_only">Lecture seule</option>
-                  <option value="approval">Avec confirmation</option>
-                  <option value="trusted">Confiance totale</option>
-                </select>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       <div

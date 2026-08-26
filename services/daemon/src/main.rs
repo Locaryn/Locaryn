@@ -215,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
     // redémarrage du service les faisait disparaître, avec les écrans et les
     // outils qu'elles apportaient.
     routes::extensions::restore_from_storage(&state).await;
-    routes::extensions::sync_mcp_servers(&state).await;
+    routes::extensions::sync_extension_runtime(&state).await;
 
     if exposed && users.count().await.unwrap_or(0) == 0 {
         anyhow::bail!(
@@ -559,7 +559,7 @@ async fn seed_default_provider(storage: &Storage) {
         tracing::info!("seeding default local llama-server provider");
         if let Err(e) = storage
             .providers
-            .upsert_local(ProviderEngine::LlamaCpp, "http://127.0.0.1:8080", None)
+            .upsert_local(&ProviderEngine::LlamaCpp, "http://127.0.0.1:8080", None)
             .await
         {
             tracing::warn!(error = %e, "failed to seed default provider");
@@ -581,7 +581,7 @@ async fn health(State(s): State<Arc<DaemonState>>) -> Json<Health> {
     let active = s.storage.providers.active().await.ok().flatten();
     let provider_summary = active.as_ref().map(|p| ProviderSummary {
         kind: p.kind,
-        engine: p.engine,
+        engine: p.engine.clone(),
         endpoint: p.endpoint.clone(),
         model: p.model.clone(),
     });
@@ -985,13 +985,21 @@ async fn send_message(
 
     let mut supervisor_ok = true;
     if let Some(ref p) = active_provider {
-        if p.engine == ProviderEngine::LlamaCpp {
-            tracing::debug!(endpoint = %p.endpoint, "ensuring llama-server is running");
-            if let Err(e) = s.supervisor.ensure_running(ProviderEngine::LlamaCpp).await {
-                tracing::warn!(error = %e, "supervisor could not ensure llama-server running");
+        // Tout runtime que le superviseur sait gérer est démarré ici — le
+        // runtime intégré comme celui qu'apporte une extension. Ne traiter
+        // que llama.cpp laissait un moteur d'extension arrêté, et la
+        // conversation repartait sur l'agent de secours sans rien dire.
+        let gere = matches!(
+            p.engine,
+            ProviderEngine::LlamaCpp | ProviderEngine::AirLlm | ProviderEngine::Extension(_)
+        );
+        if gere {
+            tracing::debug!(endpoint = %p.endpoint, moteur = %p.engine.as_token(), "démarrage du moteur");
+            if let Err(e) = s.supervisor.ensure_running(&p.engine).await {
+                tracing::warn!(error = %e, moteur = %p.engine.as_token(), "moteur indémarrable");
                 supervisor_ok = false;
             } else {
-                s.supervisor.note_activity(ProviderEngine::LlamaCpp).await;
+                s.supervisor.note_activity(&p.engine).await;
             }
         }
     }
@@ -1102,9 +1110,7 @@ async fn send_message(
     } else {
         match &active_provider {
             Some(p)
-                if (p.engine == ProviderEngine::LlamaCpp
-                    || p.engine == ProviderEngine::OpenAiCompat)
-                    && supervisor_ok =>
+                if parle_openai(&p.engine) && supervisor_ok =>
             {
                 tracing::info!(endpoint = %p.endpoint, model = ?model, "using OpenAiCompatAgent");
                 let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
@@ -1924,7 +1930,7 @@ async fn suggest_project(State(s): State<Arc<DaemonState>>, Path(id): Path<Strin
     };
     let Some(p) = providers.into_iter().find(|p| {
         p.is_active
-            && (p.engine == ProviderEngine::LlamaCpp || p.engine == ProviderEngine::OpenAiCompat)
+            && parle_openai(&p.engine)
     }) else {
         return rien();
     };
@@ -2000,7 +2006,7 @@ async fn merge_sessions(
     };
     let Some(p) = providers.into_iter().find(|p| {
         p.is_active
-            && (p.engine == ProviderEngine::LlamaCpp || p.engine == ProviderEngine::OpenAiCompat)
+            && parle_openai(&p.engine)
     }) else {
         return introuvable("aucun moteur actif");
     };
@@ -2356,8 +2362,7 @@ fn spawn_profil_de_l_utilisateur(s: Arc<DaemonState>, session_id: Uuid) {
         };
         let Some(p) = providers.into_iter().find(|p| {
             p.is_active
-                && (p.engine == ProviderEngine::LlamaCpp
-                    || p.engine == ProviderEngine::OpenAiCompat)
+                && parle_openai(&p.engine)
         }) else {
             return;
         };
@@ -2424,8 +2429,7 @@ fn spawn_titre_du_modele(s: Arc<DaemonState>, session_id: Uuid, premiere_demande
         };
         let Some(p) = providers.into_iter().find(|p| {
             p.is_active
-                && (p.engine == ProviderEngine::LlamaCpp
-                    || p.engine == ProviderEngine::OpenAiCompat)
+                && parle_openai(&p.engine)
         }) else {
             return;
         };
@@ -2514,11 +2518,25 @@ async fn supervisor_start(
     // Le modèle demandé est enregistré avant le démarrage : c'est lui que le
     // superviseur lira pour construire la ligne de commande du moteur.
     if let Some(model) = body.model.as_deref().filter(|m| !m.is_empty()) {
-        let endpoint = locaryn_provider_supervisor::default_endpoint(engine).to_string();
+        let Some(endpoint) = s.supervisor.endpoint_for(&engine).await else {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({
+                    "error": {
+                        "code": "unknown_engine",
+                        "message": format!(
+                            "moteur {} inconnu — l'extension qui l'apportait n'est plus installée",
+                            engine.as_token()
+                        )
+                    }
+                })),
+            )
+                .into_response();
+        };
         if let Err(e) = s
             .storage
             .providers
-            .upsert_local(engine, &endpoint, Some(model.to_string()))
+            .upsert_local(&engine, &endpoint, Some(model.to_string()))
             .await
         {
             return (
@@ -2531,11 +2549,11 @@ async fn supervisor_start(
         }
     }
 
-    match s.supervisor.ensure_running(engine).await {
+    match s.supervisor.ensure_running(&engine).await {
         Ok(endpoint) => (
             StatusCode::OK,
             Json(serde_json::json!({
-                "engine": format!("{engine:?}").to_lowercase(),
+                "engine": engine.as_token(),
                 "endpoint": endpoint,
                 "status": "healthy"
             })),
@@ -2568,11 +2586,11 @@ async fn supervisor_stop(
                 .into_response();
         }
     };
-    match s.supervisor.shutdown(engine).await {
+    match s.supervisor.shutdown(&engine).await {
         Ok(()) => (
             StatusCode::OK,
             Json(serde_json::json!({
-                "engine": format!("{engine:?}").to_lowercase(),
+                "engine": engine.as_token(),
                 "status": "stopped"
             })),
         )
@@ -2588,11 +2606,18 @@ async fn supervisor_stop(
 }
 
 fn parse_engine_str(s: &str) -> Option<ProviderEngine> {
-    match s.to_lowercase().as_str() {
-        "ollama" => Some(ProviderEngine::Ollama),
-        "llama_cpp" | "llama-cpp" | "llamacpp" => Some(ProviderEngine::LlamaCpp),
-        "lmstudio" | "lm_studio" => Some(ProviderEngine::Lmstudio),
-        "vllm" => Some(ProviderEngine::Vllm),
-        _ => None,
-    }
+    ProviderEngine::from_token(s)
+}
+
+/// Ce moteur se pilote-t-il avec le dialecte compatible OpenAI ?
+///
+/// C'est le cas du runtime intégré, d'un serveur déclaré à la main, et de tout
+/// moteur qu'une extension apporte — la section `engine` n'admet aujourd'hui
+/// que ce dialecte. La question est posée ici une fois plutôt que réécrite à
+/// chaque site d'appel : quatre listes à rallonger, c'est trois oublis.
+fn parle_openai(engine: &ProviderEngine) -> bool {
+    matches!(
+        engine,
+        ProviderEngine::LlamaCpp | ProviderEngine::OpenAiCompat | ProviderEngine::Extension(_)
+    )
 }

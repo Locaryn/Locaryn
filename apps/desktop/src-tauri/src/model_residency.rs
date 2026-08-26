@@ -335,19 +335,16 @@ pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, S
     let active = core.storage.providers.active().await.ok().flatten();
     let engine = active
         .as_ref()
-        .map(|p| p.engine)
+        .map(|p| p.engine.clone())
         .unwrap_or(ProviderEngine::LlamaCpp);
 
-    let is_managed = matches!(engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm);
-    let loaded = if is_managed {
-        core.supervisor.is_healthy(engine).await
-            && active.as_ref().and_then(|p| p.model.as_ref()).is_some()
-    } else {
-        core.supervisor.is_healthy(engine).await
-            && active.as_ref().and_then(|p| p.model.as_ref()).is_some()
-    };
+    // La condition était la même dans les deux branches : un moteur est chargé
+    // s'il répond et qu'un modèle est enregistré. Vrai pour le runtime
+    // intégré comme pour un moteur apporté par une extension.
+    let loaded = core.supervisor.is_healthy(&engine).await
+        && active.as_ref().and_then(|p| p.model.as_ref()).is_some();
 
-    let (idle_seconds, pinned) = match core.supervisor.residency(engine).await {
+    let (idle_seconds, pinned) = match core.supervisor.residency(&engine).await {
         Some((idle, pinned, _)) => (idle, pinned),
         None => (0, false),
     };
@@ -378,6 +375,36 @@ pub fn set_caution_level(core: State<'_, Core>, level: CautionLevel) -> Result<(
         .map_err(|e| e.to_string())
 }
 
+/// Le moteur qui sait charger ce modèle, et son point d'entrée.
+///
+/// Le runtime intégré d'abord — c'est le cas courant, et il ne dépend d'aucune
+/// extension. Puis les moteurs apportés, dans l'ordre de leur nom affiché. Un
+/// modèle que personne ne sait charger renvoie une erreur qui dit quoi
+/// installer, au lieu de démarrer un moteur qui refusera les poids.
+async fn moteur_pour(core: &Core, model: &str) -> Result<(ProviderEngine, String), String> {
+    if crate::is_text_chat_model(model) {
+        let endpoint = core
+            .storage
+            .providers
+            .active()
+            .await
+            .ok()
+            .flatten()
+            .filter(|p| p.engine == ProviderEngine::LlamaCpp)
+            .map(|p| p.endpoint)
+            .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
+        return Ok((ProviderEngine::LlamaCpp, endpoint));
+    }
+    for spec in core.supervisor.extension_engines().await {
+        if spec.serves_model(model) {
+            return Ok((spec.engine(), spec.endpoint()));
+        }
+    }
+    Err(format!(
+        "Aucun moteur installé ne sait charger « {model} ». Le runtime intégré          charge du GGUF ; pour un autre format, installez le moteur          correspondant depuis Réglages → Extensions."
+    ))
+}
+
 /// Ce que donnerait le chargement de ce modèle, sans rien charger.
 #[tauri::command]
 pub fn check_model_fit(core: State<'_, Core>, model: String) -> ModelFit {
@@ -401,38 +428,32 @@ pub async fn load_chat_model(
         return Err(fit.message);
     }
 
-    let engine = ProviderEngine::LlamaCpp;
-    let endpoint = core
-        .storage
-        .providers
-        .active()
-        .await
-        .ok()
-        .flatten()
-        .map(|p| p.endpoint)
-        .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
+    // Quel moteur sait charger *ce* modèle. Choisir llama.cpp d'office
+    // faisait échouer le démarrage sur un checkpoint safetensors, alors qu'un
+    // moteur installé savait le servir.
+    let (engine, endpoint) = moteur_pour(&core, &model).await?;
 
-    // Enregistrer le modèle voulu avant de démarrer : le superviseur lance
-    // llama-server avec le modèle actif, pas avec un argument qu'on lui passe.
+    // Enregistrer le modèle voulu avant de démarrer : le superviseur lance le
+    // moteur avec le modèle actif, pas avec un argument qu'on lui passe.
     core.storage
         .providers
-        .upsert_local(engine, &endpoint, Some(model.clone()))
+        .upsert_local(&engine, &endpoint, Some(model.clone()))
         .await
         .map_err(|e| e.to_string())?;
 
     // Un moteur déjà en route tient l'ancien modèle : il faut le relancer.
-    if core.supervisor.is_healthy(engine).await {
-        let _ = core.supervisor.shutdown(engine).await;
+    if core.supervisor.is_healthy(&engine).await {
+        let _ = core.supervisor.shutdown(&engine).await;
     }
 
     core.supervisor
-        .ensure_running(engine)
+        .ensure_running(&engine)
         .await
         .map_err(|e| e.to_string())?;
-    core.supervisor.set_pinned(engine, true).await;
+    core.supervisor.set_pinned(&engine, true).await;
     crate::refresh_mcp_runtime_env(&core).await;
 
-    tracing::info!(%model, "modèle de chat chargé et épinglé");
+    tracing::info!(%model, moteur = %engine.as_token(), "modèle de chat chargé et épinglé");
     model_residency(core).await
 }
 
@@ -442,7 +463,7 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
     let active = core.storage.providers.active().await.ok().flatten();
     let engine = active
         .as_ref()
-        .map(|p| p.engine)
+        .map(|p| p.engine.clone())
         .unwrap_or(ProviderEngine::LlamaCpp);
     let endpoint = active
         .as_ref()
@@ -450,17 +471,22 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
         .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
 
     // 1. Décharger le moteur supervisé (LlamaCpp, AirLLM, etc.)
-    core.supervisor.set_pinned(engine, false).await;
-    core.supervisor
-        .set_pinned(ProviderEngine::LlamaCpp, false)
-        .await;
-    core.supervisor
-        .set_pinned(ProviderEngine::AirLlm, false)
-        .await;
-
-    let _ = core.supervisor.shutdown(engine).await;
-    let _ = core.supervisor.shutdown(ProviderEngine::LlamaCpp).await;
-    let _ = core.supervisor.shutdown(ProviderEngine::AirLlm).await;
+    // Le moteur actif, les runtimes intégrés, et tous ceux qu'apportent des
+    // extensions : « rendre la mémoire » veut dire toute la mémoire, pas
+    // seulement celle du moteur inscrit comme actif.
+    let mut a_liberer = vec![
+        engine.clone(),
+        ProviderEngine::LlamaCpp,
+        ProviderEngine::AirLlm,
+    ];
+    for spec in core.supervisor.extension_engines().await {
+        a_liberer.push(spec.engine());
+    }
+    a_liberer.dedup();
+    for moteur in &a_liberer {
+        core.supervisor.set_pinned(moteur, false).await;
+        let _ = core.supervisor.shutdown(moteur).await;
+    }
 
     // 2. Si Ollama ou API externe, envoyer la commande de déchargement immédiat
     if let Some(model_name) = active.as_ref().and_then(|p| p.model.as_deref()) {
@@ -484,7 +510,7 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
     let _ = core
         .storage
         .providers
-        .upsert_local(engine, &endpoint, None)
+        .upsert_local(&engine, &endpoint, None)
         .await;
 
     crate::refresh_mcp_runtime_env(&core).await;

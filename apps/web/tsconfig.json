@@ -11,7 +11,11 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "noEmit": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@locaryn/ui-core": ["../../packages-ui/core/src/index.tsx"]
+    }
   },
   "include": ["src"]
 }

@@ -3,8 +3,12 @@
 // model edit, workflow); the <TaskCenter> UI subscribes and renders them,
 // colour-coded by type. No React context threading required.
 
+import type { IconName } from "@locaryn/ui-core";
 import { useSyncExternalStore } from "react";
 import { notifierSysteme } from "./osNotify";
+
+/** Douze entrées maximum : au-delà, la pile n'est plus lisible, elle archive. */
+const MAX_TASKS = 12;
 
 export type TaskType = "download" | "generation" | "edit" | "workflow" | "audio";
 export type TaskStatus = "running" | "done" | "error";
@@ -25,6 +29,8 @@ export interface AppTask {
   /** Populated on completion — e.g. a generated audio URL. */
   resultAudioUrl?: string;
   error?: string;
+  /** Vrai dès que le centre de notifications a été ouvert sur cette entrée. */
+  read?: boolean;
   createdAt: number;
   updatedAt: number;
 
@@ -38,13 +44,18 @@ export interface AppTask {
   attempt?: number;
 }
 
-/** Per-type presentation so the center is instantly scannable. */
-export const TASK_META: Record<TaskType, { label: string; icon: string; color: string }> = {
-  download: { label: "Téléchargement", icon: "download", color: "#5b8dd6" },
-  generation: { label: "Génération", icon: "image", color: "#a06cd6" },
-  edit: { label: "Édition modèle", icon: "extensions", color: "#5aa86a" },
-  workflow: { label: "Workflow", icon: "extensions", color: "#d4a03a" },
-  audio: { label: "Synthèse vocale", icon: "mic", color: "#5b8dd6" },
+/**
+ * Ce que chaque type met devant son libellé.
+ *
+ * `icon` est un nom du jeu partagé, pas un caractère : rendu tel quel, il
+ * écrivait le mot « download » dans la barre d'état.
+ */
+export const TASK_META: Record<TaskType, { label: string; icon: IconName; color: string }> = {
+  download: { label: "Téléchargement", icon: "download", color: "var(--info)" },
+  generation: { label: "Génération", icon: "image", color: "var(--info)" },
+  edit: { label: "Édition modèle", icon: "extensions", color: "var(--accent-300)" },
+  workflow: { label: "Workflow", icon: "extensions", color: "var(--warn)" },
+  audio: { label: "Synthèse vocale", icon: "mic", color: "var(--info)" },
 };
 
 let tasks: AppTask[] = [];
@@ -110,10 +121,11 @@ export const taskCenter = {
       status: "running",
       progress: input.progress,
       detail: input.detail,
+      read: false,
       createdAt: now(),
       updatedAt: now(),
     };
-    tasks = [t, ...tasks];
+    tasks = [t, ...tasks].slice(0, MAX_TASKS);
     emit();
     return id;
   },
@@ -140,20 +152,19 @@ export const taskCenter = {
   /** Start a workflow task before the plan is known (attempt 1). */
   addWorkflow(label: string): string {
     const id = `t${++seq}`;
-    tasks = [
-      {
-        id,
-        type: "workflow",
-        label,
-        status: "running",
-        attempt: 1,
-        stepIndex: 0,
-        steps: [],
-        createdAt: now(),
-        updatedAt: now(),
-      },
-      ...tasks,
-    ];
+    const t: AppTask = {
+      id,
+      type: "workflow",
+      label,
+      status: "running",
+      attempt: 1,
+      stepIndex: 0,
+      steps: [],
+      read: false,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    tasks = [t, ...tasks].slice(0, MAX_TASKS);
     emit();
     return id;
   },
@@ -178,15 +189,18 @@ export const taskCenter = {
       });
   },
 
+  /** Le centre a été ouvert : la pastille de non-lu retombe à zéro. */
+  markAllRead() {
+    if (!tasks.some((t) => !t.read)) return;
+    tasks = tasks.map((t) => (t.read ? t : { ...t, read: true }));
+    emit();
+  },
   remove(id: string) {
     tasks = tasks.filter((t) => t.id !== id);
     emit();
   },
-  clearFinished() {
-    tasks = tasks.filter((t) => t.status === "running");
-    emit();
-  },
-  /** Remove all terminal (done / error) tasks — used by the gallery "Tout effacer" button. */
+  /** Vide la pile de tout ce qui est terminé — le « Tout effacer » du centre
+   *  de notifications comme celui de la galerie. */
   clearGallery() {
     tasks = tasks.filter((t) => t.status === "running");
     emit();

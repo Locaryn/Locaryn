@@ -172,7 +172,7 @@ Capacités reconnues par ce build (miroir du fichier canonique) :
 `image-gen`, `image-editor`, `voice-tts`, `voice-cloning`, `music-gen`,
 `video-gen`, `3d-gen`, `vision-ocr`, `text-analysis`, `translation`,
 `rag-qa`, `model-training`, `figures`, `ssh-remote-exec`, `travel-tunnel`,
-`batch-api`.
+`batch-api`, `inference-engine`.
 
 Une capacité déclarée sans moteur derrière n'apporte aucun outil au modèle :
 mieux vaut que le modèle dise honnêtement qu'il ne sait pas faire que
@@ -323,6 +323,8 @@ marche, pas ce qu'on voudrait.
 | `agents/`, `commands/`, `hooks/` d'un plugin Claude Code | **à faire** |
 | `composer_actions` (`insert` et `tool`) | **fait**, ordinateur et téléphone |
 | `settings_sections` (`boolean`, `select`, `model`, `string`, `number`, `prompt`) | **fait**, ordinateur et téléphone — mécanisme unique |
+| Section `engine` : moteur d'inférence apporté par une extension | **fait** : installation, lancement, sonde, arrêt, journal, formats de poids servis, jeton `ext:<id>` (voir [`writing-an-extension.md`](writing-an-extension.md#apporter-un-moteur-dinférence) et [doc 15](architecture/15-inference-engines.md)) |
+| Section `core` : noyau d'agent apporté par une extension | **fait** pour les dialectes `responses`, `runs`, `chat_completions` (voir [doc 14](architecture/14-alternate-cores.md)) |
 | Masquage d'une contribution par l'utilisateur | **à faire** |
 
 ---

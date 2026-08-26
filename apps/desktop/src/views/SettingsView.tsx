@@ -1,4 +1,4 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon, type IconName, type ThemeMode } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { AboutSettings } from "../components/AboutSettings";
 import { CautionSettings } from "../components/CautionSettings";
@@ -19,6 +19,13 @@ import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
 import { AccountView } from "./AccountView";
 import { ProjectSettings } from "./ProjectSettings";
+
+/** Les trois réglages de thème, dans l'ordre où ils se lisent. */
+const THEME_MODES: { value: ThemeMode; label: string; icon: IconName }[] = [
+  { value: "dark", label: "Sombre", icon: "moon" },
+  { value: "light", label: "Clair", icon: "sun" },
+  { value: "system", label: "Système", icon: "monitor" },
+];
 
 export type Section =
   | "account"
@@ -125,7 +132,7 @@ export function SettingsView({
   onProjectArchived,
   onOpenMarketplace,
 }: Props) {
-  const { settings, updateAccent, resetTheme } = theme;
+  const { settings, updateAccent, updateMode, resetTheme } = theme;
   const { lang, setLang } = useI18n();
   const [section, setSection] = useState<Section>(initialSection ?? "account");
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -222,7 +229,28 @@ export function SettingsView({
 
           {section === "appearance" && (
             <div className="locaryn-field">
-              <div className="locaryn-field-label">Couleur d'accentuation</div>
+              <div className="locaryn-field-label">Thème</div>
+              <p className="locaryn-field-hint">
+                Sombre par défaut. En clair, l'accent s'assombrit tout seul pour rester lisible.
+              </p>
+              <div className="locaryn-segmented" style={{ marginTop: 12 }} role="group">
+                {THEME_MODES.map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    className={`locaryn-segment${settings.mode === m.value ? " locaryn-segment-on" : ""}`}
+                    aria-pressed={settings.mode === m.value}
+                    onClick={() => updateMode(m.value)}
+                  >
+                    <Icon name={m.icon} size={14} />
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="locaryn-field-label" style={{ marginTop: 32 }}>
+                Couleur d'accentuation
+              </div>
               <p className="locaryn-field-hint">
                 La teinte unique de l'interface. Sobre et naturelle par défaut.
               </p>

@@ -1,3 +1,4 @@
+import { LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type MigrationProgress, type StorageInfo, core, formatBytes } from "../lib/core";
@@ -200,9 +201,7 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
               {formatBytes(progress.moved_bytes)} / {formatBytes(progress.total_bytes)}
             </span>
           </div>
-          <div className="locaryn-footer-progress-track">
-            <div className="locaryn-footer-progress-fill" style={{ width: `${pct}%` }} />
-          </div>
+          <LoProgress value={pct / 100} on="surface" label={progress.phase} />
           <div className="locaryn-store-progress-file">{progress.current_file}</div>
         </div>
       )}
@@ -280,9 +279,9 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
                   {formatBytes(d.free_bytes)} libres
                 </span>
               </div>
-              <div className="locaryn-footer-progress-track">
+              <div className="locaryn-meter">
                 <div
-                  className={`locaryn-footer-progress-fill${low ? " locaryn-store-low-fill" : ""}`}
+                  className={`locaryn-meter-fill${low ? " locaryn-store-low-fill" : ""}`}
                   style={{ width: `${usedPct}%` }}
                 />
               </div>

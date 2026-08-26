@@ -9,6 +9,7 @@
 
 pub mod adapters;
 pub mod catalog;
+pub mod hostpaths;
 pub mod install;
 pub mod loader;
 pub mod manifest;

@@ -292,7 +292,7 @@ impl TryFrom<ProviderRow> for Provider {
         Ok(Provider {
             id: uid(&r.id)?,
             kind: ProviderKind::from_token(&r.kind),
-            engine: ProviderEngine::from_token(&r.engine),
+            engine: <ProviderEngine as FromToken>::from_token(&r.engine),
             endpoint: r.endpoint,
             model: r.model,
             is_active: bool_from_i64(r.is_active),
@@ -414,16 +414,19 @@ impl FromToken for ProviderKind {
 }
 
 impl FromToken for ProviderEngine {
+    /// Le jeton fait autorité et vit dans `shared-types` — il n'est pas
+    /// recopié ici. Une ligne dont le moteur ne se lit pas est signalée :
+    /// c'est le symptôme d'une extension retirée ou d'une base écrite par une
+    /// version plus récente, et le confondre avec Ollama en silence fait
+    /// répondre le mauvais moteur.
     fn from_token(s: &str) -> Self {
-        match s {
-            "ollama" => ProviderEngine::Ollama,
-            "llama_cpp" => ProviderEngine::LlamaCpp,
-            "lmstudio" => ProviderEngine::Lmstudio,
-            "vllm" => ProviderEngine::Vllm,
-            "open_ai_compat" => ProviderEngine::OpenAiCompat,
-            "airllm" => ProviderEngine::AirLlm,
-            _ => ProviderEngine::Ollama,
-        }
+        ProviderEngine::from_token(s).unwrap_or_else(|| {
+            tracing::warn!(
+                jeton = %s,
+                "moteur inconnu en base — la ligne est lue comme Ollama ;                  vérifiez l'extension qui l'avait écrite"
+            );
+            ProviderEngine::Ollama
+        })
     }
 }
 
@@ -1375,7 +1378,7 @@ impl ProviderRepo {
 
     pub async fn upsert_local(
         &self,
-        engine: ProviderEngine,
+        engine: &ProviderEngine,
         endpoint: &str,
         model: Option<String>,
     ) -> Result<Provider, StorageError> {
@@ -1387,14 +1390,7 @@ impl ProviderRepo {
                 )));
             }
         }
-        let engine_token = match engine {
-            ProviderEngine::Ollama => "ollama",
-            ProviderEngine::LlamaCpp => "llama_cpp",
-            ProviderEngine::Lmstudio => "lmstudio",
-            ProviderEngine::Vllm => "vllm",
-            ProviderEngine::OpenAiCompat => "open_ai_compat",
-            ProviderEngine::AirLlm => "airllm",
-        };
+        let engine_token = engine.as_token();
         // Upsert by (kind='local', endpoint): if a local provider with the
         // same endpoint exists, activate it and update the model; otherwise
         // insert a new one as active. We also deactivate other providers so
@@ -1502,17 +1498,10 @@ impl ProviderRepo {
     /// engines (not individual provider UUIDs).
     pub async fn set_status_by_engine(
         &self,
-        engine: ProviderEngine,
+        engine: &ProviderEngine,
         status: ProviderStatus,
     ) -> Result<(), StorageError> {
-        let engine_token = match engine {
-            ProviderEngine::Ollama => "ollama",
-            ProviderEngine::LlamaCpp => "llama_cpp",
-            ProviderEngine::Lmstudio => "lmstudio",
-            ProviderEngine::Vllm => "vllm",
-            ProviderEngine::OpenAiCompat => "open_ai_compat",
-            ProviderEngine::AirLlm => "airllm",
-        };
+        let engine_token = engine.as_token();
         let status_token = match status {
             ProviderStatus::Unknown => "unknown",
             ProviderStatus::Healthy => "healthy",

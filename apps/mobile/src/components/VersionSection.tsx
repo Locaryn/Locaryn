@@ -1,3 +1,4 @@
+import { LoProgress, LoSpinner } from "@locaryn/ui-core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type ProgressionTelechargement, type UpdateStatus, api, coreMode } from "../lib/core";
@@ -164,22 +165,17 @@ export function VersionSection() {
             {status.notes && <p className="lo-update-notes">{status.notes}</p>}
             {phase === "telecharge" && progression && (
               <>
-                {/* Le pourcentage vit déjà dans le texte (« Téléchargement…
-                    45 % ») et dans la ligne des tailles : la barre est
-                    décorative, rien à annoncer de plus. */}
-                <div
-                  className={`lo-progress${progression.percentage == null ? " lo-progress-indeterminate" : ""}`}
-                  aria-hidden="true"
-                >
-                  <div
-                    className="lo-progress-fill"
-                    style={
-                      progression.percentage == null
-                        ? undefined
-                        : { width: `${progression.percentage}%` }
-                    }
+                {/* Une fin connue : la progression ondulée. Sinon le rotateur —
+                    aucune barre ne prétend savoir ce qu'elle ignore. */}
+                {progression.percentage == null ? (
+                  <LoSpinner size="sm" label="Téléchargement en préparation" />
+                ) : (
+                  <LoProgress
+                    value={progression.percentage / 100}
+                    on="surface"
+                    label="Téléchargement de la mise à jour"
                   />
-                </div>
+                )}
                 {progression.total != null && progression.total > 0 && (
                   <p className="lo-hint lo-progress-sizes">
                     {Math.round(progression.downloaded / (1024 * 1024))} Mo sur{" "}

@@ -1,6 +1,21 @@
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type WebStatus, api } from "../lib/core";
+import {
+  ACCENT_PRESETS,
+  type ReglageTheme,
+  type ThemeMode,
+  appliquerTheme,
+  lireTheme,
+} from "../lib/theme";
 import { Screen } from "./Screen";
+
+/** Les trois réglages de thème, dans l'ordre où ils se lisent. */
+const MODES_THEME: { value: ThemeMode; label: string; icon: IconName }[] = [
+  { value: "system", label: "Système", icon: "monitor" },
+  { value: "light", label: "Clair", icon: "sun" },
+  { value: "dark", label: "Sombre", icon: "moon" },
+];
 
 type Props = {
   status: WebStatus;
@@ -17,6 +32,7 @@ type Props = {
  */
 export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
   const [me, setMe] = useState<{ username: string; role: string; local?: boolean } | null>(null);
+  const [theme, setTheme] = useState<ReglageTheme>(() => lireTheme());
   const [current, setCurrent] = useState("");
   const [nouveau, setNouveau] = useState("");
   const [confirme, setConfirme] = useState("");
@@ -136,6 +152,66 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
         >
           Se déconnecter
         </button>
+      </section>
+
+      <section className="lo-section">
+        <h2 className="lo-section-title">Thème</h2>
+        <p className="lo-hint">
+          Le navigateur décide par défaut. En clair, l'accent s'assombrit tout seul pour rester
+          lisible.
+        </p>
+        <div className="lo-segmented" style={{ marginTop: 12 }} role="group">
+          {MODES_THEME.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              className={`lo-segment${theme.mode === m.value ? " lo-segment-on" : ""}`}
+              aria-pressed={theme.mode === m.value}
+              onClick={() => {
+                const suivant = { ...theme, mode: m.value };
+                setTheme(suivant);
+                appliquerTheme(suivant, true);
+              }}
+            >
+              <Icon name={m.icon} size={15} />
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        <h2 className="lo-section-title" style={{ marginTop: 32 }}>
+          Couleur d'accentuation
+        </h2>
+        <p className="lo-hint">
+          La teinte unique de l'interface — la même palette que sur l'ordinateur.
+        </p>
+        <div className="lo-swatch-grid" style={{ marginTop: 12 }}>
+          {ACCENT_PRESETS.map((p) => {
+            const actif = theme.hex.toLowerCase() === p.hex.toLowerCase();
+            return (
+              <button
+                key={p.hex}
+                type="button"
+                className={`lo-swatch${actif ? " lo-swatch-active" : ""}`}
+                style={{ background: p.hex }}
+                title={p.name}
+                aria-label={`Accent ${p.name}`}
+                aria-pressed={actif}
+                onClick={() => {
+                  const suivant = { ...theme, hex: p.hex };
+                  setTheme(suivant);
+                  appliquerTheme(suivant, true);
+                }}
+              >
+                {actif && (
+                  <span className="lo-swatch-check">
+                    <Icon name="check" size={14} />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       {status.signed_in && (

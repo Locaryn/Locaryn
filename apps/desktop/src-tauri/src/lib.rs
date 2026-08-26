@@ -12,6 +12,7 @@ mod airllm;
 mod approval_gate;
 mod client_cert;
 mod core_engines;
+mod inference_engines;
 mod extensions;
 mod hooks;
 mod local_profile;
@@ -32,7 +33,7 @@ use locaryn_preview::{PreviewOrigin, PreviewRender};
 use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
 use locaryn_shared_types::{
     ArtifactKind, ConnectionMode, Health, Message, MessageRole, Project, Provider, ProviderEngine,
-    ProviderSummary, Session, SshAiAccess, SshServer, TrustLevel,
+    ProviderSummary, Session, TrustLevel,
 };
 use locaryn_storage::Storage;
 use serde::{Deserialize, Serialize};
@@ -96,9 +97,6 @@ struct Core {
     /// supplies the MCP servers registered above and the extension section of
     /// the system prompt.
     extensions: Arc<tokio::sync::RwLock<extensions::ExtensionRuntime>>,
-    /// Server-side test tokens: an SSH server can only be saved after a
-    /// passing test whose host key the user confirmed. Keyed by token.
-    pending_tests: Arc<tokio::sync::Mutex<HashMap<String, PendingTest>>>,
     /// Active model downloads, keyed by target file name → cancel token.
     pull_cancels: Arc<tokio::sync::Mutex<HashMap<String, tokio_util::sync::CancellationToken>>>,
     /// Lazily-spawned embeddings server for RAG: (embedding model filename, child).
@@ -255,26 +253,6 @@ fn is_nsfw_model(name: &str) -> bool {
     is_nsfw_checkpoint(name) || is_nsfw_lora(name)
 }
 
-/// A verified-but-unsaved SSH connection test. Gates `save_ssh_server`.
-///
-/// Plusieurs champs sont renseignés par la sonde sans être relus aujourd'hui :
-/// `save_ssh_server` se contente pour l'instant de vérifier `confirmed` et
-/// `draft_hash`. Ils sont conservés parce qu'ils décrivent ce qui a été
-/// réellement constaté sur l'hôte — les jeter maintenant obligerait à
-/// re-sonder pour l'audit. Voir la tâche de câblage du dossier SSH.
-#[allow(dead_code)]
-struct PendingTest {
-    /// Hash of the connection-identifying draft fields; save must match.
-    draft_hash: u64,
-    host_key_algo: String,
-    host_key_sha256: String,
-    capabilities: serde_json::Value,
-    suggested_description: String,
-    /// Set true by `confirm_ssh_host_key` once the user verified the fingerprint.
-    confirmed: bool,
-    created: std::time::Instant,
-}
-
 /// Prune temp folders left behind by deleted free-chat sessions.
 async fn cleanup_orphan_free_chat_dirs(storage: &Storage) {
     let free_dir = locaryn_config::free_chats_dir();
@@ -323,7 +301,7 @@ async fn init_core() -> anyhow::Result<Core> {
         tracing::info!("seeding default llama-server provider");
         if let Err(e) = storage
             .providers
-            .upsert_local(ProviderEngine::LlamaCpp, "http://127.0.0.1:8080", None)
+            .upsert_local(&ProviderEngine::LlamaCpp, "http://127.0.0.1:8080", None)
             .await
         {
             tracing::warn!(error = %e, "failed to seed default provider");
@@ -392,7 +370,6 @@ async fn init_core() -> anyhow::Result<Core> {
         extensions: Arc::new(tokio::sync::RwLock::new(
             extensions::ExtensionRuntime::default(),
         )),
-        pending_tests: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         pull_cancels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         embed_server: Arc::new(tokio::sync::Mutex::new(None)),
         pending_approvals: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
@@ -415,7 +392,7 @@ async fn core_health(core: State<'_, Core>) -> Result<Health, String> {
     let active = core.storage.providers.active().await.ok().flatten();
     let provider_summary = active.as_ref().map(|p| ProviderSummary {
         kind: p.kind,
-        engine: p.engine,
+        engine: p.engine.clone(),
         endpoint: p.endpoint.clone(),
         model: p.model.clone(),
     });
@@ -872,11 +849,8 @@ async fn plan_task(core: State<'_, Core>, request: String) -> Result<TaskPlan, S
         .ok()
         .flatten()
         .ok_or("no active provider")?;
-    if matches!(
-        provider.engine,
-        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm
-    ) {
-        let _ = core.supervisor.ensure_running(provider.engine).await;
+    if moteur_supervise(&provider.engine) {
+        let _ = core.supervisor.ensure_running(&provider.engine).await;
     }
     let url = format!(
         "{}/v1/chat/completions",
@@ -929,106 +903,6 @@ async fn plan_task(core: State<'_, Core>, request: String) -> Result<TaskPlan, S
         needs_plan: parsed["needs_plan"].as_bool().unwrap_or(false) && !steps.is_empty(),
         needs_loop: parsed["needs_loop"].as_bool().unwrap_or(false),
         steps,
-    })
-}
-
-/// Verdict on whether a chat message is really an image request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ImageIntent {
-    /// True when the message asks for an image to be created.
-    is_image: bool,
-    /// True when it asks to modify an existing image (img2img).
-    is_edit: bool,
-    /// Prompt rewritten in English — diffusion models are trained on English.
-    english_prompt: String,
-    /// Suggested quality: "draft" | "standard" | "high" | "max".
-    quality: String,
-    /// Short justification shown to the user before they confirm.
-    reason: String,
-}
-
-/// Ask the model whether a plain chat message should be routed to the image
-/// generator, and to rewrite the prompt in English. The caller always asks the
-/// user to confirm — this only prepares the proposal, it never generates.
-#[tauri::command]
-async fn detect_image_request(
-    core: State<'_, Core>,
-    message: String,
-) -> Result<ImageIntent, String> {
-    let provider = core
-        .storage
-        .providers
-        .active()
-        .await
-        .ok()
-        .flatten()
-        .ok_or("no active provider")?;
-    if matches!(
-        provider.engine,
-        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm
-    ) {
-        let _ = core.supervisor.ensure_running(provider.engine).await;
-    }
-    let url = format!(
-        "{}/v1/chat/completions",
-        provider.endpoint.trim_end_matches('/')
-    );
-    let body = serde_json::json!({
-        "model": provider.model.clone().unwrap_or_else(|| "default".into()),
-        "messages": [
-            { "role": "system", "content":
-              "Tu determines si un message demande de CREER ou MODIFIER une image. \
-               Reponds UNIQUEMENT en JSON: {\"is_image\":bool,\"is_edit\":bool,\
-               \"english_prompt\":\"...\",\"quality\":\"draft|standard|high|max\",\"reason\":\"...\"}. \
-               is_image=false pour une question, une demande de code ou de texte. \
-               english_prompt: reformule la demande visuelle en ANGLAIS, descriptif et precis \
-               (les modeles de diffusion sont entraines en anglais). Vide si is_image=false. \
-               quality: 'draft' pour une icone ou un essai rapide, 'max' pour un visuel soigne, \
-               'standard' sinon. reason: une phrase courte en francais expliquant ton choix." },
-            { "role": "user", "content": message }
-        ],
-        "response_format": { "type": "json_object" },
-        "max_tokens": 300,
-        "temperature": 0.1,
-        "stream": false,
-        "reasoning_budget": 0,
-        "chat_template_kwargs": { "enable_thinking": false }
-    });
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("model returned {}", resp.status()));
-    }
-    let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let content = val["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("{}");
-    let p: serde_json::Value = serde_json::from_str(content).unwrap_or(serde_json::json!({}));
-    let english = p["english_prompt"]
-        .as_str()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let quality = match p["quality"].as_str().unwrap_or("standard") {
-        q @ ("draft" | "standard" | "high" | "max") => q,
-        _ => "standard",
-    }
-    .to_string();
-    Ok(ImageIntent {
-        // An image request with no prompt to render is not actionable.
-        is_image: p["is_image"].as_bool().unwrap_or(false) && !english.is_empty(),
-        is_edit: p["is_edit"].as_bool().unwrap_or(false),
-        english_prompt: english,
-        quality,
-        reason: p["reason"].as_str().unwrap_or("").trim().to_string(),
     })
 }
 
@@ -1130,11 +1004,8 @@ async fn suggest_followups(
         .ok()
         .flatten()
         .ok_or("no active provider")?;
-    if matches!(
-        provider.engine,
-        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm
-    ) {
-        let _ = core.supervisor.ensure_running(provider.engine).await;
+    if moteur_supervise(&provider.engine) {
+        let _ = core.supervisor.ensure_running(&provider.engine).await;
     }
 
     // Keep the context small: only the tail of the answer matters for "what next".
@@ -1523,11 +1394,8 @@ async fn generate_session_title(
 
     let active_provider = core.storage.providers.active().await.ok().flatten();
     let provider = active_provider.ok_or("no active provider")?;
-    if matches!(
-        provider.engine,
-        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm
-    ) {
-        let _ = core.supervisor.ensure_running(provider.engine).await;
+    if moteur_supervise(&provider.engine) {
+        let _ = core.supervisor.ensure_running(&provider.engine).await;
     }
 
     let url = format!(
@@ -1803,9 +1671,9 @@ async fn send_message(
     // réponse pour la donner à qui la lit.
     let mut panne_du_moteur: Option<String> = None;
     if let Some(ref p) = active_provider {
-        if matches!(p.engine, ProviderEngine::LlamaCpp | ProviderEngine::AirLlm) {
-            match core.supervisor.ensure_running(p.engine).await {
-                Ok(_) => core.supervisor.note_activity(p.engine).await,
+        if moteur_supervise(&p.engine) {
+            match core.supervisor.ensure_running(&p.engine).await {
+                Ok(_) => core.supervisor.note_activity(&p.engine).await,
                 Err(e) => {
                     tracing::warn!(error = %e, "supervisor could not ensure runtime running");
                     panne_du_moteur = Some(e.to_string());
@@ -2328,13 +2196,13 @@ async fn configure_provider(
     let provider = core
         .storage
         .providers
-        .upsert_local(ProviderEngine::LlamaCpp, &endpoint, model)
+        .upsert_local(&ProviderEngine::LlamaCpp, &endpoint, model)
         .await
         .map_err(|e| e.to_string())?;
 
     if model_changed {
         tracing::info!("active model changed — restarting llama-server");
-        let _ = core.supervisor.shutdown(ProviderEngine::LlamaCpp).await;
+        let _ = core.supervisor.shutdown(&ProviderEngine::LlamaCpp).await;
     }
     refresh_mcp_runtime_env(&core).await;
     Ok(provider)
@@ -2435,21 +2303,32 @@ pub(crate) fn resolve_model_path(
 /// Text chat model loadable by the managed llama.cpp runtime, excluding TTS,
 /// audio, embeddings, image diffusion and non-chat companions.
 pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
+    // Le runtime intégré lance llama-server avec `-m`, qui prend du GGUF. Un
+    // dépôt Transformers en shards `.safetensors` n'est pas un modèle
+    // llama.cpp et ne doit jamais apparaître comme modèle de conversation
+    // *pour ce runtime* — un moteur apporté par une extension peut, lui,
+    // savoir le charger, et c'est alors `is_chat_model_for` qui répond.
+    if !file_name.to_ascii_lowercase().ends_with(".gguf") {
+        return false;
+    }
+    !is_non_chat_asset(file_name)
+}
+
+/// Ce nom désigne-t-il autre chose qu'un modèle de conversation ?
+///
+/// La réponse ne dépend pas du moteur : un vocodeur, un VAE ou un encodeur de
+/// plongements ne tient pas une conversation, quel que soit le programme qui le
+/// charge. Le **format**, lui, dépend du moteur — les deux tris sont donc
+/// séparés, et celui-ci est partagé par tous les moteurs.
+pub(crate) fn is_non_chat_asset(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
 
-    // The local provider starts llama-server with `-m`, which accepts GGUF.
-    // A Transformers repository made of `.safetensors` shards is not a
-    // llama.cpp model and must never appear as a selectable local chat model.
-    if !n.ends_with(".gguf") {
-        return false;
-    }
-
-    // 2. Exclude image diffusion checkpoints, VAE, CLIP, etc.
+    // Checkpoints de diffusion, VAE, CLIP…
     if is_image_asset(&n) {
-        return false;
+        return true;
     }
 
-    // 3. Exclude TTS, Voice, Speech, Audio checkpoints
+    // Voix, parole, audio.
     const AUDIO_TTS: &[&str] = &[
         "-tts",
         "_tts",
@@ -2471,10 +2350,10 @@ pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
         "vocoder",
     ];
     if AUDIO_TTS.iter().any(|p| n.contains(p)) {
-        return false;
+        return true;
     }
 
-    // 4. Exclude Embedding & Reranking models
+    // Plongements et reclassement.
     const EMBEDDING: &[&str] = &[
         "embed",
         "embedding",
@@ -2488,10 +2367,10 @@ pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
         "rerank",
     ];
     if EMBEDDING.iter().any(|p| n.contains(p)) {
-        return false;
+        return true;
     }
 
-    // 5. Exclude Vision-only / Segmentation / OCR models
+    // Vision seule, segmentation, OCR.
     const VISION_ONLY: &[&str] = &[
         "clipseg",
         "segformer",
@@ -2501,22 +2380,119 @@ pub(crate) fn is_text_chat_model(file_name: &str) -> bool {
         "segment-anything",
     ];
     if VISION_ONLY.iter().any(|p| n.contains(p)) {
-        return false;
+        return true;
     }
 
-    // 6. Exclude multimodal/speculative decoding companions. They are loaded
-    // alongside a primary model and cannot answer chat requests on their own.
+    // Compagnons multimodaux et de décodage spéculatif : ils se chargent à
+    // côté d'un modèle principal et ne répondent pas seuls.
     if n.contains("mmproj")
         || n.contains("/mtp/")
-        || n.contains("\\mtp\\")
+        || n.contains(r"\mtp\")
         || n.contains("mtp-")
         || n.contains("-draft-")
         || n.contains("_draft_")
     {
-        return false;
+        return true;
     }
 
-    true
+    false
+}
+
+/// Les formats qu'un moteur sait charger, agrégés depuis les moteurs
+/// installés — ce que l'écran des modèles doit savoir pour ne pas cacher un
+/// checkpoint qu'un moteur présent servirait très bien.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FormatsDeChat {
+    /// Extensions de fichier, sans le point, en minuscules.
+    pub files: std::collections::BTreeSet<String>,
+    /// Au moins un moteur sait charger un répertoire de checkpoint.
+    pub directories: bool,
+    /// Fichiers qui signent un répertoire servable.
+    pub directory_markers: Vec<String>,
+    /// Au moins un moteur télécharge lui-même depuis Hugging Face.
+    pub hf_repo_ids: bool,
+}
+
+impl FormatsDeChat {
+    /// Aucun moteur d'extension : seul le GGUF du runtime intégré compte.
+    pub fn est_vide(&self) -> bool {
+        self.files.is_empty() && !self.directories && !self.hf_repo_ids
+    }
+}
+
+/// Ce que les moteurs apportés par des extensions savent charger, en plus du
+/// GGUF du runtime intégré.
+pub(crate) async fn formats_des_moteurs(core: &Core) -> FormatsDeChat {
+    let mut out = FormatsDeChat::default();
+    for spec in core.supervisor.extension_engines().await {
+        let f = &spec.manifest.model_formats;
+        for ext in &f.files {
+            out.files
+                .insert(ext.trim_start_matches('.').to_ascii_lowercase());
+        }
+        out.directories |= f.directories;
+        out.hf_repo_ids |= f.hf_repo_ids;
+        for marker in &f.directory_markers {
+            if !out.directory_markers.contains(marker) {
+                out.directory_markers.push(marker.clone());
+            }
+        }
+    }
+    out
+}
+
+/// Le superviseur gère-t-il le processus de ce moteur ?
+///
+/// Vrai pour le runtime intégré, pour AirLLM, et pour tout moteur apporté par
+/// une extension. Cette question était recopiée à cinq endroits ; en ajouter
+/// une variante y aurait laissé quatre oublis.
+pub(crate) fn moteur_supervise(engine: &ProviderEngine) -> bool {
+    matches!(
+        engine,
+        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm | ProviderEngine::Extension(_)
+    )
+}
+
+/// Ce répertoire est-il un checkpoint qu'un moteur sait charger tel quel ?
+///
+/// Les marqueurs viennent des moteurs installés (`config.json`,
+/// `model.safetensors.index.json`…). Sans marqueur déclaré, un répertoire qui
+/// porte au moins un poids compte : c'est le choix de l'auteur du moteur de ne
+/// pas trier plus finement.
+pub(crate) fn repertoire_servable(dir: &std::path::Path, formats: &FormatsDeChat) -> bool {
+    if !dir.is_dir() {
+        return false;
+    }
+    if !formats.directory_markers.is_empty() {
+        return formats
+            .directory_markers
+            .iter()
+            .any(|marker| dir.join(marker).exists());
+    }
+    walkdir_recursive(dir, 3)
+        .iter()
+        .any(|f| is_weight_file(f) && !is_partial(f))
+}
+
+/// Ce poids est-il choisissable comme modèle de conversation, compte tenu des
+/// moteurs installés ?
+///
+/// Le runtime intégré d'abord (GGUF), puis les formats qu'un moteur d'extension
+/// déclare servir. Sans cette seconde chance, installer un moteur capable de
+/// servir du safetensors ne changeait rien : l'écran des modèles continuait de
+/// masquer tous les checkpoints qu'il aurait pu charger.
+pub(crate) fn is_chat_model_for(file_name: &str, formats: &FormatsDeChat) -> bool {
+    if is_text_chat_model(file_name) {
+        return true;
+    }
+    if formats.est_vide() || is_non_chat_asset(file_name) {
+        return false;
+    }
+    let n = file_name.to_ascii_lowercase();
+    formats
+        .files
+        .iter()
+        .any(|ext| n.ends_with(&format!(".{ext}")))
 }
 
 /// List the models actually installed on the Ollama runtime at `endpoint`.
@@ -2544,6 +2520,10 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
     // shard.
     let models_dir = locaryn_config::models_dir();
     let mut names: Vec<String> = Vec::new();
+    // Ce que les moteurs installés savent charger. Sans cela, un moteur
+    // capable de servir un dépôt safetensors s'installait sans qu'aucun de ces
+    // dépôts devienne choisissable.
+    let formats = formats_des_moteurs(&core).await;
 
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
         for entry in entries.flatten() {
@@ -2560,6 +2540,18 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
 
             if !path.is_dir() {
                 continue;
+            }
+
+            // Un répertoire de checkpoint servi *en tant que répertoire* : le
+            // moteur reçoit le dossier, pas un shard. Le nommer par ses shards
+            // donnerait un identifiant que le moteur refuse.
+            if formats.directories && repertoire_servable(&path, &formats) {
+                if let Some(nom) = path.file_name().and_then(|n| n.to_str()) {
+                    if !is_non_chat_asset(nom) {
+                        names.push(nom.to_string());
+                        continue;
+                    }
+                }
             }
 
             let dir_name = path
@@ -2583,7 +2575,7 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
                     .unwrap_or(&file)
                     .to_string_lossy()
                     .to_string();
-                if !is_text_chat_model(&rel) {
+                if !is_chat_model_for(&rel, &formats) {
                     continue;
                 }
                 let key = hf_shard_group(&rel);
@@ -2606,8 +2598,15 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
         }
     }
 
-    // Only text chat models: exclude diffusion, TTS, embeddings, and non-LLM weights.
-    names.retain(|n| is_text_chat_model(n));
+    // Modèles de conversation seulement : ni diffusion, ni voix, ni
+    // plongements. Un nom de répertoire servable passe aussi, à condition de
+    // ne pas être un dépôt de média.
+    names.retain(|n| {
+        is_chat_model_for(n, &formats)
+            || (formats.directories
+                && !is_non_chat_asset(n)
+                && repertoire_servable(&models_dir.join(n), &formats))
+    });
 
     names.sort();
     names.dedup();
@@ -2624,6 +2623,7 @@ async fn list_incompatible_models(core: State<'_, Core>) -> Result<Vec<String>, 
         return Ok(Vec::new());
     }
     let models_dir = locaryn_config::models_dir();
+    let formats = formats_des_moteurs(&core).await;
     let mut names = Vec::new();
     let Ok(entries) = std::fs::read_dir(models_dir) else {
         return Ok(names);
@@ -2631,6 +2631,12 @@ async fn list_incompatible_models(core: State<'_, Core>) -> Result<Vec<String>, 
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() {
+            continue;
+        }
+        // « Incompatible » veut dire : aucun moteur installé ne sait le
+        // charger. Dès qu'un moteur le sert, ce dépôt appartient à la liste des
+        // modèles, pas à celle des poids à supprimer.
+        if formats.directories && repertoire_servable(&path, &formats) {
             continue;
         }
         let files = walkdir_recursive(&path, 3);
@@ -3694,7 +3700,12 @@ async fn pull_hf_repo(
                 .iter()
                 .any(|path| path.to_ascii_lowercase().ends_with(".gguf"))
         });
-        if !selected_gguf {
+        // Le renvoi vers la conversion GGUF n'a de sens que si rien sur cette
+        // machine ne sait lancer un checkpoint safetensors. Dès qu'un moteur
+        // installé le sert, refuser le dépôt priverait l'utilisateur du moteur
+        // qu'il vient d'installer.
+        let servi_par_un_moteur = formats_des_moteurs(core).await.directories;
+        if !selected_gguf && !servi_par_un_moteur {
             return Err(format!(
                 "{repo_id} est un checkpoint Transformers Safetensors que llama.cpp ne peut pas lancer. Installez la conversion GGUF compatible : https://huggingface.co/{suggested}"
             ));
@@ -4577,1746 +4588,44 @@ async fn approve_tool_call(
     }
 }
 
-// ============================================================================
-// Image generation
-// ============================================================================
-
-/// Result of an audio / TTS generation.
-#[derive(Debug, Clone, Serialize)]
-struct GeneratedAudio {
-    path: String,
-    simulated: bool,
-}
-
-/// Generate a minimal valid WAV file header with a short sine tone.
-/// Used as a fallback when no local TTS binary is installed.
-fn generate_test_wav(channels: u16, sample_rate: u32, _speed: f32) -> Vec<u8> {
-    use std::io::Write;
-    let duration_seconds = 2u32;
-    let num_samples = sample_rate * duration_seconds * channels as u32;
-    let bytes_per_sample: u16 = 2;
-    let data_size = num_samples * bytes_per_sample as u32;
-    let file_size = 44 + data_size;
-
-    let mut wav = Vec::with_capacity(file_size as usize);
-
-    wav.extend_from_slice(b"RIFF");
-    wav.write_all(&(file_size - 8).to_le_bytes()).unwrap();
-    wav.extend_from_slice(b"WAVE");
-    wav.extend_from_slice(b"fmt ");
-    wav.write_all(&16u32.to_le_bytes()).unwrap();
-    wav.write_all(&1u16.to_le_bytes()).unwrap();
-    wav.write_all(&channels.to_le_bytes()).unwrap();
-    wav.write_all(&sample_rate.to_le_bytes()).unwrap();
-    wav.write_all(&(sample_rate * channels as u32 * bytes_per_sample as u32).to_le_bytes())
-        .unwrap();
-    wav.write_all(&(channels * bytes_per_sample).to_le_bytes())
-        .unwrap();
-    wav.write_all(&16u16.to_le_bytes()).unwrap();
-    wav.extend_from_slice(b"data");
-    wav.write_all(&data_size.to_le_bytes()).unwrap();
-
-    for i in 0..(num_samples as usize) {
-        let t = i as f32 / sample_rate as f32;
-        let freq = 440.0 / _speed.max(0.1);
-        let sample = (t * freq * 2.0 * std::f32::consts::PI).sin() * 0.25 * i16::MAX as f32;
-        let sample_i16 = sample as i16;
-        wav.write_all(&sample_i16.to_le_bytes()).unwrap();
-    }
-
-    wav
-}
-
-// ============================================================================
-// Audio / TTS generation
-// ============================================================================
-
-// ============================================================================
-// TTS engine dispatch — Piper, Kokoro, XTTS
-// ============================================================================
-
-/// Detect which TTS engine to use based on the model path/tag.
-/// Returns (engine, resolved_model_path, config_path_or_none).
-///
-/// - `piper` : single .onnx file + .json config sibling. No voice cloning.
-/// - `kokoro` : extracted HF repo containing `kokoro-v1_0.pth` + `voices/*.pt`.
-///   Built-in voices, no external cloning (the .pt voice files ARE the voice
-///   profiles).
-/// - `xtts` : extracted HF repo from `coqui/XTTS-v2`. Supports voice cloning
-///   via a `speaker_wav` reference file. Requires `coqui-tts`.
-/// - `python_generic` : any other repo that has a .pth/.pt/.safetensors — we
-///   attempt a generic Python TTS script.
-fn resolve_tts_engine(
-    models_dir: &std::path::Path,
-    model_tag: &str,
-) -> (TtsEngine, std::path::PathBuf, Option<std::path::PathBuf>) {
-    // Direct .onnx file at top level → Piper or Kokoro ONNX.
-    let direct = models_dir.join(model_tag);
-    if direct.is_file() && model_tag.to_ascii_lowercase().ends_with(".onnx") {
-        let lower = model_tag.to_ascii_lowercase();
-        // Kokoro ONNX exports are named kokoro-*.onnx → route to Kokoro engine.
-        if lower.contains("kokoro") {
-            // The companion installer should have moved this into a repo dir.
-            // But if it's still at top level, use it as-is with Kokoro dispatch.
-            return (TtsEngine::Kokoro, direct, None);
-        }
-        let cfg = direct.with_extension("onnx.json");
-        let cfg_path = if cfg.exists() {
-            Some(cfg)
-        } else {
-            // Piper config is often named `<base>.onnx.json` → check `<base>.json`
-            let alt = direct.with_extension("json");
-            if alt.exists() {
-                Some(alt)
-            } else {
-                None
-            }
-        };
-        return (TtsEngine::Piper, direct, cfg_path);
-    }
-
-    // Single-component name (e.g. "hexgrad__Kokoro-82M") has no parent →
-    // skip the parent-based resolution and fall through to as_dir check.
-    let tag_path = std::path::Path::new(model_tag);
-    let has_parent = tag_path.parent().is_some_and(|p| !p.as_os_str().is_empty());
-
-    if has_parent {
-        // `repo_dir/relative/path` — extracted HF repo.
-        // Use the directory containing the selected weight file as the repo dir,
-        // so a path like `hexgrad/Kokoro-82M/kokoro-v1_0.pth` resolves to
-        // `models_dir/hexgrad/Kokoro-82M`, not just `models_dir/hexgrad`.
-        if let Some(parent) = tag_path.parent() {
-            let repo_dir = models_dir.join(parent);
-            if repo_dir.is_dir() {
-                let lower = model_tag.to_ascii_lowercase();
-                if lower.contains("xtts") || lower.contains("coqui") {
-                    return (TtsEngine::Xtts, repo_dir, None);
-                }
-                if lower.contains("kokoro") {
-                    return (TtsEngine::Kokoro, repo_dir, None);
-                }
-                if lower.contains("parler") {
-                    return (TtsEngine::Parler, repo_dir, None);
-                }
-                if lower.contains("qwen3") {
-                    return (TtsEngine::Qwen3, repo_dir, None);
-                }
-                // Generic Python TTS for other repos (MeloTTS, etc.)
-                return (TtsEngine::PythonGeneric, repo_dir, None);
-            }
-        }
-    }
-
-    // Fallback: check if it's a directory name that exists
-    let as_dir = models_dir.join(model_tag);
-    if as_dir.is_dir() {
-        let lower = model_tag.to_ascii_lowercase();
-        if lower.contains("xtts") || lower.contains("coqui") {
-            return (TtsEngine::Xtts, as_dir, None);
-        }
-        if lower.contains("kokoro") {
-            return (TtsEngine::Kokoro, as_dir, None);
-        }
-        if lower.contains("parler") {
-            return (TtsEngine::Parler, as_dir, None);
-        }
-        if lower.contains("qwen3") {
-            return (TtsEngine::Qwen3, as_dir, None);
-        }
-        return (TtsEngine::PythonGeneric, as_dir, None);
-    }
-
-    (TtsEngine::Unknown, direct, None)
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum TtsEngine {
-    Piper,
-    Kokoro,
-    Xtts,
-    Parler,
-    Qwen3,
-    PythonGeneric,
-    Unknown,
-}
-
-/// Find `python.exe` on PATH (or a well-known Windows location).
-fn find_python() -> Option<String> {
-    // A managed virtualenv wins over anything on PATH. Its packages (torch and
-    // the CUDA runtime alone run to ~5 GB) live beside the model weights on the
-    // storage volume instead of filling the system drive.
-    for venv in python_venv_candidates() {
-        let exe = if cfg!(windows) {
-            venv.join("Scripts").join("python.exe")
-        } else {
-            venv.join("bin").join("python")
-        };
-        if exe.exists() {
-            return Some(exe.to_string_lossy().to_string());
-        }
-    }
-    // Try `python` on PATH next.
-    let mut python_probe = std::process::Command::new("python");
-    hide_std_console(&mut python_probe);
-    if let Ok(out) = python_probe.arg("--version").output() {
-        if out.status.success() {
-            return Some("python".to_string());
-        }
-    }
-    // Fallback: check %LOCALAPPDATA%\Programs\Python\Python3xx\python.exe
-    if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
-        let base = std::path::Path::new(&localappdata)
-            .join("Programs")
-            .join("Python");
-        // Probe supported CPython layouts directly first. Besides avoiding a
-        // directory scan, this also works in restricted app sandboxes that may
-        // allow the executable but deny listing its parent directory.
-        for version in ["313", "312", "311", "310"] {
-            let python_exe = base.join(format!("Python{version}")).join("python.exe");
-            if python_exe.exists() {
-                return Some(python_exe.to_string_lossy().to_string());
-            }
-        }
-        // Keep discovering non-standard Python3xx installations when normal
-        // directory enumeration is available.
-        if let Ok(entries) = std::fs::read_dir(&base) {
-            for entry in entries.flatten() {
-                let python_exe = entry.path().join("python.exe");
-                if python_exe.exists() {
-                    return Some(python_exe.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Where a managed Python virtualenv may live, most specific first.
-///
-/// `LOCARYN_PYTHON_VENV` lets a user point at their own; otherwise we look
-/// beside the model weights, then in the working tree.
-fn python_venv_candidates() -> Vec<std::path::PathBuf> {
-    let mut out = Vec::new();
-    if let Some(v) = std::env::var_os("LOCARYN_PYTHON_VENV") {
-        let p = std::path::PathBuf::from(v);
-        if !p.as_os_str().is_empty() {
-            out.push(p);
-        }
-    }
-    out.push(locaryn_config::storage_root().join("python-env"));
-    // Also look beside the weights: that volume is the one with room, so a
-    // hand-made venv usually lands there. Found regardless of the working
-    // directory, unlike the `.venv` fallback below.
-    if let Some(parent) = locaryn_config::models_dir().parent() {
-        out.push(parent.join("python-env"));
-        out.push(parent.join(".venv"));
-    }
-    if let Ok(cwd) = std::env::current_dir() {
-        out.push(cwd.join(".venv"));
-    }
-    out
-}
-
-/// Environment every Python subprocess should inherit.
-///
-/// Two things bite otherwise: `transformers` drags in TensorFlow purely to
-/// auto-detect a backend we never use (~20 s per run), and HuggingFace
-/// downloads default to `~/.cache` — which is how a system drive ends up with
-/// no free space after a few model pulls.
-fn python_env() -> Vec<(&'static str, String)> {
-    let hf = locaryn_config::hf_cache_dir();
-    let _ = std::fs::create_dir_all(&hf);
-    vec![
-        ("HF_HOME", hf.to_string_lossy().to_string()),
-        ("TRANSFORMERS_NO_TF", "1".to_string()),
-        ("USE_TF", "0".to_string()),
-        ("TF_CPP_MIN_LOG_LEVEL", "3".to_string()),
-        // Build/extract scratch also belongs off the system drive.
-        (
-            "TMPDIR",
-            locaryn_config::ensure_temp_dir()
-                .to_string_lossy()
-                .to_string(),
-        ),
-        (
-            "TEMP",
-            locaryn_config::ensure_temp_dir()
-                .to_string_lossy()
-                .to_string(),
-        ),
-        (
-            "TMP",
-            locaryn_config::ensure_temp_dir()
-                .to_string_lossy()
-                .to_string(),
-        ),
+pub fn find_python() -> Option<String> {
+    for candidate in [
+        std::env::var("LOCARYN_PYTHON_PATH").ok(),
+        Some("python3".to_string()),
+        Some("python".to_string()),
+        Some("py".to_string()),
     ]
-}
-
-/// Detect language from text for XTTS-v2 (supports en, es, fr, de, it, pt,
-/// pl, tr, ru, nl, cs, ar, zh-cn, hu, ko, ja).
-/// Normalize a frontend language code to the XTTS-v2 format.
-/// XTTS supports: en, es, fr, de, it, pt, pl, tr, ru, nl, cs, ar, zh-cn,
-/// hu, ko, ja. The frontend uses "zh" for Chinese, so map it explicitly.
-fn normalize_xtts_language(lang: &str) -> &str {
-    match lang {
-        "zh" => "zh-cn",
-        other => other,
-    }
-}
-
-fn detect_language(text: &str) -> &'static str {
-    // Check for CJK characters → Chinese
-    if text
-        .chars()
-        .any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c) || ('\u{3400}'..='\u{4dbf}').contains(&c))
+    .into_iter()
+    .flatten()
     {
-        return "zh-cn";
-    }
-    // Hiragana/Katakana → Japanese
-    if text
-        .chars()
-        .any(|c| ('\u{3040}'..='\u{309f}').contains(&c) || ('\u{30a0}'..='\u{30ff}').contains(&c))
-    {
-        return "ja";
-    }
-    // Hangul → Korean
-    if text.chars().any(|c| ('\u{ac00}'..='\u{d7af}').contains(&c)) {
-        return "ko";
-    }
-    // Arabic
-    if text.chars().any(|c| ('\u{0600}'..='\u{06ff}').contains(&c)) {
-        return "ar";
-    }
-    // Cyrillic → Russian
-    if text.chars().any(|c| ('\u{0400}'..='\u{04ff}').contains(&c)) {
-        return "ru";
-    }
-    // Accented Latin chars → detect European language
-    let has_german = text.chars().any(|c| {
-        c == '\u{e4}'
-            || c == '\u{f6}'
-            || c == '\u{fc}'
-            || c == '\u{c4}'
-            || c == '\u{d6}'
-            || c == '\u{dc}'
-    });
-    let has_french = text.chars().any(|c| {
-        c == '\u{e0}'
-            || c == '\u{e8}'
-            || c == '\u{e9}'
-            || c == '\u{ea}'
-            || c == '\u{eb}'
-            || c == '\u{e7}'
-            || c == '\u{f4}'
-            || c == '\u{fb}'
-    });
-    let has_spanish = text
-        .chars()
-        .any(|c| c == '\u{f1}' || c == '\u{bf}' || c == '\u{a1}');
-    // Portuguese: ã and õ are distinctive (ê is shared with French)
-    let has_portuguese = text.chars().any(|c| c == '\u{e3}' || c == '\u{f5}');
-    if has_portuguese {
-        return "pt";
-    }
-    if has_german {
-        return "de";
-    }
-    if has_french {
-        return "fr";
-    }
-    if has_spanish {
-        return "es";
-    }
-    // Italian: à è ì ò ù are common; check after others to avoid overlap
-    let has_italian = text
-        .chars()
-        .any(|c| c == '\u{ec}' || c == '\u{f2}' || c == '\u{f9}');
-    if has_italian {
-        return "it";
-    }
-    // Default: English
-    "en"
-}
-
-/// Find `piper` (piper-tts) on PATH.
-fn find_piper() -> Option<String> {
-    let mut piper_probe = std::process::Command::new("piper");
-    hide_std_console(&mut piper_probe);
-    if let Ok(out) = piper_probe.arg("--help").output() {
-        if out.status.success() {
-            return Some("piper".to_string());
+        if let Ok(output) = std::process::Command::new(&candidate)
+            .arg("--version")
+            .output()
+        {
+            if output.status.success() {
+                return Some(candidate);
+            }
         }
     }
     None
 }
 
-/// Run Piper TTS: `piper -m voice.onnx -c voice.onnx.json -f output.wav --length-scale 1.0`
-/// Piper reads text from stdin and writes a WAV to -f.
-// Signature dictée par l'appel côté interface ; la regrouper en
-// structure rendrait le contrat IPC moins lisible, pas plus.
-#[allow(clippy::too_many_arguments)]
-async fn run_tts_piper(
-    model_path: &std::path::Path,
-    config_path: Option<&std::path::Path>,
-    text: &str,
-    out_file: &std::path::Path,
-    speed: f32,
-    pitch: f32,
-    _language: Option<&str>,
-    voice_description: Option<&str>,
-    design_prompt: Option<&str>,
-    on_progress: &Channel<serde_json::Value>,
-) -> Result<(), String> {
-    if voice_description.is_some() || design_prompt.is_some() {
-        tracing::info!("voice_description / design_prompt are ignored by Piper (engine does not support prompt-based voice design)");
+pub fn python_env() -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    if let Ok(path) = std::env::var("PATH") {
+        env.push(("PATH".into(), path));
     }
-
-    let piper_bin = find_piper()
-        .ok_or_else(|| "Piper non trouve sur le PATH. Installez piper-tts.".to_string())?;
-
-    // length_scale = 1/speed (higher scale = slower speech).
-    let length_scale = 1.0 / speed.max(0.1);
-    // noise_scale: lower = more monotone / higher pitch precision. Map pitch
-    // so 1.0 = default (0.667), 0.5 = flat (0.3), 2.0 = expressive (1.0).
-    let noise_scale = 0.3 + (pitch - 0.5) * 0.467;
-
-    let mut cmd = tokio::process::Command::new(&piper_bin);
-    hide_tokio_console(&mut cmd);
-    cmd.arg("-m")
-        .arg(model_path)
-        .arg("-f")
-        .arg(out_file)
-        .arg("--length-scale")
-        .arg(format!("{length_scale}"))
-        .arg("--noise-scale")
-        .arg(format!("{noise_scale:.3}"))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    if let Some(cfg) = config_path {
-        cmd.arg("-c").arg(cfg);
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 10, "detail": "Piper : initialisation"}))
-        .ok();
-
-    let mut child = cmd.spawn().map_err(|e| format!("piper spawn: {e}"))?;
-
-    // Write text to Piper's stdin.
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin
-            .write_all(text.as_bytes())
-            .await
-            .map_err(|e| format!("piper stdin: {e}"))?;
-        stdin.shutdown().await.ok();
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 50, "detail": "Piper : synthese en cours"}))
-        .ok();
-
-    let output = child
-        .wait_with_output()
-        .await
-        .map_err(|e| format!("piper wait: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Piper a echoue: {stderr}"));
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "Piper : termine"}))
-        .ok();
-
-    Ok(())
+    env.push(("PYTHONIOENCODING".into(), "utf-8".into()));
+    env.push(("PYTHONUTF8".into(), "1".into()));
+    let hf_home = locaryn_config::hf_cache_dir();
+    let _ = std::fs::create_dir_all(&hf_home);
+    env.push(("HF_HOME".into(), hf_home.to_string_lossy().to_string()));
+    env.push(("TORCH_HOME".into(), hf_home.to_string_lossy().to_string()));
+    env.push(("HF_HUB_ENABLE_HF_TRANSFER".into(), "0".into()));
+    env
 }
 
-/// Map a Kokoro voice filename prefix to a BCP-47-ish language code.
-/// Kokoro naming convention (first letter):
-///   a/b = English, f = French, e = Spanish, d = German,
-///   i = Italian, p = Portuguese, j = Japanese, z/c = Chinese.
-fn kokoro_voice_lang(voice: &str) -> Option<&str> {
-    let first = voice.chars().next()?;
-    Some(match first {
-        'a' | 'b' => "en",
-        'f' => "fr",
-        'e' => "es",
-        'd' => "de",
-        'i' => "it",
-        'p' => "pt",
-        'j' => "ja",
-        'z' | 'c' => "zh",
-        _ => return None,
-    })
-}
-
-/// List installed Kokoro voice files (`voices/*.pt`), returning the voice names
-/// without the `.pt` extension, sorted alphabetically.
-fn kokoro_voices_in_repo(repo_dir: &std::path::Path) -> Result<Vec<String>, String> {
-    let voices_dir = repo_dir.join("voices");
-    let mut voices: Vec<String> = Vec::new();
-
-    if voices_dir.exists() {
-        voices = std::fs::read_dir(&voices_dir)
-            .map_err(|e| format!("Impossible de lire le dossier de voix Kokoro: {e}"))?
-            .filter_map(|e| e.ok())
-            .filter_map(|e| {
-                let p = e.path();
-                if p.extension().and_then(|e| e.to_str()) != Some("pt") {
-                    return None;
-                }
-                p.file_stem()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
-            })
-            .collect();
-    }
-
-    voices.sort();
-    Ok(voices)
-}
-
-/// Pick a Kokoro voice matching the requested language and gender hint.
-/// Returns an error if no voice exists for the target language.
-fn resolve_kokoro_voice(
-    repo_dir: &std::path::Path,
-    language: Option<&str>,
-    speaker: Option<&str>,
-) -> Result<String, String> {
-    let voices = kokoro_voices_in_repo(repo_dir)?;
-    if voices.is_empty() {
-        return Err("Aucune voix Kokoro trouvee dans le dossier voices/.".to_string());
-    }
-
-    // If the caller passed a concrete voice name, use it if it exists.
-    if let Some(s) = speaker {
-        if !s.is_empty()
-            && s != "default"
-            && s != "male"
-            && s != "female"
-            && s != "neutral"
-            && voices.iter().any(|v| v.eq_ignore_ascii_case(s))
-        {
-            return Ok(s.to_string());
-        }
-    }
-
-    // Default to English when no language is provided.
-    let target = language.unwrap_or("en");
-    let candidates: Vec<&String> = voices
-        .iter()
-        .filter(|v| kokoro_voice_lang(v).unwrap_or("") == target)
-        .collect();
-
-    if candidates.is_empty() {
-        let available = voices.join(", ");
-        return Err(format!(
-            "Aucune voix Kokoro disponible pour la langue '{target}'. Voix disponibles: {available}."
-        ));
-    }
-
-    // Prefer a gender matching the speaker hint, otherwise pick the first candidate.
-    let preferred: Vec<&String> = candidates
-        .iter()
-        .filter(|v| {
-            matches!(
-                (v.chars().nth(1), speaker),
-                (Some('f'), Some("female")) | (Some('m'), Some("male"))
-            )
-        })
-        .copied()
-        .collect();
-    let chosen = preferred.first().or_else(|| candidates.first()).unwrap();
-    Ok((**chosen).clone())
-}
-
-/// Run Kokoro-82M TTS via a generated Python script.
-/// Uses `kokoro` pipeline if available, or falls back to `kokoro-onnx`.
-/// Voice reference: Kokoro-82M does not support arbitrary zero-shot cloning —
-/// the .pt voice files ARE pre-computed style vectors. When a reference audio
-/// is provided, we analyze its pitch (ZCR) to pick the closest-matching
-/// built-in voice by gender. True zero-shot cloning requires XTTS.
-// Signature dictée par l'appel côté interface ; la regrouper en
-// structure rendrait le contrat IPC moins lisible, pas plus.
-#[allow(clippy::too_many_arguments)]
-async fn run_tts_kokoro(
-    repo_dir: &std::path::Path,
-    text: &str,
-    out_file: &std::path::Path,
-    voice_reference: Option<&str>,
-    speaker: Option<&str>,
-    speed: f32,
-    _pitch: f32,
-    _energy: f32,
-    _clarity: f32,
-    language: Option<&str>,
-    voice_description: Option<&str>,
-    design_prompt: Option<&str>,
-    on_progress: &Channel<serde_json::Value>,
-) -> Result<(), String> {
-    let python =
-        find_python().ok_or_else(|| "Python non trouve. Installez Python 3.10+.".to_string())?;
-
-    // Find the model weight file inside the repo: .pth (PyTorch) or .onnx
-    // (ONNX export). The Kokoro pipeline uses .pth; kokoro-onnx uses .onnx.
-    let pth_path = walkdir_recursive(repo_dir, 3)
-        .into_iter()
-        .find(|p| {
-            p.extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.eq_ignore_ascii_case("pth") || e.eq_ignore_ascii_case("onnx"))
-                .unwrap_or(false)
-        })
-        .ok_or_else(|| "Fichier .pth ou .onnx Kokoro introuvable dans le depot.".to_string())?;
-
-    if voice_description.is_some() || design_prompt.is_some() {
-        tracing::info!("voice_description / design_prompt are ignored by Kokoro (engine does not support prompt-based voice design)");
-    }
-
-    // Pick a Kokoro voice file dynamically based on the requested language
-    // and the voices actually installed in repo_dir/voices/.
-    let voice_name = resolve_kokoro_voice(repo_dir, language, speaker)?;
-    let voices_dir = repo_dir.join("voices");
-    let voice_pt = voices_dir.join(format!("{voice_name}.pt"));
-
-    // Defensive: ensure the chosen voice file exists.
-    if !voice_pt.exists() {
-        return Err(format!(
-            "Voix Kokoro selectionnee introuvable: {}",
-            voice_pt.display()
-        ));
-    }
-
-    // Generate a Python script that runs Kokoro.
-    let script = if voice_reference.is_some() {
-        // Voice cloning mode: Kokoro-82M does not support arbitrary external
-        // voice cloning — the .pt voice files ARE the voice profiles. When a
-        // voice_reference is provided, we attempt to find the closest matching
-        // built-in voice by analyzing the reference audio's pitch/formants.
-        // This is a best-effort heuristic; true zero-shot cloning requires XTTS.
-        let voices_dir_str = voices_dir.to_string_lossy();
-        format!(
-            r#"
-import sys, os, json, glob
-
-model_path = r"{pth}"
-ref_path = r"{ref}"
-out_path = r"{out}"
-speed = {speed}
-voice_name = "{voice_name}"
-voices_dir = r"{voices_dir}"
-
-text = sys.stdin.read()
-
-# Kokoro-82M does not support arbitrary zero-shot voice cloning from
-# external audio — the .pt voice files ARE pre-computed voice style vectors.
-# When a voice_reference is provided, we analyze its fundamental frequency
-# (F0) and pick the built-in voice whose gender/register matches best.
-# This is a best-effort heuristic; true zero-shot cloning requires XTTS.
-selected_voice = voice_name
-try:
-    import numpy as np
-    import soundfile as sf
-    ref_audio, ref_sr = sf.read(ref_path)
-    if ref_audio.ndim > 1:
-        ref_audio = ref_audio[:, 0]
-    # Estimate F0 via zero-crossing rate as a rough pitch proxy.
-    # High zero-crossing rate → higher pitch → likely female voice.
-    zcr = float(np.mean(np.abs(np.diff(np.sign(ref_audio)))) )
-    # Kokoro naming: af_* = American female, am_* = American male
-    # bf_* = British female, bm_* = British male, etc.
-    is_likely_female = zcr > 0.1
-    # List available voices and pick by gender match.
-    voice_files = glob.glob(os.path.join(voices_dir, "*.pt"))
-    candidates = []
-    for vf in voice_files:
-        bn = os.path.basename(vf).replace(".pt", "")
-        prefix = bn[:2] if len(bn) >= 2 else ""
-        vf_is_female = prefix[1] == 'f' if len(prefix) >= 2 else True
-        if vf_is_female == is_likely_female:
-            candidates.append(bn)
-    if candidates:
-        # Prefer the user's selected voice if it matches the gender;
-        # otherwise pick the first matching candidate.
-        if voice_name in candidates:
-            selected_voice = voice_name
-        else:
-            selected_voice = candidates[0]
-        print(f"reference F0 proxy zcr={{zcr:.4f}}, selected voice: {{selected_voice}}", file=sys.stderr)
-    else:
-        print(f"no gender-matched voice found, using {{voice_name}}", file=sys.stderr)
-except Exception as e:
-    print(f"voice analysis failed: {{e}}, using {{voice_name}}", file=sys.stderr)
-
-voice_pt_final = os.path.join(voices_dir, selected_voice + ".pt")
-
-try:
-    from kokoro import KPipeline
-    import soundfile as sf
-    pipeline = KPipeline(lang_code='a')
-    for i, (gs, ps, audio) in enumerate(pipeline(text, voice=selected_voice, speed=speed)):
-        sf.write(out_path, audio, 24000)
-        break
-    print("OK")
-except ImportError:
-    try:
-        import kokoro_onnx
-        from kokoro_onnx import KokoroOnnx
-        import soundfile as sf
-        k = KokoroOnnx(model_path=model_path, voice_path=voice_pt_final)
-        audio = k.create(text, voice=selected_voice, speed=speed, lang="en-us")
-        sf.write(out_path, audio, 24000)
-        print("OK")
-    except ImportError:
-        print("kokoro / kokoro-onnx not installed. pip install kokoro", file=sys.stderr)
-        sys.exit(1)
-"#,
-            pth = pth_path.display(),
-            ref = voice_reference.unwrap(),
-            out = out_file.display(),
-            speed = speed,
-            voice_name = voice_name,
-            voices_dir = voices_dir_str,
-        )
-    } else {
-        // Built-in voice mode: use kokoro pipeline.
-        format!(
-            r#"
-import sys, os
-
-model_path = r"{pth}"
-voice_pt = r"{voice_pt}"
-out_path = r"{out}"
-speed = {speed}
-voice_name = "{voice_name}"
-
-text = sys.stdin.read()
-
-try:
-    from kokoro import KPipeline
-    import soundfile as sf
-    pipeline = KPipeline(lang_code='a')
-    for i, (gs, ps, audio) in enumerate(pipeline(text, voice=voice_name, speed=speed)):
-        sf.write(out_path, audio, 24000)
-        break  # first segment is enough for short text
-    print("OK")
-except ImportError:
-    # Fallback: kokoro-onnx
-    try:
-        import kokoro_onnx
-        from kokoro_onnx import KokoroOnnx
-        import soundfile as sf
-        k = KokoroOnnx(model_path=model_path, voice_path=voice_pt)
-        audio = k.create(text, voice=voice_name, speed=speed, lang="en-us")
-        sf.write(out_path, audio, 24000)
-        print("OK")
-    except ImportError:
-        print("kokoro / kokoro-onnx not installed", file=sys.stderr)
-        sys.exit(1)
-"#,
-            pth = pth_path.display(),
-            voice_pt = voice_pt.display(),
-            out = out_file.display(),
-            speed = speed,
-            voice_name = voice_name,
-        )
-    };
-
-    on_progress
-        .send(serde_json::json!({"progress": 10, "detail": "Kokoro : initialisation"}))
-        .ok();
-
-    let mut command = tokio::process::Command::new(&python);
-    hide_tokio_console(&mut command);
-    let mut child = command
-        .envs(python_env())
-        .arg("-c")
-        .arg(&script)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("python spawn: {e}"))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin
-            .write_all(text.as_bytes())
-            .await
-            .map_err(|e| format!("python stdin: {e}"))?;
-        stdin.shutdown().await.ok();
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 50, "detail": "Kokoro : synthese en cours"}))
-        .ok();
-
-    let output = child
-        .wait_with_output()
-        .await
-        .map_err(|e| format!("python wait: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!("Kokoro a echoue: {stderr}\n{stdout}"));
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "Kokoro : termine"}))
-        .ok();
-
-    Ok(())
-}
-
-/// Run Parler-TTS via a generated Python script.
-/// Requires `parler-tts` and `transformers` installed. The `design_prompt`
-/// (or `voice_description`) is passed directly to the model as the voice
-/// style description, so the prompt really shapes the generated voice.
-async fn run_tts_parler(
-    repo_dir: &std::path::Path,
-    text: &str,
-    out_file: &std::path::Path,
-    _language: &str,
-    voice_description: Option<&str>,
-    design_prompt: Option<&str>,
-    on_progress: &Channel<serde_json::Value>,
-) -> Result<(), String> {
-    let python = find_python()
-        .ok_or_else(|| "Python non trouve. Installez Python 3.10+ et parler-tts.".to_string())?;
-
-    let description = design_prompt
-        .filter(|s| !s.is_empty())
-        .or(voice_description)
-        .unwrap_or("A clear and natural voice reading.");
-    // Parler-TTS accepts long descriptions, but keep the generated script
-    // reasonable and avoid abuse.
-    let description = if description.chars().count() > 1000 {
-        description.chars().take(1000).collect::<String>()
-    } else {
-        description.to_string()
-    };
-    let description_json = serde_json::to_string(&description)
-        .map_err(|e| format!("cannot encode description: {e}"))?;
-    let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy())
-        .map_err(|e| format!("cannot encode repo_dir: {e}"))?;
-    let out_path_json = serde_json::to_string(&out_file.to_string_lossy())
-        .map_err(|e| format!("cannot encode out_path: {e}"))?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 5, "detail": "Parler-TTS : initialisation"}))
-        .ok();
-
-    let script = format!(
-        r#"
-import sys, os
-
-repo_dir = {repo_dir_json}
-out_path = {out_path_json}
-description = {description_json}
-
-text = sys.stdin.read()
-
-try:
-    import torch
-    from parler_tts import ParlerTTSForConditionalGeneration
-    from transformers import AutoTokenizer
-    import soundfile as sf
-except ImportError as e:
-    print(f"parler-tts / transformers non installe: {{e}}", file=sys.stderr)
-    sys.exit(1)
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-try:
-    model = ParlerTTSForConditionalGeneration.from_pretrained(repo_dir).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(repo_dir)
-except Exception as e:
-    print(f"Impossible de charger Parler-TTS depuis {{repo_dir}}: {{e}}", file=sys.stderr)
-    sys.exit(1)
-
-try:
-    input_ids = tokenizer(description, return_tensors="pt").input_ids.to(device)
-    prompt_input_ids = tokenizer(text, return_tensors="pt").input_ids.to(device)
-    generation = model.generate(input_ids=input_ids, prompt_input_ids=prompt_input_ids)
-    audio = generation.cpu().numpy().squeeze()
-    sampling_rate = getattr(model.config, "sampling_rate", 44100)
-    sf.write(out_path, audio, sampling_rate)
-    print("OK")
-except Exception as e:
-    print(f"Parler-TTS generation failed: {{e}}", file=sys.stderr)
-    sys.exit(1)
-"#,
-    );
-
-    on_progress
-        .send(serde_json::json!({"progress": 10, "detail": "Parler-TTS : chargement du modele"}))
-        .ok();
-
-    let mut command = tokio::process::Command::new(&python);
-    hide_tokio_console(&mut command);
-    let mut child = command
-        .envs(python_env())
-        .arg("-c")
-        .arg(&script)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("python spawn: {e}"))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin
-            .write_all(text.as_bytes())
-            .await
-            .map_err(|e| format!("python stdin: {e}"))?;
-        stdin.shutdown().await.ok();
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 50, "detail": "Parler-TTS : synthese vocale"}))
-        .ok();
-
-    let output = child
-        .wait_with_output()
-        .await
-        .map_err(|e| format!("python wait: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Parler-TTS a echoue: {stderr}"));
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "Parler-TTS : termine"}))
-        .ok();
-
-    Ok(())
-}
-
-/// Run Coqui XTTS-v2 via a generated Python script.
-/// Requires `coqui-tts` (TTS package) installed. Supports voice cloning
-/// via `speaker_wav` reference audio.
-// Signature dictée par l'appel côté interface ; la regrouper en
-// structure rendrait le contrat IPC moins lisible, pas plus.
-#[allow(clippy::too_many_arguments)]
-async fn run_tts_xtts(
-    repo_dir: &std::path::Path,
-    text: &str,
-    out_file: &std::path::Path,
-    voice_reference: Option<&str>,
-    language: &str,
-    _speed: f32,
-    _pitch: f32,
-    _energy: f32,
-    _clarity: f32,
-    voice_description: Option<&str>,
-    design_prompt: Option<&str>,
-    on_progress: &Channel<serde_json::Value>,
-) -> Result<(), String> {
-    if voice_description.is_some() || design_prompt.is_some() {
-        tracing::info!("voice_description / design_prompt are ignored by XTTS (engine does not support prompt-based voice design)");
-    }
-
-    let python = find_python()
-        .ok_or_else(|| "Python non trouve. Installez Python 3.10+ et coqui-tts.".to_string())?;
-
-    // Verify the repo contains a model checkpoint — coqui-tts loads from
-    // the directory, but we confirm weights exist.
-    let has_checkpoint = walkdir_recursive(repo_dir, 3).iter().any(|p| {
-        p.file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| {
-                let l = n.to_ascii_lowercase();
-                l.ends_with(".pth") || l.ends_with(".safetensors") || l.ends_with(".bin")
-            })
-            .unwrap_or(false)
-    });
-    if !has_checkpoint {
-        return Err("Checkpoint XTTS introuvable dans le depot.".to_string());
-    }
-
-    let ref_json = match voice_reference {
-        Some(r) => serde_json::to_string(r)
-            .unwrap_or_else(|_| format!("\"{}\"", r.replace('\\', "\\\\").replace('"', "\\\""))),
-        None => "None".to_string(),
-    };
-    let repo_dir_json =
-        serde_json::to_string(&repo_dir.to_string_lossy().as_ref()).unwrap_or_else(|_| {
-            format!(
-                "\"{}\"",
-                repo_dir
-                    .to_string_lossy()
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-            )
-        });
-    let out_path_json =
-        serde_json::to_string(&out_file.to_string_lossy().as_ref()).unwrap_or_else(|_| {
-            format!(
-                "\"{}\"",
-                out_file
-                    .to_string_lossy()
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-            )
-        });
-
-    let script = format!(
-        r#"
-import sys, os
-
-model_dir = {repo_dir_json}
-out_path = {out_path_json}
-language = "{language}"
-ref_path = {ref_json}
-
-text = sys.stdin.read()
-
-try:
-    from TTS.api import TTS
-    import torch
-except ImportError:
-    print("coqui-tts (TTS) not installed. pip install coqui-tts", file=sys.stderr)
-    sys.exit(1)
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# Load XTTS from the local checkpoint directory (pass the directory, not
-# the individual .pth — coqui-tts expects a model directory with config.json).
-tts = TTS(model_path=model_dir, config_path=os.path.join(model_dir, "config.json")).to(device)
-
-if ref_path and ref_path != "None":
-    # Voice cloning mode: use the reference audio as speaker_wav.
-    tts.tts_to_file(
-        text=text,
-        file_path=out_path,
-        speaker_wav=ref_path,
-        language=language,
-    )
-else:
-    # No reference: use the first available speaker.
-    speakers = tts.speakers if hasattr(tts, 'speakers') else ["speaker"]
-    tts.tts_to_file(
-        text=text,
-        file_path=out_path,
-        speaker=speakers[0] if speakers else None,
-        language=language,
-    )
-
-print("OK")
-"#,
-    );
-
-    on_progress
-        .send(serde_json::json!({"progress": 10, "detail": "XTTS : chargement du modele"}))
-        .ok();
-
-    let mut command = tokio::process::Command::new(&python);
-    hide_tokio_console(&mut command);
-    let mut child = command
-        .envs(python_env())
-        .arg("-c")
-        .arg(&script)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("python spawn: {e}"))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin
-            .write_all(text.as_bytes())
-            .await
-            .map_err(|e| format!("python stdin: {e}"))?;
-        stdin.shutdown().await.ok();
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 50, "detail": "XTTS : synthese en cours"}))
-        .ok();
-
-    let output = child
-        .wait_with_output()
-        .await
-        .map_err(|e| format!("python wait: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("XTTS a echoue: {stderr}"));
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "XTTS : termine"}))
-        .ok();
-
-    Ok(())
-}
-
-// ── Qwen3-TTS ──────────────────────────────────────────────────────────────────
-/// Sampling and style controls for Qwen3-TTS.
-///
-/// Defaults match the library's own, which are noticeably livelier than the
-/// values this code used to hardcode (temperature 0.7, timbre-only cloning):
-/// that combination produced a flat, robotic delivery.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TtsSampling {
-    pub temperature: f32,
-    pub top_k: u32,
-    pub top_p: f32,
-    pub repetition_penalty: f32,
-    /// In-context cloning: condition on the reference audio *and* its
-    /// transcript, so the speaker's rhythm and intonation carry over. With
-    /// this off only the speaker embedding is used — same timbre, but the
-    /// sentence is read flatly, which is what "sounds like a robot" means.
-    pub expressive: bool,
-    /// Transcript of the reference clip. Required by in-context mode; when
-    /// empty it is produced automatically by speech recognition.
-    pub reference_text: String,
-    /// Silence stretch applied after rendering. Above 1.0 the delivery becomes
-    /// more measured. Post-processing, so it behaves identically on every
-    /// engine rather than only those exposing a pause control.
-    #[serde(default = "default_pause_scale")]
-    pub pause_scale: f32,
-    /// Pitch shift applied to the rendered speech. Qwen3-TTS has no pitch
-    /// control of its own, so this slider did nothing before.
-    #[serde(default = "default_pitch")]
-    pub pitch: f32,
-    /// Vocal presence and evenness. Neutral at the historical default so
-    /// existing presets keep sounding the same.
-    #[serde(default = "default_energy")]
-    pub energy: f32,
-    /// Consonant crispness, shaped around the 2-5 kHz presence band.
-    #[serde(default = "default_clarity")]
-    pub clarity: f32,
-}
-
-fn default_pitch() -> f32 {
-    1.0
-}
-fn default_energy() -> f32 {
-    0.7
-}
-fn default_clarity() -> f32 {
-    0.8
-}
-
-fn default_pause_scale() -> f32 {
-    1.0
-}
-
-impl Default for TtsSampling {
-    fn default() -> Self {
-        Self {
-            temperature: 0.9,
-            top_k: 50,
-            top_p: 1.0,
-            repetition_penalty: 1.05,
-            expressive: true,
-            reference_text: String::new(),
-            pause_scale: default_pause_scale(),
-            pitch: default_pitch(),
-            energy: default_energy(),
-            clarity: default_clarity(),
-        }
-    }
-}
-
-// Signature dictée par l'appel côté interface ; la regrouper en
-// structure rendrait le contrat IPC moins lisible, pas plus.
-#[allow(clippy::too_many_arguments)]
-async fn run_tts_qwen3(
-    repo_dir: &std::path::Path,
-    text: &str,
-    out_file: &std::path::Path,
-    voice_reference: Option<&str>,
-    language: Option<&str>,
-    voice_description: Option<&str>,
-    design_prompt: Option<&str>,
-    speed: f32,
-    sampling: &TtsSampling,
-    on_progress: &Channel<serde_json::Value>,
-) -> Result<(), String> {
-    let python =
-        find_python().ok_or_else(|| "Python non trouve. Installez Python 3.10+.".to_string())?;
-
-    let ref_json = match voice_reference {
-        Some(r) => serde_json::to_string(r)
-            .unwrap_or_else(|_| format!("\"{}\"", r.replace('\\', "\\\\").replace('"', "\\\""))),
-        None => "None".to_string(),
-    };
-    let repo_dir_json =
-        serde_json::to_string(&repo_dir.to_string_lossy().as_ref()).unwrap_or_else(|_| {
-            format!(
-                "\"{}\"",
-                repo_dir
-                    .to_string_lossy()
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-            )
-        });
-    let out_path_json =
-        serde_json::to_string(&out_file.to_string_lossy().as_ref()).unwrap_or_else(|_| {
-            format!(
-                "\"{}\"",
-                out_file
-                    .to_string_lossy()
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-            )
-        });
-    let lang_json = match language {
-        Some(l) => serde_json::to_string(l).unwrap_or_else(|_| format!("\"{l}\"")),
-        None => "None".to_string(),
-    };
-    // voice_description / design_prompt for the VoiceDesign variant
-    let desc_prompt_json = design_prompt
-        .or(voice_description)
-        .map(|s| {
-            serde_json::to_string(s)
-                .unwrap_or_else(|_| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")))
-        })
-        .unwrap_or_else(|| "None".to_string());
-
-    // Sampling knobs, rendered as Python literals.
-    let temperature = sampling.temperature.clamp(0.05, 2.0);
-    let top_k = sampling.top_k.clamp(1, 200);
-    let top_p = sampling.top_p.clamp(0.05, 1.0);
-    let repetition_penalty = sampling.repetition_penalty.clamp(1.0, 2.0);
-    let expressive_py = if sampling.expressive { "True" } else { "False" };
-    let pause_scale = sampling.pause_scale.clamp(0.3, 3.0);
-    let shape_pitch = sampling.pitch.clamp(0.5, 2.0);
-    let shape_energy = sampling.energy.clamp(0.0, 1.0);
-    let shape_clarity = sampling.clarity.clamp(0.0, 1.0);
-    let ref_text_json = serde_json::to_string(sampling.reference_text.trim())
-        .unwrap_or_else(|_| "\"\"".to_string());
-
-    // Detect if model is a CustomVoice variant (supports voice cloning)
-    // Use Python-compatible True/False (not Rust's lowercase true/false)
-    let is_custom_py = if repo_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(|n| n.to_ascii_lowercase().contains("customvoice"))
-        .unwrap_or(false)
-    {
-        "True"
-    } else {
-        "False"
-    };
-
-    on_progress
-        .send(serde_json::json!({"progress": 5, "detail": "Qwen3-TTS : initialisation"}))
-        .ok();
-
-    let script = format!(
-        r#"# Qwen3-TTS inference
-import sys, os, json, subprocess, tempfile
-
-repo_dir = {repo_dir_json}
-out_path = {out_path_json}
-lang = {lang_json}
-speed = {speed}
-voice_ref = {ref_json}
-is_custom = {is_custom_py}
-desc_prompt = {desc_prompt_json}
-top_k = {top_k}
-top_p = {top_p}
-repetition_penalty = {repetition_penalty}
-expressive = {expressive_py}
-ref_text = {ref_text_json}
-pause_scale = {pause_scale}
-shape_pitch = {shape_pitch}
-shape_energy = {shape_energy}
-shape_clarity = {shape_clarity}
-
-text = sys.stdin.read()
-
-# VoiceDesign variant: prepend voice description to text
-repo_dirname = os.path.basename(repo_dir.rstrip('/\\')).lower()
-is_voicedesign = 'voicedesign' in repo_dirname
-
-def report(pct, msg):
-    print(json.dumps({{'progress': pct, 'detail': msg}}), flush=True)
-
-
-def prepare_reference(path):
-    """Trim and normalise a reference recording before cloning from it.
-
-    The app hands over whatever the user picked — a 30-second screen capture,
-    an MP3, a video's audio track. Cloning conditions on that clip directly,
-    so an over-long reference means a long transcription, a long prompt and a
-    generation that can run for minutes on one word. Hand-prepared 12-second
-    clips worked; raw uploads did not, and that gap was the bug.
-
-    Returns a path to a 24 kHz mono WAV holding the densest stretch of speech.
-    """
-    import numpy as _np
-    try:
-        import soundfile as _sf
-    except Exception:
-        return path
-
-    TARGET_SR, WINDOW = 24000, 12.0
-    try:
-        data, sr = _sf.read(path)
-    except Exception:
-        # Not a container soundfile can open (mp4, m4a…). Let the engine try.
-        return path
-
-    mono = data if getattr(data, 'ndim', 1) == 1 else data.mean(axis=1)
-    if len(mono) == 0:
-        return path
-    if sr != TARGET_SR:
-        n = int(len(mono) * TARGET_SR / sr)
-        mono = _np.interp(_np.linspace(0, len(mono) - 1, n),
-                          _np.arange(len(mono)), mono)
-        sr = TARGET_SR
-    mono = mono.astype(_np.float32)
-
-    if len(mono) > WINDOW * sr:
-        frame = int(0.02 * sr)
-        n_fr = len(mono) // frame
-        energy = _np.sqrt(_np.mean(
-            mono[:n_fr * frame].reshape(n_fr, frame) ** 2, axis=1))
-        win = int(WINDOW / 0.02)
-        csum = _np.concatenate([[0.0], _np.cumsum(energy)])
-        best = int(_np.argmax(csum[win:] - csum[:-win]))
-        mono = mono[best * frame:(best + win) * frame]
-
-    peak = float(_np.max(_np.abs(mono)))
-    if peak > 0:
-        mono = mono * (0.89 / peak)
-
-    out = os.path.join(os.path.dirname(out_path) or '.', '_ref_prepared.wav')
-    _sf.write(out, mono, sr)
-    report(34, "reference preparee (%.1f s)" % (len(mono) / sr))
-    return out
-
-
-def scale_pauses(wav, sr, scale):
-    """Stretch or shorten the silences without touching the speech.
-
-    Engines rarely expose a pause control, and the ones that do call it
-    something different. Operating on the rendered waveform makes "more
-    measured" or "snappier" mean the same thing on every model — and it cannot
-    distort the voice itself, since only silent stretches are resized.
-    """
-    import numpy as _np
-    if abs(scale - 1.0) < 0.01 or wav is None or len(wav) == 0:
-        return wav
-
-    x = _np.asarray(wav, dtype=_np.float32).reshape(-1)
-    frame = max(1, int(0.01 * sr))                 # 10 ms resolution
-    n = len(x) // frame
-    if n < 3:
-        return wav
-
-    energy = _np.sqrt(_np.mean(
-        x[:n * frame].reshape(n, frame) ** 2, axis=1))
-    peak = float(energy.max())
-    if peak <= 0:
-        return wav
-    # Relative threshold: recordings vary in level, an absolute one would treat
-    # a quiet take as one long pause.
-    quiet = energy < max(peak * 0.06, 1e-4)
-
-    min_pause = max(2, int(0.12 / 0.01))           # ignore gaps under 120 ms
-    out, i = [], 0
-    while i < n:
-        j = i
-        while j < n and quiet[j] == quiet[i]:
-            j += 1
-        seg = x[i * frame:j * frame]
-        if quiet[i] and (j - i) >= min_pause:
-            target = max(frame, int(len(seg) * scale))
-            seg = _np.zeros(target, dtype=_np.float32)
-        out.append(seg)
-        i = j
-    out.append(x[n * frame:])
-    return _np.concatenate(out)
-
-
-def _ola_stretch(x, factor):
-    """Change duration by `factor` without changing pitch (overlap-add)."""
-    import numpy as _np
-    if abs(factor - 1.0) < 0.005 or len(x) < 1024:
-        return x
-    win = 1024
-    hop_out = win // 4
-    hop_in = max(1, int(round(hop_out / factor)))
-    window = _np.hanning(win).astype(_np.float32)
-    n_frames = max(1, 1 + (len(x) - win) // hop_in)
-    out = _np.zeros(win + hop_out * n_frames, dtype=_np.float32)
-    norm = _np.zeros_like(out)
-    for i in range(n_frames):
-        s = i * hop_in
-        seg = x[s:s + win]
-        if len(seg) < win:
-            break
-        d = i * hop_out
-        out[d:d + win] += seg * window
-        norm[d:d + win] += window
-    return out[:d + win] / _np.maximum(norm[:d + win], 1e-6)
-
-
-def shape_voice(wav, sr, pitch, energy, clarity):
-    """Apply pitch, energy and clarity to the rendered speech.
-
-    Qwen3-TTS exposes none of these, so the sliders were inert. Doing the work
-    on the waveform makes them behave identically on every engine — the same
-    reasoning as pause scaling — at the cost of shaping the *audio* rather than
-    how the model chose to speak.
-
-    Neutral points are the existing defaults (pitch 1.0, energy 0.7, clarity
-    0.8) so presets saved before this keep sounding exactly as they did.
-    """
-    import numpy as _np
-    if wav is None or len(wav) == 0:
-        return wav
-    x = _np.asarray(wav, dtype=_np.float32).reshape(-1)
-
-    # ── Pitch: resample to move the spectrum, then restore the duration.
-    if abs(pitch - 1.0) > 0.02:
-        p = float(min(max(pitch, 0.5), 2.0))
-        idx = _np.arange(0, len(x), p, dtype=_np.float32)
-        resampled = _np.interp(idx, _np.arange(len(x)), x).astype(_np.float32)
-        x = _ola_stretch(resampled, p)
-
-    # ── Clarity: shape the 2–5 kHz presence band, where consonants live.
-    #    Done in the frequency domain so no filter library is required.
-    if abs(clarity - 0.8) > 0.02:
-        gain_db = (float(clarity) - 0.8) * 12.0
-        spec = _np.fft.rfft(x)
-        freqs = _np.fft.rfftfreq(len(x), 1.0 / sr)
-        band = _np.exp(-0.5 * ((_np.log(_np.maximum(freqs, 1.0) / 3200.0)) / 0.55) ** 2)
-        spec *= 10.0 ** (gain_db * band / 20.0)
-        x = _np.fft.irfft(spec, n=len(x)).astype(_np.float32)
-
-    # ── Energy: soft compression plus level. Higher = more present and even,
-    #    lower = wider dynamics and quieter.
-    if abs(energy - 0.7) > 0.02:
-        amount = (float(energy) - 0.7) / 0.3          # -2.33 .. +1.0
-        env = _np.abs(x)
-        win = max(1, int(0.02 * sr))
-        kernel = _np.ones(win, dtype=_np.float32) / win
-        env = _np.convolve(env, kernel, mode='same')
-        peak = float(env.max())
-        if peak > 1e-6:
-            # Pull loud and quiet parts together as amount rises.
-            ratio = _np.clip(env / peak, 1e-4, 1.0)
-            x = x * (ratio ** (-0.35 * amount))
-            x = x * (1.0 + 0.25 * amount)
-
-    m = float(_np.max(_np.abs(x))) if len(x) else 0.0
-    if m > 0.99:
-        x = x * (0.99 / m)
-    return x
-
-
-# ── Language normalisation ────────────────────────────────────────────────
-# The UI speaks ISO 639-1 ("fr"); qwen_tts only accepts full English names and
-# raises on anything else. Normalising here rather than in the UI keeps each
-# engine's quirks in its own adapter (Piper wants "fr_FR", XTTS wants "fr").
-#
-# Done BEFORE importing torch: loading the model takes ~2 minutes, and failing
-# validation after that wait is a terrible way to learn about a typo.
-QWEN_LANGS = {{
-    'auto': 'auto',
-    'zh': 'chinese', 'cmn': 'chinese', 'chinese': 'chinese',
-    'en': 'english', 'english': 'english',
-    'fr': 'french', 'french': 'french', 'francais': 'french',
-    'de': 'german', 'german': 'german', 'deutsch': 'german',
-    'it': 'italian', 'italian': 'italian', 'italiano': 'italian',
-    'ja': 'japanese', 'jp': 'japanese', 'japanese': 'japanese',
-    'ko': 'korean', 'kr': 'korean', 'korean': 'korean',
-    'pt': 'portuguese', 'portuguese': 'portuguese',
-    'ru': 'russian', 'russian': 'russian',
-    'es': 'spanish', 'spanish': 'spanish', 'espanol': 'spanish',
-}}
-
-if lang:
-    key = str(lang).strip().lower().replace('_', '-').split('-')[0]
-    mapped = QWEN_LANGS.get(key)
-    if mapped is None:
-        # Unsupported language: let the model auto-detect rather than abort a
-        # generation the user has already waited for. Say so explicitly.
-        report(6, f"Langue '{{lang}}' non prise en charge par Qwen3-TTS — detection automatique")
-        lang = 'auto'
-    else:
-        lang = mapped
-else:
-    lang = None
-
-import torch
-import soundfile as sf
-import tempfile
-import sys
-import subprocess
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-# Float32 is required: FP16 trips a CUDA device-side assert in
-# x_vector_only_mode. TF32 recovers most of the speed on Ampere and later
-# without changing the numerics that matter here.
-dtype = torch.float32
-if device == "cuda":
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
-    gpu_name = torch.cuda.get_device_name(0)
-    report(10, f"Qwen3-TTS : GPU {{gpu_name}}")
-else:
-    report(10, "Qwen3-TTS : CPU (aucun GPU CUDA detecte) — generation lente")
-
-try:
-    from qwen_tts import Qwen3TTSModel, Qwen3TTSTokenizer
-except ImportError:
-    print(json.dumps({{'progress': -1, 'detail': "Installation qwen_tts..."}}), flush=True)
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "qwen-tts", "soundfile"])
-    from qwen_tts import Qwen3TTSModel, Qwen3TTSTokenizer
-
-report(15, "Qwen3-TTS : chargement via qwen-tts")
-
-# Load model (the wrapper handles tokenizer/processor internally)
-model = Qwen3TTSModel.from_pretrained(repo_dir, dtype=dtype, device_map=device)
-
-report(30, "Qwen3-TTS : modele charge")
-
-# The requested temperature, nudged by the speed slider. Slower delivery gets
-# a touch more variety so it does not drift into monotone.
-temperature = max(0.05, {temperature} + (1.0 - speed) * 0.1)
-
-try:
-    is_base_model = 'base' in repo_dirname
-    is_custom_voice_model = 'customvoice' in repo_dirname
-
-    if voice_ref and os.path.isfile(voice_ref):
-        if not is_base_model:
-            raise ValueError("Erreur : Le modèle sélectionné ne supporte pas le clonage vocal. Veuillez télécharger et utiliser le modèle 'Base' (ex: Qwen3-TTS-12Hz-0.6B-Base).")
-        
-        voice_ref = prepare_reference(voice_ref)
-
-        # In-context cloning needs the reference transcript. Without it the
-        # model falls back to speaker-embedding-only, which copies the timbre
-        # but reads the sentence flatly — the "robotic" delivery.
-        # ~12 codec tokens per character is generous for speech; without a cap
-        # the model may ramble to its 2048-token limit on a one-word prompt,
-        # which is minutes of GPU for nothing.
-        budget = int(min(2048, max(192, len(text) * 14)))
-        clone_args = dict(
-            max_new_tokens=budget,
-            text=text,
-            language=lang,
-            ref_audio=voice_ref,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-        )
-        icl_text = ref_text
-        if expressive and not icl_text:
-            try:
-                report(38, "Qwen3-TTS : transcription de la reference")
-                try:
-                    from faster_whisper import WhisperModel
-                except ImportError:
-                    # Worth installing on the spot: without a transcript the
-                    # only fallback is timbre-only cloning, which does not just
-                    # flatten the delivery — it stops sounding like the same
-                    # person.
-                    report(36, "Installation du moteur de transcription...")
-                    subprocess.check_call([sys.executable, "-m", "pip", "install",
-                                           "-q", "faster-whisper"])
-                    from faster_whisper import WhisperModel
-                asr = WhisperModel("small", device=device,
-                                   compute_type="float16" if device == "cuda" else "int8")
-                segments, _ = asr.transcribe(voice_ref, beam_size=5,
-                                             language=None if lang in (None, "auto") else lang[:2])
-                icl_text = " ".join(s.text.strip() for s in segments).strip()
-                del asr
-                if device == "cuda":
-                    torch.cuda.empty_cache()
-                report(46, "Qwen3-TTS : reference transcrite")
-            except Exception as exc:
-                # Not fatal, but far from harmless: timbre-only cloning loses
-                # the speaker's identity, not merely their delivery. Say so
-                # plainly rather than returning a stranger's voice silently.
-                report(-1, f"Transcription impossible ({{exc}}). Repli sur le timbre seul : "
-                           "la voix sera moins fidele. Renseignez le texte de reference "
-                           "pour eviter cela.")
-                icl_text = ""
-
-        # Reported after transcription so the bar never moves backwards.
-        if expressive and icl_text:
-            clone_args["x_vector_only_mode"] = False
-            clone_args["ref_text"] = icl_text
-            report(50, "Qwen3-TTS : clonage vocal (intonation de la reference)")
-        else:
-            clone_args["x_vector_only_mode"] = True
-            report(50, "Qwen3-TTS : clonage vocal (timbre seul)")
-
-        wavs, sr = model.generate_voice_clone(**clone_args)
-    elif desc_prompt and is_voicedesign:
-        report(50, "Qwen3-TTS : design vocal")
-        # For VoiceDesign, there is no direct prompt string method if it requires VoiceClonePromptItem, 
-        # but we can try generate_voice_design or fallback to generate_custom_voice
-        if hasattr(model, 'generate_voice_design'):
-            wavs, sr = model.generate_voice_design(
-                text=text,
-                language=lang,
-                voice_design_prompt=desc_prompt,
-                temperature=temperature
-            )
-        else:
-            # Fallback to custom voice if generate_voice_design is not available
-            spk_list = model.get_supported_speakers()
-            spk = spk_list[0] if spk_list else None
-            wavs, sr = model.generate_custom_voice(
-                text=text,
-                speaker=spk,
-                language=lang,
-                instruct=desc_prompt,
-                temperature=temperature
-            )
-    else:
-        if is_base_model:
-            raise ValueError("Erreur : Le modèle 'Base' nécessite obligatoirement un audio de référence (Clonage Vocal). Il n'a pas de voix par défaut.")
-            
-        report(50, "Qwen3-TTS : generation audio")
-        spk_list = model.get_supported_speakers()
-        
-        # Try to use desc_prompt as the speaker if it matches one of the supported speakers
-        spk = desc_prompt if (desc_prompt and spk_list and desc_prompt in spk_list) else None
-        if not spk and spk_list:
-            spk = spk_list[0]
-            
-        wavs, sr = model.generate_custom_voice(
-            text=text,
-            speaker=spk,
-            language=lang,
-            temperature=temperature
-        )
-
-    report(80, "Qwen3-TTS : sauvegarde audio")
-
-    wav = wavs[0] if isinstance(wavs, list) else wavs
-    if hasattr(wav, 'numpy'):
-        wav = wav.numpy()
-    elif hasattr(wav, 'detach'):
-        wav = wav.detach().cpu().numpy()
-
-    wav = scale_pauses(wav, sr, pause_scale)
-    wav = shape_voice(wav, sr, shape_pitch, shape_energy, shape_clarity)
-    sf.write(out_path, wav, sr)
-    report(100, "Qwen3-TTS : termine")
-
-except Exception as e:
-    import traceback
-    traceback.print_exc(file=sys.stderr)
-    print(json.dumps({{'progress': -1, 'detail': f"Erreur generation Qwen3: {{str(e)}}"}}), flush=True)
-    sys.exit(1)
-"#
-    );
-
-    on_progress
-        .send(serde_json::json!({"progress": 15, "detail": "Qwen3-TTS : preparation"}))
-        .ok();
-
-    let mut command = tokio::process::Command::new(&python);
-    hide_tokio_console(&mut command);
-    let mut child = command
-        .envs(python_env())
-        .arg("-c")
-        .arg(&script)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("python spawn: {e}"))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin
-            .write_all(text.as_bytes())
-            .await
-            .map_err(|e| format!("python stdin: {e}"))?;
-        stdin.shutdown().await.ok();
-    }
-
-    // Stream stdout as it arrives. Collecting it with `wait_with_output` meant
-    // every progress line was parsed *after* the run had finished, so the UI
-    // sat frozen for the full two minutes with nothing to show.
-    use tokio::io::{AsyncBufReadExt, BufReader};
-
-    let stdout = child.stdout.take().ok_or("python stdout indisponible")?;
-    let stderr = child.stderr.take().ok_or("python stderr indisponible")?;
-
-    // Drain stderr concurrently: a full pipe buffer would deadlock the child.
-    let stderr_task = tokio::spawn(async move {
-        let mut buf = String::new();
-        let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            buf.push_str(&line);
-            buf.push('\n');
-        }
-        buf
-    });
-
-    let mut lines = BufReader::new(stdout).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        let line = line.trim();
-        if !line.starts_with('{') {
-            continue;
-        }
-        if let Ok(p) = serde_json::from_str::<serde_json::Value>(line) {
-            on_progress.send(p).ok();
-        }
-    }
-
-    // A generation that stops making progress must not hold the GPU forever.
-    // Loading the weights alone takes ~100 s on a laptop card, so the ceiling
-    // is generous — it exists to end a run that has genuinely wedged, not to
-    // cut a slow one short.
-    const TTS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
-    let status = match tokio::time::timeout(TTS_TIMEOUT, child.wait()).await {
-        Ok(r) => r.map_err(|e| format!("python wait: {e}"))?,
-        Err(_) => {
-            let _ = child.kill().await;
-            return Err(format!(
-                "La génération a dépassé {} minutes et a été interrompue. \
-                 Vérifiez que l'extrait de référence n'est pas trop long, ou \
-                 réduisez le texte à synthétiser.",
-                TTS_TIMEOUT.as_secs() / 60
-            ));
-        }
-    };
-    let stderr_text = stderr_task.await.unwrap_or_default();
-
-    if !status.success() {
-        return Err(format!(
-            "Qwen3-TTS a echoue: {}",
-            summarise_python_error(&stderr_text)
-        ));
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "Qwen3-TTS : termine"}))
-        .ok();
-
-    Ok(())
-}
-
-/// Reduce a Python traceback to the part a user can act on.
-///
-/// Raw tracebacks were surfaced verbatim in the UI: hundreds of characters of
-/// absl banners and frame listings around a single meaningful last line.
-fn summarise_python_error(stderr: &str) -> String {
+pub fn summarise_python_error(stderr: &str) -> String {
     const NOISE: &[&str] = &[
         "absl::InitializeLog",
         "oneDNN custom operations",
@@ -6332,7 +4641,6 @@ fn summarise_python_error(stderr: &str) -> String {
         .filter(|l| !NOISE.iter().any(|n| l.contains(n)))
         .collect();
 
-    // The final exception line carries the actual cause; keep a little context.
     if let Some(pos) = useful
         .iter()
         .rposition(|l| l.contains("Error:") || l.contains("Exception:"))
@@ -6344,1391 +4652,6 @@ fn summarise_python_error(stderr: &str) -> String {
         "erreur inconnue (aucune sortie)".to_string()
     } else {
         tail.join(" ")
-    }
-}
-
-#[tauri::command]
-// Signature dictée par l'appel côté interface ; la regrouper en
-// structure rendrait le contrat IPC moins lisible, pas plus.
-#[allow(clippy::too_many_arguments)]
-async fn generate_audio(
-    _core: State<'_, Core>,
-    model: String,
-    text: String,
-    output_dir: String,
-    voice_reference: Option<String>,
-    speaker: Option<String>,
-    speed: Option<f32>,
-    pitch: Option<f32>,
-    energy: Option<f32>,
-    clarity: Option<f32>,
-    language: Option<String>,
-    voice_description: Option<String>,
-    design_prompt: Option<String>,
-    // Sampling and cloning-style controls. Absent means the engine defaults,
-    // which are livelier than the values this code used to hardcode.
-    sampling: Option<TtsSampling>,
-    on_progress: Channel<serde_json::Value>,
-) -> Result<GeneratedAudio, String> {
-    let tts_sampling = sampling.unwrap_or_default();
-    let speed = speed.unwrap_or(1.0).clamp(0.5, 2.0);
-    let pitch = pitch.unwrap_or(1.0).clamp(0.5, 2.0);
-    let energy = energy.unwrap_or(0.7).clamp(0.0, 1.0);
-    let clarity = clarity.unwrap_or(0.8).clamp(0.0, 1.0);
-    let voice_reference = voice_reference.filter(|s| !s.is_empty());
-
-    // Language, voice design / expressive description parameters are accepted
-    // and passed to the active runner. Parler-TTS uses them directly as voice
-    // style descriptions; other runners log that they ignore them.
-    let language = language.filter(|s| !s.is_empty());
-    if language.as_ref().is_some_and(|s| !s.is_empty()) {
-        tracing::debug!(language = %language.as_ref().unwrap(), "synthesis language provided");
-    }
-    if voice_description.as_ref().is_some_and(|s| !s.is_empty()) {
-        tracing::debug!(
-            "voice_description provided; it will be consumed by engines that support voice design"
-        );
-    }
-    if design_prompt.as_ref().is_some_and(|s| !s.is_empty()) {
-        tracing::debug!(
-            "design_prompt provided; it will be consumed by engines that support voice design"
-        );
-    }
-
-    let output_path = std::path::Path::new(&output_dir);
-    if !output_path.exists() {
-        std::fs::create_dir_all(output_path)
-            .map_err(|e| format!("cannot create output dir: {e}"))?;
-    }
-
-    let out_file_name = format!(
-        "gen_{}.wav",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    );
-    let out_file = output_path.join(out_file_name);
-
-    let models_dir = locaryn_config::models_dir();
-    let (engine, model_path, config_path) = resolve_tts_engine(&models_dir, &model);
-
-    on_progress
-        .send(serde_json::json!({"progress": 0, "detail": "initialisation"}))
-        .ok();
-
-    // Resolve effective language. "auto" or missing means detect from text;
-    // otherwise trust the user's explicit choice.
-    let effective_language: Option<&str> = match language.as_deref() {
-        Some("auto") | None => None,
-        Some(l) if !l.is_empty() => Some(l),
-        _ => None,
-    };
-    let detected_lang = detect_language(&text);
-    let tts_lang = normalize_xtts_language(effective_language.unwrap_or(detected_lang));
-
-    // Voice description / design prompt are consumed by engines that support
-    // voice design (e.g. Parler-TTS); other runners log that they ignore them.
-    let voice_desc = voice_description.as_deref().filter(|s| !s.is_empty());
-    let design_p = design_prompt.as_deref().filter(|s| !s.is_empty());
-
-    let result = match engine {
-        TtsEngine::Piper => {
-            run_tts_piper(
-                &model_path,
-                config_path.as_deref(),
-                &text,
-                &out_file,
-                speed,
-                pitch,
-                effective_language,
-                voice_desc,
-                design_p,
-                &on_progress,
-            )
-            .await
-        }
-        TtsEngine::Kokoro => {
-            run_tts_kokoro(
-                &model_path,
-                &text,
-                &out_file,
-                voice_reference.as_deref(),
-                speaker.as_deref(),
-                speed,
-                pitch,
-                energy,
-                clarity,
-                effective_language,
-                voice_desc,
-                design_p,
-                &on_progress,
-            )
-            .await
-        }
-        TtsEngine::Xtts => {
-            // XTTS-v2 supports: en, es, fr, de, it, pt, pl, tr, ru, nl,
-            // cs, ar, zh-cn, hu, ko, ja. Fall back to detected language when
-            // the user leaves it on auto.
-            run_tts_xtts(
-                &model_path,
-                &text,
-                &out_file,
-                voice_reference.as_deref(),
-                tts_lang,
-                speed,
-                pitch,
-                energy,
-                clarity,
-                voice_desc,
-                design_p,
-                &on_progress,
-            )
-            .await
-        }
-        TtsEngine::Parler => {
-            // Parler-TTS turns a text description of a voice into audio. The
-            // design prompt (or voice description) is the actual conditioning
-            // signal, so it is not ignored — the model uses it to shape the voice.
-            run_tts_parler(
-                &model_path,
-                &text,
-                &out_file,
-                tts_lang,
-                voice_desc,
-                design_p,
-                &on_progress,
-            )
-            .await
-        }
-        TtsEngine::Qwen3 => {
-            run_tts_qwen3(
-                &model_path,
-                &text,
-                &out_file,
-                voice_reference.as_deref(),
-                effective_language,
-                voice_desc,
-                design_p,
-                speed,
-                &tts_sampling,
-                &on_progress,
-            )
-            .await
-        }
-        TtsEngine::PythonGeneric => {
-            Err("Le modele TTS selectionne n'est pas encore supporte pour la generation directe. Essayez Piper, Kokoro, XTTS, Parler ou Qwen3-TTS.".to_string())
-        }
-        TtsEngine::Unknown => {
-            // No engine found — simulation fallback so the UI still works.
-            on_progress
-                .send(serde_json::json!({"progress": 50, "detail": "simulation (moteur TTS non reconnu)"}))
-                .ok();
-            std::fs::write(&out_file, generate_test_wav(1, 16000, speed))
-                .map_err(|e| format!("cannot write audio: {e}"))?;
-            return Ok(GeneratedAudio {
-                path: out_file.to_string_lossy().to_string(),
-                simulated: true,
-            });
-        }
-    };
-
-    match result {
-        Ok(()) => {
-            // Verify the output file exists and is non-empty.
-            if out_file.exists() && std::fs::metadata(&out_file).map(|m| m.len()).unwrap_or(0) > 44
-            {
-                Ok(GeneratedAudio {
-                    path: out_file.to_string_lossy().to_string(),
-                    simulated: false,
-                })
-            } else {
-                Err("Le moteur TTS n'a pas produit de fichier audio.".into())
-            }
-        }
-        Err(e) => {
-            // Propagate the error to the frontend. The user needs to know
-            // which engine failed and why, rather than getting a fake beep.
-            on_progress
-                .send(serde_json::json!({"progress": 0, "detail": format!("erreur: {e}")}))
-                .ok();
-            Err(e)
-        }
-    }
-}
-
-/// List the available Kokoro voice names (without `.pt`) installed for a
-/// given model. Returns an empty list if the model is not a Kokoro repo or
-/// if the `voices/` directory is missing.
-#[tauri::command]
-async fn list_kokoro_voices(model: String) -> Result<Vec<String>, String> {
-    let models_dir = locaryn_config::models_dir();
-    let (engine, model_path, _config) = resolve_tts_engine(&models_dir, &model);
-    if engine != TtsEngine::Kokoro {
-        return Ok(Vec::new());
-    }
-    kokoro_voices_in_repo(&model_path)
-}
-
-#[tauri::command]
-async fn list_audio_models() -> Result<Vec<String>, String> {
-    // Scan the models directory for TTS weight files.
-    // - Top-level .onnx files → Piper voice models.
-    // - Extracted HF repo dirs → report the repo dir name as one model entry
-    //   (the user picks the model, then selects a voice from within it).
-    // We deliberately do NOT list individual voice .pt profiles (e.g.
-    // Kokoro's 54 voices/af_heart.pt) as separate "models" — those are voice
-    // presets, not standalone TTS models.
-    let models_dir = locaryn_config::models_dir();
-    let mut names: Vec<String> = Vec::new();
-
-    if let Ok(entries) = std::fs::read_dir(&models_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                // Top-level weight file → Piper-style .onnx voice model.
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    let lower = name.to_ascii_lowercase();
-                    if lower.ends_with(".onnx")
-                        && !lower.ends_with(".part")
-                        && !lower.ends_with(".tmp")
-                    {
-                        names.push(name.to_string());
-                    }
-                }
-            } else if path.is_dir() {
-                // Extracted HF repo: check if it contains TTS weight files
-                // (.pth, .safetensors, .bin) but NOT just voice .pt profiles.
-                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                let walker = walkdir_recursive(&path, 5);
-                let has_model_weight = walker.iter().any(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|n| {
-                            let l = n.to_ascii_lowercase();
-                            // Main model weights, not voice profiles
-                            l.ends_with(".pth")
-                                || l.ends_with(".safetensors")
-                                || l.ends_with(".bin")
-                        })
-                        .unwrap_or(false)
-                });
-                let has_voice_dir = path.join("voices").is_dir()
-                    || walker.iter().any(|p| {
-                        p.parent()
-                            .and_then(|parent| parent.file_name())
-                            .and_then(|n| n.to_str())
-                            .map(|n| n == "voices")
-                            .unwrap_or(false)
-                    });
-                let has_config = walker.iter().any(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|n| n.eq_ignore_ascii_case("config.json"))
-                        .unwrap_or(false)
-                });
-                if has_model_weight || (has_voice_dir && has_config) {
-                    names.push(dir_name.to_string());
-                }
-            }
-        }
-    }
-    names.sort();
-    names.dedup();
-    Ok(names)
-}
-
-/// Extract audio from a video file using ffmpeg and return the path to the
-/// generated WAV file. The output is written to `output_dir` with a unique
-/// timestamped name so successive imports do not overwrite each other.
-/// Only the first 30 seconds are extracted, which is enough for voice cloning.
-async fn extract_audio_from_video(
-    video_path: &std::path::Path,
-    output_dir: &std::path::Path,
-) -> Result<std::path::PathBuf, String> {
-    if !video_path.exists() {
-        return Err("Fichier video introuvable.".into());
-    }
-
-    let ext = video_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    let is_video = matches!(
-        ext.as_str(),
-        "mp4" | "mkv" | "avi" | "mov" | "webm" | "m4v" | "mpg" | "mpeg"
-    );
-    if !is_video {
-        return Ok(video_path.to_path_buf());
-    }
-
-    let video_path = video_path.to_path_buf();
-    let output_dir = output_dir.to_path_buf();
-
-    tokio::task::spawn_blocking(move || {
-        let ffmpeg_check = std::process::Command::new("ffmpeg")
-            .args(["-version"])
-            .output();
-        if ffmpeg_check.is_err() {
-            return Err(
-                "ffmpeg n'est pas installe. Installez ffmpeg pour importer une video.".into(),
-            );
-        }
-
-        std::fs::create_dir_all(&output_dir)
-            .map_err(|e| format!("Impossible de creer le dossier de sortie: {e}"))?;
-
-        let stem = video_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("voice");
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis().to_string())
-            .unwrap_or_else(|_| "0".into());
-        let out_filename = format!("{stem}_extracted_{ts}.wav");
-        let out_path = output_dir.join(out_filename);
-
-        let input_path = video_path.to_string_lossy().to_string();
-        let out_path_str = out_path.to_string_lossy().to_string();
-        let output = std::process::Command::new("ffmpeg")
-            .args([
-                "-y",
-                "-i",
-                &input_path,
-                "-t",
-                "30",
-                "-vn",
-                "-acodec",
-                "pcm_s16le",
-                "-ar",
-                "22050",
-                "-ac",
-                "1",
-                &out_path_str,
-            ])
-            .output()
-            .map_err(|e| format!("Impossible de lancer ffmpeg: {e}"))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Echec de l'extraction audio avec ffmpeg: {stderr}"));
-        }
-
-        if !out_path.exists() {
-            return Err("ffmpeg n'a pas produit de fichier audio.".into());
-        }
-
-        Ok(out_path)
-    })
-    .await
-    .map_err(|e| format!("ffmpeg task failed: {e}"))?
-}
-
-/// Convert a dialog `FilePath` to a local `PathBuf`, handling both plain
-/// paths and `file://` URLs returned by some platforms.
-fn dialog_file_path_to_path(path: &tauri_plugin_dialog::FilePath) -> std::path::PathBuf {
-    let s = path.to_string();
-    if s.starts_with("file://") {
-        if let Ok(parsed) = url::Url::parse(&s) {
-            if let Ok(p) = parsed.to_file_path() {
-                return p;
-            }
-        }
-    }
-    std::path::PathBuf::from(s)
-}
-
-#[tauri::command]
-/// Generate music from a text prompt using a Python-based music generation
-/// model (MusicGen, AudioLDM, Stable Audio, etc.). This dispatches to a
-/// Python subprocess (similar to `run_tts_parler`).
-// Note: #[tauri::command] removed because of E0252 name collision with format!
-// macro named parameters in the Python script. We register it via the handler.
-// Signature dictée par l'appel côté interface ; la regrouper en
-// structure rendrait le contrat IPC moins lisible, pas plus.
-#[allow(clippy::too_many_arguments)]
-async fn generate_music(
-    _core: State<'_, Core>,
-    model: String,
-    prompt: String,
-    output_dir: String,
-    duration: Option<u32>,
-    melody_reference: Option<String>,
-    negative_prompt: Option<String>,
-    steps: Option<u32>,
-    cfg_scale: Option<f32>,
-    on_progress: Channel<serde_json::Value>,
-) -> Result<GeneratedAudio, String> {
-    let duration = duration.unwrap_or(30).clamp(5, 300);
-    let steps = steps.unwrap_or(50).clamp(10, 500);
-    let cfg_scale = cfg_scale.unwrap_or(3.0).clamp(1.0, 20.0);
-    let melody_reference = melody_reference.filter(|s| !s.is_empty());
-    let negative_prompt = negative_prompt.filter(|s| !s.is_empty());
-
-    let output_path = std::path::Path::new(&output_dir);
-    if !output_path.exists() {
-        std::fs::create_dir_all(output_path)
-            .map_err(|e| format!("cannot create output dir: {e}"))?;
-    }
-
-    let out_file_name = format!(
-        "music_{}.wav",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    );
-    let out_file = output_path.join(out_file_name);
-
-    let models_dir = locaryn_config::models_dir();
-    let model_path = models_dir.join(&model);
-    let repo_dir = if model_path.is_dir() {
-        model_path
-    } else if let Some(parent) = std::path::Path::new(&model).parent() {
-        let dir = models_dir.join(parent);
-        if dir.is_dir() {
-            dir
-        } else {
-            model_path
-        }
-    } else {
-        model_path
-    };
-
-    let python = find_python()
-        .ok_or_else(|| "Python non trouvé. Installez Python 3.10+ ainsi que les dépendances (torch, transformers, soundfile, audiocraft, etc.).".to_string())?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 0, "detail": "initialisation"}))
-        .ok();
-
-    // Build the Python inference script. We attempt to import available
-    // music-gen libraries in priority: audiocraft (MusicGen), then
-    // diffusers (AudioLDM / Stable Audio), then bark.
-    let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy())
-        .map_err(|e| format!("encode repo_dir: {e}"))?;
-    let prompt_json = serde_json::to_string(&prompt).map_err(|e| format!("encode prompt: {e}"))?;
-    let out_path_json = serde_json::to_string(&out_file.to_string_lossy())
-        .map_err(|e| format!("encode out_path: {e}"))?;
-    let duration_secs = duration;
-    let steps_val = steps;
-    let cfg_val = cfg_scale;
-    let melody_json = match &melody_reference {
-        Some(p) => serde_json::to_string(p).unwrap_or_else(|_| "None".into()),
-        None => "None".into(),
-    };
-    let negative_json = match &negative_prompt {
-        Some(s) => serde_json::to_string(s).unwrap_or_else(|_| "None".into()),
-        None => "None".into(),
-    };
-
-    on_progress
-        .send(serde_json::json!({"progress": 5, "detail": "MusicGen : initialisation Python"}))
-        .ok();
-
-    let script = format!(
-        r#"import sys, json, os
-repo_dir = {repo_dir_json}
-out_path = {out_path_json}
-prompt = {prompt_json}
-duration = {duration_secs}
-steps = {steps_val}
-cfg = {cfg_val}
-melody_path = {melody_json}
-negative_prompt = {negative_json}
-
-
-def report(pct, msg):
-    print(json.dumps({{'progress': pct, 'detail': msg}}), flush=True)
-
-
-def load_melody(path, target_sr):
-    """Reference melody as (waveform, sr), or None if unreadable.
-
-    Trimmed to 30 s: MusicGen conditions on the whole clip, and a long import
-    costs generation time without improving the result."""
-    if not path or not os.path.isfile(path):
-        return None
-    try:
-        import numpy as _np
-        import soundfile as _sf
-        data, sr = _sf.read(path)
-        mono = data if getattr(data, 'ndim', 1) == 1 else data.mean(axis=1)
-        if sr != target_sr:
-            n = int(len(mono) * target_sr / sr)
-            mono = _np.interp(_np.linspace(0, len(mono) - 1, n),
-                              _np.arange(len(mono)), mono)
-            sr = target_sr
-        mono = mono.astype('float32')[: int(30 * sr)]
-        report(22, "melodie de reference chargee (%.1f s)" % (len(mono) / sr))
-        return mono, sr
-    except Exception as exc:
-        report(-1, "Melodie illisible (%s) — generation sans reference" % exc)
-        return None
-
-
-engine = None
-try:
-    from audiocraft.models import MusicGen
-    import torch
-    import soundfile as sf
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    report(18, "MusicGen : chargement du modele")
-    model = MusicGen.get_pretrained(repo_dir, device=device)
-    model.set_generation_params(duration=duration)
-    engine = "audiocraft"
-
-    mel = load_melody(melody_path, model.sample_rate)
-    if mel is not None and hasattr(model, "generate_with_chroma"):
-        # Melody conditioning: the model follows the reference's contour
-        # instead of inventing one. Only the -melody checkpoints support it.
-        import torch as _t
-        ref = _t.from_numpy(mel[0])[None, None, :].to(device)
-        report(30, "MusicGen : generation guidee par la melodie")
-        wav = model.generate_with_chroma([prompt], ref, mel[1], progress=True)
-    else:
-        if mel is not None:
-            report(-1, "Ce modele n'accepte pas de melodie de reference — ignoree. "
-                       "Utilisez un checkpoint 'musicgen-melody'.")
-        report(30, "MusicGen : generation")
-        wav = model.generate([prompt], progress=True)
-    one_wav = wav[0].cpu().numpy()
-    sf.write(out_path, one_wav.T if one_wav.ndim > 1 else one_wav, model.sample_rate)
-except ImportError:
-    try:
-        from diffusers import AudioLDM2Pipeline
-        import torch
-        import soundfile as sf
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        report(18, "AudioLDM2 : chargement du modele")
-        pipe = AudioLDM2Pipeline.from_pretrained(
-            repo_dir,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32)
-        # Same reasoning as the SVD branch of generate_video: the full
-        # pipeline (CLAP + GPT-2 + VAE + UNet + vocoder) doesn't fit
-        # resident on a consumer-sized GPU. Offloading keeps only the
-        # active submodule on the GPU.
-        if device == "cuda" and torch.cuda.get_device_properties(0).total_memory / 1024**3 < 12:
-            pipe.enable_model_cpu_offload()
-        else:
-            pipe = pipe.to(device)
-        engine = "audioldm2"
-        if melody_path:
-            report(-1, "AudioLDM2 n'accepte pas de melodie de reference — ignoree.")
-        kwargs = dict(num_inference_steps=steps, audio_length_in_s=duration,
-                      guidance_scale=cfg)
-        if negative_prompt:
-            kwargs["negative_prompt"] = negative_prompt
-        report(30, "AudioLDM2 : generation")
-        audio = pipe(prompt, **kwargs).audios[0]
-        # Rate comes from the pipeline: hardcoding 16000 resampled anything else.
-        rate = getattr(getattr(pipe, "vocoder", None), "config", None)
-        rate = getattr(rate, "sampling_rate", 16000)
-        sf.write(out_path, audio, rate)
-    except ImportError:
-        try:
-            from bark import SAMPLE_RATE, generate_audio, preload_models
-            import soundfile as sf
-            report(18, "Bark : chargement du modele")
-            preload_models(repo_dir)
-            engine = "bark"
-            audio = generate_audio(prompt, history_prompt=None)
-            sf.write(out_path, audio, SAMPLE_RATE)
-        except ImportError as e:
-            print("Aucun moteur de generation musicale trouve. "
-                  "Installez audiocraft, diffusers ou bark: %s" % e, file=sys.stderr)
-            sys.exit(1)
-
-report(100, "termine (%s)" % engine)
-print("OK", file=sys.stderr)
-"#,
-    );
-
-    on_progress
-        .send(
-            serde_json::json!({"progress": 15, "detail": "MusicGen : lancement du script Python"}),
-        )
-        .ok();
-
-    let mut command = tokio::process::Command::new(&python);
-    hide_tokio_console(&mut command);
-    let mut child = command
-        .envs(python_env())
-        .arg("-c")
-        .arg(&script)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("python spawn: {e}"))?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 20, "detail": "MusicGen : génération en cours"}))
-        .ok();
-
-    // Read stderr for progress (some libraries print there)
-    // Progress arrives on stdout as JSON; stderr carries the library's own
-    // chatter. Draining stderr to completion first (as this used to) left
-    // stdout unread, so the script could block on a full pipe and the UI never
-    // moved past "génération en cours".
-    use tokio::io::{AsyncBufReadExt, BufReader};
-    let stdout = child.stdout.take().ok_or("python stdout indisponible")?;
-    let stderr = child.stderr.take().ok_or("python stderr indisponible")?;
-    let err_task = tokio::spawn(async move {
-        let mut buf = String::new();
-        let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            tracing::debug!(%line, "music-gen python stderr");
-            buf.push_str(&line);
-            buf.push('\n');
-        }
-        buf
-    });
-
-    let mut lines = BufReader::new(stdout).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        let line = line.trim();
-        if !line.starts_with('{') {
-            continue;
-        }
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-            on_progress.send(v).ok();
-        }
-    }
-
-    // Music generation is minutes of GPU work; the ceiling only ends a run
-    // that has genuinely wedged.
-    const MUSIC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1800);
-    let status = match tokio::time::timeout(MUSIC_TIMEOUT, child.wait()).await {
-        Ok(r) => r.map_err(|e| format!("python wait: {e}"))?,
-        Err(_) => {
-            let _ = child.kill().await;
-            return Err(
-                "La génération musicale a dépassé 30 minutes et a été interrompue. \
-                        Réduisez la durée demandée."
-                    .into(),
-            );
-        }
-    };
-    let errs = err_task.await.unwrap_or_default();
-    if !status.success() {
-        return Err(format!(
-            "La génération musicale a échoué : {}. \
-             Vérifiez que le modèle est installé et que les dépendances Python sont \
-             présentes (pip install audiocraft, diffusers ou bark).",
-            summarise_python_error(&errs)
-        ));
-    }
-
-    if !out_file.exists() {
-        return Err("Le fichier audio n'a pas été créé par le script Python.".into());
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "terminé"}))
-        .ok();
-
-    Ok(GeneratedAudio {
-        path: out_file.to_string_lossy().to_string(),
-        simulated: false,
-    })
-}
-
-// ── Video generation ────────────────────────────────────────────────────────
-
-#[tauri::command]
-// Signature dictée par l'appel côté interface ; la regrouper en
-// structure rendrait le contrat IPC moins lisible, pas plus.
-#[allow(clippy::too_many_arguments)]
-async fn generate_video(
-    model: String,
-    prompt: String,
-    output_dir: String,
-    duration: Option<u32>,
-    input_image: Option<String>,
-    negative_prompt: Option<String>,
-    steps: Option<u32>,
-    cfg_scale: Option<f32>,
-    width: Option<u32>,
-    height: Option<u32>,
-    on_progress: Channel<serde_json::Value>,
-) -> Result<GeneratedAudio, String> {
-    let duration = duration.unwrap_or(5).clamp(2, 30);
-    let steps = steps.unwrap_or(50).clamp(10, 200);
-    let cfg_scale = cfg_scale.unwrap_or(7.0).clamp(1.0, 20.0);
-    let input_image = input_image.filter(|s| !s.is_empty());
-    let negative_prompt = negative_prompt.filter(|s| !s.is_empty());
-    let width = width.unwrap_or(640);
-    let height = height.unwrap_or(480);
-
-    let output_path = std::path::Path::new(&output_dir);
-    if !output_path.exists() {
-        std::fs::create_dir_all(output_path)
-            .map_err(|e| format!("cannot create output dir: {e}"))?;
-    }
-
-    let out_file_name = format!(
-        "video_{}.mp4",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    );
-    let out_file = output_path.join(out_file_name);
-
-    let models_dir = locaryn_config::models_dir();
-    let model_path = models_dir.join(&model);
-    let repo_dir = if model_path.is_dir() {
-        model_path
-    } else if let Some(parent) = std::path::Path::new(&model).parent() {
-        let dir = models_dir.join(parent);
-        if dir.is_dir() {
-            dir
-        } else {
-            model_path
-        }
-    } else {
-        model_path
-    };
-
-    let python = find_python()
-        .ok_or_else(|| "Python non trouvé. Installez Python 3.10+ ainsi que les dépendances (torch, diffusers, transformers, imageio-ffmpeg).".to_string())?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 0, "detail": "initialisation"}))
-        .ok();
-
-    // Build the Python inference script. We attempt to import available
-    // video-gen libraries in priority: diffusers (Wan2.1, LTX, CogVideo, SVD, Hunyuan, Mochi).
-    let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy())
-        .map_err(|e| format!("encode repo_dir: {e}"))?;
-    let prompt_json = serde_json::to_string(&prompt).map_err(|e| format!("encode prompt: {e}"))?;
-    let out_path_json = serde_json::to_string(&out_file.to_string_lossy())
-        .map_err(|e| format!("encode out_path: {e}"))?;
-    let input_image_json = match &input_image {
-        Some(p) => serde_json::to_string(p).map_err(|e| format!("encode input_image: {e}"))?,
-        None => "None".to_string(),
-    };
-    let negative_prompt_json = match &negative_prompt {
-        Some(s) => serde_json::to_string(s).map_err(|e| format!("encode negative_prompt: {e}"))?,
-        None => "None".to_string(),
-    };
-    let duration_secs = duration;
-    let steps_val = steps;
-    let cfg_val = cfg_scale;
-    let width_val = width;
-    let height_val = height;
-
-    on_progress
-        .send(serde_json::json!({"progress": 5, "detail": "VideoGen : initialisation Python"}))
-        .ok();
-
-    let script = format!(
-        r#"import sys, json
-repo_dir = {repo_dir_json}
-out_path = {out_path_json}
-prompt = {prompt_json}
-duration = {duration_secs}
-steps = {steps_val}
-cfg = {cfg_val}
-width = {width_val}
-height = {height_val}
-input_image_path = {input_image_json}
-negative_prompt = {negative_prompt_json}
-
-
-try:
-    import torch
-    import numpy as np
-    from diffusers import DiffusionPipeline
-    from PIL import Image
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float16 if device == "cuda" else torch.float32
-
-    # Determine model type from repo / model name
-    repo_lower = repo_dir.lower()
-
-    pipe = None
-    frames = []
-
-    # Helper: build kwargs with optional negative_prompt
-    def _pipe_kwargs(**kw):
-        if negative_prompt and negative_prompt != "None":
-            kw['negative_prompt'] = negative_prompt
-        return kw
-
-    if "wan" in repo_lower or "wan2" in repo_lower:
-        from diffusers import WanPipeline
-        pipe = WanPipeline.from_pretrained(repo_dir, torch_dtype=dtype)
-        pipe = pipe.to(device)
-        kw = _pipe_kwargs(num_inference_steps=steps, guidance_scale=cfg, width=width, height=height, num_frames=duration*8)
-        if input_image_path and input_image_path != "None":
-            img = Image.open(input_image_path).convert("RGB")
-            kw['image'] = img
-        output = pipe(prompt, **kw).frames[0]
-        frames = output
-    elif "ltx" in repo_lower:
-        from diffusers import LTXPipeline
-        pipe = LTXPipeline.from_pretrained(repo_dir, torch_dtype=dtype)
-        pipe = pipe.to(device)
-        output = pipe(prompt, **_pipe_kwargs(num_inference_steps=steps, guidance_scale=cfg, width=width, height=height, num_frames=duration*8)).frames[0]
-        frames = output
-    elif "cogvideo" in repo_lower or "cog" in repo_lower:
-        from diffusers import CogVideoXPipeline
-        pipe = CogVideoXPipeline.from_pretrained(repo_dir, torch_dtype=dtype)
-        pipe = pipe.to(device)
-        output = pipe(prompt, **_pipe_kwargs(num_inference_steps=steps, guidance_scale=cfg)).frames[0]
-        frames = output
-    elif "svd" in repo_lower or "stable.video" in repo_lower:
-        from diffusers import StableVideoDiffusionPipeline
-        pipe = StableVideoDiffusionPipeline.from_pretrained(repo_dir, torch_dtype=dtype, variant="fp16")
-        # The full pipeline needs well over 10 GB resident on the GPU at
-        # once — more than most consumer cards have (verified: OOM on a
-        # 6 GB card with plain .to(device)). Offloading keeps only the
-        # active submodule on the GPU, trading speed for actually fitting.
-        vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3 if device == "cuda" else 0
-        if device == "cuda" and vram_gb < 12:
-            pipe.enable_model_cpu_offload()
-            chunk_size = 1
-        else:
-            pipe = pipe.to(device)
-            chunk_size = 8
-        if input_image_path and input_image_path != "None":
-            img = Image.open(input_image_path).convert("RGB")
-        else:
-            img = Image.new("RGB", (width, height), (0, 0, 0))
-        # SVD is image-conditioned, not text/CFG-conditioned like the other
-        # pipelines here — it has no `guidance_scale` parameter at all
-        # (`max_guidance_scale`, defaulting to 3.0, plays that role instead).
-        output = pipe(img, decode_chunk_size=chunk_size, num_frames=14, num_inference_steps=steps).frames[0]
-        frames = output
-    elif "mochi" in repo_lower or "genmo" in repo_lower:
-        from diffusers import MochiPipeline
-        has_bf16 = torch.cuda.is_available() and torch.cuda.get_device_capability()[:2] >= (8, 0)
-        pipe = MochiPipeline.from_pretrained(repo_dir, torch_dtype=dtype, variant="bf16" if has_bf16 else None)
-        pipe = pipe.to(device)
-        output = pipe(prompt, **_pipe_kwargs(num_inference_steps=steps, guidance_scale=cfg, num_frames=duration*8)).frames[0]
-        frames = output
-    elif "hunyuan" in repo_lower:
-        try:
-            from diffusers import HunyuanVideoPipeline
-            pipe = HunyuanVideoPipeline.from_pretrained(repo_dir, torch_dtype=dtype)
-            pipe = pipe.to(device)
-            output = pipe(prompt, **_pipe_kwargs(num_inference_steps=steps, guidance_scale=cfg, width=width, height=height, num_frames=duration*8)).frames[0]
-            frames = output
-        except ImportError:
-            from diffusers import DiffusionPipeline
-            pipe = DiffusionPipeline.from_pretrained(repo_dir, torch_dtype=dtype)
-            pipe = pipe.to(device)
-            output = pipe(prompt, **_pipe_kwargs(num_inference_steps=steps, guidance_scale=cfg)).frames[0]
-            frames = output
-    else:
-        # Generic fallback: try any available video pipeline
-        try:
-            from diffusers import DiffusionPipeline
-            pipe = DiffusionPipeline.from_pretrained(repo_dir, torch_dtype=dtype)
-            pipe = pipe.to(device)
-            if hasattr(pipe, '__class__') and 'Video' in pipe.__class__.__name__:
-                kwargs = _pipe_kwargs(num_inference_steps=steps, guidance_scale=cfg)
-                if input_image_path and input_image_path != "None":
-                    kwargs['image'] = Image.open(input_image_path).convert("RGB")
-                output = pipe(prompt, **kwargs)
-                if hasattr(output, 'frames'):
-                    frames = output.frames[0]
-                else:
-                    frames = output[0] if isinstance(output, (list, tuple)) else []
-            else:
-                raise ValueError("Not a video pipeline")
-        except Exception as ge:
-            print(f"Video generation failed: {{ge}}", file=sys.stderr)
-            sys.exit(1)
-
-    if not frames:
-        print("No frames generated", file=sys.stderr)
-        sys.exit(1)
-
-    # Convert frames to numpy array and write video
-    all_np = []
-    for f in frames:
-        if isinstance(f, torch.Tensor):
-            f_np = f.cpu().numpy()
-            if f_np.ndim == 3 and f_np.shape[0] in (1, 3):
-                f_np = np.transpose(f_np, (1, 2, 0))
-            if f_np.ndim == 3 and f_np.shape[2] == 1:
-                f_np = np.repeat(f_np, 3, axis=2)
-            if f_np.max() <= 1.0:
-                f_np = (f_np * 255).clip(0, 255).astype(np.uint8)
-            all_np.append(f_np)
-        elif isinstance(f, Image.Image):
-            all_np.append(np.array(f.convert("RGB")))
-        elif isinstance(f, np.ndarray):
-            all_np.append(f)
-
-    if not all_np:
-        print("Frame conversion failed", file=sys.stderr)
-        sys.exit(1)
-
-    # Write video via imageio or torchvision
-    try:
-        import imageio
-        writer = imageio.get_writer(out_path, fps=8, codec='libx264', quality=8)
-        for frame in all_np:
-            writer.append_data(frame)
-        writer.close()
-    except ImportError:
-        try:
-            import torchvision.io as tio
-            video_tensor = torch.tensor(np.stack(all_np), dtype=torch.uint8).permute(0, 3, 1, 2)
-            tio.write_video(out_path, video_tensor, fps=8, video_codec='libx264')
-        except ImportError:
-            print("Need imageio-ffmpeg or torchvision for video output", file=sys.stderr)
-            sys.exit(1)
-
-    print("OK", file=sys.stderr)
-"#,
-    );
-
-    on_progress
-        .send(
-            serde_json::json!({"progress": 15, "detail": "VideoGen : lancement du script Python"}),
-        )
-        .ok();
-
-    let mut command = tokio::process::Command::new(&python);
-    hide_tokio_console(&mut command);
-    let mut child = command
-        .envs(python_env())
-        .arg("-c")
-        .arg(&script)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("python spawn: {e}"))?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 20, "detail": "VideoGen : génération en cours"}))
-        .ok();
-
-    use tokio::io::AsyncBufReadExt;
-    if let Some(stderr) = child.stderr.take() {
-        let mut lines = tokio::io::BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            tracing::debug!(%line, "video-gen python stderr");
-        }
-    }
-
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| format!("python wait: {e}"))?;
-    if !status.success() {
-        return Err("La génération vidéo a échoué. Vérifiez que le modèle est installé et que les dépendances Python sont présentes (pip install torch diffusers transformers imageio-ffmpeg).".into());
-    }
-
-    if !out_file.exists() {
-        return Err("Le fichier vidéo n'a pas été créé par le script Python.".into());
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "terminé"}))
-        .ok();
-
-    Ok(GeneratedAudio {
-        path: out_file.to_string_lossy().to_string(),
-        simulated: false,
-    })
-}
-
-// ── 3D generation ───────────────────────────────────────────────────────────
-
-#[tauri::command]
-// Signature dictée par l'appel côté interface ; la regrouper en
-// structure rendrait le contrat IPC moins lisible, pas plus.
-#[allow(clippy::too_many_arguments)]
-async fn generate_3d(
-    model: String,
-    prompt: String,
-    output_dir: String,
-    input_image: Option<String>,
-    negative_prompt: Option<String>,
-    steps: Option<u32>,
-    cfg_scale: Option<f32>,
-    format: Option<String>,
-    on_progress: Channel<serde_json::Value>,
-) -> Result<GeneratedAudio, String> {
-    let steps = steps.unwrap_or(50).clamp(10, 200);
-    let cfg_scale = cfg_scale.unwrap_or(7.0).clamp(1.0, 20.0);
-    let input_image = input_image.filter(|s| !s.is_empty());
-    let negative_prompt = negative_prompt.filter(|s| !s.is_empty());
-    let out_format = format.unwrap_or_else(|| "obj".into());
-
-    let output_path = std::path::Path::new(&output_dir);
-    if !output_path.exists() {
-        std::fs::create_dir_all(output_path)
-            .map_err(|e| format!("cannot create output dir: {e}"))?;
-    }
-
-    let ext = match out_format.as_str() {
-        "glb" => "glb",
-        "ply" => "ply",
-        _ => "obj",
-    };
-    let out_file_name = format!(
-        "model3d_{}.{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
-        ext
-    );
-    let out_file = output_path.join(out_file_name);
-
-    let models_dir = locaryn_config::models_dir();
-    let model_path = models_dir.join(&model);
-    let repo_dir = if model_path.is_dir() {
-        model_path
-    } else if let Some(parent) = std::path::Path::new(&model).parent() {
-        let dir = models_dir.join(parent);
-        if dir.is_dir() {
-            dir
-        } else {
-            model_path
-        }
-    } else {
-        model_path
-    };
-
-    let python = find_python()
-        .ok_or_else(|| "Python non trouvé. Installez Python 3.10+ ainsi que les dépendances (torch, transformers, trimesh).".to_string())?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 0, "detail": "initialisation"}))
-        .ok();
-
-    // Build the Python inference script. Try multiple 3D generation libraries.
-    let repo_dir_json = serde_json::to_string(&repo_dir.to_string_lossy())
-        .map_err(|e| format!("encode repo_dir: {e}"))?;
-    let prompt_json = serde_json::to_string(&prompt).map_err(|e| format!("encode prompt: {e}"))?;
-    let out_path_json = serde_json::to_string(&out_file.to_string_lossy())
-        .map_err(|e| format!("encode out_path: {e}"))?;
-    let input_image_json = match &input_image {
-        Some(p) => serde_json::to_string(p).map_err(|e| format!("encode input_image: {e}"))?,
-        None => "None".to_string(),
-    };
-    let negative_prompt_json = match &negative_prompt {
-        Some(s) => serde_json::to_string(s).map_err(|e| format!("encode negative_prompt: {e}"))?,
-        None => "None".to_string(),
-    };
-    let steps_val = steps;
-    let cfg_val = cfg_scale;
-    // shap-e's own downloader ignores HF_HOME and defaults to the spawning
-    // process's cwd — for an installed app that is not on D:. Passed
-    // explicitly to `load_model`/`load_config` below.
-    let shap_e_cache_json =
-        serde_json::to_string(&locaryn_config::shap_e_cache_dir().to_string_lossy())
-            .map_err(|e| format!("encode shap_e_cache_dir: {e}"))?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 5, "detail": "3DGen : initialisation Python"}))
-        .ok();
-
-    let script = format!(
-        r#"import sys, json
-repo_dir = {repo_dir_json}
-out_path = {out_path_json}
-prompt = {prompt_json}
-steps = {steps_val}
-cfg = {cfg_val}
-input_image_path = {input_image_json}
-negative_prompt = {negative_prompt_json}
-shap_e_cache_dir = {shap_e_cache_json}
-
-
-try:
-    import torch
-    import numpy as np
-
-    repo_lower = repo_dir.lower()
-
-    # Try Shape-E (OpenAI)
-    if "shap-e" in repo_lower or "shape" in repo_lower:
-        from shap_e.diffusion.sample import sample_latents
-        from shap_e.diffusion.gaussian_diffusion import diffusion_from_config
-        from shap_e.models.download import load_model, load_config
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = load_model("text300M", device=device, cache_dir=shap_e_cache_dir)
-        # The diffusion model only produces latents. Turning a latent into a
-        # mesh is a second, separate model — the transmitter — loaded here so
-        # decode_latent_mesh() below has something to render with.
-        xm = load_model("transmitter", device=device, cache_dir=shap_e_cache_dir)
-        diffusion = diffusion_from_config(load_config("diffusion", cache_dir=shap_e_cache_dir))
-
-        latents = sample_latents(
-            batch_size=1,
-            model=model,
-            diffusion=diffusion,
-            guidance_scale=cfg,
-            model_kwargs=dict(texts=[prompt]),
-            progress=True,
-            clip_denoised=True,
-            use_fp16=True if device == "cuda" else False,
-            use_karras=True,
-            karras_steps=steps,
-            sigma_min=1e-3,
-            sigma_max=160,
-            s_churn=0,
-        )
-
-        # Export mesh
-        for latent in latents:
-            from shap_e.util.notebooks import decode_latent_mesh
-            tri_mesh = decode_latent_mesh(xm, latent).tri_mesh()
-            # Despite its BinaryIO type hint, write_obj() joins its lines as
-            # a plain str and writes that — a binary handle raises TypeError.
-            with open(out_path, 'w') as f:
-                tri_mesh.write_obj(f)
-            print("OK", file=sys.stderr)
-            sys.exit(0)            # Try TripoSR
-    elif "tripo" in repo_lower:
-        import trimesh
-        from tsr.system import TSR
-        from tsr.utils import remove_background
-        from PIL import Image
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = TSR.from_pretrained(repo_dir, config_name="config.yaml", weight_name="model.ckpt")
-        model.to(device)
-
-        if not input_image_path or input_image_path == "None":
-            print("TripoSR nécessite une image source.", file=sys.stderr)
-            sys.exit(1)
-
-        image = remove_background(Image.open(input_image_path).convert("RGB"))
-
-        with torch.no_grad():
-            scene_codes = model([image], device=device)
-
-        meshes = model.extract_mesh(scene_codes, resolution=256)
-        mesh = trimesh.Trimesh(vertices=meshes[0].vertices, faces=meshes[0].faces, vertex_colors=meshes[0].vertex_colors)
-        mesh.export(out_path)
-        print("OK", file=sys.stderr)
-        sys.exit(0)
-
-    # Try Point-E
-    elif "point-e" in repo_lower:
-        import trimesh
-        from point_e.diffusion.configs import DIFFUSION_CONFIGS, diffusion_from_config
-        from point_e.diffusion.sampler import PointCloudSampler
-        from point_e.models.download import load_checkpoint
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        print("Chargement Point-E...", file=sys.stderr)
-        base_model = load_checkpoint("base40M", device=device)
-        upsampler_model = load_checkpoint("upsample", device=device)
-
-        sampler = PointCloudSampler(
-            device=device,
-            models=[base_model, upsampler_model],
-            diffusions=[
-                diffusion_from_config(DIFFUSION_CONFIGS["base40M"]),
-                diffusion_from_config(DIFFUSION_CONFIGS["upsample"]),
-            ],
-            num_points=[1024, 4096],
-            aux_channels=["R", "G", "B"],
-            guidance_scale=[3.0, 3.0],
-        )
-
-        samples = None
-        for x in sampler.sample_batch_progressive(batch_size=1, model_kwargs=dict(texts=[prompt])):
-            samples = x
-
-        pc = sampler.output_to_point_clouds(samples)[0]
-        pcd = np.asarray(pc.coords)
-
-        cloud = trimesh.PointCloud(vertices=pcd)
-        cloud.export(out_path)
-        print("OK", file=sys.stderr)
-        sys.exit(0)
-
-    # Try Zero-1-to-3 via diffusers
-    elif "zero" in repo_lower or "zero123" in repo_lower:
-        from diffusers import DiffusionPipeline
-        from PIL import Image
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        dtype = torch.float16 if device == "cuda" else torch.float32
-
-        pipe = DiffusionPipeline.from_pretrained(repo_dir, torch_dtype=dtype, trust_remote_code=True)
-        pipe = pipe.to(device)
-
-        if input_image_path and input_image_path != "None":
-            init_img = Image.open(input_image_path).convert("RGB")
-        else:
-            from diffusers.utils import load_image
-            init_img = Image.new("RGB", (256, 256), (200, 200, 200))
-
-        # Generate novel views at different azimuth angles
-        angles = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330]
-        views = []
-        for azim in angles:
-            out = pipe(
-                prompt,
-                image=init_img,
-                num_inference_steps=steps,
-                guidance_scale=cfg,
-                azimuth=azim,
-                elevation=0,
-            ).images[0]
-            views.append(out)
-
-        # Save as a simple grid
-        grid_width = 4
-        grid_height = 3
-        w, h = views[0].size
-        grid_img = Image.new("RGB", (w * grid_width, h * grid_height))
-        for i, view in enumerate(views):
-            x = (i % grid_width) * w
-            y = (i // grid_width) * h
-            grid_img.paste(view, (x, y))
-
-        # Save as OBJ placeholder (cannot reconstruct full 3D from views alone)
-        import trimesh
-        import os
-        obj_path = out_path
-        mesh = trimesh.primitives.Box(extents=[0.5, 0.5, 0.5])
-        mesh.export(obj_path)
-        # Also save the multi-view grid
-        grid_path = os.path.splitext(out_path)[0] + "_views.png"
-        grid_img.save(grid_path)
-        print("Zero-1-to-3: multi-views saved to {{grid_path}}", file=sys.stderr)
-        print("OK", file=sys.stderr)
-        sys.exit(0)
-
-    # Try threestudio (generic SDS-based 3D generation)
-    elif "threestudio" in repo_lower:
-        print("ThreeStudio : exécution via threestudio...", file=sys.stderr)
-        import subprocess
-        import os
-        result = subprocess.run([
-            sys.executable, "-m", "threestudio",
-            "--prompt", prompt,
-            "--outdir", os.path.dirname(out_path),
-            "--export_ext", out_path.split('.')[-1],
-            "--n_steps", str(steps),
-        ], capture_output=True, text=True, cwd=repo_dir)
-        print(result.stdout, file=sys.stderr)
-        if result.returncode != 0:
-            print(result.stderr, file=sys.stderr)
-            sys.exit(1)
-        print("OK", file=sys.stderr)
-        sys.exit(0)
-
-    # Generic fallback: try trimesh procedural generation
-    else:
-        print(f"Modèle 3D non reconnu: {{repo_lower}}", file=sys.stderr)
-        print("Génération d'un modèle 3D de base (icosphere)...", file=sys.stderr)
-        import trimesh
-        mesh = trimesh.creation.icosphere(subdivisions=3)
-        mesh.export(out_path)
-        print("OK", file=sys.stderr)
-        sys.exit(0)
-
-except ImportError as e:
-    print(f"Erreur d'import: {{e}}", file=sys.stderr)
-    print("Installez les dépendances : pip install torch trimesh shap-e point-e tsr threestudio", file=sys.stderr)
-    sys.exit(1)
-except Exception as e:
-    print(f"Erreur: {{e}}", file=sys.stderr)
-    sys.exit(1)
-"#,
-    );
-
-    on_progress
-        .send(serde_json::json!({"progress": 15, "detail": "3DGen : lancement du script Python"}))
-        .ok();
-
-    let mut command = tokio::process::Command::new(&python);
-    hide_tokio_console(&mut command);
-    let mut child = command
-        .envs(python_env())
-        .arg("-c")
-        .arg(&script)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("python spawn: {e}"))?;
-
-    on_progress
-        .send(serde_json::json!({"progress": 20, "detail": "3DGen : génération en cours"}))
-        .ok();
-
-    use tokio::io::AsyncBufReadExt;
-    if let Some(stderr) = child.stderr.take() {
-        let mut lines = tokio::io::BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            tracing::debug!(%line, "3d-gen python stderr");
-        }
-    }
-
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| format!("python wait: {e}"))?;
-    if !status.success() {
-        return Err("La génération 3D a échoué. Vérifiez que le modèle est installé et que les dépendances Python sont présentes (pip install torch trimesh shap-e point-e tsr).".into());
-    }
-
-    if !out_file.exists() {
-        return Err("Le fichier 3D n'a pas été créé par le script Python.".into());
-    }
-
-    on_progress
-        .send(serde_json::json!({"progress": 100, "detail": "terminé"}))
-        .ok();
-
-    Ok(GeneratedAudio {
-        path: out_file.to_string_lossy().to_string(),
-        simulated: false,
-    })
-}
-
-#[tauri::command]
-async fn pick_voice_reference(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let dialog = app
-        .dialog()
-        .file()
-        .set_title("Selectionner un echantillon vocal ou une video")
-        .add_filter(
-            "Audio / Video",
-            &[
-                "mp3", "wav", "m4a", "ogg", "flac", "wma", "aac", "mp4", "mkv", "avi", "mov",
-                "webm", "m4v", "mpg", "mpeg",
-            ],
-        );
-    let picked = tokio::task::spawn_blocking(move || dialog.blocking_pick_file())
-        .await
-        .map_err(|e| format!("dialog task failed: {e}"))?;
-    match picked {
-        Some(path) => {
-            let p = dialog_file_path_to_path(&path);
-            let data_dir = app
-                .path()
-                .app_data_dir()
-                .map_err(|e| format!("Impossible d'acceder au dossier de donnees: {e}"))?;
-            let output_dir = data_dir.join("voice_references");
-            let audio_path = extract_audio_from_video(&p, &output_dir).await?;
-            Ok(Some(audio_path.to_string_lossy().to_string()))
-        }
-        None => Ok(None),
     }
 }
 
@@ -8420,6 +5343,7 @@ async fn modele_de_plongement(core: &Core) -> Result<(String, String), String> {
                     locaryn_shared_types::ProviderEngine::LlamaCpp
                         | locaryn_shared_types::ProviderEngine::OpenAiCompat
                         | locaryn_shared_types::ProviderEngine::Ollama
+                        | locaryn_shared_types::ProviderEngine::Extension(_)
                 )
         })
         .ok_or_else(|| {
@@ -8745,17 +5669,6 @@ pub struct ConnectorType {
 fn list_connector_types() -> Result<Vec<ConnectorType>, String> {
     Ok(vec![
         ConnectorType {
-            type_id: "ssh".into(),
-            display_name: "SSH Remote Server".into(),
-            summary: "Connexion serveur distant via SSH".into(),
-            icon: "\u{1f5a7}".into(),
-            category: "connector".into(),
-            source: "built-in".into(),
-            available: true,
-            supports_test: true,
-            install_hint: String::new(),
-        },
-        ConnectorType {
             type_id: "mcp_custom".into(),
             display_name: "Serveur MCP Personnalise".into(),
             summary: "Ajoutez n'importe quel serveur MCP".into(),
@@ -8767,84 +5680,6 @@ fn list_connector_types() -> Result<Vec<ConnectorType>, String> {
             install_hint: String::new(),
         },
     ])
-}
-
-// ============================================================================
-// SSH servers
-// ============================================================================
-
-#[tauri::command]
-async fn list_ssh_servers(core: State<'_, Core>) -> Result<Vec<SshServer>, String> {
-    core.storage
-        .ssh_servers
-        .list()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn test_ssh_connection(
-    draft: serde_json::Value,
-    secret: Option<String>,
-    on_event: Channel<serde_json::Value>,
-) -> Result<serde_json::Value, String> {
-    let _ = (draft, secret, on_event);
-    Err("SSH connection test not yet implemented".into())
-}
-
-#[tauri::command]
-async fn confirm_ssh_host_key(core: State<'_, Core>, test_token: String) -> Result<(), String> {
-    let mut tests = core.pending_tests.lock().await;
-    if let Some(test) = tests.get_mut(&test_token) {
-        test.confirmed = true;
-        Ok(())
-    } else {
-        Err("invalid or expired test token".into())
-    }
-}
-
-#[tauri::command]
-async fn save_ssh_server(
-    _core: State<'_, Core>,
-    draft: serde_json::Value,
-    secret: Option<String>,
-    test_token: String,
-) -> Result<SshServer, String> {
-    let _ = (draft, secret, test_token);
-    Err("SSH server save not yet implemented".into())
-}
-
-#[tauri::command]
-async fn update_ssh_server(
-    core: State<'_, Core>,
-    id: Uuid,
-    patch: serde_json::Value,
-) -> Result<SshServer, String> {
-    let _ = (core, id, patch);
-    Err("update_ssh_server not yet fully implemented".into())
-}
-
-#[tauri::command]
-async fn set_ssh_ai_access(
-    core: State<'_, Core>,
-    id: Uuid,
-    level: SshAiAccess,
-) -> Result<SshServer, String> {
-    core.storage
-        .ssh_servers
-        .set_ai_access(id, level)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn delete_ssh_server(core: State<'_, Core>, id: Uuid) -> Result<(), String> {
-    core.storage
-        .ssh_servers
-        .delete(id)
-        .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
 }
 
 // ============================================================================
@@ -9071,7 +5906,6 @@ pub fn run() {
             append_assistant_message,
             suggest_followups,
             plan_task,
-            detect_image_request,
             list_sessions,
             create_session,
             update_session_title,
@@ -9150,13 +5984,6 @@ pub fn run() {
             rag_clear,
             rag_search,
             search_ollama_library,
-            list_audio_models,
-            list_kokoro_voices,
-            generate_audio,
-            generate_music,
-            generate_video,
-            generate_3d,
-            pick_voice_reference,
             llama_runtime_status,
             setup_llama_runtime,
             list_connector_types,
@@ -9184,6 +6011,10 @@ pub fn run() {
             local_profile::clear_local_avatar,
             extensions::list_extensions,
             extensions::list_capabilities,
+            inference_engines::list_inference_engines,
+            inference_engines::start_inference_engine,
+            inference_engines::stop_inference_engine,
+            inference_engines::inference_engine_log,
             core_engines::core_status,
             core_engines::core_start,
             core_engines::core_stop,
@@ -9230,13 +6061,6 @@ pub fn run() {
             remove_test_audio,
             save_audio_as,
             save_image_as,
-            list_ssh_servers,
-            test_ssh_connection,
-            confirm_ssh_host_key,
-            save_ssh_server,
-            update_ssh_server,
-            set_ssh_ai_access,
-            delete_ssh_server,
             get_image_defaults,
             set_image_defaults,
             get_model_preferences,
@@ -9260,11 +6084,10 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        compatible_gguf_repo, find_python, hf_candidate_variant, hf_quantization, hf_shard_group,
+        compatible_gguf_repo, hf_candidate_variant, hf_quantization, hf_shard_group,
         is_hf_weight_path, is_safetensors_layout_file, is_text_chat_model, preferred_mmproj,
         summarise_python_error,
     };
-    use std::process::Command;
     use uuid::Uuid;
 
     /// Une configuration sans `app.windows` compile, se lance, et n'affiche
@@ -9527,61 +6350,5 @@ ligne utile B
             ),
             "erreur inconnue (aucune sortie)"
         );
-    }
-
-    /// Validate Python syntax of all embedded TTS scripts.
-    /// Reads each .py file in `scripts/`, replaces Rust format!() placeholders
-    /// with dummy values, and runs the same Python interpreter Locaryn will
-    /// use to catch syntax errors before they surface at runtime.
-    #[test]
-    fn validate_tts_python_syntax() {
-        let scripts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts");
-
-        let names = [
-            "kokoro_clone_tts.py",
-            "kokoro_std_tts.py",
-            "parler_tts.py",
-            "xtts_tts.py",
-            "qwen3_tts.py",
-        ];
-
-        for name in &names {
-            let path = scripts_dir.join(name);
-            assert!(path.exists(), "script not found: {}", path.display());
-
-            let src = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-
-            // Write to a temp file so Python can read it cleanly.
-            // The raw scripts are already syntactically valid Python:
-            // `{repo_dir_json}` is a legal Python set literal (undefined var
-            // at runtime, but compile() only checks syntax).
-            let tmpdir = std::env::temp_dir().join("locaryn_tts_test");
-            let _ = std::fs::create_dir_all(&tmpdir);
-            let tmpfile = tmpdir.join(name);
-            std::fs::write(&tmpfile, &src)
-                .unwrap_or_else(|e| panic!("failed to write temp script: {e}"));
-
-            // Use forward slashes so Python's parser doesn't interpret \U / \u escapes.
-            let py_path = tmpfile.to_str().unwrap().replace("\\", "/");
-            let python = find_python().expect("Python 3.10+ is required for media features");
-            let out = Command::new(python)
-                .args([
-                    "-c",
-                    &format!("compile(open('{py_path}', 'r').read(), '{name}', 'exec')"),
-                ])
-                .output()
-                .unwrap_or_else(|e| panic!("failed to run Python: {e}"));
-
-            assert!(
-                out.status.success(),
-                "Python syntax error in {}:\n{}",
-                name,
-                String::from_utf8_lossy(&out.stderr)
-            );
-
-            // Clean up the temp file.
-            let _ = std::fs::remove_file(&tmpfile);
-        }
     }
 }

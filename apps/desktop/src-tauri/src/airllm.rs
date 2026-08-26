@@ -253,13 +253,13 @@ pub async fn configure_airllm_provider(
     let provider = core
         .storage
         .providers
-        .upsert_local(ProviderEngine::AirLlm, "http://127.0.0.1:8090", Some(repo))
+        .upsert_local(&ProviderEngine::AirLlm, "http://127.0.0.1:8090", Some(repo))
         .await
         .map_err(|e| e.to_string())?;
 
     if changed {
         tracing::info!("AirLLM model changed — restarting AirLLM server");
-        let _ = core.supervisor.shutdown(ProviderEngine::AirLlm).await;
+        let _ = core.supervisor.shutdown(&ProviderEngine::AirLlm).await;
     }
     crate::refresh_mcp_runtime_env(&core).await;
     Ok(provider)

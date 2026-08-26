@@ -174,8 +174,19 @@ pub enum ProviderKind {
     Local,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// Le moteur qui sert le texte : un runtime intégré, ou un moteur apporté par
+/// une extension.
+///
+/// [`ProviderEngine::Extension`] porte l'identifiant déclaré par l'extension
+/// dans la section `engine` de son manifeste. L'application ne nomme donc
+/// aucune extension : elle ne connaît que la forme du jeton.
+///
+/// Le jeton textuel (`as_token`) est la forme canonique — c'est ce qui est
+/// écrit en base, dans les URL et sur le fil SSE. La sérialisation serde suit
+/// ce jeton, si bien qu'un moteur d'extension reste une chaîne (`ext:mon-id`)
+/// et non un objet : les clients existants continuent de lire un moteur comme
+/// une chaîne.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProviderEngine {
     Ollama,
     LlamaCpp,
@@ -185,6 +196,88 @@ pub enum ProviderEngine {
     /// AirLLM — low-VRAM inference engine (layer-by-layer offloading).
     /// Runs an OpenAI-compatible Python server on loopback.
     AirLlm,
+    /// Moteur d'inférence apporté par une extension installée.
+    Extension(String),
+}
+
+/// Préfixe du jeton d'un moteur apporté par une extension.
+pub const EXTENSION_ENGINE_PREFIX: &str = "ext:";
+
+impl ProviderEngine {
+    /// Forme canonique : ce qui est stocké, transporté et affiché dans les
+    /// journaux. Stable — la base de données en dépend.
+    pub fn as_token(&self) -> String {
+        match self {
+            ProviderEngine::Ollama => "ollama".to_string(),
+            ProviderEngine::LlamaCpp => "llama_cpp".to_string(),
+            ProviderEngine::Lmstudio => "lmstudio".to_string(),
+            ProviderEngine::Vllm => "vllm".to_string(),
+            ProviderEngine::OpenAiCompat => "open_ai_compat".to_string(),
+            ProviderEngine::AirLlm => "airllm".to_string(),
+            ProviderEngine::Extension(id) => format!("{EXTENSION_ENGINE_PREFIX}{id}"),
+        }
+    }
+
+    /// Lit un jeton. Les graphies rencontrées dans les arguments de ligne de
+    /// commande (`llama-cpp`, `llamacpp`) sont acceptées ; un jeton inconnu
+    /// renvoie `None` plutôt qu'un moteur au hasard, pour que l'appelant
+    /// puisse dire ce qui n'a pas été compris.
+    pub fn from_token(token: &str) -> Option<Self> {
+        let t = token.trim();
+        if let Some(id) = t.strip_prefix(EXTENSION_ENGINE_PREFIX) {
+            let id = id.trim();
+            if id.is_empty() {
+                return None;
+            }
+            return Some(ProviderEngine::Extension(id.to_string()));
+        }
+        match t.to_ascii_lowercase().as_str() {
+            "ollama" => Some(ProviderEngine::Ollama),
+            "llama_cpp" | "llama-cpp" | "llamacpp" => Some(ProviderEngine::LlamaCpp),
+            "lmstudio" | "lm_studio" | "lm-studio" => Some(ProviderEngine::Lmstudio),
+            "vllm" => Some(ProviderEngine::Vllm),
+            "open_ai_compat" | "openai_compat" | "openai-compat" => {
+                Some(ProviderEngine::OpenAiCompat)
+            }
+            "airllm" | "air_llm" => Some(ProviderEngine::AirLlm),
+            _ => None,
+        }
+    }
+
+    /// L'identifiant de l'extension qui apporte ce moteur, s'il en vient
+    /// d'une.
+    pub fn extension_id(&self) -> Option<&str> {
+        match self {
+            ProviderEngine::Extension(id) => Some(id.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Ce moteur vient-il d'une extension ?
+    pub fn is_extension(&self) -> bool {
+        matches!(self, ProviderEngine::Extension(_))
+    }
+}
+
+impl std::fmt::Display for ProviderEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.as_token())
+    }
+}
+
+impl Serialize for ProviderEngine {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.as_token())
+    }
+}
+
+impl<'de> Deserialize<'de> for ProviderEngine {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let token = String::deserialize(deserializer)?;
+        ProviderEngine::from_token(&token).ok_or_else(|| {
+            serde::de::Error::custom(format!("moteur inconnu : « {token} »"))
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1017,5 +1110,74 @@ mod base64_tests {
     #[test]
     fn un_caractere_hors_alphabet_est_refuse() {
         assert!(base64_decode("Zm9v!===").is_err());
+    }
+}
+
+#[cfg(test)]
+mod provider_engine_tests {
+    use super::ProviderEngine;
+
+    /// Le jeton des moteurs intégrés est figé : la base de données le stocke
+    /// tel quel depuis la première migration.
+    #[test]
+    fn les_jetons_integres_ne_bougent_pas() {
+        for (engine, token) in [
+            (ProviderEngine::Ollama, "ollama"),
+            (ProviderEngine::LlamaCpp, "llama_cpp"),
+            (ProviderEngine::Lmstudio, "lmstudio"),
+            (ProviderEngine::Vllm, "vllm"),
+            (ProviderEngine::OpenAiCompat, "open_ai_compat"),
+            (ProviderEngine::AirLlm, "airllm"),
+        ] {
+            assert_eq!(engine.as_token(), token);
+            assert_eq!(ProviderEngine::from_token(token), Some(engine));
+        }
+    }
+
+    #[test]
+    fn un_moteur_d_extension_fait_l_aller_retour() {
+        let engine = ProviderEngine::Extension("freetoken".into());
+        assert_eq!(engine.as_token(), "ext:freetoken");
+        assert_eq!(ProviderEngine::from_token("ext:freetoken"), Some(engine));
+        assert_eq!(
+            ProviderEngine::Extension("freetoken".into()).extension_id(),
+            Some("freetoken")
+        );
+    }
+
+    /// Un jeton inconnu ne devient pas Ollama en silence : c'est ainsi qu'un
+    /// moteur mal orthographié se met à répondre à la place d'un autre.
+    #[test]
+    fn un_jeton_inconnu_est_refuse() {
+        assert_eq!(ProviderEngine::from_token("mistral_rs"), None);
+        assert_eq!(ProviderEngine::from_token("ext:"), None);
+        assert_eq!(ProviderEngine::from_token("ext:   "), None);
+    }
+
+    /// Sur le fil, un moteur reste une chaîne — y compris celui d'une
+    /// extension. Les clients qui lisent `engine` comme une chaîne continuent
+    /// de fonctionner.
+    #[test]
+    fn serde_garde_la_forme_chaine() {
+        let json = serde_json::to_string(&ProviderEngine::Extension("freetoken".into())).unwrap();
+        assert_eq!(json, "\"ext:freetoken\"");
+        let back: ProviderEngine = serde_json::from_str("\"ext:freetoken\"").unwrap();
+        assert_eq!(back, ProviderEngine::Extension("freetoken".into()));
+        assert_eq!(
+            serde_json::to_string(&ProviderEngine::LlamaCpp).unwrap(),
+            "\"llama_cpp\""
+        );
+    }
+
+    #[test]
+    fn les_graphies_de_ligne_de_commande_sont_acceptees() {
+        assert_eq!(
+            ProviderEngine::from_token("llama-cpp"),
+            Some(ProviderEngine::LlamaCpp)
+        );
+        assert_eq!(
+            ProviderEngine::from_token("LlamaCPP"),
+            Some(ProviderEngine::LlamaCpp)
+        );
     }
 }

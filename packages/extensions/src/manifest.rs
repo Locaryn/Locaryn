@@ -61,6 +61,164 @@ pub struct PluginManifest {
     /// choisit le sien via `sessions.core_id`.
     #[serde(default)]
     pub core: Option<CoreManifest>,
+    /// Quand elle est présente, l'extension apporte un **moteur d'inférence** :
+    /// un serveur local compatible OpenAI que Locaryn installe, démarre,
+    /// sonde et arrête comme il le fait de llama-server. Le moteur intégré
+    /// n'est jamais remplacé — le moteur actif est un choix, moteur par
+    /// moteur, dans Réglages → Moteur.
+    ///
+    /// Un moteur n'est pas un noyau : le noyau change *l'agent* (sa boucle,
+    /// sa mémoire), un moteur change seulement *qui calcule les jetons*. La
+    /// boucle d'outils, l'approbation, le streaming et la persistance de
+    /// Locaryn restent les siens.
+    #[serde(default)]
+    pub engine: Option<EngineManifest>,
+}
+
+/// Section `engine` d'un manifeste : un moteur d'inférence apporté par une
+/// extension.
+///
+/// Tout est déclaratif — l'application ne contient aucun code propre à un
+/// moteur donné. Elle sait installer (`install`), lancer (`lifecycle.start`),
+/// sonder (`lifecycle.health`), et quels poids ce moteur sait servir
+/// (`model_formats`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct EngineManifest {
+    /// Identifiant du moteur, tel qu'il apparaît dans le jeton `ext:<id>`.
+    /// Minuscules, chiffres, `-` ou `_`. À défaut, le nom de l'extension.
+    #[serde(default)]
+    pub id: String,
+    /// Nom affiché dans Réglages → Moteur. À défaut, l'identifiant.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Dialecte parlé par le serveur. `openai_compat` (défaut) couvre
+    /// `/v1/chat/completions` + `/v1/models`, ce que servent llama-server,
+    /// vLLM, SGLang, FreeToken et les autres.
+    #[serde(default = "dialecte_moteur_par_defaut")]
+    pub driver: String,
+    /// URL de base du serveur, loopback obligatoire.
+    #[serde(default)]
+    pub api_url: String,
+    /// Port local attendu. Substitué dans `lifecycle` par `{{port}}`.
+    #[serde(default)]
+    pub port: u16,
+    /// D'où vient le programme, et comment le poser sur la machine.
+    #[serde(default)]
+    pub install: EngineInstall,
+    /// Comment le démarrer, le sonder, l'arrêter.
+    #[serde(default)]
+    pub lifecycle: EngineLifecycle,
+    /// Quels poids ce moteur sait charger. C'est ce qui rend un modèle
+    /// sélectionnable comme modèle de conversation : sans cette liste, un
+    /// répertoire safetensors reste invisible parce que le runtime intégré,
+    /// lui, ne lit que du GGUF.
+    #[serde(default)]
+    pub model_formats: EngineModelFormats,
+    /// Combien de temps accorder au premier chargement avant de déclarer
+    /// l'échec. Un moteur qui convertit ses poids au premier lancement met
+    /// des minutes, pas des secondes.
+    #[serde(default = "budget_demarrage_par_defaut")]
+    pub startup_timeout_secs: u64,
+    /// Ce que le moteur exige de la machine, pour le dire avant l'échec
+    /// plutôt qu'après.
+    #[serde(default)]
+    pub requires: EngineRequirements,
+}
+
+fn dialecte_moteur_par_defaut() -> String {
+    "openai_compat".to_string()
+}
+
+fn budget_demarrage_par_defaut() -> u64 {
+    300
+}
+
+/// Provenance du programme qui sert les jetons.
+///
+/// `kind` vaut `pip` (paquet Python dans un environnement géré), `binary`
+/// (archive téléchargée), `npm`, ou `existing` (l'utilisateur l'a déjà
+/// installé, on le cherche sur le chemin).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct EngineInstall {
+    #[serde(default)]
+    pub kind: String,
+    /// Nom du paquet (`pip`, `npm`) ou de l'exécutable (`existing`).
+    #[serde(default)]
+    pub package: Option<String>,
+    /// Version épinglée. Une chaîne d'approvisionnement sans version épinglée
+    /// installe autre chose à chaque fois (D12, doc 14).
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Extras pip (`["accel"]` → `paquet[accel]`).
+    #[serde(default)]
+    pub extras: Vec<String>,
+    /// Exécutable à chercher pour savoir si c'est déjà installé.
+    #[serde(default)]
+    pub probe_bin: Option<String>,
+}
+
+/// Cycle de vie du processus moteur.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct EngineLifecycle {
+    /// Liste d'arguments — jamais une ligne de shell. Les substitutions
+    /// disponibles : `{{port}}`, `{{model}}`, `{{models_dir}}`,
+    /// `{{plugin_root}}`, `{{plugin_bin_dir}}`, `{{data_dir}}`,
+    /// `{{extension_data_dir}}`, `{{token}}`.
+    #[serde(default)]
+    pub start: Vec<String>,
+    /// Variables d'environnement, mêmes substitutions.
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
+    /// Sonde de santé attendue avant de déclarer le moteur en marche.
+    #[serde(default)]
+    pub health: Option<CoreHealth>,
+    /// Arguments à ajouter quand aucun modèle n'est choisi (certains moteurs
+    /// refusent de démarrer sans poids).
+    #[serde(default)]
+    pub requires_model: bool,
+}
+
+/// Ce qu'un moteur sait charger.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct EngineModelFormats {
+    /// Extensions de fichier servies telles quelles (`gguf`, `safetensors`).
+    #[serde(default)]
+    pub files: Vec<String>,
+    /// Le moteur sait charger un **répertoire** de checkpoint (répertoire
+    /// Transformers en shards safetensors, répertoire FTW…).
+    #[serde(default)]
+    pub directories: bool,
+    /// Le moteur accepte un identifiant de dépôt Hugging Face
+    /// (`Qwen/Qwen3.6-35B-A3B`) et se charge du téléchargement.
+    #[serde(default, rename = "hf_repo_ids", alias = "hfRepoIds")]
+    pub hf_repo_ids: bool,
+    /// Fichiers dont la présence signe un répertoire servable
+    /// (`config.json`, `model.safetensors.index.json`…).
+    #[serde(default)]
+    pub directory_markers: Vec<String>,
+}
+
+/// Exigences matérielles et système, affichées avant l'installation.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct EngineRequirements {
+    /// Systèmes où le moteur tourne : `linux`, `windows`, `macos`.
+    #[serde(default)]
+    pub os: Vec<String>,
+    /// Fabricant de GPU exigé (`nvidia`, `amd`, `apple`).
+    #[serde(default)]
+    pub gpu: Option<String>,
+    /// Mémoire système minimale, en gibioctets.
+    #[serde(default)]
+    pub min_ram_gb: Option<u32>,
+    /// Phrase montrée à l'utilisateur quand la machine ne convient pas.
+    /// Écrite par l'auteur du moteur, affichée telle quelle.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// Section `core` d'un manifeste de noyau.
@@ -506,6 +664,97 @@ pub fn validate(m: &PluginManifest) -> Result<(), ManifestError> {
     {
         return Err(ManifestError::Invalid(
             "name must be lowercase ascii, digits, '-' or '_'".into(),
+        ));
+    }
+    if let Some(engine) = &m.engine {
+        validate_engine(engine, &m.name)?;
+    }
+    Ok(())
+}
+
+/// L'hôte d'une URL est-il la machine locale ?
+///
+/// Un moteur comme un noyau ne se joint qu'en local : ce qui écoute ailleurs
+/// n'est pas un runtime que Locaryn supervise, c'est un service distant, et
+/// l'accepter ici enverrait les conversations à une adresse posée dans un
+/// manifeste.
+pub fn is_loopback_url(url: &str) -> bool {
+    let host = url
+        .trim()
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split(['/', ':'])
+        .next()
+        .unwrap_or("");
+    matches!(host, "127.0.0.1" | "localhost" | "::1" | "[::1]")
+}
+
+/// Valide la section `engine`. Refuser à l'installation vaut mieux que
+/// découvrir à la première conversation qu'aucune commande n'était déclarée.
+pub fn validate_engine(e: &EngineManifest, plugin_name: &str) -> Result<(), ManifestError> {
+    let id = if e.id.is_empty() { plugin_name } else { &e.id };
+    if id.is_empty() {
+        return Err(ManifestError::Invalid(
+            "engine.id est requis (ou le nom de l'extension)".into(),
+        ));
+    }
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+    {
+        return Err(ManifestError::Invalid(format!(
+            "engine.id « {id} » : minuscules ascii, chiffres, '-' ou '_' seulement"
+        )));
+    }
+    const DIALECTES: &[&str] = &["openai_compat"];
+    if !DIALECTES.contains(&e.driver.as_str()) {
+        return Err(ManifestError::Invalid(format!(
+            "engine.driver « {} » inconnu (connus : {})",
+            e.driver,
+            DIALECTES.join(", ")
+        )));
+    }
+    if e.api_url.is_empty() {
+        return Err(ManifestError::Invalid(
+            "engine.api_url est requis (URL loopback du serveur)".into(),
+        ));
+    }
+    if !is_loopback_url(&e.api_url) {
+        return Err(ManifestError::Invalid(format!(
+            "engine.api_url « {} » n'est pas une adresse locale — un moteur ne              se joint qu'en loopback",
+            e.api_url
+        )));
+    }
+    if e.lifecycle.start.is_empty() {
+        return Err(ManifestError::Invalid(
+            "engine.lifecycle.start est requis : la liste d'arguments qui lance le serveur".into(),
+        ));
+    }
+    if e.lifecycle.start.iter().any(|a| a.trim().is_empty()) {
+        return Err(ManifestError::Invalid(
+            "engine.lifecycle.start contient un argument vide".into(),
+        ));
+    }
+    const INSTALLS: &[&str] = &["pip", "binary", "npm", "existing", ""];
+    if !INSTALLS.contains(&e.install.kind.as_str()) {
+        return Err(ManifestError::Invalid(format!(
+            "engine.install.kind « {} » inconnu (connus : pip, binary, npm, existing)",
+            e.install.kind
+        )));
+    }
+    if matches!(e.install.kind.as_str(), "pip" | "npm") && e.install.package.is_none() {
+        return Err(ManifestError::Invalid(format!(
+            "engine.install.package est requis pour kind « {} »",
+            e.install.kind
+        )));
+    }
+    if e.model_formats.files.is_empty()
+        && !e.model_formats.directories
+        && !e.model_formats.hf_repo_ids
+    {
+        return Err(ManifestError::Invalid(
+            "engine.model_formats ne déclare aucun format : aucun modèle ne pourrait              être choisi pour ce moteur"
+                .into(),
         ));
     }
     Ok(())

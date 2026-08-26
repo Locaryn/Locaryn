@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, LoMorph } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 
 type Props = {
@@ -88,7 +88,7 @@ export function VoiceNote({ url, status, error, onSave }: Props) {
         <p className="locaryn-voice-note-error">{error ?? "Impossible de charger cette note."}</p>
       ) : (
         <div className="locaryn-voice-note-loading" aria-live="polite">
-          <span className="locaryn-thinking-dot" />
+          <LoMorph width={72} />
           <span>La note arrive…</span>
         </div>
       )}

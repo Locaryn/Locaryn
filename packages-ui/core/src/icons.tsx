@@ -63,7 +63,13 @@ export type IconName =
   | "figures"
   | "search"
   | "calendar"
-  | "clock";
+  | "clock"
+  // Thème et notifications
+  | "sun"
+  | "moon"
+  | "monitor"
+  | "bell"
+  | "bell-ringing";
 
 /**
  * Les noms du jeu, dans l'ordre de la déclaration ci-dessus.
@@ -122,6 +128,12 @@ export const ICON_NAMES: readonly string[] = [
   "search",
   "calendar",
   "clock",
+  // Thème et notifications
+  "sun",
+  "moon",
+  "monitor",
+  "bell",
+  "bell-ringing",
 ];
 
 /** Vrai si `name` est une icône du jeu partagé. Une extension nomme un nom du
@@ -503,6 +515,49 @@ export function Icon({ name, size = 20, title }: Props) {
           <path d="M3 7h9v4.5A4.5 4.5 0 013 11.5V7z" />
           <path d="M12 7h9v4.5a4.5 4.5 0 01-9 0V7z" />
           <path d="M6 15.5c1.6 1.4 3.4 1.4 5 0M13 15.5c1.6 1.4 3.4 1.4 5 0" />
+        </svg>
+      );
+    // Le mode clair, le mode sombre, et celui de la machine.
+    case "sun":
+      return (
+        <svg {...common}>
+          {label}
+          <circle cx="12" cy="12" r="4.2" />
+          <path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.9 1.9M16.8 16.8l1.9 1.9M18.7 5.3l-1.9 1.9M7.2 16.8l-1.9 1.9" />
+        </svg>
+      );
+    case "moon":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M20 14.2A8.5 8.5 0 019.8 4a8.5 8.5 0 1010.2 10.2z" />
+        </svg>
+      );
+    case "monitor":
+      return (
+        <svg {...common}>
+          {label}
+          <rect x="3" y="4.5" width="18" height="12" rx="2" />
+          <path d="M9 20h6M12 16.5V20" />
+        </svg>
+      );
+    // La cloche du centre de notifications ; elle sonne dès qu'il reste
+    // quelque chose à lire.
+    case "bell":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M6.5 10a5.5 5.5 0 0111 0c0 4 1.5 5.5 1.5 5.5H5s1.5-1.5 1.5-5.5z" />
+          <path d="M10.2 18.5a2 2 0 003.6 0" />
+        </svg>
+      );
+    case "bell-ringing":
+      return (
+        <svg {...common}>
+          {label}
+          <path d="M6.5 10a5.5 5.5 0 0111 0c0 4 1.5 5.5 1.5 5.5H5s1.5-1.5 1.5-5.5z" />
+          <path d="M10.2 18.5a2 2 0 003.6 0" />
+          <path d="M2.8 8.4a6.4 6.4 0 012.6-4M21.2 8.4a6.4 6.4 0 00-2.6-4" />
         </svg>
       );
   }

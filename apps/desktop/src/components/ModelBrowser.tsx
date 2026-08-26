@@ -24,7 +24,6 @@ import {
   clearRegistryCache,
   fetchFullRegistry,
   fetchHuggingFaceModels,
-  fetchHuggingFaceTTSModels,
   isCloudOnlyFamily,
 } from "../lib/modelRegistry";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
@@ -253,7 +252,7 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
       level: "unknown",
       label: "Modèle local",
       short: "Local",
-      color: "#a78bfa",
+      color: "var(--info)",
     };
   }
   if (!hw) {
@@ -272,7 +271,7 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
       level: "gpu",
       label: "Tient dans votre VRAM — fluide sur GPU",
       short: "Fluide GPU",
-      color: "#5aa86a",
+      color: "var(--accent-300)",
     };
   }
   if (need <= ram * 0.85) {
@@ -280,7 +279,7 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
       level: "offload",
       label: "Trop gros pour la VRAM, mais tourne via la RAM (offload CPU, plus lent)",
       short: "OK via RAM",
-      color: "#d4a03a",
+      color: "var(--warn)",
     };
   }
   if (airllm) {
@@ -290,14 +289,14 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
         "Trop lourd pour la VRAM/RAM de ce PC, mais exécutable localement via AirLLM " +
         "(chargement des couches une par une — un GPU 4 Go de VRAM suffit)",
       short: "AirLLM",
-      color: "#a78bfa",
+      color: "var(--info)",
     };
   }
   return {
     level: "heavy",
     label: "Dépasse la mémoire de ce PC — non recommandé",
     short: "Trop lourd",
-    color: "#cc7d72",
+    color: "var(--danger)",
   };
 }
 
@@ -797,13 +796,8 @@ export function ModelBrowser({
     setIsFetchingLive(true);
     try {
       const q = query.trim() || "gguf";
-      // Fetch both GGUF chat models and safetensors TTS/voice repos so the
-      // live search also surfaces voice models (Pocket TTS, etc.).
-      const [gguf, tts] = await Promise.all([
-        fetchHuggingFaceModels(q),
-        fetchHuggingFaceTTSModels(q === "gguf" ? "tts" : q),
-      ]);
-      setLiveApiModels([...gguf, ...tts]);
+      const gguf = await fetchHuggingFaceModels(q);
+      setLiveApiModels(gguf);
     } finally {
       setIsFetchingLive(false);
     }
@@ -828,7 +822,7 @@ export function ModelBrowser({
         badge: "⭐ Recommandé (K-Quant Medium)",
         badgeStyle: {
           background: "rgba(101, 211, 145, 0.15)",
-          color: "#65d391",
+          color: "var(--accent-300)",
           border: "1px solid rgba(101, 211, 145, 0.35)",
         },
         advice:
@@ -844,7 +838,7 @@ export function ModelBrowser({
         badge: "⭐ K-Quant Compact (Small)",
         badgeStyle: {
           background: "rgba(101, 211, 145, 0.15)",
-          color: "#65d391",
+          color: "var(--accent-300)",
           border: "1px solid rgba(101, 211, 145, 0.35)",
         },
         advice:
@@ -860,7 +854,7 @@ export function ModelBrowser({
         badge: "⭐ K-Quant Large",
         badgeStyle: {
           background: "rgba(101, 211, 145, 0.15)",
-          color: "#65d391",
+          color: "var(--accent-300)",
           border: "1px solid rgba(101, 211, 145, 0.35)",
         },
         advice: "K-Quant renforcé en précision sur les couches d'attention critiques.",
@@ -875,7 +869,7 @@ export function ModelBrowser({
         badge: "⚡ 4-bit Vectorisé (ARM / NPU)",
         badgeStyle: {
           background: "rgba(110, 168, 254, 0.15)",
-          color: "#6ea8fe",
+          color: "var(--info)",
           border: "1px solid rgba(110, 168, 254, 0.35)",
         },
         advice:
@@ -891,7 +885,7 @@ export function ModelBrowser({
         badge: "⚡ 4-bit Uniforme (Legacy)",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
-          color: "#fbbf24",
+          color: "var(--warn)",
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice:
@@ -907,7 +901,7 @@ export function ModelBrowser({
         badge: "⚡ 4-bit Uniforme + Offset",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
-          color: "#fbbf24",
+          color: "var(--warn)",
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice: "4-bit uniforme avec offset pour une fidélité légèrement supérieure à Q4_0.",
@@ -924,7 +918,7 @@ export function ModelBrowser({
         badge: "🎯 5-bit K-Quant Medium",
         badgeStyle: {
           background: "rgba(110, 168, 254, 0.15)",
-          color: "#6ea8fe",
+          color: "var(--info)",
           border: "1px solid rgba(110, 168, 254, 0.35)",
         },
         advice:
@@ -940,7 +934,7 @@ export function ModelBrowser({
         badge: "🎯 5-bit Compact",
         badgeStyle: {
           background: "rgba(110, 168, 254, 0.15)",
-          color: "#6ea8fe",
+          color: "var(--info)",
           border: "1px solid rgba(110, 168, 254, 0.35)",
         },
         advice: "Excellente fidélité avec ~15% de mémoire en moins que Q6_K.",
@@ -957,7 +951,7 @@ export function ModelBrowser({
         badge: "💎 6-bit K-Quant (Qualité / RAM)",
         badgeStyle: {
           background: "rgba(192, 132, 252, 0.15)",
-          color: "#c084fc",
+          color: "var(--info)",
           border: "1px solid rgba(192, 132, 252, 0.35)",
         },
         advice:
@@ -973,7 +967,7 @@ export function ModelBrowser({
         badge: "💎 8-bit Pleine Fidélité (Sans perte)",
         badgeStyle: {
           background: "rgba(192, 132, 252, 0.15)",
-          color: "#c084fc",
+          color: "var(--info)",
           border: "1px solid rgba(192, 132, 252, 0.35)",
         },
         advice:
@@ -991,7 +985,7 @@ export function ModelBrowser({
         badge: "🧠 I-Matrix 4-bit Calibré",
         badgeStyle: {
           background: "rgba(101, 211, 145, 0.15)",
-          color: "#65d391",
+          color: "var(--accent-300)",
           border: "1px solid rgba(101, 211, 145, 0.35)",
         },
         advice:
@@ -1007,7 +1001,7 @@ export function ModelBrowser({
         badge: "🧠 I-Matrix 3-bit Calibré",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
-          color: "#fbbf24",
+          color: "var(--warn)",
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice:
@@ -1023,7 +1017,7 @@ export function ModelBrowser({
         badge: "🧠 I-Matrix Ultra-Compact",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
-          color: "#fbbf24",
+          color: "var(--warn)",
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice:
@@ -1041,7 +1035,7 @@ export function ModelBrowser({
         badge: "⚡ 3-bit K-Quant Medium",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
-          color: "#fbbf24",
+          color: "var(--warn)",
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice:
@@ -1062,7 +1056,7 @@ export function ModelBrowser({
         badge: "⚡ 3-bit K-Quant",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
-          color: "#fbbf24",
+          color: "var(--warn)",
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice: "Quantification 3-bit ultra-légère pour machines très contraintes en mémoire.",
@@ -1079,7 +1073,7 @@ export function ModelBrowser({
         badge: "⚡ 2-bit Extrême",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
-          color: "#fbbf24",
+          color: "var(--warn)",
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice:
@@ -1696,8 +1690,8 @@ export function ModelBrowser({
                 onlyRecommended
                   ? {
                       background: "rgba(100, 200, 120, 0.2)",
-                      borderColor: "#64c878",
-                      color: "#64c878",
+                      borderColor: "var(--accent-300)",
+                      color: "var(--accent-300)",
                     }
                   : {}
               }
@@ -1732,8 +1726,8 @@ export function ModelBrowser({
                 riskFilter === "safe"
                   ? {
                       background: "rgba(90, 168, 106, 0.2)",
-                      borderColor: "#5aa86a",
-                      color: "#5aa86a",
+                      borderColor: "var(--accent-300)",
+                      color: "var(--accent-300)",
                     }
                   : {}
               }
@@ -1785,8 +1779,8 @@ export function ModelBrowser({
                 onlyFavorites
                   ? {
                       background: "rgba(255, 200, 87, 0.18)",
-                      borderColor: "#ffc857",
-                      color: "#ffc857",
+                      borderColor: "var(--warn)",
+                      color: "var(--warn)",
                     }
                   : {}
               }
@@ -1914,16 +1908,16 @@ export function ModelBrowser({
               <span className="locaryn-hw-banner-counts">
                 {airllmEnabled ? (
                   <>
-                    <span style={{ color: "#a78bfa" }}>
-                      <span className="locaryn-dot" style={{ background: "#a78bfa" }} />{" "}
+                    <span style={{ color: "var(--info)" }}>
+                      <span className="locaryn-dot" style={{ background: "var(--info)" }} />{" "}
                       {counts.airllm} via AirLLM
                     </span>
-                    <span style={{ color: "#5aa86a" }}>
-                      <span className="locaryn-dot" style={{ background: "#5aa86a" }} />{" "}
+                    <span style={{ color: "var(--accent-300)" }}>
+                      <span className="locaryn-dot" style={{ background: "var(--accent-300)" }} />{" "}
                       {counts.gpu} fluides GPU
                     </span>
-                    <span style={{ color: "#d4a03a" }}>
-                      <span className="locaryn-dot" style={{ background: "#d4a03a" }} />{" "}
+                    <span style={{ color: "var(--warn)" }}>
+                      <span className="locaryn-dot" style={{ background: "var(--warn)" }} />{" "}
                       {counts.offload} via RAM
                     </span>
                     <span className="locaryn-hw-banner-note">
@@ -1932,16 +1926,16 @@ export function ModelBrowser({
                   </>
                 ) : (
                   <>
-                    <span style={{ color: "#5aa86a" }}>
-                      <span className="locaryn-dot" style={{ background: "#5aa86a" }} />{" "}
+                    <span style={{ color: "var(--accent-300)" }}>
+                      <span className="locaryn-dot" style={{ background: "var(--accent-300)" }} />{" "}
                       {counts.gpu} fluides GPU
                     </span>
-                    <span style={{ color: "#d4a03a" }}>
-                      <span className="locaryn-dot" style={{ background: "#d4a03a" }} />{" "}
+                    <span style={{ color: "var(--warn)" }}>
+                      <span className="locaryn-dot" style={{ background: "var(--warn)" }} />{" "}
                       {counts.offload} via RAM
                     </span>
-                    <span style={{ color: "#cc7d72" }}>
-                      <span className="locaryn-dot" style={{ background: "#cc7d72" }} />{" "}
+                    <span style={{ color: "var(--danger)" }}>
+                      <span className="locaryn-dot" style={{ background: "var(--danger)" }} />{" "}
                       {counts.heavy} trop lourds
                     </span>
                     <span className="locaryn-hw-banner-note">
@@ -2022,7 +2016,7 @@ export function ModelBrowser({
                     {familyAirSpeed && (
                       <span
                         className="locaryn-tag"
-                        style={{ background: "rgba(167, 139, 250, 0.18)", color: "#a78bfa" }}
+                        style={{ background: "var(--accent-fill)", color: "var(--info)" }}
                         title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
                       >
                         <Icon name="speed" size={13} /> ~{fmtTokPerSec(familyAirSpeed)}
@@ -2071,7 +2065,7 @@ export function ModelBrowser({
                         title="Découvert automatiquement sur le Hub HuggingFace"
                         style={{
                           background: "rgba(255, 200, 87, 0.14)",
-                          color: "#ffc857",
+                          color: "var(--warn)",
                           border: "1px solid rgba(255, 200, 87, 0.35)",
                         }}
                       >
@@ -2097,7 +2091,7 @@ export function ModelBrowser({
                       fontSize: "15px",
                       lineHeight: 1,
                       padding: "2px 4px",
-                      color: favorites.has(f.id) ? "#ffc857" : "var(--text-faint)",
+                      color: favorites.has(f.id) ? "var(--warn)" : "var(--text-faint)",
                       flex: "none",
                     }}
                   >
@@ -2204,8 +2198,8 @@ export function ModelBrowser({
                                 <span
                                   className="locaryn-tag"
                                   style={{
-                                    background: "rgba(167, 139, 250, 0.18)",
-                                    color: "#a78bfa",
+                                    background: "var(--accent-fill)",
+                                    color: "var(--info)",
                                   }}
                                   title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
                                 >
@@ -2276,7 +2270,10 @@ export function ModelBrowser({
                                       <button
                                         type="button"
                                         className="locaryn-btn-ghost"
-                                        style={{ border: "1px dashed #a78bfa", color: "#a78bfa" }}
+                                        style={{
+                                          border: "1px dashed var(--info)",
+                                          color: "var(--info)",
+                                        }}
                                         onClick={() => setAirllmModalOpen(true)}
                                         title="Cette architecture n'est pas encore supportée par AirLLM (Llama, Mistral, Qwen2…)"
                                       >
@@ -2289,7 +2286,10 @@ export function ModelBrowser({
                                       <button
                                         type="button"
                                         className="locaryn-btn-primary locaryn-variant-use"
-                                        style={{ background: "#a78bfa", color: "#111" }}
+                                        style={{
+                                          background: "var(--info)",
+                                          color: "var(--on-accent)",
+                                        }}
                                         onClick={() => onLaunchAirllm?.(entry.repo)}
                                         title={`Lancer ${entry.repo} via le moteur AirLLM`}
                                       >
@@ -2301,7 +2301,10 @@ export function ModelBrowser({
                                     <button
                                       type="button"
                                       className="locaryn-btn-primary locaryn-variant-use"
-                                      style={{ background: "#a78bfa", color: "#111" }}
+                                      style={{
+                                        background: "var(--info)",
+                                        color: "var(--on-accent)",
+                                      }}
                                       disabled={busy}
                                       onClick={() => handleAirllmInstall(f)}
                                       title={`Télécharger ${entry.repo} (~${entry.sizeGb} Go fp16) puis lancer via AirLLM`}
@@ -2430,7 +2433,7 @@ export function ModelBrowser({
                             title="Découvert automatiquement sur le Hub HuggingFace"
                             style={{
                               background: "rgba(255, 200, 87, 0.14)",
-                              color: "#ffc857",
+                              color: "var(--warn)",
                               border: "1px solid rgba(255, 200, 87, 0.35)",
                             }}
                           >
@@ -2459,7 +2462,7 @@ export function ModelBrowser({
                       fontSize: "16px",
                       lineHeight: 1,
                       padding: "10px 14px",
-                      color: favorites.has(f.id) ? "#ffc857" : "var(--text-faint)",
+                      color: favorites.has(f.id) ? "var(--warn)" : "var(--text-faint)",
                       flex: "none",
                     }}
                   >
@@ -2501,8 +2504,8 @@ export function ModelBrowser({
                               <span
                                 className="locaryn-tag"
                                 style={{
-                                  background: "rgba(167, 139, 250, 0.18)",
-                                  color: "#a78bfa",
+                                  background: "var(--accent-fill)",
+                                  color: "var(--info)",
                                 }}
                                 title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
                               >
@@ -2570,7 +2573,10 @@ export function ModelBrowser({
                                       <button
                                         type="button"
                                         className="locaryn-btn-ghost"
-                                        style={{ border: "1px dashed #a78bfa", color: "#a78bfa" }}
+                                        style={{
+                                          border: "1px dashed var(--info)",
+                                          color: "var(--info)",
+                                        }}
                                         onClick={() => setAirllmModalOpen(true)}
                                         title="Cette architecture n'est pas encore supportée par AirLLM (Llama, Mistral, Qwen2…)"
                                       >
@@ -2583,7 +2589,10 @@ export function ModelBrowser({
                                       <button
                                         type="button"
                                         className="locaryn-btn-primary locaryn-variant-use"
-                                        style={{ background: "#a78bfa", color: "#111" }}
+                                        style={{
+                                          background: "var(--info)",
+                                          color: "var(--on-accent)",
+                                        }}
                                         onClick={() => onLaunchAirllm?.(entry.repo)}
                                         title={`Lancer ${entry.repo} via le moteur AirLLM`}
                                       >
@@ -2595,7 +2604,10 @@ export function ModelBrowser({
                                     <button
                                       type="button"
                                       className="locaryn-btn-primary locaryn-variant-use"
-                                      style={{ background: "#a78bfa", color: "#111" }}
+                                      style={{
+                                        background: "var(--info)",
+                                        color: "var(--on-accent)",
+                                      }}
                                       disabled={busy}
                                       onClick={() => handleAirllmInstall(f)}
                                       title={`Télécharger ${entry.repo} (~${entry.sizeGb} Go fp16) puis lancer via AirLLM`}
@@ -2723,7 +2735,7 @@ export function ModelBrowser({
               <button
                 type="button"
                 className="locaryn-btn-primary"
-                style={{ background: "#a78bfa", color: "#111" }}
+                style={{ background: "var(--info)", color: "var(--on-accent)" }}
                 onClick={() => setAirllmModalOpen(false)}
               >
                 Compris
@@ -2935,7 +2947,7 @@ export function ModelBrowser({
                         borderRadius: "4px",
                       }}
                     >
-                      <strong style={{ color: "#65d391" }}>⭐ Q4_K_M (Recommandé)</strong>
+                      <strong style={{ color: "var(--accent-300)" }}>⭐ Q4_K_M (Recommandé)</strong>
                       <div style={{ color: "var(--text-dim)" }}>
                         Équilibre parfait vitesse / intelligence.
                       </div>
@@ -2947,7 +2959,7 @@ export function ModelBrowser({
                         borderRadius: "4px",
                       }}
                     >
-                      <strong style={{ color: "#fbbf24" }}>⚡ Q3_K / IQ (Ultra léger)</strong>
+                      <strong style={{ color: "var(--warn)" }}>⚡ Q3_K / IQ (Ultra léger)</strong>
                       <div style={{ color: "var(--text-dim)" }}>
                         Pour PC modestes ou cartes 4-8 Go.
                       </div>
@@ -2959,7 +2971,7 @@ export function ModelBrowser({
                         borderRadius: "4px",
                       }}
                     >
-                      <strong style={{ color: "#c084fc" }}>💎 Q6_K / Q8_0 (Qualité max)</strong>
+                      <strong style={{ color: "var(--info)" }}>💎 Q6_K / Q8_0 (Qualité max)</strong>
                       <div style={{ color: "var(--text-dim)" }}>
                         Fidélité maximale, requiert plus de RAM.
                       </div>
@@ -2981,26 +2993,26 @@ export function ModelBrowser({
                       }}
                     >
                       <div>
-                        <strong style={{ color: "#65d391" }}>• Q4_K_M vs Q4_0 :</strong>{" "}
+                        <strong style={{ color: "var(--accent-300)" }}>• Q4_K_M vs Q4_0 :</strong>{" "}
                         <code>_K_M</code> (K-Quant adaptatif) compresse intelligemment chaque couche
                         selon son importance, préservant la précision sur l'attention critique.{" "}
                         <code>Q4_0</code> applique une compression 4-bit uniforme (plus ancienne et
                         un peu moins précise).
                       </div>
                       <div>
-                        <strong style={{ color: "#c084fc" }}>• Q6_K vs Q8_0 :</strong>{" "}
+                        <strong style={{ color: "var(--info)" }}>• Q6_K vs Q8_0 :</strong>{" "}
                         <code>Q6_K</code> offre 99.5% de la qualité de <code>Q8_0</code> tout en
                         économisant ~20% d'espace mémoire. Si vous voulez la qualité maximale,{" "}
                         <code>Q6_K</code> est souvent le meilleur choix pragmatique.
                       </div>
                       <div>
-                        <strong style={{ color: "#fbbf24" }}>• IQ (Importance Matrix) :</strong> Ces
-                        versions (ex: <code>IQ3_M</code>, <code>IQ4_XS</code>) utilisent une matrice
-                        de calibration pour préserver un maximum de cohérence tout en réduisant
-                        drastiquement le poids.
+                        <strong style={{ color: "var(--warn)" }}>• IQ (Importance Matrix) :</strong>{" "}
+                        Ces versions (ex: <code>IQ3_M</code>, <code>IQ4_XS</code>) utilisent une
+                        matrice de calibration pour préserver un maximum de cohérence tout en
+                        réduisant drastiquement le poids.
                       </div>
                       <div>
-                        <strong style={{ color: "#6ea8fe" }}>• _K_S / _K_M / _K_L :</strong>{" "}
+                        <strong style={{ color: "var(--info)" }}>• _K_S / _K_M / _K_L :</strong>{" "}
                         <code>S</code> = Small (légèrement allégé), <code>M</code> = Medium
                         (recommandé), <code>L</code> = Large (précision renforcée).
                       </div>
@@ -3127,10 +3139,10 @@ export function ModelBrowser({
                               height: "16px",
                               borderRadius: "50%",
                               border: selected
-                                ? "5px solid var(--accent, #6ea8fe)"
-                                : "1px solid var(--text-faint, rgba(255,255,255,0.3))",
+                                ? "5px solid var(--accent)"
+                                : "1px solid var(--border-strong)",
                               boxSizing: "border-box",
-                              background: selected ? "#fff" : "transparent",
+                              background: selected ? "var(--surface)" : "transparent",
                             }}
                           />
                           <span

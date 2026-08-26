@@ -142,55 +142,19 @@ pub async fn reload(core: &Core) -> Result<(), String> {
         for (name, entry) in &p.mcp {
             let scoped = format!("{}__{}", sanitize_server(&row.name), sanitize_server(name));
             let mut entry = entry.clone();
-            // Only generic extension paths are injected by the host. The
-            // extension owns the meaning of its private data, models and
-            // media directories; Locaryn must not know whether a plugin uses
-            // them for images, audio, video or another capability.
-            let extension_data_dir = locaryn_config::storage_root()
-                .join("extensions")
-                .join(sanitize_server(&row.name));
-            let _ = std::fs::create_dir_all(&extension_data_dir);
-            entry.env.insert(
-                "LOCARYN_DATA_DIR".to_string(),
-                locaryn_config::storage_root().display().to_string(),
-            );
-            entry.env.insert(
-                "LOCARYN_EXTENSION_DATA_DIR".to_string(),
-                extension_data_dir.display().to_string(),
-            );
-            entry.env.insert(
-                "LOCARYN_EXTENSION_MODELS_DIR".to_string(),
-                extension_data_dir.join("models").display().to_string(),
-            );
-            entry.env.insert(
-                "LOCARYN_EXTENSION_MEDIA_DIR".to_string(),
-                extension_data_dir.join("media").display().to_string(),
-            );
-            // La bibliothèque de poids de l'utilisateur, telle quelle. C'est
-            // un chemin générique — l'hôte ignore ce qu'une extension y
-            // reconnaîtra — mais sans lui une extension ne voit que son propre
-            // dossier, vide au premier lancement : les modèles déjà
-            // téléchargés restaient invisibles et tout semblait à réinstaller.
-            entry.env.insert(
-                "LOCARYN_MODELS_DIR".to_string(),
-                locaryn_config::models_dir().display().to_string(),
-            );
-            // Les préférences de modèles du compte, telles qu'écrites. Le
-            // socle ne dit pas à quoi elles servent : une extension y lit la
-            // clé qui la concerne, et suit le choix de l'utilisateur au lieu
-            // de prendre le premier modèle venu.
-            entry.env.insert(
-                "LOCARYN_MODEL_PREFERENCES_FILE".to_string(),
-                core.data_dir
-                    .join("model_preferences.json")
-                    .display()
-                    .to_string(),
-            );
-            // Les faits que seul le socle mesure : la VRAM de la carte,
-            // l'interpréteur Python qu'il gère, et les dossiers de cache et de
-            // travail qu'il tient hors du disque système. Une extension qui
-            // les ignore doit deviner : celle de l'image répartissait ses
-            // poids « au cas où », et un rendu d'une minute en prenait trois.
+            // Les chemins génériques vivent dans `locaryn_extensions::hostpaths`
+            // : le bureau, le daemon et le superviseur doivent donner le
+            // **même** dossier privé à la même extension, sinon son serveur
+            // MCP et son moteur d'inférence travaillent chacun dans son coin.
+            // L'extension seule sait ce qu'elle y range — l'hôte ne fait que
+            // fournir les chemins.
+            for (key, value) in locaryn_extensions::hostpaths::generic_env(&row.name, &p.root) {
+                entry.env.insert(key, value);
+            }
+            // Les faits que seul le socle mesure : la VRAM de la carte et
+            // l'interpréteur Python qu'il gère. Une extension qui les ignore
+            // doit deviner : celle de l'image répartissait ses poids « au cas
+            // où », et un rendu d'une minute en prenait trois.
             if let Some(vram) = host_vram_gb() {
                 entry
                     .env
@@ -199,22 +163,6 @@ pub async fn reload(core: &Core) -> Result<(), String> {
             if let Some(python) = host_python() {
                 entry.env.insert("LOCARYN_PYTHON".to_string(), python);
             }
-            entry.env.insert(
-                "LOCARYN_HF_CACHE_DIR".to_string(),
-                locaryn_config::hf_cache_dir().display().to_string(),
-            );
-            entry.env.insert(
-                "LOCARYN_TEMP_DIR".to_string(),
-                locaryn_config::ensure_temp_dir().display().to_string(),
-            );
-            entry.env.insert(
-                "LOCARYN_PLUGIN_ROOT".to_string(),
-                p.root.display().to_string(),
-            );
-            entry.env.insert(
-                "LOCARYN_PLUGIN_BIN_DIR".to_string(),
-                p.root.join("bin").display().to_string(),
-            );
             entry.owner = Some(row.name.clone());
             desired.insert(scoped, entry);
         }
@@ -258,6 +206,28 @@ pub async fn reload(core: &Core) -> Result<(), String> {
             }
         }
     }
+
+    // Les moteurs d'inférence apportés par ces extensions. Même cycle de vie
+    // que les serveurs MCP — installation, activation, retrait — donc même
+    // point de synchronisation : un moteur ne doit pas rester démarrable après
+    // que son extension a été désactivée.
+    let sources: Vec<locaryn_provider_supervisor::extension_engine::EngineSource> = rows
+        .iter()
+        .map(
+            |row| locaryn_provider_supervisor::extension_engine::EngineSource {
+                manifest_path: std::path::PathBuf::from(&row.manifest_path),
+                enabled: row.enabled,
+            },
+        )
+        .collect();
+    let moteurs = locaryn_provider_supervisor::extension_engine::collect(&sources);
+    if !moteurs.is_empty() {
+        tracing::info!(
+            moteurs = ?moteurs.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            "moteurs d'inférence apportés par des extensions"
+        );
+    }
+    core.supervisor.set_extension_engines(moteurs).await;
 
     *core.extensions.write().await = next;
     Ok(())

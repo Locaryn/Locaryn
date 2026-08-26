@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BatchStudio } from "./components/BatchStudio";
@@ -11,7 +11,7 @@ import { ModelResidency } from "./components/ModelResidency";
 import { CAPABILITY_GATED_VIEWS, NAVIGABLE_VIEWS, NavDrawer } from "./components/NavDrawer";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { TaskCenter } from "./components/TaskCenter";
+import { RunningTask, TaskCenter } from "./components/TaskCenter";
 import { TopBar } from "./components/TopBar";
 import { useTheme } from "./hooks/useTheme";
 import { FREE_CHAT_PATH } from "./lib/constants";
@@ -1039,9 +1039,9 @@ export function App() {
                 ) ?? "projet";
               handleAddProject(path, name);
             }}
-            onAddSsh={() => setActiveView("connectors")}
             onOpenMarketplace={() => setActiveView("models")}
             activeCapabilities={activeCapabilities}
+            extensions={activeExtensions}
           />
         )}
 
@@ -1278,24 +1278,16 @@ export function App() {
         </>
       )}
 
-      {/* Global Live Footer Status & Download Progress Bar */}
+      {/* Barre d'état : à gauche l'état du service et le modèle chargé, au
+          centre ce qui tourne, à droite le centre de notifications. */}
       <footer className="locaryn-footer-bar">
-        {/* Moitié gauche : le modèle en mémoire et la main dessus. Les
-            téléchargements sont passés à droite, avec leur barre et leur
-            bouton d'annulation — c'est une notification, pas un état. */}
         <div className="locaryn-footer-left">
           <ModelResidency />
         </div>
-        <div
-          className="locaryn-footer-actions"
-          style={{
-            display: "flex",
-            gap: "10px",
-            fontSize: "11px",
-            color: "var(--text-faint)",
-            alignItems: "center",
-          }}
-        >
+        <div className="locaryn-footer-center">
+          <RunningTask />
+        </div>
+        <div className="locaryn-footer-actions">
           {downloadProgress && (
             <>
               <span
@@ -1306,10 +1298,11 @@ export function App() {
                   ? `${downloadProgress.status} (${downloadProgress.progress} %)`
                   : `Téléchargement de ${downloadProgress.tag} — ${downloadProgress.progress} %`}
               </span>
-              <div className="locaryn-footer-progress-track" style={{ width: "120px" }}>
-                <div
-                  className="locaryn-footer-progress-fill"
-                  style={{ width: `${downloadProgress.progress}%` }}
+              <div style={{ width: "120px" }}>
+                <LoProgress
+                  value={downloadProgress.progress / 100}
+                  on="surface"
+                  label={`Téléchargement de ${downloadProgress.tag}`}
                 />
               </div>
               <button

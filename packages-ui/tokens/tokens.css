@@ -1,107 +1,142 @@
 /* ═══════════════════════════════════════════════════════════
-   Locaryn — design tokens, shared by every client.
+   Locaryn — système visuel v2.
 
-   Minimal, near-monochrome, calm. One warm-neutral scale carries
-   the whole interface; a single muted green accent is used
-   sparingly (active state, focus, primary action, health). Flat
-   surfaces separated by hairline borders, with a restrained liquid
-   layer on top: translucency and a light blur on floating chrome
-   (bars, drawers, sheets), a soft green glow on whatever is alive
-   (focus, hover, the health dot). Hierarchy comes from text weight
-   and lightness, not colour.
+   Une seule source de vérité pour le bureau, le téléphone et le
+   web. L'interface est quasi monochrome : une rampe neutre porte
+   tout, un seul vert muted marque ce qui est vivant (état actif,
+   focus, action principale, santé du service). La hiérarchie
+   vient de l'air et du poids du texte, jamais de la couleur.
 
-   Lives here rather than in one application so the phone and the
-   desktop cannot drift apart.
+   La matière est le Mica de Windows 11 — un dégradé très ténu
+   posé sur les surfaces de chrome, avec un filet lumineux en
+   haut. Pas de verre liquide, pas de néon, pas de dégradé vif.
+
+   L'accent est injecté à l'exécution (--accent / --accent-rgb) :
+   ne jamais le coder en dur ailleurs.
    ═══════════════════════════════════════════════════════════ */
 
 :root {
-  /* Warm-neutral scale — the entire UI is built from these. */
-  --bg: #17191a; /* app background */
-  --surface: #1e2022; /* raised elements: cards, composer, inputs */
-  --surface-hover: #24262a;
-  --border: #35393b; /* hairline separators — visible without shouting */
-  --border-strong: #484d50;
+  /* ── Surfaces & texte (sombre par défaut) ───────────────── */
+  --bg: #0e1011;
+  --surface: #16181a;
+  --surface-2: #1d2022;
+  --surface-3: #242829;
+  --border: #25292b;
+  --border-strong: #363b3e;
 
-  /* Text — one family, three weights of presence. Each step stays
-     above 4.5:1 on the background: readable on a phone held at arm's
-     length and on a desk monitor alike. */
-  --text: #ecebe7; /* primary (warm off-white) */
-  --text-dim: #b0b3ac; /* secondary */
-  --text-faint: #8e918b; /* tertiary / hints */
+  --text: #f2f1ed;
+  --text-dim: #a9ada7;
+  --text-faint: #7c817c;
 
-  /* The single accent — muted, natural green. Overridden at
-     runtime by useTheme (--accent-rgb kept in sync). */
-  --accent: #6f9c7f;
-  --accent-rgb: 111, 156, 127;
-  --accent-hex: #6f9c7f; /* legacy alias for JS-injected value */
+  /* ── Rampe accent ───────────────────────────────────────── */
+  --accent-100: #e4f1ea;
+  --accent-200: #c2e0d0;
+  --accent-300: #9ecdb4;
+  --accent-400: #7bb894;
+  --accent-500: #5fa37e;
+  --accent-600: #4a8767;
+  --accent-700: #396b52;
+  --accent-800: #2a4f3d;
+  --accent-900: #1b3327;
 
-  /* Feedback (used rarely, kept muted) */
-  --danger: #cc7d72;
-  --danger-rgb: 204, 125, 114;
+  /* Injectés au runtime par le thème — ne pas coder en dur ailleurs. */
+  --accent: #5fa37e;
+  --accent-rgb: 95, 163, 126;
 
-  /* Fonts */
-  --font-sans: "Sen", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  /* Dérivés de l'accent. Utiliser CEUX-CI, jamais l'accent en fond plein
+     hors bouton principal. */
+  --on-accent: #0b0d0e; /* texte sur accent plein */
+  --accent-fill: rgba(var(--accent-rgb), 0.16); /* fond d'état actif */
+  --accent-fill-strong: rgba(var(--accent-rgb), 0.26); /* survol de l'état actif */
 
-  /* Type scale */
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13.5px;
-  --text-md: 14.5px;
-  --text-lg: 17px;
-  --text-xl: 21px;
+  /* ── Rampe neutre ───────────────────────────────────────── */
+  --neutral-100: #f2f1ed;
+  --neutral-200: #d8d9d3;
+  --neutral-300: #a9ada7;
+  --neutral-400: #7c817c;
+  --neutral-500: #5a5f5c;
+  --neutral-600: #3f4446;
+  --neutral-700: #25292b;
+  --neutral-800: #1d2022;
+  --neutral-900: #0e1011;
 
-  /* Spacing rhythm (4px base) */
+  /* ── Retour d'état ──────────────────────────────────────── */
+  --danger: #d98a7e;
+  --danger-rgb: 217, 138, 126;
+  --warn: #d9b37e;
+  --warn-rgb: 217, 179, 126;
+  --info: #7ea8d9;
+  --info-rgb: 126, 168, 217;
+
+  /* ── Matière : Mica (Windows 11), pas de liquid glass ───── */
+  --mica: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.055),
+    rgba(255, 255, 255, 0.012) 42%,
+    rgba(0, 0, 0, 0.1)
+  );
+  --stroke-top: rgba(255, 255, 255, 0.12); /* filet lumineux, surfaces Mica UNIQUEMENT */
+  --glass: rgba(22, 24, 26, 0.72); /* surfaces flottantes */
+  --glass-strong: rgba(22, 24, 26, 0.88); /* feuilles et tiroirs pleins */
+  --glass-border: rgba(255, 255, 255, 0.07);
+  --blur: 18px;
+  --glass-blur: blur(var(--blur)) saturate(150%);
+  --glass-blur-soft: blur(12px) saturate(135%);
+
+  /* ── Typographie ────────────────────────────────────────── */
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-display: 34px; /* 500 / -0.03em */
+  --text-xl: 24px; /* 500 / -0.02em */
+  --text-lg: 18px; /* 500 / -0.01em */
+  --text-md: 15px; /* 400 */
+  --text-base: 14px; /* 400 */
+  --text-sm: 12.5px; /* 400 */
+  --text-xs: 11px; /* 500 / 0.08em / majuscules */
+
+  /* ── Espacements (base 4) ───────────────────────────────── */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-5: 20px;
+  --space-5: 20px; /* marges latérales du téléphone */
   --space-6: 24px;
   --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
 
-  /* Radii — soft, restrained */
-  --radius-lg: 12px;
-  --radius: 9px;
-  --radius-sm: 7px;
-  --radius-xs: 5px;
+  /* ── Rayons ─────────────────────────────────────────────── */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-lg: 14px;
   --radius-pill: 999px;
 
-  /* Resizable layout — set by useLayout, with sane fallbacks */
-  --layout-left: 248px;
-  --layout-right: 340px;
-  --layout-bottom: 200px;
+  /* ── Élévation : bordure + ombre diffuse, jamais dure ───── */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
+  --shadow-3: 0 28px 70px -20px rgba(0, 0, 0, 0.65);
 
-  /* Motion — the shared rhythm of every client. Ease-out on the way in,
-     ease-in on the way out, nothing bouncy; durations stay short so the
-     interface feels alive without making anyone wait. Transitions move
-     transform/opacity only — the compositor does the work, and the UI stays
-     light on a phone as on a desk machine. */
-  --ease: cubic-bezier(0.33, 0, 0.2, 1); /* in-out, calm */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* entrances */
-  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exits */
-  --dur-fast: 0.12s;
-  --dur-med: 0.2s;
-  --dur-slow: 0.3s;
-
-  /* Depth — soft, diffuse, never a hard drop shadow. */
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.35);
-
-  /* Glass — the liquid layer. Used sparingly, on floating surfaces
-     (bars, drawers, sheets) where content can pass beneath; blur is
-     compositor work, so it never lands on cards inside long lists. */
-  --glass-bg: rgba(28, 30, 32, 0.72);
-  --glass-bg-strong: rgba(28, 30, 32, 0.85);
-  --glass-border: rgba(255, 255, 255, 0.09);
-  --glass-blur: blur(18px) saturate(160%);
-  --glass-blur-soft: blur(12px) saturate(140%);
-
-  /* Glow — the accent breathing around what is alive: focus rings,
-     hovered primary actions, the health dot. Always subtle. */
+  /* Halo d'accent — uniquement sur ce qui est vivant : focus, pastille
+     de santé, poignée de progression. Jamais décoratif. */
   --glow-accent: 0 0 0 1px rgba(var(--accent-rgb), 0.5), 0 0 18px rgba(var(--accent-rgb), 0.3);
   --glow-accent-soft: 0 0 12px rgba(var(--accent-rgb), 0.22);
+
+  /* ── Mouvement ──────────────────────────────────────────── */
+  --dur-fast: 120ms;
+  --dur-med: 200ms;
+  --dur-slow: 300ms;
+  --ease: cubic-bezier(0.33, 0, 0.2, 1); /* calme, in-out */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* entrée */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* sortie */
+
+  /* ── Gabarit ────────────────────────────────────────────── */
+  --layout-left: 264px;
+  --layout-right: 340px;
+  --layout-bottom: 200px;
+  --measure: 760px; /* largeur maximale du texte long */
+  --statusbar-h: 28px; /* barre d'état en pied d'application */
 
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -109,11 +144,111 @@
   color-scheme: dark;
 }
 
-/* ── Shared motion primitives ─────────────────────────────────
-   The same entrance, the same exit, on every client. Keyframes are
-   prefixed `lo-` so they can never collide with app-level ones;
-   `.lo-motion` is the one-shot entrance for anything hand-rolled.
-   Reduced motion: the person asked for calm, they get calm. */
+/* ═══════════════════════════════════════════════════════════
+   Mode clair
+   ═══════════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg: #f7f7f4;
+  --surface: #ffffff;
+  --surface-2: #f1f1ed;
+  --surface-3: #e9e9e4;
+  --border: #e2e2dc;
+  --border-strong: #ccccc4;
+
+  --text: #17191a;
+  --text-dim: #5c605c;
+  --text-faint: #84887f;
+
+  /* L'accent s'assombrit pour tenir le contraste sur fond clair. */
+  --accent: #3f7a5c;
+  --accent-rgb: 63, 122, 92;
+  --on-accent: #ffffff; /* jamais de texte noir sur accent en clair */
+  --accent-300: #2f6146; /* texte accentué lisible */
+  --accent-400: #3f7a5c;
+  --accent-800: #cfe3d8; /* bordures teintées */
+  --accent-fill: rgba(var(--accent-rgb), 0.1);
+  --accent-fill-strong: rgba(var(--accent-rgb), 0.18);
+
+  --neutral-100: #17191a;
+  --neutral-200: #3f4446;
+  --neutral-300: #5c605c;
+  --neutral-400: #84887f;
+  --neutral-500: #a6a9a2;
+  --neutral-600: #ccccc4;
+  --neutral-700: #e2e2dc;
+  --neutral-800: #f1f1ed;
+  --neutral-900: #f7f7f4;
+
+  --danger: #b4584a;
+  --danger-rgb: 180, 88, 74;
+  --warn: #9a7328;
+  --warn-rgb: 154, 115, 40;
+  --info: #3e6c9e;
+  --info-rgb: 62, 108, 158;
+
+  --mica: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.85),
+    rgba(255, 255, 255, 0.35) 45%,
+    rgba(20, 24, 20, 0.045)
+  );
+  --stroke-top: rgba(255, 255, 255, 0.9);
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-strong: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(0, 0, 0, 0.06);
+
+  --shadow-1: 0 1px 2px rgba(20, 24, 20, 0.06);
+  --shadow-2: 0 10px 28px -12px rgba(20, 24, 20, 0.16);
+  --shadow-3: 0 28px 70px -24px rgba(20, 24, 20, 0.22);
+
+  --glow-accent: 0 0 0 1px rgba(var(--accent-rgb), 0.45), 0 0 14px rgba(var(--accent-rgb), 0.18);
+  --glow-accent-soft: 0 0 10px rgba(var(--accent-rgb), 0.16);
+
+  color-scheme: light;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Matière — les deux seules recettes de surface
+
+   .lo-mica  : chrome opaque (barre du haut, panneaux, cartes).
+   .lo-glass : chrome flottant (barre de commande, tiroir, feuilles).
+
+   Le filet `--stroke-top` ne va QUE sur ces surfaces : posé sur un
+   bouton plein ou un interrupteur, il dessine une barre blanche
+   parasite.
+   ═══════════════════════════════════════════════════════════ */
+.lo-mica {
+  background-color: var(--surface);
+  background-image: var(--mica);
+  box-shadow: inset 0 1px 0 var(--stroke-top);
+}
+.lo-glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lo-glass {
+    background: var(--surface);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Animations partagées
+
+   Préfixées `lo-` pour ne jamais entrer en collision avec celles
+   d'une application. Les transitions ne portent que sur transform
+   et opacity : le compositeur fait le travail, le téléphone tient.
+   ═══════════════════════════════════════════════════════════ */
+@keyframes lo-wave {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-24px);
+  }
+}
 @keyframes lo-fade-up {
   from {
     opacity: 0;
@@ -142,26 +277,147 @@
     transform: none;
   }
 }
-.lo-motion {
-  animation: lo-fade-up var(--dur-med) var(--ease-out) both;
+@keyframes lo-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
-@media (prefers-reduced-motion: reduce) {
-  .lo-motion {
-    animation: none;
+@keyframes lo-shimmer {
+  from {
+    background-position: -320px 0;
+  }
+  to {
+    background-position: 320px 0;
+  }
+}
+@keyframes lo-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.42);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0);
+  }
+}
+/* Pastille d'état pendant qu'une tâche tourne. */
+@keyframes lo-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+/* Centre de notifications : montée depuis la barre d'état. */
+@keyframes lo-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Menus contextuels. */
+@keyframes lo-flip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Onglets : deux noms alternés pour forcer le redémarrage de l'animation. */
+@keyframes lo-swap-a {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lo-swap-b {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Changement de mode d'appairage : la carte glisse dans le sens du geste. */
+@keyframes lo-mode-a {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lo-mode-b {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Suppression d'un modèle : la carte se disloque, les éclats divergent. */
+@keyframes lo-shatter {
+  from {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: blur(2px);
+  }
+}
+@keyframes lo-conf {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--lo-conf-x, 0), var(--lo-conf-y, 0)) scale(0.4);
   }
 }
 
-/* The liquid surface — translucent, blurred, hairline-bordered. Apply to
-   floating chrome (bars, drawers, sheets), never to list items. Falls back
-   to a plain surface where backdrop-filter does not exist. */
-.lo-glass {
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
+/* Entrée à usage unique pour tout ce qui est monté à la main. */
+.lo-motion {
+  animation: lo-fade-up var(--dur-med) var(--ease-out) both;
 }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .lo-glass {
-    background: var(--surface);
+
+/* Fondu de thème : posé le temps de la bascule sombre / clair, retiré
+   ensuite pour que les couleurs ne traînent pas sur chaque survol. */
+.lo-theming,
+.lo-theming *,
+.lo-theming *::before,
+.lo-theming *::after {
+  transition: background-color 340ms var(--ease), border-color 340ms var(--ease), color 340ms
+    var(--ease) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }
