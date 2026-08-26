@@ -65,8 +65,8 @@ const SECTIONS: { id: Section; icon: IconName; label: string; desc: string }[] =
   {
     id: "engine",
     icon: "settings",
-    label: "Moteur IA",
-    desc: "Runtime llama.cpp, capacités, adaptateurs LoRA",
+    label: "Moteur IA & Noyau",
+    desc: "Runtime llama.cpp, configuration du noyau, offload et adaptateurs",
   },
   {
     id: "performance",
@@ -89,14 +89,14 @@ const SECTIONS: { id: Section; icon: IconName; label: string; desc: string }[] =
   {
     id: "extensions",
     icon: "extensions",
-    label: "Extensions",
-    desc: "Extensions Locaryn, plugins compatibles et noyaux",
+    label: "Morphs & Skills",
+    desc: "Morphs Locaryn (UI & moteurs), compétences et packs compatibles",
   },
   {
     id: "connectors",
     icon: "server",
     label: "Connecteurs & MCP",
-    desc: "Connexions SSH, bases de données et serveurs MCP",
+    desc: "Serveurs MCP, bases de données et passerelles techniques",
   },
   { id: "appearance", icon: "studio", label: "Apparence", desc: "Couleur d'accentuation, thème" },
   { id: "language", icon: "chat", label: "Langue", desc: "Langue de l'interface" },

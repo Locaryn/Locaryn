@@ -708,20 +708,20 @@ export function ExtensionsSettings() {
     <div className="locaryn-ext-settings">
       <div className="locaryn-extension-intro">
         <div>
-          <h3>Extensions &amp; Noyaux</h3>
+          <h3>Morphs, Skills &amp; Noyaux</h3>
           <p>
-            Les <strong>Extensions Locaryn</strong> étendent les capacités de l'IA (moteurs d'inférence, serveurs MCP) et enrichissent l'interface utilisateur (Studio, barres d'outils, espaces de travail).
-            Les <strong>Packs compatibles</strong> fournissent des compétences d'agent et règles déclaratives (Claude Code, Gemini CLI, OpenCode).
-            Les <strong>Noyaux</strong> fournissent un moteur d'agent et une mémoire persistante alternatifs.
+            Les <strong>Morphs Locaryn</strong> transforment la structure de l'application (injection d'espaces Studio, barres d'outils, slots et moteurs IA dédiés).
+            Les <strong>Skills &amp; Packs d'agent</strong> fournissent des compétences et consignes compatibles (Claude Code, Gemini CLI, OpenCode).
+            Les <strong>Noyaux (Cores)</strong> fournissent un moteur d'agent et une mémoire persistante alternatifs.
             Les serveurs et outils de données se gèrent dans « Connecteurs &amp; MCP ».
           </p>
         </div>
         <div className="locaryn-extension-legend" aria-label="Types de paquets">
-          <span title="Extension officielle avec intégration UI, slots déclaratifs et moteurs IA">
-            <strong>Extension Locaryn</strong> · intégration UI &amp; moteur IA
+          <span title="Module complet avec intégration UI, slots déclaratifs et moteurs IA">
+            <strong>Morph</strong> · métamorphose UI &amp; moteur IA
           </span>
-          <span title="Pack de compétences agentiques, règles ou adaptateur de compatibilité">
-            <strong>Pack compatible</strong> · compétences &amp; règles déclaratives
+          <span title="Pack de compétences agentiques et consignes procédurales">
+            <strong>Skill / Pack</strong> · compétences d'agent &amp; règles
           </span>
           <span title="Agent autonome et système de mémoire persistante">
             <strong>Noyau</strong> · mémoire &amp; agent alternatif

@@ -119,7 +119,7 @@ export function WorkspacePicker({
       id: `ssh_${Date.now()}`,
       name,
       address,
-      extensionId: "extension-ssh",
+      extensionId: "morph-ssh",
     };
 
     const updated = [...sshWorkspaces, newTarget];
@@ -256,7 +256,7 @@ export function WorkspacePicker({
             <>
               <div className="locaryn-ws-sep">
                 <span>
-                  <Icon name="server" size={14} /> Emplacements SSH (extension-ssh)
+                  <Icon name="server" size={14} /> Emplacements SSH (morph-ssh)
                 </span>
                 <button
                   type="button"
