@@ -13,7 +13,7 @@ Write-Host "[Locaryn] Packaging extensions from $PluginsDir..." -ForegroundColor
 $PluginFolders = Get-ChildItem -Path $PluginsDir -Directory
 
 foreach ($folder in $PluginFolders) {
-    $manifestPath = Join-Path $folder.FullName "plugin.json"
+    $manifestPath = Join-Path $folder.FullName "morph.json"
     if (Test-Path $manifestPath) {
         $zipName = "$($folder.Name).zip"
         $destination = Join-Path $ReleasePluginsDir $zipName
