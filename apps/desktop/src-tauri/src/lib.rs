@@ -5667,19 +5667,17 @@ pub struct ConnectorType {
 
 #[tauri::command]
 fn list_connector_types() -> Result<Vec<ConnectorType>, String> {
-    Ok(vec![
-        ConnectorType {
-            type_id: "mcp_custom".into(),
-            display_name: "Serveur MCP Personnalise".into(),
-            summary: "Ajoutez n'importe quel serveur MCP".into(),
-            icon: "\u{1f6e0}\u{fe0f}".into(),
-            category: "extension".into(),
-            source: "built-in".into(),
-            available: true,
-            supports_test: false,
-            install_hint: String::new(),
-        },
-    ])
+    Ok(vec![ConnectorType {
+        type_id: "mcp_custom".into(),
+        display_name: "Serveur MCP Personnalise".into(),
+        summary: "Ajoutez n'importe quel serveur MCP".into(),
+        icon: "\u{1f6e0}\u{fe0f}".into(),
+        category: "extension".into(),
+        source: "built-in".into(),
+        available: true,
+        supports_test: false,
+        install_hint: String::new(),
+    }])
 }
 
 // ============================================================================
