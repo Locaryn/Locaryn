@@ -566,18 +566,44 @@ fn client_for(server: &servers::KnownServer) -> Result<reqwest::Client, String> 
     client_for_with(server, std::time::Duration::from_secs(180))
 }
 
+/// Le client HTTP pour un serveur déjà connu.
+///
+/// Quand l'appairage nous a laissé son autorité de certification, elle est
+/// posée comme racine **et la vérification reste active**. Auparavant les deux
+/// drapeaux `danger_*` étaient conservés dans tous les cas : ils désactivent la
+/// validation entière, ce qui rendait la racine ajoutée décorative. Sur un
+/// réseau hostile, n'importe qui pouvait alors se faire passer pour le serveur,
+/// et l'application lui présentait son jeton de session.
+///
+/// Sans autorité connue — un serveur enregistré avant que l'appairage ne la
+/// transmette — on retombe sur l'ancien comportement, faute de quoi ces
+/// installations cesseraient de joindre leur serveur du jour au lendemain.
 fn client_for_with(
     server: &servers::KnownServer,
     timeout: std::time::Duration,
 ) -> Result<reqwest::Client, String> {
-    let mut builder = reqwest::Client::builder()
-        .timeout(timeout)
-        .danger_accept_invalid_certs(true)
-        .danger_accept_invalid_hostnames(true);
+    let mut builder = reqwest::Client::builder().timeout(timeout);
 
-    if !server.authority_pem.trim().is_empty() {
-        if let Ok(cert) = reqwest::Certificate::from_pem(server.authority_pem.as_bytes()) {
-            builder = builder.add_root_certificate(cert);
+    let autorite = if server.authority_pem.trim().is_empty() {
+        None
+    } else {
+        reqwest::Certificate::from_pem(server.authority_pem.as_bytes()).ok()
+    };
+
+    match autorite {
+        Some(cert) => {
+            // Certificat auto-signé, mais signé par une autorité que nous
+            // connaissons : le nom d'hôte, lui, ne peut pas correspondre à une
+            // adresse de réseau local. On garde donc la vérification de la
+            // chaîne et on ne lâche que le nom.
+            builder = builder
+                .add_root_certificate(cert)
+                .danger_accept_invalid_hostnames(true);
+        }
+        None => {
+            builder = builder
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true);
         }
     }
 

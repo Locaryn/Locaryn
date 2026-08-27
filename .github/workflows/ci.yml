@@ -90,3 +90,75 @@ jobs:
       # garde-fou « la configuration déclare une fenêtre » peut s'exécuter.
       - name: Compiler et tester les coques Tauri
         run: cargo test -p locaryn-desktop -p locaryn-mobile
+
+  # Trois portes de qualité, toutes locales au dépôt : aucune ne dépend d'un
+  # compte ni d'un service tiers pour rendre son verdict.
+  qualite:
+    name: Sécurité, doublons, code mort
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+
+      # ── Sécurité ───────────────────────────────────────────────────────────
+      # Version majeure figée, comme cargo-deny : une règle nouvelle qui
+      # arriverait d'elle-même ferait échouer une release sans qu'une seule
+      # ligne ait bougé.
+      - name: Installer Semgrep
+        run: pip install --quiet "semgrep~=1.145"
+      # Deux passes, et c'est délibéré.
+      #
+      # La première bloque, mais seulement sur `ERROR` : au moment où cette
+      # porte est posée le dépôt en compte zéro, donc elle passe — et elle
+      # arrêtera la première faille grave qui arrivera. Bloquer plus bas
+      # l'aurait posée rouge dès le premier jour, et une porte toujours rouge
+      # ne se lit plus.
+      #
+      # La seconde ne bloque pas : elle montre les avertissements pour qu'ils
+      # se traitent, sans retenir une release.
+      #
+      # Les jeux `p/rust` et `p/typescript` viennent du registre public : pas
+      # de compte, et le code n'est pas envoyé.
+      - name: Semgrep — failles graves (bloquant)
+        run: >
+          semgrep --config p/rust --config p/typescript
+          --metrics=off --severity=ERROR --error --quiet
+          packages apps services
+      - name: Semgrep — avertissements (informatif)
+        continue-on-error: true
+        run: >
+          semgrep --config p/rust --config p/typescript
+          --metrics=off --severity=WARNING --quiet
+          packages apps services
+
+      # ── Doublons ───────────────────────────────────────────────────────────
+      # Seuil à 3 % : le dépôt est à 1,1 % au moment où cette porte est posée.
+      # Il laisse la marge d'un refactor en cours et attrape un copier-coller
+      # massif, qui est ce qu'on cherche vraiment à empêcher.
+      - name: Doublons (jscpd)
+        run: |
+          npx --yes jscpd@4 --min-lines 30 --min-tokens 80 \
+            --threshold 3 --reporters console \
+            --format "rust,typescript,tsx,javascript" \
+            --ignore "**/node_modules/**,**/target/**,**/dist/**,**/plugins/**,**/vendor/**,**/.venv/**" \
+            .
+
+      # ── Code mort ──────────────────────────────────────────────────────────
+      # Informatif pour l'instant : 65 dépendances inutilisées existent déjà
+      # dans 22 crates, et cargo-machete se trompe sur les réexports et les
+      # dépendances sous drapeau de fonctionnalité. Bloquer d'emblée
+      # figerait la CI en rouge sans rien apprendre. À passer bloquant une
+      # fois ce lot trié.
+      - name: Dépendances inutilisées (cargo-machete)
+        continue-on-error: true
+        run: |
+          cargo install cargo-machete --locked --version "^0.9"
+          cargo machete
