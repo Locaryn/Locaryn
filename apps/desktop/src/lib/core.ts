@@ -260,6 +260,8 @@ export interface ExtensionComponents {
   hooks: number;
   mcp_servers: number;
   lsp_adapters: number;
+  /** Figures apportées par le paquet (`figures/*.md`). */
+  figures: number;
 }
 
 /** Un poids présent sur le disque, avec la place qu'il occupe. */
@@ -2448,6 +2450,7 @@ let demoExtensions: InstalledExtension[] = [
       hooks: 0,
       mcp_servers: 0,
       lsp_adapters: 0,
+      figures: 0,
     },
     permissions: [
       {
@@ -2497,6 +2500,7 @@ let demoExtensions: InstalledExtension[] = [
       hooks: 0,
       mcp_servers: 1,
       lsp_adapters: 0,
+      figures: 0,
     },
     permissions: [
       { permission: "mcp", reason: "Lancer le gestionnaire d'entraînement local", granted: true },
@@ -2546,6 +2550,7 @@ let demoExtensions: InstalledExtension[] = [
       hooks: 0,
       mcp_servers: 0,
       lsp_adapters: 0,
+      figures: 0,
     },
     permissions: [{ permission: "files_read", reason: "Lire le diff à relire", granted: true }],
     load_errors: [],
@@ -2577,6 +2582,7 @@ let demoExtensions: InstalledExtension[] = [
       hooks: 0,
       mcp_servers: 1,
       lsp_adapters: 0,
+      figures: 0,
     },
     permissions: [
       { permission: "mcp", reason: "Lancer le serveur d'analyse OSV", granted: false },
@@ -2611,6 +2617,7 @@ let demoExtensions: InstalledExtension[] = [
       hooks: 0,
       mcp_servers: 0,
       lsp_adapters: 0,
+      figures: 0,
     },
     permissions: [],
     load_errors: [],
@@ -2656,6 +2663,7 @@ let demoExtensions: InstalledExtension[] = [
       hooks: 0,
       mcp_servers: 1,
       lsp_adapters: 0,
+      figures: 0,
     },
     permissions: [
       { permission: "mcp", reason: "Lancer le moteur image local", granted: true },
@@ -3703,6 +3711,7 @@ const demoCore: CoreApi = {
         hooks: 0,
         mcp_servers: 1,
         lsp_adapters: 0,
+        figures: 0,
       },
       permissions: [
         { permission: "mcp", reason: "Lancer son serveur MCP", granted: false },

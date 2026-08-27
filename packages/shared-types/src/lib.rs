@@ -418,6 +418,11 @@ pub struct ExtensionComponents {
     pub hooks: u32,
     pub mcp_servers: u32,
     pub lsp_adapters: u32,
+    /// Figures apportées par le paquet (`figures/*.md`). Elles sont importées
+    /// par l'application après le chargement, mais elles comptent : un morph
+    /// qui n'apporte que des figures apporte quelque chose.
+    #[serde(default)]
+    pub figures: u32,
 }
 
 impl ExtensionComponents {
@@ -429,6 +434,7 @@ impl ExtensionComponents {
             + self.hooks
             + self.mcp_servers
             + self.lsp_adapters
+            + self.figures
     }
 
     pub fn is_empty(&self) -> bool {

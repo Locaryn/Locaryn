@@ -67,6 +67,10 @@ pub struct LoadedPlugin {
     pub hooks: Vec<LoadedHook>,
     pub mcp: Vec<(String, McpServerEntry)>,
     pub lsp: Vec<LspAdapterEntry>,
+    /// Chemins des figures du paquet (`figures/*.md`). Le contenu est lu par
+    /// l'application au moment de l'import ; ici on ne retient que leur
+    /// existence, pour que le paquet ne passe pas pour vide.
+    pub figures: Vec<PathBuf>,
     /// Non-fatal problems. A plugin with errors still loads whatever parsed.
     pub errors: Vec<String>,
 }
@@ -81,6 +85,7 @@ impl LoadedPlugin {
             hooks: self.hooks.len() as u32,
             mcp_servers: self.mcp.len() as u32,
             lsp_adapters: self.lsp.len() as u32,
+            figures: self.figures.len() as u32,
         }
     }
 
@@ -119,6 +124,21 @@ pub fn load(root: &Path) -> Result<LoadedPlugin, LoadError> {
 }
 
 /// Same as [`load`], for callers that already parsed the manifest.
+/// Les figures suivent une convention de dossier, pas une déclaration de
+/// manifeste : `figures/*.md`, comme les lit `locaryn_storage::figures_import`.
+fn discover_figures(root: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(root.join("figures")) else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("md"))
+        .collect();
+    out.sort();
+    out
+}
+
 pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin {
     let mut p = LoadedPlugin {
         root: root.to_path_buf(),
@@ -130,6 +150,7 @@ pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin
         hooks: Vec::new(),
         mcp: Vec::new(),
         lsp: Vec::new(),
+        figures: discover_figures(root),
         errors: Vec::new(),
     };
 

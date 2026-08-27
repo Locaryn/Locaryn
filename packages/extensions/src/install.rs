@@ -371,6 +371,41 @@ mod tests {
         assert!(out.root.join("morph.json").is_file());
     }
 
+    /// Un Morph officiel, installé comme le ferait le magasin. Il vérifie la
+    /// chaîne complète sur notre propre écosystème : release ou sources,
+    /// manifeste `morph.json`, serveur MCP déclaré.
+    #[tokio::test]
+    #[ignore = "requires network"]
+    async fn installs_a_real_morph_from_the_locaryn_org() {
+        let base = std::env::temp_dir().join("locaryn-install-morph");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let http = reqwest::Client::builder()
+            .user_agent("locaryn/0.1")
+            .build()
+            .unwrap();
+
+        let out = install(
+            &http,
+            "github:Locaryn/morph-figures",
+            ExtensionScope::Workspace,
+            Some(&base),
+        )
+        .await
+        .expect("install du morph");
+
+        println!(
+            "installe {} v{} ({:?}) — {:?}, notes: {:?}",
+            out.manifest.name,
+            out.manifest.version,
+            out.ecosystem,
+            out.loaded.counts(),
+            out.notes
+        );
+        assert_eq!(out.ecosystem, ExtensionEcosystem::Locaryn);
+        assert!(out.root.join("morph.json").is_file());
+    }
+
     /// The Gemini path exercises the parts that are not a straight copy: TOML
     /// commands become markdown, and `mcpServers` is lifted out of the
     /// manifest into its own file.

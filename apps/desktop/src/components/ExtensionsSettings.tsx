@@ -111,6 +111,7 @@ function componentSummary(e: InstalledExtension): string {
   if (c.rules) parts.push(`${c.rules} règle${c.rules > 1 ? "s" : ""}`);
   if (c.hooks) parts.push(`${c.hooks} hook${c.hooks > 1 ? "s" : ""}`);
   if (c.lsp_adapters) parts.push(`${c.lsp_adapters} LSP`);
+  if (c.figures) parts.push(`${c.figures} figure${c.figures > 1 ? "s" : ""}`);
   return parts.length ? parts.join(" · ") : "aucun composant";
 }
 

@@ -325,11 +325,24 @@ pub async fn fetch(
             // The source archive carries no build output, so installing from
             // it silently produces a plugin whose server never starts.
             // Repositories that publish no bundle keep the old path.
-            let bytes =
-                match download_github_release_bundle(http, owner, repo, git_ref.as_deref()).await {
-                    Some(bytes) => bytes,
-                    None => download_github_zip(http, owner, repo, git_ref.as_deref()).await?,
-                };
+            //
+            // Sauf quand un sous-dossier est demandé. Une release est un
+            // artefact construit pour le dépôt entier ; dans un monorepo qui
+            // héberge plusieurs paquets (une place de marché comme
+            // `anthropics/claude-code`), elle ne contient pas l'arborescence
+            // des sources et le sous-dossier ne s'y trouve pas. Aller
+            // directement à l'archive du code évite un échec certain.
+            let bytes = match subdir {
+                Some(_) => download_github_zip(http, owner, repo, git_ref.as_deref()).await?,
+                None => {
+                    match download_github_release_bundle(http, owner, repo, git_ref.as_deref())
+                        .await
+                    {
+                        Some(bytes) => bytes,
+                        None => download_github_zip(http, owner, repo, git_ref.as_deref()).await?,
+                    }
+                }
+            };
             extract_zip_stripping_root(&bytes, dest)?;
             resolve_subdir(dest, subdir.as_deref())
         }
