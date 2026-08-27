@@ -18,7 +18,7 @@ use crate::source::{parse, InstallSource, SourceError};
 
 /// Fichiers manifestes reconnus, dans l'ordre de détection (`detect`).
 const MANIFEST_CANDIDATES: &[&str] = &[
-    "plugin.json",
+    "morph.json",
     ".claude-plugin/plugin.json",
     "gemini-extension.json",
     "opencode.json",
@@ -29,7 +29,7 @@ const MANIFEST_CANDIDATES: &[&str] = &[
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SourcePreview {
-    /// Fichier manifeste trouvé (plugin.json, .claude-plugin/plugin.json, …).
+    /// Fichier manifeste trouvé (morph.json, .claude-plugin/plugin.json, …).
     pub manifest_file: String,
     /// Écosystème détecté (locaryn, claude_code, gemini_cli, opencode, mcp).
     pub ecosystem: String,
@@ -202,7 +202,7 @@ fn preview_zip(path: &Path) -> Result<SourcePreview, SourceError> {
             .map_err(|e| SourceError::Archive(e.to_string()))?;
         let name = entry.name().replace('\\', "/");
         // Le manifeste peut être à la racine ou sous le dossier racine unique
-        // généré par GitHub (`repo-main/plugin.json`).
+        // généré par GitHub (`repo-main/morph.json`).
         let Some(candidate) = MANIFEST_CANDIDATES
             .iter()
             .find(|c| name == **c || name.ends_with(&format!("/{c}")))
@@ -376,7 +376,7 @@ fn extract_permissions(v: &serde_json::Value) -> Vec<String> {
 fn declared_mcp_candidates(manifest_file: &str, v: &serde_json::Value) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let explicit = match manifest_file {
-        "plugin.json" => v
+        "morph.json" => v
             .get("components")
             .and_then(|c| c.get("mcp"))
             .and_then(|m| m.as_str()),
@@ -491,7 +491,7 @@ mod tests {
             }"#,
         )
         .unwrap();
-        let p = preview_from_json("plugin.json", &v, "fallback");
+        let p = preview_from_json("morph.json", &v, "fallback");
         assert_eq!(p.name, "snap-mcp");
         assert_eq!(p.version.as_deref(), Some("0.3.0"));
         assert_eq!(p.ecosystem, "locaryn");
@@ -538,12 +538,12 @@ mod tests {
 
     #[test]
     fn locaryn_manifest_declared_mcp_is_picked_up() {
-        // plugin.json qui référence un fichier mcp séparé (components.mcp).
+        // morph.json qui référence un fichier mcp séparé (components.mcp).
         let v: serde_json::Value = serde_json::from_str(
             r#"{"name":"snap-mcp","version":"0.3.0","components":{"mcp":"mcp/mcp.json"}}"#,
         )
         .unwrap();
-        let candidates = declared_mcp_candidates("plugin.json", &v);
+        let candidates = declared_mcp_candidates("morph.json", &v);
         assert_eq!(candidates[0], "mcp/mcp.json");
         // Les conventions usuelles suivent, sans doublon.
         assert!(candidates[1..].contains(&".mcp.json".to_string()));
@@ -575,8 +575,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         std::fs::write(
-            base.join("plugin.json"),
-            r#"{"schema":"https://locaryn.dev/schema/plugin.json/v0.1","apiVersion":"0.1","name":"preview-me","version":"1.2.3","permissions":{"shell":true}}"#,
+            base.join("morph.json"),
+            r#"{"schema":"https://locaryn.dev/schema/morph.json/v0.1","apiVersion":"0.1","name":"preview-me","version":"1.2.3","permissions":{"shell":true}}"#,
         )
         .unwrap();
         std::fs::write(base.join("README.md"), "readme").unwrap();
@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(p.version.as_deref(), Some("1.2.3"));
         assert_eq!(p.ecosystem, "locaryn");
         assert_eq!(p.requested_permissions, vec!["shell"]);
-        assert_eq!(p.manifest_file, "plugin.json");
+        assert_eq!(p.manifest_file, "morph.json");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -602,7 +602,7 @@ mod tests {
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
         let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
-        writer.start_file("repo-main/plugin.json", options).unwrap();
+        writer.start_file("repo-main/morph.json", options).unwrap();
         writer
             .write_all(
                 r#"{"name":"zipped","version":"0.9.0","permissions":{"network":true}}"#.as_bytes(),
@@ -631,7 +631,7 @@ mod tests {
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
         let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
-        writer.start_file("repo-main/plugin.json", options).unwrap();
+        writer.start_file("repo-main/morph.json", options).unwrap();
         writer
             .write_all(
                 r#"{"name":"snap-mcp","version":"0.3.0","components":{"mcp":"mcp/mcp.json"}}"#
@@ -663,8 +663,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(base.join("mcp")).unwrap();
         std::fs::write(
-            base.join("plugin.json"),
-            r#"{"schema":"https://locaryn.dev/schema/plugin.json/v0.1","apiVersion":"0.1","name":"snap-mcp","version":"0.3.0","components":{"mcp":"mcp/mcp.json"}}"#,
+            base.join("morph.json"),
+            r#"{"schema":"https://locaryn.dev/schema/morph.json/v0.1","apiVersion":"0.1","name":"snap-mcp","version":"0.3.0","components":{"mcp":"mcp/mcp.json"}}"#,
         )
         .unwrap();
         std::fs::write(

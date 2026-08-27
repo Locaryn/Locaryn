@@ -250,7 +250,7 @@ data: {"message_id":"...","tokens_in":120,"tokens_out":450,"duration_ms":8200}
 
 ## Permissions / scopes
 
-### Permissions extension (déclarées dans `plugin.json`)
+### Permissions extension (déclarées dans `morph.json`)
 
 | Permission | Description |
 | --- | --- |

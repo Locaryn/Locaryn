@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(out.ecosystem, ExtensionEcosystem::ClaudeCode);
         assert_eq!(out.loaded.commands.len(), 1);
         assert!(out.root.ends_with("local-tool"));
-        assert!(out.root.join("plugin.json").is_file());
+        assert!(out.root.join("morph.json").is_file());
         // Staging directories are cleaned up.
         let leftovers: Vec<_> = std::fs::read_dir(workspace.join(".locaryn/plugins"))
             .unwrap()
@@ -287,7 +287,7 @@ mod tests {
         assert_eq!(out.manifest.name, "zipped-tool");
         assert_eq!(out.ecosystem, ExtensionEcosystem::ClaudeCode);
         assert_eq!(out.loaded.commands.len(), 1);
-        assert!(out.root.join("plugin.json").is_file());
+        assert!(out.root.join("morph.json").is_file());
     }
 
     fn walk(dir: &Path) -> Vec<PathBuf> {
@@ -368,7 +368,7 @@ mod tests {
             "a real plugin must contribute something"
         );
         assert!(out.loaded.errors.is_empty(), "{:?}", out.loaded.errors);
-        assert!(out.root.join("plugin.json").is_file());
+        assert!(out.root.join("morph.json").is_file());
     }
 
     /// The Gemini path exercises the parts that are not a straight copy: TOML

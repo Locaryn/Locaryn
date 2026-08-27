@@ -564,7 +564,7 @@ export interface ExtensionUpdateCheck {
  *  télécharger le paquet. Les permissions sont telles que déclarées par la
  *  source (pas forcément dans le vocabulaire Locaryn). */
 export interface ExtensionSourcePreview {
-  /** plugin.json, .claude-plugin/plugin.json, … */
+  /** morph.json, .claude-plugin/plugin.json, … */
   manifest_file: string;
   /** locaryn, claude_code, gemini_cli, opencode, mcp */
   ecosystem: string;
@@ -3757,7 +3757,7 @@ const demoCore: CoreApi = {
   checkExtensionUpdates: async () => [],
   reloadExtensions: async () => demoExtensions,
   previewExtensionSource: async (source) => ({
-    manifest_file: "plugin.json",
+    manifest_file: "morph.json",
     ecosystem: "claude_code",
     name: source.split("/").pop() ?? "demo-plugin",
     version: "1.2.0",

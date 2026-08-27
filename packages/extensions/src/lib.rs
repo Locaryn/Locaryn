@@ -2,7 +2,7 @@
 //! slash commands, hooks, skills, agents, workspace rules, and LSP adapters.
 //!
 //! This crate owns:
-//! - the `plugin.json` manifest schema (validation),
+//! - the `morph.json` manifest schema (validation),
 //! - the registry (install / enable / disable / remove / hot-reload),
 //! - permission bookkeeping,
 //! - the ecosystem import layer. `detect()` recognises Claude Code, Gemini

@@ -32,7 +32,7 @@ Ce que Locaryn a déjà, et qui sert de socle :
 
 | Brique | État | Rôle pour les noyaux |
 | --- | --- | --- |
-| `plugin.json` + registry d'extensions | Fonctionnel | Le manifeste peut accueillir une section `core` ; install/enable/remove déjà en place |
+| `morph.json` + registry d'extensions | Fonctionnel | Le manifeste peut accueillir une section `core` ; install/enable/remove déjà en place |
 | Écran Réglages → Extensions | Fonctionnel (desktop + mobile) | Point d'entrée demandé : installer le noyau, le configurer, le démarrer |
 | Trait `Agent` (`agent-runtime`) | Fonctionnel | `OllamaAgent`, `OpenAiCompatAgent`, `StubAgent`. **Un noyau externe peut s'y brancher comme n'importe quel agent** |
 | `OpenAiCompatAgent` | Fonctionnel | Locaryn parle **déjà** le format OpenAI (chat/completions, SSE) |
@@ -96,11 +96,11 @@ Locaryn fait déjà pour Ollama/llama-server via le provider-supervisor.
 
 ### 4.1 Le concept : un « noyau » est une extension avec un driver
 
-Une extension de noyau = un `plugin.json` enrichi d'une section `core` :
+Une extension de noyau = un `morph.json` enrichi d'une section `core` :
 
 ```json
 {
-  "schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "schema": "https://locaryn.dev/schema/morph.json/v0.1",
   "apiVersion": "0.1",
   "name": "locaryn-core-openclaw",
   "version": "1.0.0",
@@ -169,7 +169,7 @@ Nouveau crate `packages/core-bridge` (dans le dépôt principal) :
 
 ```
 core-bridge/
-├── manifest.rs     # section `core` du plugin.json (validation)
+├── manifest.rs     # section `core` du morph.json (validation)
 ├── manager.rs      # CoreManager : install/start/stop/health, mappage sessions
 ├── driver.rs       # trait CoreDriver : health(), send(), stop(), approve()
 ├── responses.rs    # driver OpenResponses (OpenClaw) — tools client, SSE
@@ -295,7 +295,7 @@ maintien.
 
 ### Phase A — Hôte Locaryn (dépôt principal)
 
-1. `plugin.json` : section `core` + validation (`manifest.rs`).
+1. `morph.json` : section `core` + validation (`manifest.rs`).
 2. `packages/core-bridge` : drivers `responses` / `runs` / `chat_completions`,
    `CoreManager`, `ExternalCoreAgent`, sérialisation par session (file),
    boucle client-tools bornée (opt-in) — voir §9.
@@ -326,8 +326,8 @@ Contenu actuel (déjà initialisé, commit `16724b6`) :
 locaryn-cores/
 ├── README.md                 # présentation + installation
 ├── cores/
-│   ├── openclaw/             # plugin.json (driver responses) + README
-│   └── hermes/               # plugin.json (driver runs) + README
+│   ├── openclaw/             # morph.json (driver responses) + README
+│   └── hermes/               # morph.json (driver runs) + README
 ├── skills/
 │   ├── openclaw-index.json   # index de départ (ClawHub interrogé à la volée)
 │   └── hermes-index.json

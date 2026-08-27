@@ -112,7 +112,7 @@ impl LoadedPlugin {
     }
 }
 
-/// Load a plugin from `root`, which must contain a Locaryn `plugin.json`.
+/// Load a plugin from `root`, which must contain a Locaryn `morph.json`.
 pub fn load(root: &Path) -> Result<LoadedPlugin, LoadError> {
     let manifest = crate::manifest::load(root)?;
     Ok(load_with_manifest(root, manifest))
@@ -274,14 +274,14 @@ pub fn load_with_manifest(root: &Path, manifest: PluginManifest) -> LoadedPlugin
 // ============================================================================
 
 /// Substitute the variables a plugin may use in commands, args and env:
-/// `${LOCARYN_PLUGIN_ROOT}` (this plugin's directory) and `${env:NAME}`.
+/// `${LOCARYN_MORPH_ROOT}` (this plugin's directory) and `${env:NAME}`.
 ///
 /// An `${env:NAME}` that is not set expands to the empty string, matching what
 /// every other client does — a missing token yields an auth failure from the
 /// server, which is a clearer error than a literal `${env:TOKEN}` being sent.
 pub fn expand_str(s: &str, root: &Path) -> String {
     let mut out = s.replace(
-        "${LOCARYN_PLUGIN_ROOT}",
+        "${LOCARYN_MORPH_ROOT}",
         &root.to_string_lossy().replace('\\', "/"),
     );
     while let Some(start) = out.find("${env:") {
@@ -512,7 +512,7 @@ mod tests {
     fn a_data_slot_survives_loading() {
         let root = tmp("data-slot");
         std::fs::write(
-            root.join("plugin.json"),
+            root.join("morph.json"),
             r#"{
               "apiVersion": "0.1",
               "name": "avec-catalogue",
@@ -548,7 +548,7 @@ mod tests {
     fn a_slot_can_target_one_surface_at_a_time() {
         let root = tmp("slot-platforms");
         std::fs::write(
-            root.join("plugin.json"),
+            root.join("morph.json"),
             r#"{
               "apiVersion": "0.1",
               "name": "deux-formes",
@@ -612,7 +612,7 @@ mod tests {
         assert!(p.errors.is_empty(), "unexpected errors: {:?}", p.errors);
         let counts = p.counts();
         assert!(counts.total() >= 7);
-        // `${LOCARYN_PLUGIN_ROOT}` in the MCP args resolved to a real path.
+        // `${LOCARYN_MORPH_ROOT}` in the MCP args resolved to a real path.
         assert!(
             p.mcp[0].1.args.iter().all(|a| !a.contains("${")),
             "unexpanded variable: {:?}",
@@ -624,7 +624,7 @@ mod tests {
     fn a_broken_component_does_not_sink_the_others() {
         let d = tmp("partial");
         std::fs::write(
-            d.join("plugin.json"),
+            d.join("morph.json"),
             r#"{"schema":"x","apiVersion":"0.1","name":"p","version":"1.0.0",
                 "components":{"skills":["skills/gone/SKILL.md"],"commands":["commands/ok.md"]}}"#,
         )
@@ -643,7 +643,7 @@ mod tests {
     fn discovers_components_when_the_manifest_declares_none() {
         let d = tmp("convention");
         std::fs::write(
-            d.join("plugin.json"),
+            d.join("morph.json"),
             r#"{"schema":"x","apiVersion":"0.1","name":"p","version":"1.0.0"}"#,
         )
         .unwrap();
@@ -661,7 +661,7 @@ mod tests {
     fn expands_plugin_root_and_env() {
         let d = tmp("expand");
         std::env::set_var("LOCARYN_TEST_TOKEN", "s3cret");
-        let s = expand_str("${LOCARYN_PLUGIN_ROOT}/x --t ${env:LOCARYN_TEST_TOKEN}", &d);
+        let s = expand_str("${LOCARYN_MORPH_ROOT}/x --t ${env:LOCARYN_TEST_TOKEN}", &d);
         assert!(s.ends_with("/x --t s3cret"), "{s}");
         assert!(!s.contains("${"));
     }

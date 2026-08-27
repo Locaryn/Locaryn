@@ -1,6 +1,6 @@
-//! `plugin.json` manifest schema and validation.
+//! `morph.json` manifest schema and validation.
 //!
-//! Schema URL: https://locaryn.dev/schema/plugin.json/v0.1
+//! Schema URL: https://locaryn.dev/schema/morph.json/v0.1
 
 use locaryn_shared_types::Permission;
 use serde::{Deserialize, Serialize};
@@ -629,9 +629,9 @@ pub enum ManifestError {
     Invalid(String),
 }
 
-/// Load and validate a `plugin.json` from `dir/plugin.json`.
+/// Load and validate a `morph.json` from `dir/morph.json`.
 pub fn load(dir: &Path) -> Result<PluginManifest, ManifestError> {
-    let path = dir.join("plugin.json");
+    let path = dir.join("morph.json");
     let raw = std::fs::read_to_string(&path)?;
     let m: PluginManifest = serde_json::from_str(&raw)?;
     validate(&m)?;

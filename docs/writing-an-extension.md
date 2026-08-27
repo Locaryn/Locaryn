@@ -356,7 +356,7 @@ lire un disque, lancer un moteur ou télécharger quelque chose, il lui faut un
 {
   "mcpServers": {
     "mon-moteur": {
-      "command": "${LOCARYN_PLUGIN_ROOT}/bin/mon-serveur",
+      "command": "${LOCARYN_MORPH_ROOT}/bin/mon-serveur",
       "args": [],
       "transport": "stdio",
       "auto_start": true
@@ -370,7 +370,7 @@ ne sait pas ce que vous en ferez :
 
 | Variable | Ce qu'elle désigne |
 |---|---|
-| `LOCARYN_PLUGIN_ROOT` | le dossier de votre extension, tel qu'installé |
+| `LOCARYN_MORPH_ROOT` | le dossier de votre extension, tel qu'installé |
 | `LOCARYN_PLUGIN_BIN_DIR` | son sous-dossier `bin/` |
 | `LOCARYN_EXTENSION_DATA_DIR` | un dossier privé, à vous seul |
 | `LOCARYN_EXTENSION_MODELS_DIR` | vos poids, dans ce dossier privé |
@@ -400,7 +400,7 @@ mon-extension-v1.2.0-macos-aarch64.zip
 ```
 
 L'archive contient ce qui tourne chez l'utilisateur, sans vos sources :
-`plugin.json`, `bin/`, `dist/`, `mcp/`, `SKILL.md`, `README`, `LICENSE`.
+`morph.json`, `bin/`, `dist/`, `mcp/`, `SKILL.md`, `README`, `LICENSE`.
 Vérifiez la présence de `bin/` dans l'archive avant de publier — c'est une ligne
 de CI, et elle vous épargne une version installable mais inerte.
 
@@ -639,7 +639,7 @@ Locaryn lit les manifestes des écosystèmes existants **sans conversion** :
 
 | Fichier détecté | Écosystème |
 |---|---|
-| `plugin.json` | Locaryn |
+| `morph.json` | Locaryn |
 | `.claude-plugin/plugin.json` | Claude Code |
 | `gemini-extension.json` | Gemini CLI |
 | `opencode.json` | OpenCode |

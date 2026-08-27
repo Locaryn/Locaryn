@@ -123,9 +123,9 @@ Un utilisateur solo peut installer Locaryn, ouvrir un projet, chatter avec un ag
 | **S4** ✅ | Boucle tool-use + approval : implémenter la boucle agent avec dispatch des tools (`read_file`, `write_file`, `run_command`, `search`, `list_dir`). Approval gating (run_command et write_file demandent consentement). Provider-supervisor réel : spawn `ollama serve` via tokio::process, healthcheck loop, auto-start. | `agent-runtime`, `provider-supervisor`, `daemon` | Tool approval fonctionne (run_command demande approval). `locaryn provider start ollama` lance Ollama. Auto-start si Ollama absent. |
 | **S5** ✅ | Desktop agent wiring : cœur in-process (même SQLite que daemon/CLI), Tauri commands `bootstrap`/`send_message`/CRUD projets-sessions-messages, streaming via `tauri::ipc::Channel`, ChatPanel réel (tokens + tool cards + historique), LeftPanel réel (projets/sessions), terminal line-based via `run_terminal` (PTY xterm.js reporté en V1). | `desktop` (Tauri + React), `agent-runtime` | Desktop chat produit des tokens réels. Terminal exécute des commandes. Desktop et CLI partagent la même session SQLite (test : créer session en CLI, la voir dans le desktop). |
 | **S6** | Preview panel réel : iframe sandboxed + CSP, `event: artifact` → render HTML/markdown. `locaryn-preview` `render_markdown()` réel (marked + sanitize). Monaco mini pour code blocks. File serving depuis le daemon (`/preview/:id`). | `preview`, `desktop`, `daemon` | Preview d'un artefact HTML sandboxed fonctionne. Markdown rendu correctement. Code blocks éditables dans Monaco. |
-| **S7** | Extensions + MCP + plugin-sdk : install plugin via `plugin.json`, registry DB-backed, permissions prompt, `.locaryn/mcp.json` loading, 1 MCP server stdio de démo. Hot-reload via fs watcher. | `extensions`, `mcp`, `plugin-sdk`, `daemon` | 1 plugin installable via `locaryn plugin install ./examples/plugins/my-plugin`. 1 MCP server stdio chargeable via `.locaryn/mcp.json`. Hot-reload détecte un changement de `plugin.json`. |
+| **S7** | Extensions + MCP + plugin-sdk : install plugin via `morph.json`, registry DB-backed, permissions prompt, `.locaryn/mcp.json` loading, 1 MCP server stdio de démo. Hot-reload via fs watcher. | `extensions`, `mcp`, `plugin-sdk`, `daemon` | 1 plugin installable via `locaryn plugin install ./examples/plugins/my-plugin`. 1 MCP server stdio chargeable via `.locaryn/mcp.json`. Hot-reload détecte un changement de `morph.json`. |
 | **S8** | Commands + skills + hooks : slash commands exécution réelle (dispatch vers agent avec prompt injecté), skills auto-trigger (matching par mots-clés), hooks (PreToolUse/PostToolUse/Stop) exécution async avec timeout. | `command-runtime`, `skill-runtime`, `hook-runtime`, `agent-runtime` | `/refactor` slash command s'exécute. Skill auto-trigger suggère un skill quand l'utilisateur demande une migration DB. Hook PreToolUse bloque un run_command non approuvé. |
-| **S9** | Rules + subagents + import : `LOCARYN.md` + rules agrégées dans system prompt (hot-reload), agent profiles + subagents (spawn agent spécialisé), `locaryn import claude-code` et `locaryn import cursor` (conversion réelle des bundles). | `rules-runtime`, `agent-runtime`, `extensions` | Rules `LOCARYN.md` apparaissent dans le system prompt. Subagent spécialisé s'exécute pour une tâche de refactor. `locaryn import claude-code ./examples` importe un bundle (plugin.json + hooks + skills convertis). |
+| **S9** | Rules + subagents + import : `LOCARYN.md` + rules agrégées dans system prompt (hot-reload), agent profiles + subagents (spawn agent spécialisé), `locaryn import claude-code` et `locaryn import cursor` (conversion réelle des bundles). | `rules-runtime`, `agent-runtime`, `extensions` | Rules `LOCARYN.md` apparaissent dans le system prompt. Subagent spécialisé s'exécute pour une tâche de refactor. `locaryn import claude-code ./examples` importe un bundle (morph.json + hooks + skills convertis). |
 | **Buffer** | Polish, tests unitaires + intégration, packaging (MSI/DMG/AppImage), CI build matrix, release `v0.1.0`. | Tous | Tests verts. Packaging génère des binaires pour Win11 x64, macOS arm64, Linux x64. |
 
 ### Définition of Done MVP
@@ -195,7 +195,7 @@ CI release : tags → build matrix → GitHub Releases + SHA256 + cosign (signin
 ### 2.5 Documentation
 
 - Guide utilisateur (desktop + CLI).
-- Guide extension author (plugin.json, hooks, skills, commands, agents, MCP, rules, LSP).
+- Guide extension author (morph.json, hooks, skills, commands, agents, MCP, rules, LSP).
 - Guide déploiement remote-server (TLS, auth, systemd, Docker, reverse proxy).
 - Guide contribution (architecture, conventions, CI).
 
@@ -259,7 +259,7 @@ La sécurité est une exigence transverse qui progresse à chaque phase.
 | Élément | MVP | V1 | V1.1 | V2 |
 |---------|-----|----|----|-----|
 | **MCP servers** | `.mcp.json` loading + 1 server stdio démo (squelette → réel) | Client MCP `rmcp` complet (stdio + HTTP) | Idem | Marketplace distant |
-| **Plugins** | `plugin.json` manifest + registry + install (partiel → réel) | DB-backed registry + permissions UI | WASM sandbox + marketplace local | Marketplace distant |
+| **Plugins** | `morph.json` manifest + registry + install (partiel → réel) | DB-backed registry + permissions UI | WASM sandbox + marketplace local | Marketplace distant |
 | **Slash commands** | Exécution réelle (S8) | Variables de template | Idem | Idem |
 | **Hooks** | PreToolUse/PostToolUse/Stop exécution (S8) | Hook chain + veto logic | Idem | Idem |
 | **Skills** | Auto-trigger (S8) | Matching sémantique (embeddings) | Idem | Idem |
@@ -400,7 +400,7 @@ Les migrations sont déjà définies (`migrations/0001_init.sql` + `migrations/0
 | Packages UI | `@locaryn/ui-*` | `@locaryn/ui-core`, `@locaryn/ui-chat` |
 | Extension scopes | `Global` / `User` / `Organisation` (V1) / `Workspace` / `Session` (V1.1) | `.locaryn/` (workspace), `~/.locaryn/` (user), `LOCARYN.md` (project) |
 | Config files | `.locaryn/` | `.locaryn/mcp.json`, `.locaryn/config.toml`, `LOCARYN.md` |
-| Plugin manifest | `plugin.json` | `examples/plugins/my-plugin/plugin.json` |
+| Plugin manifest | `morph.json` | `examples/plugins/my-plugin/morph.json` |
 | MCP config | `mcp.json` | `.locaryn/mcp.json` |
 | Hooks | `hooks.json` | `.locaryn/hooks.json` |
 | Skills | `*.md` (frontmatter) | `.locaryn/skills/db-migration.md` |

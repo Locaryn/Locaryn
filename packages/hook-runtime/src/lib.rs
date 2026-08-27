@@ -196,7 +196,7 @@ pub fn hook_env(
 ) -> HashMap<String, String> {
     let mut env = HashMap::new();
     env.insert(
-        "LOCARYN_PLUGIN_ROOT".into(),
+        "LOCARYN_MORPH_ROOT".into(),
         plugin_root.display().to_string(),
     );
     env.insert(

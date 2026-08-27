@@ -1,6 +1,6 @@
 //! Pont hôte ↔ noyaux alternatifs (OpenClaw, Hermes Agent…).
 //!
-//! Un noyau est une extension dont le `plugin.json` porte une section `core`.
+//! Un noyau est une extension dont le `morph.json` porte une section `core`.
 //! Locaryn ne réimplémente pas le noyau : il le **pilote** par HTTP loopback,
 //! via un driver par dialecte :
 //!

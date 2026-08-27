@@ -34,7 +34,7 @@ impl ExtensionRegistry {
         Arc::new(Self::default())
     }
 
-    /// Install a plugin from a local directory containing `plugin.json`.
+    /// Install a plugin from a local directory containing `morph.json`.
     pub fn install_from_dir(
         &self,
         dir: &Path,
@@ -52,7 +52,7 @@ impl ExtensionRegistry {
             api_version: m.api_version.clone(),
             kind: ExtensionKind::Plugin,
             scope,
-            manifest_path: dir.join("plugin.json"),
+            manifest_path: dir.join("morph.json"),
             enabled: false, // disabled until permissions are approved
             permissions: PermissionSet {
                 requested: manifest::requested_permissions(&m),
@@ -151,7 +151,7 @@ pub struct ImportSummary {
 
 /// Import a Claude Code-style `.claude/` bundle.
 /// Scans `agents/*.md`, `commands/*.md`, `skills/*/SKILL.md`, `hooks.json`,
-/// `output-styles/*.md`, `CLAUDE.md`, `rules/*.md`, and `plugin.json` if
+/// `output-styles/*.md`, `CLAUDE.md`, `rules/*.md`, and `morph.json` if
 /// present. Writes the converted structure under `out`.
 pub fn import_claude_code(src: &Path, out: &Path) -> Result<ImportSummary, RegistryError> {
     let mut s = ImportSummary {

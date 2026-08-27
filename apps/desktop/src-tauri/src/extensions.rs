@@ -865,7 +865,7 @@ pub async fn install_extension(
             scope,
             ecosystem: outcome.ecosystem,
             source: Some(outcome.source.clone()),
-            manifest_path: outcome.root.join("plugin.json").display().to_string(),
+            manifest_path: outcome.root.join("morph.json").display().to_string(),
             requested,
         })
         .await
@@ -1000,7 +1000,7 @@ async fn reinstall_from_source(
             scope,
             ecosystem: outcome.ecosystem,
             source: Some(outcome.source.clone()),
-            manifest_path: outcome.root.join("plugin.json").display().to_string(),
+            manifest_path: outcome.root.join("morph.json").display().to_string(),
             requested,
         })
         .await
@@ -1831,7 +1831,7 @@ mod tests {
 
     #[test]
     fn plugin_root_is_the_manifest_directory() {
-        let r = plugin_root("/a/b/plugin.json").unwrap();
+        let r = plugin_root("/a/b/morph.json").unwrap();
         assert!(r.ends_with("b"));
     }
 

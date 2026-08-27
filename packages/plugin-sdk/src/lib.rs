@@ -2,7 +2,7 @@
 //!
 //! In V1, plugins are mostly markdown + MCP server declarations (no native
 //! code). This SDK therefore exposes:
-//! - helper builders for composing a `plugin.json`-equivalent in code,
+//! - helper builders for composing a `morph.json`-equivalent in code,
 //! - trait interfaces a native (V1.1 WASM) plugin would implement,
 //! - re-exports of the manifest types authors need.
 //!
@@ -34,7 +34,7 @@ pub struct PluginBuilder {
 impl PluginBuilder {
     pub fn new(name: impl Into<String>, version: impl Into<String>) -> Self {
         let m = PluginManifest {
-            schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
+            schema: "https://locaryn.dev/schema/morph.json/v0.1".into(),
             api_version: "0.1".into(),
             name: name.into(),
             version: version.into(),

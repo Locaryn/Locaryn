@@ -117,9 +117,9 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 
 ## D11 — Plugins/Extensions
 
-**Décision: système first-class, manifest `plugin.json`, 4 scopes, permissions, hot-reload.** Détail en `09-extension-model.md`.
+**Décision: système first-class, manifest `morph.json`, 4 scopes, permissions, hot-reload.** Détail en `09-extension-model.md`.
 
-- Format Locaryn natif `plugin.json` (schema versionné).
+- Format Locaryn natif `morph.json` (schema versionné).
 - Scopes: `global` (`~/.locaryn/plugins/`), `user` (même, alias), `workspace` (`.locaryn/plugins/`), `session` (transitoire).
 - Permissions: `shell`, `files`, `network`, `extensions`, `mcp`, `preview`, `lsp` — déclarées dans le manifest, approuvées à l'install.
 - Hot-reload via `notify` (fs watcher) + registry versionné.
@@ -131,7 +131,7 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 
 - **Compatible directement avec le standard MCP:** tools, resources, prompts, tasks, `server/discover`, JSON Schema 2020-12, transport stateless HTTP + stdio.
 - **Nécessite un adaptateur:** les features dépréciées (Roots, Sampling, Logging) sont mappées vers nos APIs (rules runtime, direct API, OpenTelemetry) quand pertinent.
-- **Spécifique Locaryn:** le manifest plugin Locaryn encapsule un MCP server (déclaré dans `plugin.json` + `.mcp.json`), avec permissions et scope — au-delà du standard MCP qui ne définit pas de packaging ni de permissions.
+- **Spécifique Locaryn:** le manifest plugin Locaryn encapsule un MCP server (déclaré dans `morph.json` + `.mcp.json`), avec permissions et scope — au-delà du standard MCP qui ne définit pas de packaging ni de permissions.
 - Registre MCP par scope (global/user/workspace) via `.locaryn/mcp.json` (format compatible Claude Code/Cursor: `mcpServers: {name: {command, args, env}}`).
 
 ## D13 — Compatibilité Claude Code / Antigravity / Cursor / Continue / Cline
@@ -143,7 +143,7 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 | Claude Code `.claude/agents/*.md` | subagent (frontmatter name/description/tools/model) | `agent_profiles` (même frontmatter + permissions) |
 | Claude Code `.claude/commands/*.md` | slash command | `slash_commands` (même markdown + variables $0,$1) |
 | Claude Code `.claude/skills/*/SKILL.md` | skill (YAML frontmatter) | `skills` (idem) |
-| Claude Code `hooks.json` (PreToolUse/PostToolUse/Stop/...) | hooks | `hooks` (mêmes events + `${LOCARYN_PLUGIN_ROOT}`) |
+| Claude Code `hooks.json` (PreToolUse/PostToolUse/Stop/...) | hooks | `hooks` (mêmes events + `${LOCARYN_MORPH_ROOT}`) |
 | Claude Code `output-styles/*.md` | output style | `agent_profiles.output_style` |
 | Claude Code `CLAUDE.md` / `rules/*.md` | instructions/rules | `workspace_rules` (markdown agrégé) |
 | Cursor `.cursor/mcp.json` | MCP registry | `mcp_servers` (format identique) |
@@ -154,7 +154,7 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 
 **Compatible directement:** MCP `.mcp.json`, markdown rules, slash commands markdown, agent frontmatter.
 **Adaptateur nécessaire:** Continue `config.yaml` (YAML→Locaryn TOML/JSON), hooks Claude Code (events aliasés).
-**Spécifique Locaryn:** manifest `plugin.json` avec permissions + packaging + scope — non couvert par les formats ci-dessus, qui restent des concepts importables mais pas des bundles signés.
+**Spécifique Locaryn:** manifest `morph.json` avec permissions + packaging + scope — non couvert par les formats ci-dessus, qui restent des concepts importables mais pas des bundles signés.
 
 ## Tableau récapitulatif des décisions
 
@@ -170,6 +170,6 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 | D8 | Auth | Bearer token V1, rotation, keychain; mTLS V1.1, SSO V2 |
 | D9 | TLS | rustls obligatoire remote; plain loopback daemon |
 | D10 | Réseau | daemon loopback only; remote 0.0.0.0+TLS+auth+RL |
-| D11 | Plugins | plugin.json, 4 scopes, permissions, hot-reload |
+| D11 | Plugins | morph.json, 4 scopes, permissions, hot-reload |
 | D12 | MCP | standard 2026-07-28 via rmcp + encapsulation Locaryn |
 | D13 | Compat écosystème | import layer dans locaryn-extensions |

@@ -47,7 +47,7 @@ pub fn extension_data_dir(name: &str) -> PathBuf {
 }
 
 /// Le dossier racine d'une extension installée, depuis le chemin de son
-/// manifeste. Accepte un chemin de dossier comme un chemin de `plugin.json`.
+/// manifeste. Accepte un chemin de dossier comme un chemin de `morph.json`.
 pub fn plugin_root(manifest_path: &Path) -> Option<PathBuf> {
     if manifest_path.is_dir() {
         return Some(manifest_path.to_path_buf());
@@ -117,7 +117,7 @@ pub fn generic_env(name: &str, plugin_root: &Path) -> HashMap<String, String> {
             .display()
             .to_string(),
     );
-    put("LOCARYN_PLUGIN_ROOT", plugin_root.display().to_string());
+    put("LOCARYN_MORPH_ROOT", plugin_root.display().to_string());
     put(
         "LOCARYN_PLUGIN_BIN_DIR",
         plugin_root.join("bin").display().to_string(),
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn la_racine_est_le_dossier_du_manifeste() {
-        let root = plugin_root(Path::new("/a/b/plugin.json")).unwrap();
+        let root = plugin_root(Path::new("/a/b/morph.json")).unwrap();
         assert_eq!(root, PathBuf::from("/a/b"));
     }
 
@@ -148,7 +148,7 @@ mod tests {
     fn l_environnement_generique_nomme_la_racine_donnee() {
         let env = generic_env("essai", Path::new("/x/y"));
         assert_eq!(
-            env.get("LOCARYN_PLUGIN_ROOT").map(String::as_str),
+            env.get("LOCARYN_MORPH_ROOT").map(String::as_str),
             Some(PathBuf::from("/x/y").display().to_string().as_str())
         );
         assert!(env.contains_key("LOCARYN_MODELS_DIR"));

@@ -135,7 +135,7 @@ Tous les chemins sont relatifs et commencent par `./`. `commands`, `agents`,
 `skills` **s'y ajoute** ; `hooks`, `mcpServers` et `lspServers` ont leurs
 propres règles de fusion.
 
-Locaryn accepte aussi son propre manifeste, `plugin.json` à la racine, qui a le
+Locaryn accepte aussi son propre manifeste, `morph.json` à la racine, qui a le
 même rôle et ajoute la couche d'interface décrite ci-dessous. Quand les deux
 existent, le manifeste Locaryn l'emporte pour ce qui lui est propre, et
 `.claude-plugin/plugin.json` reste la source pour le reste.
@@ -311,7 +311,7 @@ marche, pas ce qu'on voudrait.
 
 | Élément | État |
 | --- | --- |
-| Manifeste Locaryn `plugin.json` (nom, version, capacités) | **fait** |
+| Manifeste Locaryn `morph.json` (nom, version, capacités) | **fait** |
 | `ui_contributions.nav_items` et `studio_tabs` | **fait sur l'ordinateur** (menu et onglets construits depuis les extensions actives, socle natif préservé) ; téléphone **à faire** |
 | Installation depuis un dépôt du catalogue (`propriétaire/dépôt`) | **fait** |
 | Installation depuis un dossier local | **fait** |

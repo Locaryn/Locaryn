@@ -2257,7 +2257,7 @@ mod extension_tests {
             scope: ExtensionScope::User,
             ecosystem: ExtensionEcosystem::ClaudeCode,
             source: Some(format!("github:acme/{name}")),
-            manifest_path: format!("/plugins/{name}/plugin.json"),
+            manifest_path: format!("/plugins/{name}/morph.json"),
             requested: vec![Permission::Mcp, Permission::FilesRead],
         }
     }

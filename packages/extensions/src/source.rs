@@ -586,7 +586,7 @@ pub async fn latest_github_version(
         .map(|d| format!("{}/", d.replace('\\', "/")))
         .unwrap_or_default();
     for name in [
-        "plugin.json",
+        "morph.json",
         ".claude-plugin/plugin.json",
         "gemini-extension.json",
         "opencode.json",
@@ -896,7 +896,7 @@ mod tests {
         let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
         for (name, content) in [
             (
-                "repo-main/plugin.json",
+                "repo-main/morph.json",
                 r#"{"name":"zip-plugin","version":"1.0.0"}"#,
             ),
             ("repo-main/commands/go.md", "---\nname: go\n---\nGo"),
@@ -919,9 +919,9 @@ mod tests {
         .expect("zip installs");
 
         assert_eq!(dir, dest);
-        assert!(dest.join("plugin.json").is_file(), "root must be stripped");
+        assert!(dest.join("morph.json").is_file(), "root must be stripped");
         assert!(
-            !dest.join("repo-main/plugin.json").is_file(),
+            !dest.join("repo-main/morph.json").is_file(),
             "generated root must not survive"
         );
     }

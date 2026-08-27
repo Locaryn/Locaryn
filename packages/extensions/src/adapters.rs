@@ -1,9 +1,9 @@
 //! Turn a foreign bundle into a Locaryn plugin.
 //!
 //! Adaptation happens **in place**: we read whatever layout the bundle
-//! actually has, then write a Locaryn `plugin.json` beside it pointing at the
+//! actually has, then write a Locaryn `morph.json` beside it pointing at the
 //! files that are already there. Nothing is duplicated and nothing is thrown
-//! away, so `plugin.json` can be regenerated at any time by re-running this.
+//! away, so `morph.json` can be regenerated at any time by re-running this.
 //!
 //! Three of the four ecosystems already agree with Locaryn on the important
 //! parts — markdown with YAML frontmatter for skills/agents/commands, and the
@@ -21,7 +21,13 @@ use std::path::{Path, PathBuf};
 
 /// Locaryn's own manifest name. Claude Code puts its manifest one level down in
 /// `.claude-plugin/`, which is how the two are told apart.
-pub const LOCARYN_MANIFEST: &str = "plugin.json";
+pub const LOCARYN_MANIFEST: &str = "morph.json";
+/// Le manifeste Locaryn d'avant le renommage en Morphs. Il n'est plus
+/// chargé : un paquet qui le porte doit être réinstallé. On le reconnaît
+/// uniquement pour pouvoir le dire — sans ça un vieux morph qui a un
+/// `SKILL.md` ou un dossier `skills/` à sa racine serait pris pour un paquet
+/// Claude Code et converti de travers, en silence.
+pub const LEGACY_MANIFEST: &str = "plugin.json";
 pub const CLAUDE_MANIFEST: &str = ".claude-plugin/plugin.json";
 pub const CLAUDE_MARKETPLACE: &str = ".claude-plugin/marketplace.json";
 pub const GEMINI_MANIFEST: &str = "gemini-extension.json";
@@ -37,11 +43,21 @@ pub enum AdaptError {
         source: serde_json::Error,
     },
     #[error(
-        "no recognisable plugin found in {0} — expected plugin.json, \
+        "no recognisable plugin found in {0} — expected morph.json, \
              .claude-plugin/plugin.json, gemini-extension.json, opencode.json, \
              or a commands/agents/skills directory"
     )]
     Unrecognised(String),
+    #[error(
+        "{0} porte `plugin.json`, le manifeste d'avant les Morphs. Ce format \n             n'est plus chargé : réinstallez le paquet depuis sa source."
+    )]
+    LegacyManifest(String),
+}
+
+/// Un paquet resté au manifeste d'avant le renommage : `plugin.json` à la
+/// racine, et pas de `morph.json` à côté.
+pub fn is_legacy_bundle(dir: &Path) -> bool {
+    !dir.join(LOCARYN_MANIFEST).is_file() && dir.join(LEGACY_MANIFEST).is_file()
 }
 
 /// The outcome of adapting a directory.
@@ -97,12 +113,17 @@ pub fn detect(dir: &Path) -> Option<ExtensionEcosystem> {
     None
 }
 
-/// Detect, convert, and write `plugin.json` into `dir`.
+/// Detect, convert, and write `morph.json` into `dir`.
 ///
 /// `fallback_name` is used when the bundle carries no name of its own (an
 /// unmanifested Claude Code tree, a bare `.mcp.json`); pass the directory or
 /// repository name.
 pub fn adapt(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptError> {
+    // Avant toute détection : un `plugin.json` sans `morph.json` est un paquet
+    // d'avant le renommage. Le dire vaut mieux que le convertir au hasard.
+    if is_legacy_bundle(dir) {
+        return Err(AdaptError::LegacyManifest(dir.display().to_string()));
+    }
     let eco = detect(dir).ok_or_else(|| AdaptError::Unrecognised(dir.display().to_string()))?;
     match eco {
         ExtensionEcosystem::Locaryn => {
@@ -140,7 +161,7 @@ pub fn adapt(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptError>
 fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptError> {
     let mut notes = Vec::new();
     let mut m = PluginManifest {
-        schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
+        schema: "https://locaryn.dev/schema/morph.json/v0.1".into(),
         api_version: "0.1".into(),
         name: sanitize_name(fallback_name),
         version: "0.0.0".into(),
@@ -229,7 +250,7 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         if dir.join(&rel).is_file() {
             rewrite_vars(
                 &dir.join(&rel),
-                &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")],
+                &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_MORPH_ROOT")],
             )?;
             c.hooks = Some(rel);
         }
@@ -243,7 +264,7 @@ fn adapt_claude_code(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Ada
         if dir.join(&rel).is_file() {
             rewrite_vars(
                 &dir.join(&rel),
-                &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")],
+                &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_MORPH_ROOT")],
             )?;
             c.mcp = Some(rel);
         }
@@ -297,7 +318,7 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
     })?;
 
     let mut m = PluginManifest {
-        schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
+        schema: "https://locaryn.dev/schema/morph.json/v0.1".into(),
         api_version: "0.1".into(),
         name: sanitize_name(
             v.get("name")
@@ -324,7 +345,7 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
         let json = serde_json::to_string_pretty(&serde_json::json!({ "mcpServers": servers }))
             .unwrap_or_default();
         let json = json
-            .replace("${extensionPath}", "${LOCARYN_PLUGIN_ROOT}")
+            .replace("${extensionPath}", "${LOCARYN_MORPH_ROOT}")
             .replace("${/}", "/");
         std::fs::create_dir_all(dir.join("mcp"))?;
         std::fs::write(dir.join("mcp/mcp.json"), json)?;
@@ -368,7 +389,7 @@ fn adapt_gemini_cli(dir: &Path, fallback_name: &str) -> Result<AdaptReport, Adap
         let inner = hv.get("hooks").cloned().unwrap_or(hv);
         let text = serde_json::to_string_pretty(&inner)
             .unwrap_or_default()
-            .replace("${extensionPath}", "${LOCARYN_PLUGIN_ROOT}")
+            .replace("${extensionPath}", "${LOCARYN_MORPH_ROOT}")
             .replace("${workspacePath}", "${LOCARYN_PROJECT_ROOT}")
             .replace("${/}", "/");
         std::fs::write(&path, text)?;
@@ -487,7 +508,7 @@ fn adapt_opencode(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptE
     let mut notes = Vec::new();
     let mut partial = false;
     let mut m = PluginManifest {
-        schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
+        schema: "https://locaryn.dev/schema/morph.json/v0.1".into(),
         api_version: "0.1".into(),
         name: sanitize_name(fallback_name),
         version: "0.0.0".into(),
@@ -624,14 +645,14 @@ fn adapt_bare_mcp(dir: &Path, fallback_name: &str) -> Result<AdaptReport, AdaptE
         .ok_or_else(|| AdaptError::Unrecognised(dir.display().to_string()))?;
     rewrite_vars(
         &dir.join(&rel),
-        &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_PLUGIN_ROOT")],
+        &[("CLAUDE_PLUGIN_ROOT", "LOCARYN_MORPH_ROOT")],
     )?;
     let c = Components {
         mcp: Some(rel),
         ..Default::default()
     };
     let mut m = PluginManifest {
-        schema: "https://locaryn.dev/schema/plugin.json/v0.1".into(),
+        schema: "https://locaryn.dev/schema/morph.json/v0.1".into(),
         api_version: "0.1".into(),
         name: sanitize_name(fallback_name),
         version: "0.0.0".into(),
@@ -951,6 +972,42 @@ mod tests {
         d
     }
 
+    /// Un morph d'avant le renommage a souvent un `SKILL.md` ou un dossier
+    /// `skills/` à sa racine. Sans garde-fou explicite, `detect()` le prendrait
+    /// pour un paquet Claude Code et le convertirait de travers, en silence.
+    #[test]
+    fn a_legacy_manifest_is_refused_by_name_not_adapted_as_claude_code() {
+        let d = tmp("legacy");
+        std::fs::write(d.join(LEGACY_MANIFEST), r#"{"name":"morph-image"}"#).unwrap();
+        std::fs::write(d.join("SKILL.md"), "# skill").unwrap();
+
+        assert!(is_legacy_bundle(&d));
+        // Sans le garde-fou, c'est ce que `detect()` répondrait.
+        assert_eq!(detect(&d), Some(ExtensionEcosystem::ClaudeCode));
+
+        match adapt(&d, "morph-image") {
+            Err(AdaptError::LegacyManifest(_)) => {}
+            other => panic!("attendu LegacyManifest, obtenu {other:?}"),
+        }
+    }
+
+    /// Un `plugin.json` à côté d'un `morph.json` n'est plus un paquet ancien :
+    /// c'est un morph qui garde un fichier d'un autre écosystème à sa racine.
+    #[test]
+    fn a_morph_manifest_wins_over_a_leftover_plugin_json() {
+        let d = tmp("both");
+        std::fs::write(d.join(LEGACY_MANIFEST), r#"{"name":"vieux"}"#).unwrap();
+        std::fs::write(
+            d.join(LOCARYN_MANIFEST),
+            r#"{"apiVersion":"0.1","name":"neuf","version":"1.0.0"}"#,
+        )
+        .unwrap();
+
+        assert!(!is_legacy_bundle(&d));
+        let r = adapt(&d, "neuf").expect("le morph doit charger");
+        assert_eq!(r.manifest.name, "neuf");
+    }
+
     #[test]
     fn sanitizes_names() {
         assert_eq!(sanitize_name("My Cool Plugin!"), "my-cool-plugin");
@@ -986,7 +1043,7 @@ mod tests {
         assert_eq!(r.manifest.components.mcp.as_deref(), Some(".mcp.json"));
         // The plugin-root variable was rewritten to Locaryn's spelling.
         let mcp = std::fs::read_to_string(d.join(".mcp.json")).unwrap();
-        assert!(mcp.contains("${LOCARYN_PLUGIN_ROOT}"));
+        assert!(mcp.contains("${LOCARYN_MORPH_ROOT}"));
         // A Locaryn manifest now exists, so a second detect() sees it as native.
         assert_eq!(detect(&d), Some(ExtensionEcosystem::Locaryn));
     }
@@ -1013,7 +1070,7 @@ mod tests {
         assert!(md.contains("name: scan:deep"));
         assert!(md.contains("Scan $0 now"));
         let mcp = std::fs::read_to_string(d.join("mcp/mcp.json")).unwrap();
-        assert!(mcp.contains("${LOCARYN_PLUGIN_ROOT}/s.js"));
+        assert!(mcp.contains("${LOCARYN_MORPH_ROOT}/s.js"));
     }
 
     #[test]

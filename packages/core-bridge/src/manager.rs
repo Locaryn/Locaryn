@@ -4,7 +4,7 @@
 //! (supervision des processus, sessions CLI) — décision D4 du document 14 :
 //! **un seul superviseur de processus**, pas deux logiques qui divergent.
 //!
-//! Un noyau est une extension dont le `plugin.json` porte une section `core`.
+//! Un noyau est une extension dont le `morph.json` porte une section `core`.
 //! Locaryn ne réimplémente rien : il lance le processus du noyau (lifecycle),
 //! attend sa sonde de santé, lui passe un jeton généré localement, et laisse
 //! `send_message` router la session vers son API OpenAI-compatible.

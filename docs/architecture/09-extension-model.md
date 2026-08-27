@@ -1,12 +1,12 @@
 # 09 — Extension Model
 
-Système d'extensions **first-class**. Un plugin Locaryn est un bundle auto-contained pouvant contenir: skills, commands/slash commands, hooks, agents, MCP servers, rules, LSP adapters. Manifest `plugin.json`, permissions déclarées, scoping, hot-reload.
+Système d'extensions **first-class**. Un plugin Locaryn est un bundle auto-contained pouvant contenir: skills, commands/slash commands, hooks, agents, MCP servers, rules, LSP adapters. Manifest `morph.json`, permissions déclarées, scoping, hot-reload.
 
 ## Structure d'un plugin Locaryn
 
 ```
 my-plugin/
-├── plugin.json                 # manifest (obligatoire)
+├── morph.json                 # manifest (obligatoire)
 ├── README.md
 ├── skills/
 │   └── database-migration/
@@ -28,11 +28,11 @@ my-plugin/
     └── ...
 ```
 
-## Manifest `plugin.json`
+## Manifest `morph.json`
 
 ```json
 {
-  "schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "schema": "https://locaryn.dev/schema/morph.json/v0.1",
   "apiVersion": "0.1",
   "name": "my-plugin",
   "version": "1.0.0",
@@ -99,8 +99,8 @@ Résolution: `workspace` > `user` > `global` (le plus spécifique gagne pour un 
 1. install(source, scope)
    ├── resolve source (path | url | registry)
    ├── download/extract vers <scope dir>/<name>/
-   ├── validate plugin.json (schema + apiVersion + minLocarynVersion)
-   ├── check dependencies (déclarées dans plugin.json deps[])
+   ├── validate morph.json (schema + apiVersion + minLocarynVersion)
+   ├── check dependencies (déclarées dans morph.json deps[])
    ├── persist extension row (status=installing)
    └── prompt permissions → user decision
 2. enable(id)
@@ -125,7 +125,7 @@ Résolution: `workspace` > `user` > `global` (le plus spécifique gagne pour un 
 
 ## Dépendances
 
-`plugin.json` peut déclarer:
+`morph.json` peut déclarer:
 ```json
 "deps": [
   { "name": "locaryn-mcp-stdlib", "version": "^1.0.0" },
@@ -144,7 +144,7 @@ Résolution: registry local; si manquant, refus d'install avec message clair. Pa
 
 ## Permissions
 
-Déclarées dans `plugin.json.permissions`. Approuvées à l'install (modal desktop / prompt CLI). Refus = feature désactivée, agent informé dans system prompt.
+Déclarées dans `morph.json.permissions`. Approuvées à l'install (modal desktop / prompt CLI). Refus = feature désactivée, agent informé dans system prompt.
 
 | Permission | Description | Default |
 | --- | --- | --- |
@@ -167,7 +167,7 @@ ou `false` pour explicitement ne pas demander.
 ## Sandbox
 
 - **Markdown components** (skills/commands/agents/rules): pas d'exécution de code; injection system prompt uniquement. Safe par construction.
-- **Hooks:** exécutés via shell avec timeout + permission `shell` + working dir = project root; stdout/stderr capturés; variables `${LOCARYN_PLUGIN_ROOT}`, `${LOCARYN_PROJECT_ROOT}`, `${LOCARYN_SESSION_ID}` injectées.
+- **Hooks:** exécutés via shell avec timeout + permission `shell` + working dir = project root; stdout/stderr capturés; variables `${LOCARYN_MORPH_ROOT}`, `${LOCARYN_PROJECT_ROOT}`, `${LOCARYN_SESSION_ID}` injectées.
 - **MCP servers:** exécutés en subprocess (stdio) ou contactés via HTTP; permissions `mcp` + `network` (si HTTP); outils MCP soumis à approval comme les outils natifs.
 - **Code natif (V1.1):** WASM `wasmtime` sandbox, pas d'accès FS/réseau direct; IPC via host functions permission-gated.
 - **Preview:** iframe sandboxed + CSP; pas d'accès au app origin.
@@ -183,7 +183,7 @@ Format compatible Claude Code:
     {
       "matcher": "WriteFile",
       "hooks": [
-        { "type": "command", "command": "bash ${LOCARYN_PLUGIN_ROOT}/hooks/validate.sh", "timeout": 30 }
+        { "type": "command", "command": "bash ${LOCARYN_MORPH_ROOT}/hooks/validate.sh", "timeout": 30 }
       ]
     }
   ],
@@ -250,7 +250,7 @@ Format compatible Claude Code/Cursor (`mcpServers`):
   "mcpServers": {
     "schema-introspect": {
       "command": "node",
-      "args": ["${LOCARYN_PLUGIN_ROOT}/mcp/schema-server.js"],
+      "args": ["${LOCARYN_MORPH_ROOT}/mcp/schema-server.js"],
       "env": { "DB_URL": "${env:DB_URL}" },
       "transport": "stdio",
       "auto_start": true
@@ -301,7 +301,7 @@ Agrégé avec `LOCARYN.md` et `.locaryn/rules/*.md` par `locaryn-rules-runtime`.
 | Claude Code | `hooks.json` | events Claude | `hooks/hooks.json` | ✅ direct (mêmes events) |
 | Claude Code | `output-styles/*.md` | markdown | `agents/*.md` output_style | ✅ adaptateur |
 | Claude Code | `CLAUDE.md`, `rules/*.md` | markdown | `rules/*.md` + `LOCARYN.md` | ✅ direct |
-| Claude Code | `plugin.json` (si présent) | manifest | `plugin.json` (conversion) | adaptateur (permissions à déclarer) |
+| Claude Code | `morph.json` (si présent) | manifest | `morph.json` (conversion) | adaptateur (permissions à déclarer) |
 | Cursor | `.cursor/mcp.json` | `mcpServers` | `mcp/mcp.json` | ✅ direct |
 | Cursor | `.cursor/rules/*.md` | markdown | `rules/*.md` | ✅ direct |
 | Continue | `config.yaml` models | YAML | `providers` config | adaptateur (YAML→TOML) |
@@ -321,13 +321,13 @@ Agrégé avec `LOCARYN.md` et `.locaryn/rules/*.md` par `locaryn-rules-runtime`.
 ### Nécessite un adaptateur
 
 - Continue `config.yaml` (YAML → Locaryn JSON/TOML).
-- Claude Code `plugin.json` (ajout des permissions Locaryn).
+- Claude Code `morph.json` (ajout des permissions Locaryn).
 - Antigravity `antigravity.yaml` (persona → agent_profile).
 - Cline "modes" (UI state → agent_profile).
 
 ### Reste spécifique Locaryn
 
-- Manifest `plugin.json` avec `apiVersion`, `permissions` (modèle de sécurité), `config.schema`, packaging + scope.
+- Manifest `morph.json` avec `apiVersion`, `permissions` (modèle de sécurité), `config.schema`, packaging + scope.
 - Permissions model (shell/files/network/... avec approval scope).
 - Sandbox WASM (V1.1) pour code natif.
 - Registry local + hot-reload.

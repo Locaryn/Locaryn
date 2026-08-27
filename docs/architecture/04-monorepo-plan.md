@@ -94,7 +94,7 @@ locaryn/
 ├── examples/
 │   ├── plugins/
 │   │   └── my-plugin/
-│   │       ├── plugin.json
+│   │       ├── morph.json
 │   │       ├── skills/
 │   │       ├── commands/
 │   │       ├── agents/
@@ -145,7 +145,7 @@ locaryn/
 | Port daemon | `7474` | `127.0.0.1:7474` |
 | Port remote-server | `7473` | `0.0.0.0:7473` (TLS) |
 | Config dir | `~/.locaryn/` (global/user), `.locaryn/` (workspace) | — |
-| Plugin manifest | `plugin.json` | — |
+| Plugin manifest | `morph.json` | — |
 | MCP config | `.locaryn/mcp.json` (workspace), `~/.locaryn/mcp.json` (global) | — |
 | Rules | `.locaryn/rules/*.md` + `LOCARYN.md` (workspace) | — |
 | Env vars | `LOCARYN_*` | `LOCARYN_SERVER_URL`, `LOCARYN_TOKEN` |
@@ -203,7 +203,7 @@ locaryn/
 - Workspace version unifié `0.1.0` en MVP; chaque crate peut diverger à partir de `1.0.0`.
 - `locaryn-*` crates internes: version workspace jusqu'à 1.0, puis versionnage indépendant.
 - Changelog par release (`CHANGELOG.md` racine).
-- **Manifest plugin versioning**: `plugin.json` a `apiVersion` (Locaryn extension API) + `version` (version du plugin). Locaryn refuse les plugins dont `apiVersion` n'est pas supportée.
+- **Manifest plugin versioning**: `morph.json` a `apiVersion` (Locaryn extension API) + `version` (version du plugin). Locaryn refuse les plugins dont `apiVersion` n'est pas supportée.
 
 ## CI/CD
 
