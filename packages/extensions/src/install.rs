@@ -406,6 +406,55 @@ mod tests {
         assert!(out.root.join("morph.json").is_file());
     }
 
+    /// Un Morph livré avec un binaire : il passe par l'archive de release, pas
+    /// par les sources. C'est le chemin que suit le magasin pour la plupart des
+    /// morphs, et celui qui casse si une release est publiée à l'ancien format.
+    #[tokio::test]
+    #[ignore = "requires network"]
+    async fn installs_a_released_morph_bundle_with_its_binary() {
+        let base = std::env::temp_dir().join("locaryn-install-morph-bundle");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let http = reqwest::Client::builder()
+            .user_agent("locaryn/0.1")
+            .build()
+            .unwrap();
+
+        let out = install(
+            &http,
+            "github:Locaryn/morph-ssh",
+            ExtensionScope::Workspace,
+            Some(&base),
+        )
+        .await
+        .expect("install du bundle publie");
+
+        println!(
+            "installe {} v{} ({:?}) — {:?}",
+            out.manifest.name,
+            out.manifest.version,
+            out.ecosystem,
+            out.loaded.counts()
+        );
+        assert_eq!(out.ecosystem, ExtensionEcosystem::Locaryn);
+        assert_eq!(out.manifest.name, "morph-ssh");
+        assert!(out.root.join("morph.json").is_file());
+        // Le binaire du serveur MCP doit etre dans le paquet : c'est toute la
+        // raison de passer par la release plutot que par les sources.
+        let bin = out.root.join("bin");
+        assert!(bin.is_dir(), "bin/ absent du bundle");
+        assert!(
+            std::fs::read_dir(&bin).unwrap().next().is_some(),
+            "bin/ vide"
+        );
+        assert_eq!(
+            out.loaded.counts().mcp_servers,
+            1,
+            "{:?}",
+            out.loaded.errors
+        );
+    }
+
     /// The Gemini path exercises the parts that are not a straight copy: TOML
     /// commands become markdown, and `mcpServers` is lifted out of the
     /// manifest into its own file.
