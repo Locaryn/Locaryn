@@ -1,4 +1,4 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon, type IconName, LoSwitch } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import {
   type Conversation,
@@ -648,14 +648,11 @@ export function Settings({
                         Réponses en arrière-plan, générations prêtes et demandes d'autorisation
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      className={`lo-toggle ${pushActive ? "lo-toggle-on" : ""}`}
-                      onClick={() => void handleTogglePush()}
-                      aria-pressed={pushActive}
-                    >
-                      {pushActive ? "Activé" : "Désactivé"}
-                    </button>
+                    <LoSwitch
+                      checked={pushActive}
+                      onChange={() => void handleTogglePush()}
+                      label="Notifications push"
+                    />
                   </div>
                   {pushActive && (
                     <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>

@@ -1,16 +1,36 @@
+import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type MemoryEntry, api } from "../lib/core";
 import { Screen } from "./Screen";
 
 type Props = { onBack: () => void };
 
+/** Le temps que met un souvenir à s'effacer avant de quitter la liste. */
+const FORGET_MS = 320;
+
+const CATEGORIES = [
+  { value: "preference", label: "Préférence" },
+  { value: "habitude", label: "Habitude" },
+  { value: "projet", label: "Projet" },
+  { value: "fait", label: "Fait" },
+];
+
+function labelFor(category: string): string {
+  return CATEGORIES.find((c) => c.value === category.trim().toLowerCase())?.label ?? category;
+}
+
+function learnedOn(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "date inconnue";
+  return `appris le ${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`;
+}
+
 /**
- * Ce que le serveur retient de vous.
+ * Ce que le serveur retient de vous — un texte, pas une liste.
  *
- * Son propre écran, pas une section coincée entre deux réglages : c'est une
- * liste qui grandit, et elle grandit surtout toute seule — le modèle des
- * petites tâches y dépose ce qu'il comprend de vos habitudes au fil des
- * conversations. On vient ici pour lire ce qu'il a compris, corriger, oublier.
+ * Un paragraphe par souvenir, écrit par l'assistant. Au repos rien ne délimite
+ * quoi que ce soit. Sur un téléphone il n'y a pas de survol : c'est la touche
+ * qui ouvre un souvenir, révèle sa métadonnée et propose de l'oublier.
  */
 export function MemoryScreen({ onBack }: Props) {
   const [entries, setEntries] = useState<MemoryEntry[] | null>(null);
@@ -18,6 +38,9 @@ export function MemoryScreen({ onBack }: Props) {
   const [category, setCategory] = useState("preference");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Le souvenir ouvert : sur un téléphone, la touche remplace le survol. */
+  const [ouvert, setOuvert] = useState<string | null>(null);
+  const [forgetting, setForgetting] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -48,41 +71,67 @@ export function MemoryScreen({ onBack }: Props) {
   }
 
   async function forget(id: string) {
+    setForgetting(id);
+    await new Promise((resolve) => setTimeout(resolve, FORGET_MS));
     try {
       await api.forget(id);
-      await reload();
+      setEntries((prev) => prev?.filter((e) => e.id !== id) ?? null);
+      setOuvert(null);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setForgetting(null);
     }
   }
 
   return (
     <Screen title="Mémoire" onBack={onBack}>
       <p className="lo-hint">
-        Vos préférences, vos habitudes, ce sur quoi vous travaillez. Le modèle s'en sert pour
-        répondre — y compris pour écrire un prompt d'image à votre goût. Ce qui est écrit ici a pu
-        l'être par vous, ou compris tout seul au fil des conversations ; tout est modifiable.
+        Vos préférences, vos habitudes, ce sur quoi vous travaillez — ce que le modèle emporte avec
+        vos messages. Touchez un passage pour voir d'où il vient et l'oublier.
       </p>
 
       {entries === null && !error && <p className="lo-sub">Chargement…</p>}
       {entries?.length === 0 && <p className="lo-sub">Rien pour l'instant.</p>}
 
-      <ul className="lo-list">
-        {entries?.map((e) => (
-          <li key={e.id} className="lo-list-item">
-            <span className="lo-tag">{e.category}</span>
-            <span className="lo-list-text">{e.content}</span>
-            <button
-              type="button"
-              className="lo-msg-copy"
-              onClick={() => void forget(e.id)}
-              aria-label={`Oublier : ${e.content}`}
-            >
-              Oublier
-            </button>
-          </li>
-        ))}
-      </ul>
+      {entries && entries.length > 0 && (
+        <article className="lo-memory-document">
+          {entries.map((e) => {
+            const actif = ouvert === e.id;
+            return (
+              <div
+                key={e.id}
+                className={`lo-memory-para${actif ? " is-open" : ""}${forgetting === e.id ? " is-forgetting" : ""}`}
+              >
+                <button
+                  type="button"
+                  className="lo-memory-text"
+                  aria-expanded={actif}
+                  onClick={() => setOuvert(actif ? null : e.id)}
+                >
+                  {e.content}
+                </button>
+                {actif && (
+                  <div className="lo-memory-foot">
+                    <span className="lo-memory-meta">
+                      {labelFor(e.category)}
+                      {e.created_at ? ` · ${learnedOn(e.created_at)}` : ""}
+                    </span>
+                    <button
+                      type="button"
+                      className="lo-btn-small"
+                      onClick={() => void forget(e.id)}
+                      aria-label={`Oublier : ${e.content}`}
+                    >
+                      <Icon name="trash" size={15} /> Oublier
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </article>
+      )}
 
       <label className="lo-label" htmlFor="mem-cat">
         Catégorie
@@ -93,10 +142,11 @@ export function MemoryScreen({ onBack }: Props) {
         value={category}
         onChange={(e) => setCategory(e.target.value)}
       >
-        <option value="preference">Préférence</option>
-        <option value="habitude">Habitude</option>
-        <option value="projet">Projet</option>
-        <option value="fait">Fait</option>
+        {CATEGORIES.map((c) => (
+          <option key={c.value} value={c.value}>
+            {c.label}
+          </option>
+        ))}
       </select>
 
       <label className="lo-label" htmlFor="mem-new">

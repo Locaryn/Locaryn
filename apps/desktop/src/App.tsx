@@ -13,6 +13,7 @@ import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
 import { TopBar } from "./components/TopBar";
+import { ExtensionScreen } from "./components/extensions/ExtensionScreen";
 import { useTheme } from "./hooks/useTheme";
 import { FREE_CHAT_PATH } from "./lib/constants";
 import {
@@ -1142,12 +1143,18 @@ export function App() {
           />
         )}
 
+        {/* Plus dans le menu : on y arrive depuis le catalogue de modèles,
+            sur lequel ce studio agit. */}
         {activeView === "training" && (
           <ModelStudioView
             onOpenMarketplace={() => setActiveView("models")}
             onOpenSettings={() => setActiveView("settings")}
           />
         )}
+
+        {/* Un écran déclaré par une extension : l'application ne connaît pas
+            son nom, elle sait seulement qu'une extension le revendique. */}
+        <ExtensionScreen view={activeView} extensions={activeExtensions} />
 
         {activeView === "extensions" && (
           <div className="locaryn-view-container">

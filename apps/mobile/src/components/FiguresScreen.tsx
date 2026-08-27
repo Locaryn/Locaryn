@@ -1,3 +1,4 @@
+import { LoSwitch } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type FigureDraft, type PhoneFigure, type PhoneFigureSession, api } from "../lib/core";
 import { Screen } from "./Screen";
@@ -202,13 +203,11 @@ export function FiguresScreen({ onBack, onOpenChat }: Props) {
               <span className="lo-hint">La figure lit ce que le service retient de vous.</span>
             </div>
             <div className="lo-card-actions">
-              <button
-                type="button"
-                className={`lo-toggle${c.usesMemory ? " lo-toggle-on" : ""}`}
-                onClick={() => setEdit({ ...c, usesMemory: !c.usesMemory })}
-              >
-                {c.usesMemory ? "Oui" : "Non"}
-              </button>
+              <LoSwitch
+                checked={c.usesMemory}
+                onChange={(usesMemory) => setEdit({ ...c, usesMemory })}
+                label="La figure lit la mémoire"
+              />
             </div>
           </li>
         </ul>

@@ -67,7 +67,8 @@ export function WorkspacePicker({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [sshWorkspaces, setSshWorkspaces] = useState<ExtensionWorkspaceTarget[]>(loadSavedSshWorkspaces);
+  const [sshWorkspaces, setSshWorkspaces] =
+    useState<ExtensionWorkspaceTarget[]>(loadSavedSshWorkspaces);
   const [addSshModalOpen, setAddSshModalOpen] = useState(false);
   const [sshName, setSshName] = useState("");
   const [sshHost, setSshHost] = useState("");
@@ -82,7 +83,8 @@ export function WorkspacePicker({
     extensions.some(
       (e) =>
         e.enabled &&
-        (e.capabilities?.includes("ssh-remote-exec") || e.capabilities?.includes("remote-workspace")),
+        (e.capabilities?.includes("ssh-remote-exec") ||
+          e.capabilities?.includes("remote-workspace")),
     );
 
   useEffect(() => {
@@ -351,7 +353,8 @@ export function WorkspacePicker({
                 </span>
                 <span className="locaryn-ws-item-text">
                   <span>
-                    {remoteServerName ? `Serveur ${remoteServerName}` : "Serveur distant"} (Connecté)
+                    {remoteServerName ? `Serveur ${remoteServerName}` : "Serveur distant"}{" "}
+                    (Connecté)
                   </span>
                   <span className="locaryn-ws-item-hint">
                     Environnement de travail du serveur distant
@@ -455,7 +458,9 @@ export function WorkspacePicker({
                 />
               </div>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "20px" }}>
+            <div
+              style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "20px" }}
+            >
               <button
                 type="button"
                 className="locaryn-btn-ghost"

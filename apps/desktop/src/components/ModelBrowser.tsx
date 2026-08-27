@@ -1,10 +1,12 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon, type IconName, LoSwitch } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type HfModelCandidate,
   type HfModelSelection,
   type HfRepoInspection,
   type InstalledExtension,
+  type LlmfitCatalogEntry,
+  type ModelFit,
   type ModelMetric,
   core,
   formatBytes,
@@ -246,7 +248,15 @@ const AIRLLM_KEY = "locaryn_model_airllm_v1";
  * VRAM/RAM) are converted to AirLLM execution — the open-source engine that
  * loads transformer layers one at a time so a 4 GB VRAM GPU can run 70B+.
  */
-function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Compat {
+function variantCompat(
+  storageGb: number,
+  hw: HwSpec | null,
+  airllm = false,
+  fit?: ModelFit,
+): Compat {
+  // L'estimation native prime : elle tient compte du contexte réglé et de la
+  // mémoire réellement libre, là où la taille du fichier ne dit rien des deux.
+  if (fit) return compatFromFit(fit, airllm);
   if (storageGb === 0) {
     return {
       level: "unknown",
@@ -300,14 +310,94 @@ function variantCompat(storageGb: number, hw: HwSpec | null, airllm = false): Co
   };
 }
 
+/**
+ * Deux jeux d'estimations disent-ils la même chose ?
+ *
+ * Le tri des familles dépend des estimations, et les estimations sont
+ * recalculées quand la liste change : sans cette comparaison, chaque réponse
+ * relancerait un calcul identique en boucle. Le message porte les chiffres
+ * libres du moment, donc une vraie évolution de la mémoire se voit ici.
+ */
+function sameFits(a: Record<string, ModelFit>, b: Record<string, ModelFit>): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => a[key]?.message === b[key]?.message);
+}
+
+/**
+ * Clé d'estimation.
+ *
+ * À paramètres, quantification et taille égaux, la réponse est la même : deux
+ * cents lignes de catalogue ne demandent qu'une poignée de calculs distincts.
+ */
+function fitKey(params: number, quant: string, storageGb: number): string {
+  return `${params}|${quant}|${storageGb}`;
+}
+
+/**
+ * Le verdict natif, traduit en pastille.
+ *
+ * L'estimation connaît ce que la taille du fichier ignore : le cache
+ * d'attention pour le contexte réglé, le nombre de couches qui tiennent
+ * vraiment sur le GPU, et le débit qui en découle. La pastille dit donc ce qui
+ * va se passer, pas seulement si ça rentre.
+ */
+function compatFromFit(fit: ModelFit, airllm: boolean): Compat {
+  const speed = fit.tokens_per_second > 0 ? ` — ~${fmtTokPerSec(fit.tokens_per_second)}` : "";
+  if (fit.placement === "gpu") {
+    return {
+      level: "gpu",
+      label: fit.message,
+      short: `Fluide GPU${speed}`,
+      color: "var(--accent-300)",
+    };
+  }
+  if (fit.placement === "partage") {
+    return {
+      level: "offload",
+      label: fit.message,
+      short: `${fit.gpu_layers}/${fit.total_layers} couches GPU${speed}`,
+      color: "var(--warn)",
+    };
+  }
+  if (fit.placement === "ram") {
+    return {
+      level: "offload",
+      label: fit.message,
+      short: `RAM${speed}`,
+      color: "var(--warn)",
+    };
+  }
+  if (airllm) {
+    return {
+      level: "airllm",
+      label: `${fit.message} AirLLM charge les couches une par une : le modèle tourne quand même, beaucoup plus lentement.`,
+      short: "AirLLM",
+      color: "var(--info)",
+    };
+  }
+  return {
+    level: "heavy",
+    label: fit.message,
+    short: "Trop lourd",
+    color: "var(--danger)",
+  };
+}
+
 function familyBestCompat(
-  variants: { storageGb: number }[],
+  variants: { storageGb: number; params?: number; quants?: string[] }[],
   hw: HwSpec | null,
   airllm = false,
+  fits?: Record<string, ModelFit>,
 ): Compat {
   if (variants.length === 0) return variantCompat(0, hw, airllm);
   const best = variants.reduce((a, b) => (a.storageGb <= b.storageGb ? a : b));
-  return variantCompat(best.storageGb, hw, airllm);
+  const quant = best.quants?.[0];
+  const fit =
+    fits && best.params !== undefined && quant
+      ? fits[fitKey(best.params, quant, best.storageGb)]
+      : undefined;
+  return variantCompat(best.storageGb, hw, airllm, fit);
 }
 
 /**
@@ -385,6 +475,42 @@ function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?
     }
   }
   return false;
+}
+
+/** La carte ne quitte l'état qu'au bout de ce délai, pour que la grille ne
+ *  saute pas avant qu'on ait vu ce qui partait. */
+const SHATTER_MS = 620;
+
+/** Le nombre d'éclats. Assez pour que ça se disloque, pas assez pour ramer. */
+const SHARD_COUNT = 28;
+
+/**
+ * Les éclats d'une suppression : ils divergent depuis le centre de la ligne,
+ * dans les tons de l'accent. Purement décoratifs, donc muets.
+ */
+function Shards() {
+  return (
+    <span className="locaryn-shards" aria-hidden="true">
+      {Array.from({ length: SHARD_COUNT }, (_, i) => {
+        const angle = (i / SHARD_COUNT) * Math.PI * 2;
+        const reach = 40 + (i % 5) * 14;
+        return (
+          <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: les éclats n'ont pas d'identité — leur seule différence est leur rang, qui fixe l'angle.
+            key={i}
+            className="locaryn-shard"
+            style={
+              {
+                "--lo-conf-x": `${Math.cos(angle) * reach}px`,
+                "--lo-conf-y": `${Math.sin(angle) * reach}px`,
+                animationDelay: `${(i % 7) * 12}ms`,
+              } as React.CSSProperties
+            }
+          />
+        );
+      })}
+    </span>
+  );
 }
 
 export function ModelBrowser({
@@ -549,6 +675,8 @@ export function ModelBrowser({
     total_ram_gb: number;
     total_vram_gb: number;
   } | null>(null);
+  /** Estimations natives, par clé « paramètres | quantification | taille ». */
+  const [fits, setFits] = useState<Record<string, ModelFit>>({});
   const [nsfwGateOpen, setNsfwGateOpen] = useState(false);
   const [pendingNsfwInstall, setPendingNsfwInstall] = useState<{
     tag: string;
@@ -757,8 +885,10 @@ export function ModelBrowser({
           // Compatible-first: models that run on this PC float to the top,
           // then newest within the same compatibility tier. With AirLLM on,
           // heavy models convert to AirLLM execution and move up.
-          const ra = COMPAT_RANK[familyBestCompat(a.variants, hardwareSpec, airllmEnabled).level];
-          const rb = COMPAT_RANK[familyBestCompat(b.variants, hardwareSpec, airllmEnabled).level];
+          const ra =
+            COMPAT_RANK[familyBestCompat(a.variants, hardwareSpec, airllmEnabled, fits).level];
+          const rb =
+            COMPAT_RANK[familyBestCompat(b.variants, hardwareSpec, airllmEnabled, fits).level];
           if (ra !== rb) return ra - rb;
           return b.releaseDate.localeCompare(a.releaseDate);
         }
@@ -786,7 +916,63 @@ export function ModelBrowser({
     visibleCategories,
     hardwareSpec,
     airllmEnabled,
+    fits,
   ]);
+
+  // Estimation native de toute la liste visible, en un appel.
+  //
+  // Sans elle, la pastille de compatibilité ne connaîtrait que la taille du
+  // fichier : elle ignorerait le cache d'attention, qui dépasse les poids sur
+  // les contextes longs, et annoncerait « fluide GPU » pour un modèle qui
+  // débordera au chargement. Le calcul est dédoublonné, et retardé le temps
+  // que l'utilisateur finisse de taper.
+  useEffect(() => {
+    let active = true;
+    const entries = new Map<string, LlmfitCatalogEntry>();
+    for (const family of families) {
+      for (const variant of family.variants) {
+        const quants = variant.quants.length > 0 ? variant.quants : ["q4_K_M"];
+        for (const quant of quants) {
+          const storageGb = getQuantStorageGb(variant.storageGb, quant);
+          const key = fitKey(variant.params, quant, storageGb);
+          if (!entries.has(key)) {
+            entries.set(key, {
+              id: key,
+              parameters_b: variant.params,
+              quant,
+              size_gb: storageGb,
+            });
+          }
+        }
+      }
+    }
+    if (entries.size === 0) {
+      setFits({});
+      return;
+    }
+    const timer = setTimeout(() => {
+      const keys = [...entries.keys()];
+      core
+        .llmfitCatalog([...entries.values()])
+        .then((reports) => {
+          if (!active) return;
+          const next: Record<string, ModelFit> = {};
+          keys.forEach((key, index) => {
+            const report = reports[index];
+            if (report) next[key] = report;
+          });
+          setFits((prev) => (sameFits(prev, next) ? prev : next));
+        })
+        .catch(() => {
+          // Estimation indisponible : les pastilles retombent sur la taille du
+          // fichier, qui reste une réponse — approximative, mais pas fausse.
+        });
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [families]);
 
   function toggleCardExpand(id: string) {
     setExpandedCards((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -1328,6 +1514,9 @@ export function ModelBrowser({
       return;
     }
     setDeletingTag(tag);
+    // La ligne se disloque d'abord, elle ne quitte la liste qu'ensuite : sans
+    // ce délai la grille saute avant qu'on ait vu ce qui partait.
+    await new Promise((resolve) => setTimeout(resolve, SHATTER_MS));
     try {
       await onDelete?.(tag);
     } finally {
@@ -1561,21 +1750,22 @@ export function ModelBrowser({
 
         {/* AirLLM toggle — converts too-heavy models into low-VRAM executable ones */}
         <div className="locaryn-airllm-bar">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={airllmEnabled}
-            className={`locaryn-airllm-switch${airllmEnabled ? " locaryn-airllm-on" : ""}`}
-            onClick={() => setAirllmEnabled((prev) => !prev)}
+          <span
+            className="locaryn-airllm-switch"
             title="Basculer le moteur AirLLM : les modèles trop lourds pour ce PC deviennent exécutables localement (chargement des couches une par une, un GPU 4 Go de VRAM suffit)"
           >
-            <span className="locaryn-airllm-track">
-              <span className="locaryn-airllm-thumb" />
-            </span>
-            <span className="locaryn-airllm-label">
+            <LoSwitch
+              checked={airllmEnabled}
+              onChange={setAirllmEnabled}
+              labelledBy="locaryn-airllm-label"
+            />
+            <span
+              className={`locaryn-airllm-label${airllmEnabled ? " locaryn-airllm-on" : ""}`}
+              id="locaryn-airllm-label"
+            >
               <Icon name="star" size={15} /> AirLLM — Gros modèles sur petit GPU
             </span>
-          </button>
+          </span>
           <span className="locaryn-airllm-hint">
             {airllmEnabled
               ? "Actif : tous les modèles deviennent exécutables — les modèles trop lourds pour ce PC tournent en local via AirLLM (chargement couche par couche, ex. Kimi K3 sur un GPU 4 Go de VRAM)."
@@ -1885,7 +2075,7 @@ export function ModelBrowser({
         (() => {
           const counts = families.reduce(
             (acc, f) => {
-              acc[familyBestCompat(f.variants, hardwareSpec, airllmEnabled).level]++;
+              acc[familyBestCompat(f.variants, hardwareSpec, airllmEnabled, fits).level]++;
               return acc;
             },
             { cloud: 0, gpu: 0, offload: 0, airllm: 0, heavy: 0, unknown: 0 } as Record<
@@ -1974,7 +2164,7 @@ export function ModelBrowser({
             const expandLabel = isExpanded
               ? "▲ Masquer les variantes"
               : `▼ ${f.variants.length} variantes (${cleanSizeRange})`;
-            const compat = familyBestCompat(f.variants, hardwareSpec, airllmEnabled);
+            const compat = familyBestCompat(f.variants, hardwareSpec, airllmEnabled, fits);
             // Family-level AirLLM speed estimate: best case = smallest variant.
             const bestVariant = f.variants.reduce((a, b) => (a.storageGb <= b.storageGb ? a : b));
             const familyAirSpeed =
@@ -2163,14 +2353,21 @@ export function ModelBrowser({
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
-                      const compatV = variantCompat(targetStorageGb, hardwareSpec, airllmEnabled);
+                      const fitV = fits[fitKey(v.params, activeQuant, targetStorageGb)];
+                      const compatV = variantCompat(
+                        targetStorageGb,
+                        hardwareSpec,
+                        airllmEnabled,
+                        fitV,
+                      );
 
                       return (
                         <div
                           key={v.tag}
-                          className="locaryn-box-variant-row"
+                          className={`locaryn-box-variant-row${isDeleting ? " locaryn-shatter" : ""}`}
                           style={{ flexDirection: "column", alignItems: "stretch", gap: "6px" }}
                         >
+                          {isDeleting && <Shards />}
                           <div
                             style={{
                               display: "flex",
@@ -2483,10 +2680,20 @@ export function ModelBrowser({
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
-                      const compatV = variantCompat(targetStorageGb, hardwareSpec, airllmEnabled);
+                      const fitV = fits[fitKey(v.params, activeQuant, targetStorageGb)];
+                      const compatV = variantCompat(
+                        targetStorageGb,
+                        hardwareSpec,
+                        airllmEnabled,
+                        fitV,
+                      );
 
                       return (
-                        <div key={v.tag} className="locaryn-variant">
+                        <div
+                          key={v.tag}
+                          className={`locaryn-variant${isDeleting ? " locaryn-shatter" : ""}`}
+                        >
+                          {isDeleting && <Shards />}
                           <div className="locaryn-variant-top">
                             <span className="locaryn-variant-size">{v.size}</span>
                             <span className="locaryn-stat-vram">

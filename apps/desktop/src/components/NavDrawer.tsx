@@ -29,6 +29,14 @@ type NavItem = {
   requiredCapabilities?: string[];
 };
 
+/**
+ * Les destinations natives.
+ *
+ * Le studio d'entraînement n'en fait volontairement pas partie : c'est une
+ * extension qui déclare son écran (`nav.drawer`), et il se rejoint aussi
+ * depuis le catalogue de modèles, sur lequel il agit. L'application n'a pas à
+ * connaître son nom.
+ */
 const BASE_NAV_ITEMS: NavItem[] = [
   {
     id: "chat",
@@ -71,14 +79,6 @@ const BASE_NAV_ITEMS: NavItem[] = [
     category: "workspace",
     desc: "Traitement par lots asynchrone à moitié prix",
     requiredCapabilities: ["text-analysis", "batch-api"],
-  },
-  {
-    id: "training",
-    label: "Entraînement & Oblitération",
-    icon: "shield",
-    category: "workspace",
-    desc: "Studio d'entraînement LoRA et oblitération de modèles RepE",
-    requiredCapabilities: ["model-training"],
   },
   {
     id: "models",

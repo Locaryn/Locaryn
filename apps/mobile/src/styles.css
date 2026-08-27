@@ -1250,19 +1250,6 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   color: var(--text);
   font-size: 15px;
 }
-.lo-toggle {
-  min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 15px;
-}
-.lo-toggle-on {
-  border-color: var(--accent);
-  color: var(--accent);
-}
 
 /* Le cadre de visée, et la sortie.
 
@@ -1800,4 +1787,62 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-color-value {
   font-size: 13px;
   color: var(--text-faint);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   La mémoire — un texte continu, un paragraphe par souvenir
+
+   Au repos, rien ne délimite quoi que ce soit. Pas de survol ici :
+   c'est la touche qui ouvre un souvenir, révèle sa métadonnée et
+   propose de l'oublier.
+   ═══════════════════════════════════════════════════════════ */
+.lo-memory-document {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-5) 0;
+  color: var(--text);
+  font-size: var(--text-md);
+  line-height: 1.7;
+}
+.lo-memory-para {
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease);
+}
+.lo-memory-para.is-open {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+.lo-memory-text {
+  display: block;
+  width: 100%;
+  /* Une cible tactile de la hauteur du paragraphe : le texte EST le bouton. */
+  min-height: 44px;
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.lo-memory-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: 0 var(--space-4) var(--space-3);
+}
+.lo-memory-meta {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+/* Oublié : il s'efface, puis seulement après il quitte la liste. */
+.lo-memory-para.is-forgetting {
+  opacity: 0;
+  transform: scale(0.97);
+  pointer-events: none;
 }

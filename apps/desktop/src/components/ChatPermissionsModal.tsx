@@ -1,5 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
-import { type TrustLevel } from "../lib/core";
+import type { TrustLevel } from "../lib/core";
 import { ModalShell } from "./ModalShell";
 
 type Props = {

@@ -104,7 +104,10 @@ export function TravelSettings() {
         <div className="locaryn-remote-link">
           <div>
             <strong>Relais actif</strong>
-            <span>Le code « Tunnel sortant » est disponible dans le panneau à droite.</span>
+            <span>
+              Cette extension déclare son propre appairage : son QR ne passe pas par les segments
+              natifs du panneau de droite.
+            </span>
           </div>
           <button
             type="button"

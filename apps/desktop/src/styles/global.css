@@ -3,16 +3,25 @@
 @import "../../../../packages-ui/tokens/loading.css";
 
 /* ═══════════════════════════════════════════════════════════
-   Locaryn Desktop — Global Styles
+   Locaryn — ordinateur.
 
-   Design language: minimal, near-monochrome, calm.
-   One warm-neutral scale carries the whole UI; a single muted
-   green accent is used sparingly (active state, focus, primary
-   action, health). No glass blur, no gradients, no glows — flat
-   surfaces separated by hairline borders. Hierarchy comes from
-   text weight and lightness, not color.
+   Les valeurs vivent dans packages-ui/tokens ; ce fichier n'a que
+   la mise en page. Quasi monochrome : la rampe neutre porte tout,
+   l'accent ne marque que l'état actif, le focus, l'action
+   principale et la santé du service.
 
-   Font: Sen (bundled locally).
+   La matière est le Mica — un dégradé très ténu sur les surfaces
+   de chrome (barre du haut, panneaux, cartes), avec un filet
+   lumineux en haut. Le flou reste au chrome flottant : menus
+   contextuels, centre de notifications, feuilles. Jamais sur une
+   liste.
+
+   L'air fait la hiérarchie : 32px de marge de panneau, 24 dans
+   une carte, 12 entre les lignes d'une liste.
+
+   Polices : Geist et Geist Mono, embarquées (packages-ui/tokens/
+   fonts.css). Le mono porte le technique — chemins, tailles,
+   débits, jetons, contextes.
    ═══════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════
@@ -4522,128 +4531,58 @@ pre.md-code {
   color: var(--text-dim);
   font-size: var(--text-md);
 }
-.locaryn-memory-document-shell {
-  margin-top: var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  overflow: visible;
-}
-.locaryn-memory-document-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 9px var(--space-4);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.locaryn-memory-document-toolbar span:last-child {
-  text-transform: none;
-  letter-spacing: normal;
-}
+/* ═══════════════════════════════════════════════════════════
+   La mémoire — un texte continu, un paragraphe par souvenir
+
+   Au repos, rien ne délimite quoi que ce soit : c'est un document
+   qu'on lit. Le survol révèle les limites du souvenir survolé et
+   sa métadonnée ; le clic droit l'oublie, et il s'efface avant de
+   quitter la liste.
+   ═══════════════════════════════════════════════════════════ */
 .locaryn-memory-document {
+  max-width: var(--measure);
+  margin-top: var(--space-6);
+  color: var(--text);
+  font-size: var(--text-md);
+  line-height: 1.75;
+}
+.locaryn-memory-para {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: var(--space-3) var(--space-4);
-  background: color-mix(in srgb, var(--surface) 82%, var(--bg));
-  border-radius: 0 0 var(--radius) var(--radius);
-}
-.locaryn-memory-block {
-  position: relative;
-  padding: var(--space-4) var(--space-3);
-  border-left: 2px solid transparent;
-  outline: none;
-  cursor: default;
-  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-}
-.locaryn-memory-block + .locaryn-memory-block {
-  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-}
-.locaryn-memory-block:hover,
-.locaryn-memory-block:focus-visible,
-.locaryn-memory-block.is-hovered {
-  border-left-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-}
-.locaryn-memory-block h4 {
-  margin: 0 0 5px;
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-.locaryn-memory-block p {
   margin: 0;
-  color: var(--text);
-  font-size: var(--text-sm);
-  line-height: 1.65;
+  padding: var(--space-3) var(--space-4);
+  /* La bordure existe déjà au repos, transparente : sans elle, la révéler
+     au survol décalerait le texte d'un pixel. */
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: default;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease);
 }
-.locaryn-memory-popover {
-  position: absolute;
-  z-index: 10;
-  top: calc(100% - 2px);
-  right: var(--space-3);
-  width: min(480px, calc(100% - var(--space-6)));
-  max-height: 270px;
-  overflow-y: auto;
-  padding: var(--space-3);
-  border: 1px solid rgba(var(--accent-rgb), 0.45);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface) 96%, var(--accent));
-  box-shadow: 0 12px 28px rgb(0 0 0 / 30%);
+.locaryn-memory-para:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
 }
-.locaryn-memory-popover > strong {
+/* La métadonnée n'existe que sous le regard : au repos, elle hacherait le
+   texte en fiches. */
+.locaryn-memory-meta {
   display: block;
-  color: var(--text);
-  font-size: var(--text-sm);
-}
-.locaryn-memory-popover > span {
-  display: block;
-  margin-top: 2px;
+  margin-top: var(--space-2);
   color: var(--text-faint);
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
 }
-.locaryn-memory-popover > div {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: var(--space-3);
+.locaryn-memory-para:hover .locaryn-memory-meta {
+  opacity: 1;
 }
-.locaryn-memory-popover p {
-  padding-top: 7px;
-  border-top: 1px solid var(--border);
-  color: var(--text-dim);
-  font-size: var(--text-xs);
-  line-height: 1.5;
+/* Oublié : il s'efface, puis seulement après il quitte la liste. */
+.locaryn-memory-para.is-forgetting {
+  opacity: 0;
+  transform: scale(0.97);
+  pointer-events: none;
 }
-.locaryn-memory-technical {
-  margin-top: var(--space-4);
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-}
-.locaryn-memory-technical summary {
-  cursor: pointer;
-}
-.locaryn-memory-technical pre {
-  max-height: 260px;
-  overflow: auto;
-  margin: var(--space-2) 0 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  color: var(--text-dim);
-  font: inherit;
-  line-height: 1.55;
-  white-space: pre-wrap;
-}
+
 .locaryn-memory-actions {
   display: flex;
   align-items: center;
@@ -5269,6 +5208,50 @@ pre.md-code {
   color: var(--text-dim);
   line-height: 1.5;
   white-space: normal;
+}
+
+/* Les trois postes de mémoire, plus le débit. En chiffres alignés : on les
+   compare d'un coup d'œil, sans les lire dans une phrase. */
+.locaryn-res-fit-numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+}
+.locaryn-res-fit-numbers dt {
+  color: var(--text-faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.locaryn-res-fit-numbers dd {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Les hypothèses restent repliées : elles répondent à « pourquoi ce
+   chiffre », une question qu'on ne se pose pas à chaque ouverture. */
+.locaryn-res-fit-why {
+  margin-top: var(--space-2);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.locaryn-res-fit-why summary {
+  cursor: pointer;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+}
+.locaryn-res-fit-why summary:hover {
+  color: var(--text-dim);
+}
+.locaryn-res-fit-why ul {
+  margin: var(--space-1) 0 0;
+  padding-left: 1.1em;
+  line-height: 1.6;
 }
 
 .locaryn-res-actions {
@@ -6504,46 +6487,19 @@ pre.md-code {
 .locaryn-airllm-switch {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  font-family: inherit;
-}
-.locaryn-airllm-track {
-  position: relative;
-  width: 40px;
-  height: 22px;
-  border-radius: 999px;
-  background: var(--border-strong);
-  transition: background var(--dur-fast) var(--ease);
-  flex: none;
-}
-.locaryn-airllm-thumb {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--text);
-  transition: transform var(--dur-fast) var(--ease);
-}
-.locaryn-airllm-switch.locaryn-airllm-on .locaryn-airllm-track {
-  background: var(--accent);
-}
-.locaryn-airllm-switch.locaryn-airllm-on .locaryn-airllm-thumb {
-  transform: translateX(18px);
-  background: var(--on-accent);
+  gap: var(--space-3);
 }
 .locaryn-airllm-label {
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: color var(--dur-fast) var(--ease);
 }
-.locaryn-airllm-switch.locaryn-airllm-on .locaryn-airllm-label {
+.locaryn-airllm-label.locaryn-airllm-on {
   color: var(--accent-300);
 }
 .locaryn-airllm-hint {
@@ -7916,9 +7872,6 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: var(--text-xs);
   font-weight: 700;
 }
-.locaryn-pairing-select {
-  margin-top: var(--space-2);
-}
 .locaryn-pairing-public {
   margin-top: var(--space-2);
 }
@@ -7939,14 +7892,22 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 .locaryn-pairing-notice,
 .locaryn-pairing-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
   margin-top: var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-dim);
-  background: var(--bg);
-  font-size: var(--text-xs);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
   line-height: 1.55;
+}
+.locaryn-pairing-notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-faint);
 }
 .locaryn-pairing-warning {
   border-color: rgba(var(--danger-rgb), 0.35);
@@ -8095,22 +8056,29 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   align-items: center;
   margin-top: var(--space-4);
   padding: var(--space-4);
-  background: var(--bg);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
+/* Le fond du QR reste blanc dans les deux modes : c'est la zone de silence
+   que réclame un lecteur de code, pas une surface de l'interface. */
 .locaryn-travel-qr {
   flex: 0 0 195px;
   width: 195px;
-  padding: 10px;
+  padding: var(--space-3);
   background: #fff;
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--radius);
   line-height: 0;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: zoom-in;
+  transition: transform var(--dur-fast) var(--ease);
 }
 .locaryn-travel-qr:hover {
   transform: scale(1.02);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.locaryn-travel-qr:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-accent);
 }
 .locaryn-travel-qr svg {
   width: 100%;
@@ -8864,33 +8832,6 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 /* Le code d'appairage glisse dans le sens du geste : choisir un onglet à
    droite le fait entrer par la droite. Une image qui change sans direction
    laisse croire qu'on a raté quelque chose. */
-@keyframes locaryn-qr-droite {
-  from {
-    opacity: 0;
-    transform: translateX(18px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes locaryn-qr-gauche {
-  from {
-    opacity: 0;
-    transform: translateX(-18px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.locaryn-qr-entre.locaryn-qr-droite {
-  animation: locaryn-qr-droite 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
-}
-.locaryn-qr-entre.locaryn-qr-gauche {
-  animation: locaryn-qr-gauche 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
-}
-
 /* Proposer un rangement, au-dessus du composeur. La ligne se pose là où le
    regard revient entre deux messages, jamais au milieu du fil. */
 .locaryn-suggest {
@@ -8960,8 +8901,6 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .locaryn-qr-entre.locaryn-qr-droite,
-  .locaryn-qr-entre.locaryn-qr-gauche,
   .locaryn-suggest {
     animation: none;
   }
@@ -8989,4 +8928,233 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   .locaryn-app-entree {
     animation: none;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Suppression d'un modèle
+
+   La ligne se disloque et ses éclats divergent. Elle ne quitte la
+   liste qu'au bout de 620ms (SHATTER_MS côté composant) : sans ce
+   délai, la grille saute avant qu'on ait vu ce qui partait.
+   ═══════════════════════════════════════════════════════════ */
+.locaryn-shatter {
+  position: relative;
+  animation: lo-shatter 620ms var(--ease-in) both;
+  pointer-events: none;
+}
+.locaryn-shards {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+}
+.locaryn-shard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: lo-conf 620ms var(--ease-out) both;
+}
+/* Les éclats prennent les tons de l'accent, pas une couleur à part. */
+.locaryn-shard:nth-child(3n) {
+  background: var(--accent-300);
+}
+.locaryn-shard:nth-child(3n + 1) {
+  background: var(--accent-600);
+}
+
+/* Onglets d'extensions : la grille se rejoue en fondu montant. Deux noms
+   alternés — un navigateur ne redémarre pas une animation dont le nom n'a pas
+   changé, et on repasse souvent sur le même onglet. */
+.locaryn-swap-a {
+  animation: lo-swap-a var(--dur-med) var(--ease-out) both;
+}
+.locaryn-swap-b {
+  animation: lo-swap-b var(--dur-med) var(--ease-out) both;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Appairage — il n'y a plus de code à saisir, seulement le QR
+   ═══════════════════════════════════════════════════════════ */
+.locaryn-pairing-segments {
+  display: flex;
+  width: 100%;
+  margin-top: var(--space-4);
+}
+.locaryn-pairing-segments .locaryn-segment {
+  flex: 1;
+  justify-content: center;
+}
+
+/* Le changement de mode fait glisser la carte dans le sens du déplacement. */
+.locaryn-pairing-card {
+  margin-top: var(--space-4);
+}
+.locaryn-mode-a {
+  animation: lo-mode-a var(--dur-med) var(--ease-out) both;
+}
+.locaryn-mode-b {
+  animation: lo-mode-b var(--dur-med) var(--ease-out) both;
+}
+
+.locaryn-pairing-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ── Pendant la fabrication ──
+   La grille du QR devient un damier qui pulse en vagues : le délai de chaque
+   cellule vient de sa position, ce qui fait courir la vague en diagonale au
+   lieu de faire clignoter tout le carré ensemble. */
+.locaryn-pair-making {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.locaryn-pair-grid {
+  flex: 0 0 195px;
+  display: grid;
+  gap: 2px;
+  width: 195px;
+  aspect-ratio: 1;
+  padding: var(--space-3);
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+.locaryn-pair-cell {
+  border-radius: 1px;
+  background: var(--surface-3);
+  animation: lo-pair-pulse 1.6s var(--ease) infinite;
+}
+@keyframes lo-pair-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  45% {
+    opacity: 1;
+  }
+}
+
+.locaryn-pair-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.locaryn-pair-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  /* Ce qui n'est pas encore fait s'éteint ; l'étape courante seule est lisible. */
+  color: var(--text-faint);
+}
+.locaryn-pair-step.is-now {
+  color: var(--text);
+}
+.locaryn-pair-step.is-done {
+  color: var(--text-dim);
+}
+.locaryn-pair-step-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+}
+.locaryn-pair-step.is-done .locaryn-pair-step-mark {
+  color: var(--accent-300);
+}
+
+/* ── Le QR en grand ── */
+.locaryn-qr-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: var(--space-6);
+  background: none;
+  border: none;
+}
+.locaryn-qr-overlay-veil {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: none;
+  cursor: default;
+}
+.locaryn-qr-overlay-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  width: min(460px, 100%);
+  padding: var(--space-6);
+  background-color: var(--surface);
+  background-image: var(--mica);
+  box-shadow: inset 0 1px 0 var(--stroke-top), var(--shadow-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  animation: lo-pop var(--dur-med) var(--ease-out) both;
+}
+.locaryn-qr-overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+}
+.locaryn-qr-overlay-head h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 500;
+}
+.locaryn-qr-overlay-code {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 320px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  padding: var(--space-4);
+  background: #fff;
+  border-radius: var(--radius);
+}
+.locaryn-qr-overlay-code svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* L'écran d'une extension, en pleine page : elle reçoit la même marge et la
+   même largeur de texte que les écrans natifs, sans rien peindre elle-même. */
+.locaryn-extension-screen-body {
+  display: block;
+  max-width: var(--measure);
 }

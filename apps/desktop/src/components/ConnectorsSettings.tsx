@@ -109,8 +109,10 @@ export function ConnectorsSettings() {
         <div>
           <h3>Connecteurs &amp; Serveurs MCP</h3>
           <p>
-            Les <strong>Connecteurs &amp; Serveurs MCP</strong> exposent des outils, contextes et accès de données externes (bases de données, fichiers, APIs distantes) directement aux modèles d'IA via le standard Model Context Protocol.
-            Contrairement aux <em>Plugins</em>, ils n'injectent pas d'écrans ou de composants graphiques dans l'application hôte.
+            Les <strong>Connecteurs &amp; Serveurs MCP</strong> exposent des outils, contextes et
+            accès de données externes (bases de données, fichiers, APIs distantes) directement aux
+            modèles d'IA via le standard Model Context Protocol. Contrairement aux <em>Plugins</em>,
+            ils n'injectent pas d'écrans ou de composants graphiques dans l'application hôte.
           </p>
         </div>
         <div className="locaryn-connector-legend" aria-label="Familles de connecteurs">

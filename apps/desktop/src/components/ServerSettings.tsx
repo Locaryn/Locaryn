@@ -411,8 +411,8 @@ export function ServerSettings() {
           )}
 
           <p className="locaryn-field-hint" style={{ marginTop: 16 }}>
-            Pour éviter à vos collègues toute configuration, vous pouvez générer un code d'appairage
-            ou utiliser le fichier de provisionnement.
+            Pour éviter toute configuration à vos collègues, faites-leur scanner le QR du panneau
+            d'appairage : il porte l'adresse et cette empreinte. Il n'y a aucun code à saisir.
           </p>
         </>
       )}

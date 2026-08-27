@@ -217,7 +217,8 @@ export function SettingsView({
       <div className="locaryn-view-header">
         <h2>Paramètres Système &amp; Profil</h2>
         <p className="locaryn-view-desc">
-          Configuration générale de votre profil, de vos Morphs, de vos compétences et du moteur d'inférence.
+          Configuration générale de votre profil, de vos Morphs, de vos compétences et du moteur
+          d'inférence.
         </p>
       </div>
 

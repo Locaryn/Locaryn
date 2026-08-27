@@ -1147,19 +1147,76 @@ export type FitVerdict = "confortable" | "juste" | "risque" | "refuse";
 export interface ModelFit {
   model: string;
   verdict: FitVerdict;
-  /** Taille des poids sur disque. */
+  /** Taille des poids. */
   size_gb: number;
+  /** Cache d'attention pour le contexte réglé — il dépasse les poids sur les
+   *  longs contextes, et c'est lui qu'on raccourcit en premier. */
+  kv_cache_gb: number;
+  /** Tampons de calcul et surcoût du moteur. */
+  compute_gb: number;
   /** Ce qu'il faut réellement, marge de prudence comprise. */
   required_gb: number;
   free_ram_gb: number;
   free_vram_gb: number;
-  /** "gpu" | "ram" | "disque" | "inconnu" — où les poids finiront. */
+  /** "gpu" | "partage" | "ram" | "disque" — où les poids finiront. */
   placement: string;
   level: CautionLevel;
+  /** Contexte pris en compte, en jetons. */
+  context: number;
+  /** Couches placées sur le GPU, sur le total. */
+  gpu_layers: number;
+  total_layers: number;
+  /** Débit de génération estimé, en jetons par seconde. */
+  tokens_per_second: number;
+  /** Débit de lecture du prompt : plus élevé, et moins certain. */
+  prompt_tokens_per_second: number;
+  /** Le plus grand contexte qui tiendrait entièrement sur le GPU. */
+  max_gpu_context: number;
+  /** Le plus grand contexte qui tiendrait, GPU et RAM réunis. */
+  max_context: number;
+  /** Quantification du fichier. */
+  quant: string;
+  /** Une quantification plus légère qui, elle, tiendrait sur le GPU. */
+  suggested_quant: string | null;
+  /** Vrai quand les dimensions sont déduites et non lues dans le fichier. */
+  estimated: boolean;
+  /** Ce que ces chiffres supposent. Affiché tel quel, jamais résumé. */
+  assumptions: string[];
   /** Peut-on forcer malgré le refus ? */
   overridable: boolean;
   /** Phrase montrée telle quelle : ce qui va se passer, pas un code. */
   message: string;
+}
+
+/** La machine telle que l'estimateur la mesure. */
+export interface LlmfitHardware {
+  cpu_cores: number;
+  total_ram_gb: number;
+  free_ram_gb: number;
+  gpu_name: string | null;
+  total_vram_gb: number;
+  free_vram_gb: number;
+  backend: "cuda" | "metal" | "rocm" | "vulkan" | "cpu";
+  /** Bande passante mémoire système, en Go/s. */
+  ram_bandwidth_gbps: number;
+  /** Bande passante de la mémoire graphique, en Go/s. */
+  vram_bandwidth_gbps: number;
+  /** Vrai quand la bande passante vient d'une mesure sur cette machine. */
+  ram_bandwidth_measured: boolean;
+  /** Mémoire unifiée : la VRAM est la RAM. */
+  unified_memory: boolean;
+}
+
+/** Une fiche de catalogue à estimer avant tout téléchargement. */
+export interface LlmfitCatalogEntry {
+  /** Identifiant stable, renvoyé tel quel pour l'appariement. */
+  id: string;
+  /** Paramètres du modèle, en milliards. */
+  parameters_b: number;
+  /** Étiquette de quantification (« Q4_K_M »), si elle est connue. */
+  quant?: string;
+  /** Taille annoncée du téléchargement, en Go. Prime sur la taille déduite. */
+  size_gb?: number;
 }
 
 export interface ResidencyStatus {
@@ -1591,6 +1648,11 @@ export interface CoreApi {
   modelResidency(): Promise<ResidencyStatus>;
   /** Ce que donnerait le chargement de ce modèle, sans rien charger. */
   checkModelFit(model: string): Promise<ModelFit>;
+  /** Ce que la machine a, mesuré : mémoire libre et bandes passantes. */
+  llmfitHardware(): Promise<LlmfitHardware>;
+  /** Estimer d'un coup des fiches pas encore téléchargées. Les réponses
+   *  reviennent dans l'ordre reçu. */
+  llmfitCatalog(entries: LlmfitCatalogEntry[]): Promise<ModelFit[]>;
   /** Charge un modèle et l'épingle. Rejette avec le message du garde-fou
    *  quand la mémoire manque, sauf si `force` est demandé explicitement. */
   loadChatModel(model: string, force?: boolean): Promise<ResidencyStatus>;
@@ -1973,6 +2035,8 @@ const tauriCore: CoreApi = {
 
   modelResidency: () => invoke<ResidencyStatus>("model_residency"),
   checkModelFit: (model) => invoke<ModelFit>("check_model_fit", { model }),
+  llmfitHardware: () => invoke<LlmfitHardware>("llmfit_hardware"),
+  llmfitCatalog: (entries) => invoke<ModelFit[]>("llmfit_catalog", { entries }),
   loadChatModel: (model, force) =>
     invoke<ResidencyStatus>("load_chat_model", { model, force: force ?? null }),
   ejectChatModel: () => invoke<ResidencyStatus>("eject_chat_model"),
@@ -2407,6 +2471,58 @@ let demoExtensions: InstalledExtension[] = [
     created_at: "2026-08-17T10:00:00Z",
     updated_at: "2026-08-17T10:00:00Z",
   },
+  // Le studio d'entraînement n'est plus une destination native : c'est cette
+  // extension qui déclare son écran. La démo en garde un exemplaire pour que
+  // le mécanisme s'exerce sans démon.
+  {
+    id: "demo-model-training",
+    name: "morph-model-training",
+    display_name: "Entraînement & LoRA",
+    version: "1.1.0",
+    api_version: "0.1",
+    description: "Adaptateurs LoRA, quantification GGUF et oblitération de modèles.",
+    author: "Locaryn Team",
+    homepage: "https://github.com/Locaryn/morph-model-training",
+    kind: "plugin",
+    scope: "user",
+    ecosystem: "locaryn",
+    source: "github:Locaryn/morph-model-training",
+    install_dir: "~/.locaryn/plugins/morph-model-training",
+    enabled: true,
+    components: {
+      skills: 1,
+      commands: 0,
+      agents: 0,
+      rules: 0,
+      hooks: 0,
+      mcp_servers: 1,
+      lsp_adapters: 0,
+    },
+    permissions: [
+      { permission: "mcp", reason: "Lancer le gestionnaire d'entraînement local", granted: true },
+    ],
+    load_errors: [],
+    capabilities: ["model-training"],
+    ui: {
+      nav_items: [],
+      studio_tabs: [],
+      slots: [
+        {
+          id: "training-lora",
+          slot: "nav.drawer",
+          order: 19,
+          type: "custom-element",
+          label: "Entraînement & LoRA",
+          icon: "shield",
+          entry: "dist/ui.js",
+          tag: "locaryn-model-training-panel",
+          hint: "Adaptateurs LoRA, quantification GGUF et oblitération",
+        },
+      ],
+    },
+    created_at: "2026-08-21T00:00:00Z",
+    updated_at: "2026-08-27T09:00:00Z",
+  },
   {
     id: "demo-1",
     name: "code-review",
@@ -2778,72 +2894,124 @@ let demoResident: { model: string | null; pinned: boolean; since: number } = {
 };
 let demoCaution: CautionLevel = "equilibre";
 
-/** Taille déduite du nom du fichier, faute de disque à mesurer. */
-function demoModelSizeGb(model: string): number {
+/** Paramètres déduits du nom du fichier, faute de disque à mesurer. */
+function demoParamsB(model: string): number {
   const m = /(\d+(?:[.,]\d+)?)\s*b\b/i.exec(model);
-  const billions = m ? Number.parseFloat(m[1].replace(",", ".")) : 7;
-  // ~0,6 Go par milliard de paramètres en quantification 4 bits.
-  return Math.max(0.3, billions * 0.6);
+  return m ? Math.max(0.5, Number.parseFloat(m[1].replace(",", "."))) : 7;
 }
 
-function demoFit(model: string, level: CautionLevel): ModelFit {
-  const size = demoModelSizeGb(model);
-  const [factor, reserve] =
-    level === "prudent" ? [1.35, 3.0] : level === "equilibre" ? [1.12, 1.5] : [1.0, 0.0];
-  const required = size * factor + reserve;
-  const fitsVram = demoMemory.freeVramGb > 0 && required <= demoMemory.freeVramGb;
-  const fitsRam = required <= demoMemory.freeRamGb;
+/** La machine du mode démonstration : un portable milieu de gamme. */
+const demoHardware: LlmfitHardware = {
+  cpu_cores: 8,
+  total_ram_gb: 16,
+  free_ram_gb: demoMemory.freeRamGb,
+  gpu_name: "NVIDIA GeForce RTX 4060 Laptop GPU",
+  total_vram_gb: 8,
+  free_vram_gb: demoMemory.freeVramGb,
+  backend: "cuda",
+  ram_bandwidth_gbps: 48,
+  vram_bandwidth_gbps: 272,
+  ram_bandwidth_measured: false,
+  unified_memory: false,
+};
 
-  if (fitsVram)
+/**
+ * L'estimation, version démonstration.
+ *
+ * Reprend la structure du calcul natif — poids, cache d'attention, tampons —
+ * pour que l'interface montre les mêmes cas de figure sans moteur Rust. Les
+ * nombres sont plausibles, pas mesurés.
+ */
+function demoFit(model: string, level: CautionLevel, paramsB?: number): ModelFit {
+  const billions = paramsB ?? demoParamsB(model);
+  const weights = billions * 0.6;
+  const context = 8192;
+  // Le gabarit d'un transformeur moderne : 8 têtes de clé de 128, en f16.
+  const layers = Math.max(16, Math.round(24 + billions));
+  const kv = (2 * layers * context * 8 * 128 * 2) / 1024 ** 3;
+  const compute = 0.4;
+  const [reserveVram, reserveRam] =
+    level === "prudent" ? [1.5, 3.0] : level === "equilibre" ? [0.6, 1.5] : [0.0, 0.0];
+  const required = weights + kv + compute;
+  const usableVram = Math.max(0, demoHardware.free_vram_gb - reserveVram);
+  const usableRam = Math.max(0, demoHardware.free_ram_gb - reserveRam);
+
+  const perLayer = (weights + kv) / layers;
+  const gpuLayers = Math.min(layers, Math.max(0, Math.floor((usableVram - compute) / perLayer)));
+  const onGpu = required <= usableVram;
+  const inRam = required - gpuLayers * perLayer <= usableRam;
+  const speed = onGpu
+    ? (demoHardware.vram_bandwidth_gbps * 0.85) / Math.max(weights, 0.3)
+    : (demoHardware.ram_bandwidth_gbps * 0.6) / Math.max(weights, 0.3);
+
+  const base = {
+    model,
+    size_gb: weights,
+    kv_cache_gb: kv,
+    compute_gb: compute,
+    required_gb: required,
+    free_ram_gb: demoHardware.free_ram_gb,
+    free_vram_gb: demoHardware.free_vram_gb,
+    level,
+    context,
+    total_layers: layers,
+    prompt_tokens_per_second: onGpu ? 900 : 40,
+    max_gpu_context: onGpu ? context : 0,
+    max_context: inRam ? context : 2048,
+    quant: "Q4_K_M",
+    estimated: paramsB !== undefined,
+    assumptions: [
+      `Cache d'attention en f16, contexte de ${context} jetons, lot de 512.`,
+      "Bande passante mémoire non mesurable en démonstration, 48 Go/s supposés.",
+      "Vitesse déduite de la bande passante mémoire, cache à moitié plein.",
+    ],
+  };
+
+  if (onGpu)
     return {
-      model,
+      ...base,
       verdict: "confortable",
-      size_gb: size,
-      required_gb: required,
-      free_ram_gb: demoMemory.freeRamGb,
-      free_vram_gb: demoMemory.freeVramGb,
       placement: "gpu",
-      level,
+      gpu_layers: layers,
+      tokens_per_second: speed,
+      suggested_quant: null,
       overridable: false,
-      message: `${size.toFixed(1)} Go sur le GPU, ${demoMemory.freeVramGb.toFixed(1)} Go libres. Vitesse maximale.`,
+      message: `${(weights + kv).toFixed(1)} Go entièrement sur le GPU (${demoHardware.free_vram_gb.toFixed(1)} Go libres), contexte de ${context} jetons. Environ ${Math.round(speed)} jetons/s.`,
     };
-  if (fitsRam)
+  if (inRam)
     return {
-      model,
+      ...base,
       verdict: "juste",
-      size_gb: size,
-      required_gb: required,
-      free_ram_gb: demoMemory.freeRamGb,
-      free_vram_gb: demoMemory.freeVramGb,
-      placement: "ram",
-      level,
+      placement: gpuLayers > 0 ? "partage" : "ram",
+      gpu_layers: gpuLayers,
+      tokens_per_second: speed,
+      suggested_quant: "Q3_K_M",
       overridable: false,
-      message: `${size.toFixed(1)} Go à répartir : trop pour les ${demoMemory.freeVramGb.toFixed(1)} Go de VRAM libres, le reste ira en RAM. Plus lent qu'en tout-GPU.`,
+      message:
+        gpuLayers > 0
+          ? `${gpuLayers} couches sur ${layers} tiennent dans les ${demoHardware.free_vram_gb.toFixed(1)} Go de VRAM libres, le reste passe par la RAM. Environ ${speed.toFixed(1)} jetons/s.`
+          : `${(weights + kv).toFixed(1)} Go en RAM (${demoHardware.free_ram_gb.toFixed(1)} Go libres). Environ ${speed.toFixed(1)} jetons/s.`,
     };
   if (level === "risque")
     return {
-      model,
+      ...base,
       verdict: "risque",
-      size_gb: size,
-      required_gb: required,
-      free_ram_gb: demoMemory.freeRamGb,
-      free_vram_gb: demoMemory.freeVramGb,
       placement: "disque",
-      level,
+      gpu_layers: gpuLayers,
+      tokens_per_second: 0.4,
+      suggested_quant: "Q3_K_M",
       overridable: false,
-      message: `${size.toFixed(1)} Go demandés pour ${demoMemory.freeRamGb.toFixed(1)} Go libres. Le système va compenser sur le disque : ralentissement sévère, et l'application peut être tuée par manque de mémoire.`,
+      message: `${required.toFixed(1)} Go nécessaires pour ${demoHardware.free_ram_gb.toFixed(1)} Go libres. Le système compensera sur le disque : ralentissement sévère, et l'application peut être tuée par manque de mémoire.`,
     };
   return {
-    model,
+    ...base,
     verdict: "refuse",
-    size_gb: size,
-    required_gb: required,
-    free_ram_gb: demoMemory.freeRamGb,
-    free_vram_gb: demoMemory.freeVramGb,
     placement: "disque",
-    level,
+    gpu_layers: gpuLayers,
+    tokens_per_second: 0.4,
+    suggested_quant: "Q3_K_M",
     overridable: true,
-    message: `${size.toFixed(1)} Go demandés, ${required.toFixed(1)} Go nécessaires avec la marge choisie, et seulement ${demoMemory.freeRamGb.toFixed(1)} Go libres. Fermez des applications, choisissez un modèle plus petit, ou passez le niveau de prudence sur « risqué » pour forcer.`,
+    message: `${required.toFixed(1)} Go nécessaires, ${demoHardware.free_ram_gb.toFixed(1)} Go libres en RAM et ${demoHardware.free_vram_gb.toFixed(1)} Go en VRAM. Refusé au niveau de prudence choisi. La version Q3_K_M tiendrait.`,
   };
 }
 
@@ -3909,6 +4077,12 @@ const demoCore: CoreApi = {
   },
   async checkModelFit(model) {
     return demoFit(model, demoCaution);
+  },
+  async llmfitHardware() {
+    return demoHardware;
+  },
+  async llmfitCatalog(entries) {
+    return entries.map((entry) => demoFit(entry.id, demoCaution, entry.parameters_b));
   },
   async loadChatModel(model, force) {
     const fit = demoFit(model, demoCaution);

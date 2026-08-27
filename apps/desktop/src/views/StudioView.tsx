@@ -67,7 +67,10 @@ export function StudioView({ extensions = [] }: Props) {
   function renderContent() {
     const tab = tabs.find((candidate) => candidate.id === active);
     if (!tab) {
-      return placeholder("Module introuvable", "Veuillez sélectionner un module dans la liste ci-dessus.");
+      return placeholder(
+        "Module introuvable",
+        "Veuillez sélectionner un module dans la liste ci-dessus.",
+      );
     }
 
     const providesCustomElement =
@@ -105,7 +108,8 @@ export function StudioView({ extensions = [] }: Props) {
           <Icon name="studio" size={40} />
           <h3 style={{ margin: "16px 0 8px" }}>Aucun module de Studio actif</h3>
           <p className="locaryn-field-hint">
-            Les extensions (Image, Musique, Vidéo, 3D, Voix, etc.) contribuent dynamiquement leurs propres onglets et interfaces.
+            Les extensions (Image, Musique, Vidéo, 3D, Voix, etc.) contribuent dynamiquement leurs
+            propres onglets et interfaces.
           </p>
         </div>
       </div>

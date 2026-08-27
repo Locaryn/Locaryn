@@ -293,6 +293,49 @@ export function ModelResidency() {
           {fit && (
             <div className={`locaryn-res-fit ${fit.verdict}`}>
               <div className="locaryn-res-fit-msg">{fit.message}</div>
+
+              {/* Les trois postes de mémoire séparés : ils ne se corrigent pas
+                  de la même façon. Des poids trop lourds appellent une
+                  quantification plus basse, un cache trop gros un contexte
+                  plus court. */}
+              <dl className="locaryn-res-fit-numbers">
+                <div>
+                  <dt>Poids</dt>
+                  <dd>{fit.size_gb.toFixed(1)} Go</dd>
+                </div>
+                <div>
+                  <dt>Cache {fit.context.toLocaleString("fr-FR")} jetons</dt>
+                  <dd>{fit.kv_cache_gb.toFixed(1)} Go</dd>
+                </div>
+                <div>
+                  <dt>Couches GPU</dt>
+                  <dd>
+                    {fit.gpu_layers}/{fit.total_layers}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Débit estimé</dt>
+                  <dd>
+                    {fit.tokens_per_second >= 10
+                      ? Math.round(fit.tokens_per_second)
+                      : fit.tokens_per_second.toFixed(1)}{" "}
+                    jetons/s
+                  </dd>
+                </div>
+              </dl>
+
+              {/* Un chiffre dont on ignore les hypothèses n'est pas
+                  vérifiable : elles sont là, repliées. */}
+              {fit.assumptions.length > 0 && (
+                <details className="locaryn-res-fit-why">
+                  <summary>Sur quoi repose cette estimation</summary>
+                  <ul>
+                    {fit.assumptions.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
               <div className="locaryn-res-actions">
                 {fit.verdict === "refuse" ? (
                   fit.overridable && (

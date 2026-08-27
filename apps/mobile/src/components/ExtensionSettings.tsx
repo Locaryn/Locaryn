@@ -1,3 +1,4 @@
+import { LoSwitch } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { type SettingsField, type SettingsSection, api } from "../lib/core";
 
@@ -80,14 +81,11 @@ export function ExtensionSettings() {
 
     if (kind === "boolean") {
       return (
-        <button
-          type="button"
-          className={`lo-toggle${valeur === "true" ? " lo-toggle-on" : ""}`}
-          onClick={() => void ecrire(extension, f.key, valeur === "true" ? "false" : "true")}
-          aria-pressed={valeur === "true"}
-        >
-          {valeur === "true" ? "Activé" : "Désactivé"}
-        </button>
+        <LoSwitch
+          checked={valeur === "true"}
+          onChange={(actif) => void ecrire(extension, f.key, actif ? "true" : "false")}
+          label={f.label ?? f.key}
+        />
       );
     }
 

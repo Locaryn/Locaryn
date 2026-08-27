@@ -82,6 +82,9 @@ export interface MemoryEntry {
   category: string;
   content: string;
   source?: string;
+  /** Quand le souvenir a été appris. Le service l'envoie toujours ; laissé
+   *  optionnel pour les enregistrements d'avant son ajout. */
+  created_at?: string;
 }
 
 /** Un modèle de génération, et s'il lui manque des fichiers pour tourner. */
