@@ -195,22 +195,22 @@ export interface SettingsField {
  * en dur ne peut pas tomber en panne de réseau au pire moment.
  */
 export const CATALOGUE: { repo: string; label: string; note: string }[] = [
-  { repo: "Locaryn/plugin-image", label: "Images", note: "Générer et retoucher" },
-  { repo: "Locaryn/plugin-voice-tts", label: "Voix de synthèse", note: "Studio, voix" },
-  { repo: "Locaryn/plugin-vision-ocr", label: "Vision et OCR", note: "Lire une image" },
-  { repo: "Locaryn/plugin-translation", label: "Traduction", note: "Traduire un texte" },
-  { repo: "Locaryn/plugin-text-analysis", label: "Analyse de texte", note: "Résumés, extraction" },
-  { repo: "Locaryn/plugin-rag-qa", label: "Questions sur documents", note: "Vos fichiers" },
-  { repo: "Locaryn/plugin-music-gen", label: "Musique", note: "Studio, audio" },
-  { repo: "Locaryn/plugin-video-gen", label: "Vidéo", note: "Studio, vidéo" },
-  { repo: "Locaryn/plugin-3d-gen", label: "Objets 3D", note: "Studio, 3D" },
+  { repo: "Locaryn/morph-image", label: "Images", note: "Générer et retoucher" },
+  { repo: "Locaryn/morph-voice-tts", label: "Voix de synthèse", note: "Studio, voix" },
+  { repo: "Locaryn/morph-vision-ocr", label: "Vision et OCR", note: "Lire une image" },
+  { repo: "Locaryn/morph-translation", label: "Traduction", note: "Traduire un texte" },
+  { repo: "Locaryn/morph-text-analysis", label: "Analyse de texte", note: "Résumés, extraction" },
+  { repo: "Locaryn/morph-rag-qa", label: "Questions sur documents", note: "Vos fichiers" },
+  { repo: "Locaryn/morph-music-gen", label: "Musique", note: "Studio, audio" },
+  { repo: "Locaryn/morph-video-gen", label: "Vidéo", note: "Studio, vidéo" },
+  { repo: "Locaryn/morph-3d-gen", label: "Objets 3D", note: "Studio, 3D" },
   {
-    repo: "Locaryn/plugin-model-training",
+    repo: "Locaryn/morph-model-training",
     label: "Entraînement (LoRA)",
     note: "Affiner un modèle",
   },
-  { repo: "Locaryn/plugin-ssh", label: "Machine distante (SSH)", note: "Exécuter ailleurs" },
-  { repo: "Locaryn/plugin-travel-tunnel", label: "Mode voyage", note: "Joindre depuis dehors" },
+  { repo: "Locaryn/morph-ssh", label: "Machine distante (SSH)", note: "Exécuter ailleurs" },
+  { repo: "Locaryn/morph-travel-tunnel", label: "Mode voyage", note: "Joindre depuis dehors" },
 ];
 
 /** Une chose que le serveur retient de son utilisateur. */
@@ -628,7 +628,7 @@ export const demoCore: typeof core = {
   figureSessions: async () => [],
   listExtensions: async () => [
     {
-      name: "plugin-image",
+      name: "morph-image",
       display_name: "Images",
       version: "2.0.0",
       description: "Générer et retoucher",

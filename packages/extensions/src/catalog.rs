@@ -217,7 +217,7 @@ impl CatalogClient {
     ) -> Result<Vec<CatalogEntry>, String> {
         let mut out = Vec::new();
 
-        // Les dépôts `plugin-*` de l'organisation, chacun installé depuis sa
+        // Les dépôts `morph-*` de l'organisation, chacun installé depuis sa
         // racine.
         let v = self.get_json(&source.url).await?;
         let repos = v
@@ -227,8 +227,12 @@ impl CatalogClient {
             let Some(name) = r.get("name").and_then(|n| n.as_str()) else {
                 continue;
             };
-            // Only include extension repos (plugin-*)
-            if !name.starts_with("plugin-") {
+            // Seuls les Morphs. Le préfixe est le contrat de nommage de
+            // l'organisation : il écarte `locaryn-cores`, le dépôt de profil,
+            // et les anciens dépôts `plugin-*` restés en place après le
+            // renommage — dont `plugin-image-editor`, fusionné dans
+            // `morph-image` et qui n'a plus à être proposé.
+            if !name.starts_with("morph-") {
                 continue;
             }
             let description = r
@@ -242,10 +246,9 @@ impl CatalogClient {
                 .map(str::to_string);
 
             let display_name = match name {
-                // The repository is kept under its historical slug until the
-                // GitHub rename is completed, but the product name is Remote.
-                "plugin-travel-tunnel" | "plugin-remote" => "Remote".to_string(),
-                _ => name.replace("plugin-", "").replace('-', " "),
+                // Le dépôt garde son slug historique ; le nom produit est Remote.
+                "morph-travel-tunnel" => "Remote".to_string(),
+                _ => name.replace("morph-", "").replace('-', " "),
             };
             out.push(CatalogEntry {
                 id: format!("locaryn:{name}"),
@@ -259,8 +262,8 @@ impl CatalogClient {
                 catalog_id: source.id.clone(),
                 catalog_label: source.label.clone(),
                 install_source: full_name.to_string(),
-                keywords: vec!["official".to_string(), "plugin".to_string()],
-                advertised: vec!["official extension".to_string()],
+                keywords: vec!["official".to_string(), "morph".to_string()],
+                advertised: vec!["morph officiel".to_string()],
                 compat: CatalogCompat::Native,
                 installed: false,
             });

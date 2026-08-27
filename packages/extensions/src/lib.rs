@@ -5,7 +5,10 @@
 //! - the `plugin.json` manifest schema (validation),
 //! - the registry (install / enable / disable / remove / hot-reload),
 //! - permission bookkeeping,
-//! - the ecosystem import layer (Claude Code, Cursor, Continue, Cline).
+//! - the ecosystem import layer. `detect()` recognises Claude Code, Gemini
+//!   CLI, OpenCode and bare MCP servers; `ExtensionEcosystem` also carries
+//!   Cursor, Continue and Cline, which no adapter produces yet — they are
+//!   storable values, not supported imports.
 
 pub mod adapters;
 pub mod catalog;

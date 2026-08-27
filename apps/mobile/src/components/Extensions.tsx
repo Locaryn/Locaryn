@@ -10,7 +10,7 @@ type Props = {
 };
 
 type Tab = "installed" | "catalog";
-type InstalledFilter = "all" | "extensions" | "plugins" | "cores";
+type InstalledFilter = "all" | "morphs" | "skills" | "cores";
 type EcosystemFilter = "all" | "locaryn" | "gemini_cli" | "opencode";
 
 interface CatalogItem {
@@ -24,96 +24,96 @@ interface CatalogItem {
 
 const FULL_CATALOGUE: CatalogItem[] = [
   {
-    repo: "Locaryn/plugin-image",
-    name: "plugin-image",
+    repo: "Locaryn/morph-image",
+    name: "morph-image",
     label: "Images",
     note: "Génération par diffusion et retouche ciblée d'une zone",
     ecosystem: "locaryn",
     capabilities: ["image-gen", "image-editor"],
   },
   {
-    repo: "Locaryn/plugin-voice-tts",
-    name: "plugin-voice-tts",
+    repo: "Locaryn/morph-voice-tts",
+    name: "morph-voice-tts",
     label: "Voix de synthèse (TTS)",
     note: "Synthèse vocale réaliste et notes audio naturelles",
     ecosystem: "locaryn",
     capabilities: ["voice-tts"],
   },
   {
-    repo: "Locaryn/plugin-vision-ocr",
-    name: "plugin-vision-ocr",
+    repo: "Locaryn/morph-vision-ocr",
+    name: "morph-vision-ocr",
     label: "Vision & OCR",
     note: "Analyse d'images, extraction de texte et description visuelle",
     ecosystem: "locaryn",
     capabilities: ["vision-ocr"],
   },
   {
-    repo: "Locaryn/plugin-translation",
-    name: "plugin-translation",
+    repo: "Locaryn/morph-translation",
+    name: "morph-translation",
     label: "Traduction multilingue",
     note: "Traduction précise en plus de 50 langues",
     ecosystem: "locaryn",
     capabilities: ["translation"],
   },
   {
-    repo: "Locaryn/plugin-text-analysis",
-    name: "plugin-text-analysis",
+    repo: "Locaryn/morph-text-analysis",
+    name: "morph-text-analysis",
     label: "Analyse de texte & Résumé",
     note: "Extraction d'entités, synthèses de documents",
     ecosystem: "locaryn",
     capabilities: ["text-analysis"],
   },
   {
-    repo: "Locaryn/plugin-rag-qa",
-    name: "plugin-rag-qa",
+    repo: "Locaryn/morph-rag-qa",
+    name: "morph-rag-qa",
     label: "Questions sur documents (RAG)",
     note: "Recherche sémantique et réponses sourcées sur vos fichiers",
     ecosystem: "locaryn",
     capabilities: ["rag-qa"],
   },
   {
-    repo: "Locaryn/plugin-music-gen",
-    name: "plugin-music-gen",
+    repo: "Locaryn/morph-music-gen",
+    name: "morph-music-gen",
     label: "Génération de musique",
     note: "Composition musicale instrumentale et pistes audio",
     ecosystem: "locaryn",
     capabilities: ["music-gen"],
   },
   {
-    repo: "Locaryn/plugin-video-gen",
-    name: "plugin-video-gen",
+    repo: "Locaryn/morph-video-gen",
+    name: "morph-video-gen",
     label: "Génération vidéo",
     note: "Création de courtes séquences vidéo et animations",
     ecosystem: "locaryn",
     capabilities: ["video-gen"],
   },
   {
-    repo: "Locaryn/plugin-3d-gen",
-    name: "plugin-3d-gen",
+    repo: "Locaryn/morph-3d-gen",
+    name: "morph-3d-gen",
     label: "Objets 3D (Mesh & Splats)",
     note: "Génération d'objets 3D et rendus volumétriques",
     ecosystem: "locaryn",
     capabilities: ["3d-gen"],
   },
   {
-    repo: "Locaryn/plugin-model-training",
-    name: "plugin-model-training",
+    repo: "Locaryn/morph-model-training",
+    name: "morph-model-training",
     label: "Entraînement LoRA & Oblitération",
     note: "Affinement de modèles et désapprentissage ciblé",
     ecosystem: "locaryn",
     capabilities: ["model-training"],
   },
   {
-    repo: "Locaryn/plugin-ssh",
-    name: "plugin-ssh",
+    repo: "Locaryn/morph-ssh",
+    name: "morph-ssh",
     label: "Machine distante (SSH)",
     note: "Exécution de code et commandes sur serveurs distants",
     ecosystem: "locaryn",
     capabilities: ["ssh-terminal"],
   },
   {
-    repo: "Locaryn/plugin-travel-tunnel",
-    name: "plugin-travel-tunnel",
+    repo: "Locaryn/morph-travel-tunnel",
+    name: "morph-travel-tunnel",
     label: "Mode Voyage sécurisé",
     note: "Accès au serveur depuis l'extérieur sans redirection de port",
     ecosystem: "locaryn",
@@ -213,9 +213,9 @@ export function Extensions({ onBack, onChanged }: Props) {
     if (!installed) return [];
     return installed.filter((ext) => {
       if (installedFilter === "cores" && ext.kind !== "core") return false;
-      if (installedFilter === "plugins" && ext.kind !== "plugin" && ext.ecosystem === "locaryn")
+      if (installedFilter === "skills" && ext.kind !== "plugin" && ext.ecosystem === "locaryn")
         return false;
-      if (installedFilter === "extensions" && (ext.kind === "core" || ext.kind === "plugin"))
+      if (installedFilter === "morphs" && (ext.kind === "core" || ext.kind === "plugin"))
         return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -312,15 +312,15 @@ export function Extensions({ onBack, onChanged }: Props) {
             </button>
             <button
               type="button"
-              className={`lo-chip ${installedFilter === "extensions" ? "lo-chip-active" : ""}`}
-              onClick={() => setInstalledFilter("extensions")}
+              className={`lo-chip ${installedFilter === "morphs" ? "lo-chip-active" : ""}`}
+              onClick={() => setInstalledFilter("morphs")}
             >
               Extensions
             </button>
             <button
               type="button"
-              className={`lo-chip ${installedFilter === "plugins" ? "lo-chip-active" : ""}`}
-              onClick={() => setInstalledFilter("plugins")}
+              className={`lo-chip ${installedFilter === "skills" ? "lo-chip-active" : ""}`}
+              onClick={() => setInstalledFilter("skills")}
             >
               Plugins compatibles
             </button>
@@ -612,7 +612,7 @@ export function Extensions({ onBack, onChanged }: Props) {
             <form onSubmit={handleManualInstall}>
               <div className="lo-modal-body">
                 <p className="lo-hint">
-                  Indiquez un dépôt GitHub (ex: <code>Locaryn/plugin-image</code>) ou une URL de
+                  Indiquez un dépôt GitHub (ex: <code>Locaryn/morph-image</code>) ou une URL de
                   paquet d'extension.
                 </p>
                 <div>

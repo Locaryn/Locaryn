@@ -82,19 +82,19 @@ const COMPAT: Record<string, { label: string; hint: string }> = {
   },
 };
 
-type InstalledExtensionFilter = "all" | "extensions" | "plugins" | "cores";
+type InstalledExtensionFilter = "all" | "morphs" | "skills" | "cores";
 
 function installedExtensionKind(e: InstalledExtension): InstalledExtensionFilter {
   if (e.core) return "cores";
-  if (e.kind === "plugin" || e.ecosystem !== "locaryn") return "plugins";
-  return "extensions";
+  if (e.kind === "plugin" || e.ecosystem !== "locaryn") return "skills";
+  return "morphs";
 }
 
 function installedExtensionKindLabel(e: InstalledExtension): string {
   switch (installedExtensionKind(e)) {
     case "cores":
       return "Noyau";
-    case "plugins":
+    case "skills":
       return "Skill d'agent";
     default:
       return "Morph Locaryn";
@@ -336,8 +336,8 @@ export function ExtensionsSettings() {
   const installedCounts = useMemo(
     () => ({
       all: installed.length,
-      extensions: installed.filter((e) => installedExtensionKind(e) === "extensions").length,
-      plugins: installed.filter((e) => installedExtensionKind(e) === "plugins").length,
+      morphs: installed.filter((e) => installedExtensionKind(e) === "morphs").length,
+      skills: installed.filter((e) => installedExtensionKind(e) === "skills").length,
       cores: installedCores.length,
     }),
     [installed, installedCores],
@@ -818,8 +818,8 @@ export function ExtensionsSettings() {
           {(
             [
               ["all", `Tout (${installedCounts.all})`],
-              ["extensions", `Morphs Locaryn (${installedCounts.extensions})`],
-              ["plugins", `Skills & Consignes (${installedCounts.plugins})`],
+              ["morphs", `Morphs Locaryn (${installedCounts.morphs})`],
+              ["skills", `Skills & Consignes (${installedCounts.skills})`],
               ["cores", `Noyaux (${installedCounts.cores})`],
             ] as const
           ).map(([id, label]) => (
