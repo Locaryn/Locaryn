@@ -6,8 +6,8 @@
 //! inspection and debugging.
 
 use clap::{Parser, Subcommand};
-use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
 use locaryn_provider_supervisor::extension_engine::EngineSource as ExtensionEngineSpecSource;
+use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
 use locaryn_shared_types::ProviderEngine;
 
 #[derive(Parser)]

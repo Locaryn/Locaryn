@@ -71,10 +71,7 @@ pub fn generic_env(name: &str, plugin_root: &Path) -> HashMap<String, String> {
         "LOCARYN_DATA_DIR",
         locaryn_config::storage_root().display().to_string(),
     );
-    put(
-        "LOCARYN_EXTENSION_DATA_DIR",
-        data_dir.display().to_string(),
-    );
+    put("LOCARYN_EXTENSION_DATA_DIR", data_dir.display().to_string());
     put(
         "LOCARYN_EXTENSION_MODELS_DIR",
         data_dir.join("models").display().to_string(),

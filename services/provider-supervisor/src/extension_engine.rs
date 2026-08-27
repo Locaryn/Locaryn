@@ -67,10 +67,7 @@ impl ExtensionEngineSpec {
         } else {
             engine.id.clone()
         };
-        let label = engine
-            .label
-            .clone()
-            .unwrap_or_else(|| id.clone());
+        let label = engine.label.clone().unwrap_or_else(|| id.clone());
         Some(Self {
             id,
             label,
@@ -541,7 +538,12 @@ mod tests {
                 port: 1919,
                 model_formats: formats,
                 lifecycle: EngineLifecycle {
-                    start: vec!["ft".into(), "serve".into(), "--model".into(), "{{model}}".into()],
+                    start: vec![
+                        "ft".into(),
+                        "serve".into(),
+                        "--model".into(),
+                        "{{model}}".into(),
+                    ],
                     ..Default::default()
                 },
                 ..Default::default()
@@ -582,7 +584,9 @@ mod tests {
         assert!(!is_hf_repo_id("/home/moi/modeles/qwen"));
         assert!(!is_hf_repo_id("D:/modeles/qwen"));
         assert!(!is_hf_repo_id("D:\\modeles\\qwen"));
-        assert!(!is_hf_repo_id("https://huggingface.co/Qwen/Qwen3.6-35B-A3B"));
+        assert!(!is_hf_repo_id(
+            "https://huggingface.co/Qwen/Qwen3.6-35B-A3B"
+        ));
         assert!(!is_hf_repo_id("Qwen/Qwen3.6/extra"));
         assert!(!is_hf_repo_id("qwen"));
         assert!(!is_hf_repo_id("./local"));

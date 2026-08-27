@@ -274,9 +274,8 @@ impl Serialize for ProviderEngine {
 impl<'de> Deserialize<'de> for ProviderEngine {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let token = String::deserialize(deserializer)?;
-        ProviderEngine::from_token(&token).ok_or_else(|| {
-            serde::de::Error::custom(format!("moteur inconnu : « {token} »"))
-        })
+        ProviderEngine::from_token(&token)
+            .ok_or_else(|| serde::de::Error::custom(format!("moteur inconnu : « {token} »")))
     }
 }
 
