@@ -428,8 +428,19 @@ pub struct UiContributions {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UiSlotContribution {
     pub id: String,
-    /// Nom du slot cible (ex: `composer.before_send`, `composer.toolbar`, `topbar.actions`,
-    /// `studio.tabs`, `marketplace.categories`, `engines.runtimes`, `nav.drawer`).
+    /// Nom du slot cible. Ceux que l'interface monte réellement aujourd'hui —
+    /// déclarer autre chose est accepté par le manifeste mais n'affiche rien :
+    ///
+    /// - `nav.drawer` — entrée du menu principal (bureau, mobile, web)
+    /// - `topbar.actions` — bouton de la barre du haut (bureau, mobile)
+    /// - `composer.toolbar` — bouton à côté du champ de saisie (bureau, mobile).
+    ///   C'est là qu'atterrissent aussi les `composer_actions`.
+    /// - `chat.header` — en-tête de la conversation (mobile)
+    /// - `chat.workspaces` — sélecteur d'espace de travail (bureau)
+    /// - `studio.tabs` — onglet du Studio de génération
+    /// - `engines.runtimes` — moteur d'inférence proposé dans les réglages
+    /// - `marketplace.catalogs` — catalogue de modèles apporté par le paquet.
+    ///   L'entrée pointe le fichier, typiquement `dist/marketplace.json`.
     pub slot: String,
     /// Priorité d'ordre d'affichage (ex: 10, 50, 100).
     #[serde(default = "ordre_par_defaut")]
