@@ -712,64 +712,38 @@ fn find_manifest_dir(root: &std::path::Path) -> Option<std::path::PathBuf> {
 }
 
 /// Télécharger un dépôt du catalogue et rendre le dossier à installer.
+///
+/// On passe par le récupérateur de `locaryn-extensions`, celui-là même
+/// qu'utilise l'ordinateur. Le service en avait un second, qui téléchargeait
+/// toujours l'archive de la branche : un morph livrant un serveur MCP compilé
+/// s'installait alors sans son binaire, s'affichait actif, et ne répondait
+/// jamais. Le récupérateur partagé regarde d'abord s'il existe un paquet de
+/// release pour cette plateforme, et ne retombe sur les sources qu'à défaut.
 async fn fetch_from_catalogue(source: &str) -> Result<std::path::PathBuf, String> {
+    // `parse_repo` reste le garde-barrière : le service ne télécharge que ce
+    // qui ressemble à `owner/repo`, jamais une adresse quelconque.
     let (owner, repo) = parse_repo(source)?;
+
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_secs(300))
         .user_agent("locaryn-daemon")
         .build()
         .map_err(|e| e.to_string())?;
-
-    // `main` d'abord, `master` ensuite : les deux existent dans la nature.
-    let mut derniere = String::new();
-    let mut octets = None;
-    for branche in ["main", "master"] {
-        let url = format!("https://github.com/{owner}/{repo}/archive/refs/heads/{branche}.zip");
-        match client.get(&url).send().await {
-            Ok(r) if r.status().is_success() => {
-                octets = Some(r.bytes().await.map_err(|e| e.to_string())?);
-                break;
-            }
-            Ok(r) => derniere = format!("{} a répondu {}", url, r.status()),
-            Err(e) => derniere = format!("{url} : {e}"),
-        }
-    }
-    let Some(octets) = octets else {
-        return Err(format!(
-            "Impossible de récupérer {owner}/{repo} ({derniere})."
-        ));
-    };
 
     let cible = locaryn_config::default_data_dir()
         .join("extensions-telechargees")
         .join(format!("{owner}-{repo}"));
     let _ = std::fs::remove_dir_all(&cible);
-    std::fs::create_dir_all(&cible).map_err(|e| format!("dossier : {e}"))?;
 
-    let curseur = std::io::Cursor::new(octets);
-    let mut archive =
-        zip::ZipArchive::new(curseur).map_err(|e| format!("archive illisible : {e}"))?;
-    for i in 0..archive.len() {
-        let mut entree = archive
-            .by_index(i)
-            .map_err(|e| format!("entrée illisible : {e}"))?;
-        // `enclosed_name` refuse les chemins qui sortent du dossier cible.
-        let Some(rel) = entree.enclosed_name() else {
-            continue;
-        };
-        let out = cible.join(rel);
-        if entree.is_dir() {
-            std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-            continue;
-        }
-        if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        let mut fichier = std::fs::File::create(&out).map_err(|e| e.to_string())?;
-        std::io::copy(&mut entree, &mut fichier).map_err(|e| e.to_string())?;
-    }
+    let spec = format!("github:{owner}/{repo}");
+    let source = locaryn_extensions::source::parse(&spec).map_err(|e| e.to_string())?;
+    let dir = locaryn_extensions::source::fetch(&client, &source, &cible)
+        .await
+        .map_err(|e| format!("Impossible de récupérer {owner}/{repo} : {e}"))?;
 
-    find_manifest_dir(&cible).ok_or_else(|| {
+    // Une archive de sources garde le dossier `repo-main/` de GitHub, et une
+    // extension peut y être rangée un cran plus bas.
+    find_manifest_dir(&dir).ok_or_else(|| {
         format!("{owner}/{repo} ne contient pas de morph.json : ce n'est pas une extension.")
     })
 }
