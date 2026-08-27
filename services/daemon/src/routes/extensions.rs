@@ -356,10 +356,15 @@ pub async fn restore_from_storage(state: &DaemonState) {
                 }
                 restored += 1;
             }
+            Err(_) if locaryn_extensions::adapters::is_legacy_bundle(&dir) => tracing::warn!(
+                name = %rec.name,
+                path = %dir.display(),
+                "paquet au manifeste d'avant les Morphs : réinstallez-le pour obtenir morph.json"
+            ),
             Err(e) => tracing::warn!(
                 name = %rec.name,
                 error = %e,
-                "extension enregistrée mais introuvable sur le disque"
+                "extension enregistrée mais illisible sur le disque"
             ),
         }
     }
@@ -680,23 +685,23 @@ fn parse_repo(source: &str) -> Result<(String, String), String> {
 /// Trouver, dans une archive dépliée, le dossier qui porte le manifeste.
 ///
 /// GitHub emballe tout dans un dossier `repo-main/`, et une extension peut y
-/// être rangée dans un sous-dossier. On cherche donc `plugin.json` sur deux
+/// être rangée dans un sous-dossier. On cherche donc `morph.json` sur deux
 /// niveaux plutôt que de supposer une disposition.
 fn find_manifest_dir(root: &std::path::Path) -> Option<std::path::PathBuf> {
-    if root.join("plugin.json").is_file() {
+    if root.join("morph.json").is_file() {
         return Some(root.to_path_buf());
     }
     let entries = std::fs::read_dir(root).ok()?;
     for entry in entries.flatten() {
         let p = entry.path();
         if p.is_dir() {
-            if p.join("plugin.json").is_file() {
+            if p.join("morph.json").is_file() {
                 return Some(p);
             }
             if let Ok(sous) = std::fs::read_dir(&p) {
                 for s in sous.flatten() {
                     let sp = s.path();
-                    if sp.is_dir() && sp.join("plugin.json").is_file() {
+                    if sp.is_dir() && sp.join("morph.json").is_file() {
                         return Some(sp);
                     }
                 }
@@ -765,7 +770,7 @@ async fn fetch_from_catalogue(source: &str) -> Result<std::path::PathBuf, String
     }
 
     find_manifest_dir(&cible).ok_or_else(|| {
-        format!("{owner}/{repo} ne contient pas de plugin.json : ce n'est pas une extension.")
+        format!("{owner}/{repo} ne contient pas de morph.json : ce n'est pas une extension.")
     })
 }
 

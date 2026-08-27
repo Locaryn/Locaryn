@@ -37,7 +37,7 @@ pub struct ExtensionEngineSpec {
     pub extension_version: String,
     /// La section `engine` du manifeste, telle qu'écrite par l'auteur.
     pub manifest: EngineManifest,
-    /// Racine de l'extension installée (`LOCARYN_PLUGIN_ROOT`).
+    /// Racine de l'extension installée (`LOCARYN_MORPH_ROOT`).
     pub plugin_root: PathBuf,
     /// Dossier privé de l'extension (`LOCARYN_EXTENSION_DATA_DIR`).
     pub extension_data_dir: PathBuf,

@@ -1109,9 +1109,7 @@ async fn send_message(
         }
     } else {
         match &active_provider {
-            Some(p)
-                if parle_openai(&p.engine) && supervisor_ok =>
-            {
+            Some(p) if parle_openai(&p.engine) && supervisor_ok => {
                 tracing::info!(endpoint = %p.endpoint, model = ?model, "using OpenAiCompatAgent");
                 let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
                 match agent.run(input.clone()).await {
@@ -1928,10 +1926,10 @@ async fn suggest_project(State(s): State<Arc<DaemonState>>, Path(id): Path<Strin
     let Ok(providers) = s.storage.providers.list().await else {
         return rien();
     };
-    let Some(p) = providers.into_iter().find(|p| {
-        p.is_active
-            && parle_openai(&p.engine)
-    }) else {
+    let Some(p) = providers
+        .into_iter()
+        .find(|p| p.is_active && parle_openai(&p.engine))
+    else {
         return rien();
     };
     // « Celui déjà chargé » : pas d'échange de modèle en VRAM pour un titre.
@@ -2004,10 +2002,10 @@ async fn merge_sessions(
     let Ok(providers) = s.storage.providers.list().await else {
         return introuvable("aucun moteur disponible");
     };
-    let Some(p) = providers.into_iter().find(|p| {
-        p.is_active
-            && parle_openai(&p.engine)
-    }) else {
+    let Some(p) = providers
+        .into_iter()
+        .find(|p| p.is_active && parle_openai(&p.engine))
+    else {
         return introuvable("aucun moteur actif");
     };
     // « Celui déjà chargé » : pas d'échange de modèle en VRAM pour une micro-tâche.
@@ -2360,10 +2358,10 @@ fn spawn_profil_de_l_utilisateur(s: Arc<DaemonState>, session_id: Uuid) {
         let Ok(providers) = s.storage.providers.list().await else {
             return;
         };
-        let Some(p) = providers.into_iter().find(|p| {
-            p.is_active
-                && parle_openai(&p.engine)
-        }) else {
+        let Some(p) = providers
+            .into_iter()
+            .find(|p| p.is_active && parle_openai(&p.engine))
+        else {
             return;
         };
         // « Celui déjà chargé » : pas d'échange de modèle en VRAM pour une
@@ -2427,10 +2425,10 @@ fn spawn_titre_du_modele(s: Arc<DaemonState>, session_id: Uuid, premiere_demande
         let Ok(providers) = s.storage.providers.list().await else {
             return;
         };
-        let Some(p) = providers.into_iter().find(|p| {
-            p.is_active
-                && parle_openai(&p.engine)
-        }) else {
+        let Some(p) = providers
+            .into_iter()
+            .find(|p| p.is_active && parle_openai(&p.engine))
+        else {
             return;
         };
 

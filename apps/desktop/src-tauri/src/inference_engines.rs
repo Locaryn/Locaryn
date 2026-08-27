@@ -147,16 +147,12 @@ pub async fn start_inference_engine(
 ) -> Result<EngineInfo, String> {
     let moteur = ProviderEngine::from_token(&engine)
         .ok_or_else(|| format!("moteur inconnu : « {engine} »"))?;
-    let endpoint = core
-        .supervisor
-        .endpoint_for(&moteur)
-        .await
-        .ok_or_else(|| {
-            format!(
-                "moteur {} inconnu — l'extension qui l'apportait n'est plus installée ou active",
-                moteur.as_token()
-            )
-        })?;
+    let endpoint = core.supervisor.endpoint_for(&moteur).await.ok_or_else(|| {
+        format!(
+            "moteur {} inconnu — l'extension qui l'apportait n'est plus installée ou active",
+            moteur.as_token()
+        )
+    })?;
 
     // Un moteur qui ne peut pas tourner ici le dit avant, avec la phrase de
     // son auteur. Le démarrer pour échouer trente secondes plus tard n'apprend
@@ -278,5 +274,9 @@ fn complete_avec_le_journal(core: &Core, moteur: &ProviderEngine, message: &str)
     }
     let mut lignes: Vec<&str> = queue;
     lignes.reverse();
-    format!("{message}\n\nFin du journal ({}) :\n{}", chemin.display(), lignes.join("\n"))
+    format!(
+        "{message}\n\nFin du journal ({}) :\n{}",
+        chemin.display(),
+        lignes.join("\n")
+    )
 }
