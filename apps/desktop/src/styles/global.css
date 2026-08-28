@@ -1253,21 +1253,24 @@ body.locaryn-resizing .locaryn-resizer::after {
 }
 .locaryn-tab-btn {
   background: none;
+  /* Un onglet se marque d'un trait sous le mot, pas d'une pastille : la
+     rangée reste une ligne de texte, et l'accent ne sert qu'au trait. */
   border: none;
+  border-bottom: 2px solid transparent;
   color: var(--text-dim);
   font: inherit;
-  font-size: var(--text-sm);
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  padding: 0 0 var(--space-3);
+  border-radius: 0;
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition: color var(--dur-fast) var(--ease);
 }
 .locaryn-tab-btn:hover {
   color: var(--text);
 }
 .locaryn-tab-btn.locaryn-active {
   color: var(--text);
-  background: var(--surface);
+  border-bottom-color: var(--accent);
 }
 .locaryn-tab-action {
   background: none;

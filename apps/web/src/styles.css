@@ -90,8 +90,7 @@ body {
   outline: none;
 }
 .lo-input:focus {
-  border-color: var(--accent);
-  box-shadow: var(--glow-accent-soft);
+  border-color: var(--border-strong);
 }
 
 .lo-btn {
@@ -342,7 +341,6 @@ body {
 .lo-send:hover:not(:disabled) {
   transform: translateY(-1px);
   filter: brightness(1.06);
-  box-shadow: var(--glow-accent-soft);
 }
 .lo-send:active:not(:disabled) {
   transform: scale(0.96);
@@ -764,9 +762,9 @@ body {
 }
 .lo-section-title {
   margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
 }
@@ -782,10 +780,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--surface);
+  padding: var(--space-4);
+  background-color: var(--surface);
+  background-image: var(--mica);
+  box-shadow: var(--shadow-1);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 .lo-card-text {
   display: flex;

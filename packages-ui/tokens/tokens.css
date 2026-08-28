@@ -320,6 +320,36 @@
     left: 100%;
   }
 }
+/* Onde courte : le ruban s'efface juste avant de repartir au rail. */
+@keyframes lo-w-fade {
+  0%,
+  93% {
+    opacity: 1;
+  }
+  96.5%,
+  99% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+/* Les étincelles de l'arrivée. */
+@keyframes lo-spark {
+  0%,
+  78% {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.3);
+  }
+  85% {
+    opacity: 0.9;
+  }
+  95%,
+  100% {
+    opacity: 0;
+    transform: translateY(-15px) scale(1);
+  }
+}
 /* Pastille d'état pendant qu'une tâche tourne. */
 @keyframes lo-blink {
   0%,

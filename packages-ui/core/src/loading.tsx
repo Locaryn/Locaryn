@@ -92,147 +92,136 @@ export function LoProgress({ value, on = "surface", label }: LoProgressProps) {
    2. Onde courte
    ═══════════════════════════════════════════════════════════ */
 
-/** Géométrie du dessin, en unités de la viewBox. */
-const BOX = { w: 112, h: 40, mid: 20, amp: 5, railEnd: 108 };
-/** La coche : angle vif, deux segments droits. */
-const CHECK: Array<[number, number]> = [
-  [34, 20],
-  [46, 32],
-  [72, 8],
+/**
+ * Le dessin, dans les unités de la viewBox.
+ *
+ * Le ruban suit un chemin guide : un rail droit, une boucle ronde vers le haut
+ * et l'arrière, puis la coche. Les nœuds sont lissés en Catmull-Rom, sauf la
+ * coche elle-même — deux segments rectilignes, pour que l'angle reste vif.
+ */
+const KNOTS: Array<[number, number]> = [
+  [0, 15],
+  [28, 15],
+  [56, 15],
+  [61, 10],
+  [56, 3],
+  [42, 2],
+  [28, 7],
+  [18, 15],
 ];
-/** Nombre de points du ruban. */
-const RIBBON = 33;
+const CORNER: [number, number] = [25, 22];
+const END: [number, number] = [40, 8];
+
+/** Points du ruban (le tracé en compte N + 1). */
+const N = 32;
 /** Durée d'un cycle complet, en millisecondes. */
 const CYCLE = 4000;
-/** Bornes des quatre temps du cycle. */
-const PHASE = { land: 0.45, hold: 0.78, back: 0.95 };
+/** Bornes des quatre temps : ondulation, atterrissage, coche tenue, retour. */
+const WAVE_END = 0.45;
+const LAND = 0.78;
+const HOLD = 0.95;
+/** Amplitude de l'ondulation, en unités de la viewBox. */
+const AMP = 4;
+/** Échantillons par segment du chemin guide. */
+const STEP = 40;
 
 type Pt = [number, number];
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
+function lerpPt(a: Pt, b: Pt, t: number): Pt {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 }
 
-/** Un point sur une courbe de Bézier cubique. */
-function bezier(p0: Pt, c0: Pt, c1: Pt, p1: Pt, t: number): Pt {
-  const u = 1 - t;
-  const [a, b, c, d] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
-  return [
-    a * p0[0] + b * c0[0] + c * c1[0] + d * p1[0],
-    a * p0[1] + b * c0[1] + c * c1[1] + d * p1[1],
-  ];
+/** Un segment droit, échantillonné — la coche n'est pas lissée. */
+function straight(a: Pt, b: Pt, n: number): Pt[] {
+  return Array.from({ length: n }, (_, s) => lerpPt(a, b, (s + 1) / n));
 }
 
-/**
- * Le chemin guide, échantillonné : le rail ondulé, l'élan vers le haut, le
- * retour en arrière par une courbe, puis la coche. Le ruban ne fait que s'y
- * déplacer — c'est ce qui donne le mouvement de ficelle.
- *
- * `phase` fait onduler le rail, `damp` éteint l'ondulation à l'atterrissage.
- */
-function guide(phase: number, damp: number): Pt[] {
-  const pts: Pt[] = [];
-  for (let x = 0; x <= BOX.railEnd; x += 2) {
-    pts.push([x, BOX.mid + BOX.amp * damp * Math.sin((x / WAVELENGTH) * Math.PI * 2 + phase)]);
+/** Le chemin guide complet, et la longueur cumulée le long de celui-ci. */
+function buildGuide() {
+  const c = [KNOTS[0], ...KNOTS, KNOTS[KNOTS.length - 1]];
+  const guide: Pt[] = [];
+  const knotArc = [0];
+  for (let i = 1; i < c.length - 2; i++) {
+    const [p0, p1, p2, p3] = [c[i - 1], c[i], c[i + 1], c[i + 2]];
+    for (let s = 0; s < STEP; s++) {
+      const t = s / STEP;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const axis = (k: 0 | 1) =>
+        0.5 *
+        (2 * p1[k] +
+          (-p0[k] + p2[k]) * t +
+          (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 +
+          (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3);
+      guide.push([axis(0), axis(1)]);
+    }
   }
-  const launchFrom: Pt = [BOX.railEnd, BOX.mid];
-  for (let i = 1; i <= 24; i++) {
-    pts.push(bezier(launchFrom, [140, -6], [118, -2], [92, 4], i / 24));
+  const start = KNOTS[KNOTS.length - 1];
+  guide.push(start, ...straight(start, CORNER, STEP), ...straight(CORNER, END, STEP));
+
+  const cum = [0];
+  for (let i = 1; i < guide.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(guide[i][0] - guide[i - 1][0], guide[i][1] - guide[i - 1][1]));
+    if (i % STEP === 0) knotArc.push(cum[i]);
   }
-  for (let i = 1; i <= 24; i++) {
-    pts.push(bezier([92, 4], [70, -4], [38, 6], CHECK[0], i / 24));
-  }
-  for (let i = 1; i <= 12; i++) pts.push(segment(CHECK[0], CHECK[1], i / 12));
-  for (let i = 1; i <= 20; i++) pts.push(segment(CHECK[1], CHECK[2], i / 20));
-  return pts;
+  return { guide, cum, knotArc, start };
 }
 
-function segment(a: Pt, b: Pt, t: number): Pt {
-  return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
-}
-
-/** Les longueurs cumulées le long d'un chemin échantillonné. */
-function arcLengths(pts: Pt[]): number[] {
-  const out = [0];
-  for (let i = 1; i < pts.length; i++) {
-    out.push(out[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-  }
-  return out;
-}
-
-/** Le point situé à `s` unités du début du chemin. */
-function at(pts: Pt[], lens: number[], s: number): Pt {
-  const total = lens[lens.length - 1];
-  const target = Math.max(0, Math.min(total, s));
-  let i = 1;
-  while (i < lens.length - 1 && lens[i] < target) i++;
-  const span = lens[i] - lens[i - 1] || 1;
-  return segment(pts[i - 1], pts[i], (target - lens[i - 1]) / span);
-}
-
-/** La longueur du ruban : exactement celle de la coche, pour qu'il s'y pose. */
-function checkLength(): number {
-  return (
-    Math.hypot(CHECK[1][0] - CHECK[0][0], CHECK[1][1] - CHECK[0][1]) +
-    Math.hypot(CHECK[2][0] - CHECK[1][0], CHECK[2][1] - CHECK[1][1])
+/** La coche au repos, dont l'angle tombe exactement sur un point du ruban. */
+function buildCheck(start: Pt) {
+  const legA = Math.hypot(CORNER[0] - start[0], CORNER[1] - start[1]);
+  const legB = Math.hypot(END[0] - CORNER[0], END[1] - CORNER[1]);
+  const length = legA + legB;
+  const cut = Math.round((N * legA) / length);
+  const points: Pt[] = Array.from({ length: N + 1 }, (_, i) =>
+    i <= cut ? lerpPt(start, CORNER, i / cut) : lerpPt(CORNER, END, (i - cut) / (N - cut)),
   );
+  return { points, length };
 }
 
-/** Adoucissement en cloche, pour que l'élan parte et s'arrête sans à-coup. */
-function easeInOut(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-}
-
-/**
- * Où en est le cycle : combien le rail ondule encore, où en est l'éclat, et
- * l'avancée de la tête entre le repos et la fin du chemin.
- *
- * `advance` est une fraction, pas une longueur : l'ondulation du rail allonge
- * le chemin, donc la longueur totale n'est pas la même d'une image à l'autre.
- * La convertir en longueur trop tôt décalait le ruban, et il s'arrêtait à
- * côté de la coche au lieu de se poser dessus.
- */
-function ribbonState(p: number): { advance: number; damp: number; burst: number } {
-  if (p < PHASE.land) return { advance: 0, damp: 1, burst: 0 };
-  if (p < PHASE.hold) {
-    const k = easeInOut((p - PHASE.land) / (PHASE.hold - PHASE.land));
-    return { advance: k, damp: 1 - k, burst: 0 };
+/** Le point situé à `arc` unités du début du chemin. */
+function pointAt(guide: Pt[], cum: number[], arc: number): Pt {
+  const total = cum[cum.length - 1];
+  const a = Math.max(0, Math.min(total, arc));
+  let lo = 0;
+  let hi = cum.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid] <= a) lo = mid;
+    else hi = mid;
   }
-  if (p < PHASE.back) {
-    return { advance: 1, damp: 0, burst: (p - PHASE.hold) / (PHASE.back - PHASE.hold) };
-  }
-  const k = (p - PHASE.back) / (1 - PHASE.back);
-  return { advance: 1 - k, damp: k, burst: 0 };
+  const span = cum[hi] - cum[lo];
+  return lerpPt(guide[lo], guide[hi], span ? (a - cum[lo]) / span : 0);
 }
 
-/** La position de la tête sur le chemin de l'image courante. */
-function headAt(advance: number, ribbonLen: number, total: number): number {
-  const rest = ribbonLen + 28;
-  return lerp(rest, total, advance);
+/** Adoucissement en cloche : l'élan part et s'arrête sans à-coup. */
+function easeInOut(u: number): number {
+  return u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
 }
 
 export interface LoMorphProps {
   /** Largeur rendue, en pixels. La hauteur suit le rapport de la viewBox. */
   width?: number;
-  /** Ne jouer qu'une fois — le cas de l'application, à l'arrivée de la réponse. */
-  once?: boolean;
   /** Étiquette lue par les lecteurs d'écran. */
   label?: string;
 }
 
 /**
- * Le ruban ondule sur son rail, s'élance, revient par une courbe, prend
- * l'angle de la coche et s'arrête dessus. Six points éclatent à l'arrivée.
+ * Le ruban ondule sur son rail, s'élance, revient par une boucle, prend
+ * l'angle de la coche et s'arrête dessus. Six étincelles marquent l'arrivée.
  *
  * Le tracé est recalculé image par image en JS plutôt qu'en SMIL : SMIL ne
  * démarre pas de façon fiable dans une WebView.
  */
-export function LoMorph({ width = 112, once = false, label }: LoMorphProps) {
+export function LoMorph({ width = 118, label }: LoMorphProps) {
   const line = useRef<SVGPolylineElement>(null);
-  const dots = useRef<SVGGElement>(null);
 
   useEffect(() => {
-    const ribbonLen = checkLength();
+    const { guide, cum, knotArc, start } = buildGuide();
+    const check = buildCheck(start);
+    const total = cum[cum.length - 1];
+    /** Fin du rail droit : au-delà, le ruban quitte l'horizontale. */
+    const rail = knotArc[2];
 
     // Mouvement réduit demandé : on pose la coche, une bonne fois. Le CSS ne
     // peut rien ici — le tracé est écrit en JS, c'est donc à lui de se taire.
@@ -240,89 +229,82 @@ export function LoMorph({ width = 112, once = false, label }: LoMorphProps) {
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
     if (calme) {
-      const pts = guide(0, 0);
-      const lens = arcLengths(pts);
-      paintRibbon(line.current, pts, lens, lens[lens.length - 1], ribbonLen);
+      line.current?.setAttribute(
+        "points",
+        check.points.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" "),
+      );
       return;
     }
 
     let frame = 0;
-    let id = 0;
-
     const tick = () => {
-      const p = once ? Math.min(1, (frame * 16) / CYCLE) : ((frame * 16) / CYCLE) % 1;
-      const { advance, damp, burst } = ribbonState(p);
-      // Le chemin est remesuré à chaque image : c'est lui qui rétrécit quand
-      // l'ondulation s'éteint, et la tête doit suivre ce rétrécissement.
-      const pts = guide(frame * 0.12, damp);
-      const lens = arcLengths(pts);
-      const head = headAt(advance, ribbonLen, lens[lens.length - 1]);
-      paintRibbon(line.current, pts, lens, head, ribbonLen);
-      paintBurst(dots.current, burst);
+      const ms = (frame * 16) % CYCLE;
+      const t = ms / CYCLE;
+      const phase = (ms / 900) * 8;
+
+      let head = rail;
+      let len = rail;
+      let amp = AMP;
+      if (t >= WAVE_END && t < LAND) {
+        const u = (t - WAVE_END) / (LAND - WAVE_END);
+        const e = easeInOut(u);
+        head = rail + (total - rail) * e;
+        len = rail + (check.length - rail) * e;
+        amp = AMP * Math.max(0, 1 - u / 0.38);
+      } else if (t >= LAND && t < HOLD) {
+        head = total;
+        len = check.length;
+        amp = 0;
+      }
+
+      // Sur la fin du parcours, on rejoint la répartition exacte de la coche :
+      // c'est ce qui rend l'angle net au lieu d'un coude mou.
+      let snap = 0;
+      if (t >= WAVE_END && t < LAND) {
+        snap = Math.max(0, ((t - WAVE_END) / (LAND - WAVE_END) - 0.62) / 0.38);
+      } else if (t >= LAND && t < HOLD) {
+        snap = 1;
+      }
+      if (snap > 0) amp *= 1 - snap;
+
+      const pts: string[] = [];
+      for (let i = 0; i <= N; i++) {
+        const p = pointAt(guide, cum, head - len + (i / N) * len);
+        const x = p[0] + (check.points[i][0] - p[0]) * snap;
+        const y =
+          p[1] + (check.points[i][1] - p[1]) * snap - amp * Math.sin(((i + phase) * Math.PI) / 4);
+        pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+      }
+      line.current?.setAttribute("points", pts.join(" "));
       frame++;
-      if (once && p >= 1) window.clearInterval(id);
     };
 
-    id = window.setInterval(tick, 16);
+    const id = window.setInterval(tick, 16);
     return () => window.clearInterval(id);
-  }, [once]);
+  }, []);
+
+  /** Six étincelles, régulièrement réparties, qui éclatent à l'arrivée. */
+  const sparks = [0, 60, 120, 180, 240, 300];
 
   return (
-    <svg
+    <span
       className="lo-morph"
-      width={width}
-      height={(width * BOX.h) / BOX.w}
-      viewBox={`0 0 ${BOX.w} ${BOX.h}`}
-      role={label ? "img" : "presentation"}
+      style={{ width, height: (width * 45) / 118 }}
+      role={label ? "img" : undefined}
       aria-label={label}
     >
-      <polyline ref={line} points="" />
-      <g ref={dots} />
-    </svg>
+      <svg viewBox="0 0 78 30" fill="none" shapeRendering="geometricPrecision" aria-hidden="true">
+        <polyline ref={line} points="" />
+      </svg>
+      <span className="lo-morph-sparks" aria-hidden="true">
+        {sparks.map((deg) => (
+          <span key={deg} style={{ transform: `rotate(${deg}deg)` }}>
+            <i />
+          </span>
+        ))}
+      </span>
+    </span>
   );
-}
-
-/** Réécrire les 33 points du ruban pour l'image courante. */
-function paintRibbon(
-  node: SVGPolylineElement | null,
-  pts: Pt[],
-  lens: number[],
-  head: number,
-  ribbonLen: number,
-): void {
-  if (!node) return;
-  const out: string[] = [];
-  for (let i = 0; i < RIBBON; i++) {
-    const s = head - ribbonLen * (1 - i / (RIBBON - 1));
-    const [x, y] = at(pts, lens, s);
-    out.push(`${x.toFixed(2)},${y.toFixed(2)}`);
-  }
-  node.setAttribute("points", out.join(" "));
-}
-
-/** Les six points qui éclatent à l'arrivée, dans la couleur du ruban. */
-function paintBurst(node: SVGGElement | null, burst: number): void {
-  if (!node) return;
-  if (burst <= 0) {
-    if (node.childNodes.length) node.replaceChildren();
-    return;
-  }
-  const ns = "http://www.w3.org/2000/svg";
-  if (node.childNodes.length !== 6) {
-    node.replaceChildren(
-      ...Array.from({ length: 6 }, () => document.createElementNS(ns, "circle")),
-    );
-  }
-  const [cx, cy] = CHECK[2];
-  node.childNodes.forEach((child, i) => {
-    const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
-    const reach = 4 + burst * 9;
-    const dot = child as SVGCircleElement;
-    dot.setAttribute("cx", (cx + Math.cos(angle) * reach).toFixed(2));
-    dot.setAttribute("cy", (cy + Math.sin(angle) * reach).toFixed(2));
-    dot.setAttribute("r", (1.6 * (1 - burst)).toFixed(2));
-    dot.setAttribute("opacity", (1 - burst).toFixed(2));
-  });
 }
 
 /* ═══════════════════════════════════════════════════════════

@@ -80,23 +80,52 @@
 }
 
 /* ── 2. Onde courte ─────────────────────────────────────────
-   Un ruban de points suit un chemin guide, prend l'angle de la
-   coche et s'arrête dessus. La coche est droite, angle vif : seul
-   le trajet qui y mène est courbe. Le tracé est recalculé image
-   par image en JS — SMIL ne démarre pas de façon fiable. */
+   Version compacte de l'onde indéterminée : le ruban ondule sur son
+   rail, s'élance, revient par une boucle, prend l'angle de la coche
+   et s'arrête dessus. La coche est droite, angle vif — seul le trajet
+   qui y mène est courbe. Six étincelles marquent l'arrivée.
+
+   Le tracé est recalculé image par image en JS : SMIL ne démarre pas
+   de façon fiable dans une WebView. */
 .lo-morph {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+.lo-morph svg {
   display: block;
+  width: 100%;
+  height: 100%;
   overflow: visible;
+  /* Le ruban s'efface une fraction de seconde avant de repartir : sans ça,
+     le retour au rail se lit comme un saut. */
+  animation: lo-w-fade 4s linear infinite;
 }
 .lo-morph polyline {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 3;
+  stroke-width: 2.6;
   stroke-linecap: round;
   stroke-linejoin: miter;
+  stroke-miterlimit: 4;
 }
-.lo-morph circle {
-  fill: var(--accent);
+/* Les étincelles partent du bout de la coche, réparties en étoile. */
+.lo-morph-sparks > span {
+  position: absolute;
+  left: 37.3%;
+  top: 48.9%;
+  width: 0;
+  height: 0;
+}
+.lo-morph-sparks i {
+  position: absolute;
+  left: -1.5px;
+  top: -1.5px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: lo-spark 4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
 
 /* ── 3. Squelette ───────────────────────────────────────────
