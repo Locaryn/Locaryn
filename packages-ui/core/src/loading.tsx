@@ -40,8 +40,14 @@ function wavePath(width: number, mid: number, amplitude: number): string {
    ═══════════════════════════════════════════════════════════ */
 
 export interface LoProgressProps {
-  /** Avancement, de 0 à 1. Hors bornes, il est ramené dedans. */
-  value: number;
+  /**
+   * Avancement, de 0 à 1. Hors bornes, il est ramené dedans.
+   *
+   * `null` quand la fin n'est pas connue : l'onde balaie alors le rail au lieu
+   * de faire grandir une part accomplie. Un pourcentage inventé serait pire
+   * qu'une absence de pourcentage.
+   */
+  value: number | null;
   /** La surface sous la barre, pour que le cerclage du point s'y fonde. */
   on?: "surface" | "surface-2" | "bg";
   /** Étiquette lue par les lecteurs d'écran. */
@@ -54,15 +60,16 @@ export interface LoProgressProps {
  * ensemble ; un point marque la frontière.
  */
 export function LoProgress({ value, on = "surface", label }: LoProgressProps) {
-  const pct = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100;
+  const sweep = value === null || !Number.isFinite(value);
+  const pct = sweep ? 0 : Math.max(0, Math.min(1, value as number)) * 100;
   const d = wavePath(900, 12, 7);
   return (
     <div
-      className="lo-progress"
+      className={sweep ? "lo-progress lo-progress-sweep" : "lo-progress"}
       data-on={on}
       role="progressbar"
       aria-label={label}
-      aria-valuenow={Math.round(pct)}
+      aria-valuenow={sweep ? undefined : Math.round(pct)}
       aria-valuemin={0}
       aria-valuemax={100}
     >
@@ -71,7 +78,7 @@ export function LoProgress({ value, on = "surface", label }: LoProgressProps) {
           <path d={d} stroke="var(--surface-3)" strokeWidth={4} strokeLinecap="round" fill="none" />
         </svg>
       </div>
-      <div className="lo-progress-done" style={{ width: `${pct}%` }}>
+      <div className="lo-progress-done" style={sweep ? undefined : { width: `${pct}%` }}>
         <svg width={900} height={24} aria-hidden="true">
           <path d={d} stroke="var(--accent)" strokeWidth={4} strokeLinecap="round" fill="none" />
         </svg>

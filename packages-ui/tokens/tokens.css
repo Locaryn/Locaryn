@@ -207,6 +207,18 @@
   color-scheme: light;
 }
 
+/* Le focus du système : un contour net, jamais un halo. Il doit se voir sur
+   n'importe quelle surface, y compris sur l'accent lui-même. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Une sélection de texte teintée de l'accent, discrète. */
+::selection {
+  background: rgba(var(--accent-rgb), 0.28);
+}
+
 /* ═══════════════════════════════════════════════════════════
    Matière — les deux seules recettes de surface
 
@@ -270,7 +282,7 @@
 @keyframes lo-pop {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.97);
   }
   to {
     opacity: 1;
@@ -299,6 +311,15 @@
     box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0);
   }
 }
+/* Le balayage de l'onde indéterminée : la fenêtre traverse le rail. */
+@keyframes lo-wave-sweep {
+  0% {
+    left: -38%;
+  }
+  100% {
+    left: 100%;
+  }
+}
 /* Pastille d'état pendant qu'une tâche tourne. */
 @keyframes lo-blink {
   0%,
@@ -306,14 +327,25 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.25;
+    opacity: 0.35;
   }
 }
 /* Centre de notifications : montée depuis la barre d'état. */
 @keyframes lo-rise {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.98);
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Panneau qui entre par la droite : fiche d'extension, feuille de réglages. */
+@keyframes lo-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
   }
   to {
     opacity: 1;
@@ -324,7 +356,7 @@
 @keyframes lo-flip-in {
   from {
     opacity: 0;
-    transform: translateY(-6px) scale(0.97);
+    transform: translateY(-8px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -356,7 +388,7 @@
 @keyframes lo-mode-a {
   from {
     opacity: 0;
-    transform: translateX(18px);
+    transform: translateX(-14px) scale(0.985);
   }
   to {
     opacity: 1;
@@ -366,34 +398,48 @@
 @keyframes lo-mode-b {
   from {
     opacity: 0;
-    transform: translateX(-18px);
+    transform: translateX(14px) scale(0.985);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
-/* Suppression d'un modèle : la carte se disloque, les éclats divergent. */
-@keyframes lo-shatter {
+/* Bascule de thème : le voile de l'ancien fond s'efface. */
+@keyframes lo-theme-fade {
   from {
     opacity: 1;
-    transform: none;
-    filter: none;
   }
   to {
     opacity: 0;
-    transform: scale(0.94);
-    filter: blur(2px);
+  }
+}
+/* Suppression d'un modèle : la carte se gonfle d'un cheveu, puis se disloque. */
+@keyframes lo-shatter {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  30% {
+    opacity: 0.9;
+    transform: scale(1.015);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
   }
 }
 @keyframes lo-conf {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-  to {
+  0% {
     opacity: 0;
-    transform: translate(var(--lo-conf-x, 0), var(--lo-conf-y, 0)) scale(0.4);
+    transform: translate(0, 0) rotate(0) scale(0.5);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(0.35);
   }
 }
 

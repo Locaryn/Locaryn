@@ -279,11 +279,10 @@ body.locaryn-resizing .locaryn-resizer::after {
 .locaryn-left {
   flex: none;
   width: var(--layout-left);
-  background-color: var(--bg);
-  background-image: var(--mica);
+  background: var(--surface);
   border-right: 1px solid var(--border);
   overflow: auto;
-  padding: var(--space-4);
+  padding: var(--space-6) var(--space-4);
   display: flex;
   flex-direction: column;
   /* Fill the wrapper's full height, otherwise the aside is only as tall as its
@@ -1592,8 +1591,8 @@ dialog:where([open]) {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px var(--space-3);
+  border-radius: var(--radius);
+  padding: 10px 14px;
   font-family: inherit;
   font-size: var(--text-base);
   outline: none;
@@ -1628,11 +1627,11 @@ dialog:where([open]) {
 .locaryn-btn-primary {
   background: var(--accent);
   color: var(--on-accent);
-  border: none;
-  padding: 8px var(--space-5);
-  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  padding: 10px 18px;
+  border-radius: var(--radius);
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 500;
   font-size: var(--text-base);
   transition: filter var(--dur-fast) var(--ease);
 }
@@ -1646,18 +1645,17 @@ dialog:where([open]) {
 .locaryn-btn-ghost {
   flex: none;
   background: transparent;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px var(--space-3);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 10px 16px;
   cursor: pointer;
   font-size: var(--text-base);
   white-space: nowrap;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .locaryn-btn-ghost:hover:not(:disabled) {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--surface-2);
 }
 .locaryn-btn-ghost:disabled {
   opacity: 0.55;
@@ -1690,7 +1688,7 @@ dialog:where([open]) {
   background: var(--danger);
 }
 .locaryn-conn-testing .locaryn-conn-dot {
-  animation: thinking 1.2s var(--ease) infinite;
+  animation: lo-blink 1.2s var(--ease) infinite;
 }
 
 /* ── About key/value list ── */
@@ -4615,7 +4613,7 @@ pre.md-code {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: var(--space-8);
+  padding: var(--space-8) 40px var(--space-16);
   overflow-y: auto;
   background: var(--bg);
 }
@@ -4624,33 +4622,39 @@ pre.md-code {
   margin-bottom: var(--space-8);
 }
 
+/* Le poids porte le titre, pas le gras : 500 avec un crénage resserré. */
 .locaryn-view-header h2 {
   font-size: var(--text-xl);
-  font-weight: 700;
-  margin: 0 0 var(--space-1) 0;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--space-2) 0;
   color: var(--text);
 }
 
 .locaryn-view-desc {
   color: var(--text-dim);
-  font-size: var(--text-base);
+  font-size: var(--text-md);
+  line-height: 1.6;
+  max-width: 62ch;
   margin: 0;
 }
 
 .locaryn-card {
   background-color: var(--surface);
   background-image: var(--mica);
-  box-shadow: inset 0 1px 0 var(--stroke-top);
+  box-shadow: var(--shadow-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: var(--space-6);
-  margin-bottom: var(--space-6);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .locaryn-card h3 {
-  font-size: var(--text-md);
-  font-weight: 700;
-  margin: 0 0 var(--space-4) 0;
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  margin: 0 0 var(--space-3) 0;
   color: var(--text);
 }
 
@@ -5955,8 +5959,8 @@ pre.md-code {
   color: var(--text);
 }
 .locaryn-bell:focus-visible {
-  outline: none;
-  box-shadow: var(--glow-accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .locaryn-bell-unread {
   color: var(--accent);
@@ -8077,8 +8081,8 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   transform: scale(1.02);
 }
 .locaryn-travel-qr:focus-visible {
-  outline: none;
-  box-shadow: var(--glow-accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .locaryn-travel-qr svg {
   width: 100%;
@@ -8361,8 +8365,8 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   color: var(--text);
 }
 .locaryn-segment:focus-visible {
-  outline: none;
-  box-shadow: var(--glow-accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 /* Le choix retenu : l'accent ne marque qu'une chose par écran, et c'est lui. */
 .locaryn-segment-on,
@@ -9407,5 +9411,27 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   }
   .locaryn-cloud-key-row .locaryn-input {
     flex-basis: 100%;
+  }
+}
+
+/* La passerelle locale : son état, puis son tableau de bord tel quel. Le
+   cadre est haut parce que ce qu'il montre est une application entière, pas
+   une vignette — le réduire obligerait à faire défiler deux fois. */
+.locaryn-cloud-gateway {
+  padding: var(--space-4);
+}
+
+.locaryn-cloud-frame {
+  width: 100%;
+  height: min(70vh, 720px);
+  margin-top: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+}
+
+@media (max-width: 640px) {
+  .locaryn-cloud-frame {
+    height: 60vh;
   }
 }

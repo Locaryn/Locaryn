@@ -501,8 +501,9 @@ function Shards() {
             className="locaryn-shard"
             style={
               {
-                "--lo-conf-x": `${Math.cos(angle) * reach}px`,
-                "--lo-conf-y": `${Math.sin(angle) * reach}px`,
+                "--tx": `${Math.cos(angle) * reach}px`,
+                "--ty": `${Math.sin(angle) * reach}px`,
+                "--rot": `${(i % 2 ? 1 : -1) * (90 + (i % 5) * 40)}deg`,
                 animationDelay: `${(i % 7) * 12}ms`,
               } as React.CSSProperties
             }

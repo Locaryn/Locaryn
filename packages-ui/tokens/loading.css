@@ -63,6 +63,22 @@
   box-shadow: 0 0 0 3px var(--surface-2), 0 0 10px rgba(var(--accent-rgb), 0.5);
 }
 
+/* ── 1 bis. Progression ondulée indéterminée ────────────────
+   Durée inconnue : au lieu d'une part accomplie qui grandit, une fenêtre
+   d'onde balaie le rail. Appairage, analyse de dossier, indexation RAG —
+   tout ce qui travaille sans savoir combien de temps. Une barre qui
+   prétendrait un pourcentage mentirait. */
+.lo-progress-sweep .lo-progress-done {
+  width: 38%;
+  left: -38%;
+  animation: lo-wave-sweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transition: none;
+}
+/* Pas de poignée : il n'y a pas de frontière entre fait et à faire. */
+.lo-progress-sweep .lo-progress-head {
+  display: none;
+}
+
 /* ── 2. Onde courte ─────────────────────────────────────────
    Un ruban de points suit un chemin guide, prend l'angle de la
    coche et s'arrête dessus. La coche est droite, angle vif : seul
@@ -132,8 +148,8 @@
   transition: background var(--dur-med) var(--ease);
 }
 .lo-switch:focus-visible {
-  outline: none;
-  box-shadow: var(--glow-accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .lo-switch:disabled {
   opacity: 0.45;

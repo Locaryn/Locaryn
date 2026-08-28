@@ -1,4 +1,4 @@
-import { LoProgress, LoSpinner } from "@locaryn/ui-core";
+import { LoProgress } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { MODEL_CATALOGUE, type ModelPullProgress, api } from "../lib/core";
 import { Screen } from "./Screen";
@@ -68,11 +68,11 @@ export function Models({ onBack }: Props) {
       {progress && (
         <div className="lo-card" style={{ display: "block", marginBottom: 12 }}>
           <strong>Téléchargement en cours…</strong>
-          {progress.percentage == null ? (
-            <LoSpinner size="sm" label="Téléchargement en préparation" />
-          ) : (
-            <LoProgress value={progress.percentage / 100} on="surface" label="Téléchargement" />
-          )}
+          <LoProgress
+            value={progress.percentage == null ? null : progress.percentage / 100}
+            on="surface"
+            label="Téléchargement"
+          />
           <span className="lo-hint">
             {progress.message ??
               (progress.percentage == null ? "Préparation…" : `${progress.percentage} %`)}
