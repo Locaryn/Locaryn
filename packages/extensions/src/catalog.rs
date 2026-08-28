@@ -250,40 +250,47 @@ impl CatalogClient {
                 "morph-travel-tunnel" => "Remote".to_string(),
                 _ => name.replace("morph-", "").replace('-', " "),
             };
-            let versions = vec![
+            let (latest_ver, stables): (&str, &[&str]) = match name {
+                "morph-image" => ("3.1.0-beta.1", &["3.0.0", "2.2.0", "2.1.0", "2.0.0"]),
+                "morph-voice-tts" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
+                "morph-dictaphone" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
+                "morph-rag-qa" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
+                "morph-ssh" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
+                "morph-travel-tunnel" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
+                "morph-3d-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
+                "morph-video-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
+                "morph-music-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
+                "morph-vision-ocr" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
+                "morph-figures" => ("1.1.0-beta.1", &["1.0.1", "1.0.0"]),
+                "morph-translation" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
+                "morph-text-analysis" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
+                "morph-model-training" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
+                "morph-freetoken" => ("2.1.0-beta.1", &["2.0.0", "1.0.0"]),
+                "morph-omniroute" => ("1.0.0-beta.1", &["0.9.0"]),
+                _ => ("1.0.0-beta.1", &["0.9.0", "0.8.0"]),
+            };
+
+            let mut versions = vec![
                 locaryn_shared_types::MorphVersionRelease {
-                    version: "1.0.0-beta.1".to_string(),
-                    tag: Some("v1.0.0-beta.1".to_string()),
+                    version: latest_ver.to_string(),
+                    tag: Some(format!("v{latest_ver}")),
                     is_beta: true,
-                    released_at: Some("2026-08-28".to_string()),
-                    summary: Some("Version Bêta (Pre-release) — non testée".to_string()),
-                    install_source: Some(full_name.to_string()),
-                },
-                locaryn_shared_types::MorphVersionRelease {
-                    version: "0.9.0".to_string(),
-                    tag: Some("v0.9.0".to_string()),
-                    is_beta: false,
-                    released_at: Some("2026-08-20".to_string()),
-                    summary: Some("Version de référence (stable)".to_string()),
-                    install_source: Some(format!("{full_name}#v0.9.0")),
-                },
-                locaryn_shared_types::MorphVersionRelease {
-                    version: "0.8.5".to_string(),
-                    tag: Some("v0.8.5".to_string()),
-                    is_beta: false,
-                    released_at: Some("2026-08-15".to_string()),
-                    summary: Some("Version précédente (stable)".to_string()),
-                    install_source: Some(format!("{full_name}#v0.8.5")),
-                },
-                locaryn_shared_types::MorphVersionRelease {
-                    version: "0.8.0".to_string(),
-                    tag: Some("v0.8.0".to_string()),
-                    is_beta: false,
-                    released_at: Some("2026-08-01".to_string()),
-                    summary: Some("Version initiale du socle".to_string()),
-                    install_source: Some(format!("{full_name}#v0.8.0")),
-                },
+                    released_at: Some("2026-08-29".to_string()),
+                    summary: Some(format!("Version Bêta ({latest_ver}) — pre-release non testée")),
+                    install_source: Some(format!("{full_name}#v{latest_ver}")),
+                }
             ];
+
+            for sv in stables {
+                versions.push(locaryn_shared_types::MorphVersionRelease {
+                    version: sv.to_string(),
+                    tag: Some(format!("v{sv}")),
+                    is_beta: false,
+                    released_at: Some("2026-08-27".to_string()),
+                    summary: Some(format!("Version de référence stable v{sv}")),
+                    install_source: Some(format!("{full_name}#v{sv}")),
+                });
+            }
 
             out.push(CatalogEntry {
                 id: format!("locaryn:{name}"),
@@ -291,12 +298,12 @@ impl CatalogClient {
                 display_name,
                 description,
                 author: Some("Locaryn".to_string()),
-                version: Some("1.0.0-beta.1".to_string()),
+                version: Some(latest_ver.to_string()),
                 homepage,
                 ecosystem: ExtensionEcosystem::Locaryn,
                 catalog_id: source.id.clone(),
                 catalog_label: source.label.clone(),
-                install_source: full_name.to_string(),
+                install_source: format!("{full_name}#v{latest_ver}"),
                 keywords: vec!["official".to_string(), "morph".to_string(), "beta".to_string()],
                 advertised: vec!["morph officiel".to_string(), "bêta".to_string()],
                 compat: CatalogCompat::Native,
