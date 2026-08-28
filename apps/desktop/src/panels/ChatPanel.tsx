@@ -300,8 +300,16 @@ export function ChatPanel({
       }
 
       let targetModel = active?.model ?? "";
+      // Un modèle distant n'est jamais dans la liste des fichiers installés :
+      // le « corriger » vers le premier modèle local annulerait le choix que
+      // l'utilisateur vient de faire dans le dossier du fournisseur.
+      const isRemote = active?.kind === "remote";
       // Si le modèle enregistré n'existe pas dans les modèles installés, on sélectionne le premier installé
-      if ((!targetModel || (list.length > 0 && !list.includes(targetModel))) && list.length > 0) {
+      if (
+        !isRemote &&
+        (!targetModel || (list.length > 0 && !list.includes(targetModel))) &&
+        list.length > 0
+      ) {
         targetModel = list[0];
         if (active) {
           void core.configureProvider(active.endpoint, targetModel);
@@ -309,7 +317,6 @@ export function ChatPanel({
       }
 
       setActiveModel(targetModel);
-      const isRemote = active?.kind === "remote" || (targetModel.includes("openrouter") ?? false);
       setIsLocalModel(!isRemote);
     } catch {
       // keep fallback
@@ -318,6 +325,15 @@ export function ChatPanel({
 
   useEffect(() => {
     refreshActiveModel();
+  }, [refreshActiveModel]);
+
+  // Un modèle choisi dans le dossier d'un fournisseur distant — depuis « Mes
+  // modèles » ou depuis le panneau du morph — doit se voir tout de suite sous
+  // le champ de saisie, sans que l'utilisateur ait à rouvrir la conversation.
+  useEffect(() => {
+    const onCloudSelected = () => void refreshActiveModel();
+    window.addEventListener("locaryn:cloud-model-selected", onCloudSelected);
+    return () => window.removeEventListener("locaryn:cloud-model-selected", onCloudSelected);
   }, [refreshActiveModel]);
 
   // A chat inside a project works in that folder — reflect it in the picker.

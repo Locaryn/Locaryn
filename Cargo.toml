@@ -27,6 +27,7 @@ members = [
     "packages/rules-runtime",
     "packages/lsp-adapters",
     "packages/ssh",
+    "packages/llmfit",
 ]
 
 [workspace.package]
@@ -60,6 +61,7 @@ locaryn-core-bridge       = { path = "packages/core-bridge", version = "0.3.21" 
 locaryn-rules-runtime     = { path = "packages/rules-runtime", version = "0.3.21" }
 locaryn-lsp-adapters      = { path = "packages/lsp-adapters", version = "0.3.21" }
 locaryn-ssh               = { path = "packages/ssh", version = "0.3.21" }
+locaryn-llmfit            = { path = "packages/llmfit", version = "0.3.21" }
 locaryn-provider-supervisor = { path = "services/provider-supervisor", version = "0.3.21" }
 
 # External crates — pinned once for the workspace

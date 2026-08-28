@@ -1,4 +1,4 @@
-import { LoProgress } from "@locaryn/ui-core";
+import { LoProgress, LoSwitch } from "@locaryn/ui-core";
 import { open } from "@tauri-apps/plugin-shell";
 import { type Update, check } from "@tauri-apps/plugin-updater";
 import { useEffect, useRef, useState } from "react";
@@ -77,6 +77,13 @@ export function AboutSettings() {
   const [runtime, setRuntime] = useState<LlamaRuntimeStatus | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>({ kind: "idle" });
   const checkedRef = useRef(false);
+  const [appBetaChannel, setAppBetaChannel] = useState<boolean>(() => {
+    return localStorage.getItem("locaryn_app_beta_channel") === "true";
+  });
+  const [showBetaMorphs, setShowBetaMorphs] = useState<boolean>(() => {
+    return localStorage.getItem("locaryn_show_beta_morphs") !== "false";
+  });
+
 
   useEffect(() => {
     let cancelled = false;
@@ -269,6 +276,70 @@ export function AboutSettings() {
             label="Téléchargement de la mise à jour"
           />
         )}
+
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
+                Canal de mise à jour Bêta (Testeurs)
+              </div>
+              <p className="locaryn-field-hint" style={{ margin: 0, fontSize: 12 }}>
+                Recevoir les pré-versions expérimentales de l'application Locaryn pour tester les nouvelles fonctionnalités avant leur sortie officielle.
+              </p>
+            </div>
+            <LoSwitch
+              checked={appBetaChannel}
+              onChange={(checked) => {
+                setAppBetaChannel(checked);
+                localStorage.setItem("locaryn_app_beta_channel", checked ? "true" : "false");
+              }}
+              label="Activer le canal de mise à jour Bêta de l'application"
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
+                Afficher les Morphs en version Bêta / Non testée
+              </div>
+              <p className="locaryn-field-hint" style={{ margin: 0, fontSize: 12 }}>
+                Autoriser l'affichage et l'installation des Morphs en version préliminaire ou non vérifiés (marqués en ambre) dans le store.
+              </p>
+            </div>
+            <LoSwitch
+              checked={showBetaMorphs}
+              onChange={(checked) => {
+                setShowBetaMorphs(checked);
+                localStorage.setItem("locaryn_show_beta_morphs", checked ? "true" : "false");
+                window.dispatchEvent(new CustomEvent("locaryn-settings-changed"));
+              }}
+              label="Afficher les Morphs en version Bêta dans le catalogue"
+            />
+          </div>
+        </div>
       </div>
 
       <h3 style={{ marginTop: 24 }}>Ce que fait ce moteur</h3>

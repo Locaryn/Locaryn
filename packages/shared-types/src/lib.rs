@@ -657,6 +657,22 @@ impl CatalogCompat {
 }
 
 /// One browsable entry from a remote catalog (a marketplace, a registry, or a
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MorphVersionRelease {
+    pub version: String,
+    #[serde(default)]
+    pub tag: Option<String>,
+    #[serde(default)]
+    pub is_beta: bool,
+    #[serde(default)]
+    pub released_at: Option<String>,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub install_source: Option<String>,
+}
+
+/// One browsable entry from a remote catalog (a marketplace, a registry, or a
 /// curated index).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogEntry {
@@ -682,6 +698,10 @@ pub struct CatalogEntry {
     pub compat: CatalogCompat,
     /// Set by the backend when a matching extension is already installed.
     pub installed: bool,
+    #[serde(default)]
+    pub is_beta: bool,
+    #[serde(default)]
+    pub versions: Vec<MorphVersionRelease>,
 }
 
 /// A remote catalog Locaryn can read. Built-in sources ship with the app; the

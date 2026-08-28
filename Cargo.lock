@@ -3595,6 +3595,7 @@ dependencies = [
  "locaryn-events",
  "locaryn-extensions",
  "locaryn-hook-runtime",
+ "locaryn-llmfit",
  "locaryn-mcp",
  "locaryn-preview",
  "locaryn-provider-supervisor",
@@ -3691,8 +3692,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "locaryn-llmfit"
+version = "0.3.49"
+dependencies = [
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "locaryn-lsp-adapters"
-version = "0.3.48"
+version = "0.3.49"
 dependencies = [
  "async-trait",
  "locaryn-shared-types",

@@ -1,6 +1,11 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { SpeedBadge, findMetric } from "../components/SpeedBadge";
+import {
+  CloudProviderScreen,
+  CloudProviderTile,
+  useCloudProviders,
+} from "../components/cloud/CloudProviderFolder";
 import { type InstalledExtension, type ModelMetric, type StoredWeight, core } from "../lib/core";
 import { claimantOf, loadExtensionMarketplaces } from "../lib/extensionMarketplace";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
@@ -78,6 +83,11 @@ export function InstalledModelsView({
 }: Props) {
   const [query, setQuery] = useState("");
   const [riskFilter, setRiskFilter] = useState<"all" | "safe" | "uncensored" | "nsfw">("all");
+  /* Les catalogues distants apportés par les morphs : un dossier chacun, à la
+     place d'une carte de modèle. Ouvert, il remplace cet écran — c'est bien
+     une page, pas un panneau qui se glisse à côté. */
+  const { providers: cloudProviders, reload: reloadCloudProviders } = useCloudProviders();
+  const [openFolder, setOpenFolder] = useState<string | null>(null);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [activatingModel, setActivatingModel] = useState<string | null>(null);
   const [modelsDir, setModelsDir] = useState("");
@@ -262,6 +272,20 @@ export function InstalledModelsView({
     }
   }
 
+  const openedProvider = cloudProviders.find((p) => p.id === openFolder) ?? null;
+  if (openedProvider) {
+    return (
+      <div className="locaryn-view-container">
+        <CloudProviderScreen
+          provider={openedProvider}
+          extensions={extensions}
+          onBack={() => setOpenFolder(null)}
+          onChanged={reloadCloudProviders}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="locaryn-view-container">
       <div className="locaryn-view-header">
@@ -356,7 +380,7 @@ export function InstalledModelsView({
         ))}
       </div>
 
-      {filtered.length === 0 && (
+      {filtered.length === 0 && cloudProviders.length === 0 && (
         <div className="locaryn-card" style={{ textAlign: "center", padding: 48 }}>
           <Icon name="models" size={36} />
           <div style={{ fontSize: 15, fontWeight: 700, marginTop: 12 }}>
@@ -384,6 +408,15 @@ export function InstalledModelsView({
           gap: 12,
         }}
       >
+        {/* Les dossiers d'abord : ce qui n'a rien à télécharger se trouve avant
+            ce qui occupe le disque. */}
+        {cloudProviders.map((provider) => (
+          <CloudProviderTile
+            key={`cloud:${provider.id}`}
+            provider={provider}
+            onOpen={() => setOpenFolder(provider.id)}
+          />
+        ))}
         {filtered.map((entry) => {
           const classification = classifyModel(entry.tag);
           return (

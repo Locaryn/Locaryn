@@ -73,6 +73,127 @@ pub struct PluginManifest {
     /// Locaryn restent les siens.
     #[serde(default)]
     pub engine: Option<EngineManifest>,
+    /// Quand elle est présente, l'extension apporte un **fournisseur
+    /// distant** : un catalogue de modèles servis par une API compatible
+    /// OpenAI, que l'utilisateur paie chez son fournisseur.
+    ///
+    /// Ce n'est ni un moteur ni un noyau. Rien ne tourne sur la machine :
+    /// l'extension ne fait que déclarer où appeler, où lire la liste des
+    /// modèles, et où l'utilisateur va chercher sa clé. La clé, elle, ne
+    /// passe jamais par l'extension — l'hôte la garde dans le trousseau du
+    /// système et l'ajoute lui-même aux requêtes.
+    #[serde(default, rename = "cloud_provider", alias = "cloudProvider")]
+    pub cloud_provider: Option<CloudProviderManifest>,
+}
+
+/// Section `cloud_provider` d'un manifeste : un catalogue de modèles distants.
+///
+/// Tout est déclaratif, et volontairement minuscule : l'intérêt d'un
+/// fournisseur distant est qu'il n'y a rien à installer. L'application sait
+/// lire une liste de modèles au format OpenAI (`{ "data": [...] }`), garder
+/// une clé, et appeler `{api_url}/v1/chat/completions`. Un deuxième
+/// fournisseur ne demande donc pas une ligne de code de plus — seulement un
+/// autre manifeste.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CloudProviderManifest {
+    /// Identifiant stable (`openrouter`). Sert de clé de trousseau et de
+    /// marqueur sur le fournisseur enregistré. À défaut, le nom de l'extension.
+    #[serde(default)]
+    pub id: String,
+    /// Nom affiché (« OpenRouter »).
+    #[serde(default)]
+    pub label: String,
+    /// Base de l'API, **sans** `/v1` : la boucle de conversation ajoute
+    /// `/v1/chat/completions` elle-même. Pour OpenRouter :
+    /// `https://openrouter.ai/api`.
+    #[serde(default)]
+    pub api_url: String,
+    /// URL complète de la liste des modèles. À défaut, `{api_url}/v1/models`.
+    #[serde(default, rename = "models_url", alias = "modelsUrl")]
+    pub models_url: Option<String>,
+    /// Où l'utilisateur crée sa clé, et où il lit la documentation. Affichés
+    /// tels quels : une clé qu'on ne sait pas où chercher ne sera pas créée.
+    #[serde(default, rename = "keys_url", alias = "keysUrl")]
+    pub keys_url: Option<String>,
+    #[serde(default, rename = "docs_url", alias = "docsUrl")]
+    pub docs_url: Option<String>,
+    /// Forme attendue de la clé (`sk-or-v1-…`), montrée en aide à la saisie.
+    #[serde(default, rename = "key_hint", alias = "keyHint")]
+    pub key_hint: Option<String>,
+    /// En-têtes ajoutés aux appels — l'attribution que demandent certains
+    /// fournisseurs. Jamais de secret ici : le manifeste est en clair.
+    #[serde(default)]
+    pub headers: std::collections::BTreeMap<String, String>,
+    /// Au bout de combien d'heures la liste des modèles est relue. 0 = à
+    /// chaque ouverture. C'est ce qui garde le catalogue à jour sans que
+    /// l'extension ait à publier une version.
+    #[serde(default = "heures_de_fraicheur", rename = "refresh_hours", alias = "refreshHours")]
+    pub refresh_hours: u32,
+    /// Quand le fournisseur tourne **sur la machine** — une passerelle
+    /// auto-hébergée comme OmniRoute — ce bloc dit comment l'installer, la
+    /// démarrer, et où se trouve son tableau de bord.
+    ///
+    /// Absent, le fournisseur est purement distant : il n'y a rien à lancer.
+    #[serde(default)]
+    pub local: Option<CloudLocalRuntime>,
+}
+
+/// La partie d'un fournisseur qui tourne sur la machine de l'utilisateur.
+///
+/// Une passerelle auto-hébergée n'est ni un moteur d'inférence — elle ne
+/// calcule aucun jeton — ni un service distant : elle écoute sur la boucle
+/// locale, garde les clés de l'utilisateur chez lui, et route vers les
+/// fournisseurs qu'il a connectés. Locaryn se contente de savoir si elle
+/// répond, de la démarrer si on le lui demande, et d'ouvrir son tableau de
+/// bord. Tout le reste — les clés des fournisseurs, les stratégies de
+/// routage, les quotas — appartient à la passerelle, et c'est bien pour cela
+/// qu'on l'utilise plutôt que de la réécrire.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CloudLocalRuntime {
+    /// Commande de démarrage, sans shell. Vide : rien à démarrer, la
+    /// passerelle est lancée par l'utilisateur.
+    #[serde(default)]
+    pub start: Vec<String>,
+    /// Variables d'environnement du processus.
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    /// URL sondée pour savoir si la passerelle répond. À défaut, la liste des
+    /// modèles fait l'affaire — si elle répond, tout le reste suit.
+    #[serde(default, rename = "health_url", alias = "healthUrl")]
+    pub health_url: Option<String>,
+    /// Le tableau de bord de la passerelle, ouvert depuis son dossier.
+    #[serde(default, rename = "dashboard_url", alias = "dashboardUrl")]
+    pub dashboard_url: Option<String>,
+    /// Comment l'installer, en une phrase montrée telle quelle quand la
+    /// commande est introuvable.
+    #[serde(default, rename = "install_hint", alias = "installHint")]
+    pub install_hint: Option<String>,
+}
+
+fn heures_de_fraicheur() -> u32 {
+    12
+}
+
+impl CloudProviderManifest {
+    /// Identifiant effectif : celui déclaré, sinon le nom de l'extension.
+    pub fn effective_id(&self, plugin_name: &str) -> String {
+        let id = self.id.trim();
+        if id.is_empty() {
+            plugin_name.trim().to_string()
+        } else {
+            id.to_string()
+        }
+    }
+
+    /// URL de la liste des modèles, déduite quand elle n'est pas déclarée.
+    pub fn effective_models_url(&self) -> String {
+        match self.models_url.as_deref().map(str::trim) {
+            Some(url) if !url.is_empty() => url.to_string(),
+            _ => format!("{}/v1/models", self.api_url.trim_end_matches('/')),
+        }
+    }
 }
 
 /// Section `engine` d'un manifeste : un moteur d'inférence apporté par une
@@ -441,6 +562,10 @@ pub struct UiSlotContribution {
     /// - `engines.runtimes` — moteur d'inférence proposé dans les réglages
     /// - `marketplace.catalogs` — catalogue de modèles apporté par le paquet.
     ///   L'entrée pointe le fichier, typiquement `dist/marketplace.json`.
+    /// - `models.folder` — page pleine ouverte depuis le dossier d'un
+    ///   fournisseur distant, dans « Mes modèles » comme dans le sélecteur de
+    ///   modèle du chat. L'entrée pointe l'élément personnalisé qui l'affiche ;
+    ///   sans elle, l'application montre son propre tableau de bord.
     pub slot: String,
     /// Priorité d'ordre d'affichage (ex: 10, 50, 100).
     #[serde(default = "ordre_par_defaut")]
@@ -893,6 +1018,51 @@ mod tests {
         }"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         assert_eq!(m.ui.composer_actions[0].action, "insert");
+    }
+
+    /// La section `cloud_provider` : ce qu'il faut pour qu'un catalogue
+    /// distant existe, et rien de plus.
+    #[test]
+    fn une_section_cloud_provider_se_lit() {
+        let json = r#"{
+            "schema": "x", "apiVersion": "0.1", "name": "morph-openrouter", "version": "1",
+            "cloud_provider": {
+                "id": "openrouter",
+                "label": "OpenRouter",
+                "api_url": "https://openrouter.ai/api",
+                "keys_url": "https://openrouter.ai/keys",
+                "key_hint": "sk-or-v1-…",
+                "headers": { "X-Title": "Locaryn" },
+                "refresh_hours": 6
+            }
+        }"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        assert!(validate(&m).is_ok());
+        let p = m.cloud_provider.expect("la section doit être lue");
+        assert_eq!(p.effective_id("morph-openrouter"), "openrouter");
+        assert_eq!(p.label, "OpenRouter");
+        assert_eq!(p.refresh_hours, 6);
+        assert_eq!(p.headers.get("X-Title").map(String::as_str), Some("Locaryn"));
+    }
+
+    /// L'URL des modèles se déduit de la base : un manifeste qui ne la
+    /// déclare pas ne doit pas être un manifeste incomplet. Et la base ne
+    /// porte pas `/v1` — c'est la boucle de conversation qui l'ajoute.
+    #[test]
+    fn lurl_des_modeles_se_deduit_de_la_base() {
+        let json = r#"{
+            "schema": "x", "apiVersion": "0.1", "name": "morph-truc", "version": "1",
+            "cloud_provider": { "api_url": "https://exemple.test/api/" }
+        }"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        let p = m.cloud_provider.expect("section lue");
+        assert_eq!(p.effective_models_url(), "https://exemple.test/api/v1/models");
+        assert_eq!(
+            p.effective_id("morph-truc"),
+            "morph-truc",
+            "sans id déclaré, le nom de l'extension fait foi"
+        );
+        assert_eq!(p.refresh_hours, 12, "une fraîcheur par défaut, pas zéro");
     }
 
     /// La section `core` d'un noyau : tools et session ont des défauts

@@ -1,5 +1,6 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
+import { type CloudModel, core as coreApi } from "../lib/core";
 import { core } from "../lib/core";
 import {
   type ModelFamily,
@@ -8,6 +9,7 @@ import {
   fetchFullRegistry,
   isChatModel,
 } from "../lib/modelRegistry";
+import { formatContext, formatPrice, useCloudProviders } from "./cloud/CloudProviderFolder";
 
 type Props = {
   isOpen: boolean;
@@ -44,6 +46,14 @@ export function QuickModelSelector({
     "all",
   );
   const [registry, setRegistry] = useState<ModelFamily[]>(SEED_CATALOG);
+  /* Les catalogues distants apportés par les morphs. Ils apparaissent comme un
+     dossier au milieu des modèles installés : on clique, et on est dans la
+     liste du fournisseur — sans quitter le sélecteur. */
+  const { providers: cloudProviders } = useCloudProviders();
+  const [openFolder, setOpenFolder] = useState<string | null>(null);
+  const [cloudModels, setCloudModels] = useState<CloudModel[]>([]);
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -137,6 +147,59 @@ export function QuickModelSelector({
     );
   }, [dedupedModels, isProviderLocal, registry]);
 
+  // Le dossier ouvert lit sa liste chez le fournisseur — une fois, et gardée
+  // ensuite par l'hôte : rouvrir le dossier ne relance pas d'appel réseau.
+  useEffect(() => {
+    if (!openFolder) return;
+    let active = true;
+    setCloudBusy(true);
+    setCloudError(null);
+    coreApi
+      .cloudProviderModels(openFolder)
+      .then((list) => {
+        if (active) setCloudModels(list);
+      })
+      .catch((e: unknown) => {
+        if (active) setCloudError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (active) setCloudBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [openFolder]);
+
+  // Refermer le sélecteur doit le rendre à son état d'entrée : rouvrir sur la
+  // liste d'un fournisseur qu'on avait quitté serait déroutant.
+  useEffect(() => {
+    if (!isOpen) {
+      setOpenFolder(null);
+      setQuery("");
+    }
+  }, [isOpen]);
+
+  const openedProvider = cloudProviders.find((p) => p.id === openFolder) ?? null;
+
+  const filteredCloud = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return cloudModels;
+    return cloudModels.filter((m) =>
+      `${m.id} ${m.name} ${m.description}`.toLowerCase().includes(q),
+    );
+  }, [cloudModels, query]);
+
+  async function selectCloudModel(providerId: string, model: string) {
+    setCloudError(null);
+    try {
+      await coreApi.cloudProviderSelect(providerId, model);
+      await onSelectModel(model);
+      onClose();
+    } catch (e) {
+      setCloudError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const filtered = useMemo(() => {
     let result = options;
 
@@ -195,7 +258,23 @@ export function QuickModelSelector({
               gap: "6px",
             }}
           >
-            <Icon name="speed" size={15} /> Changer de Modèle Installé
+            {openedProvider ? (
+              <>
+                <button
+                  type="button"
+                  className="locaryn-icon-btn"
+                  onClick={() => setOpenFolder(null)}
+                  title="Revenir aux modèles installés"
+                >
+                  <Icon name="back" size={15} />
+                </button>
+                <Icon name="cloud" size={15} /> {openedProvider.label}
+              </>
+            ) : (
+              <>
+                <Icon name="speed" size={15} /> Changer de Modèle Installé
+              </>
+            )}
           </h3>
           <button type="button" className="locaryn-icon-btn" onClick={onClose}>
             <Icon name="close" size={16} />
@@ -204,9 +283,18 @@ export function QuickModelSelector({
 
         {/* Category Tabs (Text to Text, Code, Reasoning, Vision...) */}
         <p style={{ margin: "0 0 10px", fontSize: "11px", color: "var(--text-faint)" }}>
-          Les fonctionnalités spécialisées sont fournies par leurs extensions.
+          {openedProvider
+            ? `Modèles servis par ${openedProvider.label}, facturés sur votre clé.`
+            : "Les fonctionnalités spécialisées sont fournies par leurs extensions."}
         </p>
-        <div style={{ display: "flex", gap: "4px", marginBottom: "10px", flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: openedProvider ? "none" : "flex",
+            gap: "4px",
+            marginBottom: "10px",
+            flexWrap: "wrap",
+          }}
+        >
           <button
             type="button"
             className={`locaryn-chip${activeTab === "all" ? " locaryn-chip-on" : ""}`}
@@ -251,7 +339,11 @@ export function QuickModelSelector({
         {/* Search Bar */}
         <input
           className="locaryn-input"
-          placeholder="Rechercher parmi vos modèles installés…"
+          placeholder={
+            openedProvider
+              ? `Rechercher parmi ${cloudModels.length} modèles ${openedProvider.label}…`
+              : "Rechercher parmi vos modèles installés…"
+          }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{ marginBottom: "10px" }}
@@ -267,7 +359,70 @@ export function QuickModelSelector({
             gap: "6px",
           }}
         >
-          {filtered.length === 0 ? (
+          {/* Dans un dossier : la liste du fournisseur, et rien d'autre. */}
+          {openedProvider && (
+            <>
+              {cloudError && <div className="locaryn-cloud-error">{cloudError}</div>}
+              {cloudBusy && cloudModels.length === 0 && (
+                <div className="locaryn-cloud-empty">Lecture du catalogue…</div>
+              )}
+              {!openedProvider.has_key && (
+                <div className="locaryn-cloud-notice">
+                  Aucune clé enregistrée pour {openedProvider.label}. Ouvrez son dossier dans « Mes
+                  modèles » pour la coller — sans elle, le choix sera refusé.
+                </div>
+              )}
+              {filteredCloud.map((model) => {
+                const isActive = activeModel === model.id;
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    className={`locaryn-cloud-row${isActive ? " locaryn-active" : ""}`}
+                    onClick={() => void selectCloudModel(openedProvider.id, model.id)}
+                  >
+                    <span style={{ minWidth: 0, textAlign: "left" }}>
+                      <span className="locaryn-cloud-model-name">{model.name}</span>
+                      <span className="locaryn-cloud-model-id">{model.id}</span>
+                    </span>
+                    <span className="locaryn-cloud-model-facts">
+                      <span>{formatContext(model.context_length)}</span>
+                      <span>{formatPrice(model.prompt_price_per_m)}/M</span>
+                      {isActive && <span className="locaryn-tag locaryn-tag-installed">Actif</span>}
+                    </span>
+                  </button>
+                );
+              })}
+              {!cloudBusy && filteredCloud.length === 0 && !cloudError && (
+                <div className="locaryn-cloud-empty">Aucun modèle ne correspond.</div>
+              )}
+            </>
+          )}
+
+          {/* Hors dossier : les dossiers d'abord, puis les modèles installés. */}
+          {!openedProvider &&
+            cloudProviders.map((provider) => (
+              <button
+                key={`cloud:${provider.id}`}
+                type="button"
+                className="locaryn-cloud-row locaryn-cloud-row-folder"
+                onClick={() => setOpenFolder(provider.id)}
+                title={`Voir les modèles ${provider.label}`}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <Icon name="cloud" size={16} />
+                  <span style={{ minWidth: 0, textAlign: "left" }}>
+                    <span className="locaryn-cloud-model-name">{provider.label}</span>
+                    <span className="locaryn-cloud-model-id">
+                      {provider.active_model ?? `${provider.model_count} modèles distants`}
+                    </span>
+                  </span>
+                </span>
+                <Icon name="forward" size={15} />
+              </button>
+            ))}
+
+          {!openedProvider && filtered.length === 0 ? (
             <div style={{ textAlign: "center", color: "var(--text-faint)", padding: "24px" }}>
               <p style={{ margin: "0 0 12px 0", fontSize: "13px" }}>
                 Aucun modèle correspondant dans cette catégorie.
@@ -286,7 +441,7 @@ export function QuickModelSelector({
                 </button>
               )}
             </div>
-          ) : (
+          ) : openedProvider ? null : (
             filtered.map((item) => {
               const isActive = activeModel === item.tag;
               return (

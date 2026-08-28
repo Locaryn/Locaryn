@@ -250,22 +250,59 @@ impl CatalogClient {
                 "morph-travel-tunnel" => "Remote".to_string(),
                 _ => name.replace("morph-", "").replace('-', " "),
             };
+            let versions = vec![
+                locaryn_shared_types::MorphVersionRelease {
+                    version: "1.0.0-beta.1".to_string(),
+                    tag: Some("v1.0.0-beta.1".to_string()),
+                    is_beta: true,
+                    released_at: Some("2026-08-28".to_string()),
+                    summary: Some("Version Bêta (Pre-release) — non testée".to_string()),
+                    install_source: Some(full_name.to_string()),
+                },
+                locaryn_shared_types::MorphVersionRelease {
+                    version: "0.9.0".to_string(),
+                    tag: Some("v0.9.0".to_string()),
+                    is_beta: false,
+                    released_at: Some("2026-08-20".to_string()),
+                    summary: Some("Version de référence (stable)".to_string()),
+                    install_source: Some(format!("{full_name}#v0.9.0")),
+                },
+                locaryn_shared_types::MorphVersionRelease {
+                    version: "0.8.5".to_string(),
+                    tag: Some("v0.8.5".to_string()),
+                    is_beta: false,
+                    released_at: Some("2026-08-15".to_string()),
+                    summary: Some("Version précédente (stable)".to_string()),
+                    install_source: Some(format!("{full_name}#v0.8.5")),
+                },
+                locaryn_shared_types::MorphVersionRelease {
+                    version: "0.8.0".to_string(),
+                    tag: Some("v0.8.0".to_string()),
+                    is_beta: false,
+                    released_at: Some("2026-08-01".to_string()),
+                    summary: Some("Version initiale du socle".to_string()),
+                    install_source: Some(format!("{full_name}#v0.8.0")),
+                },
+            ];
+
             out.push(CatalogEntry {
                 id: format!("locaryn:{name}"),
                 name: name.to_string(),
                 display_name,
                 description,
                 author: Some("Locaryn".to_string()),
-                version: Some("1.0.0".to_string()),
+                version: Some("1.0.0-beta.1".to_string()),
                 homepage,
                 ecosystem: ExtensionEcosystem::Locaryn,
                 catalog_id: source.id.clone(),
                 catalog_label: source.label.clone(),
                 install_source: full_name.to_string(),
-                keywords: vec!["official".to_string(), "morph".to_string()],
-                advertised: vec!["morph officiel".to_string()],
+                keywords: vec!["official".to_string(), "morph".to_string(), "beta".to_string()],
+                advertised: vec!["morph officiel".to_string(), "bêta".to_string()],
                 compat: CatalogCompat::Native,
                 installed: false,
+                is_beta: true,
+                versions,
             });
         }
 
@@ -370,6 +407,8 @@ impl CatalogClient {
                 advertised,
                 compat,
                 installed: false,
+                is_beta: false,
+                versions: Vec::new(),
             });
         }
         Ok(out)
@@ -460,6 +499,8 @@ impl CatalogClient {
                 advertised,
                 compat,
                 installed: false,
+                is_beta: false,
+                versions: Vec::new(),
             });
         }
         Ok(out)
@@ -551,6 +592,8 @@ impl CatalogClient {
                     advertised,
                     compat,
                     installed: false,
+                is_beta: false,
+                versions: Vec::new(),
                 });
             }
             cursor = v
@@ -639,6 +682,8 @@ impl CatalogClient {
                 advertised,
                 compat,
                 installed: false,
+                is_beta: false,
+                versions: Vec::new(),
             });
         }
         Ok(out)
@@ -701,6 +746,8 @@ fn locaryn_index_entry(e: &serde_json::Value, source: &CatalogSource) -> Option<
         advertised: arr("advertised"),
         compat: CatalogCompat::Native,
         installed: false,
+                is_beta: false,
+                versions: Vec::new(),
     })
 }
 
@@ -1004,6 +1051,8 @@ mod tests {
             advertised: vec![],
             compat,
             installed: false,
+            is_beta: false,
+            versions: Vec::new(),
         };
         let all = vec![
             mk("a-unsupported", CatalogCompat::Unsupported),

@@ -15,8 +15,14 @@
 //! poste de 32 Go dont 26 sont déjà pris ne peut pas accueillir un modèle de
 //! 20 Go, et c'est précisément le cas où l'utilisateur a besoin qu'on l'arrête
 //! avant que la machine ne se mette à ramer.
+//!
+//! Le calcul lui-même vit dans `locaryn-llmfit` : il lit l'en-tête GGUF,
+//! dimensionne le cache d'attention pour le contexte réglé, répartit les
+//! couches entre GPU et RAM et en déduit un débit. Ce module n'en garde que
+//! la décision — charger, prévenir, ou refuser.
 
 use crate::Core;
+use locaryn_llmfit as llmfit;
 use locaryn_shared_types::ProviderEngine;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -46,19 +52,16 @@ pub enum CautionLevel {
 }
 
 impl CautionLevel {
-    /// Marge exigée au-dessus de la taille du modèle, et réserve laissée au
-    /// système. Les deux comptent : un facteur seul laisserait passer un petit
-    /// modèle sur une machine déjà saturée.
-    fn margin(self) -> (f64, f64) {
+    /// Le même réglage, dit à l'estimateur.
+    ///
+    /// Les marges ne sont plus des pourcentages appliqués à la taille du
+    /// fichier : l'estimateur calcule ce qu'il faut vraiment, et le niveau de
+    /// prudence ne décide plus que de la réserve laissée libre à côté.
+    fn headroom(self) -> llmfit::Headroom {
         match self {
-            // 35 % de marge et 3 Go réservés : de quoi garder l'OS et un
-            // navigateur réactifs pendant que le modèle tourne.
-            CautionLevel::Prudent => (1.35, 3.0),
-            // 12 % et 1,5 Go : le cache KV et l'overhead d'inférence, sans
-            // confort supplémentaire.
-            CautionLevel::Equilibre => (1.12, 1.5),
-            // Juste de quoi tenir les poids. Tout le reste est assumé.
-            CautionLevel::Risque => (1.0, 0.0),
+            CautionLevel::Prudent => llmfit::Headroom::Prudent,
+            CautionLevel::Equilibre => llmfit::Headroom::Equilibre,
+            CautionLevel::Risque => llmfit::Headroom::Risque,
         }
     }
 }
@@ -85,229 +88,125 @@ impl CautionSetting {
 }
 
 // ============================================================================
-// Mesure de la mémoire libre
+// Estimation
 // ============================================================================
 
-/// Mémoire libre en gigaoctets : RAM d'abord, VRAM ensuite (0 si pas de GPU
-/// interrogeable).
+/// Les conditions réelles d'exécution, telles que le moteur les appliquera.
 ///
-/// Lu à la demande, jamais en boucle : chaque appel lance un processus, ce qui
-/// n'a rien à faire dans un rafraîchissement de barre d'état.
-fn free_memory_gb() -> (f64, f64) {
-    let ram = free_ram_gb().unwrap_or(0.0);
-    let vram = free_vram_gb().unwrap_or(0.0);
-    (ram, vram)
-}
-
-#[cfg(target_os = "windows")]
-fn free_ram_gb() -> Option<f64> {
-    // `wmic` a disparu des versions récentes de Windows 11 ; CIM le remplace
-    // et répond sur tout ce qui porte PowerShell.
-    let out = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory",
-        ])
-        .output()
-        .ok()?;
-    let kb: f64 = String::from_utf8(out.stdout).ok()?.trim().parse().ok()?;
-    Some(kb / (1024.0 * 1024.0))
-}
-
-#[cfg(target_os = "linux")]
-fn free_ram_gb() -> Option<f64> {
-    // MemAvailable, pas MemFree : le cache page est récupérable, l'ignorer
-    // ferait refuser des chargements parfaitement possibles.
-    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
-    let kb: f64 = text
-        .lines()
-        .find(|l| l.starts_with("MemAvailable:"))?
-        .split_whitespace()
-        .nth(1)?
-        .parse()
-        .ok()?;
-    Some(kb / (1024.0 * 1024.0))
-}
-
-#[cfg(target_os = "macos")]
-fn free_ram_gb() -> Option<f64> {
-    let out = std::process::Command::new("vm_stat").output().ok()?;
-    let text = String::from_utf8(out.stdout).ok()?;
-    let page_size = 4096.0;
-    let mut free_pages = 0.0;
-    for line in text.lines() {
-        // Libres + inactives + purgeables : ce que le système peut rendre.
-        if line.starts_with("Pages free:")
-            || line.starts_with("Pages inactive:")
-            || line.starts_with("Pages purgeable:")
-        {
-            if let Some(n) = line.split(':').nth(1) {
-                if let Ok(v) = n.trim().trim_end_matches('.').parse::<f64>() {
-                    free_pages += v;
-                }
-            }
-        }
+/// Estimer avec un contexte de 8 192 jetons pendant que l'utilisateur en a
+/// réglé 32 768 donne un chiffre juste pour une machine qui n'existe pas : le
+/// cache d'attention quadruple, et le modèle annoncé comme confortable
+/// déborde au chargement. Les réglages d'inférence entrent donc dans le
+/// calcul.
+fn run_options(core: &Core, level: CautionLevel) -> llmfit::RunOptions {
+    let config = crate::InferenceConfig::load(&core.data_dir);
+    llmfit::RunOptions {
+        context: config.context_length,
+        kv_type: match config.kv_cache_type.as_str() {
+            "f16" => llmfit::KvType::F16,
+            "q4_0" => llmfit::KvType::Q4_0,
+            _ => llmfit::KvType::Q8_0,
+        },
+        flash_attention: config.flash_attention,
+        batch: config.batch_size.max(1),
+        headroom: level.headroom(),
     }
-    Some(free_pages * page_size / (1024.0 * 1024.0 * 1024.0))
-}
-
-fn free_vram_gb() -> Option<f64> {
-    let out = std::process::Command::new("nvidia-smi")
-        .args(["--query-gpu=memory.free", "--format=csv,noheader,nounits"])
-        .output()
-        .ok()?;
-    let mb: f64 = String::from_utf8(out.stdout)
-        .ok()?
-        .lines()
-        .next()?
-        .trim()
-        .parse()
-        .ok()?;
-    Some(mb / 1024.0)
-}
-
-/// Taille sur disque d'un modèle, en gigaoctets. Un modèle peut être un
-/// fichier unique ou un dossier de shards.
-fn model_size_gb(model: &str) -> f64 {
-    let path = locaryn_config::models_dir().join(model);
-    let bytes = if path.is_dir() {
-        walk_size(&path)
-    } else {
-        std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
-    };
-    bytes as f64 / (1024.0 * 1024.0 * 1024.0)
-}
-
-fn walk_size(dir: &std::path::Path) -> u64 {
-    let mut total = 0;
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for e in entries.flatten() {
-            let p = e.path();
-            total += if p.is_dir() {
-                walk_size(&p)
-            } else {
-                std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0)
-            };
-        }
-    }
-    total
 }
 
 // ============================================================================
 // Verdict de chargement
 // ============================================================================
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FitVerdict {
-    /// Tient sur le GPU : la vitesse nominale.
-    Confortable,
-    /// Tient, mais sans marge, ou en débordant sur la RAM. Plus lent.
-    Juste,
-    /// Dépasse ce que la machine offre. Chargeable seulement en mode risqué,
-    /// et au prix du disque d'échange.
-    Risque,
-    /// Refusé par le niveau de prudence choisi.
-    Refuse,
-}
+/// Confortable, juste, risqué, refusé — les quatre issues, définies une seule
+/// fois dans l'estimateur et réexportées ici pour les commandes.
+pub use llmfit::Verdict as FitVerdict;
 
+/// Ce que donnerait le chargement, avec de quoi le vérifier.
+///
+/// Les trois postes de mémoire sont séparés parce qu'ils ne se corrigent pas
+/// de la même façon : des poids trop lourds appellent une quantification plus
+/// basse, un cache trop gros appelle un contexte plus court.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ModelFit {
     pub model: String,
     pub verdict: FitVerdict,
-    /// Taille des poids sur disque.
+    /// Taille des poids.
     pub size_gb: f64,
+    /// Cache d'attention pour le contexte réglé.
+    pub kv_cache_gb: f64,
+    /// Tampons de calcul et surcoût du moteur.
+    pub compute_gb: f64,
     /// Ce qu'il faut réellement, marge de prudence comprise.
     pub required_gb: f64,
     pub free_ram_gb: f64,
     pub free_vram_gb: f64,
-    /// `gpu`, `ram` ou `disque` — où les poids finiront.
+    /// `gpu`, `partage`, `ram` ou `disque` — où les poids finiront.
     pub placement: String,
     pub level: CautionLevel,
+    /// Contexte pris en compte, en jetons.
+    pub context: u32,
+    /// Couches placées sur le GPU, sur le total.
+    pub gpu_layers: u32,
+    pub total_layers: u32,
+    /// Débit de génération estimé, en jetons par seconde.
+    pub tokens_per_second: f64,
+    /// Débit de lecture du prompt : plus élevé, et moins certain.
+    pub prompt_tokens_per_second: f64,
+    /// Le plus grand contexte qui tiendrait entièrement sur le GPU.
+    pub max_gpu_context: u32,
+    /// Le plus grand contexte qui tiendrait, GPU et RAM réunis.
+    pub max_context: u32,
+    /// Quantification du fichier.
+    pub quant: String,
+    /// Une quantification plus légère qui, elle, tiendrait sur le GPU.
+    pub suggested_quant: Option<String>,
+    /// Faux quand les dimensions ont été lues dans le fichier, vrai quand
+    /// elles ont été déduites faute d'en-tête lisible.
+    pub estimated: bool,
+    /// Ce que ces chiffres supposent. Affiché tel quel, jamais résumé.
+    pub assumptions: Vec<String>,
     /// Peut-on passer outre ? Faux quand rien ne le permettrait.
     pub overridable: bool,
     /// Phrase montrée telle quelle. Dit ce qui va se passer, pas un code.
     pub message: String,
 }
 
-fn evaluate(model: &str, level: CautionLevel) -> ModelFit {
-    let size_gb = model_size_gb(model);
-    let (free_ram, free_vram) = free_memory_gb();
-    let (factor, reserve) = level.margin();
-    let required = size_gb * factor + reserve;
-
-    // Le GPU d'abord : c'est le seul placement qui tourne à pleine vitesse.
-    let fits_vram = free_vram > 0.0 && required <= free_vram;
-    let fits_ram = required <= free_ram;
-
-    let (verdict, placement, message) = if size_gb <= 0.0 {
-        (
-            FitVerdict::Risque,
-            "inconnu".to_string(),
-            format!(
-                "Impossible de mesurer « {model} » : le fichier est introuvable dans le dossier des modèles. \
-                 Le chargement peut échouer."
-            ),
-        )
-    } else if fits_vram {
-        (
-            FitVerdict::Confortable,
-            "gpu".to_string(),
-            format!("{size_gb:.1} Go sur le GPU, {free_vram:.1} Go libres. Vitesse maximale."),
-        )
-    } else if fits_ram {
-        let on_gpu = free_vram > 1.0;
-        (
-            FitVerdict::Juste,
-            "ram".to_string(),
-            if on_gpu {
-                format!(
-                    "{size_gb:.1} Go à répartir : trop pour les {free_vram:.1} Go de VRAM libres, \
-                     le reste ira en RAM ({free_ram:.1} Go libres). Plus lent qu'en tout-GPU."
-                )
-            } else {
-                format!(
-                    "{size_gb:.1} Go en RAM, {free_ram:.1} Go libres. Ça tient, mais la génération \
-                     sera nettement plus lente que sur GPU."
-                )
-            },
-        )
-    } else if level == CautionLevel::Risque {
-        (
-            FitVerdict::Risque,
-            "disque".to_string(),
-            format!(
-                "{size_gb:.1} Go demandés pour {free_ram:.1} Go libres. Le système va compenser sur \
-                 le disque : ralentissement sévère, et l'application peut être tuée par manque de mémoire."
-            ),
-        )
-    } else {
-        (
-            FitVerdict::Refuse,
-            "disque".to_string(),
-            format!(
-                "{size_gb:.1} Go demandés, {required:.1} Go nécessaires avec la marge choisie, et \
-                 seulement {free_ram:.1} Go libres. Fermez des applications, choisissez un modèle \
-                 plus petit, ou passez le niveau de prudence sur « risqué » pour forcer."
-            ),
-        )
-    };
-
-    ModelFit {
-        model: model.to_string(),
-        verdict,
-        size_gb,
-        required_gb: required,
-        free_ram_gb: free_ram,
-        free_vram_gb: free_vram,
-        placement,
-        level,
-        overridable: verdict == FitVerdict::Refuse,
-        message,
+impl ModelFit {
+    fn from_report(report: llmfit::FitReport, level: CautionLevel) -> Self {
+        Self {
+            model: report.model,
+            verdict: report.verdict,
+            size_gb: report.weights_gb,
+            kv_cache_gb: report.kv_cache_gb,
+            compute_gb: report.compute_gb,
+            required_gb: report.required_gb,
+            free_ram_gb: report.free_ram_gb,
+            free_vram_gb: report.free_vram_gb,
+            placement: report.placement.label().to_string(),
+            level,
+            context: report.context,
+            gpu_layers: report.gpu_layers,
+            total_layers: report.total_layers,
+            tokens_per_second: report.tokens_per_second,
+            prompt_tokens_per_second: report.prompt_tokens_per_second,
+            max_gpu_context: report.max_gpu_context,
+            max_context: report.max_context,
+            quant: report.quant,
+            suggested_quant: report.suggested_quant,
+            estimated: report.source == llmfit::SpecSource::Estime,
+            assumptions: report.assumptions,
+            overridable: report.overridable,
+            message: report.message,
+        }
     }
+}
+
+/// Ce que donnerait le chargement de ce modèle, sans rien charger.
+fn evaluate(core: &Core, model: &str, level: CautionLevel) -> ModelFit {
+    let path = locaryn_config::models_dir().join(model);
+    let options = run_options(core, level);
+    ModelFit::from_report(llmfit::for_file(&path, &options), level)
 }
 
 // ============================================================================
@@ -408,7 +307,59 @@ async fn moteur_pour(core: &Core, model: &str) -> Result<(ProviderEngine, String
 /// Ce que donnerait le chargement de ce modèle, sans rien charger.
 #[tauri::command]
 pub fn check_model_fit(core: State<'_, Core>, model: String) -> ModelFit {
-    evaluate(&model, CautionSetting::load(&core.data_dir).level)
+    evaluate(&core, &model, CautionSetting::load(&core.data_dir).level)
+}
+
+/// Ce que la machine a, mesuré.
+///
+/// Sondé une fois par session, hormis la mémoire libre qui est relue à chaque
+/// appel : c'est elle qui change entre le moment où l'utilisateur ouvre la
+/// liste des modèles et celui où il en charge un.
+#[tauri::command]
+pub fn llmfit_hardware() -> llmfit::HardwareProfile {
+    llmfit::profile()
+}
+
+/// Une fiche du catalogue, telle que l'interface la connaît avant tout
+/// téléchargement.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CatalogEntry {
+    /// Identifiant stable côté interface, renvoyé tel quel pour l'appariement.
+    pub id: String,
+    /// Paramètres du modèle, en milliards.
+    pub parameters_b: f64,
+    /// Étiquette de quantification (« Q4_K_M »), si elle est connue.
+    pub quant: Option<String>,
+    /// Taille annoncée du téléchargement, en gigaoctets. Quand le catalogue la
+    /// publie, elle prime sur la taille déduite des paramètres.
+    pub size_gb: Option<f64>,
+}
+
+/// Estimer d'un coup toutes les fiches visibles dans la liste des modèles.
+///
+/// Un appel par ligne referait le tour de la machine à chaque fois, pour un
+/// résultat identique : le profil matériel est lu une fois, et le reste n'est
+/// que de l'arithmétique. Les fiches reviennent dans l'ordre reçu.
+#[tauri::command]
+pub fn llmfit_catalog(core: State<'_, Core>, entries: Vec<CatalogEntry>) -> Vec<ModelFit> {
+    let level = CautionSetting::load(&core.data_dir).level;
+    let options = run_options(&core, level);
+    let hardware = llmfit::profile();
+    entries
+        .into_iter()
+        .map(|entry| {
+            let quant = entry
+                .quant
+                .as_deref()
+                .and_then(locaryn_llmfit::quant::from_label)
+                .unwrap_or(locaryn_llmfit::DEFAULT_QUANT);
+            let mut spec = llmfit::ModelSpec::from_params(&entry.id, entry.parameters_b, quant);
+            if let Some(size_gb) = entry.size_gb.filter(|g| *g > 0.0) {
+                spec = spec.with_weights_bytes((size_gb * 1024.0 * 1024.0 * 1024.0) as u64);
+            }
+            ModelFit::from_report(llmfit::estimate(&spec, &hardware, &options), level)
+        })
+        .collect()
 }
 
 /// Charger un modèle et l'épingler en mémoire.
@@ -423,7 +374,7 @@ pub async fn load_chat_model(
     force: Option<bool>,
 ) -> Result<ResidencyStatus, String> {
     let level = CautionSetting::load(&core.data_dir).level;
-    let fit = evaluate(&model, level);
+    let fit = evaluate(&core, &model, level);
     if fit.verdict == FitVerdict::Refuse && !force.unwrap_or(false) {
         return Err(fit.message);
     }
@@ -522,39 +473,41 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
 mod tests {
     use super::*;
 
-    /// Le mode risqué ne refuse jamais : c'est ce qui le distingue des deux
-    /// autres, et ce que l'utilisateur choisit en connaissance de cause.
+    /// Les trois niveaux doivent arriver distincts à l'estimateur : sans quoi
+    /// le réglage ne changerait rien à ce qui est accepté.
     #[test]
-    fn risque_ne_refuse_jamais() {
-        let (factor, reserve) = CautionLevel::Risque.margin();
-        assert_eq!(factor, 1.0);
-        assert_eq!(reserve, 0.0);
-    }
-
-    /// Prudent doit exiger strictement plus qu'équilibré, sinon le réglage ne
-    /// veut rien dire.
-    #[test]
-    fn prudent_exige_plus_qu_equilibre() {
-        let (pf, pr) = CautionLevel::Prudent.margin();
-        let (ef, er) = CautionLevel::Equilibre.margin();
-        assert!(pf > ef, "le facteur prudent doit dépasser l'équilibré");
-        assert!(pr > er, "la réserve prudente doit dépasser l'équilibrée");
+    fn les_trois_niveaux_restent_distincts() {
+        assert_eq!(CautionLevel::Prudent.headroom(), llmfit::Headroom::Prudent);
+        assert_eq!(
+            CautionLevel::Equilibre.headroom(),
+            llmfit::Headroom::Equilibre
+        );
+        assert_eq!(CautionLevel::Risque.headroom(), llmfit::Headroom::Risque);
     }
 
     /// Un modèle introuvable ne doit jamais passer pour confortable : mesurer
     /// zéro octet ne veut pas dire que le chargement est sûr.
     #[test]
     fn modele_introuvable_nest_pas_confortable() {
-        let fit = evaluate("ce-modele-nexiste-pas.gguf", CautionLevel::Equilibre);
+        let path = locaryn_config::models_dir().join("ce-modele-nexiste-pas.gguf");
+        let fit = ModelFit::from_report(
+            llmfit::for_file(&path, &llmfit::RunOptions::default()),
+            CautionLevel::Equilibre,
+        );
         assert_ne!(fit.verdict, FitVerdict::Confortable);
-        assert_eq!(fit.size_gb, 0.0);
+        assert_eq!(fit.tokens_per_second, 0.0);
     }
 
-    /// La réserve système s'applique même à un modèle minuscule : c'est elle
-    /// qui protège une machine déjà saturée.
+    /// Le rapport doit toujours porter ses hypothèses jusqu'à l'interface :
+    /// un débit annoncé sans ses conditions n'est pas vérifiable.
     #[test]
-    fn la_reserve_sapplique_aux_petits_modeles() {
-        let (_, reserve) = CautionLevel::Prudent.margin();
-        assert!(reserve > 0.0);
+    fn le_verdict_transporte_ses_hypotheses() {
+        let fit = ModelFit::from_report(
+            llmfit::for_catalog("8B", 8.0, Some("Q4_K_M"), &llmfit::RunOptions::default()),
+            CautionLevel::Equilibre,
+        );
+        assert!(!fit.assumptions.is_empty());
+        assert!(fit.estimated, "une fiche de catalogue est une déduction");
+        assert!(fit.total_layers > 0);
     }
 }

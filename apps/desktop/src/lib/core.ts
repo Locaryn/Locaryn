@@ -74,6 +74,51 @@ export interface Provider {
   updated_at: string;
 }
 
+// ── Fournisseurs distants apportés par une extension ───────────────────────
+// Un morph peut déclarer un catalogue de modèles servi par une API compatible
+// OpenAI — OpenRouter, et tout ce qui parle le même dialecte. Rien ne tourne
+// sur la machine : l'extension déclare où appeler, l'hôte garde la clé dans le
+// trousseau du système et l'ajoute lui-même aux requêtes. Le panneau de
+// l'extension ne relit jamais la clé, il apprend seulement qu'elle existe.
+
+/** Un catalogue distant, tel que l'interface le montre. */
+export interface CloudProvider {
+  /** Identifiant stable (« openrouter »). */
+  id: string;
+  label: string;
+  /** L'extension qui l'apporte : la retirer retire le dossier. */
+  extension_id: string;
+  extension_name: string;
+  /** Base de l'API, sans « /v1 ». */
+  api_url: string;
+  models_url: string;
+  keys_url: string | null;
+  docs_url: string | null;
+  key_hint: string | null;
+  /** Une clé est enregistrée — jamais la clé elle-même. */
+  has_key: boolean;
+  /** Modèles dans le catalogue gardé sur disque. */
+  model_count: number;
+  updated_at: string | null;
+  /** Le modèle de ce catalogue actuellement actif, s'il l'est. */
+  active_model: string | null;
+}
+
+/** Un modèle du catalogue distant. */
+export interface CloudModel {
+  id: string;
+  name: string;
+  description: string;
+  context_length: number;
+  /** Prix par million de jetons, en dollars. `null` si non publié. */
+  prompt_price_per_m: number | null;
+  completion_price_per_m: number | null;
+  /** « text », « text+image->text »… tel que le catalogue le déclare. */
+  modality: string;
+  /** Sans appel d'outils, la boucle d'outils de Locaryn tourne à vide. */
+  supports_tools: boolean;
+}
+
 export interface Health {
   status: string;
   version: string;
@@ -449,6 +494,15 @@ export interface InstalledExtension {
 /** How much of a catalog entry can actually run here. */
 export type CatalogCompat = "native" | "adapted" | "partial" | "unsupported";
 
+export interface MorphVersionRelease {
+  version: string;
+  tag?: string;
+  is_beta: boolean;
+  released_at?: string;
+  summary?: string;
+  install_source?: string;
+}
+
 export interface CatalogEntry {
   id: string;
   name: string;
@@ -467,6 +521,8 @@ export interface CatalogEntry {
   advertised: string[];
   compat: CatalogCompat;
   installed: boolean;
+  is_beta?: boolean;
+  versions?: MorphVersionRelease[];
 }
 
 export interface CatalogSource {
@@ -1650,6 +1706,17 @@ export interface CoreApi {
   modelResidency(): Promise<ResidencyStatus>;
   /** Ce que donnerait le chargement de ce modèle, sans rien charger. */
   checkModelFit(model: string): Promise<ModelFit>;
+  /** Les catalogues distants qu'apportent les extensions actives. */
+  cloudProviders(): Promise<CloudProvider[]>;
+  /** Enregistrer une clé dans le trousseau du système. Elle n'en ressort pas. */
+  cloudProviderSetKey(provider: string, key: string): Promise<void>;
+  /** Oublier la clé d'un fournisseur. */
+  cloudProviderClearKey(provider: string): Promise<void>;
+  /** La liste des modèles du fournisseur, relue chez lui quand elle a vieilli. */
+  cloudProviderModels(provider: string, refresh?: boolean): Promise<CloudModel[]>;
+  /** Choisir un modèle distant : il devient le modèle actif de la conversation. */
+  cloudProviderSelect(provider: string, model: string): Promise<void>;
+
   /** Ce que la machine a, mesuré : mémoire libre et bandes passantes. */
   llmfitHardware(): Promise<LlmfitHardware>;
   /** Estimer d'un coup des fiches pas encore téléchargées. Les réponses
@@ -2037,6 +2104,13 @@ const tauriCore: CoreApi = {
 
   modelResidency: () => invoke<ResidencyStatus>("model_residency"),
   checkModelFit: (model) => invoke<ModelFit>("check_model_fit", { model }),
+  cloudProviders: () => invoke<CloudProvider[]>("cloud_providers"),
+  cloudProviderSetKey: (provider, key) => invoke<void>("cloud_provider_set_key", { provider, key }),
+  cloudProviderClearKey: (provider) => invoke<void>("cloud_provider_clear_key", { provider }),
+  cloudProviderModels: (provider, refresh) =>
+    invoke<CloudModel[]>("cloud_provider_models", { provider, refresh }),
+  cloudProviderSelect: (provider, model) =>
+    invoke<void>("cloud_provider_select", { provider, model }),
   llmfitHardware: () => invoke<LlmfitHardware>("llmfit_hardware"),
   llmfitCatalog: (entries) => invoke<ModelFit[]>("llmfit_catalog", { entries }),
   loadChatModel: (model, force) =>
@@ -2424,7 +2498,134 @@ const cloneHealth = (): Health => ({
 // Extensions, in the browser demo. One entry per ecosystem so the store's
 // grouping, the compatibility badges and the permission modal are all
 // exercised without a backend.
+// ── Fournisseur distant de démonstration ───────────────────────────────────
+// Le parcours complet — dossier dans « Mes modèles », page du fournisseur,
+// dossier dans le sélecteur du chat — doit être exerçable hors Tauri, sinon
+// il ne se vérifie que sur une machine et à la main.
+
+const demoCloudProviders: CloudProvider[] = [
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    extension_id: "demo-openrouter",
+    extension_name: "morph-openrouter",
+    api_url: "https://openrouter.ai/api",
+    models_url: "https://openrouter.ai/api/v1/models",
+    keys_url: "https://openrouter.ai/keys",
+    docs_url: "https://openrouter.ai/docs",
+    key_hint: "sk-or-v1-…",
+    has_key: false,
+    model_count: 0,
+    updated_at: null,
+    active_model: null,
+  },
+];
+
+const demoCloudModels: CloudModel[] = [
+  {
+    id: "anthropic/claude-opus-5",
+    name: "Claude Opus 5",
+    description: "Le modèle phare d'Anthropic : raisonnement long, outils, vision.",
+    context_length: 1_000_000,
+    prompt_price_per_m: 5,
+    completion_price_per_m: 25,
+    modality: "text+image->text",
+    supports_tools: true,
+  },
+  {
+    id: "openai/gpt-5",
+    name: "GPT-5",
+    description: "Le généraliste d'OpenAI.",
+    context_length: 400_000,
+    prompt_price_per_m: 1.25,
+    completion_price_per_m: 10,
+    modality: "text+image->text",
+    supports_tools: true,
+  },
+  {
+    id: "google/gemini-3-pro",
+    name: "Gemini 3 Pro",
+    description: "Très longue fenêtre de contexte.",
+    context_length: 2_000_000,
+    prompt_price_per_m: 1.25,
+    completion_price_per_m: 5,
+    modality: "text+image->text",
+    supports_tools: true,
+  },
+  {
+    id: "meta-llama/llama-4-maverick:free",
+    name: "Llama 4 Maverick (gratuit)",
+    description: "Ouvert, gratuit dans la limite du quota.",
+    context_length: 128_000,
+    prompt_price_per_m: 0,
+    completion_price_per_m: 0,
+    modality: "text->text",
+    supports_tools: false,
+  },
+];
+
+/** L'état du fournisseur en démonstration : la clé et le modèle choisi. */
+const demoCloudState = { key: "", model: null as string | null };
+
 let demoExtensions: InstalledExtension[] = [
+  // Le morph qui apporte OpenRouter : il ne fait tourner aucun programme, il
+  // déclare un catalogue distant et la page qui va avec.
+  {
+    id: "demo-openrouter",
+    name: "morph-openrouter",
+    display_name: "morph-openrouter",
+    version: "1.0.0",
+    api_version: "0.1",
+    description:
+      "Fournisseur OpenRouter : des centaines de modèles payés à l'usage, avec votre propre clé.",
+    author: "Locaryn",
+    homepage: "https://openrouter.ai",
+    kind: "plugin",
+    scope: "user",
+    ecosystem: "locaryn",
+    source: "github:Locaryn/morph-openrouter",
+    install_dir: "~/.locaryn/plugins/morph-openrouter",
+    enabled: true,
+    components: {
+      skills: 0,
+      commands: 0,
+      agents: 0,
+      rules: 0,
+      hooks: 0,
+      mcp_servers: 0,
+      lsp_adapters: 0,
+      figures: 0,
+    },
+    permissions: [
+      {
+        permission: "network",
+        reason: "Lire la liste des modèles et parler à l'API d'OpenRouter",
+        granted: true,
+      },
+    ],
+    load_errors: [],
+    capabilities: ["cloud-provider"],
+    ui: {
+      nav_items: [],
+      studio_tabs: [],
+      slots: [
+        {
+          id: "openrouter-folder",
+          slot: "models.folder",
+          order: 10,
+          type: "custom-element",
+          label: "OpenRouter",
+          icon: "cloud",
+          entry: "dist/ui.js",
+          tag: "locaryn-openrouter-panel",
+          value: "openrouter",
+          hint: "Clé, catalogue et choix du modèle chez OpenRouter",
+        },
+      ],
+    },
+    created_at: "2026-08-28T09:00:00Z",
+    updated_at: "2026-08-28T09:00:00Z",
+  },
   // Un noyau alternatif de démonstration : la carte « Noyau » des réglages
   // s'exerce comme en vrai, sans backend.
   {
@@ -2777,6 +2978,839 @@ const demoExtensionConfigs: Record<string, ExtensionConfig> = {
 };
 
 const demoCatalog: CatalogEntry[] = [
+  {
+    id: "locaryn:morph-image",
+    name: "morph-image",
+    display_name: "Image",
+    description: "Génération et retouche d'images IA avec stable-diffusion.cpp et studio de création complet.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-image",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-image",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-image",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-image#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-image#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-image#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-voice-tts",
+    name: "morph-voice-tts",
+    display_name: "Synthèse Vocale (TTS)",
+    description: "Synthèse vocale multilingue & clonage de voix haute fidélité (Kokoro, XTTS).",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-voice-tts",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-voice-tts",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-voice-tts",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-voice-tts#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-voice-tts#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-voice-tts#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-dictaphone",
+    name: "morph-dictaphone",
+    display_name: "Dictaphone & STT",
+    description: "Dictée vocale et transcription continue Speech-to-Text pour le compositeur de message.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-dictaphone",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-dictaphone",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-dictaphone",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-dictaphone#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-dictaphone#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-dictaphone#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-video-gen",
+    name: "morph-video-gen",
+    display_name: "Génération Vidéo",
+    description: "Génération et animation de clips vidéo IA à partir de prompts ou d'images.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-video-gen",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-video-gen",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-video-gen",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-video-gen#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-video-gen#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-video-gen#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-3d-gen",
+    name: "morph-3d-gen",
+    display_name: "Génération 3D",
+    description: "Création de maillages 3D, textures et modèles spatiaux (TripoSR, GLTF).",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-3d-gen",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-3d-gen",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-3d-gen",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-3d-gen#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-3d-gen#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-3d-gen#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-music-gen",
+    name: "morph-music-gen",
+    display_name: "Composition Musicale",
+    description: "Génération de pistes audio instrumentales et musiques IA avec MusicGen.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-music-gen",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-music-gen",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-music-gen",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-music-gen#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-music-gen#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-music-gen#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-vision-ocr",
+    name: "morph-vision-ocr",
+    display_name: "Vision & OCR",
+    description: "Reconnaissance optique de texte et analyse multimodale d'images par ordinateur.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-vision-ocr",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-vision-ocr",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-vision-ocr",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-vision-ocr#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-vision-ocr#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-vision-ocr#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-figures",
+    name: "morph-figures",
+    display_name: "Figures",
+    description: "Personnalités spécialisées, consignes métier expertes et agents dédiés.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-figures",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-figures",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-figures",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-figures#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-figures#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-figures#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-rag-qa",
+    name: "morph-rag-qa",
+    display_name: "RAG Documentaire",
+    description: "Recherche documentaire vectorielle et questions-réponses sémantiques.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-rag-qa",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-rag-qa",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-rag-qa",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-rag-qa#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-rag-qa#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-rag-qa#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-ssh",
+    name: "morph-ssh",
+    display_name: "Connecteur SSH",
+    description: "Espaces de travail distants et commandes SSH transparentes pour le chat.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-ssh",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-ssh",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-ssh",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-ssh#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-ssh#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-ssh#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-translation",
+    name: "morph-translation",
+    display_name: "Traduction IA",
+    description: "Traduction automatique multilingue haute fidélité fonctionnant 100% hors-ligne.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-translation",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-translation",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-translation",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-translation#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-translation#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-translation#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-text-analysis",
+    name: "morph-text-analysis",
+    display_name: "Analyse de Texte",
+    description: "Extraction d'entités, analyse de sentiment, classification et résumé de texte.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-text-analysis",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-text-analysis",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-text-analysis",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-text-analysis#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-text-analysis#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-text-analysis#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-model-training",
+    name: "morph-model-training",
+    display_name: "Entraînement & LoRA",
+    description: "Atelier local de fine-tuning LoRA et oblitération de concepts / RepE.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-model-training",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-model-training",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-model-training",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-model-training#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-model-training#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-model-training#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-travel-tunnel",
+    name: "morph-travel-tunnel",
+    display_name: "Remote (Travel Mode)",
+    description: "Tunnels chiffrés et appairage sécurisé pour contrôler Locaryn à distance.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-travel-tunnel",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-travel-tunnel",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-travel-tunnel",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-travel-tunnel#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-travel-tunnel#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-travel-tunnel#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-freetoken",
+    name: "morph-freetoken",
+    display_name: "FreeToken Optimizer",
+    description: "Gestionnaire de quotas intelligents et optimisation de tokens gratuits.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-freetoken",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-freetoken",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-freetoken",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-freetoken#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-freetoken#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-freetoken#v0.8.0",
+      },
+    ],
+  },
+  {
+    id: "locaryn:morph-omniroute",
+    name: "morph-omniroute",
+    display_name: "OmniRoute Gateway",
+    description: "Passerelle OmniRoute : un point d'accès unifié pour des centaines de modèles distants.",
+    author: "Locaryn Team",
+    version: "1.0.0-beta.1",
+    homepage: "https://github.com/Locaryn/morph-omniroute",
+    ecosystem: "locaryn",
+    catalog_id: "locaryn:official",
+    catalog_label: "Locaryn Official",
+    install_source: "Locaryn/morph-omniroute",
+    keywords: ["official", "morph", "beta"],
+    advertised: ["morph officiel", "bêta"],
+    compat: "native",
+    installed: false,
+    is_beta: true,
+    versions: [
+      {
+        version: "1.0.0-beta.1",
+        tag: "v1.0.0-beta.1",
+        is_beta: true,
+        released_at: "2026-08-28",
+        summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+        install_source: "Locaryn/morph-omniroute",
+      },
+      {
+        version: "0.9.0",
+        tag: "v0.9.0",
+        is_beta: false,
+        released_at: "2026-08-20",
+        summary: "Version de référence stable",
+        install_source: "Locaryn/morph-omniroute#v0.9.0",
+      },
+      {
+        version: "0.8.5",
+        tag: "v0.8.5",
+        is_beta: false,
+        released_at: "2026-08-15",
+        summary: "Version précédente stable",
+        install_source: "Locaryn/morph-omniroute#v0.8.5",
+      },
+      {
+        version: "0.8.0",
+        tag: "v0.8.0",
+        is_beta: false,
+        released_at: "2026-08-01",
+        summary: "Version initiale du socle",
+        install_source: "Locaryn/morph-omniroute#v0.8.0",
+      },
+    ],
+  },
+
   {
     id: "claude_code:demo:commit-commands",
     name: "commit-commands",
@@ -4086,6 +5120,38 @@ const demoCore: CoreApi = {
   },
   async checkModelFit(model) {
     return demoFit(model, demoCaution);
+  },
+  async cloudProviders() {
+    return demoCloudProviders.map((p) => ({
+      ...p,
+      has_key: demoCloudState.key.length > 0,
+      model_count: demoCloudModels.length,
+      updated_at: new Date().toISOString(),
+      active_model: demoCloudState.model,
+    }));
+  },
+  async cloudProviderSetKey(_provider, key) {
+    if (!key.trim()) throw new Error("La clé est vide.");
+    demoCloudState.key = key.trim();
+  },
+  async cloudProviderClearKey() {
+    demoCloudState.key = "";
+    demoCloudState.model = null;
+  },
+  async cloudProviderModels() {
+    // Un catalogue distant met un instant à répondre : sans ce délai, l'état
+    // de chargement de l'écran ne se voit jamais.
+    await new Promise((r) => setTimeout(r, 250));
+    return demoCloudModels;
+  },
+  async cloudProviderSelect(provider, model) {
+    // Le refus sans clé est réel, pas décoratif : c'est le seul garde-fou qui
+    // évite un appel payant sans authentification.
+    if (!demoCloudState.key)
+      throw new Error(
+        `Aucune clé enregistrée pour ${provider}. Ouvrez son dossier dans « Mes modèles » et collez votre clé avant de choisir un modèle.`,
+      );
+    demoCloudState.model = model;
   },
   async llmfitHardware() {
     return demoHardware;

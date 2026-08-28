@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { core } from "./core";
+import { type CloudModel, type CloudProvider, core } from "./core";
 
 /**
  * Interface d'interaction exposée à tous les scripts et Web Components de plugins.
@@ -34,6 +34,23 @@ export interface LocarynPluginAPI {
   };
   tools: {
     invoke: (toolName: string, input: string | Record<string, unknown>) => Promise<unknown>;
+  };
+  /** Le catalogue distant qu'apporte cette extension.
+   *
+   *  Un panneau d'extension ne touche jamais à la clé : il demande à l'hôte
+   *  de l'écrire dans le trousseau du système, et apprend seulement qu'elle
+   *  existe. Sans cette asymétrie, installer une extension reviendrait à lui
+   *  confier de quoi dépenser l'argent de son utilisateur. */
+  providers: {
+    /** Tous les catalogues distants actifs, celui de cette extension compris. */
+    list: () => Promise<CloudProvider[]>;
+    /** Écrire la clé. Elle ne ressort jamais du trousseau. */
+    setKey: (provider: string, key: string) => Promise<void>;
+    clearKey: (provider: string) => Promise<void>;
+    /** La liste des modèles, relue chez le fournisseur quand elle a vieilli. */
+    models: (provider: string, refresh?: boolean) => Promise<CloudModel[]>;
+    /** Activer un modèle pour la conversation. */
+    select: (provider: string, model: string) => Promise<void>;
   };
   ui: {
     showToast: (message: string, type?: "info" | "success" | "warning" | "error") => void;
@@ -164,6 +181,21 @@ class PluginBridgeManager {
                 })()
               : input;
           return core.invokeExtensionTool(toolName, args);
+        },
+      },
+      providers: {
+        list: () => core.cloudProviders(),
+        setKey: (provider: string, key: string) => core.cloudProviderSetKey(provider, key),
+        clearKey: (provider: string) => core.cloudProviderClearKey(provider),
+        models: (provider: string, refresh?: boolean) =>
+          core.cloudProviderModels(provider, refresh),
+        select: async (provider: string, model: string) => {
+          await core.cloudProviderSelect(provider, model);
+          // Le sélecteur de modèle du chat écoute : sans ce signal, le nom
+          // affiché sous le champ de saisie resterait celui d'avant.
+          window.dispatchEvent(
+            new CustomEvent("locaryn:cloud-model-selected", { detail: { provider, model } }),
+          );
         },
       },
       ui: {

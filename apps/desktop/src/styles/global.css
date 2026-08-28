@@ -9158,3 +9158,254 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   display: block;
   max-width: var(--measure);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   FOURNISSEURS DISTANTS (dossiers apportés par un morph)
+   Un dossier prend la place d'une carte de modèle : même boîte, même
+   grille. Ce qui le distingue tient à trois signes — l'icône, le liseré
+   d'accent à gauche, et la flèche qui annonce qu'on entre quelque part.
+   ═══════════════════════════════════════════════════════════ */
+
+.locaryn-cloud-folder {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-left: 2px solid var(--accent);
+}
+
+.locaryn-cloud-folder:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.locaryn-cloud-folder-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.locaryn-cloud-folder-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  background: var(--accent-fill);
+  color: var(--accent);
+}
+
+.locaryn-cloud-folder-head > div {
+  flex: 1;
+}
+
+.locaryn-cloud-folder-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.locaryn-cloud-folder-tags {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ── La page du fournisseur ─────────────────────────────── */
+
+.locaryn-cloud-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.locaryn-cloud-screen-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.locaryn-cloud-screen-body {
+  min-height: 240px;
+}
+
+.locaryn-cloud-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.locaryn-cloud-key {
+  padding: var(--space-4);
+}
+
+.locaryn-cloud-help {
+  margin: 0 0 var(--space-3);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+.locaryn-cloud-key-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.locaryn-cloud-key-row .locaryn-input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.locaryn-cloud-key-row button {
+  min-height: 34px;
+}
+
+.locaryn-cloud-links {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  font-size: 12px;
+}
+
+.locaryn-cloud-links a {
+  color: var(--accent);
+  text-decoration: none;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.locaryn-cloud-links a:hover {
+  text-decoration: underline;
+}
+
+.locaryn-cloud-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.locaryn-cloud-toolbar .locaryn-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.locaryn-cloud-error,
+.locaryn-cloud-notice {
+  padding: var(--space-3);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  line-height: 1.5;
+  border-left: 2px solid var(--danger);
+  background: rgb(255 255 255 / 3%);
+  color: var(--text-dim);
+}
+
+.locaryn-cloud-notice {
+  border-left-color: var(--accent);
+}
+
+.locaryn-cloud-empty {
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* ── La liste des modèles distants ──────────────────────── */
+
+.locaryn-cloud-models {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.locaryn-cloud-model,
+.locaryn-cloud-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.locaryn-cloud-row {
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.locaryn-cloud-row:hover {
+  border-color: var(--border-strong);
+}
+
+.locaryn-cloud-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.locaryn-cloud-model.locaryn-active,
+.locaryn-cloud-row.locaryn-active {
+  border-color: var(--accent);
+  background: var(--accent-fill);
+}
+
+/* Le dossier, dans le sélecteur du chat : le liseré dit qu'il mène ailleurs. */
+.locaryn-cloud-row-folder {
+  border-left: 2px solid var(--accent);
+}
+
+.locaryn-cloud-model-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.locaryn-cloud-model-id {
+  display: block;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.locaryn-cloud-model-facts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.locaryn-cloud-model-facts span {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .locaryn-cloud-model-facts {
+    gap: var(--space-2);
+  }
+  .locaryn-cloud-key-row .locaryn-input {
+    flex-basis: 100%;
+  }
+}

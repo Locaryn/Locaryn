@@ -11,6 +11,7 @@
 mod airllm;
 mod approval_gate;
 mod client_cert;
+mod cloud_providers;
 mod core_engines;
 mod extensions;
 mod hooks;
@@ -57,17 +58,6 @@ static TRAY_QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub(crate) fn hide_tokio_console(command: &mut tokio::process::Command) {
     #[cfg(windows)]
     {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    #[cfg(not(windows))]
-    let _ = command;
-}
-
-pub(crate) fn hide_std_console(command: &mut std::process::Command) {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt as _;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
@@ -1879,6 +1869,11 @@ async fn send_message(
         match &active_provider {
             Some(p) => {
                 tracing::info!(endpoint = %p.endpoint, model = ?model, "desktop using OpenAiCompatAgent (llama-server)");
+                // Un fournisseur distant apporté par une extension paie ses
+                // jetons : sa clé est dans le trousseau du système, et c'est
+                // ici qu'elle rejoint la requête. Un moteur local n'en a pas,
+                // et l'en-tête reste absent — exactement comme avant.
+                input.bearer_token = cloud_providers::key_for_active_provider(&core, p);
                 let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
                 match agent.run(input.clone()).await {
                     Ok(stream) => stream,
@@ -4703,7 +4698,7 @@ impl InferenceConfig {
     fn path(data_dir: &std::path::Path) -> std::path::PathBuf {
         data_dir.join("inference_config.json")
     }
-    fn load(data_dir: &std::path::Path) -> Self {
+    pub(crate) fn load(data_dir: &std::path::Path) -> Self {
         std::fs::read_to_string(Self::path(data_dir))
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
@@ -4868,69 +4863,16 @@ async fn check_hardware() -> Result<HardwareSpec, String> {
     Ok(spec)
 }
 
-/// The actual heavy lifting — runs wmic / nvidia-smi. Called at most once.
+/// Le sondage réel, délégué à l'estimateur.
+///
+/// La même machine était sondée à deux endroits, avec deux méthodes et deux
+/// résultats possibles : `wmic` ici, CIM ailleurs. Une seule sonde désormais,
+/// celle qui sert aussi à décider si un modèle tient — sans quoi l'écran
+/// « votre PC » et le garde-fou de chargement pouvaient se contredire.
 pub(crate) fn probe_hardware() -> Result<HardwareSpec, String> {
-    // RAM: use sysinfo-like approach via system commands.
-    let ram_gb = if cfg!(target_os = "windows") {
-        let mut command = std::process::Command::new("wmic");
-        hide_std_console(&mut command);
-        command
-            .args(["computersystem", "get", "TotalPhysicalMemory"])
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .and_then(|s| {
-                s.lines()
-                    .filter(|l| l.trim().chars().all(|c| c.is_ascii_digit()))
-                    .find(|l| !l.trim().is_empty())
-                    .and_then(|n| n.trim().parse::<u64>().ok())
-            })
-            .map(|bytes| (bytes / (1024 * 1024 * 1024)) as u32)
-            .unwrap_or(16)
-    } else {
-        16
-    };
-
-    // VRAM: best-effort via nvidia-smi in MiB converted to GB; fallback to WMI or 0.
-    let vram_gb = {
-        let mut command = std::process::Command::new("nvidia-smi");
-        hide_std_console(&mut command);
-        command
-            .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
-            .output()
-    }
-    .ok()
-    .and_then(|o| String::from_utf8(o.stdout).ok())
-    .and_then(|s| {
-        s.lines()
-            .next()
-            .and_then(|l| l.trim().parse::<f32>().ok())
-            .map(|mb| (mb / 1024.0).round() as u32)
-    })
-    .or_else(|| {
-        if cfg!(target_os = "windows") {
-            let mut command = std::process::Command::new("wmic");
-            hide_std_console(&mut command);
-            command
-                .args(["path", "win32_VideoController", "get", "AdapterRAM"])
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .and_then(|s| {
-                    s.lines()
-                        .filter_map(|l| l.trim().parse::<u64>().ok())
-                        .max()
-                        .map(|bytes| (bytes / (1024 * 1024 * 1024)) as u32)
-                })
-        } else {
-            None
-        }
-    })
-    .unwrap_or(0);
-
-    let cpu_cores = std::thread::available_parallelism()
-        .map(|n| n.get() as u32)
-        .unwrap_or(4);
+    let hardware = locaryn_llmfit::profile();
+    let ram_gb = hardware.total_ram_gb.round().max(1.0) as u32;
+    let vram_gb = hardware.total_vram_gb.round().max(0.0) as u32;
 
     let recommended = match (ram_gb, vram_gb) {
         (r, v) if r >= 64 && v >= 24 => "large (35-70B)",
@@ -4943,7 +4885,7 @@ pub(crate) fn probe_hardware() -> Result<HardwareSpec, String> {
         total_ram_gb: ram_gb,
         total_vram_gb: vram_gb,
         recommended_size_label: recommended.to_string(),
-        cpu_cores,
+        cpu_cores: hardware.cpu_cores,
     })
 }
 
@@ -5968,6 +5910,15 @@ pub fn run() {
             check_hardware,
             model_residency::model_residency,
             model_residency::check_model_fit,
+            model_residency::llmfit_hardware,
+            cloud_providers::cloud_providers,
+            cloud_providers::cloud_provider_set_key,
+            cloud_providers::cloud_provider_clear_key,
+            cloud_providers::cloud_provider_models,
+            cloud_providers::cloud_provider_select,
+            cloud_providers::cloud_provider_status,
+            cloud_providers::cloud_provider_start,
+            model_residency::llmfit_catalog,
             model_residency::load_chat_model,
             model_residency::eject_chat_model,
             model_residency::caution_level,
