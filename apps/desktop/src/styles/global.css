@@ -2817,27 +2817,29 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
 .locaryn-settings-full-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 11px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 11px 12px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: var(--radius);
   color: var(--text-dim);
   text-align: left;
   cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
 }
 .locaryn-settings-full-item:hover {
-  background: var(--surface);
   color: var(--text);
 }
+/* L'entrée courante prend le fond d'accent, pas une bordure : une bordure de
+   plus par ligne, c'est le cadre que la direction cherche justement à
+   enlever. */
 .locaryn-settings-full-item.locaryn-active {
-  background: var(--surface);
-  border-color: var(--border);
+  background: var(--accent-fill);
   color: var(--text);
 }
-.locaryn-settings-full-item.locaryn-active .locaryn-settings-full-label {
-  color: var(--accent);
+.locaryn-settings-full-item.locaryn-active .locaryn-settings-full-icon {
+  color: var(--accent-300);
 }
 .locaryn-settings-full-icon {
   flex: none;

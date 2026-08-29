@@ -571,6 +571,7 @@ export function LeftPanel({
           y ajoute celles qu'une extension déclare. */}
       {onSelectView && (
         <nav className="locaryn-rail-nav" aria-label="Destinations">
+          <span className="locaryn-section-title">Bibliothèque</span>
           {destinations
             .filter((d) => !RAIL_HIDDEN.has(d.id))
             .map((d) => (

@@ -66,14 +66,11 @@ export type Section =
   | "language"
   | "about";
 
-type SettingsCategory = "user" | "ai" | "server" | "system";
-
 type SectionDef = {
   id: Section;
   icon: IconName;
   label: string;
   desc: string;
-  category: SettingsCategory;
 };
 
 type Props = {
@@ -91,105 +88,64 @@ type Props = {
 };
 
 const SECTIONS: SectionDef[] = [
-  // ── Espace Utilisateur & Outils ──
   {
     id: "account",
     icon: "private",
-    label: "Compte & Profil",
+    label: "Compte",
     desc: "Profil local, identité, préférences et mémoire",
-    category: "user",
   },
-  {
-    id: "extensions",
-    icon: "extensions",
-    label: "Morphs & Skills",
-    desc: "Morphs Locaryn (UI & moteurs), compétences et packs d'agents",
-    category: "user",
-  },
-  {
-    id: "connectors",
-    icon: "server",
-    label: "Connecteurs & MCP",
-    desc: "Serveurs MCP, bases de données et passerelles techniques",
-    category: "user",
-  },
-  {
-    id: "projects",
-    icon: "project",
-    label: "Projets & Permissions",
-    desc: "Autorisations d'outils, base de connaissances, archivage",
-    category: "user",
-  },
-
-  // ── Intelligence Artificielle & Noyau ──
   {
     id: "engine",
     icon: "settings",
-    label: "Moteur IA & Noyau",
-    desc: "Runtime llama.cpp, configuration du noyau, offload et adaptateurs",
-    category: "ai",
+    label: "Moteur IA",
+    desc: "Runtime llama.cpp, capacités, adaptateurs LoRA",
   },
   {
     id: "performance",
     icon: "speed",
-    label: "Performance & GPU",
-    desc: "GPU, cache KV, contexte, offload et benchmarks",
-    category: "ai",
+    label: "Performance",
+    desc: "GPU, cache KV, contexte, offload",
   },
   {
     id: "huggingface",
     icon: "marketplace",
     label: "HuggingFace",
     desc: "Token pour les dépôts restreints (modèles gated)",
-    category: "ai",
   },
-
-  // ── Serveur & Infrastructure ──
+  {
+    id: "projects",
+    icon: "project",
+    label: "Projets",
+    desc: "Autorisations, base de connaissances, archivage",
+  },
+  {
+    id: "extensions",
+    icon: "extensions",
+    label: "Morphs & Skills",
+    desc: "Morphs Locaryn, compétences et packs d'agents",
+  },
+  {
+    id: "connectors",
+    icon: "server",
+    label: "Connecteurs & MCP",
+    desc: "Connexions SSH, bases de données et serveurs MCP",
+  },
+  { id: "appearance", icon: "studio", label: "Apparence", desc: "Couleur d'accentuation, thème" },
+  { id: "language", icon: "chat", label: "Langue", desc: "Langue de l'interface" },
   {
     id: "server",
     icon: "server",
-    label: "Serveur & Tunnels",
-    desc: "Service Locaryn, accès local, réseau et appairage",
-    category: "server",
+    label: "Serveur & fonctions",
+    desc: "Service Locaryn, accès local et appairage",
   },
-
-  // ── Système & Préférences ──
   {
     id: "storage",
     icon: "models",
-    label: "Stockage & Modèles",
+    label: "Stockage",
     desc: "Emplacement des modèles, espace disque, nettoyage",
-    category: "system",
   },
-  {
-    id: "appearance",
-    icon: "studio",
-    label: "Apparence & Thème",
-    desc: "Couleur d'accentuation, mode sombre / clair",
-    category: "system",
-  },
-  {
-    id: "language",
-    icon: "chat",
-    label: "Langue",
-    desc: "Langue de l'interface utilisateur",
-    category: "system",
-  },
-  {
-    id: "about",
-    icon: "warning",
-    label: "À propos",
-    desc: "Version, licences et diagnostic système",
-    category: "system",
-  },
+  { id: "about", icon: "warning", label: "À propos", desc: "Version, licences, système" },
 ];
-
-const CATEGORY_HEADERS: Record<SettingsCategory, string> = {
-  user: "MON ESPACE & EXTENSIBILITÉ",
-  ai: "INTELLIGENCE ARTIFICIELLE & NOYAU",
-  server: "SERVEUR & ÉQUIPE",
-  system: "SYSTÈME & PRÉFÉRENCES",
-};
 
 export function SettingsView({
   theme,
@@ -256,8 +212,6 @@ export function SettingsView({
       : { icon: current.icon, label: current.label };
   const remoteEnabled = activeCapabilities.includes("travel-tunnel");
 
-  const categoriesOrder: SettingsCategory[] = ["user", "ai", "server", "system"];
-
   return (
     <section className="locaryn-view-container locaryn-settings-page">
       <div className="locaryn-view-header">
@@ -315,44 +269,35 @@ export function SettingsView({
                 </div>
               </>
             ) : (
-              categoriesOrder.map((cat) => {
-                const catSections = SECTIONS.filter((s) => s.category === cat);
-                if (catSections.length === 0) return null;
-
-                return (
-                  <div key={cat} style={{ marginBottom: 12 }}>
-                    <span className="locaryn-settings-group-title">{CATEGORY_HEADERS[cat]}</span>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      {catSections.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
-                          onClick={() => {
-                            setSection(s.id);
-                            setPaneOpen(true);
-                            if (s.id === "account") {
-                              setRailFrom("deeper");
-                              setRailLevel("account");
-                              // Descendre dans le compte ouvre son premier écran :
-                              // un menu sans contenu à côté ne dit rien.
-                              setAccountSection("profile");
-                            }
-                          }}
-                        >
-                          <span className="locaryn-settings-full-icon">
-                            <Icon name={s.icon} />
-                          </span>
-                          <span className="locaryn-settings-full-text">
-                            <span className="locaryn-settings-full-label">{s.label}</span>
-                            <span className="locaryn-settings-full-desc">{s.desc}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
+              /* Une liste plate : les catégories ajoutaient quatre en-têtes
+                 pour douze entrées, et alourdissaient la colonne sans rien
+                 classer qu'on ne lise déjà. */
+              SECTIONS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
+                  onClick={() => {
+                    setSection(s.id);
+                    setPaneOpen(true);
+                    if (s.id === "account") {
+                      setRailFrom("deeper");
+                      setRailLevel("account");
+                      // Descendre dans le compte ouvre son premier écran :
+                      // un menu sans contenu à côté ne dit rien.
+                      setAccountSection("profile");
+                    }
+                  }}
+                >
+                  <span className="locaryn-settings-full-icon">
+                    <Icon name={s.icon} />
+                  </span>
+                  <span className="locaryn-settings-full-text">
+                    <span className="locaryn-settings-full-label">{s.label}</span>
+                    <span className="locaryn-settings-full-desc">{s.desc}</span>
+                  </span>
+                </button>
+              ))
             )}
           </div>
         </nav>
