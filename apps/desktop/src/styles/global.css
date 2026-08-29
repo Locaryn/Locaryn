@@ -4827,7 +4827,16 @@ pre.md-code {
 
 .locaryn-models-search-row {
   display: flex;
+  align-items: center;
   gap: var(--space-3);
+  flex-wrap: wrap;
+}
+/* Le champ prend la place restante mais ne descend jamais sous 260px : c'est
+   la valeur de la maquette, en dessous il n'affiche plus assez de son
+   invite pour dire ce qu'il cherche. */
+.locaryn-models-search-row > .locaryn-input {
+  flex: 1 1 260px;
+  min-width: 260px;
 }
 
 .locaryn-models-toolbar {
@@ -4892,19 +4901,23 @@ pre.md-code {
 /* Grid layout */
 .locaryn-model-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
   gap: var(--space-4);
-  margin-top: var(--space-3);
+  margin-top: var(--space-4);
 }
 
+/* La carte de famille, aux valeurs de la maquette : Mica et ombre douce,
+   rayon d'un cran au-dessus, et le contenu qui respire à 12px. */
 .locaryn-box-card {
-  background: var(--surface);
+  background-color: var(--surface);
+  background-image: var(--mica);
+  box-shadow: var(--shadow-1);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: var(--space-3);
   transition: border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
@@ -4921,19 +4934,25 @@ pre.md-code {
   gap: var(--space-2);
 }
 
+/* Le nom de l'éditeur : du technique, donc du mono, et discret — c'est le
+   nom du modèle qu'on lit, pas la marque. Il était en accent, ce qui en
+   faisait la chose la plus vive d'une grille de trente cartes. */
 .locaryn-box-brand {
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--accent);
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
   font-weight: 500;
 }
 
 .locaryn-box-name {
-  font-size: var(--text-md);
+  font-size: 15.5px;
   font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
   color: var(--text);
-  margin: 2px 0 0 0;
+  margin: 5px 0 0 0;
 }
 
 .locaryn-box-badges {
@@ -6537,18 +6556,21 @@ pre.md-code {
   font-weight: 400;
 }
 /* Left accent stripe on cards, keyed to compatibility */
+/* Le liseré de compatibilité s'ajoute à l'élévation de la carte au lieu de la
+   remplacer : `box-shadow` est une seule propriété, et le liseré seul effaçait
+   l'ombre douce du système. */
 .locaryn-compat-gpu {
-  box-shadow: inset 3px 0 0 var(--accent-300);
+  box-shadow: inset 3px 0 0 var(--accent-300), var(--shadow-1);
 }
 .locaryn-compat-offload {
-  box-shadow: inset 3px 0 0 var(--warn);
+  box-shadow: inset 3px 0 0 var(--warn), var(--shadow-1);
 }
 .locaryn-compat-heavy {
-  box-shadow: inset 3px 0 0 var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger), var(--shadow-1);
   opacity: 0.82;
 }
 .locaryn-compat-airllm {
-  box-shadow: inset 3px 0 0 var(--info);
+  box-shadow: inset 3px 0 0 var(--info), var(--shadow-1);
 }
 
 /* AirLLM — low-VRAM inference engine toggle */
@@ -9720,4 +9742,50 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   gap: var(--space-2);
   width: 100%;
   margin-top: var(--space-2);
+}
+
+/* Le pied d'une carte de famille : ce qu'elle contient à gauche, l'invite à
+   l'ouvrir à droite. Collé en bas par `margin-top: auto`, pour que toutes les
+   cartes d'une rangée alignent leur pied quelle que soit la longueur du
+   descriptif. */
+.locaryn-box-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.locaryn-box-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--accent-300);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.locaryn-box-detail:hover {
+  color: var(--accent-200);
+}
+
+/* Le descriptif d'une carte tient sur deux lignes, réservées même quand il
+   est court : sinon les pieds de carte d'une rangée ne s'alignent pas. */
+.locaryn-box-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 40px;
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-dim);
 }

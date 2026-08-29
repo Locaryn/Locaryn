@@ -2431,54 +2431,41 @@ export function ModelBrowser({
 
                 <p className="locaryn-box-desc">{f.description}</p>
 
-                <div className="locaryn-box-stats">
-                  {f.contextWindow && (
+                {/* Contexte, licence, date : de la fiche, pas de la vignette.
+                    La maquette n'en met aucun sur la carte. */}
+                {isExpanded && (
+                  <div className="locaryn-box-stats">
+                    {f.contextWindow && (
+                      <div className="locaryn-stat-item">
+                        <span className="locaryn-stat-label">Contexte</span>
+                        <span className="locaryn-stat-value">{f.contextWindow}</span>
+                      </div>
+                    )}
                     <div className="locaryn-stat-item">
-                      <span className="locaryn-stat-label">Contexte</span>
-                      <span className="locaryn-stat-value">{f.contextWindow}</span>
+                      <span className="locaryn-stat-label">Licence</span>
+                      <span className="locaryn-stat-value">{f.license}</span>
                     </div>
-                  )}
-                  <div className="locaryn-stat-item">
-                    <span className="locaryn-stat-label">Licence</span>
-                    <span className="locaryn-stat-value">{f.license}</span>
+                    <div className="locaryn-stat-item">
+                      <span className="locaryn-stat-label">Sortie</span>
+                      <span className="locaryn-stat-value">{f.releaseDate}</span>
+                    </div>
                   </div>
-                  <div className="locaryn-stat-item">
-                    <span className="locaryn-stat-label">Sortie</span>
-                    <span className="locaryn-stat-value">{f.releaseDate}</span>
-                  </div>
-                </div>
+                )}
 
-                {!isFilterActive && (
+                <div className="locaryn-box-foot">
+                  <span>
+                    {f.variants.length} taille{f.variants.length > 1 ? "s" : ""} · {cleanSizeRange}
+                  </span>
                   <button
                     type="button"
-                    className="locaryn-btn-ghost"
-                    style={{
-                      width: "100%",
-                      marginTop: "8px",
-                      fontSize: "12px",
-                      border: "1px dashed var(--border-strong)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
+                    className="locaryn-box-detail"
                     onClick={() => toggleCardExpand(f.id)}
+                    aria-expanded={isExpanded}
                   >
-                    <span
-                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    >
-                      {expandLabel}
-                    </span>
-                    <span
-                      className="locaryn-tag locaryn-tag-soft"
-                      style={{ flex: "none", marginLeft: "6px" }}
-                    >
-                      {f.variants.length} modèles
-                    </span>
+                    {isExpanded ? "Replier" : "Détail"}
+                    <Icon name={isExpanded ? "chevron" : "arrow-right"} size={13} />
                   </button>
-                )}
+                </div>
 
                 {isExpanded && (
                   <div className="locaryn-box-variants" style={{ marginTop: "12px" }}>
