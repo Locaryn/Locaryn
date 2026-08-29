@@ -80,7 +80,7 @@ body {
 .lo-title {
   margin: 0;
   font-size: 22px;
-  font-weight: 800; /* le même poids que les titres du desktop */
+  font-weight: 500; /* le même poids que les titres du desktop */
   color: var(--text);
 }
 
@@ -211,7 +211,7 @@ body {
 }
 .lo-bar-away {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
@@ -228,7 +228,7 @@ body {
   flex: none;
   font-family: inherit;
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
   background: none;
   border: 1px solid var(--border);
@@ -505,7 +505,7 @@ body {
   color: var(--text-dim);
   font-family: inherit;
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 .lo-back:active {
@@ -553,7 +553,7 @@ body {
   color: var(--on-accent);
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 600;
+  font-weight: 500;
 }
 .lo-result {
   width: 100%;
@@ -767,7 +767,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-drawer-title {
   flex: 1;
   font-size: var(--text-base);
-  font-weight: 800;
+  font-weight: 500;
   color: var(--text);
 }
 
@@ -830,7 +830,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   padding: 0 var(--space-3);
   font-family: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   text-align: left;
   color: var(--on-accent);
   background: var(--accent);
@@ -850,7 +850,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   padding: 0 var(--space-3);
   font-family: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   text-align: left;
@@ -973,7 +973,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   color: var(--on-accent);
   background: var(--accent);
   border-color: transparent;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1064,7 +1064,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 }
 .lo-sheet-label {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* Le mode éphémère armé : la pastille se remplit. */
@@ -1078,7 +1078,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-drawer-group-label {
   padding: var(--space-3) var(--space-3) var(--space-1);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -1089,7 +1089,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-drawer-new-project {
   margin-top: var(--space-1);
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* Le menu contextuel d'une conversation : une feuille qui monte, comme le
@@ -1118,7 +1118,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .lo-list-nested {
   padding-left: var(--space-4);
@@ -1192,7 +1192,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-update-jump {
   margin: 0 0 var(--space-2);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
 }
 .lo-update-arrow {
@@ -1281,7 +1281,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   backdrop-filter: blur(12px);
   color: #fff;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   z-index: 10000;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
@@ -1537,7 +1537,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   background: var(--accent-fill);
   border-color: var(--accent);
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* ── Recherche ── */
@@ -1620,7 +1620,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-modal-title {
   margin: 0;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text);
 }
 .lo-modal-body {
@@ -1672,7 +1672,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   padding: 2px 8px;
   border-radius: var(--radius-pill, 9999px);
   text-transform: uppercase;
@@ -1739,7 +1739,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 .lo-settings-groupe {
   margin: 0 0 var(--space-2);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: .04em;
   text-transform: uppercase;
   color: var(--text-faint);

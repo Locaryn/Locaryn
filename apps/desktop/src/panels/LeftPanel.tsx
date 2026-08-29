@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { SessionRow } from "../components/SessionRow";
 import { type Project, type Session, core } from "../lib/core";
@@ -32,7 +32,25 @@ type Props = {
   onProjectArchived?: (p: Project) => void;
   /** Une conversation a été déposée sur une autre : les réunir. */
   onSessionsMerged?: (accueil: Session, sourceId: string) => void;
+  /** L'écran affiché, pour marquer la destination courante en pied de rail. */
+  activeView?: string;
+  /** Aller à une destination depuis le pied du rail. */
+  onSelectView?: (view: string) => void;
 };
+
+/**
+ * Les destinations en pied de rail.
+ *
+ * Elles vivaient uniquement derrière le menu : trois clics pour atteindre les
+ * réglages, et rien à l'écran qui dise où on est. Le tiroir les garde toutes ;
+ * ici on ne pose que celles qu'on rejoint tout le temps.
+ */
+const RAIL_DESTINATIONS: { id: string; label: string; icon: IconName }[] = [
+  { id: "installed", label: "Modèles", icon: "cube" },
+  { id: "models", label: "Marketplace", icon: "storefront" },
+  { id: "extensions", label: "Extensions", icon: "plugs" },
+  { id: "settings", label: "Réglages", icon: "gear" },
+];
 
 function sessionLabel(s: Session, index: number) {
   if (s.title) return s.title;
@@ -59,6 +77,8 @@ export function LeftPanel({
   onSessionArchived,
   onSessionMoved,
   onSessionRenamed,
+  activeView,
+  onSelectView,
   onNewEphemeralChat,
 }: Props) {
   /**
@@ -494,6 +514,24 @@ export function LeftPanel({
           </ul>
         )}
       </div>
+
+      {/* ── Destinations, en pied de rail ── */}
+      {onSelectView && (
+        <nav className="locaryn-rail-nav" aria-label="Destinations">
+          {RAIL_DESTINATIONS.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}`}
+              aria-current={activeView === d.id ? "page" : undefined}
+              onClick={() => onSelectView(d.id)}
+            >
+              <Icon name={d.icon} size={16} />
+              {d.label}
+            </button>
+          ))}
+        </nav>
+      )}
     </aside>
   );
 }

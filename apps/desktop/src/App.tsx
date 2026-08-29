@@ -972,6 +972,8 @@ export function App() {
                 onSessionRenamed={handleRenameSession}
                 onSessionsMerged={handleMergeSessions}
                 onNewEphemeralChat={handleNewEphemeralChat}
+                activeView={activeView}
+                onSelectView={(v) => setActiveView(v as typeof activeView)}
                 onOpenProjectSettings={(p) => setProjectSettings(p)}
                 onProjectArchived={(p) => {
                   // Drop it from the sidebar and fall back to another project.

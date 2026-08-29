@@ -1,4 +1,4 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon, type IconName, LoSpinner } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { core } from "../../lib/core";
 import { pluginBridge } from "../../lib/pluginBridge";
@@ -164,12 +164,14 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
       <div className={className} style={{ display: "block", width: "100%", ...style }}>
         <div ref={customElementContainerRef} style={{ display: "block", width: "100%" }} />
         {!mounted && (
-          <div className="locaryn-card" style={{ padding: 32, textAlign: "center" }}>
-            <p className="locaryn-field-hint" style={{ margin: 0 }}>
-              {error
-                ? `Interface indisponible — ${error}`
-                : `Chargement de l'interface fournie par ${contribution.extensionName}…`}
-            </p>
+          // Une carte de 32px de marge occupait toute la place d'un panneau
+          // alors que la contribution tient parfois dans une barre d'actions.
+          // Le rotateur du système suffit : action courte, fin inconnue.
+          <div className="locaryn-plugin-loading">
+            {!error && <LoSpinner size="sm" />}
+            <span className="locaryn-field-hint">
+              {error ? `Interface indisponible — ${error}` : `${contribution.extensionName}…`}
+            </span>
           </div>
         )}
       </div>

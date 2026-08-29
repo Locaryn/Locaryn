@@ -58,7 +58,7 @@ body {
 .lo-title {
   margin: 0;
   font-size: 22px;
-  font-weight: 800; /* le même poids que les titres du desktop */
+  font-weight: 500; /* le même poids que les titres du desktop */
   color: var(--text);
 }
 
@@ -98,7 +98,7 @@ body {
   min-height: 50px;
   font-size: 15px;
   font-family: inherit;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--on-accent);
   background: var(--accent);
   border: none;
@@ -141,7 +141,7 @@ body {
   padding: var(--space-2) var(--space-5);
   border-bottom: 1px solid var(--border);
   font-size: var(--text-base);
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text-dim);
 }
 .lo-dot {
@@ -180,7 +180,7 @@ body {
 }
 .lo-bar-away {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-dim);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
@@ -359,7 +359,7 @@ body {
   color: var(--text-dim);
   font-family: inherit;
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: 500;
   /* Le même interligne que le titre de la barre : sans cela, le bouton garde
      le line-height: normal du navigateur, sa boîte de ligne est plus courte
      que celle du titre et le texte flotte décalé de quelques pixels. */
@@ -388,7 +388,7 @@ body {
 }
 .lo-tab-on {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
   border-bottom-color: var(--accent);
 }
 .lo-studio {
@@ -426,7 +426,7 @@ body {
   color: var(--on-accent);
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 600;
+  font-weight: 500;
 }
 .lo-result {
   width: 100%;
@@ -510,7 +510,7 @@ body {
 }
 .lo-sheet-label {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* ── Tiroir d'historique — le même que sur le téléphone ──────
@@ -562,7 +562,7 @@ body {
 .lo-drawer-title {
   flex: 1;
   font-size: var(--text-base);
-  font-weight: 800;
+  font-weight: 500;
   color: var(--text);
 }
 .lo-drawer-scroll {
@@ -576,7 +576,7 @@ body {
   padding: 0 var(--space-3);
   font-family: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   text-align: left;
   color: var(--on-accent);
   background: var(--accent);
@@ -629,7 +629,7 @@ body {
 .lo-drawer-group-label {
   padding: var(--space-3) var(--space-3) var(--space-1);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -639,7 +639,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .lo-list-nested {
   padding-left: var(--space-4);
@@ -685,7 +685,7 @@ body {
 .pwa-title {
   margin: 0;
   font-size: var(--text-md);
-  font-weight: 800;
+  font-weight: 500;
   color: var(--text);
 }
 .pwa-text {
@@ -794,7 +794,7 @@ body {
 }
 .lo-card-title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
 }
 .lo-card-actions {
@@ -822,7 +822,7 @@ body {
   color: var(--on-accent);
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 600;
+  font-weight: 500;
 }
 .lo-tag {
   align-self: flex-start;
@@ -933,7 +933,7 @@ body {
   padding: 0 12px;
   font-size: 13px;
   font-family: inherit;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--accent);
   background: transparent;
   border: 1px solid rgba(var(--accent-rgb), 0.4);
@@ -963,7 +963,7 @@ body {
 }
 .lo-row-label {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .lo-row-go {
   color: var(--text-faint);
