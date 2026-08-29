@@ -19,7 +19,7 @@ type Props = {
 
 type NavCategory = "workspace" | "models" | "system";
 
-type NavItem = {
+export type NavItem = {
   id: string;
   label: string;
   icon: IconName;
@@ -118,6 +118,36 @@ export const CAPABILITY_GATED_VIEWS: Record<string, string[]> = Object.fromEntri
   ]),
 );
 
+/**
+ * Les destinations réellement offertes : les natives dont la capacité est
+ * présente, puis celles qu'une extension déclare.
+ *
+ * Vit ici plutôt que dans le rail parce que c'est ici que la liste native est
+ * décrite ; le rail l'appelle, il ne la redéclare pas.
+ */
+export function visibleNavItems(activeCapabilities: string[], extensions: InstalledExtension[]) {
+  const natives = BASE_NAV_ITEMS.filter(
+    (item) =>
+      !item.requiredCapabilities?.length ||
+      item.requiredCapabilities.some((cap) => activeCapabilities.includes(cap)),
+  );
+  const pris = new Set(natives.map((i) => i.id));
+  const depuisSlots: NavItem[] = getSlotContributions(extensions, "nav.drawer").flatMap((ni) => {
+    if (pris.has(ni.id)) return [];
+    pris.add(ni.id);
+    return [
+      {
+        id: ni.id,
+        label: ni.label || ni.id,
+        icon: (isIconName(ni.icon) ? ni.icon : "extensions") as IconName,
+        desc: ni.hint || `Apporté par ${ni.extensionName}`,
+        category: "workspace" as NavCategory,
+      },
+    ];
+  });
+  return [...natives, ...depuisSlots];
+}
+
 export function NavDrawer({
   isOpen,
   onClose,
@@ -128,30 +158,7 @@ export function NavDrawer({
 }: Props) {
   if (!isOpen) return null;
 
-  const visibleItems = BASE_NAV_ITEMS.filter((item) => {
-    if (!item.requiredCapabilities || item.requiredCapabilities.length === 0) {
-      return true;
-    }
-    return item.requiredCapabilities.some((cap) => activeCapabilities.includes(cap));
-  });
-
-  const pris = new Set(visibleItems.map((i) => i.id));
-  const slotNavItems = getSlotContributions(extensions, "nav.drawer");
-  const depuisSlots: NavItem[] = slotNavItems.flatMap((ni) => {
-    if (pris.has(ni.id)) return [];
-    pris.add(ni.id);
-    return [
-      {
-        id: ni.id,
-        label: ni.label || ni.id,
-        icon: (isIconName(ni.icon) ? ni.icon : "extensions") as IconName,
-        desc: ni.hint || `Apporté par ${ni.extensionName}`,
-        category: "workspace",
-      },
-    ];
-  });
-
-  const itemsAffiches = [...visibleItems, ...depuisSlots];
+  const itemsAffiches = visibleNavItems(activeCapabilities, extensions);
   const categoriesOrder: NavCategory[] = ["workspace", "models", "system"];
 
   return (

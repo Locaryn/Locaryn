@@ -12,7 +12,8 @@ type Props = {
   showPreview: boolean;
   showBottom: boolean;
   showModelConfig: boolean;
-  onToggleNavDrawer: () => void;
+  /** Replier ou déplier le rail, qui porte toute la navigation. */
+  onToggleRail: () => void;
   onTogglePreview: () => void;
   onToggleBottom: () => void;
   onToggleModelConfig: () => void;
@@ -51,7 +52,7 @@ export function TopBar({
   showPreview,
   showBottom,
   showModelConfig,
-  onToggleNavDrawer,
+  onToggleRail,
   onTogglePreview,
   onToggleBottom,
   onToggleModelConfig,
@@ -70,25 +71,11 @@ export function TopBar({
         <button
           type="button"
           className="locaryn-icon-btn locaryn-topbar-action locaryn-menu-btn"
-          title="Ouvrir le menu de navigation (Marketplace, Batch API, Entraînement...)"
-          aria-label="Ouvrir le menu de navigation"
-          onClick={onToggleNavDrawer}
+          title="Replier ou déplier le panneau latéral"
+          aria-label="Replier ou déplier le panneau latéral"
+          onClick={onToggleRail}
         >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
+          <Icon name="menu" size={18} />
         </button>
 
         <span className="locaryn-logo">

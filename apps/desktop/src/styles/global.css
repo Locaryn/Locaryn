@@ -2796,7 +2796,10 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
 }
 .locaryn-settings-full {
   display: grid;
-  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  /* La maquette donne 288px au menu, avec un rail de 250 à côté. Ici le menu
+     rétrécit avec la place : le rail est permanent, et il ne doit pas coûter
+     la lisibilité du contenu. */
+  grid-template-columns: minmax(172px, 0.34fr) minmax(0, 1fr);
   gap: var(--space-5, 20px);
   align-items: stretch;
   flex: 1;
@@ -9554,10 +9557,21 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   container-name: reglages;
 }
 
+/* Zone déjà serrée : le menu garde ses libellés et lâche ses descriptions.
+   Une phrase de trois lignes sous chaque entrée mange la place du contenu. */
+@container reglages (max-width: 860px) {
+  .locaryn-settings-full-desc {
+    display: none;
+  }
+  .locaryn-settings-full-item {
+    padding: 8px 10px;
+  }
+}
+
 /* Sous 620px de zone, les deux colonnes ne tiennent plus : elles se relaient.
    On voit la liste, ou le contenu — jamais l'un empilé sous l'autre au bout
    d'un long défilement. */
-@container reglages (max-width: 620px) {
+@container reglages (max-width: 560px) {
   .locaryn-settings-full {
     grid-template-columns: minmax(0, 1fr);
   }

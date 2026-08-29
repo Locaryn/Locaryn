@@ -106,7 +106,6 @@ export function App() {
   );
 
   // Toggleable panels & drawers
-  const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
   const [showModelConfig, setShowModelConfig] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -782,6 +781,7 @@ export function App() {
       style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}
     >
       <TopBar
+        onToggleRail={() => setLeftOpen((v) => !v)}
         activeView={activeView}
         onSelectView={(v) => setActiveView(v)}
         mode={health?.mode ?? "local"}
@@ -793,7 +793,6 @@ export function App() {
         showPreview={showPreview}
         showBottom={showBottom}
         showModelConfig={showModelConfig}
-        onToggleNavDrawer={() => setNavDrawerOpen(true)}
         onTogglePreview={() => setShowPreview(!showPreview)}
         onToggleBottom={() => setShowBottom(!showBottom)}
         onToggleModelConfig={() => setShowModelConfig(!showModelConfig)}
@@ -938,20 +937,11 @@ export function App() {
         />
       )}
 
-      <NavDrawer
-        isOpen={navDrawerOpen}
-        onClose={() => setNavDrawerOpen(false)}
-        activeView={activeView}
-        onSelectView={(v) => setActiveView(v)}
-        activeCapabilities={activeCapabilities}
-        extensions={activeExtensions}
-      />
-
       <div
         className="locaryn-body"
         style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}
       >
-        {activeView === "chat" && leftOpen && (
+        {leftOpen && (
           <>
             <div style={{ width: leftW, flex: "none" }}>
               <LeftPanel
@@ -974,6 +964,8 @@ export function App() {
                 onNewEphemeralChat={handleNewEphemeralChat}
                 activeView={activeView}
                 onSelectView={(v) => setActiveView(v as typeof activeView)}
+                activeCapabilities={activeCapabilities}
+                installedExtensions={activeExtensions}
                 onOpenProjectSettings={(p) => setProjectSettings(p)}
                 onProjectArchived={(p) => {
                   // Drop it from the sidebar and fall back to another project.

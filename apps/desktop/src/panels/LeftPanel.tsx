@@ -1,7 +1,8 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { visibleNavItems } from "../components/NavDrawer";
 import { SessionRow } from "../components/SessionRow";
-import { type Project, type Session, core } from "../lib/core";
+import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
 import { pickFolder } from "../lib/dialog";
 
 type Props = {
@@ -36,21 +37,29 @@ type Props = {
   activeView?: string;
   /** Aller à une destination depuis le pied du rail. */
   onSelectView?: (view: string) => void;
+  /** Ce que les extensions actives apportent, pour les destinations du pied. */
+  activeCapabilities?: string[];
+  installedExtensions?: InstalledExtension[];
 };
 
 /**
- * Les destinations en pied de rail.
+ * Les libellés du pied de rail.
  *
- * Elles vivaient uniquement derrière le menu : trois clics pour atteindre les
- * réglages, et rien à l'écran qui dise où on est. Le tiroir les garde toutes ;
- * ici on ne pose que celles qu'on rejoint tout le temps.
+ * Le rail est étroit : « Catalogue de modèles » y tient mal, « Marketplace »
+ * dit la même chose. Ce qui n'est pas ici garde le libellé de sa destination.
  */
-const RAIL_DESTINATIONS: { id: string; label: string; icon: IconName }[] = [
-  { id: "installed", label: "Modèles", icon: "cube" },
-  { id: "models", label: "Marketplace", icon: "storefront" },
-  { id: "extensions", label: "Extensions", icon: "plugs" },
-  { id: "settings", label: "Réglages", icon: "gear" },
-];
+const RAIL_LABELS: Record<string, string> = {
+  chat: "Chat",
+  studio: "Studio",
+  installed: "Modèles",
+  models: "Marketplace",
+  extensions: "Extensions",
+  connectors: "Connecteurs",
+  settings: "Réglages",
+};
+
+/** Les destinations que le rail ne montre pas : elles vivent dans les réglages. */
+const RAIL_HIDDEN = new Set(["account"]);
 
 function sessionLabel(s: Session, index: number) {
   if (s.title) return s.title;
@@ -79,6 +88,8 @@ export function LeftPanel({
   onSessionRenamed,
   activeView,
   onSelectView,
+  activeCapabilities = [],
+  installedExtensions = [],
   onNewEphemeralChat,
 }: Props) {
   /**
@@ -221,6 +232,14 @@ export function LeftPanel({
       ) ?? "projet";
     onAddProject(path, name);
   }
+
+  // Les destinations du pied : natives filtrées par capacité, plus celles
+  // qu'une extension déclare. Mémorisées : la liste ne change qu'avec les
+  // extensions actives, pas à chaque frappe dans la liste des conversations.
+  const destinations = useMemo(
+    () => visibleNavItems(activeCapabilities, installedExtensions),
+    [activeCapabilities, installedExtensions],
+  );
 
   return (
     <aside className="locaryn-left">
@@ -515,21 +534,27 @@ export function LeftPanel({
         )}
       </div>
 
-      {/* ── Destinations, en pied de rail ── */}
+      {/* ── Destinations, en pied de rail ──
+          Toute la navigation tient ici : il n'y a plus de tiroir par-dessus.
+          La liste vient de `NavDrawer`, qui décrit les destinations natives et
+          y ajoute celles qu'une extension déclare. */}
       {onSelectView && (
         <nav className="locaryn-rail-nav" aria-label="Destinations">
-          {RAIL_DESTINATIONS.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}`}
-              aria-current={activeView === d.id ? "page" : undefined}
-              onClick={() => onSelectView(d.id)}
-            >
-              <Icon name={d.icon} size={16} />
-              {d.label}
-            </button>
-          ))}
+          {destinations
+            .filter((d) => !RAIL_HIDDEN.has(d.id))
+            .map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}`}
+                aria-current={activeView === d.id ? "page" : undefined}
+                title={d.desc}
+                onClick={() => onSelectView(d.id)}
+              >
+                <Icon name={d.icon} size={16} />
+                {RAIL_LABELS[d.id] ?? d.label}
+              </button>
+            ))}
         </nav>
       )}
     </aside>
