@@ -33,7 +33,7 @@ const MODE_LABEL: Record<ConnectionMode, string> = {
 };
 
 const VIEW_TITLES: Record<string, string> = {
-  models: "Marketplace Modèles",
+  models: "Marketplace",
   installed: "Mes Modèles Installés",
   batch: "Batch API Studio (-50%)",
   training: "Entraînement & Oblitération",

@@ -1,4 +1,4 @@
-import { Icon, type IconName, LoSwitch } from "@locaryn/ui-core";
+import { Icon, type IconName, LoSwitch, isIconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type HfModelCandidate,
@@ -1806,7 +1806,7 @@ export function ModelBrowser({
               className={`locaryn-chip${category === cat.id ? " locaryn-chip-on" : ""}`}
               onClick={() => setCategory(cat.id)}
             >
-              {cat.icon} {cat.label}
+              {isIconName(cat.icon) && <Icon name={cat.icon} size={14} />} {cat.label}
             </button>
           ))}
           <button
@@ -2238,7 +2238,7 @@ export function ModelBrowser({
                           }}
                           title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}
                         >
-                          {c.icon} {c.label}
+                          {isIconName(c.icon) && <Icon name={c.icon} size={13} />} {c.label}
                         </span>
                       );
                     })()}

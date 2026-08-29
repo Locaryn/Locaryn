@@ -1043,10 +1043,13 @@ export function App() {
         {activeView === "models" && (
           <div className="locaryn-view-container">
             <div className="locaryn-view-header">
-              <h2>Marketplace Modèles (HuggingFace Hub & Modèles Locaux)</h2>
+              {/* Un titre est un nom, pas une parenthèse d'explication : la
+                  provenance et la liste des familles vivent dans le contenu,
+                  qui les montre déjà. */}
+              <h2>Marketplace</h2>
               <p className="locaryn-view-desc">
-                Explorez, installez et gérez vos modèles d'IA locaux (Gemma 2 E2B/E4B, Instruct,
-                Audio, Kimi K3, MiMo, GLM 5.2...).
+                Le catalogue complet. Chaque famille regroupe ses tailles, et chaque taille ses
+                quantifications.
               </p>
             </div>
             <ModelBrowser
