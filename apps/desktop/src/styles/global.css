@@ -9672,3 +9672,52 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   align-items: center;
   gap: var(--space-2);
 }
+
+/* ── Barre du marketplace, sur la maquette ──
+   Deux rangées avant la première carte : la recherche avec les tailles en
+   segments, puis les marques en puces. Tout le reste vit derrière « Avancé ».
+   Cinq rangées de commandes, c'était l'écran qui se lisait comme un
+   formulaire. */
+.locaryn-size-chips {
+  display: flex;
+  flex: none;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.locaryn-size-chips .locaryn-chip {
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  padding: 6px 11px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.locaryn-size-chips .locaryn-chip-on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.locaryn-brand-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.locaryn-brand-chips .locaryn-chip {
+  padding: 7px 13px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+/* Les filtres repliés gardent leur rangée à eux, sous les tailles. */
+.locaryn-chips-extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-2);
+}

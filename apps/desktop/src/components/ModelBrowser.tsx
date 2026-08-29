@@ -514,6 +514,17 @@ function Shards() {
   );
 }
 
+/**
+ * L'éditeur d'une famille, sans le repackager.
+ *
+ * Le catalogue écrit la marque comme un chemin : « Alibaba / Qwen / unsloth »
+ * désigne un modèle de Qwen réempaqueté par unsloth. La maquette n'affiche que
+ * l'éditeur — c'est lui qu'on cherche, pas qui a refait l'archive.
+ */
+function editeur(marque: string): string {
+  return marque.split(" / ")[0].trim();
+}
+
 export function ModelBrowser({
   onInstall,
   onCancelInstall,
@@ -798,14 +809,39 @@ export function ModelBrowser({
       .sort();
   }, [capabilityFamilies]);
 
+  /**
+   * Les marques mises en puces : les plus fournies, et rien d'autre.
+   *
+   * Le catalogue en compte plus de deux cents, parce qu'une marque y est
+   * parfois un chemin complet (« Alibaba / Qwen / AirLLM »). Toutes en puces,
+   * la barre faisait 1800px de haut. Les autres restent dans la liste
+   * déroulante, sous « Avancé », qui les porte toutes.
+   */
+  const topBrands = useMemo(() => {
+    const compte = new Map<string, number>();
+    for (const f of capabilityFamilies) {
+      if (!f.brand) continue;
+      const b = f.brand.toLowerCase();
+      if (b.includes("claude") || b.includes("anthropic")) continue;
+      const nom = editeur(f.brand);
+      compte.set(nom, (compte.get(nom) ?? 0) + 1);
+    }
+    return [...compte.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr"))
+      .slice(0, 10)
+      .map(([nom]) => nom);
+  }, [capabilityFamilies]);
+
   const years = useMemo(() => {
     const ySet = new Set(capabilityFamilies.map((f) => f.releaseYear));
     return Array.from(ySet).sort((a, b) => b - a);
   }, [capabilityFamilies]);
 
   useEffect(() => {
-    if (brand !== "all" && !allBrands.includes(brand)) setBrand("all");
-  }, [brand, allBrands]);
+    if (brand !== "all" && !allBrands.includes(brand) && !topBrands.includes(brand)) {
+      setBrand("all");
+    }
+  }, [brand, allBrands, topBrands]);
 
   useEffect(() => {
     if (yearFilter !== "all" && !years.includes(Number(yearFilter))) setYearFilter("all");
@@ -855,7 +891,7 @@ export function ModelBrowser({
           return null;
         }
 
-        if (brand !== "all" && f.brand !== brand) return null;
+        if (brand !== "all" && f.brand !== brand && editeur(f.brand) !== brand) return null;
         if (yearFilter !== "all" && f.releaseYear.toString() !== yearFilter) return null;
         if (onlyFinetunable && !f.finetunable) return null;
         if (riskFilter !== "all") {
@@ -1567,6 +1603,17 @@ export function ModelBrowser({
     }
   }
 
+  // Ce que la ligne de chiffres annonce, sur les familles réellement listées :
+  // le compte doit décrire ce qu'on voit, pas le catalogue entier.
+  const catalogueCounts = useMemo(() => {
+    const tailles = families.reduce((n, f) => n + f.variants.length, 0);
+    const quants = families.reduce(
+      (n, f) => n + f.variants.reduce((m, v) => m + (v.quants?.length ?? 0), 0),
+      0,
+    );
+    return { familles: families.length, tailles, quants };
+  }, [families]);
+
   // Les réglages avancés sont repliés : la maquette n'a que deux rangées de
   // commandes avant la première carte, et ce moteur ne concerne que les petits
   // GPU. Il reste à un clic, il n'occupe plus la page de tout le monde.
@@ -1584,6 +1631,15 @@ export function ModelBrowser({
     <div className="locaryn-models">
       {/* Top Controls & Filters */}
       <div className="locaryn-models-top-bar">
+        <div className="locaryn-view-stats" style={{ marginBottom: "var(--space-2)" }}>
+          <span>
+            {catalogueCounts.familles} famille{catalogueCounts.familles > 1 ? "s" : ""}
+          </span>
+          <span>
+            {catalogueCounts.tailles} taille{catalogueCounts.tailles > 1 ? "s" : ""}
+          </span>
+          <span>{catalogueCounts.quants} quantifications</span>
+        </div>
         <div className="locaryn-models-search-row">
           <input
             className="locaryn-input locaryn-input-text"
@@ -1591,47 +1647,76 @@ export function ModelBrowser({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <select
-            className="locaryn-select"
-            value={brand}
-            onChange={(e) => setBrand(e.target.value)}
-            aria-label="Filtrer par marque"
-          >
-            <option value="all">Toutes les marques</option>
-            {allBrands.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
+          {/* Marque, année, tri : la maquette n'en a aucun sur la rangée de
+              recherche. Ils restent, repliés — trois listes déroulantes en
+              travers du champ, c'est ce qui rendait la barre illisible. */}
+          {advancedOpen && (
+            <>
+              <select
+                className="locaryn-select"
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+                aria-label="Filtrer par marque"
+              >
+                <option value="all">Toutes les marques</option>
+                {allBrands.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
 
-          <select
-            className="locaryn-select"
-            value={yearFilter}
-            onChange={(e) => setYearFilter(e.target.value)}
-            aria-label="Filtrer par année de sortie"
-          >
-            <option value="all">Toutes les années</option>
-            {years.map((y) => (
-              <option key={y} value={y.toString()}>
-                Sortie {y}
-              </option>
-            ))}
-          </select>
+              <select
+                className="locaryn-select"
+                value={yearFilter}
+                onChange={(e) => setYearFilter(e.target.value)}
+                aria-label="Filtrer par année de sortie"
+              >
+                <option value="all">Toutes les années</option>
+                {years.map((y) => (
+                  <option key={y} value={y.toString()}>
+                    Sortie {y}
+                  </option>
+                ))}
+              </select>
 
-          <select
-            className="locaryn-select"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as "compat" | "newest" | "name" | "pulls")}
-            aria-label="Trier les modèles"
-          >
-            {/* Un `<option>` ne contient que du texte : ni icône, ni pastille.
-                Le navigateur les refuse, et React le signale. */}
-            <option value="compat">Compatibles d'abord</option>
-            <option value="newest">Plus récents</option>
-            <option value="pulls">Plus populaires</option>
-            <option value="name">Nom (A → Z)</option>
-          </select>
+              <select
+                className="locaryn-select"
+                value={sortBy}
+                onChange={(e) =>
+                  setSortBy(e.target.value as "compat" | "newest" | "name" | "pulls")
+                }
+                aria-label="Trier les modèles"
+              >
+                {/* Un `<option>` ne contient que du texte : ni icône, ni pastille.
+                  Le navigateur les refuse, et React le signale. */}
+                <option value="compat">Compatibles d'abord</option>
+                <option value="newest">Plus récents</option>
+                <option value="pulls">Plus populaires</option>
+                <option value="name">Nom (A → Z)</option>
+              </select>
+            </>
+          )}
+
+          <div className="locaryn-size-chips">
+            <button
+              type="button"
+              className={`locaryn-chip${size === "all" ? " locaryn-chip-on" : ""}`}
+              onClick={() => setSize("all")}
+            >
+              Toutes tailles
+            </button>
+            {SIZE_BUCKETS.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className={`locaryn-chip${size === b.id ? " locaryn-chip-on" : ""}`}
+                onClick={() => setSize(b.id)}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
 
           {/* Bouton Plus en haut à droite — Menu Ajouter / Dépôt */}
           <div style={{ position: "relative" }}>
@@ -1823,277 +1908,305 @@ export function ModelBrowser({
           </>
         )}
 
-        {/* Category Filter Bar */}
-        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
-          {visibleCategories.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              className={`locaryn-chip${category === cat.id ? " locaryn-chip-on" : ""}`}
-              onClick={() => setCategory(cat.id)}
-            >
-              {isIconName(cat.icon) && <Icon name={cat.icon} size={14} />} {cat.label}
-            </button>
-          ))}
+        {/* Les catégories : la maquette filtre par marque, pas par usage.
+            Elles restent accessibles, repliées avec le reste. */}
+        {advancedOpen && (
+          <>
+            {/* Category Filter Bar */}
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
+              {visibleCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`locaryn-chip${category === cat.id ? " locaryn-chip-on" : ""}`}
+                  onClick={() => setCategory(cat.id)}
+                >
+                  {isIconName(cat.icon) && <Icon name={cat.icon} size={14} />} {cat.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                style={{
+                  fontSize: "11px",
+                  marginLeft: "auto",
+                  padding: "4px 10px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                onClick={async () => {
+                  clearRegistryCache();
+                  setIsLoadingRegistry(true);
+                  const res = await fetchFullRegistry((q, cat) => core.searchOllamaLibrary(q, cat));
+                  setRegistryModels(res.families);
+                  setLastUpdated(res.lastFetched ?? Date.now());
+                  setIsLoadingRegistry(false);
+                }}
+                disabled={isLoadingRegistry}
+                title="Vider le cache local et rafraîchir la liste"
+              >
+                <span
+                  style={{ display: "inline-flex" }}
+                  className={isLoadingRegistry ? "locaryn-spin" : undefined}
+                >
+                  <Icon name="refresh" size={14} />
+                </span>
+                <span>{isLoadingRegistry ? "Chargement…" : "Rafraîchir le catalogue"}</span>
+              </button>
+              {lastUpdated && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-faint)",
+                    alignSelf: "center",
+                    whiteSpace: "nowrap",
+                  }}
+                  title="Le catalogue se met à jour automatiquement toutes les heures"
+                >
+                  MAJ {new Date(lastUpdated).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+          </>
+        )}
+
+        <div className="locaryn-brand-chips">
           <button
             type="button"
-            className="locaryn-btn-ghost"
-            style={{
-              fontSize: "11px",
-              marginLeft: "auto",
-              padding: "4px 10px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-            onClick={async () => {
-              clearRegistryCache();
-              setIsLoadingRegistry(true);
-              const res = await fetchFullRegistry((q, cat) => core.searchOllamaLibrary(q, cat));
-              setRegistryModels(res.families);
-              setLastUpdated(res.lastFetched ?? Date.now());
-              setIsLoadingRegistry(false);
-            }}
-            disabled={isLoadingRegistry}
-            title="Vider le cache local et rafraîchir la liste"
+            className={`locaryn-chip${brand === "all" ? " locaryn-chip-on" : ""}`}
+            onClick={() => setBrand("all")}
           >
-            <span
-              style={{ display: "inline-flex" }}
-              className={isLoadingRegistry ? "locaryn-spin" : undefined}
-            >
-              <Icon name="refresh" size={14} />
-            </span>
-            <span>{isLoadingRegistry ? "Chargement…" : "Rafraîchir le catalogue"}</span>
+            Toutes les marques
           </button>
-          {lastUpdated && (
-            <span
-              style={{
-                fontSize: "11px",
-                color: "var(--text-faint)",
-                alignSelf: "center",
-                whiteSpace: "nowrap",
-              }}
-              title="Le catalogue se met à jour automatiquement toutes les heures"
+          {topBrands.map((b) => (
+            <button
+              key={b}
+              type="button"
+              className={`locaryn-chip${brand === b ? " locaryn-chip-on" : ""}`}
+              onClick={() => setBrand(b)}
             >
-              MAJ {new Date(lastUpdated).toLocaleTimeString()}
-            </span>
+              {b}
+            </button>
+          ))}
+          {/* Une marque choisie dans la liste complète reste visible ici, même
+              si elle n'est pas parmi les dix : sinon rien ne dit ce qui filtre. */}
+          {brand !== "all" && !topBrands.includes(brand) && (
+            <button
+              type="button"
+              className="locaryn-chip locaryn-chip-on"
+              onClick={() => setBrand("all")}
+            >
+              {brand}
+            </button>
           )}
         </div>
 
         <div className="locaryn-models-toolbar" style={{ marginTop: "8px" }}>
-          <div className="locaryn-size-chips">
-            <button
-              type="button"
-              className={`locaryn-chip${size === "all" ? " locaryn-chip-on" : ""}`}
-              onClick={() => setSize("all")}
-            >
-              Toutes tailles
-            </button>
-            {SIZE_BUCKETS.map((b) => (
+          {/* Recommandés, sûreté, réentraînables, favoris, et l'analyse du PC.
+              La maquette ne met que les tailles ici — le reste est replié. */}
+          {advancedOpen && (
+            <div className="locaryn-chips-extra">
               <button
-                key={b.id}
                 type="button"
-                className={`locaryn-chip${size === b.id ? " locaryn-chip-on" : ""}`}
-                onClick={() => setSize(b.id)}
-              >
-                {b.label}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              className={`locaryn-chip locaryn-chip-ft${onlyRecommended ? " locaryn-chip-on" : ""}`}
-              style={
-                onlyRecommended
-                  ? {
-                      background: "rgba(100, 200, 120, 0.2)",
-                      borderColor: "var(--accent-300)",
-                      color: "var(--accent-300)",
-                    }
-                  : {}
-              }
-              onClick={() => setOnlyRecommended((prev) => !prev)}
-              title="Filtrer uniquement les modèles adaptés aux composants de votre PC"
-            >
-              <span className="locaryn-dot locaryn-dot-ok" /> Recommandés pour mon PC
-            </button>
-
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              style={{ fontSize: "11px", marginLeft: "auto", padding: "2px 8px" }}
-              onClick={() => setHardwareModalOpen(true)}
-              title="Analyser les composants de mon PC pour adapter les recommandations"
-            >
-              <Icon name="settings" size={15} /> Analyser mon PC
-            </button>
-
-            <button
-              type="button"
-              className={`locaryn-chip locaryn-chip-ft${onlyFinetunable ? " locaryn-chip-on" : ""}`}
-              onClick={() => setOnlyFinetunable((prev) => !prev)}
-              title="Afficher uniquement les modèles réentraînables via Fine-Tuning / LoRA"
-            >
-              <Icon name="target" size={15} /> Réentraînable / LoRA
-            </button>
-            <button
-              type="button"
-              className={`locaryn-chip locaryn-chip-ft${riskFilter === "safe" ? " locaryn-chip-on" : ""}`}
-              style={
-                riskFilter === "safe"
-                  ? {
-                      background: "rgba(90, 168, 106, 0.2)",
-                      borderColor: "var(--accent-300)",
-                      color: "var(--accent-300)",
-                    }
-                  : {}
-              }
-              onClick={() => setRiskFilter((prev) => (prev === "safe" ? "all" : "safe"))}
-              title="Afficher uniquement les modèles classiques avec garde-fous"
-            >
-              <Icon name="shield" size={15} /> Safe
-            </button>
-            <button
-              type="button"
-              className={`locaryn-chip locaryn-chip-ft${riskFilter === "uncensored" ? " locaryn-chip-on" : ""}`}
-              style={
-                riskFilter === "uncensored"
-                  ? {
-                      background: "rgba(204, 125, 114, 0.25)",
-                      borderColor: "var(--danger)",
-                      color: "var(--danger)",
-                    }
-                  : {}
-              }
-              onClick={() =>
-                setRiskFilter((prev) => (prev === "uncensored" ? "all" : "uncensored"))
-              }
-              title="Afficher uniquement les modèles sans garde-fous / oblitérés"
-            >
-              <Icon name="lock" size={15} /> Sans limite
-            </button>
-            <button
-              type="button"
-              className={`locaryn-chip locaryn-chip-ft${riskFilter === "nsfw" ? " locaryn-chip-on" : ""}`}
-              style={
-                riskFilter === "nsfw"
-                  ? {
-                      background: "rgba(204, 125, 114, 0.25)",
-                      borderColor: "var(--danger)",
-                      color: "var(--danger)",
-                    }
-                  : {}
-              }
-              onClick={() => setRiskFilter((prev) => (prev === "nsfw" ? "all" : "nsfw"))}
-              title="Afficher uniquement les modèles NSFW / sans garde-fous connus"
-            >
-              NSFW
-            </button>
-            <button
-              type="button"
-              className={`locaryn-chip locaryn-chip-ft${onlyFavorites ? " locaryn-chip-on" : ""}`}
-              style={
-                onlyFavorites
-                  ? {
-                      background: "rgba(255, 200, 87, 0.18)",
-                      borderColor: "var(--warn)",
-                      color: "var(--warn)",
-                    }
-                  : {}
-              }
-              onClick={() => setOnlyFavorites((prev) => !prev)}
-              title="Afficher uniquement les modèles marqués comme favoris"
-            >
-              <Icon name="star" size={15} /> Favoris
-              {favorites.size > 0 ? ` (${favorites.size})` : ""}
-            </button>
-          </div>
-
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              style={{
-                fontSize: "12px",
-                border: "1px solid var(--accent)",
-                color: "var(--accent)",
-              }}
-              onClick={() => setHardwareModalOpen(true)}
-              title="Tester les composants de votre PC et analyser les performances d'inférence"
-            >
-              <Icon name="chart" size={15} /> Analyse Perf PC
-            </button>
-
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              style={{
-                color: "var(--danger)",
-                fontSize: "12px",
-                border: "1px solid rgba(204, 125, 114, 0.3)",
-              }}
-              onClick={() => {
-                if (onOpenTraining) {
-                  onOpenTraining();
-                } else {
-                  setObliteratorOpen(true);
+                className={`locaryn-chip locaryn-chip-ft${onlyRecommended ? " locaryn-chip-on" : ""}`}
+                style={
+                  onlyRecommended
+                    ? {
+                        background: "rgba(100, 200, 120, 0.2)",
+                        borderColor: "var(--accent-300)",
+                        color: "var(--accent-300)",
+                      }
+                    : {}
                 }
-              }}
-              title="Ouvrir le studio d'oblitération de modèle dans le menu Entraînement"
-            >
-              <Icon name="lock" size={15} /> Studio d'Oblitération RepE
-            </button>
+                onClick={() => setOnlyRecommended((prev) => !prev)}
+                title="Filtrer uniquement les modèles adaptés aux composants de votre PC"
+              >
+                <span className="locaryn-dot locaryn-dot-ok" /> Recommandés pour mon PC
+              </button>
 
-            {/* View mode switcher */}
-            <div className="locaryn-view-toggle">
               <button
                 type="button"
-                className={`locaryn-view-toggle-btn ${viewMode === "grid" ? "locaryn-active" : ""}`}
-                onClick={() => setViewMode("grid")}
-                title="Affichage en Grille / Cartes"
+                className="locaryn-btn-ghost"
+                style={{ fontSize: "11px", marginLeft: "auto", padding: "2px 8px" }}
+                onClick={() => setHardwareModalOpen(true)}
+                title="Analyser les composants de mon PC pour adapter les recommandations"
               >
-                <svg
-                  aria-hidden="true"
-                  width="15"
-                  height="15"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <rect x="3" y="3" width="7" height="7" />
-                  <rect x="14" y="3" width="7" height="7" />
-                  <rect x="14" y="14" width="7" height="7" />
-                  <rect x="3" y="14" width="7" height="7" />
-                </svg>
-                Grille
+                <Icon name="settings" size={15} /> Analyser mon PC
+              </button>
+
+              <button
+                type="button"
+                className={`locaryn-chip locaryn-chip-ft${onlyFinetunable ? " locaryn-chip-on" : ""}`}
+                onClick={() => setOnlyFinetunable((prev) => !prev)}
+                title="Afficher uniquement les modèles réentraînables via Fine-Tuning / LoRA"
+              >
+                <Icon name="target" size={15} /> Réentraînable / LoRA
               </button>
               <button
                 type="button"
-                className={`locaryn-view-toggle-btn ${viewMode === "list" ? "locaryn-active" : ""}`}
-                onClick={() => setViewMode("list")}
-                title="Affichage en Liste Détaillée"
+                className={`locaryn-chip locaryn-chip-ft${riskFilter === "safe" ? " locaryn-chip-on" : ""}`}
+                style={
+                  riskFilter === "safe"
+                    ? {
+                        background: "rgba(90, 168, 106, 0.2)",
+                        borderColor: "var(--accent-300)",
+                        color: "var(--accent-300)",
+                      }
+                    : {}
+                }
+                onClick={() => setRiskFilter((prev) => (prev === "safe" ? "all" : "safe"))}
+                title="Afficher uniquement les modèles classiques avec garde-fous"
               >
-                <svg
-                  aria-hidden="true"
-                  width="15"
-                  height="15"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <line x1="8" y1="6" x2="21" y2="6" />
-                  <line x1="8" y1="12" x2="21" y2="12" />
-                  <line x1="8" y1="18" x2="21" y2="18" />
-                  <line x1="3" y1="6" x2="3.01" y2="6" />
-                  <line x1="3" y1="12" x2="3.01" y2="12" />
-                  <line x1="3" y1="18" x2="3.01" y2="18" />
-                </svg>
-                Liste
+                <Icon name="shield" size={15} /> Safe
+              </button>
+              <button
+                type="button"
+                className={`locaryn-chip locaryn-chip-ft${riskFilter === "uncensored" ? " locaryn-chip-on" : ""}`}
+                style={
+                  riskFilter === "uncensored"
+                    ? {
+                        background: "rgba(204, 125, 114, 0.25)",
+                        borderColor: "var(--danger)",
+                        color: "var(--danger)",
+                      }
+                    : {}
+                }
+                onClick={() =>
+                  setRiskFilter((prev) => (prev === "uncensored" ? "all" : "uncensored"))
+                }
+                title="Afficher uniquement les modèles sans garde-fous / oblitérés"
+              >
+                <Icon name="lock" size={15} /> Sans limite
+              </button>
+              <button
+                type="button"
+                className={`locaryn-chip locaryn-chip-ft${riskFilter === "nsfw" ? " locaryn-chip-on" : ""}`}
+                style={
+                  riskFilter === "nsfw"
+                    ? {
+                        background: "rgba(204, 125, 114, 0.25)",
+                        borderColor: "var(--danger)",
+                        color: "var(--danger)",
+                      }
+                    : {}
+                }
+                onClick={() => setRiskFilter((prev) => (prev === "nsfw" ? "all" : "nsfw"))}
+                title="Afficher uniquement les modèles NSFW / sans garde-fous connus"
+              >
+                NSFW
+              </button>
+              <button
+                type="button"
+                className={`locaryn-chip locaryn-chip-ft${onlyFavorites ? " locaryn-chip-on" : ""}`}
+                style={
+                  onlyFavorites
+                    ? {
+                        background: "rgba(255, 200, 87, 0.18)",
+                        borderColor: "var(--warn)",
+                        color: "var(--warn)",
+                      }
+                    : {}
+                }
+                onClick={() => setOnlyFavorites((prev) => !prev)}
+                title="Afficher uniquement les modèles marqués comme favoris"
+              >
+                <Icon name="star" size={15} /> Favoris
+                {favorites.size > 0 ? ` (${favorites.size})` : ""}
               </button>
             </div>
-          </div>
+          )}
+
+          {/* Analyse du PC, studio d'oblitération, bascule grille/liste :
+              des actions et un réglage de vue, pas des filtres. La maquette
+              n'en a aucun sur cette barre. */}
+          {advancedOpen && (
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                style={{
+                  fontSize: "12px",
+                  border: "1px solid var(--accent)",
+                  color: "var(--accent)",
+                }}
+                onClick={() => setHardwareModalOpen(true)}
+                title="Tester les composants de votre PC et analyser les performances d'inférence"
+              >
+                <Icon name="chart" size={15} /> Analyse Perf PC
+              </button>
+
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                style={{
+                  color: "var(--danger)",
+                  fontSize: "12px",
+                  border: "1px solid rgba(204, 125, 114, 0.3)",
+                }}
+                onClick={() => {
+                  if (onOpenTraining) {
+                    onOpenTraining();
+                  } else {
+                    setObliteratorOpen(true);
+                  }
+                }}
+                title="Ouvrir le studio d'oblitération de modèle dans le menu Entraînement"
+              >
+                <Icon name="lock" size={15} /> Studio d'Oblitération RepE
+              </button>
+
+              {/* View mode switcher */}
+              <div className="locaryn-view-toggle">
+                <button
+                  type="button"
+                  className={`locaryn-view-toggle-btn ${viewMode === "grid" ? "locaryn-active" : ""}`}
+                  onClick={() => setViewMode("grid")}
+                  title="Affichage en Grille / Cartes"
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                  </svg>
+                  Grille
+                </button>
+                <button
+                  type="button"
+                  className={`locaryn-view-toggle-btn ${viewMode === "list" ? "locaryn-active" : ""}`}
+                  onClick={() => setViewMode("list")}
+                  title="Affichage en Liste Détaillée"
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                  Liste
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
