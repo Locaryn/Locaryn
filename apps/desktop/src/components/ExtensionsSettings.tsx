@@ -1677,7 +1677,7 @@ export function ExtensionsSettings() {
                         fontWeight: 600,
                       }}
                     >
-                      ⚠️ Bêta · Non testé
+                      Bêta · Non testé
                     </span>
                   )}
                 </div>
@@ -1865,7 +1865,7 @@ export function ExtensionsSettings() {
                                     fontWeight: 600,
                                   }}
                                 >
-                                  {v.is_beta ? "⚠️ Bêta · Non testé" : "✓ Stable (Vérifié)"}
+                                  {v.is_beta ? "Bêta · Non testé" : "Stable (Vérifié)"}
                                 </span>
                                 {v.released_at && (
                                   <span className="locaryn-field-hint" style={{ fontSize: 11 }}>
@@ -1886,7 +1886,7 @@ export function ExtensionsSettings() {
                                   className="locaryn-tag locaryn-tag-installed"
                                   style={{ fontSize: 11 }}
                                 >
-                                  ✓ Installée
+                                  Installée
                                 </span>
                               ) : (
                                 <button

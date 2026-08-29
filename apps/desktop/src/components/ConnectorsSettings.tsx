@@ -1,3 +1,4 @@
+import { Icon, isIconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type ConnectorType, type McpServerInfo, core } from "../lib/core";
 import { ModalShell } from "./ModalShell";
@@ -199,7 +200,11 @@ export function ConnectorsSettings() {
                 <div key={t.type_id} className="locaryn-box-card">
                   <div className="locaryn-box-head">
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span className="locaryn-connector-icon">{t.icon || "🔌"}</span>
+                      <span className="locaryn-connector-icon">
+                        {/* Le service renvoie un nom du jeu ; tout le reste
+                            retombe sur la prise, jamais sur du texte brut. */}
+                        <Icon name={isIconName(t.icon) ? t.icon : "extensions"} size={16} />
+                      </span>
                       <div>
                         <h3 className="locaryn-box-name">{t.display_name}</h3>
                         <span className="locaryn-box-brand">{connectorCategoryLabel(t)}</span>

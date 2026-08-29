@@ -1006,7 +1006,7 @@ export function ModelBrowser({
     // --- Q4 Variants ---
     if (q.includes("Q4_K_M")) {
       return {
-        badge: "⭐ Recommandé (K-Quant Medium)",
+        badge: "Recommandé (K-Quant Medium)",
         badgeStyle: {
           background: "rgba(101, 211, 145, 0.15)",
           color: "var(--accent-300)",
@@ -1022,7 +1022,7 @@ export function ModelBrowser({
     }
     if (q.includes("Q4_K_S")) {
       return {
-        badge: "⭐ K-Quant Compact (Small)",
+        badge: "K-Quant Compact (Small)",
         badgeStyle: {
           background: "rgba(101, 211, 145, 0.15)",
           color: "var(--accent-300)",
@@ -1038,7 +1038,7 @@ export function ModelBrowser({
     }
     if (q.includes("Q4_K_L") || q.includes("Q4_K_XL")) {
       return {
-        badge: "⭐ K-Quant Large",
+        badge: "K-Quant Large",
         badgeStyle: {
           background: "rgba(101, 211, 145, 0.15)",
           color: "var(--accent-300)",
@@ -1102,7 +1102,7 @@ export function ModelBrowser({
     // --- Q5 Variants ---
     if (q.includes("Q5_K_M")) {
       return {
-        badge: "🎯 5-bit K-Quant Medium",
+        badge: "5-bit K-Quant Medium",
         badgeStyle: {
           background: "rgba(110, 168, 254, 0.15)",
           color: "var(--info)",
@@ -1118,7 +1118,7 @@ export function ModelBrowser({
     }
     if (q.includes("Q5_K_S") || q.includes("Q5_0") || q.includes("Q5_1") || q.includes("Q5_K")) {
       return {
-        badge: "🎯 5-bit Compact",
+        badge: "5-bit Compact",
         badgeStyle: {
           background: "rgba(110, 168, 254, 0.15)",
           color: "var(--info)",
@@ -1135,7 +1135,7 @@ export function ModelBrowser({
     // --- Q6 & Q8 Variants ---
     if (q.includes("Q6_K")) {
       return {
-        badge: "💎 6-bit K-Quant (Qualité / RAM)",
+        badge: "6-bit K-Quant (Qualité / RAM)",
         badgeStyle: {
           background: "rgba(192, 132, 252, 0.15)",
           color: "var(--info)",
@@ -1151,7 +1151,7 @@ export function ModelBrowser({
     }
     if (q.includes("Q8_0") || q.includes("Q8_1") || q.includes("Q8_K")) {
       return {
-        badge: "💎 8-bit Pleine Fidélité (Sans perte)",
+        badge: "8-bit Pleine Fidélité (Sans perte)",
         badgeStyle: {
           background: "rgba(192, 132, 252, 0.15)",
           color: "var(--info)",
@@ -1169,7 +1169,7 @@ export function ModelBrowser({
     // --- IQ (Importance Matrix) Variants ---
     if (q.includes("IQ4")) {
       return {
-        badge: "🧠 I-Matrix 4-bit Calibré",
+        badge: "I-Matrix 4-bit Calibré",
         badgeStyle: {
           background: "rgba(101, 211, 145, 0.15)",
           color: "var(--accent-300)",
@@ -1185,7 +1185,7 @@ export function ModelBrowser({
     }
     if (q.includes("IQ3")) {
       return {
-        badge: "🧠 I-Matrix 3-bit Calibré",
+        badge: "I-Matrix 3-bit Calibré",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
           color: "var(--warn)",
@@ -1201,7 +1201,7 @@ export function ModelBrowser({
     }
     if (q.includes("IQ2") || q.includes("IQ1")) {
       return {
-        badge: "🧠 I-Matrix Ultra-Compact",
+        badge: "I-Matrix Ultra-Compact",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
           color: "var(--warn)",
@@ -1275,7 +1275,7 @@ export function ModelBrowser({
     // --- Full Precision / Raw ---
     if (q.includes("F16") || q.includes("FP16") || q.includes("BF16") || q.includes("FP32")) {
       return {
-        badge: "📦 Poids bruts (Non compressé)",
+        badge: "Poids bruts (Non compressé)",
         badgeStyle: {
           background: "rgba(255, 255, 255, 0.08)",
           color: "var(--text-faint)",
@@ -3116,7 +3116,7 @@ export function ModelBrowser({
                         gap: "6px",
                       }}
                     >
-                      <span>💡</span> Guide de choix de la quantification
+                      <Icon name="question" size={15} /> Guide de choix de la quantification
                     </div>
                     <button
                       type="button"
@@ -3155,7 +3155,7 @@ export function ModelBrowser({
                         borderRadius: "4px",
                       }}
                     >
-                      <strong style={{ color: "var(--accent-300)" }}>⭐ Q4_K_M (Recommandé)</strong>
+                      <strong style={{ color: "var(--accent-300)" }}>Q4_K_M (Recommandé)</strong>
                       <div style={{ color: "var(--text-dim)" }}>
                         Équilibre parfait vitesse / intelligence.
                       </div>
@@ -3179,7 +3179,7 @@ export function ModelBrowser({
                         borderRadius: "4px",
                       }}
                     >
-                      <strong style={{ color: "var(--info)" }}>💎 Q6_K / Q8_0 (Qualité max)</strong>
+                      <strong style={{ color: "var(--info)" }}>Q6_K / Q8_0 (Qualité max)</strong>
                       <div style={{ color: "var(--text-dim)" }}>
                         Fidélité maximale, requiert plus de RAM.
                       </div>
@@ -3250,7 +3250,7 @@ export function ModelBrowser({
                         onClick={() => setQuantFilter("recommended")}
                         style={{ fontSize: "11px", padding: "4px 9px" }}
                       >
-                        ⭐ Recommandées (
+                        Recommandées (
                         {
                           repoInspection.candidates.filter(
                             (c) => getQuantizationAdvice(c.quantization, c.format).isRecommended,
@@ -3281,7 +3281,7 @@ export function ModelBrowser({
                         onClick={() => setQuantFilter("quality")}
                         style={{ fontSize: "11px", padding: "4px 9px" }}
                       >
-                        💎 Haute fidélité (Q5/Q6/Q8)
+                        Haute fidélité (Q5/Q6/Q8)
                       </button>
                     )}
                   </div>
@@ -3417,7 +3417,7 @@ export function ModelBrowser({
                               }}
                             >
                               <span style={{ color: "var(--accent, #6ea8fe)", fontWeight: 600 }}>
-                                💾 {estimateRamUsage(candidate.total_bytes)}
+                                {estimateRamUsage(candidate.total_bytes)}
                               </span>
                               {(candidate.files.length > 1 ||
                                 candidate.support_files.length > 0) && (
