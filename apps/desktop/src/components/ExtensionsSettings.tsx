@@ -476,12 +476,17 @@ export function ExtensionsSettings() {
   }
 
   /** Installation depuis une carte du catalogue (« Installer »). */
-  async function installSpecificVersion(entry: CatalogEntry, ver: { version: string; tag?: string; install_source?: string }) {
+  async function installSpecificVersion(
+    entry: CatalogEntry,
+    ver: { version: string; tag?: string; install_source?: string },
+  ) {
     setBusy(entry.id);
     setError(null);
     setNotice(null);
     try {
-      const source = ver.install_source || (ver.tag ? `${entry.install_source}#${ver.tag}` : entry.install_source);
+      const source =
+        ver.install_source ||
+        (ver.tag ? `${entry.install_source}#${ver.tag}` : entry.install_source);
       const ext = await core.installExtension(source);
       await loadInstalled();
       if (ext.permissions.length === 0) {
@@ -691,7 +696,9 @@ export function ExtensionsSettings() {
     const raw = (snapshot?.entries ?? []).filter((entry) => entry.ecosystem !== "mcp");
     const q = query.trim().toLowerCase();
     return raw.filter((entry) => {
-      const isBeta = Boolean(entry.is_beta || entry.version?.includes("beta") || entry.ecosystem === "locaryn");
+      const isBeta = Boolean(
+        entry.is_beta || entry.version?.includes("beta") || entry.ecosystem === "locaryn",
+      );
       if (!showBetaMorphs && isBeta) return false;
       if (ecosystem !== "all" && entry.ecosystem !== ecosystem) return false;
       if (!q) return true;
@@ -1658,7 +1665,9 @@ export function ExtensionsSettings() {
                   >
                     {ECOSYSTEM_LABELS[selectedDetailEntry.ecosystem]}
                   </span>
-                  {(selectedDetailEntry.is_beta || selectedDetailEntry.version?.includes("beta") || selectedDetailEntry.ecosystem === "locaryn") && (
+                  {(selectedDetailEntry.is_beta ||
+                    selectedDetailEntry.version?.includes("beta") ||
+                    selectedDetailEntry.ecosystem === "locaryn") && (
                     <span
                       className="locaryn-tag"
                       style={{
@@ -1687,9 +1696,26 @@ export function ExtensionsSettings() {
               </button>
             </div>
 
-            <div style={{ padding: "16px 20px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div
+              style={{
+                padding: "16px 20px",
+                overflowY: "auto",
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+              }}
+            >
               <div>
-                <h4 style={{ margin: "0 0 6px 0", fontSize: 13, textTransform: "uppercase", color: "var(--text-faint)", letterSpacing: "0.5px" }}>
+                <h4
+                  style={{
+                    margin: "0 0 6px 0",
+                    fontSize: 13,
+                    textTransform: "uppercase",
+                    color: "var(--text-faint)",
+                    letterSpacing: "0.5px",
+                  }}
+                >
                   Description
                 </h4>
                 <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--text)" }}>
@@ -1704,7 +1730,14 @@ export function ExtensionsSettings() {
                     target="_blank"
                     rel="noreferrer"
                     className="locaryn-btn-ghost"
-                    style={{ fontSize: 12, padding: "4px 10px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}
+                    style={{
+                      fontSize: 12,
+                      padding: "4px 10px",
+                      textDecoration: "none",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
                   >
                     Voir le code source sur GitHub ↗
                   </a>
@@ -1712,7 +1745,15 @@ export function ExtensionsSettings() {
               )}
 
               <div>
-                <h4 style={{ margin: "0 0 10px 0", fontSize: 13, textTransform: "uppercase", color: "var(--text-faint)", letterSpacing: "0.5px" }}>
+                <h4
+                  style={{
+                    margin: "0 0 10px 0",
+                    fontSize: 13,
+                    textTransform: "uppercase",
+                    color: "var(--text-faint)",
+                    letterSpacing: "0.5px",
+                  }}
+                >
                   Versions disponibles
                 </h4>
                 <p className="locaryn-field-hint" style={{ margin: "0 0 10px 0", fontSize: 12 }}>
@@ -1720,50 +1761,66 @@ export function ExtensionsSettings() {
                 </p>
 
                 {(() => {
-                  const defaultVersions = selectedDetailEntry.versions && selectedDetailEntry.versions.length > 0
-                    ? selectedDetailEntry.versions
-                    : [
-                        {
-                          version: selectedDetailEntry.version ?? "1.0.0-beta.1",
-                          is_beta: Boolean(selectedDetailEntry.is_beta || selectedDetailEntry.version?.includes("beta") || selectedDetailEntry.ecosystem === "locaryn"),
-                          summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
-                          tag: selectedDetailEntry.version ? `v${selectedDetailEntry.version}` : "v1.0.0-beta.1",
-                          released_at: "2026-08-28",
-                          install_source: selectedDetailEntry.install_source,
-                        },
-                        {
-                          version: "0.9.0",
-                          is_beta: false,
-                          summary: "Version de référence stable",
-                          tag: "v0.9.0",
-                          released_at: "2026-08-20",
-                          install_source: `${selectedDetailEntry.install_source}#v0.9.0`,
-                        },
-                        {
-                          version: "0.8.5",
-                          is_beta: false,
-                          summary: "Version précédente stable",
-                          tag: "v0.8.5",
-                          released_at: "2026-08-15",
-                          install_source: `${selectedDetailEntry.install_source}#v0.8.5`,
-                        },
-                        {
-                          version: "0.8.0",
-                          is_beta: false,
-                          summary: "Version initiale du socle",
-                          tag: "v0.8.0",
-                          released_at: "2026-08-01",
-                          install_source: `${selectedDetailEntry.install_source}#v0.8.0`,
-                        },
-                      ];
+                  const defaultVersions =
+                    selectedDetailEntry.versions && selectedDetailEntry.versions.length > 0
+                      ? selectedDetailEntry.versions
+                      : [
+                          {
+                            version: selectedDetailEntry.version ?? "1.0.0-beta.1",
+                            is_beta: Boolean(
+                              selectedDetailEntry.is_beta ||
+                                selectedDetailEntry.version?.includes("beta") ||
+                                selectedDetailEntry.ecosystem === "locaryn",
+                            ),
+                            summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
+                            tag: selectedDetailEntry.version
+                              ? `v${selectedDetailEntry.version}`
+                              : "v1.0.0-beta.1",
+                            released_at: "2026-08-28",
+                            install_source: selectedDetailEntry.install_source,
+                          },
+                          {
+                            version: "0.9.0",
+                            is_beta: false,
+                            summary: "Version de référence stable",
+                            tag: "v0.9.0",
+                            released_at: "2026-08-20",
+                            install_source: `${selectedDetailEntry.install_source}#v0.9.0`,
+                          },
+                          {
+                            version: "0.8.5",
+                            is_beta: false,
+                            summary: "Version précédente stable",
+                            tag: "v0.8.5",
+                            released_at: "2026-08-15",
+                            install_source: `${selectedDetailEntry.install_source}#v0.8.5`,
+                          },
+                          {
+                            version: "0.8.0",
+                            is_beta: false,
+                            summary: "Version initiale du socle",
+                            tag: "v0.8.0",
+                            released_at: "2026-08-01",
+                            install_source: `${selectedDetailEntry.install_source}#v0.8.0`,
+                          },
+                        ];
 
-                  const displayedVersions = showAllVersions ? defaultVersions : defaultVersions.slice(0, 3);
-                  const matchingInstalled = installed.find((e) => e.name === selectedDetailEntry.name || e.id.endsWith(`:${selectedDetailEntry.name}`));
+                  const displayedVersions = showAllVersions
+                    ? defaultVersions
+                    : defaultVersions.slice(0, 3);
+                  const matchingInstalled = installed.find(
+                    (e) =>
+                      e.name === selectedDetailEntry.name ||
+                      e.id.endsWith(`:${selectedDetailEntry.name}`),
+                  );
 
                   return (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {displayedVersions.map((v) => {
-                        const isCurrentInstalled = matchingInstalled && (matchingInstalled.version === v.version || matchingInstalled.version === v.tag);
+                        const isCurrentInstalled =
+                          matchingInstalled &&
+                          (matchingInstalled.version === v.version ||
+                            matchingInstalled.version === v.tag);
 
                         return (
                           <div
@@ -1771,7 +1828,9 @@ export function ExtensionsSettings() {
                             style={{
                               padding: "10px 14px",
                               borderRadius: 8,
-                              background: v.is_beta ? "rgba(245, 158, 11, 0.08)" : "rgba(16, 185, 129, 0.08)",
+                              background: v.is_beta
+                                ? "rgba(245, 158, 11, 0.08)"
+                                : "rgba(16, 185, 129, 0.08)",
                               border: `1px solid ${v.is_beta ? "rgba(245, 158, 11, 0.35)" : "rgba(16, 185, 129, 0.35)"}`,
                               display: "flex",
                               justifyContent: "space-between",
@@ -1780,8 +1839,17 @@ export function ExtensionsSettings() {
                             }}
                           >
                             <div style={{ minWidth: 0 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                <span style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <span
+                                  style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}
+                                >
                                   v{v.version}
                                 </span>
                                 <span
@@ -1789,7 +1857,9 @@ export function ExtensionsSettings() {
                                   style={{
                                     fontSize: 10,
                                     padding: "1px 6px",
-                                    background: v.is_beta ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)",
+                                    background: v.is_beta
+                                      ? "rgba(245, 158, 11, 0.2)"
+                                      : "rgba(16, 185, 129, 0.2)",
                                     color: v.is_beta ? "#f59e0b" : "#10b981",
                                     border: `1px solid ${v.is_beta ? "rgba(245, 158, 11, 0.4)" : "rgba(16, 185, 129, 0.4)"}`,
                                     fontWeight: 600,
@@ -1803,14 +1873,19 @@ export function ExtensionsSettings() {
                                   </span>
                                 )}
                               </div>
-                              <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}>
+                              <div
+                                style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}
+                              >
                                 {v.summary}
                               </div>
                             </div>
 
                             <div style={{ flexShrink: 0 }}>
                               {isCurrentInstalled ? (
-                                <span className="locaryn-tag locaryn-tag-installed" style={{ fontSize: 11 }}>
+                                <span
+                                  className="locaryn-tag locaryn-tag-installed"
+                                  style={{ fontSize: 11 }}
+                                >
                                   ✓ Installée
                                 </span>
                               ) : (

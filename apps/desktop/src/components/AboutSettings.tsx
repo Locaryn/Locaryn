@@ -84,7 +84,6 @@ export function AboutSettings() {
     return localStorage.getItem("locaryn_show_beta_morphs") !== "false";
   });
 
-
   useEffect(() => {
     let cancelled = false;
     core
@@ -300,7 +299,8 @@ export function AboutSettings() {
                 Canal de mise à jour Bêta (Testeurs)
               </div>
               <p className="locaryn-field-hint" style={{ margin: 0, fontSize: 12 }}>
-                Recevoir les pré-versions expérimentales de l'application Locaryn pour tester les nouvelles fonctionnalités avant leur sortie officielle.
+                Recevoir les pré-versions expérimentales de l'application Locaryn pour tester les
+                nouvelles fonctionnalités avant leur sortie officielle.
               </p>
             </div>
             <LoSwitch
@@ -326,7 +326,8 @@ export function AboutSettings() {
                 Afficher les Morphs en version Bêta / Non testée
               </div>
               <p className="locaryn-field-hint" style={{ margin: 0, fontSize: 12 }}>
-                Autoriser l'affichage et l'installation des Morphs en version préliminaire ou non vérifiés (marqués en ambre) dans le store.
+                Autoriser l'affichage et l'installation des Morphs en version préliminaire ou non
+                vérifiés (marqués en ambre) dans le store.
               </p>
             </div>
             <LoSwitch

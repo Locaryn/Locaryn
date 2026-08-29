@@ -2982,7 +2982,8 @@ const demoCatalog: CatalogEntry[] = [
     id: "locaryn:morph-image",
     name: "morph-image",
     display_name: "Image",
-    description: "Génération et retouche d'images IA avec stable-diffusion.cpp et studio de création complet.",
+    description:
+      "Génération et retouche d'images IA avec stable-diffusion.cpp et studio de création complet.",
     author: "Locaryn Team",
     version: "3.1.0-beta.1",
     homepage: "https://github.com/Locaryn/morph-image",
@@ -3035,7 +3036,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
         install_source: "Locaryn/morph-image#v2.0.0",
-      }
+      },
     ],
   },
   {
@@ -3087,14 +3088,15 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-voice-tts#v1.0.0",
-      }
+      },
     ],
   },
   {
     id: "locaryn:morph-dictaphone",
     name: "morph-dictaphone",
     display_name: "Dictaphone & STT",
-    description: "Dictée vocale et transcription continue Speech-to-Text pour le compositeur de message.",
+    description:
+      "Dictée vocale et transcription continue Speech-to-Text pour le compositeur de message.",
     author: "Locaryn Team",
     version: "2.2.0-beta.1",
     homepage: "https://github.com/Locaryn/morph-dictaphone",
@@ -3139,7 +3141,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-dictaphone#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3191,7 +3193,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-video-gen#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3243,7 +3245,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-3d-gen#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3295,7 +3297,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-music-gen#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3347,7 +3349,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-vision-ocr#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3391,7 +3393,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-figures#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3443,7 +3445,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-rag-qa#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3495,7 +3497,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-ssh#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3547,7 +3549,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-translation#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3599,7 +3601,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-text-analysis#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3651,7 +3653,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-model-training#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3703,7 +3705,7 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-travel-tunnel#v1.0.0",
-      }
+      },
     ],
   },
   {
@@ -3747,14 +3749,15 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-freetoken#v1.0.0",
-      }
+      },
     ],
   },
   {
     id: "locaryn:morph-omniroute",
     name: "morph-omniroute",
     display_name: "OmniRoute Gateway",
-    description: "Passerelle OmniRoute : un point d'accès unifié pour des centaines de modèles distants.",
+    description:
+      "Passerelle OmniRoute : un point d'accès unifié pour des centaines de modèles distants.",
     author: "Locaryn Team",
     version: "1.0.0-beta.1",
     homepage: "https://github.com/Locaryn/morph-omniroute",
@@ -3783,10 +3786,9 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v0.9.0",
         install_source: "Locaryn/morph-omniroute#v0.9.0",
-      }
+      },
     ],
   },
-
 
   {
     id: "claude_code:demo:commit-commands",
