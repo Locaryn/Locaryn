@@ -2616,7 +2616,7 @@ export function ModelBrowser({
                               }}
                               title={nsfwReason(`${f.name} ${f.id}`) ?? c.label}
                             >
-                              {c.icon} {c.label}
+                              {isIconName(c.icon) && <Icon name={c.icon} size={13} />} {c.label}
                             </span>
                           );
                         })()}

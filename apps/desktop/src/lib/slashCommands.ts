@@ -1,3 +1,4 @@
+import type { IconName } from "@locaryn/ui-core";
 // Slash commands for the chat composer: type "/" to get a palette of the app's
 // actions without hunting through toolbars. Purely declarative — the panel
 // supplies the handlers, so this list stays testable and easy to extend.
@@ -27,7 +28,8 @@ export interface SlashCommand {
   name: string;
   /** Extra words that also match (search is fuzzy over name + aliases). */
   aliases: string[];
-  icon: string;
+  /** Un nom du jeu d'icônes partagé, jamais un caractère. */
+  icon: IconName;
   label: string;
   hint: string;
   action: SlashAction;
@@ -70,7 +72,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "plan",
     aliases: ["workflow", "etapes", "étapes"],
-    icon: "\ud83e\udde9",
+    icon: "list-bullets",
     label: "Plan par etapes",
     hint: "Decompose la demande et l execute etape par etape",
     action: "plan",
@@ -87,7 +89,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "json",
     aliases: ["structure", "format"],
-    icon: "{ }",
+    icon: "code",
     label: "Réponse JSON",
     hint: "Force une sortie JSON valide",
     action: "json",

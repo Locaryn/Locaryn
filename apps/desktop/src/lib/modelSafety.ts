@@ -1,3 +1,4 @@
+import type { IconName } from "@locaryn/ui-core";
 // ═════════════════════════════════════════════════════════════════════════════
 // modelSafety.ts — Known NSFW / unfiltered diffusion checkpoints and LoRAs
 //
@@ -105,7 +106,8 @@ export type ModelRisk = "safe" | "uncensored" | "nsfw";
 export interface ModelClassification {
   risk: ModelRisk;
   label: string;
-  icon: string;
+  /** Un nom du jeu d'icônes partagé, jamais un caractère. */
+  icon: IconName;
 }
 
 /** Centralized classifier for a model name/tag.
@@ -131,7 +133,7 @@ export function classifyModel(
     return { risk: "uncensored", label: "Sans limite", icon: "lock" };
   }
   if (isNsfwCheckpoint(name) || isNsfwLora(name)) {
-    return { risk: "nsfw", label: "NSFW", icon: "" };
+    return { risk: "nsfw", label: "NSFW", icon: "warning" };
   }
   return { risk: "safe", label: "Safe", icon: "shield" };
 }

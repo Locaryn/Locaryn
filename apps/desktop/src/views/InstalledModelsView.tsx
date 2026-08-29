@@ -452,7 +452,7 @@ export function InstalledModelsView({
                       style={{ color: "var(--danger)", marginLeft: 6 }}
                       title={nsfwReason(entry.tag) ?? classification.label}
                     >
-                      {classification.icon} {classification.label}
+                      <Icon name={classification.icon} size={13} /> {classification.label}
                     </span>
                   )}
                   <h3

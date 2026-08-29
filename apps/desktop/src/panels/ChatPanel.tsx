@@ -895,7 +895,7 @@ export function ChatPanel({
           cmds.map((c) => ({
             name: c.name,
             aliases: [c.name.split(":").pop() ?? c.name],
-            icon: "\u{1F9E9}",
+            icon: "extensions",
             label: c.description ?? c.name,
             hint: `Commande de ${c.plugin}`,
             action: "extension" as const,
@@ -1265,7 +1265,8 @@ export function ChatPanel({
           <div className="locaryn-slash" role="listbox" aria-label="Commandes" tabIndex={-1}>
             {slash.kind === "args" && (
               <div className="locaryn-slash-head">
-                {slash.command.icon} {slash.command.label} — choisissez la qualite
+                <Icon name={slash.command.icon} size={14} /> {slash.command.label} — choisissez la
+                qualite
               </div>
             )}
             {slash.kind === "commands"
@@ -1279,7 +1280,9 @@ export function ChatPanel({
                     onMouseEnter={() => setSlashIndex(i)}
                     onClick={() => runSlash(c)}
                   >
-                    <span className="locaryn-slash-icon">{c.icon}</span>
+                    <span className="locaryn-slash-icon">
+                      <Icon name={c.icon} size={15} />
+                    </span>
                     <span className="locaryn-slash-text">
                       <span className="locaryn-slash-label">{c.label}</span>
                       <span className="locaryn-slash-hint">{c.hint}</span>
