@@ -2469,7 +2469,7 @@ export function ModelBrowser({
 
                 {isExpanded && (
                   <div className="locaryn-box-variants" style={{ marginTop: "12px" }}>
-                    <span className="locaryn-box-variants-title">Variantes & Quantisations :</span>
+                    <span className="locaryn-box-variants-title">Tailles disponibles</span>
                     {f.variants.map((v) => {
                       const activeQuant = selectedQuants[v.tag] || v.quants[0] || "q4_K_M";
                       const targetTag = getQuantTag(v.tag, activeQuant);

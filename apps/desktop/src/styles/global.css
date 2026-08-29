@@ -4996,15 +4996,22 @@ pre.md-code {
   color: var(--text);
 }
 
+/* ── Le détail d'une famille : ses tailles, et leurs quantifications ──
+   La maquette donne à chaque taille sa propre carte, sur --surface-2, avec un
+   rayon franc. Les lignes tenaient dans 6px de haut sur le fond de fenêtre :
+   on ne distinguait pas une taille de la suivante. */
 .locaryn-box-variants {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .locaryn-box-variants-title {
   font-size: var(--text-xs);
   font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text-faint);
 }
 
@@ -5013,10 +5020,16 @@ pre.md-code {
   align-items: center;
   justify-content: space-between;
   min-width: 0;
-  background: var(--bg);
-  padding: 6px 10px;
-  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 12px;
   border: 1px solid var(--border);
+}
+/* La taille, son étiquette et son poids : un nom, un identifiant technique,
+   un chiffre. Les deux derniers sont du mono. */
+.locaryn-box-variant-row .locaryn-variant-size {
+  font-size: var(--text-base);
+  font-weight: 500;
 }
 .locaryn-quick-model-info {
   min-width: 0;
