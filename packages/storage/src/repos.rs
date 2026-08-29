@@ -1448,6 +1448,100 @@ impl ProviderRepo {
         row.try_into()
     }
 
+    /// Enregistrer — et activer — un fournisseur distant apporté par une
+    /// extension.
+    ///
+    /// Distinct d'`upsert_local` sur deux points qui comptent. Le `kind` est
+    /// `remote` : rien ne tourne sur la machine, et le superviseur n'a donc
+    /// aucun processus à surveiller. Et le contrôle « ce nom peut-il être
+    /// chargé par un moteur de texte » ne s'applique pas : `anthropic/claude…`
+    /// n'est pas un fichier de poids, c'est un identifiant chez le
+    /// fournisseur, et le refuser rendrait tout catalogue distant
+    /// inutilisable.
+    ///
+    /// L'identifiant du fournisseur est écrit dans `config` : c'est lui qui,
+    /// au moment de parler au modèle, dit quelle clé du trousseau joindre à
+    /// la requête.
+    pub async fn upsert_cloud(
+        &self,
+        provider_id: &str,
+        endpoint: &str,
+        model: &str,
+    ) -> Result<Provider, StorageError> {
+        let provider_id = provider_id.trim();
+        if provider_id.is_empty() {
+            return Err(StorageError::Conflict(
+                "un fournisseur distant sans identifiant ne peut pas retrouver sa clé".into(),
+            ));
+        }
+        if model.trim().is_empty() {
+            return Err(StorageError::Conflict(
+                "aucun modèle choisi chez ce fournisseur".into(),
+            ));
+        }
+        let config = serde_json::json!({ "cloud_provider": provider_id }).to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("UPDATE providers SET is_active = 0")
+            .execute(&mut *tx)
+            .await?;
+        // Un fournisseur par identifiant, pas un par modèle : changer de
+        // modèle chez OpenRouter ne doit pas laisser derrière soi une ligne
+        // par modèle essayé.
+        let existing = sqlx::query_as::<_, ProviderRow>(
+            "SELECT id, kind, engine, endpoint, model, is_active, status, config, created_at, updated_at              FROM providers WHERE kind = 'remote' AND config = ? LIMIT 1",
+        )
+        .bind(&config)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let row = if let Some(r) = existing {
+            sqlx::query(
+                "UPDATE providers SET engine = ?, endpoint = ?, model = ?, is_active = 1,                  updated_at = ? WHERE id = ?",
+            )
+            .bind(ProviderEngine::OpenAiCompat.as_token())
+            .bind(endpoint)
+            .bind(model)
+            .bind(&now)
+            .bind(&r.id)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query_as::<_, ProviderRow>(
+                "SELECT id, kind, engine, endpoint, model, is_active, status, config, created_at, updated_at                  FROM providers WHERE id = ?",
+            )
+            .bind(&r.id)
+            .fetch_one(&mut *tx)
+            .await?
+        } else {
+            sqlx::query_as::<_, ProviderRow>(
+                "INSERT INTO providers (id, kind, engine, endpoint, model, is_active, status, config, created_at, updated_at)                  VALUES (?, 'remote', ?, ?, ?, 1, 'unknown', ?, ?, ?)                  RETURNING id, kind, engine, endpoint, model, is_active, status, config, created_at, updated_at",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(ProviderEngine::OpenAiCompat.as_token())
+            .bind(endpoint)
+            .bind(model)
+            .bind(&config)
+            .bind(&now)
+            .bind(&now)
+            .fetch_one(&mut *tx)
+            .await?
+        };
+        tx.commit().await?;
+        row.try_into()
+    }
+
+    /// L'identifiant du fournisseur distant porté par ce fournisseur, s'il en
+    /// est un. C'est ce que lit la conversation pour savoir quelle clé joindre.
+    pub fn cloud_provider_of(provider: &Provider) -> Option<String> {
+        provider
+            .config
+            .as_ref()?
+            .get("cloud_provider")?
+            .as_str()
+            .map(str::to_string)
+    }
+
     /// Mark a provider as active, deactivating all others (single-active rule).
     pub async fn set_active(&self, id: Uuid) -> Result<Provider, StorageError> {
         let mut tx = self.pool.begin().await?;
@@ -2459,5 +2553,125 @@ mod titre_tests {
     fn un_mot_unique_plus_long_que_la_limite_est_coupe_quand_meme() {
         let t = resumer_pour_titre(&"a".repeat(200));
         assert!(t.chars().count() <= 61);
+    }
+}
+
+#[cfg(test)]
+mod fournisseurs_distants_tests {
+    use super::ProviderRepo;
+    use locaryn_shared_types::{ProviderEngine, ProviderKind};
+
+    async fn depot_fournisseurs() -> ProviderRepo {
+        let pool = crate::open(std::path::Path::new(":memory:")).await.unwrap();
+        ProviderRepo::new(pool)
+    }
+
+    /// Un modèle distant porte un identifiant de fournisseur, pas un nom de
+    /// fichier. Le contrôle « ce nom est-il chargeable par un moteur de
+    /// texte » n'a donc pas à s'appliquer — sinon aucun catalogue distant ne
+    /// serait utilisable.
+    #[tokio::test]
+    async fn un_modele_distant_sactive_avec_son_identifiant() {
+        let d = depot_fournisseurs().await;
+        let p = d
+            .upsert_cloud(
+                "omniroute",
+                "http://localhost:20128",
+                "anthropic/claude-opus-5",
+            )
+            .await
+            .expect("le fournisseur distant doit s'enregistrer");
+        assert!(p.is_active);
+        assert_eq!(p.kind, ProviderKind::Remote);
+        assert_eq!(p.model.as_deref(), Some("anthropic/claude-opus-5"));
+        assert_eq!(
+            ProviderRepo::cloud_provider_of(&p).as_deref(),
+            Some("omniroute"),
+            "sans ce marqueur, la conversation ne sait pas quelle clé joindre"
+        );
+    }
+
+    /// Changer de modèle chez le même fournisseur met à jour la ligne au lieu
+    /// d'en ajouter une : sinon la liste des fournisseurs enflerait d'une
+    /// entrée par modèle essayé.
+    #[tokio::test]
+    async fn changer_de_modele_ne_multiplie_pas_les_fournisseurs() {
+        let d = depot_fournisseurs().await;
+        let a = d
+            .upsert_cloud("omniroute", "http://localhost:20128", "openai/gpt-5")
+            .await
+            .unwrap();
+        let b = d
+            .upsert_cloud(
+                "omniroute",
+                "http://localhost:20128",
+                "anthropic/claude-opus-5",
+            )
+            .await
+            .unwrap();
+        assert_eq!(a.id, b.id);
+        assert_eq!(d.list().await.unwrap().len(), 1);
+        assert_eq!(b.model.as_deref(), Some("anthropic/claude-opus-5"));
+    }
+
+    /// Un seul fournisseur actif : choisir un modèle distant doit éteindre le
+    /// moteur local, et inversement.
+    #[tokio::test]
+    async fn distant_et_local_ne_sont_jamais_actifs_ensemble() {
+        let d = depot_fournisseurs().await;
+        d.upsert_local(
+            &ProviderEngine::LlamaCpp,
+            "http://127.0.0.1:8080",
+            Some("qwen3-4b.gguf".into()),
+        )
+        .await
+        .unwrap();
+        let distant = d
+            .upsert_cloud("omniroute", "http://localhost:20128", "openai/gpt-5")
+            .await
+            .unwrap();
+        let actifs: Vec<_> = d
+            .list()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|p| p.is_active)
+            .collect();
+        assert_eq!(actifs.len(), 1);
+        assert_eq!(actifs[0].id, distant.id);
+
+        // Et le retour au local rend la main au moteur intégré.
+        let local = d
+            .upsert_local(
+                &ProviderEngine::LlamaCpp,
+                "http://127.0.0.1:8080",
+                Some("qwen3-4b.gguf".into()),
+            )
+            .await
+            .unwrap();
+        let actifs: Vec<_> = d
+            .list()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|p| p.is_active)
+            .collect();
+        assert_eq!(actifs.len(), 1);
+        assert_eq!(actifs[0].id, local.id);
+    }
+
+    /// Un fournisseur sans identifiant ne retrouverait jamais sa clé : mieux
+    /// vaut refuser à l'écriture que produire des appels non authentifiés.
+    #[tokio::test]
+    async fn un_fournisseur_sans_identifiant_est_refuse() {
+        let d = depot_fournisseurs().await;
+        assert!(d
+            .upsert_cloud("  ", "https://exemple.test/api", "un/modele")
+            .await
+            .is_err());
+        assert!(d
+            .upsert_cloud("omniroute", "https://exemple.test/api", "   ")
+            .await
+            .is_err());
     }
 }
