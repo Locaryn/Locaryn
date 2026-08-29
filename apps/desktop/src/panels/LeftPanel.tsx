@@ -331,6 +331,52 @@ export function LeftPanel({
         </button>
       )}
 
+      {/* ── Conversations : ce qu'on rouvre le plus, donc en premier ── */}
+      <div className="locaryn-history-title">
+        Conversations ({standaloneSessions.filter((s) => !s.ephemeral).length})
+      </div>
+
+      <div
+        className="locaryn-history-standalone"
+        style={{ display: "flex", flexDirection: "column", gap: "2px", marginBottom: "16px" }}
+      >
+        {standaloneSessions.filter((s) => !s.ephemeral).length === 0 ? (
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--text-faint)",
+              fontStyle: "italic",
+              padding: "4px 8px",
+            }}
+          >
+            Aucune conversation
+          </div>
+        ) : (
+          <ul className="locaryn-tree" style={{ margin: 0, padding: 0 }}>
+            {standaloneSessions
+              .filter((s) => !s.ephemeral)
+              .map((s, idx) => (
+                <SessionRow
+                  key={s.id}
+                  session={s}
+                  label={sessionLabel(s, idx)}
+                  bullet="chat"
+                  active={activeSession?.id === s.id}
+                  leaving={leaving === s.id}
+                  projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                  onSelect={() => onSelectSession(s)}
+                  onRename={(t) => onSessionRenamed?.(s, t)}
+                  onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
+                  onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+                  onMergeInto={
+                    onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
+                  }
+                />
+              ))}
+          </ul>
+        )}
+      </div>
+
       {/* ── Espaces de travail (Projets) ── */}
       <div className="locaryn-history-title">Espaces de travail</div>
 
@@ -518,52 +564,6 @@ export function LeftPanel({
       <button type="button" className="locaryn-add-btn" onClick={promptAddProject}>
         + Ajouter un projet
       </button>
-
-      {/* ── Conversations (affichées sous les projets) ── */}
-      <div className="locaryn-history-title" style={{ marginTop: "16px" }}>
-        Conversations ({standaloneSessions.filter((s) => !s.ephemeral).length})
-      </div>
-
-      <div
-        className="locaryn-history-standalone"
-        style={{ display: "flex", flexDirection: "column", gap: "2px", marginBottom: "16px" }}
-      >
-        {standaloneSessions.filter((s) => !s.ephemeral).length === 0 ? (
-          <div
-            style={{
-              fontSize: "11px",
-              color: "var(--text-faint)",
-              fontStyle: "italic",
-              padding: "4px 8px",
-            }}
-          >
-            Aucune conversation
-          </div>
-        ) : (
-          <ul className="locaryn-tree" style={{ margin: 0, padding: 0 }}>
-            {standaloneSessions
-              .filter((s) => !s.ephemeral)
-              .map((s, idx) => (
-                <SessionRow
-                  key={s.id}
-                  session={s}
-                  label={sessionLabel(s, idx)}
-                  bullet="chat"
-                  active={activeSession?.id === s.id}
-                  leaving={leaving === s.id}
-                  projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-                  onSelect={() => onSelectSession(s)}
-                  onRename={(t) => onSessionRenamed?.(s, t)}
-                  onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
-                  onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
-                  onMergeInto={
-                    onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
-                  }
-                />
-              ))}
-          </ul>
-        )}
-      </div>
 
       {/* ── Destinations, en pied de rail ──
           Toute la navigation tient ici : il n'y a plus de tiroir par-dessus.
