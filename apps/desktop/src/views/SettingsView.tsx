@@ -209,6 +209,11 @@ export function SettingsView({
   // Le retour remonte sans changer ce qui est affiché à droite : on revient
   // choisir autre chose, on ne perd pas ce qu'on regardait.
   const [railLevel, setRailLevel] = useState<"root" | "account">("root");
+  // Le sens du glissement : on descend d'un cran, le menu entre par la droite ;
+  // on remonte, il entre par la gauche. Sans ce mouvement, le remplacement
+  // d'un menu par l'autre est invisible — on croit que le clic a sauté
+  // l'étape et ouvert le contenu directement.
+  const [railFrom, setRailFrom] = useState<"deeper" | "back">("deeper");
   const [accountSection, setAccountSection] = useState<AccountSection>("profile");
   // Fenêtre étroite : le rail et le volet ne tiennent pas côte à côte, alors
   // ils se relaient. Au large, les deux colonnes restent visibles et cet état
@@ -265,76 +270,97 @@ export function SettingsView({
 
       <div className="locaryn-settings-full" data-pane={paneOpen ? "open" : "closed"}>
         <nav className="locaryn-settings-full-nav">
-          {railLevel === "account" ? (
-            <>
-              <button
-                type="button"
-                className="locaryn-settings-back"
-                onClick={() => setRailLevel("root")}
-              >
-                <Icon name="back" size={16} />
-                Tous les réglages
-              </button>
-              <span className="locaryn-settings-group-title">Compte &amp; Profil</span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {ACCOUNT_SECTIONS.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    className={`locaryn-settings-full-item${accountSection === a.id ? " locaryn-active" : ""}`}
-                    onClick={() => {
-                      setAccountSection(a.id);
-                      setPaneOpen(true);
-                    }}
-                  >
-                    <span className="locaryn-settings-full-icon">
-                      <Icon name={a.icon} />
-                    </span>
-                    <span className="locaryn-settings-full-text">
-                      <span className="locaryn-settings-full-label">{a.label}</span>
-                      <span className="locaryn-settings-full-desc">{a.desc}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            categoriesOrder.map((cat) => {
-              const catSections = SECTIONS.filter((s) => s.category === cat);
-              if (catSections.length === 0) return null;
-
-              return (
-                <div key={cat} style={{ marginBottom: 12 }}>
-                  <span className="locaryn-settings-group-title">{CATEGORY_HEADERS[cat]}</span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    {catSections.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
-                        onClick={() => {
-                          setSection(s.id);
-                          setPaneOpen(true);
-                          if (s.id === "account") setRailLevel("account");
-                        }}
-                      >
-                        <span className="locaryn-settings-full-icon">
-                          <Icon name={s.icon} />
-                        </span>
-                        <span className="locaryn-settings-full-text">
-                          <span className="locaryn-settings-full-label">{s.label}</span>
-                          <span className="locaryn-settings-full-desc">{s.desc}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+          {/* La clé change avec le niveau : sans elle, React réutilise le
+              nœud et le navigateur ne rejoue pas l'animation. */}
+          <div
+            key={railLevel}
+            className={
+              railFrom === "deeper" ? "locaryn-rail-enter-deeper" : "locaryn-rail-enter-back"
+            }
+          >
+            {railLevel === "account" ? (
+              <>
+                <button
+                  type="button"
+                  className="locaryn-settings-back"
+                  onClick={() => {
+                    setRailFrom("back");
+                    setRailLevel("root");
+                  }}
+                >
+                  <Icon name="back" size={16} />
+                  Tous les réglages
+                </button>
+                <span className="locaryn-settings-group-title">Compte &amp; Profil</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {ACCOUNT_SECTIONS.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={`locaryn-settings-full-item${accountSection === a.id ? " locaryn-active" : ""}`}
+                      onClick={() => {
+                        setAccountSection(a.id);
+                        setPaneOpen(true);
+                      }}
+                    >
+                      <span className="locaryn-settings-full-icon">
+                        <Icon name={a.icon} />
+                      </span>
+                      <span className="locaryn-settings-full-text">
+                        <span className="locaryn-settings-full-label">{a.label}</span>
+                        <span className="locaryn-settings-full-desc">{a.desc}</span>
+                      </span>
+                    </button>
+                  ))}
                 </div>
-              );
-            })
-          )}
+              </>
+            ) : (
+              categoriesOrder.map((cat) => {
+                const catSections = SECTIONS.filter((s) => s.category === cat);
+                if (catSections.length === 0) return null;
+
+                return (
+                  <div key={cat} style={{ marginBottom: 12 }}>
+                    <span className="locaryn-settings-group-title">{CATEGORY_HEADERS[cat]}</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {catSections.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
+                          onClick={() => {
+                            setSection(s.id);
+                            setPaneOpen(true);
+                            if (s.id === "account") {
+                              setRailFrom("deeper");
+                              setRailLevel("account");
+                              // Descendre dans le compte ouvre son premier écran :
+                              // un menu sans contenu à côté ne dit rien.
+                              setAccountSection("profile");
+                            }
+                          }}
+                        >
+                          <span className="locaryn-settings-full-icon">
+                            <Icon name={s.icon} />
+                          </span>
+                          <span className="locaryn-settings-full-text">
+                            <span className="locaryn-settings-full-label">{s.label}</span>
+                            <span className="locaryn-settings-full-desc">{s.desc}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </nav>
 
-        <div className="locaryn-settings-full-pane">
+        <div
+          className="locaryn-settings-full-pane"
+          key={section === "account" ? `account:${accountSection}` : section}
+        >
           <button
             type="button"
             className="locaryn-settings-pane-back"

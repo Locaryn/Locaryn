@@ -9579,3 +9579,21 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
     color: var(--text);
   }
 }
+
+/* ── Le passage d'un menu à l'autre ──
+   Un menu qui en remplace un autre sans bouger ne se voit pas : on croit que
+   le clic a sauté l'étape et ouvert le contenu directement. Le sens du
+   glissement dit ce qui s'est passé — on descend d'un cran, le menu entre par
+   la droite ; on remonte, il entre par la gauche. Ce sont les deux courbes du
+   système, rien de plus. */
+.locaryn-rail-enter-deeper {
+  animation: lo-mode-b var(--dur-med) var(--ease-out) both;
+}
+.locaryn-rail-enter-back {
+  animation: lo-mode-a var(--dur-med) var(--ease-out) both;
+}
+/* Le volet suit : un fondu montant à chaque changement de contenu, pour que
+   la colonne de droite ne saute pas d'un écran à l'autre. */
+.locaryn-settings-full-pane {
+  animation: lo-fade-up var(--dur-med) var(--ease-out) both;
+}
