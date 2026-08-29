@@ -17,8 +17,33 @@ import { ACCENT_PRESETS } from "../hooks/useTheme";
 import { type AppInfo, type Project, type Session, core } from "../lib/core";
 import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
-import { AccountView } from "./AccountView";
+import { type AccountSection, AccountView } from "./AccountView";
 import { ProjectSettings } from "./ProjectSettings";
+
+/**
+ * Les sous-sections du compte.
+ *
+ * Elles vivent dans le rail, pas dans un second menu à côté du premier : deux
+ * menus et un contenu tenaient trois colonnes, et le contenu qu'on cherchait
+ * finissait dans le tiers restant.
+ */
+const ACCOUNT_SECTIONS: { id: AccountSection; label: string; desc: string; icon: IconName }[] = [
+  { id: "profile", label: "Profil local", desc: "Identité, avatar, connexion", icon: "private" },
+  {
+    id: "models",
+    label: "Préférences des modèles",
+    desc: "Petites tâches, voix et images",
+    icon: "models",
+  },
+  {
+    id: "conversations",
+    label: "Conversations",
+    desc: "Historique et conversations récentes",
+    icon: "chat",
+  },
+  { id: "memory", label: "Mémoire", desc: "Ce que Locaryn retient", icon: "memory" },
+  { id: "archives", label: "Archives", desc: "Conversations rangées", icon: "archive" },
+];
 
 /** Les trois réglages de thème, dans l'ordre où ils se lisent. */
 const THEME_MODES: { value: ThemeMode; label: string; icon: IconName }[] = [
@@ -180,6 +205,15 @@ export function SettingsView({
   const { settings, updateAccent, updateMode, resetTheme } = theme;
   const { lang, setLang } = useI18n();
   const [section, setSection] = useState<Section>(initialSection ?? "account");
+  // Le rail descend d'un cran quand une section a ses propres sous-sections.
+  // Le retour remonte sans changer ce qui est affiché à droite : on revient
+  // choisir autre chose, on ne perd pas ce qu'on regardait.
+  const [railLevel, setRailLevel] = useState<"root" | "account">("root");
+  const [accountSection, setAccountSection] = useState<AccountSection>("profile");
+  // Fenêtre étroite : le rail et le volet ne tiennent pas côte à côte, alors
+  // ils se relaient. Au large, les deux colonnes restent visibles et cet état
+  // ne change rien — d'où le pilotage par un attribut, laissé au CSS.
+  const [paneOpen, setPaneOpen] = useState(false);
   const [info, setInfo] = useState<AppInfo | null>(null);
 
   useEffect(() => {
@@ -208,6 +242,13 @@ export function SettingsView({
   }, []);
 
   const current = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
+  // Dans le compte, le volet porte le nom de la sous-section : le titre doit
+  // dire ce qu'on regarde, pas la famille dont ça vient.
+  const currentAccount = ACCOUNT_SECTIONS.find((a) => a.id === accountSection);
+  const currentTitle =
+    section === "account" && currentAccount
+      ? { icon: currentAccount.icon, label: currentAccount.label }
+      : { icon: current.icon, label: current.label };
   const remoteEnabled = activeCapabilities.includes("travel-tunnel");
 
   const categoriesOrder: SettingsCategory[] = ["user", "ai", "server", "system"];
@@ -222,58 +263,95 @@ export function SettingsView({
         </p>
       </div>
 
-      <div className="locaryn-settings-full">
+      <div className="locaryn-settings-full" data-pane={paneOpen ? "open" : "closed"}>
         <nav className="locaryn-settings-full-nav">
-          {categoriesOrder.map((cat) => {
-            const catSections = SECTIONS.filter((s) => s.category === cat);
-            if (catSections.length === 0) return null;
-
-            return (
-              <div key={cat} style={{ marginBottom: 12 }}>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    letterSpacing: "0.6px",
-                    color: "var(--text-faint)",
-                    padding: "4px 8px",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {CATEGORY_HEADERS[cat]}
-                </span>
-                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  {catSections.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
-                      onClick={() => setSection(s.id)}
-                    >
-                      <span className="locaryn-settings-full-icon">
-                        <Icon name={s.icon} />
-                      </span>
-                      <span className="locaryn-settings-full-text">
-                        <span className="locaryn-settings-full-label">{s.label}</span>
-                        <span className="locaryn-settings-full-desc">{s.desc}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
+          {railLevel === "account" ? (
+            <>
+              <button
+                type="button"
+                className="locaryn-settings-back"
+                onClick={() => setRailLevel("root")}
+              >
+                <Icon name="back" size={16} />
+                Tous les réglages
+              </button>
+              <span className="locaryn-settings-group-title">Compte &amp; Profil</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {ACCOUNT_SECTIONS.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className={`locaryn-settings-full-item${accountSection === a.id ? " locaryn-active" : ""}`}
+                    onClick={() => {
+                      setAccountSection(a.id);
+                      setPaneOpen(true);
+                    }}
+                  >
+                    <span className="locaryn-settings-full-icon">
+                      <Icon name={a.icon} />
+                    </span>
+                    <span className="locaryn-settings-full-text">
+                      <span className="locaryn-settings-full-label">{a.label}</span>
+                      <span className="locaryn-settings-full-desc">{a.desc}</span>
+                    </span>
+                  </button>
+                ))}
               </div>
-            );
-          })}
+            </>
+          ) : (
+            categoriesOrder.map((cat) => {
+              const catSections = SECTIONS.filter((s) => s.category === cat);
+              if (catSections.length === 0) return null;
+
+              return (
+                <div key={cat} style={{ marginBottom: 12 }}>
+                  <span className="locaryn-settings-group-title">{CATEGORY_HEADERS[cat]}</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    {catSections.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
+                        onClick={() => {
+                          setSection(s.id);
+                          setPaneOpen(true);
+                          if (s.id === "account") setRailLevel("account");
+                        }}
+                      >
+                        <span className="locaryn-settings-full-icon">
+                          <Icon name={s.icon} />
+                        </span>
+                        <span className="locaryn-settings-full-text">
+                          <span className="locaryn-settings-full-label">{s.label}</span>
+                          <span className="locaryn-settings-full-desc">{s.desc}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </nav>
 
         <div className="locaryn-settings-full-pane">
+          <button
+            type="button"
+            className="locaryn-settings-pane-back"
+            onClick={() => setPaneOpen(false)}
+          >
+            <Icon name="back" size={16} />
+            {railLevel === "account" ? "Compte & Profil" : "Réglages"}
+          </button>
           <h3 className="locaryn-settings-full-title">
-            <Icon name={current.icon} size={18} /> {current.label}
+            <Icon name={currentTitle.icon} size={18} /> {currentTitle.label}
           </h3>
 
           {section === "account" && (
             <AccountView
               embedded
+              section={accountSection}
+              onSectionChange={setAccountSection}
               activeCapabilities={activeCapabilities}
               projects={projects}
               sessionsByProject={sessionsByProject}

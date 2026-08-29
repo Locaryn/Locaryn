@@ -17,9 +17,18 @@ type Props = {
   projects?: Project[];
   sessionsByProject?: Record<string, Session[]>;
   standaloneSessions?: Session[];
+  /**
+   * La sous-section affichée, quand le parent porte la navigation.
+   *
+   * Intégrée dans les réglages, cette vue ne dessine plus son propre menu :
+   * le rail des réglages descend d'un cran et l'affiche à la place de la liste
+   * des sections. Deux menus et un contenu tenaient trois colonnes à l'écran.
+   */
+  section?: AccountSection;
+  onSectionChange?: (section: AccountSection) => void;
 };
 
-type AccountSection = "profile" | "models" | "memory" | "archives" | "conversations";
+export type AccountSection = "profile" | "models" | "memory" | "archives" | "conversations";
 
 /**
  * Espace compte.
@@ -36,8 +45,14 @@ export function AccountView({
   projects = [],
   sessionsByProject = {},
   standaloneSessions = [],
+  section: sectionProp,
+  onSectionChange,
 }: Props) {
-  const [section, setSection] = useState<AccountSection>("profile");
+  const [ownSection, setOwnSection] = useState<AccountSection>("profile");
+  // Contrôlée par le parent quand il porte le menu ; autonome sinon.
+  const section = sectionProp ?? ownSection;
+  const setSection = onSectionChange ?? setOwnSection;
+  const showNav = sectionProp === undefined;
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
   const [username, setUsername] = useState("");
@@ -127,74 +142,76 @@ export function AccountView({
   }
 
   const layout = (
-    <div className="locaryn-account-layout">
-      <nav className="locaryn-account-nav" aria-label="Sections du compte">
-        <button
-          type="button"
-          className={`locaryn-account-nav-item${section === "profile" ? " locaryn-active" : ""}`}
-          onClick={() => setSection("profile")}
-        >
-          <span className="locaryn-account-nav-icon" aria-hidden="true">
-            {avatarUrl ? <img src={avatarUrl} alt="" /> : initial}
-          </span>
-          <span className="locaryn-account-nav-text">
-            <strong>{displayName}</strong>
-            <small>Profil local</small>
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`locaryn-account-nav-item${section === "models" ? " locaryn-active" : ""}`}
-          onClick={() => setSection("models")}
-        >
-          <span className="locaryn-account-nav-icon locaryn-account-nav-icon-models">
-            <Icon name="models" size={15} />
-          </span>
-          <span className="locaryn-account-nav-text">
-            <strong>Préférences des modèles</strong>
-            <small>Petites tâches, voix et images</small>
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`locaryn-account-nav-item${section === "conversations" ? " locaryn-active" : ""}`}
-          onClick={() => setSection("conversations")}
-        >
-          <span className="locaryn-account-nav-icon locaryn-account-nav-icon-conversations">
-            <Icon name="chat" size={15} />
-          </span>
-          <span className="locaryn-account-nav-text">
-            <strong>Conversations</strong>
-            <small>Historique et conversations récentes</small>
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`locaryn-account-nav-item${section === "memory" ? " locaryn-active" : ""}`}
-          onClick={() => setSection("memory")}
-        >
-          <span className="locaryn-account-nav-icon locaryn-account-nav-icon-memory">
-            <Icon name="memory" size={15} />
-          </span>
-          <span className="locaryn-account-nav-text">
-            <strong>Mémoire</strong>
-            <small>Ce que Locaryn retient</small>
-          </span>
-        </button>
-        <button
-          type="button"
-          className={`locaryn-account-nav-item${section === "archives" ? " locaryn-active" : ""}`}
-          onClick={() => setSection("archives")}
-        >
-          <span className="locaryn-account-nav-icon locaryn-account-nav-icon-archive">
-            <Icon name="archive" size={15} />
-          </span>
-          <span className="locaryn-account-nav-text">
-            <strong>Archives</strong>
-            <small>Conversations rangées</small>
-          </span>
-        </button>
-      </nav>
+    <div className={showNav ? "locaryn-account-layout" : "locaryn-account-layout-plain"}>
+      {showNav && (
+        <nav className="locaryn-account-nav" aria-label="Sections du compte">
+          <button
+            type="button"
+            className={`locaryn-account-nav-item${section === "profile" ? " locaryn-active" : ""}`}
+            onClick={() => setSection("profile")}
+          >
+            <span className="locaryn-account-nav-icon" aria-hidden="true">
+              {avatarUrl ? <img src={avatarUrl} alt="" /> : initial}
+            </span>
+            <span className="locaryn-account-nav-text">
+              <strong>{displayName}</strong>
+              <small>Profil local</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`locaryn-account-nav-item${section === "models" ? " locaryn-active" : ""}`}
+            onClick={() => setSection("models")}
+          >
+            <span className="locaryn-account-nav-icon locaryn-account-nav-icon-models">
+              <Icon name="models" size={15} />
+            </span>
+            <span className="locaryn-account-nav-text">
+              <strong>Préférences des modèles</strong>
+              <small>Petites tâches, voix et images</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`locaryn-account-nav-item${section === "conversations" ? " locaryn-active" : ""}`}
+            onClick={() => setSection("conversations")}
+          >
+            <span className="locaryn-account-nav-icon locaryn-account-nav-icon-conversations">
+              <Icon name="chat" size={15} />
+            </span>
+            <span className="locaryn-account-nav-text">
+              <strong>Conversations</strong>
+              <small>Historique et conversations récentes</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`locaryn-account-nav-item${section === "memory" ? " locaryn-active" : ""}`}
+            onClick={() => setSection("memory")}
+          >
+            <span className="locaryn-account-nav-icon locaryn-account-nav-icon-memory">
+              <Icon name="memory" size={15} />
+            </span>
+            <span className="locaryn-account-nav-text">
+              <strong>Mémoire</strong>
+              <small>Ce que Locaryn retient</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`locaryn-account-nav-item${section === "archives" ? " locaryn-active" : ""}`}
+            onClick={() => setSection("archives")}
+          >
+            <span className="locaryn-account-nav-icon locaryn-account-nav-icon-archive">
+              <Icon name="archive" size={15} />
+            </span>
+            <span className="locaryn-account-nav-text">
+              <strong>Archives</strong>
+              <small>Conversations rangées</small>
+            </span>
+          </button>
+        </nav>
+      )}
 
       <div className="locaryn-account-content">
         {section === "archives" ? (
