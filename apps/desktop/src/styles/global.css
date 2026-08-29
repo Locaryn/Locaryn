@@ -9539,17 +9539,25 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   min-width: 0;
 }
 
-/* Le retour du volet ne sert qu'en fenêtre étroite, où le rail a laissé la
-   place au contenu. Au large, les deux colonnes sont visibles ensemble et ce
-   bouton n'aurait rien à ramener. */
+/* Le retour du volet ne sert que lorsque la zone est trop étroite pour deux
+   colonnes. Dès qu'elles tiennent, elles sont visibles ensemble et ce bouton
+   n'aurait rien à ramener. */
 .locaryn-settings-pane-back {
   display: none;
 }
 
-/* Sous 1000px, les deux colonnes ne tiennent plus : elles se relaient. On
-   voit la liste, ou le contenu — jamais la liste écrasée contre le contenu,
-   et jamais l'un empilé sous l'autre au bout d'un long défilement. */
-@media (max-width: 1000px) {
+/* Le seuil se mesure sur la zone des réglages, pas sur la fenêtre : la zone
+   est déjà amputée du rail, et un seuil pris sur la fenêtre repliait deux
+   colonnes qui tenaient très bien. */
+.locaryn-settings-full {
+  container-type: inline-size;
+  container-name: reglages;
+}
+
+/* Sous 620px de zone, les deux colonnes ne tiennent plus : elles se relaient.
+   On voit la liste, ou le contenu — jamais l'un empilé sous l'autre au bout
+   d'un long défilement. */
+@container reglages (max-width: 620px) {
   .locaryn-settings-full {
     grid-template-columns: minmax(0, 1fr);
   }
