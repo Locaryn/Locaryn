@@ -2799,7 +2799,7 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
   /* La maquette donne 288px au menu, avec un rail de 250 à côté. Ici le menu
      rétrécit avec la place : le rail est permanent, et il ne doit pas coûter
      la lisibilité du contenu. */
-  grid-template-columns: minmax(172px, 0.34fr) minmax(0, 1fr);
+  grid-template-columns: minmax(196px, 0.34fr) minmax(0, 1fr);
   gap: var(--space-5, 20px);
   align-items: stretch;
   flex: 1;
@@ -9618,4 +9618,11 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
    la colonne de droite ne saute pas d'un écran à l'autre. */
 .locaryn-settings-full-pane {
   animation: lo-fade-up var(--dur-med) var(--ease-out) both;
+}
+
+/* Le rail hors du chat : la navigation, rien d'autre. Elle remonte en haut —
+   il n'y a plus de liste au-dessus pour la pousser en bas. */
+.locaryn-left-nav-only .locaryn-rail-nav {
+  margin-top: 0;
+  padding-top: 0;
 }
