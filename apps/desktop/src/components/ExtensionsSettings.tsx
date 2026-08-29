@@ -1,4 +1,4 @@
-import { capabilityLabel } from "@locaryn/ui-core";
+import { Icon, capabilityLabel } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type Capability,
@@ -810,7 +810,7 @@ export function ExtensionsSettings() {
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
             className="locaryn-btn-ghost"
@@ -847,7 +847,7 @@ export function ExtensionsSettings() {
             }}
             title="Importer un Morph ou un Skill directement depuis une archive ZIP"
           >
-            📦 Importer ZIP…
+            <Icon name="archive" size={15} /> Importer ZIP…
           </button>
           <button
             type="button"

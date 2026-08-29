@@ -2550,15 +2550,28 @@ dialog:where([open]) {
   gap: var(--space-3);
 }
 .locaryn-connector-intro,
-.locaryn-extension-intro {
+/* Deux colonnes côte à côte à condition qu'il y ait la place. Dans un volet
+   de réglages, le texte se retrouvait à un mot par ligne : la légende passe
+   alors dessous plutôt que de couper le paragraphe en colonne de mots. */
+  .locaryn-extension-intro {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-5);
-  padding: var(--space-4);
+  padding: var(--space-5);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface);
+  background-image: var(--mica);
+  box-shadow: var(--shadow-1);
+}
+.locaryn-extension-intro > div:first-child {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+.locaryn-extension-intro .locaryn-extension-legend {
+  flex: 0 1 auto;
 }
 .locaryn-connector-intro h3,
 .locaryn-extension-intro h3 {
