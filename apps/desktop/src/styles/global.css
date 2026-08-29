@@ -1667,6 +1667,7 @@ dialog:where([open]) {
 }
 .locaryn-field-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-1);
 }
@@ -2197,6 +2198,7 @@ dialog:where([open]) {
 }
 .locaryn-store-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
 }
 .locaryn-store-body {
@@ -3043,10 +3045,14 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
 }
 
 /* Per-project settings (inside the general settings view) */
+/* Deux colonnes tant qu'il y a la place pour deux, une sinon. `auto-fit` le
+   décide sur la largeur réelle, sans seuil à deviner : la liste des projets
+   et leur fiche se retrouvaient sinon à 220px contre 94, et la fiche
+   débordait du volet. */
 .locaryn-projset {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) 1fr;
-  gap: var(--space-4, 16px);
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: var(--space-4);
   align-items: start;
 }
 .locaryn-projset-list {
@@ -8386,7 +8392,9 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-engine-tab,
 .locaryn-studio-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
+  min-width: 0;
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--space-4);
 }
