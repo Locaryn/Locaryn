@@ -202,6 +202,19 @@ export function InstalledModelsView({
     );
   }, [dedupedModels, otherWeights, weightOwners, incompatibleModels, modelsDir]);
 
+  // Ce que la ligne de chiffres annonce. La taille ne couvre que les poids
+  // dont on connaît le compte d'octets : mieux vaut ne rien dire qu'annoncer
+  // un total qui oublie la moitié du dossier.
+  const diskTotal = useMemo(() => {
+    const total = otherWeights.reduce((sum, w) => sum + (w.size_bytes || 0), 0);
+    return humanSize(total);
+  }, [otherWeights]);
+
+  const unclaimed = useMemo(
+    () => entries.filter((e) => e.group === "Non revendiqué").length,
+    [entries],
+  );
+
   // Une puce par famille réellement présente, dans l'ordre où elles arrivent.
   const groups = useMemo(() => {
     const seen: string[] = [];
@@ -289,37 +302,37 @@ export function InstalledModelsView({
   return (
     <div className="locaryn-view-container">
       <div className="locaryn-view-header">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 16,
-          }}
-        >
-          <div>
-            <h2>
-              <Icon name="models" size={18} /> Mes modèles installés ({entries.length})
-            </h2>
-            <p className="locaryn-view-desc">
-              Tout ce qui est stocké localement : les modèles de conversation et ceux qu'une
-              extension utilise.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              onClick={() => handleOpenFolder(modelsDir)}
-            >
-              <Icon name="project" size={15} /> Ouvrir le dossier
+        <h2>Mes modèles installés</h2>
+        <p className="locaryn-view-desc">
+          Tout ce qui est stocké localement : les modèles de conversation et ceux qu'une extension
+          utilise.
+        </p>
+        {/* Les chiffres en mono, sous la description : c'est du technique, et
+            ça se lit d'un coup d'œil sans encombrer le titre. */}
+        <div className="locaryn-view-stats">
+          <span>
+            {entries.length} modèle{entries.length > 1 ? "s" : ""}
+          </span>
+          {diskTotal && <span>{diskTotal} sur disque</span>}
+          {unclaimed > 0 && (
+            <span>
+              {unclaimed} non revendiqué{unclaimed > 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+        <div className="locaryn-view-actions">
+          <button
+            type="button"
+            className="locaryn-btn-ghost"
+            onClick={() => handleOpenFolder(modelsDir)}
+          >
+            <Icon name="project" size={16} /> Ouvrir le dossier
+          </button>
+          {onOpenMarketplace && (
+            <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}>
+              <Icon name="marketplace" size={16} /> Marketplace
             </button>
-            {onOpenMarketplace && (
-              <button type="button" className="locaryn-btn-primary" onClick={onOpenMarketplace}>
-                <Icon name="marketplace" size={15} /> Marketplace
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 

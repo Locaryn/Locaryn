@@ -2463,18 +2463,23 @@ dialog:where([open]) {
   margin-top: 3px;
 }
 .locaryn-tag {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  font-weight: 500;
-  padding: 1px 7px;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 3px 9px;
   border-radius: var(--radius-pill);
-  color: var(--accent);
-  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  color: var(--accent-300);
+  border: 1px solid var(--accent-800);
+  background: var(--accent-fill);
+  white-space: nowrap;
 }
 .locaryn-tag-soft {
   color: var(--text-faint);
   border-color: var(--border);
+  background: transparent;
 }
 
 /* Vitesse mesurée sur cette machine. Chiffres alignés — dans une liste de
@@ -3874,10 +3879,11 @@ pre.md-code {
 }
 
 .locaryn-tag-installed {
-  color: var(--accent);
-  border-color: rgba(var(--accent-rgb), 0.4);
-  background: var(--accent-fill);
   flex: none;
+  padding: 4px 10px;
+  color: var(--text-dim);
+  border-color: var(--border);
+  background: transparent;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -9627,4 +9633,29 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-left-nav-only .locaryn-rail-nav {
   margin-top: 0;
   padding-top: 0;
+}
+
+/* ── En-tête de vue : les chiffres, puis les actions ──
+   La maquette range les compteurs sous la description, en mono, et pose les
+   boutons dessous à gauche. Au coin haut-droit, ils se disputaient la ligne
+   du titre et sautaient d'un écran à l'autre. */
+.locaryn-view-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-top: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}
+.locaryn-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.locaryn-view-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
