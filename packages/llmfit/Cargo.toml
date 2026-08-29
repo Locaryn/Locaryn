@@ -1,0 +1,12 @@
+[package]
+name = "locaryn-llmfit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Estimation native : ce modèle tourne-t-il sur cette machine, et à quelle vitesse."
+
+[dependencies]
+serde = { workspace = true }
+tracing = { workspace = true }
