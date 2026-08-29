@@ -1567,6 +1567,11 @@ export function ModelBrowser({
     }
   }
 
+  // Les réglages avancés sont repliés : la maquette n'a que deux rangées de
+  // commandes avant la première carte, et ce moteur ne concerne que les petits
+  // GPU. Il reste à un clic, il n'occupe plus la page de tout le monde.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   const isFilterActive =
     size !== "all" ||
     query !== "" ||
@@ -1749,52 +1754,73 @@ export function ModelBrowser({
           </div>
         </div>
 
-        {/* AirLLM toggle — converts too-heavy models into low-VRAM executable ones */}
-        <div className="locaryn-airllm-bar">
-          <span
-            className="locaryn-airllm-switch"
-            title="Basculer le moteur AirLLM : les modèles trop lourds pour ce PC deviennent exécutables localement (chargement des couches une par une, un GPU 4 Go de VRAM suffit)"
-          >
-            <LoSwitch
-              checked={airllmEnabled}
-              onChange={setAirllmEnabled}
-              labelledBy="locaryn-airllm-label"
-            />
-            <span
-              className={`locaryn-airllm-label${airllmEnabled ? " locaryn-airllm-on" : ""}`}
-              id="locaryn-airllm-label"
-            >
-              <Icon name="star" size={15} /> AirLLM — Gros modèles sur petit GPU
-            </span>
-          </span>
-          <span className="locaryn-airllm-hint">
-            {airllmEnabled
-              ? "Actif : tous les modèles deviennent exécutables — les modèles trop lourds pour ce PC tournent en local via AirLLM (chargement couche par couche, ex. Kimi K3 sur un GPU 4 Go de VRAM)."
-              : "Inactif : seuls les modèles tenant dans ce PC sont proposés en téléchargement local."}
-          </span>
-        </div>
+        <button
+          type="button"
+          className={`locaryn-chip${advancedOpen ? " locaryn-chip-on" : ""}`}
+          style={{ alignSelf: "flex-start", marginTop: "8px" }}
+          aria-expanded={advancedOpen}
+          onClick={() => setAdvancedOpen((v) => !v)}
+          title="Moteur AirLLM : exécuter localement des modèles trop lourds pour ce PC"
+        >
+          <Icon name="sliders" size={14} /> Avancé
+        </button>
 
-        {/* AirLLM install / runtime progress */}
-        {(airllmLog.length > 0 || airllmError) && (
-          <div
-            style={{
-              marginTop: "8px",
-              padding: "8px 12px",
-              borderRadius: "var(--radius-sm)",
-              border: airllmError
-                ? "1px solid var(--danger)"
-                : "1px solid rgba(167, 139, 250, 0.35)",
-              background: airllmError ? "rgba(204, 125, 114, 0.08)" : "rgba(167, 139, 250, 0.06)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "11px",
-              color: airllmError ? "var(--danger)" : "var(--text-dim)",
-              maxHeight: "110px",
-              overflowY: "auto",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {airllmError ? airllmError : airllmLog.slice(-6).join("\n")}
-          </div>
+        {/* Réglages avancés, repliés par défaut.
+            La maquette n'a que deux rangées de commandes avant la première
+            carte. Ce moteur ne sert qu'à qui a un petit GPU : il reste à un
+            clic, il n'occupe plus la page de tout le monde. */}
+        {advancedOpen && (
+          <>
+            {/* AirLLM toggle — converts too-heavy models into low-VRAM executable ones */}
+            <div className="locaryn-airllm-bar">
+              <span
+                className="locaryn-airllm-switch"
+                title="Basculer le moteur AirLLM : les modèles trop lourds pour ce PC deviennent exécutables localement (chargement des couches une par une, un GPU 4 Go de VRAM suffit)"
+              >
+                <LoSwitch
+                  checked={airllmEnabled}
+                  onChange={setAirllmEnabled}
+                  labelledBy="locaryn-airllm-label"
+                />
+                <span
+                  className={`locaryn-airllm-label${airllmEnabled ? " locaryn-airllm-on" : ""}`}
+                  id="locaryn-airllm-label"
+                >
+                  <Icon name="star" size={15} /> AirLLM — Gros modèles sur petit GPU
+                </span>
+              </span>
+              <span className="locaryn-airllm-hint">
+                {airllmEnabled
+                  ? "Actif : tous les modèles deviennent exécutables — les modèles trop lourds pour ce PC tournent en local via AirLLM (chargement couche par couche, ex. Kimi K3 sur un GPU 4 Go de VRAM)."
+                  : "Inactif : seuls les modèles tenant dans ce PC sont proposés en téléchargement local."}
+              </span>
+            </div>
+
+            {/* AirLLM install / runtime progress */}
+            {(airllmLog.length > 0 || airllmError) && (
+              <div
+                style={{
+                  marginTop: "8px",
+                  padding: "8px 12px",
+                  borderRadius: "var(--radius-sm)",
+                  border: airllmError
+                    ? "1px solid var(--danger)"
+                    : "1px solid rgba(167, 139, 250, 0.35)",
+                  background: airllmError
+                    ? "rgba(204, 125, 114, 0.08)"
+                    : "rgba(167, 139, 250, 0.06)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "11px",
+                  color: airllmError ? "var(--danger)" : "var(--text-dim)",
+                  maxHeight: "110px",
+                  overflowY: "auto",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {airllmError ? airllmError : airllmLog.slice(-6).join("\n")}
+              </div>
+            )}
+          </>
         )}
 
         {/* Category Filter Bar */}
