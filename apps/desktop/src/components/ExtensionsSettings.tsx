@@ -1,5 +1,6 @@
 import { Icon, capabilityLabel } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   type Capability,
   type CatalogEntry,
@@ -12,6 +13,7 @@ import {
   type ExtensionPermission,
   type ExtensionUpdateCheck,
   type InstalledExtension,
+  type MorphVersionRelease,
   PERMISSION_LABELS,
   core,
 } from "../lib/core";
@@ -122,6 +124,29 @@ function undecidedPermissions(ext: InstalledExtension): ExtensionPermission[] {
   return ext.permissions.filter((p) => p.undecided).map((p) => p.permission);
 }
 
+/**
+ * Les versions publiees d'un paquet.
+ *
+ * Le catalogue les porte quand la marketplace les declare. Quand il n'en
+ * declare aucune, on ne liste que celle qu'on connait vraiment : l'ancienne
+ * version de cet ecran en fabriquait trois autres — numeros, dates et sources
+ * d'installation inventes — qui n'existaient nulle part et menaient a un
+ * telechargement mort.
+ */
+function versionsOf(entry: CatalogEntry): MorphVersionRelease[] {
+  if (entry.versions && entry.versions.length > 0) return entry.versions;
+  const version = entry.version ?? "";
+  if (!version) return [];
+  return [
+    {
+      version,
+      tag: `v${version}`,
+      is_beta: Boolean(entry.is_beta || version.includes("beta") || entry.ecosystem === "locaryn"),
+      install_source: entry.install_source,
+    },
+  ];
+}
+
 export function ExtensionsSettings() {
   // Le daemon fait foi pour les labels ; en cas de silence (daemon arrêté),
   // on garde la copie embarquée à la compilation.
@@ -149,7 +174,6 @@ export function ExtensionsSettings() {
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDetailEntry, setSelectedDetailEntry] = useState<CatalogEntry | null>(null);
-  const [showAllVersions, setShowAllVersions] = useState<boolean>(false);
   const [showBetaMorphs, setShowBetaMorphs] = useState<boolean>(() => {
     return localStorage.getItem("locaryn_show_beta_morphs") !== "false";
   });
@@ -1475,6 +1499,11 @@ export function ExtensionsSettings() {
                       <div>
                         <div className="locaryn-box-head">
                           <div style={{ minWidth: 0, flex: 1 }}>
+                            <span className="locaryn-box-brand">
+                              {c.author ? `${c.author} · ` : ""}
+                              {c.version ? `v${c.version} · ` : ""}
+                              {c.catalog_label}
+                            </span>
                             <h3
                               className="locaryn-box-name"
                               style={{
@@ -1486,11 +1515,6 @@ export function ExtensionsSettings() {
                             >
                               {c.display_name}
                             </h3>
-                            <span className="locaryn-box-brand">
-                              {c.author ? `${c.author} · ` : ""}
-                              {c.version ? `v${c.version} · ` : ""}
-                              {c.catalog_label}
-                            </span>
                           </div>
                           <span
                             className="locaryn-tag"
@@ -1542,38 +1566,17 @@ export function ExtensionsSettings() {
                         </p>
                       </div>
 
-                      <div
-                        style={{
-                          marginTop: 12,
-                          paddingTop: 10,
-                          borderTop: "1px solid var(--border)",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        {c.homepage ? (
-                          <a
-                            href={c.homepage}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="locaryn-btn-ghost"
-                            style={{ fontSize: 11, padding: "3px 8px", textDecoration: "none" }}
-                            title="Ouvrir le dépôt GitHub"
-                          >
-                            GitHub ↗
-                          </a>
-                        ) : (
-                          <div />
-                        )}
+                      {/* Meme pied que les cartes du catalogue de modeles :
+                          l'etat a gauche, l'ouverture du tiroir a droite.
+                          L'installation directe reste la pour le cas courant ;
+                          le tiroir sert a choisir la version. */}
+                      <div className="locaryn-box-foot">
                         {c.installed ? (
                           <span className="locaryn-tag locaryn-tag-installed">installée</span>
                         ) : (
                           <button
                             type="button"
                             className="locaryn-btn-primary"
-                            style={{ fontSize: 12 }}
                             disabled={!canInstall || busy === c.id || updatingAll}
                             title={canInstall ? c.install_source : compat.hint}
                             onClick={() => installFromCatalog(c)}
@@ -1581,6 +1584,13 @@ export function ExtensionsSettings() {
                             {busy === c.id ? "Installation…" : "Installer"}
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className="locaryn-box-detail"
+                          onClick={() => setSelectedDetailEntry(c)}
+                        >
+                          Détail <Icon name="forward" size={14} />
+                        </button>
                       </div>
                     </div>
                   );
@@ -1604,353 +1614,145 @@ export function ExtensionsSettings() {
         />
       )}
 
-      {selectedDetailEntry && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="locaryn-modal-backdrop"
-          onClick={() => setSelectedDetailEntry(null)}
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.65)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 20,
-          }}
-        >
-          <div
-            className="locaryn-modal-panel"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              maxWidth: 580,
-              width: "100%",
-              maxHeight: "85vh",
-              display: "flex",
-              flexDirection: "column",
-              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: "16px 20px",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 12,
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
-                    {selectedDetailEntry.display_name}
-                  </h3>
-                  <span
-                    className="locaryn-tag"
-                    style={{
-                      background: "rgba(var(--accent-rgb), 0.15)",
-                      color: "var(--accent)",
-                    }}
-                  >
-                    {ECOSYSTEM_LABELS[selectedDetailEntry.ecosystem]}
-                  </span>
-                  {(selectedDetailEntry.is_beta ||
-                    selectedDetailEntry.version?.includes("beta") ||
-                    selectedDetailEntry.ecosystem === "locaryn") && (
-                    <span
-                      className="locaryn-tag"
-                      style={{
-                        background: "rgba(245, 158, 11, 0.15)",
-                        color: "#f59e0b",
-                        border: "1px solid rgba(245, 158, 11, 0.4)",
-                        fontWeight: 600,
-                      }}
+      {/* Le detail d'un paquet s'ouvre dans le meme tiroir que celui du
+          catalogue de modeles : meme geste, meme place a l'ecran, meme
+          structure d'en-tete. Porte dans `document.body` parce que
+          `.locaryn-app` porte un transform d'entree, qui ferait d'elle le bloc
+          conteneur de tout `position: fixed` descendant. */}
+      {selectedDetailEntry &&
+        createPortal(
+          (() => {
+            const c = selectedDetailEntry;
+            const compat = COMPAT[c.compat] ?? COMPAT.unsupported;
+            const beta = Boolean(
+              c.is_beta || c.version?.includes("beta") || c.ecosystem === "locaryn",
+            );
+            return (
+              <div className="locaryn-drawer-layer">
+                <button
+                  type="button"
+                  className="locaryn-drawer-scrim"
+                  aria-label="Fermer le détail"
+                  onClick={() => setSelectedDetailEntry(null)}
+                />
+                <aside className="locaryn-drawer" aria-label={`Détail de ${c.display_name}`}>
+                  <header className="locaryn-drawer-head">
+                    <div className="locaryn-drawer-ident">
+                      <span className="locaryn-box-brand">
+                        {c.author ? `${c.author} · ` : ""}
+                        {c.catalog_label}
+                      </span>
+                      <h2 className="locaryn-drawer-name">{c.display_name}</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="locaryn-drawer-close"
+                      title="Fermer"
+                      onClick={() => setSelectedDetailEntry(null)}
                     >
-                      Bêta · Non testé
-                    </span>
-                  )}
-                </div>
-                <div className="locaryn-field-hint" style={{ marginTop: 4 }}>
-                  {selectedDetailEntry.author ? `Par ${selectedDetailEntry.author} · ` : ""}
-                  {selectedDetailEntry.catalog_label}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="locaryn-btn-ghost"
-                style={{ fontSize: 16, lineHeight: 1, padding: "4px 8px" }}
-                onClick={() => setSelectedDetailEntry(null)}
-              >
-                ✕
-              </button>
-            </div>
+                      <Icon name="close" size={16} />
+                    </button>
+                  </header>
 
-            <div
-              style={{
-                padding: "16px 20px",
-                overflowY: "auto",
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-              }}
-            >
-              <div>
-                <h4
-                  style={{
-                    margin: "0 0 6px 0",
-                    fontSize: 13,
-                    textTransform: "uppercase",
-                    color: "var(--text-faint)",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Description
-                </h4>
-                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--text)" }}>
-                  {selectedDetailEntry.description ?? "Aucune description fournie pour ce paquet."}
-                </p>
-              </div>
+                  <div className="locaryn-drawer-body">
+                    <p className="locaryn-drawer-desc">
+                      {c.description ?? "Aucune description fournie pour ce paquet."}
+                    </p>
 
-              {selectedDetailEntry.homepage && (
-                <div>
-                  <a
-                    href={selectedDetailEntry.homepage}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="locaryn-btn-ghost"
-                    style={{
-                      fontSize: 12,
-                      padding: "4px 10px",
-                      textDecoration: "none",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    Voir le code source sur GitHub ↗
-                  </a>
-                </div>
-              )}
+                    <div className="locaryn-drawer-meta">
+                      <div>
+                        <span>Écosystème</span>
+                        <strong>{ECOSYSTEM_LABELS[c.ecosystem]}</strong>
+                      </div>
+                      <div>
+                        <span>Compatibilité</span>
+                        <strong title={compat.hint}>{compat.label}</strong>
+                      </div>
+                      <div>
+                        <span>Maturité</span>
+                        <strong>{beta ? "Bêta · non testé" : "Stable"}</strong>
+                      </div>
+                    </div>
 
-              <div>
-                <h4
-                  style={{
-                    margin: "0 0 10px 0",
-                    fontSize: 13,
-                    textTransform: "uppercase",
-                    color: "var(--text-faint)",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Versions disponibles
-                </h4>
-                <p className="locaryn-field-hint" style={{ margin: "0 0 10px 0", fontSize: 12 }}>
-                  Sélectionnez la version précise que vous souhaitez déployer pour votre profil :
-                </p>
+                    {c.advertised.length > 0 && (
+                      <div className="locaryn-drawer-caps">
+                        {c.advertised.map((a) => (
+                          <span key={a} className="locaryn-tag">
+                            {a}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                {(() => {
-                  const defaultVersions =
-                    selectedDetailEntry.versions && selectedDetailEntry.versions.length > 0
-                      ? selectedDetailEntry.versions
-                      : [
-                          {
-                            version: selectedDetailEntry.version ?? "1.0.0-beta.1",
-                            is_beta: Boolean(
-                              selectedDetailEntry.is_beta ||
-                                selectedDetailEntry.version?.includes("beta") ||
-                                selectedDetailEntry.ecosystem === "locaryn",
-                            ),
-                            summary: "Version Bêta (Pre-release) — non testée par des utilisateurs",
-                            tag: selectedDetailEntry.version
-                              ? `v${selectedDetailEntry.version}`
-                              : "v1.0.0-beta.1",
-                            released_at: "2026-08-28",
-                            install_source: selectedDetailEntry.install_source,
-                          },
-                          {
-                            version: "0.9.0",
-                            is_beta: false,
-                            summary: "Version de référence stable",
-                            tag: "v0.9.0",
-                            released_at: "2026-08-20",
-                            install_source: `${selectedDetailEntry.install_source}#v0.9.0`,
-                          },
-                          {
-                            version: "0.8.5",
-                            is_beta: false,
-                            summary: "Version précédente stable",
-                            tag: "v0.8.5",
-                            released_at: "2026-08-15",
-                            install_source: `${selectedDetailEntry.install_source}#v0.8.5`,
-                          },
-                          {
-                            version: "0.8.0",
-                            is_beta: false,
-                            summary: "Version initiale du socle",
-                            tag: "v0.8.0",
-                            released_at: "2026-08-01",
-                            install_source: `${selectedDetailEntry.install_source}#v0.8.0`,
-                          },
-                        ];
+                    {c.homepage && (
+                      <a
+                        href={c.homepage}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="locaryn-btn-ghost locaryn-drawer-source"
+                      >
+                        <Icon name="code" size={15} /> Voir le code source
+                      </a>
+                    )}
 
-                  const displayedVersions = showAllVersions
-                    ? defaultVersions
-                    : defaultVersions.slice(0, 3);
-                  const matchingInstalled = installed.find(
-                    (e) =>
-                      e.name === selectedDetailEntry.name ||
-                      e.id.endsWith(`:${selectedDetailEntry.name}`),
-                  );
-
-                  return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {displayedVersions.map((v) => {
-                        const isCurrentInstalled =
-                          matchingInstalled &&
-                          (matchingInstalled.version === v.version ||
-                            matchingInstalled.version === v.tag);
-
+                    <div className="locaryn-box-variants">
+                      <span className="locaryn-box-variants-title">Versions disponibles</span>
+                      {versionsOf(c).map((v) => {
+                        const posee = installed.find(
+                          (e) => e.name === c.name || e.id.endsWith(`:${c.name}`),
+                        );
+                        const courante =
+                          posee && (posee.version === v.version || posee.version === v.tag);
                         return (
                           <div
                             key={v.version}
-                            style={{
-                              padding: "10px 14px",
-                              borderRadius: 8,
-                              background: v.is_beta
-                                ? "rgba(245, 158, 11, 0.08)"
-                                : "rgba(16, 185, 129, 0.08)",
-                              border: `1px solid ${v.is_beta ? "rgba(245, 158, 11, 0.35)" : "rgba(16, 185, 129, 0.35)"}`,
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: 12,
-                            }}
+                            className="locaryn-box-variant-row locaryn-variant-stack"
                           >
-                            <div style={{ minWidth: 0 }}>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  flexWrap: "wrap",
-                                }}
-                              >
+                            <div className="locaryn-variant-head">
+                              <div className="locaryn-box-variant-info">
+                                <span className="locaryn-variant-size">v{v.version}</span>
                                 <span
-                                  style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}
+                                  className={`locaryn-tag${v.is_beta ? " locaryn-tag-beta" : " locaryn-tag-installed"}`}
                                 >
-                                  v{v.version}
-                                </span>
-                                <span
-                                  className="locaryn-tag"
-                                  style={{
-                                    fontSize: 10,
-                                    padding: "1px 6px",
-                                    background: v.is_beta
-                                      ? "rgba(245, 158, 11, 0.2)"
-                                      : "rgba(16, 185, 129, 0.2)",
-                                    color: v.is_beta ? "#f59e0b" : "#10b981",
-                                    border: `1px solid ${v.is_beta ? "rgba(245, 158, 11, 0.4)" : "rgba(16, 185, 129, 0.4)"}`,
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {v.is_beta ? "Bêta · Non testé" : "Stable (Vérifié)"}
+                                  {v.is_beta ? "Bêta · non testé" : "Stable"}
                                 </span>
                                 {v.released_at && (
-                                  <span className="locaryn-field-hint" style={{ fontSize: 11 }}>
-                                    {v.released_at}
-                                  </span>
+                                  <span className="locaryn-stat-vram">{v.released_at}</span>
                                 )}
                               </div>
-                              <div
-                                style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 2 }}
-                              >
-                                {v.summary}
+                              <div className="locaryn-variant-actions">
+                                {courante ? (
+                                  <span className="locaryn-tag locaryn-tag-installed">
+                                    Installée
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="locaryn-btn-primary"
+                                    disabled={busy === c.id || updatingAll}
+                                    onClick={() => installSpecificVersion(c, v)}
+                                  >
+                                    {busy === c.id
+                                      ? "Installation…"
+                                      : posee
+                                        ? `Basculer (v${v.version})`
+                                        : `Installer v${v.version}`}
+                                  </button>
+                                )}
                               </div>
                             </div>
-
-                            <div style={{ flexShrink: 0 }}>
-                              {isCurrentInstalled ? (
-                                <span
-                                  className="locaryn-tag locaryn-tag-installed"
-                                  style={{ fontSize: 11 }}
-                                >
-                                  Installée
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="locaryn-btn-primary"
-                                  style={{
-                                    fontSize: 12,
-                                    padding: "4px 10px",
-                                    background: v.is_beta ? "rgba(245, 158, 11, 0.9)" : undefined,
-                                    borderColor: v.is_beta ? "#f59e0b" : undefined,
-                                  }}
-                                  disabled={busy === selectedDetailEntry.id || updatingAll}
-                                  onClick={() => installSpecificVersion(selectedDetailEntry, v)}
-                                >
-                                  {busy === selectedDetailEntry.id
-                                    ? "Installation…"
-                                    : matchingInstalled
-                                      ? `Basculer (v${v.version})`
-                                      : `Installer v${v.version}`}
-                                </button>
-                              )}
-                            </div>
+                            {v.summary && <p className="locaryn-box-variant-note">{v.summary}</p>}
                           </div>
                         );
                       })}
-
-                      {defaultVersions.length > 3 && (
-                        <button
-                          type="button"
-                          className="locaryn-btn-ghost"
-                          style={{ fontSize: 12, marginTop: 4 }}
-                          onClick={() => setShowAllVersions((v) => !v)}
-                        >
-                          {showAllVersions
-                            ? "▲ Réduire aux 3 dernières versions"
-                            : `▼ Afficher les versions antérieures (${defaultVersions.length - 3} autres)`}
-                        </button>
-                      )}
                     </div>
-                  );
-                })()}
+                  </div>
+                </aside>
               </div>
-            </div>
-
-            <div
-              style={{
-                padding: "12px 20px",
-                borderTop: "1px solid var(--border)",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 8,
-              }}
-            >
-              <button
-                type="button"
-                className="locaryn-btn-ghost"
-                onClick={() => setSelectedDetailEntry(null)}
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            );
+          })(),
+          document.body,
+        )}
 
       {configuring && (
         <ExtensionConfigPanel

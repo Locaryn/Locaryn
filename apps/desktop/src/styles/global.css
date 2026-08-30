@@ -4928,37 +4928,6 @@ pre.md-code {
   transition: border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
-/* L'etoile de favori : ancree au coin, avec une cible de 32 px et un retrait
-   sur l'en-tete pour qu'elle ne recouvre jamais le nom du modele. */
-.locaryn-box-fav {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: 9px;
-  background: none;
-  color: var(--text-faint);
-  cursor: pointer;
-  transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
-}
-.locaryn-box-fav:hover {
-  background: var(--surface-2);
-  color: var(--text-dim);
-}
-.locaryn-box-fav-on,
-.locaryn-box-fav-on:hover {
-  color: var(--warn);
-}
-.locaryn-box-card .locaryn-box-head {
-  padding-right: 30px;
-}
-
 .locaryn-box-card:hover {
   border-color: var(--border-strong);
   transform: translateY(-2px);
@@ -9923,6 +9892,13 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   flex-direction: column;
   gap: 22px;
 }
+/* Le corps defile ; ses sections ne se compriment pas. Sans ceci, un tiroir
+   charge (la liste des versions d'un paquet) ecrasait la grille de
+   metadonnees a la hauteur de sa bordure — 2 px — au lieu de la pousser hors
+   de la zone visible. */
+.locaryn-drawer-body > * {
+  flex: none;
+}
 /* Une ligne de taille dans le tiroir dispose de 540 px, pas de la largeur
    d'une carte : sans retour a la ligne, « 4B - rapide » et « ~2.3 Go » se
    cassaient chacun sur trois lignes. On fait passer les groupes a la ligne
@@ -9955,6 +9931,34 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-variant-head .locaryn-variant-size,
 .locaryn-variant-head .locaryn-stat-vram {
   white-space: nowrap;
+}
+/* Le tiroir des extensions : capacites annoncees, lien vers la source, et la
+   note d'une version. Le reste (en-tete, grille de metadonnees, lignes de
+   variantes) est celui du catalogue de modeles, sans rien redefinir. */
+.locaryn-drawer-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.locaryn-drawer-source {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+.locaryn-box-variant-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+/* Une prerelease se signale en ambre, la ou une version stable reprend le vert
+   deja utilise par « installee ». */
+.locaryn-tag-beta {
+  background: rgba(var(--warn-rgb), 0.16);
+  color: var(--warn);
+  border: 1px solid rgba(var(--warn-rgb), 0.38);
 }
 .locaryn-drawer-desc {
   margin: 0;

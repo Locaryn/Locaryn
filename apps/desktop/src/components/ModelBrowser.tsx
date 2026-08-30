@@ -238,8 +238,6 @@ const COMPAT_RANK: Record<CompatLevel, number> = {
   unknown: 5,
 };
 
-/** localStorage key for the user's favorite models (stable across refreshes). */
-const FAVORITES_KEY = "locaryn_model_favorites_v1";
 /** localStorage key for the AirLLM (low-VRAM inference engine) toggle. */
 const AIRLLM_KEY = "locaryn_model_airllm_v1";
 
@@ -633,25 +631,6 @@ export function ModelBrowser({
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
   const [selectedQuants, setSelectedQuants] = useState<Record<string, string>>({});
 
-  // Favorites — persisted in localStorage so they survive refreshes/restarts.
-  const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(FAVORITES_KEY);
-      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-  const [onlyFavorites, setOnlyFavorites] = useState(false);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favorites]));
-    } catch {
-      // localStorage unavailable — favorites just won't persist.
-    }
-  }, [favorites]);
-
   useEffect(() => {
     try {
       localStorage.setItem(AIRLLM_KEY, airllmEnabled ? "1" : "0");
@@ -659,15 +638,6 @@ export function ModelBrowser({
       // localStorage unavailable — the toggle just won't persist.
     }
   }, [airllmEnabled]);
-
-  function toggleFavorite(id: string) {
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   // Dynamic API Models & Registry
   const [registryModels, setRegistryModels] = useState<ModelFamily[]>([]);
@@ -908,10 +878,6 @@ export function ModelBrowser({
           return null;
         }
 
-        if (onlyFavorites && !favorites.has(f.id)) {
-          return null;
-        }
-
         return {
           ...f,
           variants: matchingVariants,
@@ -948,8 +914,6 @@ export function ModelBrowser({
     onlyFinetunable,
     riskFilter,
     onlyRecommended,
-    onlyFavorites,
-    favorites,
     capabilityFamilies,
     visibleCategories,
     hardwareSpec,
@@ -1626,12 +1590,7 @@ export function ModelBrowser({
   const [drawerFamily, setDrawerFamily] = useState<string | null>(null);
 
   const isFilterActive =
-    size !== "all" ||
-    query !== "" ||
-    brand !== "all" ||
-    onlyRecommended ||
-    riskFilter !== "all" ||
-    onlyFavorites;
+    size !== "all" || query !== "" || brand !== "all" || onlyRecommended || riskFilter !== "all";
 
   return (
     <div className="locaryn-models">
@@ -2009,7 +1968,7 @@ export function ModelBrowser({
         </div>
 
         <div className="locaryn-models-toolbar" style={{ marginTop: "8px" }}>
-          {/* Recommandés, sûreté, réentraînables, favoris, et l'analyse du PC.
+          {/* Recommandés, sûreté, réentraînables, et l'analyse du PC.
               La maquette ne met que les tailles ici — le reste est replié. */}
           {advancedOpen && (
             <div className="locaryn-chips-extra">
@@ -2101,24 +2060,6 @@ export function ModelBrowser({
                 title="Afficher uniquement les modèles NSFW / sans garde-fous connus"
               >
                 NSFW
-              </button>
-              <button
-                type="button"
-                className={`locaryn-chip locaryn-chip-ft${onlyFavorites ? " locaryn-chip-on" : ""}`}
-                style={
-                  onlyFavorites
-                    ? {
-                        background: "rgba(255, 200, 87, 0.18)",
-                        borderColor: "var(--warn)",
-                        color: "var(--warn)",
-                      }
-                    : {}
-                }
-                onClick={() => setOnlyFavorites((prev) => !prev)}
-                title="Afficher uniquement les modèles marqués comme favoris"
-              >
-                <Icon name="star" size={15} /> Favoris
-                {favorites.size > 0 ? ` (${favorites.size})` : ""}
               </button>
             </div>
           )}
@@ -2327,18 +2268,6 @@ export function ModelBrowser({
 
             return (
               <div key={f.id} className={`locaryn-box-card locaryn-compat-${compat.level}`}>
-                {/* L'etoile est ancree au coin de la carte, pas posee dans le
-                    flux des badges : quand ceux-ci passaient a la ligne, elle
-                    partait seule sur une rangee vide sous les tags. */}
-                <button
-                  type="button"
-                  className={`locaryn-box-fav${favorites.has(f.id) ? " locaryn-box-fav-on" : ""}`}
-                  onClick={() => toggleFavorite(f.id)}
-                  aria-pressed={favorites.has(f.id)}
-                  title={favorites.has(f.id) ? "Retirer des favoris" : "Ajouter aux favoris"}
-                >
-                  <Icon name="star" size={15} />
-                </button>
                 <div className="locaryn-box-head">
                   <div style={{ minWidth: 140, flex: "1 1 55%" }}>
                     <span className="locaryn-box-brand" title={f.brand}>
@@ -2545,24 +2474,6 @@ export function ModelBrowser({
                       </div>
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleFavorite(f.id)}
-                    aria-pressed={favorites.has(f.id)}
-                    title={favorites.has(f.id) ? "Retirer des favoris" : "Ajouter aux favoris"}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "16px",
-                      lineHeight: 1,
-                      padding: "10px 14px",
-                      color: favorites.has(f.id) ? "var(--warn)" : "var(--text-faint)",
-                      flex: "none",
-                    }}
-                  >
-                    <Icon name="star" size={15} />
-                  </button>
                 </div>
 
                 {open && (
