@@ -261,7 +261,7 @@ impl CatalogClient {
                 // segments d'appairage : offrir la precedente installerait un
                 // morph qui ne contribue nulle part dans cette version de
                 // l'application.
-                "morph-travel-tunnel" => ("3.0.0", &["2.1.0", "2.0.0"]),
+                "morph-travel-tunnel" => ("3.1.0", &["3.0.0", "2.1.0"]),
                 "morph-3d-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
                 "morph-video-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
                 "morph-music-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
