@@ -14,6 +14,7 @@ import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
 import { TopBar } from "./components/TopBar";
+import { UpdateDialog } from "./components/UpdateDialog";
 import { ExtensionScreen } from "./components/extensions/ExtensionScreen";
 import { useTheme } from "./hooks/useTheme";
 import { FREE_CHAT_PATH } from "./lib/constants";
@@ -1075,6 +1076,11 @@ export function App() {
           activeCapabilities={activeCapabilities}
           extensions={activeExtensions}
         />
+
+        {/* La fenetre de mise a jour vit au-dessus de tout, y compris de la
+          surcouche : elle ne s'affiche que lorsqu'il y a quelque chose a dire,
+          et ce qu'elle dit vaut pour l'application entiere. */}
+        <UpdateDialog />
 
         {/* Les ecrans autres que le chat s'ouvrent par-dessus lui, pas a sa
             place.

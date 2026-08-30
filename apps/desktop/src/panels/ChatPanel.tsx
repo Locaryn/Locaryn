@@ -1,5 +1,5 @@
-import { Icon, LoMorph, isIconName } from "@locaryn/ui-core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Icon, LoProgress, isIconName } from "@locaryn/ui-core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
@@ -7,6 +7,7 @@ import { MessageBubble } from "../components/chat/MessageBubble";
 import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { ToolCard } from "../components/chat/ToolCard";
+import { type ToolEntry, ToolRun } from "../components/chat/ToolRun";
 import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
@@ -242,6 +243,15 @@ export function ChatPanel({
   const [reasoning, setReasoning] = useState<ReasoningLevel>("auto");
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
+  /**
+   * Ce qu'on attend avant le premier jeton.
+   *
+   * `charge` : le modele n'est pas en memoire, il faut l'y mettre — une
+   * attente longue, qui merite d'etre annoncee. `attend` : le modele est
+   * charge, la reponse arrive — quelques centaines de millisecondes, ou un
+   * curseur suffit. `null` : le texte coule, il se montre tout seul.
+   */
+  const [attente, setAttente] = useState<"charge" | "attend" | null>(null);
   const [activeModel, setActiveModel] = useState<string>("");
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [quickModelOpen, setQuickModelOpen] = useState(false);
@@ -514,6 +524,11 @@ export function ChatPanel({
   }
 
   function handleEvent(ev: StreamEvent) {
+    // Des que quelque chose arrive, l'attente est finie : le contenu prend le
+    // relais de l'indicateur.
+    if (ev.type === "token" || ev.type === "tool_call") {
+      setAttente(null);
+    }
     if (ev.type === "token") {
       fullTextRef.current += ev.text;
       setItems((prev) => {
@@ -717,6 +732,16 @@ export function ChatPanel({
     // loading, intent detection) must never leave the user staring at a frozen
     // composer after pressing Enter.
     setStreaming(true);
+    // Le modele est-il deja en memoire ? La reponse decide de ce qu'on montre
+    // pendant l'attente. La residence est demandee sans etre attendue : une
+    // sonde lente ne doit pas retarder l'envoi.
+    setAttente("attend");
+    void core
+      .modelResidency()
+      .then((r) => setAttente((prev) => (prev === "attend" && !r.loaded ? "charge" : prev)))
+      .catch(() => {
+        // Residence inconnue : on garde l'attente courte, qui ne promet rien.
+      });
     setFollowups([]);
     fullTextRef.current = "";
     setItems((prev) => [
@@ -755,6 +780,7 @@ export function ChatPanel({
         });
         if (ran) {
           setStreaming(false);
+          setAttente(null);
           return;
         }
       } catch {
@@ -778,6 +804,7 @@ export function ChatPanel({
       setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `send failed: ${e}` }]);
     } finally {
       setStreaming(false);
+      setAttente(null);
 
       // Update the duration estimator so it can learn how fast each model
       // produces answers on this machine.
@@ -1041,6 +1068,40 @@ export function ChatPanel({
     return -1;
   })();
 
+  /**
+   * Les appels d'outils consecutifs, replies en un seul bloc.
+   *
+   * Une carte par appel separait chaque phrase de la reponse de la suivante :
+   * une reponse qui lit six fichiers et lance deux commandes devenait huit
+   * cartes et deux paragraphes. Les appels qui se suivent forment desormais
+   * une ligne — « Exécuté 4 commandes » — que l'on deplie si on veut voir.
+   */
+  const blocs = useMemo(() => {
+    const sortie: Array<
+      { sorte: "item"; item: ChatItem } | { sorte: "outils"; id: string; entrees: ToolEntry[] }
+    > = [];
+    for (const it of items) {
+      if (it.kind !== "tool") {
+        sortie.push({ sorte: "item", item: it });
+        continue;
+      }
+      const entree: ToolEntry = {
+        id: it.id,
+        tool: it.tool,
+        args: it.args,
+        status: it.status,
+        output: it.output,
+      };
+      const dernier = sortie[sortie.length - 1];
+      if (dernier && dernier.sorte === "outils") {
+        dernier.entrees.push(entree);
+      } else {
+        sortie.push({ sorte: "outils", id: it.id, entrees: [entree] });
+      }
+    }
+    return sortie;
+  }, [items]);
+
   const empty = items.length === 0 && !streaming;
   // On the home screen there is no session yet — sending creates one.
   const canCompose = !!sessionId || !!onCreateSessionForPrompt;
@@ -1138,7 +1199,11 @@ export function ChatPanel({
           </div>
         ) : (
           <div className="locaryn-chat-column">
-            {items.map((it, i) => {
+            {blocs.map((bloc, i) => {
+              if (bloc.sorte === "outils") {
+                return <ToolRun key={bloc.id} entries={bloc.entrees} />;
+              }
+              const it = bloc.item;
               if (it.kind === "msg") {
                 return (
                   // Une entrée en cascade, comme sur le web et le téléphone :
@@ -1172,26 +1237,30 @@ export function ChatPanel({
                   />
                 );
               }
-              if (it.kind === "tool") {
-                return (
-                  <ToolCard
-                    key={it.id}
-                    tool={it.tool}
-                    args={it.args}
-                    status={it.status}
-                    output={it.output}
-                  />
-                );
-              }
+              // Les appels d'outils sont deja partis dans les blocs groupes ;
+              // ce qui reste ici est une ligne de journal.
+              if (it.kind !== "log") return null;
               return (
                 <div key={it.id} className="locaryn-chat-log">
                   {it.text}
                 </div>
               );
             })}
-            {streaming && (
-              <div className="locaryn-thinking" aria-live="polite">
-                <LoMorph label="Le modèle réfléchit" />
+            {/* Rien pendant que le texte coule : le flux est sa propre preuve
+                de vie. Un curseur tant que le premier jeton n'est pas la, et
+                une onde indeterminee — sans coche — quand il faut d'abord
+                monter le modele en memoire, la seule attente assez longue pour
+                meriter d'etre annoncee. */}
+            {attente === "charge" && (
+              <div className="locaryn-chargement" aria-live="polite">
+                <LoProgress value={null} />
+                <span className="locaryn-chargement-label">Chargement du modèle en mémoire…</span>
+              </div>
+            )}
+            {attente === "attend" && (
+              <div className="locaryn-attente" aria-live="polite">
+                <span className="locaryn-caret" aria-hidden="true" />
+                <span className="locaryn-sr-only">Le modèle répond</span>
               </div>
             )}
 
