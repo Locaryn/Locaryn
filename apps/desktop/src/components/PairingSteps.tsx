@@ -35,12 +35,20 @@ export const REMOTE_STEPS: PairingStep[] = [
 /**
  * L'index de l'étape en cours, qui avance seul jusqu'au bout de la liste.
  * Rend `steps.length` quand tout est franchi.
+ *
+ * `run` est un numero de passage, pas un « c'est en cours » : il s'incremente
+ * a chaque nouvelle fabrication. La version precedente prenait le drapeau
+ * d'occupation, et le remettait a zero des qu'il retombait — or le service
+ * repond en quelques dizaines de millisecondes la ou les etapes en durent
+ * 1800. Le compte repartait donc a zero avant d'avoir fini, et la condition
+ * d'affichage du QR (« toutes les etapes franchies ») n'etait jamais vraie :
+ * l'ecran restait indefiniment sur « Découverte sur le réseau ».
  */
-export function useStepProgress(steps: PairingStep[], running: boolean): number {
+export function useStepProgress(steps: PairingStep[], run: number): number {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    if (!running) {
+    if (run === 0) {
       setIndex(0);
       return;
     }
@@ -60,7 +68,7 @@ export function useStepProgress(steps: PairingStep[], running: boolean): number 
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [steps, running]);
+  }, [steps, run]);
 
   return index;
 }

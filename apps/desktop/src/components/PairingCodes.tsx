@@ -1,12 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  type PairingCode,
-  type PairingMode,
-  type ServerStatus,
-  type TravelStatus,
-  core,
-} from "../lib/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type InstalledExtension, type PairingCode, type ServerStatus, core } from "../lib/core";
 import {
   LOCAL_STEPS,
   PairingCheckerboard,
@@ -14,6 +8,8 @@ import {
   REMOTE_STEPS,
   useStepProgress,
 } from "./PairingSteps";
+import { DynamicPluginWidget } from "./extensions/DynamicPluginWidget";
+import { type ResolvedSlotContribution, getSlotContributions } from "./extensions/SlotRegistry";
 
 /**
  * Panneau d'appairage.
@@ -21,44 +17,32 @@ import {
  * Il n'y a **pas** de code à saisir : le QR suffit. Il porte l'adresse et
  * l'empreinte du certificat, et le téléphone n'a rien à taper.
  *
- * Deux modes sont natifs — le réseau local et l'accès distant par port ouvert.
- * Le troisième segment, le tunnel, n'affiche aucun QR : rien n'est natif, ce
- * sont les extensions qui déclarent leur propre mode d'appairage.
+ * Un seul mode est natif : le réseau local. L'accès distant et le tunnel ne
+ * sont pas des variantes de celui-ci — ce sont d'autres transports, avec
+ * d'autres risques, et l'application seule n'en propose aucun. Une extension
+ * qui les apporte declare ses propres segments sur le point d'extension
+ * ci-dessous : c'est elle qui nomme, decrit et dessine ce qu'elle ajoute.
  */
-type QrChoice = PairingMode | "home";
+const SLOT_APPAIRAGE = "settings.server.pairing";
 
-const SEGMENTS: { id: QrChoice; label: string; description: string }[] = [
-  {
-    id: "local",
-    label: "Réseau local",
-    description:
-      "Pour un téléphone sur le même Wi‑Fi. Le QR porte l'adresse locale et l'empreinte du certificat ; mDNS évite la saisie.",
-  },
-  {
-    id: "public",
-    label: "Accès distant",
-    description:
-      "Pour une adresse publique ou un port redirigé vers cette machine. Le QR porte l'adresse, le port et l'empreinte.",
-  },
-  {
-    id: "tunnel",
-    label: "Tunnel",
-    description: "Rien n'est natif ici : ce sont les extensions qui ouvrent un tunnel sortant.",
-  },
-];
-
-const HOME_SEGMENT = {
-  id: "home" as const,
-  label: "Retour au local",
-  description: "À scanner pour repasser un téléphone sur l'adresse locale.",
+/** Le segment natif, et le seul que l'application connaisse d'elle-même. */
+const SEGMENT_LOCAL: {
+  id: string;
+  label: string;
+  description: string;
+  apport?: ResolvedSlotContribution;
+} = {
+  id: "local",
+  label: "Réseau local",
+  description:
+    "Pour un téléphone sur le même Wi‑Fi. Le QR porte l'adresse locale et l'empreinte du certificat ; mDNS évite la saisie.",
 };
 
-export function PairingCodes({ remoteEnabled = false }: { remoteEnabled?: boolean }) {
-  const [mode, setMode] = useState<QrChoice>("local");
-  const [adresse, setAdresse] = useState("");
+export function PairingCodes() {
+  const [mode, setMode] = useState<string>("local");
   const [code, setCode] = useState<PairingCode | null>(null);
   const [server, setServer] = useState<ServerStatus | null>(null);
-  const [remote, setRemote] = useState<TravelStatus | null>(null);
+  const [extensions, setExtensions] = useState<InstalledExtension[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -66,26 +50,71 @@ export function PairingCodes({ remoteEnabled = false }: { remoteEnabled?: boolea
   const [enlarged, setEnlarged] = useState(false);
   /** Le sens du glissement : la carte suit la direction du déplacement. */
   const [sens, setSens] = useState<"a" | "b">("a");
-  const precedent = useRef<QrChoice>("local");
+  const precedent = useRef<string>("local");
+  /** Un numero de passage : il s'incremente a chaque fabrication demandee. */
+  const [passage, setPassage] = useState(0);
 
-  const steps = mode === "local" ? LOCAL_STEPS : REMOTE_STEPS;
-  const step = useStepProgress(steps, busy);
+  // Les segments apportes par une extension. Elle en declare le nom, la
+  // description et le panneau ; l'application ne fait que les ranger a la
+  // suite du sien.
+  const segments = useMemo<
+    Array<{
+      id: string;
+      label: string;
+      description: string;
+      apport?: ResolvedSlotContribution;
+    }>
+  >(
+    () => [
+      SEGMENT_LOCAL,
+      ...getSlotContributions(extensions, SLOT_APPAIRAGE).map((c) => ({
+        id: `${c.extensionId}:${c.id}`,
+        label: c.label ?? c.id,
+        description: c.hint ?? "",
+        apport: c,
+      })),
+    ],
+    [extensions],
+  );
+  const choisi = segments.find((m) => m.id === mode) ?? SEGMENT_LOCAL;
+  const natif = choisi.apport === undefined;
+
+  const steps = LOCAL_STEPS;
+  const step = useStepProgress(steps, passage);
   // Le QR n'apparaît que quand le service a répondu ET que les étapes sont
   // toutes franchies : afficher un code sous une étape en cours mentirait.
   const pret = !busy && step >= steps.length && Boolean(code?.qr_svg);
 
+  useEffect(() => {
+    let annule = false;
+    const lire = () => {
+      core
+        .listExtensions()
+        .then((l) => {
+          if (!annule) setExtensions(l);
+        })
+        .catch(() => {
+          if (!annule) setExtensions([]);
+        });
+    };
+    lire();
+    window.addEventListener("locaryn:extensions-changed", lire);
+    return () => {
+      annule = true;
+      window.removeEventListener("locaryn:extensions-changed", lire);
+    };
+  }, []);
+
   const refreshAvailability = useCallback(async () => {
     try {
-      const nextServer = await core.serverStatus();
-      setServer(nextServer);
+      setServer(await core.serverStatus());
       setAvailabilityError(null);
-      setRemote(remoteEnabled ? await core.travelStatus() : null);
     } catch (e) {
       // Le démon peut être en train de démarrer ou de s'arrêter. Ce n'est pas
       // encore une erreur de QR : le prochain rafraîchissement tranchera.
       setAvailabilityError(String(e));
     }
-  }, [remoteEnabled]);
+  }, []);
 
   useEffect(() => {
     void refreshAvailability();
@@ -96,17 +125,13 @@ export function PairingCodes({ remoteEnabled = false }: { remoteEnabled?: boolea
     return () => window.clearInterval(timer);
   }, [refreshAvailability]);
 
-  const charger = useCallback(async (m: QrChoice, url?: string) => {
+  const charger = useCallback(async () => {
     setBusy(true);
     setError(null);
     setCode(null);
+    setPassage((n) => n + 1);
     try {
-      if (m === "home") {
-        const home = await core.travelHomeCode();
-        setCode({ mode: "local", url: home.link ?? "", qr_svg: home.qr_svg ?? "" });
-      } else {
-        setCode(await core.pairingCode(m as PairingMode, url));
-      }
+      setCode(await core.pairingCode("local"));
     } catch (e) {
       setCode(null);
       setError(String(e));
@@ -115,35 +140,28 @@ export function PairingCodes({ remoteEnabled = false }: { remoteEnabled?: boolea
     }
   }, []);
 
-  // Le code local apparaît dès que le serveur est en écoute. L'accès distant
-  // attend une adresse, et le tunnel n'a rien de natif à montrer.
+  // Le code local apparaît dès que le serveur est en écoute. Un segment apporte
+  // par une extension a son propre panneau : rien a fabriquer ici.
   useEffect(() => {
-    if (!server?.running || mode === "public" || mode === "tunnel") {
+    if (!server?.running || !natif) {
       setCode(null);
       setError(null);
       return;
     }
-    if (mode === "home" && !remote?.active) {
-      setCode(null);
-      setError(null);
-      return;
-    }
-    void charger(mode);
-  }, [mode, server?.running, remote?.active, charger]);
+    void charger();
+  }, [natif, server?.running, charger]);
 
+  // Le segment choisi vient de disparaitre — l'extension a ete desactivee ou
+  // retiree. On revient au seul mode que l'application tient d'elle-meme.
   useEffect(() => {
-    if (remoteEnabled || mode !== "home") return;
+    if (segments.some((m) => m.id === mode)) return;
     setMode("local");
-    setCode(null);
     precedent.current = "local";
-  }, [remoteEnabled, mode]);
+  }, [segments, mode]);
 
-  const segments: typeof SEGMENTS =
-    remoteEnabled && remote?.active ? [...SEGMENTS, HOME_SEGMENT] : SEGMENTS;
-  const choisi = segments.find((m) => m.id === mode) ?? SEGMENTS[0];
   const serverStopped = server !== null && !server.running;
 
-  function choisir(next: QrChoice) {
+  function choisir(next: string) {
     const from = segments.findIndex((x) => x.id === precedent.current);
     const to = segments.findIndex((x) => x.id === next);
     precedent.current = next;
@@ -169,68 +187,35 @@ export function PairingCodes({ remoteEnabled = false }: { remoteEnabled?: boolea
         Rien à saisir sur le téléphone : le code porte l'adresse et l'empreinte du certificat.
       </p>
 
-      <div className="locaryn-segmented locaryn-pairing-segments" role="group">
-        {segments.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            className={`locaryn-segment${mode === m.id ? " locaryn-segment-on" : ""}`}
-            aria-pressed={mode === m.id}
-            onClick={() => choisir(m.id)}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
+      {/* Un seul segment ne se choisit pas : sans extension installee, le
+          selecteur n'offrirait qu'une option deja active. */}
+      {segments.length > 1 && (
+        <div className="locaryn-segmented locaryn-pairing-segments" role="group">
+          {segments.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={`locaryn-segment${mode === m.id ? " locaryn-segment-on" : ""}`}
+              aria-pressed={mode === m.id}
+              onClick={() => choisir(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div key={mode} className={`locaryn-pairing-card locaryn-mode-${sens}`}>
         <p className="locaryn-pairing-description">{choisi.description}</p>
 
-        {/* ── Le tunnel n'est pas natif : il vit dans une extension ── */}
-        {mode === "tunnel" && (
-          <div className="locaryn-pairing-notice">
-            <Icon name="extensions" size={15} />
-            <span>
-              Le tunnel sortant est apporté par une <strong>extension</strong>, qui déclare son
-              propre mode d'appairage. Installez-la depuis Paramètres → Morphs &amp; Skills.
-            </span>
-          </div>
+        {/* ── Ce qu'une extension ajoute, c'est elle qui le dessine ──
+            L'application ne connait ni son transport ni sa facon d'appairer :
+            elle lui prete la place et le style de la carte, rien de plus. */}
+        {choisi.apport && (
+          <DynamicPluginWidget contribution={choisi.apport} className="locaryn-pairing-ext" />
         )}
 
-        {mode === "public" && (
-          <div className="locaryn-pairing-public">
-            <label className="locaryn-pairing-select-label" htmlFor="locaryn-pairing-address">
-              Adresse publique et port
-            </label>
-            <div className="locaryn-pairing-public-row">
-              <input
-                id="locaryn-pairing-address"
-                className="locaryn-input"
-                placeholder="maison.exemple:7443"
-                value={adresse}
-                onChange={(e) => {
-                  setAdresse(e.target.value);
-                  setError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && server?.running && adresse.trim()) {
-                    void charger("public", adresse);
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className="locaryn-btn-ghost"
-                disabled={busy || !server?.running || !adresse.trim()}
-                onClick={() => void charger("public", adresse)}
-              >
-                Générer
-              </button>
-            </div>
-          </div>
-        )}
-
-        {serverStopped && mode !== "tunnel" && (
+        {serverStopped && natif && (
           <div className="locaryn-pairing-notice">
             <Icon name="server" size={15} />
             <span>

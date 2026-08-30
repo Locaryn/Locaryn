@@ -418,7 +418,7 @@ export function SettingsView({
                 {remoteEnabled && <TravelSettings />}
                 <ConnectionSettings />
               </div>
-              <PairingCodes remoteEnabled={remoteEnabled} />
+              <PairingCodes />
             </div>
           )}
 
