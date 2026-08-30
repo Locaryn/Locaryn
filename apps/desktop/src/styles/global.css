@@ -296,8 +296,21 @@ body.locaryn-resizing .locaryn-resizer::after {
    on travaille) vers le bas (où on va). La destination courante prend le
    fond d'accent, pas le fond plein — l'accent plein reste au bouton. */
 .locaryn-rail-nav {
+  /* Collee en bas du rail, et collante : sans `sticky`, une longue liste de
+     conversations poussait les destinations hors du rail et il fallait
+     defiler pour les retrouver — alors qu'ailleurs elles etaient posees en
+     bas. Le menu changeait donc de place selon l'ecran. Le fond opaque et les
+     marges negatives couvrent la largeur du rail pendant que le contenu passe
+     derriere. */
+  position: sticky;
+  bottom: calc(var(--space-6) * -1);
+  z-index: 1;
   margin-top: auto;
-  padding-top: var(--space-6);
+  margin-left: calc(var(--space-4) * -1);
+  margin-right: calc(var(--space-4) * -1);
+  margin-bottom: calc(var(--space-6) * -1);
+  padding: var(--space-6) var(--space-4);
+  background: var(--surface);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -9687,11 +9700,6 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 
 /* Le rail hors du chat : la navigation, rien d'autre. Elle remonte en haut —
    il n'y a plus de liste au-dessus pour la pousser en bas. */
-.locaryn-left-nav-only .locaryn-rail-nav {
-  margin-top: 0;
-  padding-top: 0;
-}
-
 /* ── En-tête de vue : les chiffres, puis les actions ──
    La maquette range les compteurs sous la description, en mono, et pose les
    boutons dessous à gauche. Au coin haut-droit, ils se disputaient la ligne

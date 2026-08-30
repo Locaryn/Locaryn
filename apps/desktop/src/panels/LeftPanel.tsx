@@ -241,35 +241,42 @@ export function LeftPanel({
     [activeCapabilities, installedExtensions],
   );
 
+  // Le bloc de navigation, rendu a l'identique dans toutes les vues.
+  //
+  // Il etait ecrit deux fois — une fois pour le chat, une fois pour le reste —
+  // et les deux copies avaient diverge : le titre de section manquait d'un
+  // cote, et une regle poussait la nav en haut du rail de l'autre. Le menu
+  // changeait donc de tete d'un ecran a l'autre. Une seule source, une seule
+  // apparence.
+  const navigation =
+    onSelectView === undefined ? null : (
+      <nav className="locaryn-rail-nav" aria-label="Destinations">
+        <span className="locaryn-section-title">Bibliothèque</span>
+        {destinations
+          .filter((d) => !RAIL_HIDDEN.has(d.id))
+          .map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}`}
+              aria-current={activeView === d.id ? "page" : undefined}
+              title={d.desc}
+              onClick={() => onSelectView(d.id)}
+            >
+              <Icon name={d.icon} size={16} />
+              {RAIL_LABELS[d.id] ?? d.label}
+            </button>
+          ))}
+      </nav>
+    );
+
   // La navigation, seule, quand on n'est pas dans le chat.
   //
   // L'historique des conversations n'a rien à faire sur l'écran des réglages :
   // on y va pour régler quelque chose, pas pour relire ses conversations. Ce
   // qui n'est pas nécessaire à l'écran où l'on est ne s'affiche pas.
   if (activeView && activeView !== "chat") {
-    return (
-      <aside className="locaryn-left locaryn-left-nav-only">
-        {onSelectView && (
-          <nav className="locaryn-rail-nav" aria-label="Destinations">
-            {destinations
-              .filter((d) => !RAIL_HIDDEN.has(d.id))
-              .map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}`}
-                  aria-current={activeView === d.id ? "page" : undefined}
-                  title={d.desc}
-                  onClick={() => onSelectView(d.id)}
-                >
-                  <Icon name={d.icon} size={16} />
-                  {RAIL_LABELS[d.id] ?? d.label}
-                </button>
-              ))}
-          </nav>
-        )}
-      </aside>
-    );
+    return <aside className="locaryn-left">{navigation}</aside>;
   }
 
   return (
@@ -569,26 +576,7 @@ export function LeftPanel({
           Toute la navigation tient ici : il n'y a plus de tiroir par-dessus.
           La liste vient de `NavDrawer`, qui décrit les destinations natives et
           y ajoute celles qu'une extension déclare. */}
-      {onSelectView && (
-        <nav className="locaryn-rail-nav" aria-label="Destinations">
-          <span className="locaryn-section-title">Bibliothèque</span>
-          {destinations
-            .filter((d) => !RAIL_HIDDEN.has(d.id))
-            .map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}`}
-                aria-current={activeView === d.id ? "page" : undefined}
-                title={d.desc}
-                onClick={() => onSelectView(d.id)}
-              >
-                <Icon name={d.icon} size={16} />
-                {RAIL_LABELS[d.id] ?? d.label}
-              </button>
-            ))}
-        </nav>
-      )}
+      {navigation}
     </aside>
   );
 }
