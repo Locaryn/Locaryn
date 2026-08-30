@@ -4,6 +4,17 @@
 //! window is closed, which is the whole situation this addresses. What lives
 //! here is the switch, and the code to point a camera at.
 //!
+//! Plus aucun ecran natif n'appelle ce qui touche au tunnel. L'application ne
+//! propose qu'un seul mode d'appairage, le reseau local ; les autres viennent
+//! d'une extension, qui declare ses segments sur `settings.server.pairing` et
+//! recoit de l'hote de quoi les piloter. Les commandes restent donc ici, mais
+//! comme surface pretee a cette extension, pas comme fonctions de l'interface.
+//!
+//! Elles restent aussi le *seul* chemin : l'extension ouvrait autrefois son
+//! propre tunnel, dans son propre processus. Le code d'appairage lit celui du
+//! demon — l'adresse annoncee par l'un n'etait donc pas celle que portait
+//! l'autre. Un tunnel, un proprietaire.
+//!
 //! Nothing in what the interface receives is a network setting. No address, no
 //! port, no relay hostname. The user turns something on and photographs a
 //! square; that is the entire interaction, and it is deliberate — every IP

@@ -1,6 +1,12 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type InstalledExtension, type PairingCode, type ServerStatus, core } from "../lib/core";
+import {
+  type InstalledExtension,
+  type PairingCode,
+  type PairingMode,
+  type ServerStatus,
+  core,
+} from "../lib/core";
 import {
   LOCAL_STEPS,
   PairingCheckerboard,
@@ -159,6 +165,31 @@ export function PairingCodes() {
     precedent.current = "local";
   }, [segments, mode]);
 
+  /**
+   * Ce que l'hote prete au panneau d'une extension.
+   *
+   * Volontairement etroit : de quoi savoir si le service ecoute, et de quoi
+   * lui demander un code pour un mode que l'extension nomme. L'application ne
+   * connait pas ces modes — c'est l'extension qui sait ce qu'elle apporte, et
+   * le service local qui sait le dessiner. Rien ici ne parle de tunnel : c'est
+   * un canal, pas une liste.
+   */
+  const contexteAppairage = useMemo(
+    () => ({
+      serveurActif: Boolean(server?.running),
+      demanderCode: (mode: string, url?: string) => core.pairingCode(mode as PairingMode, url),
+      // Le partage sortant appartient au service, pas au panneau : il doit
+      // survivre a la fermeture de la fenetre, et c'est le service qui produit
+      // ensuite le code correspondant. Une extension qui ouvrirait le sien
+      // aurait un lien que le code ne porterait pas.
+      relaisDisponibles: () => core.travelRelays(),
+      etatPartage: () => core.travelStatus(),
+      // `null` ferme le partage ; un identifiant de relais l'ouvre avec lui.
+      reglerPartage: (relais: string | null) => core.setTravelMode(relais),
+    }),
+    [server?.running],
+  );
+
   const serverStopped = server !== null && !server.running;
 
   function choisir(next: string) {
@@ -212,7 +243,11 @@ export function PairingCodes() {
             L'application ne connait ni son transport ni sa facon d'appairer :
             elle lui prete la place et le style de la carte, rien de plus. */}
         {choisi.apport && (
-          <DynamicPluginWidget contribution={choisi.apport} className="locaryn-pairing-ext" />
+          <DynamicPluginWidget
+            contribution={choisi.apport}
+            className="locaryn-pairing-ext"
+            context={contexteAppairage}
+          />
         )}
 
         {serverStopped && natif && (

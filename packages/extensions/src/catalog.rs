@@ -256,7 +256,12 @@ impl CatalogClient {
                 "morph-dictaphone" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
                 "morph-rag-qa" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
                 "morph-ssh" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
-                "morph-travel-tunnel" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
+                // Les seules entrees de cette table verifiees contre les
+                // releases publiees. La 3.0.0 est celle qui declare les deux
+                // segments d'appairage : offrir la precedente installerait un
+                // morph qui ne contribue nulle part dans cette version de
+                // l'application.
+                "morph-travel-tunnel" => ("3.0.0", &["2.1.0", "2.0.0"]),
                 "morph-3d-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
                 "morph-video-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
                 "morph-music-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
@@ -270,14 +275,20 @@ impl CatalogClient {
                 _ => ("1.0.0-beta.1", &["0.9.0", "0.8.0"]),
             };
 
+            // La derniere version n'est une pre-release que si son numero le
+            // dit. Marquer « Bêta · non testé » une version stable la fait
+            // eviter par ceux qui devraient justement la prendre.
+            let derniere_est_beta = latest_ver.contains('-');
             let mut versions = vec![locaryn_shared_types::MorphVersionRelease {
                 version: latest_ver.to_string(),
                 tag: Some(format!("v{latest_ver}")),
-                is_beta: true,
+                is_beta: derniere_est_beta,
                 released_at: Some("2026-08-29".to_string()),
-                summary: Some(format!(
-                    "Version Bêta ({latest_ver}) — pre-release non testée"
-                )),
+                summary: Some(if derniere_est_beta {
+                    format!("Version Bêta ({latest_ver}) — pre-release non testée")
+                } else {
+                    format!("Version stable v{latest_ver}")
+                }),
                 install_source: Some(format!("{full_name}#v{latest_ver}")),
             }];
 
