@@ -270,16 +270,16 @@ impl CatalogClient {
                 _ => ("1.0.0-beta.1", &["0.9.0", "0.8.0"]),
             };
 
-            let mut versions = vec![
-                locaryn_shared_types::MorphVersionRelease {
-                    version: latest_ver.to_string(),
-                    tag: Some(format!("v{latest_ver}")),
-                    is_beta: true,
-                    released_at: Some("2026-08-29".to_string()),
-                    summary: Some(format!("Version Bêta ({latest_ver}) — pre-release non testée")),
-                    install_source: Some(format!("{full_name}#v{latest_ver}")),
-                }
-            ];
+            let mut versions = vec![locaryn_shared_types::MorphVersionRelease {
+                version: latest_ver.to_string(),
+                tag: Some(format!("v{latest_ver}")),
+                is_beta: true,
+                released_at: Some("2026-08-29".to_string()),
+                summary: Some(format!(
+                    "Version Bêta ({latest_ver}) — pre-release non testée"
+                )),
+                install_source: Some(format!("{full_name}#v{latest_ver}")),
+            }];
 
             for sv in stables {
                 versions.push(locaryn_shared_types::MorphVersionRelease {
@@ -304,7 +304,11 @@ impl CatalogClient {
                 catalog_id: source.id.clone(),
                 catalog_label: source.label.clone(),
                 install_source: format!("{full_name}#v{latest_ver}"),
-                keywords: vec!["official".to_string(), "morph".to_string(), "beta".to_string()],
+                keywords: vec![
+                    "official".to_string(),
+                    "morph".to_string(),
+                    "beta".to_string(),
+                ],
                 advertised: vec!["morph officiel".to_string(), "bêta".to_string()],
                 compat: CatalogCompat::Native,
                 installed: false,
@@ -599,8 +603,8 @@ impl CatalogClient {
                     advertised,
                     compat,
                     installed: false,
-                is_beta: false,
-                versions: Vec::new(),
+                    is_beta: false,
+                    versions: Vec::new(),
                 });
             }
             cursor = v
@@ -753,8 +757,8 @@ fn locaryn_index_entry(e: &serde_json::Value, source: &CatalogSource) -> Option<
         advertised: arr("advertised"),
         compat: CatalogCompat::Native,
         installed: false,
-                is_beta: false,
-                versions: Vec::new(),
+        is_beta: false,
+        versions: Vec::new(),
     })
 }
 
