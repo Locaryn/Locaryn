@@ -20,6 +20,77 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 /// Generous: the first run of `cloudflared` on a slow connection genuinely
 /// takes twenty seconds. Failing at five would look like a broken feature.
 const URL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Combien de temps observer un renvoi SSH avant de le declarer ouvert.
+///
+/// Assez pour que l'authentification aboutisse et que le serveur refuse le
+/// port s'il est deja pris ; assez court pour que l'ecran ne paraisse pas fige.
+const SSH_SETTLE: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Le serveur vers lequel un renvoi SSH pousse le port local.
+///
+/// Ecrit « moi@serveur.fr:8443 » : le login tel que ssh l'attend, et le port
+/// que le serveur ouvrira. Le port SSH lui-meme se precise avec « /2222 » a la
+/// fin, parce qu'un serveur qui n'ecoute pas sur 22 est courant et qu'echouer
+/// dessus sans pouvoir le dire serait absurde.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SshTarget {
+    /// `utilisateur@hote`, passe tel quel a ssh.
+    pub login: String,
+    /// L'hote seul, pour construire l'adresse que lira le telephone.
+    pub host: String,
+    /// Le port que le serveur distant ouvrira, et par lequel on le joindra.
+    pub remote_port: u16,
+    /// Le port sur lequel le serveur ecoute en SSH.
+    pub ssh_port: u16,
+}
+
+impl SshTarget {
+    /// Lire « moi@serveur.fr:8443 », ou « moi@serveur.fr:8443/2222 ».
+    ///
+    /// Rendre une erreur en francais plutot qu'un `None` : la personne a tape
+    /// quelque chose, et savoir *ce qui manque* lui evite de deviner.
+    pub fn parse(brut: &str) -> Result<Self, String> {
+        let brut = brut.trim();
+        if brut.is_empty() {
+            return Err("Indiquez le serveur, sous la forme « moi@serveur.fr:8443 ».".into());
+        }
+        let (avant, ssh_port) = match brut.rsplit_once('/') {
+            Some((a, p)) => (
+                a,
+                p.parse::<u16>()
+                    .map_err(|_| format!("Port SSH illisible : « {p} »."))?,
+            ),
+            None => (brut, 22),
+        };
+        let (login, remote) = avant.rsplit_once(':').ok_or_else(|| {
+            "Il manque le port que le serveur ouvrira : « moi@serveur.fr:8443 ».".to_string()
+        })?;
+        let remote_port = remote
+            .parse::<u16>()
+            .map_err(|_| format!("Port distant illisible : « {remote} »."))?;
+        if remote_port == 0 {
+            return Err("Le port distant ne peut pas etre 0.".into());
+        }
+        let host = login.rsplit_once('@').map(|(_, h)| h).unwrap_or(login);
+        if host.is_empty() || !login.contains('@') {
+            return Err("Il manque l'utilisateur : « moi@serveur.fr:8443 ».".into());
+        }
+        Ok(Self {
+            login: login.to_string(),
+            host: host.to_string(),
+            remote_port,
+            ssh_port,
+        })
+    }
+
+    /// L'adresse que portera le code d'appairage.
+    ///
+    /// Deduite, jamais lue dans la sortie de ssh : `ssh -N` n'annonce rien
+    /// quand tout va bien, et c'est le serveur qu'on a nomme qui repond.
+    pub fn url(&self) -> String {
+        format!("https://{}:{}", self.host, self.remote_port)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -27,16 +98,28 @@ pub enum Provider {
     Cloudflare,
     Ngrok,
     DevTunnel,
+    /// Un serveur qui vous appartient, joint par un renvoi de port SSH.
+    ///
+    /// Le seul relais sans tiers : rien ne transite par une entreprise, il n'y
+    /// a pas de compte, pas de quota, et l'adresse est la vôtre. En échange il
+    /// faut un serveur — c'est la seule entrée qui demande une cible.
+    Ssh,
 }
 
 impl Provider {
-    pub const ALL: [Provider; 3] = [Provider::Cloudflare, Provider::Ngrok, Provider::DevTunnel];
+    pub const ALL: [Provider; 4] = [
+        Provider::Cloudflare,
+        Provider::Ngrok,
+        Provider::DevTunnel,
+        Provider::Ssh,
+    ];
 
     pub fn id(&self) -> &'static str {
         match self {
             Self::Cloudflare => "cloudflare",
             Self::Ngrok => "ngrok",
             Self::DevTunnel => "devtunnel",
+            Self::Ssh => "ssh",
         }
     }
 
@@ -51,6 +134,7 @@ impl Provider {
             Self::Cloudflare => "Cloudflare",
             Self::Ngrok => "ngrok",
             Self::DevTunnel => "Tunnels Microsoft",
+            Self::Ssh => "Votre serveur (SSH)",
         }
     }
 
@@ -60,6 +144,7 @@ impl Provider {
             Self::Cloudflare => "cloudflared",
             Self::Ngrok => "ngrok",
             Self::DevTunnel => "devtunnel",
+            Self::Ssh => "ssh",
         }
     }
 
@@ -78,20 +163,33 @@ impl Provider {
                 "Installez devtunnel (winget install Microsoft.devtunnel), puis \
                  exécutez une fois « devtunnel user login »."
             }
+            Self::Ssh => {
+                "Un client SSH suffit — il est déjà là sur Windows 10+, macOS et Linux. \
+                 Indiquez un serveur qui vous appartient, sous la forme « moi@serveur.fr:8443 ». \
+                 La clé est celle de votre agent SSH : Locaryn n'en manipule aucune."
+            }
         }
+    }
+
+    /// Ce relais a-t-il besoin d'une cible fournie par la personne ?
+    ///
+    /// Les trois autres annoncent eux-mêmes une adresse. Un renvoi SSH, non :
+    /// c'est votre serveur, et personne d'autre que vous ne sait lequel.
+    pub fn needs_target(&self) -> bool {
+        matches!(self, Self::Ssh)
     }
 
     /// Whether an account or a prior login is needed. Shown before the user
     /// picks, rather than discovered as a failure afterwards.
     pub fn needs_account(&self) -> bool {
-        !matches!(self, Self::Cloudflare)
+        !matches!(self, Self::Cloudflare | Self::Ssh)
     }
 
     pub fn is_available(&self) -> bool {
         locaryn_config::program_exists(self.binary())
     }
 
-    fn args(&self, port: u16) -> Vec<String> {
+    fn args(&self, port: u16, target: Option<&SshTarget>) -> Vec<String> {
         match self {
             // The daemon serves HTTPS with its own certificate, which no public
             // authority signed; without --no-tls-verify the relay refuses to
@@ -118,6 +216,33 @@ impl Provider {
                 "https".into(),
                 "--allow-anonymous".into(),
             ],
+            // Un renvoi de port, rien de plus : le serveur distant ouvre son
+            // port et pousse ce qu'il recoit dans la connexion deja etablie.
+            //
+            // `ExitOnForwardFailure` est ce qui rend l'echec lisible : sans
+            // lui, un port deja pris cote serveur laisse ssh tourner avec un
+            // tunnel qui ne transporte rien, et l'ecran annoncerait un succes.
+            //
+            // Le trafic reste chiffre de bout en bout : c'est notre TLS qui
+            // traverse, pas celui d'un tiers. Le telephone verifie donc la
+            // meme empreinte que sur le reseau local.
+            Self::Ssh => match target {
+                Some(t) => vec![
+                    "-N".into(),
+                    "-o".into(),
+                    "ExitOnForwardFailure=yes".into(),
+                    "-o".into(),
+                    "ServerAliveInterval=30".into(),
+                    "-o".into(),
+                    "StrictHostKeyChecking=accept-new".into(),
+                    "-p".into(),
+                    t.ssh_port.to_string(),
+                    "-R".into(),
+                    format!("{}:127.0.0.1:{port}", t.remote_port),
+                    t.login.clone(),
+                ],
+                None => Vec::new(),
+            },
         }
     }
 
@@ -127,6 +252,9 @@ impl Provider {
             Self::Cloudflare => &["trycloudflare.com", "cfargotunnel.com"],
             Self::Ngrok => &["ngrok-free.app", "ngrok.app", "ngrok.io", "ngrok-free.dev"],
             Self::DevTunnel => &["devtunnels.ms"],
+            // L'adresse d'un renvoi SSH n'est pas annoncee : elle se deduit du
+            // serveur qu'on a nomme. Rien a reconnaitre dans la sortie.
+            Self::Ssh => &[],
         }
     }
 }
@@ -175,6 +303,8 @@ pub enum TunnelError {
     NoUrl(&'static str, String),
     #[error("{0} s'est arrêté avant d'ouvrir le tunnel :\n{1}")]
     Exited(&'static str, String),
+    #[error("{0} a besoin du serveur vers lequel renvoyer le port.")]
+    NoTarget(&'static str),
 }
 
 /// A running tunnel. Dropping it does *not* stop the relay — call
@@ -196,17 +326,27 @@ impl Tunnel {
 }
 
 /// Open a tunnel to `port` and wait until the relay announces the address.
-pub async fn start(provider: Provider, port: u16) -> Result<Tunnel, TunnelError> {
+///
+/// `target` n'est lu que pour un renvoi SSH, ou l'adresse n'est pas annoncee
+/// mais deduite du serveur qu'on a nomme.
+pub async fn start(
+    provider: Provider,
+    port: u16,
+    target: Option<&SshTarget>,
+) -> Result<Tunnel, TunnelError> {
     if !provider.is_available() {
         return Err(TunnelError::NotInstalled(
             provider.binary(),
             provider.install_hint(),
         ));
     }
+    if provider.needs_target() && target.is_none() {
+        return Err(TunnelError::NoTarget(provider.binary()));
+    }
 
     let mut child =
         tokio::process::Command::new(locaryn_config::resolve_program(provider.binary()))
-            .args(provider.args(port))
+            .args(provider.args(port, target))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .stdin(Stdio::null())
@@ -242,6 +382,58 @@ pub async fn start(provider: Provider, port: u16) -> Result<Tunnel, TunnelError>
         });
     }
     drop(tx);
+
+    // ── Le renvoi SSH ne dit rien quand il marche ──
+    //
+    // `ssh -N` reste muet en cas de succes : il n'y a pas d'adresse a lire, et
+    // attendre une ligne qui ne viendra jamais ferait echouer un tunnel qui
+    // fonctionne. L'adresse se deduit du serveur nomme ; ce qu'on verifie,
+    // c'est que ssh n'est pas mort — `ExitOnForwardFailure` garantit qu'il
+    // meurt si le port distant est pris ou si l'authentification echoue.
+    if let (Provider::Ssh, Some(t)) = (provider, target) {
+        let mut tail: Vec<String> = Vec::new();
+        let butoir = tokio::time::Instant::now() + SSH_SETTLE;
+        loop {
+            let reste = butoir.saturating_duration_since(tokio::time::Instant::now());
+            if reste.is_zero() {
+                tracing::info!(provider = provider.id(), "renvoi SSH ouvert");
+                return Ok(Tunnel {
+                    provider,
+                    url: t.url(),
+                    child,
+                });
+            }
+            match tokio::time::timeout(reste, rx.recv()).await {
+                // ssh ne parle que pour se plaindre : on garde tout.
+                Ok(Some(line)) => {
+                    tail.push(line);
+                    if tail.len() > 12 {
+                        tail.remove(0);
+                    }
+                }
+                Ok(None) => {
+                    let _ = child.kill().await;
+                    return Err(TunnelError::Exited(
+                        provider.binary(),
+                        tail.join(
+                            "
+",
+                        ),
+                    ));
+                }
+                Err(_) => {}
+            }
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return Err(TunnelError::Exited(
+                    provider.binary(),
+                    tail.join(
+                        "
+",
+                    ),
+                ));
+            }
+        }
+    }
 
     let mut tail: Vec<String> = Vec::new();
     let deadline = tokio::time::Instant::now() + URL_TIMEOUT;
@@ -283,6 +475,57 @@ pub async fn start(provider: Provider, port: u16) -> Result<Tunnel, TunnelError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_cible_ssh_se_lit_avec_ou_sans_port_ssh() {
+        let t = SshTarget::parse("moi@serveur.fr:8443").expect("cible simple");
+        assert_eq!(t.login, "moi@serveur.fr");
+        assert_eq!(t.host, "serveur.fr");
+        assert_eq!(t.remote_port, 8443);
+        assert_eq!(t.ssh_port, 22);
+        assert_eq!(t.url(), "https://serveur.fr:8443");
+
+        let t = SshTarget::parse(" moi@serveur.fr:8443/2222 ").expect("port ssh explicite");
+        assert_eq!(t.ssh_port, 2222);
+        assert_eq!(t.remote_port, 8443);
+    }
+
+    #[test]
+    fn une_cible_incomplete_dit_ce_qui_manque() {
+        // Un `None` laisserait deviner ; la personne a tape quelque chose.
+        for (brut, attendu) in [
+            ("", "moi@serveur.fr:8443"),
+            ("moi@serveur.fr", "port que le serveur ouvrira"),
+            ("serveur.fr:8443", "utilisateur"),
+            ("moi@serveur.fr:zero", "Port distant illisible"),
+        ] {
+            let err = SshTarget::parse(brut).unwrap_err();
+            assert!(err.contains(attendu), "« {brut} » a donne : {err}");
+        }
+    }
+
+    #[test]
+    fn le_renvoi_ssh_pousse_le_port_local_vers_le_port_distant() {
+        let t = SshTarget::parse("moi@serveur.fr:8443/2222").unwrap();
+        let args = Provider::Ssh.args(7474, Some(&t));
+        // Le sens compte : `-R distant:127.0.0.1:local`. Inverse, ssh ouvrirait
+        // un tunnel qui ne mene nulle part et n'en dirait rien.
+        assert!(
+            args.contains(&"8443:127.0.0.1:7474".to_string()),
+            "{args:?}"
+        );
+        assert!(args.contains(&"ExitOnForwardFailure=yes".to_string()));
+        assert_eq!(args.last().unwrap(), "moi@serveur.fr");
+    }
+
+    #[test]
+    fn seul_le_renvoi_ssh_reclame_une_cible() {
+        let avec: Vec<_> = Provider::ALL
+            .into_iter()
+            .filter(|p| p.needs_target())
+            .collect();
+        assert_eq!(avec, vec![Provider::Ssh]);
+    }
 
     #[test]
     fn the_cloudflare_address_is_found_in_its_real_output() {
@@ -358,13 +601,18 @@ mod tests {
 
     #[tokio::test]
     async fn a_missing_tool_is_named_along_with_the_way_to_get_it() {
-        // Every provider must answer "what do I install?" before anything is
+        // Every provider must answer "what do I do?" before anything is
         // spawned — the alternative is a raw "program not found".
+        //
+        // L'action n'est pas toujours « installer » : le client SSH est deja
+        // la partout, et ce qui manque alors est le serveur a nommer. Ce que
+        // le test tient, c'est qu'il y ait une action — pas laquelle.
+        const ACTIONS: [&str; 2] = ["nstallez", "ndiquez"];
         for p in Provider::ALL {
             let hint = p.install_hint();
             assert!(hint.len() > 40, "consigne trop vague pour {}", p.id());
             assert!(
-                hint.contains("Installez") || hint.contains("installez"),
+                ACTIONS.iter().any(|a| hint.contains(a)),
                 "consigne sans action pour {}",
                 p.id()
             );

@@ -14,4 +14,4 @@ pub mod providers;
 pub mod qr;
 
 pub use link::{sign, verify, LinkError, Mode, PairingLink};
-pub use providers::{start, Provider, Tunnel, TunnelError};
+pub use providers::{start, Provider, SshTarget, Tunnel, TunnelError};

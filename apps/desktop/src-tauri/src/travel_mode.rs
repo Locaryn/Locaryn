@@ -45,6 +45,12 @@ pub struct RelayChoice {
     pub installed: bool,
     /// Whether it needs an account or a prior sign-in.
     pub needs_account: bool,
+    /// Ce relais reclame-t-il un serveur que la personne doit nommer ?
+    ///
+    /// Un seul le fait : le renvoi SSH. Les autres annoncent eux-memes leur
+    /// adresse ; celui-la pousse un port vers un serveur que vous seul
+    /// connaissez, et l'interface doit donc le demander avant d'ouvrir.
+    pub needs_target: bool,
     /// What to do about it when it is missing.
     pub install_hint: String,
 }
@@ -63,6 +69,7 @@ pub fn travel_relays() -> Vec<RelayChoice> {
             label: p.label().to_string(),
             installed: p.is_available(),
             needs_account: p.needs_account(),
+            needs_target: p.needs_target(),
             install_hint: p.install_hint().to_string(),
         })
         .collect()
@@ -349,15 +356,23 @@ mod tests {
     #[test]
     fn every_relay_says_whether_it_needs_an_account() {
         let relays = travel_relays();
-        assert_eq!(relays.len(), 3);
+        assert_eq!(relays.len(), 4);
         // Exactly one requires nothing — that is the one to default to.
-        let free: Vec<_> = relays.iter().filter(|r| !r.needs_account).collect();
-        assert_eq!(
-            free.len(),
-            1,
-            "un seul relais doit être utilisable sans compte"
-        );
-        assert_eq!(free[0].id, "cloudflare");
+        // Deux se passent de compte, pour des raisons opposees : Cloudflare
+        // parce qu'il n'en demande pas, SSH parce que le serveur est le votre.
+        let free: Vec<&str> = relays
+            .iter()
+            .filter(|r| !r.needs_account)
+            .map(|r| r.id.as_str())
+            .collect();
+        assert_eq!(free, vec!["cloudflare", "ssh"]);
+        // Et un seul reclame un serveur a nommer.
+        let cibles: Vec<&str> = relays
+            .iter()
+            .filter(|r| r.needs_target)
+            .map(|r| r.id.as_str())
+            .collect();
+        assert_eq!(cibles, vec!["ssh"]);
         for r in &relays {
             assert!(!r.label.is_empty());
             assert!(r.install_hint.len() > 30, "consigne trop vague : {}", r.id);

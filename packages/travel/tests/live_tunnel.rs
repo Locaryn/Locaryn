@@ -23,7 +23,7 @@ async fn a_real_relay_hands_back_a_usable_address() {
     );
 
     // A closed port: nothing of this machine is published.
-    let tunnel = locaryn_travel::start(provider, 59_999)
+    let tunnel = locaryn_travel::start(provider, 59_999, None)
         .await
         .expect("le relais n'a pas ouvert de tunnel");
 

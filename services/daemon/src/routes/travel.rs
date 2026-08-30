@@ -36,17 +36,34 @@ pub async fn set(State(s): State<Arc<DaemonState>>, Json(body): Json<SetBody>) -
         return Json(TravelStatus::default()).into_response();
     };
 
-    let Some(provider) = locaryn_travel::Provider::parse(&name) else {
+    // « ssh:moi@serveur.fr:8443 » : le relais, puis ce qu'il lui faut. Un seul
+    // champ plutot que deux, parce que le seul relais qui reclame une cible est
+    // aussi le seul dont l'adresse ne s'annonce pas toute seule.
+    let (nom_relais, cible_brute) = match name.split_once(':') {
+        Some((tete, reste)) => (tete.to_string(), Some(reste.to_string())),
+        None => (name.clone(), None),
+    };
+
+    let Some(provider) = locaryn_travel::Provider::parse(&nom_relais) else {
         return bad_request(format!(
-            "Relais inconnu : « {name} ». Valeurs possibles : cloudflare, ngrok, devtunnel."
+            "Relais inconnu : « {nom_relais} ». Valeurs possibles : cloudflare, ngrok,              devtunnel, ssh."
         ));
+    };
+
+    let cible = if provider.needs_target() {
+        match locaryn_travel::SshTarget::parse(cible_brute.as_deref().unwrap_or("")) {
+            Ok(t) => Some(t),
+            Err(e) => return bad_request(e),
+        }
+    } else {
+        None
     };
 
     // Authentication is what makes exposing this defensible, and on any
     // address but loopback the daemon already requires it.
     match s
         .travel
-        .start(provider, s.port, &data_dir(&s), s.auth_required)
+        .start(provider, cible.as_ref(), s.port, &data_dir(&s), s.auth_required)
         .await
     {
         Ok(st) => Json(st).into_response(),

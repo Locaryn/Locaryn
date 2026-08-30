@@ -66,6 +66,7 @@ impl TravelState {
     pub async fn start(
         &self,
         provider: Provider,
+        target: Option<&providers::SshTarget>,
         port: u16,
         data_dir: &std::path::Path,
         authenticated: bool,
@@ -84,7 +85,7 @@ impl TravelState {
         // means two addresses, and the phone would be holding the stale one.
         self.stop().await;
 
-        let tunnel = match providers::start(provider, port).await {
+        let tunnel = match providers::start(provider, port, target).await {
             Ok(t) => t,
             Err(e) => {
                 // Kept so the interface can explain a switch that did not
@@ -246,7 +247,13 @@ mod tests {
         // unauthenticated server to the internet is not a recoverable mistake.
         let state = TravelState::new();
         let err = state
-            .start(Provider::Cloudflare, 7474, std::path::Path::new("."), false)
+            .start(
+                Provider::Cloudflare,
+                None,
+                7474,
+                std::path::Path::new("."),
+                false,
+            )
             .await
             .unwrap_err();
         assert!(
@@ -256,6 +263,19 @@ mod tests {
         // And it must say what to do about it.
         assert!(err.contains("0.0.0.0"), "message sans issue : {err}");
         assert!(!state.status(std::path::Path::new(".")).await.active);
+    }
+
+    #[tokio::test]
+    async fn un_renvoi_ssh_sans_serveur_est_refuse_avant_de_lancer_quoi_que_ce_soit() {
+        // Sans cible, `ssh -R` n'a rien vers quoi renvoyer. Lancer le
+        // processus pour le voir echouer donnerait une erreur de ssh la ou une
+        // phrase suffit.
+        let state = TravelState::new();
+        let err = state
+            .start(Provider::Ssh, None, 7474, std::path::Path::new("."), true)
+            .await
+            .unwrap_err();
+        assert!(err.contains("serveur"), "message peu clair : {err}");
     }
 
     #[test]
