@@ -1,5 +1,6 @@
 import { Icon, type IconName, LoSwitch, isIconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   type HfModelCandidate,
   type HfModelSelection,
@@ -1619,6 +1620,11 @@ export function ModelBrowser({
   // GPU. Il reste à un clic, il n'occupe plus la page de tout le monde.
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
+  // La famille ouverte dans le tiroir de droite. La maquette ouvre le détail
+  // là plutôt que de déplier la carte : une carte dépliée pousse toute la
+  // grille, et on perd de vue ce qu'on comparait.
+  const [drawerFamily, setDrawerFamily] = useState<string | null>(null);
+
   const isFilterActive =
     size !== "all" ||
     query !== "" ||
@@ -2321,6 +2327,18 @@ export function ModelBrowser({
 
             return (
               <div key={f.id} className={`locaryn-box-card locaryn-compat-${compat.level}`}>
+                {/* L'etoile est ancree au coin de la carte, pas posee dans le
+                    flux des badges : quand ceux-ci passaient a la ligne, elle
+                    partait seule sur une rangee vide sous les tags. */}
+                <button
+                  type="button"
+                  className={`locaryn-box-fav${favorites.has(f.id) ? " locaryn-box-fav-on" : ""}`}
+                  onClick={() => toggleFavorite(f.id)}
+                  aria-pressed={favorites.has(f.id)}
+                  title={favorites.has(f.id) ? "Retirer des favoris" : "Ajouter aux favoris"}
+                >
+                  <Icon name="star" size={15} />
+                </button>
                 <div className="locaryn-box-head">
                   <div style={{ minWidth: 140, flex: "1 1 55%" }}>
                     <span className="locaryn-box-brand" title={f.brand}>
@@ -2409,24 +2427,6 @@ export function ModelBrowser({
                     ))}
                     <SpeedBadge metric={findMetric(metrics, f.id)} />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleFavorite(f.id)}
-                    aria-pressed={favorites.has(f.id)}
-                    title={favorites.has(f.id) ? "Retirer des favoris" : "Ajouter aux favoris"}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: "15px",
-                      lineHeight: 1,
-                      padding: "2px 4px",
-                      color: favorites.has(f.id) ? "var(--warn)" : "var(--text-faint)",
-                      flex: "none",
-                    }}
-                  >
-                    <Icon name="star" size={15} />
-                  </button>
                 </div>
 
                 <p className="locaryn-box-desc">{f.description}</p>
@@ -2459,241 +2459,12 @@ export function ModelBrowser({
                   <button
                     type="button"
                     className="locaryn-box-detail"
-                    onClick={() => toggleCardExpand(f.id)}
-                    aria-expanded={isExpanded}
+                    onClick={() => setDrawerFamily(f.id)}
                   >
-                    {isExpanded ? "Replier" : "Détail"}
-                    <Icon name={isExpanded ? "chevron" : "arrow-right"} size={13} />
+                    Détail
+                    <Icon name="arrow-right" size={13} />
                   </button>
                 </div>
-
-                {isExpanded && (
-                  <div className="locaryn-box-variants" style={{ marginTop: "12px" }}>
-                    <span className="locaryn-box-variants-title">Tailles disponibles</span>
-                    {f.variants.map((v) => {
-                      const activeQuant = selectedQuants[v.tag] || v.quants[0] || "q4_K_M";
-                      const targetTag = getQuantTag(v.tag, activeQuant);
-                      const targetStorageGb = getQuantStorageGb(v.storageGb, activeQuant);
-                      const isInstalled =
-                        isVariantInstalled(targetTag, installedSet, activeQuant) ||
-                        isVariantInstalled(v.tag, installedSet, activeQuant);
-                      const progress = installProgress[targetTag] ?? installProgress[v.tag];
-                      const isInstalling = progress !== undefined;
-                      const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
-                      const fitV = fits[fitKey(v.params, activeQuant, targetStorageGb)];
-                      const compatV = variantCompat(
-                        targetStorageGb,
-                        hardwareSpec,
-                        airllmEnabled,
-                        fitV,
-                      );
-
-                      return (
-                        <div
-                          key={v.tag}
-                          className={`locaryn-box-variant-row${isDeleting ? " locaryn-shatter" : ""}`}
-                          style={{ flexDirection: "column", alignItems: "stretch", gap: "6px" }}
-                        >
-                          {isDeleting && <Shards />}
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                            }}
-                          >
-                            <div className="locaryn-box-variant-info">
-                              <span className="locaryn-variant-size">{v.size}</span>
-                              <span className="locaryn-stat-vram">
-                                <Icon name="models" size={13} /> ~{targetStorageGb} Go
-                              </span>
-                              <span
-                                className="locaryn-tag"
-                                style={{ background: `${compatV.color}22`, color: compatV.color }}
-                                title={compatV.label}
-                              >
-                                <span
-                                  className="locaryn-dot"
-                                  style={{ background: compatV.color }}
-                                />{" "}
-                                {compatV.short}
-                              </span>
-                              {compatV.level === "airllm" && (
-                                <span
-                                  className="locaryn-tag"
-                                  style={{
-                                    background: "var(--accent-fill)",
-                                    color: "var(--info)",
-                                  }}
-                                  title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
-                                >
-                                  <Icon name="speed" size={13} /> ~
-                                  {fmtTokPerSec(
-                                    estimateAirllmTokPerSec(
-                                      targetStorageGb,
-                                      hardwareSpec,
-                                      v.size,
-                                    ) ?? 0,
-                                  )}
-                                </span>
-                              )}
-                              {isInstalled && (
-                                <span className="locaryn-tag locaryn-tag-installed">Installé</span>
-                              )}
-                            </div>
-
-                            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                              {isInstalled ? (
-                                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                                  <button
-                                    type="button"
-                                    className="locaryn-btn-primary"
-                                    style={{ padding: "3px 8px", fontSize: "11px" }}
-                                    onClick={() => onSelectModelForChat?.(targetTag)}
-                                    title="Utiliser ce modèle dans le Chat"
-                                  >
-                                    <Icon name="chat" size={15} /> Utiliser
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="locaryn-btn-ghost"
-                                    style={{
-                                      color: "var(--danger)",
-                                      padding: "3px 8px",
-                                      fontSize: "11px",
-                                    }}
-                                    onClick={() => handleDeleteModel(targetTag)}
-                                    disabled={isDeleting}
-                                    title="Supprimer ce modèle du disque dur local"
-                                  >
-                                    {isDeleting ? "..." : "Supprimer"}
-                                  </button>
-                                </div>
-                              ) : isInstalling ? (
-                                <button
-                                  type="button"
-                                  className="locaryn-btn-ghost"
-                                  style={{
-                                    color: "var(--danger)",
-                                    border: "1px solid var(--danger)",
-                                    padding: "3px 8px",
-                                    fontSize: "11px",
-                                  }}
-                                  onClick={() => handleCancelInstall(targetTag)}
-                                  title="Annuler le téléchargement en cours"
-                                >
-                                  <Icon name="close" size={15} /> Annuler ({progress}%)
-                                </button>
-                              ) : compatV.level === "airllm" ? (
-                                (() => {
-                                  const entry = getAirllmEntry(f);
-                                  const installed = entry ? airllmInstalled.has(entry.repo) : false;
-                                  const busy = entry ? airllmBusy[entry.repo] : false;
-                                  if (!entry) {
-                                    return (
-                                      <button
-                                        type="button"
-                                        className="locaryn-btn-ghost"
-                                        style={{
-                                          border: "1px dashed var(--info)",
-                                          color: "var(--info)",
-                                        }}
-                                        onClick={() => setAirllmModalOpen(true)}
-                                        title="Cette architecture n'est pas encore supportée par AirLLM (Llama, Mistral, Qwen2…)"
-                                      >
-                                        <Icon name="star" size={15} /> Info AirLLM
-                                      </button>
-                                    );
-                                  }
-                                  if (installed) {
-                                    return (
-                                      <button
-                                        type="button"
-                                        className="locaryn-btn-primary locaryn-variant-use"
-                                        style={{
-                                          background: "var(--info)",
-                                          color: "var(--on-accent)",
-                                        }}
-                                        onClick={() => onLaunchAirllm?.(entry.repo)}
-                                        title={`Lancer ${entry.repo} via le moteur AirLLM`}
-                                      >
-                                        <Icon name="speed" size={15} /> Lancer avec AirLLM
-                                      </button>
-                                    );
-                                  }
-                                  return (
-                                    <button
-                                      type="button"
-                                      className="locaryn-btn-primary locaryn-variant-use"
-                                      style={{
-                                        background: "var(--info)",
-                                        color: "var(--on-accent)",
-                                      }}
-                                      disabled={busy}
-                                      onClick={() => handleAirllmInstall(f)}
-                                      title={`Télécharger ${entry.repo} (~${entry.sizeGb} Go fp16) puis lancer via AirLLM`}
-                                    >
-                                      {busy
-                                        ? "⏳ AirLLM…"
-                                        : `Installer via AirLLM (~${entry.sizeGb} Go)`}
-                                    </button>
-                                  );
-                                })()
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="locaryn-btn-primary locaryn-variant-use"
-                                  onClick={() =>
-                                    requestInstall(
-                                      targetTag,
-                                      f.name,
-                                      Boolean(f.uncensored),
-                                      v.downloads,
-                                    )
-                                  }
-                                  title={`Installer la quantisation ${activeQuant}`}
-                                >
-                                  Installer ({activeQuant})
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              flexWrap: "wrap",
-                              marginTop: "2px",
-                            }}
-                          >
-                            <span style={{ fontSize: "10px", color: "var(--text-faint)" }}>
-                              quant:
-                            </span>
-                            {v.quants.map((q) => {
-                              const isSelected = activeQuant === q;
-                              return (
-                                <button
-                                  key={q}
-                                  type="button"
-                                  className={`locaryn-quant-chip${isSelected ? " locaryn-quant-chip-active" : ""}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedQuants((prev) => ({ ...prev, [v.tag]: q }));
-                                  }}
-                                  title={`Choisir la quantisation ${q}`}
-                                >
-                                  {q}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -3773,6 +3544,283 @@ export function ModelBrowser({
           await onInstall(newTag);
         }}
       />
+
+      {/* ── Le détail d'une famille, en tiroir ──
+          La maquette l'ouvre à droite plutôt qu'en dépliant la carte : une
+          carte dépliée pousse toute la grille, et on perd de vue ce qu'on
+          était en train de comparer. */}
+      {drawerFamily &&
+        (() => {
+          const f = families.find((x) => x.id === drawerFamily);
+          if (!f) return null;
+          return createPortal(
+            <div className="locaryn-drawer-layer">
+              <button
+                type="button"
+                className="locaryn-drawer-scrim"
+                aria-label="Fermer le détail"
+                onClick={() => setDrawerFamily(null)}
+              />
+              <aside className="locaryn-drawer" aria-label={`Détail de ${f.name}`}>
+                <header className="locaryn-drawer-head">
+                  <div className="locaryn-drawer-ident">
+                    <span className="locaryn-box-brand">{f.brand}</span>
+                    <h2 className="locaryn-drawer-name">{f.name}</h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="locaryn-drawer-close"
+                    title="Fermer"
+                    onClick={() => setDrawerFamily(null)}
+                  >
+                    <Icon name="close" size={16} />
+                  </button>
+                </header>
+
+                <div className="locaryn-drawer-body">
+                  <p className="locaryn-drawer-desc">{f.description}</p>
+
+                  <div className="locaryn-drawer-meta">
+                    {f.contextWindow && (
+                      <div>
+                        <span>Contexte</span>
+                        <strong>{f.contextWindow}</strong>
+                      </div>
+                    )}
+                    <div>
+                      <span>Licence</span>
+                      <strong>{f.license}</strong>
+                    </div>
+                    <div>
+                      <span>Sortie</span>
+                      <strong>{f.releaseDate}</strong>
+                    </div>
+                  </div>
+
+                  <div className="locaryn-box-variants" style={{ marginTop: "12px" }}>
+                    <span className="locaryn-box-variants-title">Tailles disponibles</span>
+                    {f.variants.map((v) => {
+                      const activeQuant = selectedQuants[v.tag] || v.quants[0] || "q4_K_M";
+                      const targetTag = getQuantTag(v.tag, activeQuant);
+                      const targetStorageGb = getQuantStorageGb(v.storageGb, activeQuant);
+                      const isInstalled =
+                        isVariantInstalled(targetTag, installedSet, activeQuant) ||
+                        isVariantInstalled(v.tag, installedSet, activeQuant);
+                      const progress = installProgress[targetTag] ?? installProgress[v.tag];
+                      const isInstalling = progress !== undefined;
+                      const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
+                      const fitV = fits[fitKey(v.params, activeQuant, targetStorageGb)];
+                      const compatV = variantCompat(
+                        targetStorageGb,
+                        hardwareSpec,
+                        airllmEnabled,
+                        fitV,
+                      );
+
+                      return (
+                        <div
+                          key={v.tag}
+                          className={`locaryn-box-variant-row locaryn-variant-stack${isDeleting ? " locaryn-shatter" : ""}`}
+                        >
+                          {isDeleting && <Shards />}
+                          <div className="locaryn-variant-head">
+                            <div className="locaryn-box-variant-info">
+                              <span className="locaryn-variant-size">{v.size}</span>
+                              <span className="locaryn-stat-vram">
+                                <Icon name="models" size={13} /> ~{targetStorageGb} Go
+                              </span>
+                              <span
+                                className="locaryn-tag"
+                                style={{ background: `${compatV.color}22`, color: compatV.color }}
+                                title={compatV.label}
+                              >
+                                <span
+                                  className="locaryn-dot"
+                                  style={{ background: compatV.color }}
+                                />{" "}
+                                {compatV.short}
+                              </span>
+                              {compatV.level === "airllm" && (
+                                <span
+                                  className="locaryn-tag"
+                                  style={{
+                                    background: "var(--accent-fill)",
+                                    color: "var(--info)",
+                                  }}
+                                  title="Estimation AirLLM sur ce PC — débit réel selon VRAM / RAM / disque"
+                                >
+                                  <Icon name="speed" size={13} /> ~
+                                  {fmtTokPerSec(
+                                    estimateAirllmTokPerSec(
+                                      targetStorageGb,
+                                      hardwareSpec,
+                                      v.size,
+                                    ) ?? 0,
+                                  )}
+                                </span>
+                              )}
+                              {isInstalled && (
+                                <span className="locaryn-tag locaryn-tag-installed">Installé</span>
+                              )}
+                            </div>
+
+                            <div className="locaryn-variant-actions">
+                              {isInstalled ? (
+                                <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                                  <button
+                                    type="button"
+                                    className="locaryn-btn-primary"
+                                    style={{ padding: "3px 8px", fontSize: "11px" }}
+                                    onClick={() => onSelectModelForChat?.(targetTag)}
+                                    title="Utiliser ce modèle dans le Chat"
+                                  >
+                                    <Icon name="chat" size={15} /> Utiliser
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="locaryn-btn-ghost"
+                                    style={{
+                                      color: "var(--danger)",
+                                      padding: "3px 8px",
+                                      fontSize: "11px",
+                                    }}
+                                    onClick={() => handleDeleteModel(targetTag)}
+                                    disabled={isDeleting}
+                                    title="Supprimer ce modèle du disque dur local"
+                                  >
+                                    {isDeleting ? "..." : "Supprimer"}
+                                  </button>
+                                </div>
+                              ) : isInstalling ? (
+                                <button
+                                  type="button"
+                                  className="locaryn-btn-ghost"
+                                  style={{
+                                    color: "var(--danger)",
+                                    border: "1px solid var(--danger)",
+                                    padding: "3px 8px",
+                                    fontSize: "11px",
+                                  }}
+                                  onClick={() => handleCancelInstall(targetTag)}
+                                  title="Annuler le téléchargement en cours"
+                                >
+                                  <Icon name="close" size={15} /> Annuler ({progress}%)
+                                </button>
+                              ) : compatV.level === "airllm" ? (
+                                (() => {
+                                  const entry = getAirllmEntry(f);
+                                  const installed = entry ? airllmInstalled.has(entry.repo) : false;
+                                  const busy = entry ? airllmBusy[entry.repo] : false;
+                                  if (!entry) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="locaryn-btn-ghost"
+                                        style={{
+                                          border: "1px dashed var(--info)",
+                                          color: "var(--info)",
+                                        }}
+                                        onClick={() => setAirllmModalOpen(true)}
+                                        title="Cette architecture n'est pas encore supportée par AirLLM (Llama, Mistral, Qwen2…)"
+                                      >
+                                        <Icon name="star" size={15} /> Info AirLLM
+                                      </button>
+                                    );
+                                  }
+                                  if (installed) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="locaryn-btn-primary locaryn-variant-use"
+                                        style={{
+                                          background: "var(--info)",
+                                          color: "var(--on-accent)",
+                                        }}
+                                        onClick={() => onLaunchAirllm?.(entry.repo)}
+                                        title={`Lancer ${entry.repo} via le moteur AirLLM`}
+                                      >
+                                        <Icon name="speed" size={15} /> Lancer avec AirLLM
+                                      </button>
+                                    );
+                                  }
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="locaryn-btn-primary locaryn-variant-use"
+                                      style={{
+                                        background: "var(--info)",
+                                        color: "var(--on-accent)",
+                                      }}
+                                      disabled={busy}
+                                      onClick={() => handleAirllmInstall(f)}
+                                      title={`Télécharger ${entry.repo} (~${entry.sizeGb} Go fp16) puis lancer via AirLLM`}
+                                    >
+                                      {busy
+                                        ? "⏳ AirLLM…"
+                                        : `Installer via AirLLM (~${entry.sizeGb} Go)`}
+                                    </button>
+                                  );
+                                })()
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="locaryn-btn-primary locaryn-variant-use"
+                                  onClick={() =>
+                                    requestInstall(
+                                      targetTag,
+                                      f.name,
+                                      Boolean(f.uncensored),
+                                      v.downloads,
+                                    )
+                                  }
+                                  title={`Installer la quantisation ${activeQuant}`}
+                                >
+                                  Installer ({activeQuant})
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              flexWrap: "wrap",
+                              marginTop: "2px",
+                            }}
+                          >
+                            <span style={{ fontSize: "10px", color: "var(--text-faint)" }}>
+                              quant:
+                            </span>
+                            {v.quants.map((q) => {
+                              const isSelected = activeQuant === q;
+                              return (
+                                <button
+                                  key={q}
+                                  type="button"
+                                  className={`locaryn-quant-chip${isSelected ? " locaryn-quant-chip-active" : ""}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedQuants((prev) => ({ ...prev, [v.tag]: q }));
+                                  }}
+                                  title={`Choisir la quantisation ${q}`}
+                                >
+                                  {q}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </aside>
+            </div>,
+            document.body,
+          );
+        })()}
     </div>
   );
 }

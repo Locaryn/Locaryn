@@ -4915,6 +4915,7 @@ pre.md-code {
 /* La carte de famille, aux valeurs de la maquette : Mica et ombre douce,
    rayon d'un cran au-dessus, et le contenu qui respire à 12px. */
 .locaryn-box-card {
+  position: relative;
   background-color: var(--surface);
   background-image: var(--mica);
   box-shadow: var(--shadow-1);
@@ -4925,6 +4926,37 @@ pre.md-code {
   flex-direction: column;
   gap: var(--space-3);
   transition: border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+/* L'etoile de favori : ancree au coin, avec une cible de 32 px et un retrait
+   sur l'en-tete pour qu'elle ne recouvre jamais le nom du modele. */
+.locaryn-box-fav {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.locaryn-box-fav:hover {
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+.locaryn-box-fav-on,
+.locaryn-box-fav-on:hover {
+  color: var(--warn);
+}
+.locaryn-box-card .locaryn-box-head {
+  padding-right: 30px;
 }
 
 .locaryn-box-card:hover {
@@ -9809,4 +9841,154 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: var(--text-sm);
   line-height: 1.6;
   color: var(--text-dim);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Le tiroir de détail
+
+   La maquette ouvre le détail d'une famille à droite plutôt qu'en
+   dépliant sa carte. Une carte dépliée pousse toute la grille : on
+   perd de vue ce qu'on était en train de comparer, et la ligne de
+   cartes saute sous le curseur.
+   ═══════════════════════════════════════════════════════════ */
+.locaryn-drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+}
+.locaryn-drawer-scrim {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.42);
+  cursor: default;
+}
+.locaryn-drawer {
+  position: relative;
+  width: min(540px, 94vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface);
+  background-image: var(--mica);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-3);
+  animation: lo-slide-in var(--dur-slow) var(--ease-out) both;
+}
+.locaryn-drawer-head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: var(--space-6) var(--space-6) 18px;
+  border-bottom: 1px solid var(--border);
+}
+.locaryn-drawer-ident {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.locaryn-drawer-name {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.locaryn-drawer-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.locaryn-drawer-close:hover {
+  color: var(--text);
+}
+.locaryn-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px var(--space-6) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+/* Une ligne de taille dans le tiroir dispose de 540 px, pas de la largeur
+   d'une carte : sans retour a la ligne, « 4B - rapide » et « ~2.3 Go » se
+   cassaient chacun sur trois lignes. On fait passer les groupes a la ligne
+   ensemble plutot que mot par mot. */
+.locaryn-variant-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.locaryn-variant-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+/* Sur les lignes ou tout ne tient pas, le bouton passe seul a la ligne. Sans
+   cette marge, `space-between` le collerait a gauche et l'oeil perdrait la
+   colonne d'actions d'une ligne a l'autre. */
+.locaryn-variant-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.locaryn-variant-head .locaryn-box-variant-info {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.locaryn-variant-head .locaryn-variant-size,
+.locaryn-variant-head .locaryn-stat-vram {
+  white-space: nowrap;
+}
+.locaryn-drawer-desc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+/* Le tableau de métadonnées : des filets d'1px obtenus par le fond, pas par
+   des bordures — c'est ce qui donne des séparateurs parfaitement nets. */
+.locaryn-drawer-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.locaryn-drawer-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  background: var(--surface);
+}
+.locaryn-drawer-meta span {
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.locaryn-drawer-meta strong {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text);
 }

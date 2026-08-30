@@ -416,7 +416,7 @@ export const MODEL_CATEGORIES: ModelCategoryDefinition[] = [
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const CACHE_KEY = "locaryn_model_registry_cache_v18";
+const CACHE_KEY = "locaryn_model_registry_cache_v19";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const QUANTS_SMALL = ["q4_K_M", "q5_K_M", "q8_0", "fp16"];
@@ -1659,13 +1659,20 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
       const dateRaw = item.createdAt || item.lastModified;
       const yearMatch = dateRaw ? new Date(dateRaw).getFullYear() : 2026;
       const dateStr = dateRaw ? dateRaw.slice(0, 7) : "2026-08";
+      // La popularite ne merite une phrase que si elle en a une. Les depots
+      // frais remontent a zero telechargement : « (0 telechargements) » dans
+      // le tiroir de detail lit comme une erreur plutot que comme une donnee.
+      const social = item.downloads || item.likes || 0;
 
       if (!familyMap[familyId]) {
         familyMap[familyId] = {
           id: familyId,
           name: repoName.replace(/-GGUF$/i, ""),
           brand,
-          description: `GGUF HuggingFace Hub (${(item.downloads || item.likes || 0).toLocaleString()} téléchargements / likes).`,
+          description:
+            social > 0
+              ? `Poids GGUF publiés sur HuggingFace par ${author}, ${social.toLocaleString("fr-FR")} téléchargements.`
+              : `Poids GGUF publiés sur HuggingFace par ${author}.`,
           license: "Open Weights",
           contextWindow: "128k",
           releaseDate: dateStr,
