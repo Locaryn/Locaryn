@@ -58,13 +58,6 @@ struct DaemonState {
     pub mcp_state: Arc<McpState>,
     /// Client HTTP partagé (sondes de santé des noyaux, pont).
     pub http: reqwest::Client,
-    /// Le trousseau du système, pour les clés des fournisseurs de modèles
-    /// apportés par une extension.
-    ///
-    /// Un serveur sans session graphique n'en a pas : le socle retombe alors
-    /// sur les variables d'environnement, ce qui est la façon dont un service
-    /// reçoit ses secrets de toute manière.
-    pub keychain: std::sync::Arc<dyn locaryn_auth::Keychain>,
     /// Noyaux alternatifs (OpenClaw, Hermes…) : superviseur de processus
     /// partagé avec le desktop (D4).
     pub cores: Arc<locaryn_core_bridge::manager::CoreManager>,
@@ -80,24 +73,6 @@ struct DaemonState {
     /// causing the SSE stream to terminate on the next poll.
     /// The background task removes the entry when the stream ends naturally.
     cancel_map: Arc<Mutex<HashMap<Uuid, Arc<AtomicBool>>>>,
-}
-
-/// Le trousseau du système, quand il y en a un.
-///
-/// Sur un poste de travail, les clés des fournisseurs sont chiffrées par le
-/// système. Sur un serveur — pas de session, pas de Secret Service — il n'y en
-/// a pas : le socle retombe alors sur `LOCARYN_CLOUD_<ID>_KEY`, ce qui est la
-/// façon dont un service reçoit ses secrets de toute façon. Renvoyer un
-/// trousseau muet plutôt que d'échouer garde le service démarrable partout.
-fn trousseau() -> std::sync::Arc<dyn locaryn_auth::Keychain> {
-    #[cfg(feature = "system-keychain")]
-    {
-        std::sync::Arc::new(locaryn_auth::SystemKeychain::new("locaryn"))
-    }
-    #[cfg(not(feature = "system-keychain"))]
-    {
-        std::sync::Arc::new(locaryn_auth::NullKeychain)
-    }
 }
 
 /// This machine's address on the local network, for certificate names.
@@ -224,7 +199,6 @@ async fn main() -> anyhow::Result<()> {
             .timeout(std::time::Duration::from_secs(600))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new()),
-        keychain: trousseau(),
         cores: locaryn_core_bridge::manager::CoreManager::new(),
         travel: travel_state.clone(),
         port,
@@ -411,14 +385,6 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/v1/memory/:id",
             axum::routing::put(routes::memory::edit).delete(routes::memory::forget),
-        )
-        // L'API compatible OpenAI : la porte d'entrée standard du mode
-        // serveur. Elle sert les poids locaux comme les modèles routés par une
-        // passerelle installée par un morph.
-        .route("/v1/models", get(routes::openai::list_models))
-        .route(
-            "/v1/chat/completions",
-            post(routes::openai::chat_completions),
         )
         .route("/v1/providers", get(list_providers))
         .route("/v1/supervisor/status", get(supervisor_status))
