@@ -949,7 +949,12 @@ export function ModelBrowser({
       }
     }
     if (entries.size === 0) {
-      setFits({});
+      // Conserver l'objet vide existant plutot que d'en poser un neuf : la
+      // liste des familles depend de `fits`, donc un nouvel objet la
+      // recalculait, ce qui relancait cet effet — une boucle de rendu sans fin
+      // des que la liste etait vide, au chargement comme sur un filtre sans
+      // resultat.
+      setFits((prev) => (Object.keys(prev).length === 0 ? prev : {}));
       return;
     }
     const timer = setTimeout(() => {
@@ -1588,6 +1593,17 @@ export function ModelBrowser({
   // là plutôt que de déplier la carte : une carte dépliée pousse toute la
   // grille, et on perd de vue ce qu'on comparait.
   const [drawerFamily, setDrawerFamily] = useState<string | null>(null);
+
+  // Echap referme le tiroir. Sans cela, la touche remontait a l'ecran qui
+  // porte le catalogue et fermait tout le panneau au lieu du seul detail.
+  useEffect(() => {
+    if (!drawerFamily) return;
+    const surTouche = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerFamily(null);
+    };
+    window.addEventListener("keydown", surTouche);
+    return () => window.removeEventListener("keydown", surTouche);
+  }, [drawerFamily]);
 
   const isFilterActive =
     size !== "all" || query !== "" || brand !== "all" || onlyRecommended || riskFilter !== "all";

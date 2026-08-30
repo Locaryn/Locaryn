@@ -1,6 +1,7 @@
 import { Icon, LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { BatchStudio } from "./components/BatchStudio";
 import { ChatPermissionsModal } from "./components/ChatPermissionsModal";
 import { ConnectScreen } from "./components/ConnectScreen";
@@ -59,6 +60,20 @@ function clampPanel(panel: PanelKey, value: number): number {
   const { min, max } = PANEL_LIMITS[panel];
   return Math.max(min, Math.min(max, Math.round(value)));
 }
+
+/** Le nom de l'ecran ouvert en surcouche, annonce aux lecteurs d'ecran. */
+const OVERLAY_LABELS: Record<string, string> = {
+  models: "Marketplace",
+  installed: "Modèles installés",
+  settings: "Réglages",
+  account: "Compte et profil",
+  extensions: "Morphs et Skills",
+  connectors: "Connecteurs et MCP",
+  training: "Studio d'entraînement",
+  batch: "Traitement par lots",
+  figures: "Figures",
+  studio: "Studio",
+};
 
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -224,6 +239,25 @@ export function App() {
   // Retirer l'extension qui portait l'écran ouvert laisserait la personne
   // devant une vue qui n'existe plus. On revient au chat plutôt que d'afficher
   // le vide.
+  // Echap ferme l'ecran ouvert par-dessus le chat.
+  //
+  // Pose sur la fenetre plutot que sur le panneau : le panneau contient des
+  // champs et des listes qui prennent le focus, et l'evenement ne remonterait
+  // pas jusqu'a lui depuis un menu natif.
+  useEffect(() => {
+    if (activeView === "chat") return;
+    const surTouche = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Un tiroir ouvert par-dessus l'ecran se ferme en premier : sinon Echap
+      // emporte le panneau entier et on repart au chat alors qu'on voulait
+      // seulement refermer le detail qu'on venait d'ouvrir.
+      if (document.querySelector(".locaryn-drawer-layer")) return;
+      setActiveView("chat");
+    };
+    window.addEventListener("keydown", surTouche);
+    return () => window.removeEventListener("keydown", surTouche);
+  }, [activeView]);
+
   useEffect(() => {
     const needs = CAPABILITY_GATED_VIEWS[activeView];
     if (needs && !needs.some((c) => activeCapabilities.includes(c))) {
@@ -1003,223 +1037,261 @@ export function App() {
           </>
         )}
 
-        {activeView === "chat" && (
-          <ChatPanel
-            sessionId={activeSession?.id ?? null}
-            projectId={activeProject?.id ?? null}
-            connectionMode={health?.mode}
-            coreName={
-              activeSession?.core_id
-                ? (installedCores.find((c) => c.id === activeSession.core_id)?.name ??
-                  activeSession.core_id)
-                : null
-            }
-            onCreateSessionForPrompt={handleCreateSessionForPrompt}
-            onSessionMoved={(projectId) => {
-              if (activeSession) void handleMoveSession(activeSession, projectId);
-            }}
-            onOpenSettings={() => setActiveView("settings")}
-            ephemeral={activeSession?.ephemeral ?? false}
-            onNewChat={handleNewStandaloneChat}
-            onAddProject={async () => {
-              const path = await pickFolder();
-              if (!path) return;
-              const name =
-                window.prompt(
-                  "Nom du projet:",
-                  path
-                    .replace(/[\\/]+$/, "")
-                    .split(/[\\/]/)
-                    .pop() ?? "projet",
-                ) ?? "projet";
-              handleAddProject(path, name);
-            }}
-            onOpenMarketplace={() => setActiveView("models")}
-            activeCapabilities={activeCapabilities}
-            extensions={activeExtensions}
-          />
-        )}
+        {/* Le chat est la couche de fond : il reste monte quel que soit
+            l'ecran ouvert par-dessus. Le demonter et le remonter a chaque
+            aller-retour vers les reglages perdait la position de defilement et
+            relancait le rendu de toute la conversation. */}
+        <ChatPanel
+          sessionId={activeSession?.id ?? null}
+          projectId={activeProject?.id ?? null}
+          connectionMode={health?.mode}
+          coreName={
+            activeSession?.core_id
+              ? (installedCores.find((c) => c.id === activeSession.core_id)?.name ??
+                activeSession.core_id)
+              : null
+          }
+          onCreateSessionForPrompt={handleCreateSessionForPrompt}
+          onSessionMoved={(projectId) => {
+            if (activeSession) void handleMoveSession(activeSession, projectId);
+          }}
+          onOpenSettings={() => setActiveView("settings")}
+          ephemeral={activeSession?.ephemeral ?? false}
+          onNewChat={handleNewStandaloneChat}
+          onAddProject={async () => {
+            const path = await pickFolder();
+            if (!path) return;
+            const name =
+              window.prompt(
+                "Nom du projet:",
+                path
+                  .replace(/[\\/]+$/, "")
+                  .split(/[\\/]/)
+                  .pop() ?? "projet",
+              ) ?? "projet";
+            handleAddProject(path, name);
+          }}
+          onOpenMarketplace={() => setActiveView("models")}
+          activeCapabilities={activeCapabilities}
+          extensions={activeExtensions}
+        />
 
-        {activeView === "models" && (
-          <div className="locaryn-view-container">
-            <div className="locaryn-view-header">
-              {/* Un titre est un nom, pas une parenthèse d'explication : la
+        {/* Les ecrans autres que le chat s'ouvrent par-dessus lui, pas a sa
+            place.
+            Les faire cohabiter dans le meme espace obligeait le rail de gauche
+            a changer de contenu selon l'ecran — et donc de tete. En surcouche,
+            le chat et son historique restent montes dessous, le rail ne bouge
+            jamais, et l'ecran ouvert dispose de toute la fenetre.
+            Porte dans `document.body` : `.locaryn-app` porte un transform
+            d'entree, qui ferait d'elle le bloc conteneur de tout
+            `position: fixed` descendant. */}
+        {activeView !== "chat" &&
+          createPortal(
+            <div className="locaryn-overlay">
+              <button
+                type="button"
+                className="locaryn-overlay-scrim"
+                aria-label="Fermer"
+                onClick={() => setActiveView("chat")}
+              />
+              <div
+                className="locaryn-overlay-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-label={OVERLAY_LABELS[activeView] ?? "Panneau"}
+              >
+                <button
+                  type="button"
+                  className="locaryn-overlay-close"
+                  title="Fermer (Échap)"
+                  onClick={() => setActiveView("chat")}
+                >
+                  <Icon name="close" size={18} />
+                </button>
+                {activeView === "models" && (
+                  <div className="locaryn-view-container">
+                    <div className="locaryn-view-header">
+                      {/* Un titre est un nom, pas une parenthèse d'explication : la
                   provenance et la liste des familles vivent dans le contenu,
                   qui les montre déjà. */}
-              <h2>Marketplace</h2>
-              <p className="locaryn-view-desc">
-                Le catalogue complet. Chaque famille regroupe ses tailles, et chaque taille ses
-                quantifications.
-              </p>
-            </div>
-            <ModelBrowser
-              onInstall={handleInstallModel}
-              onCancelInstall={handleCancelDownload}
-              onDelete={handleDeleteModel}
-              installed={installedModels}
-              activeCapabilities={activeCapabilities}
-              activeExtensions={activeExtensions}
-              onOpenTraining={() => setActiveView("training")}
-              onSelectModelForChat={async (tag) => {
-                try {
-                  const providers = await core.listProviders();
-                  const active = providers.find((p) => p.is_active) ?? providers[0];
-                  if (active) await core.configureProvider(active.endpoint, tag);
-                } catch (e) {
-                  console.warn("configureProvider failed, navigating anyway:", e);
-                }
-                setActiveView("chat");
-                refreshHealth();
-              }}
-              onLaunchAirllm={async (repo) => {
-                try {
-                  await core.configureAirllmProvider(repo);
-                } catch (e) {
-                  console.warn("configureAirllmProvider failed, navigating anyway:", e);
-                }
-                setActiveView("chat");
-                refreshHealth();
-              }}
-            />
-          </div>
-        )}
+                      <h2>Marketplace</h2>
+                      <p className="locaryn-view-desc">
+                        Le catalogue complet. Chaque famille regroupe ses tailles, et chaque taille
+                        ses quantifications.
+                      </p>
+                    </div>
+                    <ModelBrowser
+                      onInstall={handleInstallModel}
+                      onCancelInstall={handleCancelDownload}
+                      onDelete={handleDeleteModel}
+                      installed={installedModels}
+                      activeCapabilities={activeCapabilities}
+                      activeExtensions={activeExtensions}
+                      onOpenTraining={() => setActiveView("training")}
+                      onSelectModelForChat={async (tag) => {
+                        try {
+                          const providers = await core.listProviders();
+                          const active = providers.find((p) => p.is_active) ?? providers[0];
+                          if (active) await core.configureProvider(active.endpoint, tag);
+                        } catch (e) {
+                          console.warn("configureProvider failed, navigating anyway:", e);
+                        }
+                        setActiveView("chat");
+                        refreshHealth();
+                      }}
+                      onLaunchAirllm={async (repo) => {
+                        try {
+                          await core.configureAirllmProvider(repo);
+                        } catch (e) {
+                          console.warn("configureAirllmProvider failed, navigating anyway:", e);
+                        }
+                        setActiveView("chat");
+                        refreshHealth();
+                      }}
+                    />
+                  </div>
+                )}
 
-        {activeView === "installed" && (
-          <InstalledModelsView
-            installedModels={installedModels}
-            onSelectModelForChat={async (modelTag) => {
-              try {
-                const providers = await core.listProviders();
-                const active = providers.find((p) => p.is_active) ?? providers[0];
-                if (active) await core.configureProvider(active.endpoint, modelTag);
-              } catch (e) {
-                console.warn("configureProvider failed:", e);
-              }
-              setActiveView("chat");
-              refreshHealth();
-            }}
-            onDeleteModel={handleDeleteModel}
-            onOpenMarketplace={() => setActiveView("models")}
-            extensions={activeExtensions}
-          />
-        )}
+                {activeView === "installed" && (
+                  <InstalledModelsView
+                    installedModels={installedModels}
+                    onSelectModelForChat={async (modelTag) => {
+                      try {
+                        const providers = await core.listProviders();
+                        const active = providers.find((p) => p.is_active) ?? providers[0];
+                        if (active) await core.configureProvider(active.endpoint, modelTag);
+                      } catch (e) {
+                        console.warn("configureProvider failed:", e);
+                      }
+                      setActiveView("chat");
+                      refreshHealth();
+                    }}
+                    onDeleteModel={handleDeleteModel}
+                    onOpenMarketplace={() => setActiveView("models")}
+                    extensions={activeExtensions}
+                  />
+                )}
 
-        {activeView === "batch" && <BatchStudio />}
+                {activeView === "batch" && <BatchStudio />}
 
-        {activeView === "figures" && (
-          <FiguresView
-            onOpenSession={(sess) => {
-              handleSelectSession(sess);
-              setActiveView("chat");
-            }}
-            onNewWithFigure={async (f) => {
-              // Une conversation neuve, confiée à la figure : ses consignes
-              // partent avec le premier message, sans que personne ait à les
-              // recopier.
-              try {
-                const project = freeProject ?? (await core.freeChatProject());
-                if (!freeProject) setFreeProject(project);
-                const sess = await core.createSession(project.id);
-                await core.attachFigure(sess.id, f.id);
-                setStandaloneSessions((prev) => [sess, ...prev]);
-                setActiveProject(null);
-                setActiveSession(sess);
-                setActiveView("chat");
-              } catch (e) {
-                console.error(e);
-              }
-            }}
-          />
-        )}
+                {activeView === "figures" && (
+                  <FiguresView
+                    onOpenSession={(sess) => {
+                      handleSelectSession(sess);
+                      setActiveView("chat");
+                    }}
+                    onNewWithFigure={async (f) => {
+                      // Une conversation neuve, confiée à la figure : ses consignes
+                      // partent avec le premier message, sans que personne ait à les
+                      // recopier.
+                      try {
+                        const project = freeProject ?? (await core.freeChatProject());
+                        if (!freeProject) setFreeProject(project);
+                        const sess = await core.createSession(project.id);
+                        await core.attachFigure(sess.id, f.id);
+                        setStandaloneSessions((prev) => [sess, ...prev]);
+                        setActiveProject(null);
+                        setActiveSession(sess);
+                        setActiveView("chat");
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }}
+                  />
+                )}
 
-        {activeView === "studio" && (
-          <StudioView
-            installedModels={installedModels}
-            extensions={activeExtensions}
-            onCloseAudioGen={() => setActiveView("chat")}
-          />
-        )}
+                {activeView === "studio" && (
+                  <StudioView
+                    installedModels={installedModels}
+                    extensions={activeExtensions}
+                    onCloseAudioGen={() => setActiveView("chat")}
+                  />
+                )}
 
-        {/* Plus dans le menu : on y arrive depuis le catalogue de modèles,
+                {/* Plus dans le menu : on y arrive depuis le catalogue de modèles,
             sur lequel ce studio agit. */}
-        {activeView === "training" && (
-          <ModelStudioView
-            onOpenMarketplace={() => setActiveView("models")}
-            onOpenSettings={() => setActiveView("settings")}
-          />
-        )}
+                {activeView === "training" && (
+                  <ModelStudioView
+                    onOpenMarketplace={() => setActiveView("models")}
+                    onOpenSettings={() => setActiveView("settings")}
+                  />
+                )}
 
-        {/* Un écran déclaré par une extension : l'application ne connaît pas
+                {/* Un écran déclaré par une extension : l'application ne connaît pas
             son nom, elle sait seulement qu'une extension le revendique. */}
-        <ExtensionScreen view={activeView} extensions={activeExtensions} />
+                <ExtensionScreen view={activeView} extensions={activeExtensions} />
 
-        {activeView === "extensions" && (
-          <div className="locaryn-view-container">
-            <ExtensionsSettings />
-          </div>
-        )}
+                {activeView === "extensions" && (
+                  <div className="locaryn-view-container">
+                    <ExtensionsSettings />
+                  </div>
+                )}
 
-        {activeView === "connectors" && (
-          <div className="locaryn-view-container">
-            <ConnectorsSettings />
-          </div>
-        )}
+                {activeView === "connectors" && (
+                  <div className="locaryn-view-container">
+                    <ConnectorsSettings />
+                  </div>
+                )}
 
-        {activeView === "account" && (
-          <SettingsView
-            theme={theme}
-            projects={projects}
-            sessionsByProject={sessionsByProject}
-            standaloneSessions={standaloneSessions}
-            activeCapabilities={activeCapabilities}
-            initialSection="account"
-            onOpenSession={(session) => {
-              void handleSelectSession(session);
-              setActiveView("chat");
-            }}
-            onOpenMarketplace={() => setActiveView("models")}
-            onProjectArchived={(p) => {
-              setProjects((prev) => prev.filter((x) => x.id !== p.id));
-              setSessionsByProject((prev) => {
-                const next = { ...prev };
-                delete next[p.id];
-                return next;
-              });
-            }}
-          />
-        )}
+                {activeView === "account" && (
+                  <SettingsView
+                    theme={theme}
+                    projects={projects}
+                    sessionsByProject={sessionsByProject}
+                    standaloneSessions={standaloneSessions}
+                    activeCapabilities={activeCapabilities}
+                    initialSection="account"
+                    onOpenSession={(session) => {
+                      void handleSelectSession(session);
+                      setActiveView("chat");
+                    }}
+                    onOpenMarketplace={() => setActiveView("models")}
+                    onProjectArchived={(p) => {
+                      setProjects((prev) => prev.filter((x) => x.id !== p.id));
+                      setSessionsByProject((prev) => {
+                        const next = { ...prev };
+                        delete next[p.id];
+                        return next;
+                      });
+                    }}
+                  />
+                )}
 
-        {activeView === "settings" && (
-          <SettingsView
-            theme={theme}
-            projects={projects}
-            sessionsByProject={sessionsByProject}
-            standaloneSessions={standaloneSessions}
-            activeCapabilities={activeCapabilities}
-            initialSection={settingsInitialSection}
-            onOpenSession={(session) => {
-              void handleSelectSession(session);
-              setActiveView("chat");
-            }}
-            onOpenMarketplace={() => setActiveView("models")}
-            onProjectArchived={(p) => {
-              setProjects((prev) => prev.filter((x) => x.id !== p.id));
-              setSessionsByProject((prev) => {
-                const next = { ...prev };
-                delete next[p.id];
-                return next;
-              });
-              if (activeProject?.id === p.id) {
-                setActiveProject(null);
-                setSessions([]);
-                setActiveSession(null);
-              }
-            }}
-          />
-        )}
+                {activeView === "settings" && (
+                  <SettingsView
+                    theme={theme}
+                    projects={projects}
+                    sessionsByProject={sessionsByProject}
+                    standaloneSessions={standaloneSessions}
+                    activeCapabilities={activeCapabilities}
+                    initialSection={settingsInitialSection}
+                    onOpenSession={(session) => {
+                      void handleSelectSession(session);
+                      setActiveView("chat");
+                    }}
+                    onOpenMarketplace={() => setActiveView("models")}
+                    onProjectArchived={(p) => {
+                      setProjects((prev) => prev.filter((x) => x.id !== p.id));
+                      setSessionsByProject((prev) => {
+                        const next = { ...prev };
+                        delete next[p.id];
+                        return next;
+                      });
+                      if (activeProject?.id === p.id) {
+                        setActiveProject(null);
+                        setSessions([]);
+                        setActiveSession(null);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            </div>,
+            document.body,
+          )}
 
         {/* Right side panels for Chat view */}
-        {activeView === "chat" && showModelConfig && (
+        {showModelConfig && (
           <>
             <div
               className="locaryn-resizer locaryn-resizer-v"
@@ -1239,7 +1311,7 @@ export function App() {
           </>
         )}
 
-        {activeView === "chat" && showPreview && (
+        {showPreview && (
           <>
             <div
               className="locaryn-resizer locaryn-resizer-v"

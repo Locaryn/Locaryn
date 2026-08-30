@@ -137,6 +137,7 @@
   --layout-bottom: 200px;
   --measure: 760px; /* largeur maximale du texte long */
   --statusbar-h: 28px; /* barre d'état en pied d'application */
+  --topbar-h: 52px; /* barre de titre : zone de deplacement de la fenetre */
 
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

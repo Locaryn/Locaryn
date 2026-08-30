@@ -9828,10 +9828,112 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
    perd de vue ce qu'on était en train de comparer, et la ligne de
    cartes saute sous le curseur.
    ═══════════════════════════════════════════════════════════ */
-.locaryn-drawer-layer {
+/* ═══════════════════════════════════════════════════════════
+   SURCOUCHE PLEINE FENETRE
+   Le marketplace, les modeles et les reglages s'ouvrent par-dessus le chat
+   plutot qu'a sa place. Le rail de gauche garde donc toujours le meme
+   contenu — il est simplement recouvert — au lieu de changer de tete selon
+   l'ecran. Le panneau prend presque toute la fenetre, avec juste assez de
+   marge pour qu'on voie qu'il y a quelque chose derriere.
+   ═══════════════════════════════════════════════════════════ */
+.locaryn-overlay {
+  /* Calee entre la barre de titre et la barre d'etat : sous Tauri, la barre du
+     haut porte la zone de deplacement de la fenetre. La recouvrir revient a
+     empecher de bouger l'application tant qu'un ecran est ouvert. */
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: var(--statusbar-h);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+.locaryn-overlay-scrim {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  padding: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: default;
+  animation: lo-fade-in var(--dur-fast) var(--ease-out) both;
+}
+.locaryn-overlay-panel {
+  position: relative;
+  width: min(1500px, 88vw);
+  height: 100%;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background-color: var(--bg);
+  background-image: var(--mica);
+  box-shadow: var(--shadow-3);
+  animation: lo-panel-in var(--dur-slow) var(--ease-out) both;
+}
+/* Les ecrans montes dedans etaient ecrits pour occuper le corps de la
+   fenetre : ils gardent ce role, a l'interieur du panneau. */
+.locaryn-overlay-panel > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.locaryn-overlay-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.locaryn-overlay-close:hover {
+  background: var(--surface-3, var(--surface-2));
+  color: var(--text);
+}
+@keyframes lo-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes lo-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-overlay-scrim,
+  .locaryn-overlay-panel {
+    animation: none;
+  }
+}
+
+.locaryn-drawer-layer {
+  /* Au-dessus de la surcouche pleine fenetre (60) : le catalogue s'ouvre
+     desormais dedans, et un tiroir lance depuis ses cartes passait derriere le
+     panneau qui l'avait ouvert. */
+  position: fixed;
+  inset: 0;
+  z-index: 70;
   display: flex;
   justify-content: flex-end;
 }

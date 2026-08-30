@@ -270,15 +270,6 @@ export function LeftPanel({
       </nav>
     );
 
-  // La navigation, seule, quand on n'est pas dans le chat.
-  //
-  // L'historique des conversations n'a rien à faire sur l'écran des réglages :
-  // on y va pour régler quelque chose, pas pour relire ses conversations. Ce
-  // qui n'est pas nécessaire à l'écran où l'on est ne s'affiche pas.
-  if (activeView && activeView !== "chat") {
-    return <aside className="locaryn-left">{navigation}</aside>;
-  }
-
   return (
     <aside className="locaryn-left">
       {/* ── Bouton Nouveau / Zone de dépôt pour archiver en cas de glisser/maintien ── */}

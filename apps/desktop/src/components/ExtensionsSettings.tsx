@@ -174,6 +174,16 @@ export function ExtensionsSettings() {
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDetailEntry, setSelectedDetailEntry] = useState<CatalogEntry | null>(null);
+
+  // Echap referme le tiroir, pas l'ecran qui le porte.
+  useEffect(() => {
+    if (!selectedDetailEntry) return;
+    const surTouche = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedDetailEntry(null);
+    };
+    window.addEventListener("keydown", surTouche);
+    return () => window.removeEventListener("keydown", surTouche);
+  }, [selectedDetailEntry]);
   const [showBetaMorphs, setShowBetaMorphs] = useState<boolean>(() => {
     return localStorage.getItem("locaryn_show_beta_morphs") !== "false";
   });
