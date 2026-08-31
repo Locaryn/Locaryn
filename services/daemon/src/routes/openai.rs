@@ -60,7 +60,13 @@ fn erreur(code: StatusCode, message: &str, kind: &str) -> Response {
 pub async fn list_models(State(state): State<Arc<DaemonState>>) -> Response {
     let mut data: Vec<Value> = Vec::new();
 
-    for name in modeles_locaux() {
+    // La meme enumeration que le selecteur de l'application, et pour la meme
+    // raison : elle ecarte ce qu'un moteur de chat ne sait pas charger — poids
+    // de diffusion, TTS, embeddings, dossiers internes d'Ollama. Une regle
+    // « .gguf ou dossier » propre a cette route avait annonce `blobs` et
+    // `stable-diffusion` comme modeles de chat, qu'un client proposait ensuite
+    // a l'utilisateur.
+    for name in crate::media::list_chat_models() {
         data.push(json!({
             "id": name,
             "object": "model",
@@ -87,34 +93,6 @@ pub async fn list_models(State(state): State<Arc<DaemonState>>) -> Response {
     }
 
     Json(json!({ "object": "list", "data": data })).into_response()
-}
-
-/// Les poids installés sur cette machine, sous le nom que le moteur charge.
-///
-/// Même règle que l'application : un fichier de poids à la racine, ou un
-/// dossier de fragments compté une fois.
-fn modeles_locaux() -> Vec<String> {
-    let dir = locaryn_config::models_dir();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let mut out: Vec<String> = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if name.starts_with('.') {
-            continue;
-        }
-        // Un dossier est un dépôt, compté une fois ; un fichier n'est un
-        // modèle que si un moteur sait le charger.
-        if path.is_dir() || name.to_ascii_lowercase().ends_with(".gguf") {
-            out.push(name.to_string());
-        }
-    }
-    out.sort();
-    out
 }
 
 // ============================================================================
@@ -245,41 +223,30 @@ pub async fn chat_completions(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// La liste locale ne montre que ce qu'un moteur peut charger : un fichier
-    /// de poids, ou un dossier de dépôt. Ni les fichiers cachés, ni les images
-    /// laissées à côté.
+    /// Ce que `/v1/models` annonce doit etre chargeable par un moteur de chat.
+    ///
+    /// Le test porte sur `is_chat_weight`, la regle que la route emprunte
+    /// desormais : c'est elle qui ecarte les poids de diffusion, les voix, les
+    /// embeddings. L'ancienne version testait une copie de la regle ecrite
+    /// dans le test lui-meme, et ne pouvait donc rien attraper.
     #[test]
-    fn la_liste_locale_ecarte_ce_qui_nest_pas_un_modele() {
-        let base = std::env::temp_dir().join("locaryn-openai-route-test");
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
-        std::fs::write(base.join("modele.gguf"), b"x").unwrap();
-        std::fs::write(base.join("capture.png"), b"x").unwrap();
-        std::fs::write(base.join(".cache"), b"x").unwrap();
-        std::fs::create_dir_all(base.join("depot-hf")).unwrap();
-
-        // La fonction lit le dossier de modèles configuré ; on vérifie ici la
-        // règle de tri sur un dossier témoin.
-        let mut vus: Vec<String> = std::fs::read_dir(&base)
-            .unwrap()
-            .flatten()
-            .filter_map(|e| {
-                let p = e.path();
-                let nom = p.file_name()?.to_str()?.to_string();
-                if nom.starts_with('.') {
-                    return None;
-                }
-                if p.is_dir() || nom.to_ascii_lowercase().ends_with(".gguf") {
-                    Some(nom)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        vus.sort();
-        assert_eq!(vus, vec!["depot-hf".to_string(), "modele.gguf".to_string()]);
-        let _ = std::fs::remove_dir_all(&base);
+    fn la_liste_locale_ecarte_ce_qui_nest_pas_un_modele_de_chat() {
+        use std::path::Path;
+        assert!(crate::media::is_chat_weight(Path::new(
+            "UTENA-7B-NSFW-V2-Q4_K_M.gguf"
+        )));
+        for refuse in [
+            "stable-diffusion-v1-5-pruned-emaonly-Q4_0.gguf",
+            "nomic-embed-text-v1.5.Q5_K_M.gguf",
+            "kokoro-82m.gguf",
+            "modele.gguf.part",
+            "capture.png",
+        ] {
+            assert!(
+                !crate::media::is_chat_weight(Path::new(refuse)),
+                "{refuse} ne doit pas etre propose comme modele de chat"
+            );
+        }
     }
 
     /// Une erreur doit être lisible par un client OpenAI : il lit

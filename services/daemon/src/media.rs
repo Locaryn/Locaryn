@@ -104,7 +104,7 @@ fn walk_model_files(dir: &std::path::Path, depth: usize) -> Vec<std::path::PathB
     files
 }
 
-fn list_chat_models() -> Vec<String> {
+pub(crate) fn list_chat_models() -> Vec<String> {
     let models_dir = locaryn_config::models_dir();
     let mut names = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&models_dir) {
