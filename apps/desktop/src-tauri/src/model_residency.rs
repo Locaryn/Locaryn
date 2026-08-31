@@ -237,11 +237,32 @@ pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, S
         .map(|p| p.engine.clone())
         .unwrap_or(ProviderEngine::LlamaCpp);
 
-    // La condition était la même dans les deux branches : un moteur est chargé
-    // s'il répond et qu'un modèle est enregistré. Vrai pour le runtime
-    // intégré comme pour un moteur apporté par une extension.
-    let loaded = core.supervisor.is_healthy(&engine).await
-        && active.as_ref().and_then(|p| p.model.as_ref()).is_some();
+    // Un moteur qui répond n'est pas un moteur chargé. `llama-server` qui sert
+    // encore les poids d'une session précédente répond parfaitement à la sonde
+    // de santé : annoncer « chargé » sur cette seule base faisait proposer une
+    // éjection qui ne libérait rien, puis payer le chargement complet au
+    // premier message — exactement ce que l'utilisateur voyait.
+    //
+    // On confronte donc le modèle servi au modèle actif, avec le contrôle que
+    // le superviseur fait déjà avant de démarrer. Les moteurs apportés par une
+    // extension n'exposent pas `/props` : pour eux, répondre reste le seul
+    // signal disponible, et on ne prétend pas mieux savoir.
+    let a_un_modele = active.as_ref().and_then(|p| p.model.as_ref()).is_some();
+    let loaded = if a_un_modele && core.supervisor.is_healthy(&engine).await {
+        match active.as_ref() {
+            Some(p) if matches!(engine, ProviderEngine::LlamaCpp) => {
+                locaryn_provider_supervisor::is_llama_server_model_match(
+                    &core.http,
+                    &p.endpoint,
+                    p.model.as_deref(),
+                )
+                .await
+            }
+            _ => true,
+        }
+    } else {
+        false
+    };
 
     let (idle_seconds, pinned) = match core.supervisor.residency(&engine).await {
         Some((idle, pinned, _)) => (idle, pinned),

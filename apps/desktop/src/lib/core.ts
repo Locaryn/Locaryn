@@ -1650,6 +1650,10 @@ export interface CoreApi {
   systemPrompt(): Promise<SystemPrompt>;
   /** `null` ou un texte vide : ne rien poser devant le modèle. */
   setSystemPrompt(texte: string | null): Promise<SystemPrompt>;
+  /** Liste des modèles dont le débridage est actif. */
+  listDebridedModels(): Promise<string[]>;
+  /** Activer ou désactiver le débridage pour un modèle. */
+  toggleModelDebridage(tag: string, active: boolean): Promise<string[]>;
   microModel(): Promise<MicroModel>;
   setMicroModel(model: string | null): Promise<MicroModel>;
 
@@ -2044,6 +2048,9 @@ const tauriCore: CoreApi = {
   pairingCode: (mode, url) => invoke<PairingCode>("pairing_code", { mode, url }),
   systemPrompt: () => invoke<SystemPrompt>("consigne_systeme"),
   setSystemPrompt: (texte) => invoke<SystemPrompt>("definir_consigne_systeme", { texte }),
+  listDebridedModels: () => invoke<string[]>("modeles_debrides"),
+  toggleModelDebridage: (tag: string, active: boolean) =>
+    invoke<string[]>("basculer_debridage_modele", { tag, actif: active }),
   microModel: () => invoke<MicroModel>("micro_model"),
   setMicroModel: (model) => invoke<MicroModel>("set_micro_model", { model }),
 
@@ -4727,6 +4734,8 @@ const demoCore: CoreApi = {
   }),
   systemPrompt: async () => ({ texte: null, envoye: "" }),
   setSystemPrompt: async (texte) => ({ texte, envoye: texte ?? "" }),
+  listDebridedModels: async () => [],
+  toggleModelDebridage: async () => [],
   microModel: async () => ({ model: null, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
   setMicroModel: async (model) => ({ model, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
 

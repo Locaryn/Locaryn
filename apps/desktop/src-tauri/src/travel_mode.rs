@@ -193,6 +193,39 @@ pub async fn definir_consigne_systeme(texte: Option<String>) -> Result<ConsigneS
     consigne_systeme().await
 }
 
+/// Liste des modèles actuellement débridés.
+#[tauri::command]
+pub async fn modeles_debrides() -> Result<Vec<String>, String> {
+    let debrides = locaryn_config::load(None)
+        .ok()
+        .map(|c| c.assistance.debrided_models)
+        .unwrap_or_default();
+    Ok(debrides)
+}
+
+/// Activer ou désactiver le débridage pour un modèle donné.
+#[tauri::command]
+pub async fn basculer_debridage_modele(tag: String, actif: bool) -> Result<Vec<String>, String> {
+    let mut debrides = locaryn_config::load(None)
+        .ok()
+        .map(|c| c.assistance.debrided_models)
+        .unwrap_or_default();
+    let tag_clean = tag.trim().to_string();
+    if actif {
+        if !debrides.iter().any(|m| m.eq_ignore_ascii_case(&tag_clean)) {
+            debrides.push(tag_clean);
+        }
+    } else {
+        debrides.retain(|m| !m.eq_ignore_ascii_case(&tag_clean));
+    }
+    locaryn_config::set_global(
+        "assistance",
+        serde_json::json!({ "debrided_models": debrides }),
+    )
+    .map_err(|e| e.to_string())?;
+    modeles_debrides().await
+}
+
 /// Le modèle des micro-tâches, et ce qu'on peut choisir.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MicroModel {

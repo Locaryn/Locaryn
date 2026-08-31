@@ -1,6 +1,6 @@
 {
   "name": "@locaryn/desktop",
-  "version": "0.3.35",
+  "version": "0.3.63",
   "private": true,
   "type": "module",
   "scripts": {

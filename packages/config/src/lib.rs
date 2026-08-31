@@ -52,6 +52,9 @@ pub struct AssistanceConfig {
     /// lance.
     #[serde(default)]
     pub system_prompt: Option<String>,
+    /// Les modèles pour lesquels le débridage (mode permissif sans restriction) est activé.
+    #[serde(default)]
+    pub debrided_models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -461,10 +464,16 @@ pub fn set_global(branche: &str, valeur: serde_json::Value) -> Result<(), Config
     } else {
         serde_json::json!({})
     };
-    if !racine.is_object() {
-        racine = serde_json::json!({});
+    if let (Some(obj_cible), Some(obj_valeur)) = (
+        racine.get_mut(branche).and_then(|v| v.as_object_mut()),
+        valeur.as_object(),
+    ) {
+        for (k, v) in obj_valeur {
+            obj_cible.insert(k.clone(), v.clone());
+        }
+    } else {
+        racine[branche] = valeur;
     }
-    racine[branche] = valeur;
     if let Some(parent) = chemin.parent() {
         std::fs::create_dir_all(parent)?;
     }

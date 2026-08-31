@@ -270,16 +270,47 @@ impl Supervisor {
                 .to_string(),
         };
 
-        // Fast path: already healthy?
-        if self.probe(engine, &endpoint, spec.as_ref()).await {
-            // Mark healthy in storage and return.
-            let _ = self
-                .inner
-                .storage
-                .providers
-                .set_status_by_engine(engine, ProviderStatus::Healthy)
-                .await;
-            return Ok(endpoint);
+        let p = self.inner.storage.providers.active().await.unwrap_or(None);
+        let active_model = p.and_then(|p| p.model);
+
+        // Fast path: already healthy and serving the expected model?
+        let is_healthy = self.probe(engine, &endpoint, spec.as_ref()).await;
+        if is_healthy {
+            let model_matches = if matches!(engine, ProviderEngine::LlamaCpp) {
+                is_llama_server_model_match(&self.inner.http, &endpoint, active_model.as_deref())
+                    .await
+            } else {
+                true
+            };
+
+            if model_matches {
+                // Mark healthy in storage and return.
+                let _ = self
+                    .inner
+                    .storage
+                    .providers
+                    .set_status_by_engine(engine, ProviderStatus::Healthy)
+                    .await;
+                return Ok(endpoint);
+            } else {
+                tracing::info!(?engine, %endpoint, "llama-server running different model — restarting with active model");
+                self.kill_owned(engine).await;
+                #[cfg(windows)]
+                {
+                    let _ = tokio::process::Command::new("taskkill")
+                        .args(["/F", "/IM", "llama-server.exe"])
+                        .output()
+                        .await;
+                }
+                #[cfg(unix)]
+                {
+                    let _ = tokio::process::Command::new("pkill")
+                        .args(["-9", "-f", "llama-server"])
+                        .output()
+                        .await;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            }
         }
 
         // Not healthy — try to spawn it. Les runtimes gérés sont llama.cpp,
@@ -298,9 +329,6 @@ impl Supervisor {
         }
 
         tracing::info!(%endpoint, ?engine, "engine not running — auto-spawning runtime");
-
-        let p = self.inner.storage.providers.active().await.unwrap_or(None);
-        let active_model = p.and_then(|p| p.model);
 
         // Set status to Starting in storage.
         let _ = self
@@ -717,6 +745,68 @@ pub async fn healthcheck_engine(
     false
 }
 
+/// Vérifie si l'instance llama-server qui tourne actuellement sert bien le
+/// modèle demandé, ou si elle sert encore un ancien modèle d'une session précédente.
+pub async fn is_llama_server_model_match(
+    http: &reqwest::Client,
+    endpoint: &str,
+    wanted_model: Option<&str>,
+) -> bool {
+    let Some(wanted) = wanted_model else {
+        return true;
+    };
+    let wanted_clean = wanted.trim();
+    if wanted_clean.is_empty() {
+        return true;
+    }
+
+    let Ok(res) = http.get(format!("{endpoint}/props")).send().await else {
+        return false;
+    };
+    let Ok(val) = res.json::<serde_json::Value>().await else {
+        return false;
+    };
+
+    let model_alias = val
+        .get("model_alias")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let model_path = val.get("model_path").and_then(|v| v.as_str()).unwrap_or("");
+    let default_model = val
+        .pointer("/default_generation_settings/model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let w_lower = wanted_clean.to_lowercase();
+    let w_fname = std::path::Path::new(&w_lower)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(&w_lower);
+
+    for candidate in [model_alias, model_path, default_model] {
+        if candidate.is_empty() {
+            continue;
+        }
+        let c_lower = candidate.trim().to_lowercase();
+        let c_fname = std::path::Path::new(&c_lower)
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or(&c_lower);
+
+        if c_lower == w_lower
+            || c_lower.contains(&w_lower)
+            || w_lower.contains(&c_lower)
+            || c_fname == w_fname
+            || c_fname.contains(w_fname)
+            || w_fname.contains(c_fname)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Locate a binary on PATH (simple cross-platform `which`).
 pub fn which(name: &str) -> Option<PathBuf> {
     let path_env = std::env::var_os("PATH")?;
@@ -1005,9 +1095,8 @@ async fn spawn_llama_server(
         .arg("8080")
         .arg("-m")
         .arg(&full_model_path)
-        // Jinja chat templating: required for OpenAI-style tool calling
-        // (default-on in recent server builds; explicit is harmless).
-        .arg("--jinja");
+        .arg("--chat-template")
+        .arg("chatml");
 
     // Vision: if a matching mmproj file sits next to the model
     // (mmproj-<model>.gguf or a single mmproj-*.gguf in the dir), load it.
@@ -1096,10 +1185,15 @@ async fn spawn_llama_server(
         }
     }
 
-    // CPU threads.
+    // CPU threads: default to logical cores - 2 to prevent crawling on 1 thread.
+    let default_threads = std::thread::available_parallelism()
+        .map(|n| (n.get() as u64).saturating_sub(2).max(1))
+        .unwrap_or(4);
     let threads = inference_cfg["cpu_threads"].as_u64().unwrap_or(0);
     if threads > 0 {
         cmd.arg("-t").arg(threads.to_string());
+    } else {
+        cmd.arg("-t").arg(default_threads.to_string());
     }
 
     // Batch size.
