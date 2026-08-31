@@ -1,0 +1,21 @@
+[package]
+name = "locaryn-cloud-providers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Fournisseurs de modèles apportés par une extension : découverte, clé, catalogue, passerelle locale."
+
+[dependencies]
+locaryn-auth = { workspace = true }
+locaryn-extensions = { workspace = true }
+locaryn-shared-types = { workspace = true }
+locaryn-storage = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }

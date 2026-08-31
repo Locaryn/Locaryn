@@ -337,26 +337,36 @@ mod tests {
 // Le profil de l'utilisateur
 // ============================================================================
 
-/// Ce que le modèle a compris de la personne, à partir d'un échange.
+/// Ce que le modèle a compris d'un échange, à retenir dans une fiche de
+/// mémoire.
 ///
 /// Une mémoire que l'utilisateur doit remplir lui-même reste vide : personne
-/// n'ouvre un formulaire pour déclarer ses préférences. Elles se disent en
-/// passant, au fil des conversations — « fais court », « je travaille en
-/// Rust », « je suis sur le projet Locaryn » — et c'est là qu'il faut les
-/// entendre.
+/// n'ouvre un formulaire pour déclarer ses préférences ou présenter son
+/// projet. Elles se disent en passant, au fil des conversations — « fais
+/// court », « je travaille sur Bot Bastet avec Paul et Simon » — et c'est là
+/// qu'il faut les entendre.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fait {
-    /// `preference`, `habitude`, `projet` ou `fait`.
-    pub category: String,
-    pub content: String,
+    /// `vous`, `sujets`, `zones` ou `personnes` — voir `storage::memory::GROUPS`.
+    /// Un groupe hors de cette liste est de toute façon ramené à `sujets` par
+    /// le dépôt au moment d'enregistrer : cette validation-ci n'existe que
+    /// pour ne pas transmettre une ligne à moitié comprise.
+    pub group: String,
+    /// Nom court qui identifie le sujet (« Bot Bastet », « Préférences ») —
+    /// c'est la clé qui décide si ce fait rejoint une fiche existante ou en
+    /// ouvre une nouvelle.
+    pub title: String,
+    pub detail: String,
 }
+
+const GROUPES_CONNUS: [&str; 4] = ["vous", "sujets", "zones", "personnes"];
 
 /// Lire un échange et en tirer ce qui vaut d'être retenu.
 ///
 /// Rend une liste vide bien plus souvent qu'autre chose : la plupart des
 /// échanges n'apprennent rien de durable, et une mémoire qui enfle à chaque
 /// message devient un bruit que le modèle traîne dans chaque réponse.
-pub async fn ask_for_profile(
+pub async fn ask_for_memory(
     endpoint: &str,
     client: &reqwest::Client,
     model: &str,
@@ -365,18 +375,23 @@ pub async fn ask_for_profile(
     let corps = serde_json::json!({
         "model": model,
         "stream": false,
-        "max_tokens": 160,
+        "max_tokens": 220,
         "temperature": 0.1,
         "messages": [
             {
                 "role": "system",
                 "content":
-                    "Tu lis un échange et tu notes ce qu'il apprend de DURABLE sur la \
-                     personne : ses préférences de travail, ses habitudes, ses projets. \
-                     Une ligne par fait, au format « categorie | fait », où categorie vaut \
-                     preference, habitude, projet ou fait. Trois lignes au maximum. \
-                     N'invente rien, ne note rien de ponctuel ni de trivial. \
-                     Si l'échange n'apprend rien de durable, réponds exactement RIEN."
+                    "Tu lis un échange et tu notes ce qu'il apprend de DURABLE, classé dans \
+                     l'un de ces groupes : vous (une préférence ou un fait sur la personne \
+                     elle-même), sujets (un centre d'intérêt, un domaine, une activité \
+                     récurrente), zones (un projet ou système nommé : dépôt, robot, \
+                     application), personnes (quelqu'un mentionné : coéquipier, collègue). \
+                     Une ligne par fait, au format « groupe | titre court | détail », où \
+                     titre est un nom de deux à quatre mots qui identifie le sujet (ex. \
+                     « Bot Bastet », « Drones FPV », « Préférences ») et détail la phrase \
+                     précise apprise. Trois lignes au maximum. N'invente rien, ne note rien \
+                     de ponctuel ni de trivial. Si l'échange n'apprend rien de durable, \
+                     réponds exactement RIEN."
             },
             { "role": "user", "content": tronquer(echange, 3000) }
         ]
@@ -409,7 +424,6 @@ pub async fn ask_for_profile(
 
 /// Transformer la réponse du modèle en faits utilisables.
 pub fn lire_faits(brut: &str) -> Vec<Fait> {
-    const CATEGORIES: [&str; 4] = ["preference", "habitude", "projet", "fait"];
     let apres_reflexion = brut.rsplit("</think>").next().unwrap_or(brut);
     let mut out = Vec::new();
     for ligne in apres_reflexion.lines() {
@@ -417,24 +431,192 @@ pub fn lire_faits(brut: &str) -> Vec<Fait> {
         if ligne.is_empty() || ligne.eq_ignore_ascii_case("rien") {
             continue;
         }
-        let Some((cat, contenu)) = ligne.split_once('|') else {
+        let mut parts = ligne.splitn(3, '|').map(str::trim);
+        let (Some(groupe), Some(titre), Some(detail)) = (parts.next(), parts.next(), parts.next())
+        else {
             continue;
         };
-        let cat = cat.trim().to_ascii_lowercase();
-        let contenu = contenu.trim().trim_matches('"').trim();
-        if !CATEGORIES.contains(&cat.as_str()) || contenu.is_empty() {
+        let groupe = groupe.to_ascii_lowercase();
+        let titre = titre.trim_matches('"').trim();
+        let detail = detail.trim_matches('"').trim();
+        if !GROUPES_CONNUS.contains(&groupe.as_str()) || titre.is_empty() || detail.is_empty() {
             continue;
         }
-        // Un « fait » d'une phrase entière n'en est pas un : c'est un résumé,
-        // et il polluerait chaque réponse suivante.
-        if contenu.chars().count() > 160 {
+        // Un « détail » d'un paragraphe entier n'en est pas un : c'est un
+        // résumé, et il polluerait chaque réponse suivante.
+        if detail.chars().count() > 200 || titre.chars().count() > 60 {
             continue;
         }
         out.push(Fait {
-            category: cat,
-            content: contenu.to_string(),
+            group: groupe,
+            title: titre.to_string(),
+            detail: detail.to_string(),
         });
         if out.len() == 3 {
+            break;
+        }
+    }
+    out
+}
+
+// ============================================================================
+// Gérer la mémoire en le demandant, plutôt qu'à la main
+// ============================================================================
+
+/// Une fiche existante, réduite à ce que le modèle a besoin de voir pour
+/// décider quoi en faire — jamais les détails complets : la liste peut
+/// compter des dizaines de fiches, et le résumé suffit à les reconnaître.
+#[derive(Debug, Clone)]
+pub struct FicheResumee {
+    pub id: String,
+    pub group: String,
+    pub title: String,
+    pub summary: String,
+}
+
+/// Ce que l'utilisateur a demandé de faire à sa mémoire, une fois compris.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MemoryAction {
+    /// Oublier la fiche entièrement.
+    Forget { id: String },
+    /// Corriger son résumé.
+    SetSummary { id: String, summary: String },
+    /// La renommer.
+    Rename { id: String, title: String },
+}
+
+/// Demander au modèle de traduire une instruction en actions sur des fiches
+/// existantes — « supprime tout ce qui concerne les drones », « renomme
+/// Zenbook Tracking en Suivi du Zenbook ».
+///
+/// Rend une liste vide quand l'instruction ne correspond à aucune fiche
+/// connue : mieux vaut ne rien faire que deviner une action sur la mauvaise
+/// fiche.
+pub async fn ask_memory_command(
+    endpoint: &str,
+    client: &reqwest::Client,
+    model: &str,
+    instruction: &str,
+    fiches: &[FicheResumee],
+) -> Vec<MemoryAction> {
+    if fiches.is_empty() || instruction.trim().is_empty() {
+        return Vec::new();
+    }
+    let liste = fiches
+        .iter()
+        .map(|f| format!("{} | {} | {} | {}", f.id, f.group, f.title, f.summary))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let corps = serde_json::json!({
+        "model": model,
+        "stream": false,
+        "max_tokens": 400,
+        "temperature": 0.1,
+        "messages": [
+            {
+                "role": "system",
+                "content": format!(
+                    "Voici les fiches de mémoire existantes, au format \
+                     « id | groupe | titre | résumé » :\n{liste}\n\n\
+                     La personne te demande une action sur cette mémoire. Réponds par une \
+                     ligne par action, en reprenant l'id exact de la fiche visée :\n\
+                     OUBLIE <id>\n\
+                     RESUME <id> | nouveau résumé\n\
+                     RENOMME <id> | nouveau titre\n\
+                     Une fiche par ligne, autant de lignes que nécessaire. N'invente aucun \
+                     id : n'agis que sur les fiches listées ci-dessus. Si l'instruction ne \
+                     correspond à aucune fiche listée, réponds exactement RIEN."
+                )
+            },
+            { "role": "user", "content": tronquer(instruction, 500) }
+        ]
+    });
+
+    let Ok(resp) = client
+        .post(format!(
+            "{}/v1/chat/completions",
+            endpoint.trim_end_matches('/')
+        ))
+        .timeout(Duration::from_secs(45))
+        .json(&corps)
+        .send()
+        .await
+    else {
+        return Vec::new();
+    };
+    if !resp.status().is_success() {
+        return Vec::new();
+    }
+    let Ok(v) = resp.json::<serde_json::Value>().await else {
+        return Vec::new();
+    };
+    let brut = v
+        .pointer("/choices/0/message/content")
+        .and_then(|c| c.as_str())
+        .unwrap_or_default();
+    // Seules les actions qui visent une fiche réellement listée sont
+    // retenues : un id inventé par le modèle ne doit rien pouvoir toucher.
+    let connus: std::collections::HashSet<&str> = fiches.iter().map(|f| f.id.as_str()).collect();
+    lire_actions(brut)
+        .into_iter()
+        .filter(|a| connus.contains(a.id()))
+        .collect()
+}
+
+impl MemoryAction {
+    fn id(&self) -> &str {
+        match self {
+            MemoryAction::Forget { id }
+            | MemoryAction::SetSummary { id, .. }
+            | MemoryAction::Rename { id, .. } => id,
+        }
+    }
+}
+
+/// Transformer la réponse du modèle en actions.
+pub fn lire_actions(brut: &str) -> Vec<MemoryAction> {
+    let apres_reflexion = brut.rsplit("</think>").next().unwrap_or(brut);
+    let mut out = Vec::new();
+    for ligne in apres_reflexion.lines() {
+        let ligne = ligne.trim().trim_start_matches(['-', '*', '•']).trim();
+        if ligne.is_empty() || ligne.eq_ignore_ascii_case("rien") {
+            continue;
+        }
+        let Some((mot, reste)) = ligne.split_once(char::is_whitespace) else {
+            continue;
+        };
+        let reste = reste.trim();
+        match mot.to_ascii_uppercase().as_str() {
+            "OUBLIE" if !reste.is_empty() && !reste.contains('|') => {
+                out.push(MemoryAction::Forget {
+                    id: reste.to_string(),
+                });
+            }
+            "RESUME" => {
+                if let Some((id, resume)) = reste.split_once('|') {
+                    let (id, resume) = (id.trim(), resume.trim());
+                    if !id.is_empty() && !resume.is_empty() {
+                        out.push(MemoryAction::SetSummary {
+                            id: id.to_string(),
+                            summary: resume.to_string(),
+                        });
+                    }
+                }
+            }
+            "RENOMME" => {
+                if let Some((id, titre)) = reste.split_once('|') {
+                    let (id, titre) = (id.trim(), titre.trim());
+                    if !id.is_empty() && !titre.is_empty() {
+                        out.push(MemoryAction::Rename {
+                            id: id.to_string(),
+                            title: titre.to_string(),
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+        if out.len() == 20 {
             break;
         }
     }
@@ -447,18 +629,22 @@ mod profil_tests {
 
     #[test]
     fn les_faits_bien_formes_sont_gardes() {
-        let f =
-            lire_faits("preference | Préfère les réponses courtes\nprojet | Travaille sur Locaryn");
+        let f = lire_faits(
+            "vous | Préférences | Préfère les réponses courtes\n\
+             zones | Bot Bastet | Travaille sur ce robot avec Paul",
+        );
         assert_eq!(
             f,
             vec![
                 Fait {
-                    category: "preference".into(),
-                    content: "Préfère les réponses courtes".into()
+                    group: "vous".into(),
+                    title: "Préférences".into(),
+                    detail: "Préfère les réponses courtes".into()
                 },
                 Fait {
-                    category: "projet".into(),
-                    content: "Travaille sur Locaryn".into()
+                    group: "zones".into(),
+                    title: "Bot Bastet".into(),
+                    detail: "Travaille sur ce robot avec Paul".into()
                 },
             ]
         );
@@ -473,18 +659,25 @@ mod profil_tests {
 
     #[test]
     fn ce_qui_n_est_pas_un_fait_est_ecarte() {
-        // Catégorie inconnue, ligne sans séparateur, phrase-résumé : rien de
-        // tout cela n'a sa place dans une mémoire relue à chaque réponse.
+        // Groupe inconnu, ligne sans séparateur, détail-paragraphe, titre
+        // démesuré : rien de tout cela n'a sa place dans une mémoire relue à
+        // chaque réponse.
         let f = lire_faits(&format!(
-            "humeur | content aujourd'hui\nune ligne sans separateur\nfait | {}",
-            "a".repeat(200)
+            "humeur | Humeur | content aujourd'hui\n\
+             une ligne sans separateur\n\
+             zones | {} | détail court\n\
+             sujets | Titre | {}",
+            "a".repeat(70),
+            "a".repeat(210)
         ));
         assert!(f.is_empty(), "{f:?}");
     }
 
     #[test]
     fn trois_faits_au_maximum() {
-        let f = lire_faits("fait | un\nfait | deux\nfait | trois\nfait | quatre");
+        let f = lire_faits(
+            "sujets | Un | un\nsujets | Deux | deux\nsujets | Trois | trois\nsujets | Quatre | quatre",
+        );
         assert_eq!(f.len(), 3);
     }
 
@@ -526,5 +719,65 @@ mod profil_tests {
             Some(2),
             "seul ce qui suit la réflexion est lu"
         );
+    }
+}
+
+#[cfg(test)]
+mod memory_command_tests {
+    use super::{lire_actions, MemoryAction};
+
+    #[test]
+    fn oublie_reconnait_un_identifiant_seul() {
+        let a = lire_actions("OUBLIE abc-123");
+        assert_eq!(
+            a,
+            vec![MemoryAction::Forget {
+                id: "abc-123".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn resume_et_renomme_lisent_les_deux_champs() {
+        let a = lire_actions("RESUME id-1 | Nouveau résumé\nRENOMME id-2 | Nouveau titre");
+        assert_eq!(
+            a,
+            vec![
+                MemoryAction::SetSummary {
+                    id: "id-1".into(),
+                    summary: "Nouveau résumé".into()
+                },
+                MemoryAction::Rename {
+                    id: "id-2".into(),
+                    title: "Nouveau titre".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rien_ne_produit_aucune_action() {
+        assert!(lire_actions("RIEN").is_empty());
+        assert!(lire_actions("").is_empty());
+    }
+
+    #[test]
+    fn une_ligne_mal_formee_est_ignoree_sans_casser_les_autres() {
+        let a = lire_actions("QUOI id-1\nOUBLIE id-2");
+        assert_eq!(a, vec![MemoryAction::Forget { id: "id-2".into() }]);
+    }
+
+    /// « OUBLIE » qui contiendrait un « | » n'est pas un identifiant simple :
+    /// mieux vaut l'ignorer que d'oublier une fiche au hasard.
+    #[test]
+    fn oublie_refuse_un_identifiant_qui_contient_une_barre() {
+        assert!(lire_actions("OUBLIE id | autre chose").is_empty());
+    }
+
+    #[test]
+    fn vingt_actions_au_maximum() {
+        let lignes: Vec<String> = (0..30).map(|i| format!("OUBLIE id-{i}")).collect();
+        let a = lire_actions(&lignes.join("\n"));
+        assert_eq!(a.len(), 20);
     }
 }

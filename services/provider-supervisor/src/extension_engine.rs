@@ -419,6 +419,12 @@ pub async fn spawn(
         cmd.creation_flags(0x0800_0008);
     }
 
+    // Sans ceci, fermer l'application laissait le processus tourner : plus
+    // rien ne le rattachait à un parent qui le tue à sa sortie, et la table
+    // d'états du superviseur suivant repartant vide, plus rien ne pouvait
+    // jamais l'arrêter depuis l'application.
+    cmd.kill_on_drop(true);
+
     cmd.spawn().map_err(|e| {
         SupervisorError::SpawnFailed(
             engine,

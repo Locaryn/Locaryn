@@ -213,12 +213,19 @@ export const CATALOGUE: { repo: string; label: string; note: string }[] = [
   { repo: "Locaryn/morph-travel-tunnel", label: "Mode voyage", note: "Joindre depuis dehors" },
 ];
 
-/** Une chose que le serveur retient de son utilisateur. */
+/** Les quatre groupes fixes de l'écran de mémoire. */
+export type MemoryGroup = "vous" | "sujets" | "zones" | "personnes";
+
+/** Une fiche que le serveur retient de son utilisateur — un sujet, pas une
+ *  phrase. */
 export interface MemoryEntry {
   id: string;
-  /** `preference`, `habitude`, `projet` ou `fait`. */
-  category: string;
-  content: string;
+  group: MemoryGroup;
+  title: string;
+  /** Une ligne, montrée sans ouvrir la fiche. */
+  summary: string;
+  /** S'accumule au fil des conversations. */
+  details: string[];
   source?: string;
   /** Quand le souvenir a été appris. Le service l'envoie toujours ; laissé
    *  optionnel pour les enregistrements d'avant son ajout. */
@@ -470,7 +477,10 @@ export const core = {
   listModels: () => invoke<string[]>("list_models"),
   /** Ce que le serveur retient de son utilisateur. */
   listMemory: () => invoke<MemoryEntry[]>("list_memory"),
-  remember: (category: string, content: string) => invoke<void>("remember", { category, content }),
+  remember: (group: MemoryGroup, title: string, detail: string) =>
+    invoke<void>("remember", { group, title, detail }),
+  removeMemoryDetail: (id: string, detail: string) =>
+    invoke<void>("remove_memory_detail", { id, detail }),
   forget: (id: string) => invoke<void>("forget", { id }),
   /** Écrit une image sur l'appareil ; renvoie le chemin du fichier. */
   saveImage: (img: MediaResult) =>
@@ -668,9 +678,16 @@ export const demoCore: typeof core = {
   setExtensionConfig: async () => {},
   listModels: async () => ["qwen2.5:3b"],
   listMemory: async () => [
-    { id: "1", category: "preference", content: "Je préfère les réponses courtes." },
+    {
+      id: "1",
+      group: "vous",
+      title: "Préférences",
+      summary: "Préfère les réponses courtes.",
+      details: ["Préfère les réponses courtes."],
+    },
   ],
   remember: async () => {},
+  removeMemoryDetail: async () => {},
   forget: async () => {},
   generateAudio: async () => ({
     name: "demo.wav",

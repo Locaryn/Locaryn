@@ -3,7 +3,6 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BatchStudio } from "./components/BatchStudio";
-import { ChatPermissionsModal } from "./components/ChatPermissionsModal";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
 import { ExtensionsSettings } from "./components/ExtensionsSettings";
@@ -133,7 +132,6 @@ export function App() {
   }, []);
   const [showBottom, setShowBottom] = useState(false);
   /** Chat governance dialog (the shield button in the top bar). */
-  const [permissionsOpen, setPermissionsOpen] = useState(false);
   /** Project whose settings dialog is open (from the sidebar menu). */
   const [projectSettings, setProjectSettings] = useState<Project | null>(null);
 
@@ -828,31 +826,22 @@ export function App() {
         showPreview={showPreview}
         showBottom={showBottom}
         showModelConfig={showModelConfig}
-        onTogglePreview={() => setShowPreview(!showPreview)}
+        onTogglePreview={() => {
+          // Les deux panneaux se docquent au même endroit : afficher l'un
+          // referme forcément l'autre plutôt que de les empiler côte à côte.
+          setShowPreview((v) => !v);
+          setShowModelConfig(false);
+        }}
         onToggleBottom={() => setShowBottom(!showBottom)}
-        onToggleModelConfig={() => setShowModelConfig(!showModelConfig)}
-        onSettingsClick={() => setPermissionsOpen(true)}
+        onToggleModelConfig={() => {
+          setShowModelConfig((v) => !v);
+          setShowPreview(false);
+        }}
         onChatSettingsClick={() => theme.setSettingsOpen(true)}
         onNewEphemeralChat={
           activeSession?.ephemeral ? handleNewStandaloneChat : handleNewEphemeralChat
         }
         isEphemeral={activeSession?.ephemeral ?? false}
-      />
-
-      <ChatPermissionsModal
-        isOpen={permissionsOpen}
-        onClose={() => setPermissionsOpen(false)}
-        trustLevel={activeProject?.trust_level}
-        onTrustLevelChange={async (level) => {
-          if (!activeProject) return;
-          try {
-            const updated = await core.updateProject(activeProject.id, undefined, level);
-            setActiveProject(updated);
-            setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-          } catch (e) {
-            console.warn("Trust level change failed:", e);
-          }
-        }}
       />
 
       {/* Choix du noyau à la création d'une conversation : Locaryn reste le
@@ -969,6 +958,30 @@ export function App() {
           onOpenFullSettings={() => setActiveView("settings")}
           activeCapabilities={activeCapabilities}
           activeExtensions={activeExtensions}
+          activeProject={activeProject}
+          onTrustLevelChange={async (level) => {
+            if (!activeProject) return;
+            try {
+              const updated = await core.updateProject(activeProject.id, undefined, level);
+              setActiveProject(updated);
+              setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+            } catch (e) {
+              console.warn("Trust level change failed:", e);
+            }
+          }}
+          onProjectArchived={(p) => {
+            setProjects((prev) => prev.filter((x) => x.id !== p.id));
+            setSessionsByProject((prev) => {
+              const next = { ...prev };
+              delete next[p.id];
+              return next;
+            });
+            if (activeProject?.id === p.id) {
+              setActiveProject(null);
+              setSessions([]);
+              setActiveSession(null);
+            }
+          }}
         />
       )}
 

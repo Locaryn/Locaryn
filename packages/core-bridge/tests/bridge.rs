@@ -326,6 +326,61 @@ async fn runs_session_id_porte_la_clé_stable() {
 }
 
 // ============================================================================
+// Un modèle de passerelle, à travers un noyau
+// ============================================================================
+
+/// Le scénario complet demandé : la conversation est confiée à un noyau
+/// apporté par un morph (Hermes), et le modèle vient d'une passerelle
+/// installée par un autre morph (OmniRoute).
+///
+/// Ce qui doit tenir : l'identifiant du modèle traverse le pont **tel quel**.
+/// Un noyau route lui-même vers le fournisseur ; le réécrire, le raccourcir ou
+/// le remplacer par le modèle par défaut du manifeste enverrait la
+/// conversation ailleurs que là où l'utilisateur l'a envoyée.
+#[tokio::test]
+async fn un_modele_de_passerelle_traverse_le_noyau_tel_quel() {
+    let fake = FakeCore::spawn().await;
+    let agent = core_agent(&fake, "runs", json!({})).await;
+    let session = uuid::Uuid::new_v4();
+
+    let mut entree = input(session, "bonjour");
+    // La forme exacte d'un identifiant OmniRoute : fournisseur / modèle.
+    entree.model = Some("anthropic/claude-opus-5".to_string());
+    collect(agent.run(entree).await.expect("run")).await;
+
+    let st = fake.state().await;
+    assert_eq!(st.run_bodies.len(), 1);
+    assert_eq!(
+        st.run_bodies[0].get("model").and_then(|v| v.as_str()),
+        Some("anthropic/claude-opus-5"),
+        "le noyau doit recevoir l'identifiant de la passerelle, pas le modèle par défaut"
+    );
+}
+
+/// Sans modèle choisi, le noyau garde le sien : c'est ce qui permet à un
+/// noyau d'être utilisable avant même qu'une passerelle soit installée.
+#[tokio::test]
+async fn sans_modele_choisi_le_noyau_garde_le_sien() {
+    let fake = FakeCore::spawn().await;
+    let agent = core_agent(&fake, "runs", json!({})).await;
+
+    collect(
+        agent
+            .run(input(uuid::Uuid::new_v4(), "bonjour"))
+            .await
+            .expect("run"),
+    )
+    .await;
+
+    let st = fake.state().await;
+    assert_eq!(
+        st.run_bodies[0].get("model").and_then(|v| v.as_str()),
+        Some("fake-core"),
+        "le modèle du manifeste du noyau"
+    );
+}
+
+// ============================================================================
 // Driver `chat_completions` (générique)
 // ============================================================================
 

@@ -17,8 +17,7 @@ type Props = {
   onTogglePreview: () => void;
   onToggleBottom: () => void;
   onToggleModelConfig: () => void;
-  onSettingsClick?: () => void;
-  /** Chat-scoped settings popup (model, performance). */
+  /** Chat-scoped settings popup (performance, permissions). */
   onChatSettingsClick?: () => void;
   /** Start an ephemeral conversation. */
   onNewEphemeralChat?: () => void;
@@ -56,7 +55,6 @@ export function TopBar({
   onTogglePreview,
   onToggleBottom,
   onToggleModelConfig,
-  onSettingsClick,
   onChatSettingsClick,
   onNewEphemeralChat,
   isEphemeral = false,
@@ -184,14 +182,36 @@ export function TopBar({
               </svg>
             </button>
 
-            {/* Model Parameters icon */}
+            {/* Performance & Permissions icon */}
+            <button
+              type="button"
+              className="locaryn-icon-btn locaryn-topbar-action"
+              title="Performance et permissions"
+              aria-label="Ouvrir les réglages de performance et de permissions"
+              onClick={onChatSettingsClick}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+
+            {/* Model generation parameters icon (temperature, contexte, pénalité de répétition…) */}
             <button
               type="button"
               className={`locaryn-icon-btn locaryn-topbar-action${showModelConfig ? " locaryn-icon-btn-active" : ""}`}
-              title="Paramètres du modèle et de la conversation"
-              aria-label="Ouvrir les paramètres du modèle et du chat"
+              title="Paramètres de génération du modèle"
+              aria-label="Ouvrir les paramètres de génération du modèle actif"
               aria-pressed={showModelConfig}
-              onClick={onChatSettingsClick ?? onToggleModelConfig}
+              onClick={onToggleModelConfig}
             >
               <svg
                 width="16"
@@ -211,28 +231,6 @@ export function TopBar({
                 <line x1="1" y1="14" x2="7" y2="14" />
                 <line x1="9" y1="8" x2="15" y2="8" />
                 <line x1="17" y1="16" x2="23" y2="16" />
-              </svg>
-            </button>
-
-            {/* Chat Permissions Settings icon */}
-            <button
-              type="button"
-              className="locaryn-icon-btn locaryn-topbar-action"
-              title="Gouvernance et Autorisations du Chat"
-              aria-label="Ouvrir la gouvernance et les autorisations du chat"
-              onClick={onSettingsClick}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
             </button>
           </div>

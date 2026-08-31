@@ -1,6 +1,12 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type CloudModel, type CloudProvider, type InstalledExtension, core } from "../../lib/core";
+import {
+  type CloudModel,
+  type CloudProvider,
+  type CloudProviderStatus,
+  type InstalledExtension,
+  core,
+} from "../../lib/core";
 import { DynamicPluginWidget } from "../extensions/DynamicPluginWidget";
 import { getSlotContributions } from "../extensions/SlotRegistry";
 
@@ -182,6 +188,155 @@ export function CloudProviderScreen({
   );
 }
 
+/**
+ * L'état d'une passerelle qui tourne sur la machine.
+ *
+ * Une passerelle éteinte est le premier cas d'échec de ce dossier : le
+ * catalogue est vide, le choix d'un modèle échoue, et rien à l'écran ne dit
+ * pourquoi. Cette carte le dit, et propose le seul geste utile — la démarrer,
+ * avec la commande que son manifeste déclare.
+ */
+export function CloudGatewayCard({
+  provider,
+  onRunning,
+}: {
+  provider: CloudProvider;
+  onRunning?: () => void;
+}) {
+  const [status, setStatus] = useState<CloudProviderStatus | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  /* Le rappel change d'identité à chaque rendu du parent. Le mettre dans les
+     dépendances de la sonde relançait la sonde à chaque rendu, qui relançait
+     le chargement du catalogue, qui redessinait le parent : la liste restait
+     désactivée pour toujours, et aucun modèle n'était choisissable. */
+  const onRunningRef = useRef(onRunning);
+  onRunningRef.current = onRunning;
+  /* Prévenir au passage à « en marche », pas à chaque sonde : sinon le
+     catalogue serait relu toutes les secondes pour rien. */
+  const wasRunning = useRef(false);
+
+  const announce = useCallback((next: CloudProviderStatus) => {
+    setStatus(next);
+    if (next.running && !wasRunning.current) onRunningRef.current?.();
+    wasRunning.current = next.running;
+  }, []);
+
+  const probe = useCallback(async () => {
+    try {
+      announce(await core.cloudProviderStatus(provider.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [provider.id, announce]);
+
+  useEffect(() => {
+    void probe();
+  }, [probe]);
+
+  async function start() {
+    setStarting(true);
+    setError(null);
+    try {
+      announce(await core.cloudProviderStart(provider.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function install() {
+    setInstalling(true);
+    setError(null);
+    try {
+      await core.cloudProviderInstall(provider.id);
+      announce(await core.cloudProviderStatus(provider.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInstalling(false);
+    }
+  }
+
+  if (!provider.is_local) return null;
+  const running = status?.running === true;
+  /* Tant que l'état n'est pas revenu, on croit le manifeste : afficher
+     « pas installée » sur une passerelle qui l'est ferait proposer une
+     installation inutile. */
+  const installed = status?.installed ?? provider.installed;
+
+  return (
+    <div className="locaryn-card locaryn-cloud-gateway">
+      <div className="locaryn-field-head" style={{ marginBottom: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 13 }}>La passerelle sur votre machine</h3>
+        <span className={`locaryn-tag${running ? " locaryn-tag-installed" : ""}`}>
+          {running ? "En marche" : "Éteinte"}
+        </span>
+      </div>
+      <p className="locaryn-cloud-help">
+        {status?.detail ?? `Vérification de ${provider.label} sur ${provider.api_url}…`}
+      </p>
+      <div className="locaryn-cloud-key-row">
+        {!running && !installed && provider.can_install && (
+          <button
+            type="button"
+            className="locaryn-btn-primary"
+            onClick={() => void install()}
+            disabled={installing || starting}
+          >
+            {installing ? "Installation…" : `Installer ${provider.label}`}
+          </button>
+        )}
+        {!running && provider.can_start && (
+          <button
+            type="button"
+            className="locaryn-btn-primary"
+            onClick={() => void start()}
+            disabled={starting || installing}
+          >
+            {starting
+              ? "Démarrage…"
+              : installed
+                ? "Démarrer la passerelle"
+                : "Installer et démarrer"}
+          </button>
+        )}
+        <button type="button" className="locaryn-chip" onClick={() => void probe()}>
+          <Icon name="refresh" size={14} /> Vérifier
+        </button>
+        {provider.dashboard_url && (
+          <button
+            type="button"
+            className="locaryn-chip"
+            onClick={() => void core.cloudProviderOpenDashboard(provider.id).catch(() => {})}
+            title="Ouvrir le tableau de bord dans le navigateur"
+          >
+            Ouvrir dans le navigateur
+          </button>
+        )}
+      </div>
+      {error && (
+        <div className="locaryn-cloud-error" style={{ marginTop: 12 }}>
+          {error}
+        </div>
+      )}
+
+      {/* Le tableau de bord lui-même. C'est là que l'utilisateur connecte ses
+          fournisseurs et colle leurs clés : cette page appartient à la
+          passerelle, on ne la réécrit pas, on la montre. */}
+      {running && provider.dashboard_url && (
+        <iframe
+          className="locaryn-cloud-frame"
+          src={provider.dashboard_url}
+          title={`Tableau de bord ${provider.label}`}
+        />
+      )}
+    </div>
+  );
+}
+
 // ============================================================================
 // Le tableau de bord de secours
 // ============================================================================
@@ -287,7 +442,11 @@ export function CloudProviderDashboard({
 
   return (
     <div className="locaryn-cloud-dashboard">
-      {/* La clé d'abord : sans elle, tout le reste est décoratif. */}
+      {/* Une passerelle locale d'abord : éteinte, le reste de l'écran ne peut
+          rien faire. */}
+      <CloudGatewayCard provider={provider} onRunning={() => void loadModels(false)} />
+
+      {/* La clé ensuite : sans elle, le choix d'un modèle est refusé. */}
       <div className="locaryn-card locaryn-cloud-key">
         <div className="locaryn-field-head" style={{ marginBottom: 8 }}>
           <h3 style={{ margin: 0, fontSize: 13 }}>Votre clé {provider.label}</h3>

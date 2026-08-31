@@ -32,6 +32,7 @@ assets = [
 locaryn-shared-types = { workspace = true }
 locaryn-sdk = { workspace = true }
 locaryn-config = { workspace = true }
+locaryn-cloud-providers = { workspace = true }
 locaryn-media = { workspace = true }
 locaryn-storage = { workspace = true }
 locaryn-events = { workspace = true }
@@ -66,3 +67,12 @@ anyhow = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
+
+[features]
+# Le trousseau du système, pour les clés des fournisseurs de modèles. Activé
+# par défaut : le service tourne le plus souvent sur la machine de son
+# utilisateur, à côté de l'application, et lit les mêmes clés qu'elle. Sur un
+# serveur sans session, l'appel échoue proprement et le socle retombe sur
+# `LOCARYN_CLOUD_<ID>_KEY`.
+default = ["system-keychain"]
+system-keychain = ["locaryn-auth/system-keychain"]

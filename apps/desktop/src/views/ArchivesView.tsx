@@ -99,15 +99,17 @@ export function ArchivesView({ onOpenSession }: Props) {
 
   return (
     <div className="locaryn-archives">
-      <header className="locaryn-archives-head">
-        <h1>
-          <Icon name="archive" size={20} /> Archives
-        </h1>
-        <p className="locaryn-archives-hint">
-          Rien n'est perdu ici. Une conversation en ressort telle qu'elle était ; la supprimer est
-          un geste séparé, et définitif.
-        </p>
-      </header>
+      <div className="locaryn-archives-intro">
+        <div>
+          <span className="locaryn-account-eyebrow">CONVERSATIONS</span>
+          <h3>Archives</h3>
+          <p>
+            Rien n'est perdu ici. Une conversation en ressort telle qu'elle était ; la supprimer est
+            un geste séparé, et définitif.
+          </p>
+        </div>
+        <Icon name="archive" size={22} />
+      </div>
 
       {erreur && <p className="locaryn-error">{erreur}</p>}
 

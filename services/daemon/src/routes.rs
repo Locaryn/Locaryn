@@ -4,5 +4,6 @@ pub mod cores;
 pub mod extensions;
 pub mod mcp;
 pub mod memory;
+pub mod openai;
 pub mod pairing;
 pub mod travel;

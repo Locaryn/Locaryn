@@ -192,8 +192,16 @@ export function QuickModelSelector({
   async function selectCloudModel(providerId: string, model: string) {
     setCloudError(null);
     try {
+      // Surtout pas `onSelectModel` : ce chemin-là reconfigure le fournisseur
+      // *local* avec le nom du modèle. Il écraserait le fournisseur distant
+      // qu'on vient d'activer, et la conversation repartirait vers
+      // llama-server avec un identifiant qu'il ne sait pas charger.
       await coreApi.cloudProviderSelect(providerId, model);
-      await onSelectModel(model);
+      window.dispatchEvent(
+        new CustomEvent("locaryn:cloud-model-selected", {
+          detail: { provider: providerId, model },
+        }),
+      );
       onClose();
     } catch (e) {
       setCloudError(e instanceof Error ? e.message : String(e));
@@ -387,7 +395,11 @@ export function QuickModelSelector({
                     </span>
                     <span className="locaryn-cloud-model-facts">
                       <span>{formatContext(model.context_length)}</span>
-                      <span>{formatPrice(model.prompt_price_per_m)}/M</span>
+                      <span>
+                        {model.prompt_price_per_m === 0
+                          ? "gratuit"
+                          : `${formatPrice(model.prompt_price_per_m)}/M`}
+                      </span>
                       {isActive && <span className="locaryn-tag locaryn-tag-installed">Actif</span>}
                     </span>
                   </button>

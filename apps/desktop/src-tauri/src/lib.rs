@@ -72,13 +72,11 @@ struct Core {
     mode: ConnectionMode,
     data_dir: std::path::PathBuf,
     http: reqwest::Client,
-    /// OS keychain for SSH secrets (passwords / key passphrases).
+    /// Le trousseau du système : secrets SSH, et clés des fournisseurs de
+    /// modèles apportés par une extension.
     ///
-    /// Conservé sur le cœur bien que les commandes SSH ouvrent aujourd'hui
-    /// leur propre poignée : une seconde instance du trousseau signifierait
-    /// deux politiques d'accès aux secrets, et c'est exactement ce qu'on veut
-    /// éviter le jour où le chemin SSH sera recâblé ici.
-    #[allow(dead_code)]
+    /// Une seule instance pour toute l'application : deux signifieraient deux
+    /// politiques d'accès aux secrets.
     keychain: Arc<dyn Keychain>,
     /// Registered MCP servers and the ones currently running. Shares
     /// `mcp.json` with the daemon, so a server added here is visible there.
@@ -4823,14 +4821,45 @@ impl ModelParams {
     }
 }
 
+/// Ce que la boucle d'envoi applique réellement, si le fournisseur actif en
+/// porte — sinon la dernière valeur choisie dans le panneau, à défaut de
+/// mieux. Lire le fichier seul aurait pu montrer des curseurs qui ne
+/// correspondent plus à rien depuis qu'un autre fournisseur est devenu actif.
 #[tauri::command]
-fn get_provider_model_params(core: State<'_, Core>) -> ModelParams {
-    ModelParams::load(&core.data_dir)
+async fn get_provider_model_params(core: State<'_, Core>) -> Result<ModelParams, String> {
+    if let Ok(Some(active)) = core.storage.providers.active().await {
+        if let Some(cfg) = active.config {
+            if let Ok(params) = serde_json::from_value::<ModelParams>(cfg) {
+                return Ok(params);
+            }
+        }
+    }
+    Ok(ModelParams::load(&core.data_dir))
 }
 
+/// Enregistre les paramètres de génération, et les rend réellement actifs.
+///
+/// Deux écritures : le fichier (pour réafficher les curseurs à la prochaine
+/// ouverture du panneau) et `providers.config` (ce que la boucle d'envoi lit
+/// à chaque message, voir `send_message`). Sans la seconde, le panneau
+/// affichait « Enregistré » alors que la température choisie n'atteignait
+/// jamais une seule requête — un réglage qui a l'air de marcher sans agir
+/// n'est pas différent d'un réglage absent, en pire : personne ne va le
+/// vérifier puisqu'il « fonctionne ».
 #[tauri::command]
-fn update_provider_model_params(core: State<'_, Core>, params: ModelParams) -> Result<(), String> {
+async fn update_provider_model_params(
+    core: State<'_, Core>,
+    params: ModelParams,
+) -> Result<(), String> {
     params.save(&core.data_dir).map_err(|e| e.to_string())?;
+    if let Ok(Some(active)) = core.storage.providers.active().await {
+        let config = serde_json::to_value(&params).map_err(|e| e.to_string())?;
+        core.storage
+            .providers
+            .set_config(active.id, config)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     tracing::info!(temp = params.temperature, "model params updated");
     Ok(())
 }
@@ -5918,6 +5947,8 @@ pub fn run() {
             cloud_providers::cloud_provider_select,
             cloud_providers::cloud_provider_status,
             cloud_providers::cloud_provider_start,
+            cloud_providers::cloud_provider_open_dashboard,
+            cloud_providers::cloud_provider_install,
             model_residency::llmfit_catalog,
             model_residency::load_chat_model,
             model_residency::eject_chat_model,
@@ -5951,9 +5982,13 @@ pub fn run() {
             memory::list_memory,
             memory::list_model_metrics,
             memory::remember,
-            memory::edit_memory,
+            memory::set_memory_summary,
+            memory::rename_memory_entry,
+            memory::set_memory_group,
+            memory::remove_memory_detail,
             memory::forget_memory,
             memory::forget_all_memory,
+            memory::run_memory_command,
             local_profile::get_local_profile,
             local_profile::set_local_profile,
             local_profile::set_local_avatar,

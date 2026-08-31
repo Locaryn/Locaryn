@@ -1,10 +1,11 @@
 //! Ce que Locaryn retient de la personne.
 //!
-//!   GET    /v1/memory        — tout ce qui est retenu
-//!   POST   /v1/memory        — retenir {category, content}
-//!   PUT    /v1/memory/{id}   — corriger une entrée
-//!   DELETE /v1/memory/{id}   — oublier une entrée
-//!   DELETE /v1/memory        — tout oublier
+//!   GET    /v1/memory              — toutes les fiches
+//!   POST   /v1/memory               — retenir {group, title, detail}
+//!   PUT    /v1/memory/{id}/summary  — corriger le résumé d'une fiche
+//!   PUT    /v1/memory/{id}/title    — renommer une fiche
+//!   DELETE /v1/memory/{id}          — oublier une fiche
+//!   DELETE /v1/memory               — tout oublier
 //!
 //! La mémoire d'un compte n'est lisible que par lui. Sur une installation
 //! personnelle il n'y a pas de compte : la mémoire est celle de la machine, et
@@ -23,16 +24,17 @@ use crate::DaemonState;
 
 #[derive(Deserialize)]
 pub struct RememberBody {
-    #[serde(default = "default_category")]
-    pub category: String,
-    pub content: String,
-    /// `utilisateur` (saisi à la main) ou `assistant` (retenu par le modèle).
+    #[serde(default = "default_group")]
+    pub group: String,
+    pub title: String,
+    #[serde(default)]
+    pub detail: String,
     #[serde(default = "default_source")]
     pub source: String,
 }
 
-fn default_category() -> String {
-    "fait".to_string()
+fn default_group() -> String {
+    "sujets".to_string()
 }
 
 fn default_source() -> String {
@@ -40,10 +42,18 @@ fn default_source() -> String {
 }
 
 #[derive(Deserialize)]
-pub struct EditBody {
-    #[serde(default = "default_category")]
-    pub category: String,
-    pub content: String,
+pub struct SummaryBody {
+    pub summary: String,
+}
+
+#[derive(Deserialize)]
+pub struct TitleBody {
+    pub title: String,
+}
+
+#[derive(Deserialize)]
+pub struct DetailsBody {
+    pub details: Vec<String>,
 }
 
 fn error(status: StatusCode, code: &str, message: String) -> Response {
@@ -83,7 +93,13 @@ pub async fn remember(
     match s
         .storage
         .memory
-        .remember(user.as_deref(), &body.category, &body.content, &body.source)
+        .remember(
+            user.as_deref(),
+            &body.group,
+            &body.title,
+            &body.detail,
+            &body.source,
+        )
         .await
     {
         Ok(entry) => (StatusCode::CREATED, Json(entry)).into_response(),
@@ -91,17 +107,34 @@ pub async fn remember(
     }
 }
 
-pub async fn edit(
+pub async fn set_summary(
     State(s): State<Arc<DaemonState>>,
     Path(id): Path<String>,
-    Json(body): Json<EditBody>,
+    Json(body): Json<SummaryBody>,
 ) -> Response {
-    match s
-        .storage
-        .memory
-        .update(&id, &body.category, &body.content)
-        .await
-    {
+    match s.storage.memory.set_summary(&id, &body.summary).await {
+        Ok(entry) => (StatusCode::OK, Json(entry)).into_response(),
+        Err(e) => error(StatusCode::NOT_FOUND, "not_found", e.to_string()),
+    }
+}
+
+pub async fn rename(
+    State(s): State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+    Json(body): Json<TitleBody>,
+) -> Response {
+    match s.storage.memory.rename(&id, &body.title).await {
+        Ok(entry) => (StatusCode::OK, Json(entry)).into_response(),
+        Err(e) => error(StatusCode::NOT_FOUND, "not_found", e.to_string()),
+    }
+}
+
+pub async fn set_details(
+    State(s): State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+    Json(body): Json<DetailsBody>,
+) -> Response {
+    match s.storage.memory.set_details(&id, &body.details).await {
         Ok(entry) => (StatusCode::OK, Json(entry)).into_response(),
         Err(e) => error(StatusCode::NOT_FOUND, "not_found", e.to_string()),
     }

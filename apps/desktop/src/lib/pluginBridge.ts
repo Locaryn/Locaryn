@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { type CloudModel, type CloudProvider, core } from "./core";
+import { type CloudModel, type CloudProvider, type CloudProviderStatus, core } from "./core";
 
 /**
  * Interface d'interaction exposée à tous les scripts et Web Components de plugins.
@@ -51,6 +51,15 @@ export interface LocarynPluginAPI {
     models: (provider: string, refresh?: boolean) => Promise<CloudModel[]>;
     /** Activer un modèle pour la conversation. */
     select: (provider: string, model: string) => Promise<void>;
+    /** La passerelle locale répond-elle ? */
+    status: (provider: string) => Promise<CloudProviderStatus>;
+    /** La démarrer avec la commande déclarée par le manifeste — et aucune
+     *  autre : le panneau ne choisit pas ce qui s'exécute. */
+    start: (provider: string) => Promise<CloudProviderStatus>;
+    /** L'installer avec la commande déclarée par le manifeste. */
+    install: (provider: string) => Promise<string>;
+    /** Ouvrir son tableau de bord dans le navigateur du système. */
+    openDashboard: (provider: string) => Promise<string>;
   };
   ui: {
     showToast: (message: string, type?: "info" | "success" | "warning" | "error") => void;
@@ -189,6 +198,10 @@ class PluginBridgeManager {
         clearKey: (provider: string) => core.cloudProviderClearKey(provider),
         models: (provider: string, refresh?: boolean) =>
           core.cloudProviderModels(provider, refresh),
+        status: (provider: string) => core.cloudProviderStatus(provider),
+        start: (provider: string) => core.cloudProviderStart(provider),
+        install: (provider: string) => core.cloudProviderInstall(provider),
+        openDashboard: (provider: string) => core.cloudProviderOpenDashboard(provider),
         select: async (provider: string, model: string) => {
           await core.cloudProviderSelect(provider, model);
           // Le sélecteur de modèle du chat écoute : sans ce signal, le nom

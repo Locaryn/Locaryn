@@ -74,14 +74,37 @@ function updateErrorMessage(e: unknown): string {
  * Ce que GitHub publie est du texte libre. On en fait des entrees de liste
  * plutot que d'inventer une structure : chaque ligne non vide devient une
  * ligne, les puces de tete sont retirees, et rien n'est ajoute.
+ *
+ * Deux choses que GitHub ajoute lui-même (`generate_release_notes: true`) ne
+ * sont pas des notes de version au même sens que le reste, et ne doivent pas
+ * recevoir la même rangée à puce qu'un correctif ou une fonctionnalité : la
+ * ligne « **Full Changelog** » (extraite à part, voir `lienJournalComplet`)
+ * et les mentions « a fait sa première contribution », qui n'apportent rien
+ * dans une fenêtre déjà compacte.
  */
 function notes(corps: string | undefined): string[] {
   if (!corps) return [];
   return corps
     .split(/\r?\n/)
     .map((l) => l.replace(/^\s*[-*•]\s*/, "").trim())
-    .filter((l) => l.length > 0 && !/^#{1,6}\s/.test(l))
+    .filter(
+      (l) =>
+        l.length > 0 &&
+        !/^#{1,6}\s/.test(l) &&
+        !/^\*\*full changelog\*\*/i.test(l) &&
+        !/made their first contribution/i.test(l),
+    )
     .slice(0, 12);
+}
+
+/**
+ * L'adresse de comparaison que GitHub ajoute en pied de note. Extraite à
+ * part pour devenir un lien discret plutôt qu'une rangée à puce parmi les
+ * vraies notes de version.
+ */
+function lienJournalComplet(corps: string | undefined): string | null {
+  const m = corps?.match(/\*\*Full Changelog\*\*:\s*(\S+)/i);
+  return m ? m[1] : null;
 }
 
 /** Le pictogramme d'une note, devine par son premier mot. */
@@ -208,6 +231,7 @@ export function UpdateDialog() {
       ? etat.update
       : null;
   const lignes = update ? notes(update.body) : [];
+  const journalComplet = update ? lienJournalComplet(update.body) : null;
   const enCours = etat.sorte === "telecharge";
   const fraction =
     etat.sorte === "telecharge" && etat.total ? Math.min(1, etat.recu / etat.total) : null;
@@ -290,6 +314,16 @@ export function UpdateDialog() {
                   </div>
                 ))}
               </div>
+              {journalComplet && (
+                <button
+                  type="button"
+                  className="locaryn-maj-changelog"
+                  onClick={() => void open(journalComplet)}
+                >
+                  Voir le journal complet des modifications
+                  <Icon name="chevron" size={13} />
+                </button>
+              )}
             </div>
           )}
         </div>

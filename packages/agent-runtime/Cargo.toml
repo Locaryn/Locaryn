@@ -24,3 +24,6 @@ reqwest = { workspace = true }
 bytes = { workspace = true }
 tokio-stream = "0.1"
 locaryn-mcp = { workspace = true }
+
+[dev-dependencies]
+axum = { workspace = true }

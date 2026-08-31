@@ -164,3 +164,7 @@ locaryn-cores/
 vendor/*/android/build/
 vendor/*/android/**/build/
 vendor/*/android/.gradle/
+
+# Caches de poids et dossiers temporaires : rien ici ne doit partir dans le depot.
+.hf/
+.tmp/

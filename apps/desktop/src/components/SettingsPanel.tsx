@@ -1,9 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { UseThemeReturn } from "../hooks/useTheme";
-import { type AppInfo, type InstalledExtension, core } from "../lib/core";
-import type { ModelDownloadSource } from "../lib/modelRegistry";
-import { ModelBrowser } from "./ModelBrowser";
+import { type InstalledExtension, type Project, type TrustLevel, core } from "../lib/core";
 import { PerformancePanel } from "./PerformancePanel";
 
 type Props = {
@@ -14,152 +12,60 @@ type Props = {
   onOpenFullSettings?: () => void;
   activeCapabilities?: string[];
   activeExtensions?: InstalledExtension[];
+  /** Le projet de la conversation en cours — l'onglet Permissions s'applique à lui. */
+  activeProject?: Project | null;
+  onTrustLevelChange?: (level: TrustLevel) => void;
+  /** Après archivage, pour que l'appelant retire le projet de ses listes. */
+  onProjectArchived?: (project: Project) => void;
 };
 
-type Tab = "provider" | "performance";
-type Conn = "idle" | "testing" | "ok" | "error";
+type Tab = "performance" | "permissions";
 
-/** Managed llama-server port. NOT 11434 — that is Ollama's, and saving it made
- *  the app point at a server that isn't there ("Aucun modèle local n'a répondu"). */
-const DEFAULT_ENDPOINT = "http://127.0.0.1:8080";
+const TRUST_LABELS: Record<TrustLevel, { label: string; hint: string }> = {
+  trusted: {
+    label: "Confiance",
+    hint: "Les outils peu et moyennement risqués s'exécutent sans confirmation.",
+  },
+  untrusted: {
+    label: "Prudent",
+    hint: "Seuls les outils en lecture s'exécutent sans confirmation.",
+  },
+  sandbox: {
+    label: "Bac à sable",
+    hint: "Chaque outil demande une confirmation explicite.",
+  },
+};
 
 export function SettingsPanel({
   theme,
-  onProviderChanged,
   onOpenFullSettings,
-  activeCapabilities = [],
-  activeExtensions = [],
+  activeProject,
+  onTrustLevelChange,
+  onProjectArchived,
 }: Props) {
   const { settingsOpen, setSettingsOpen } = theme;
-  const [tab, setTab] = useState<Tab>("provider");
+  const [tab, setTab] = useState<Tab>("performance");
+  const [archiving, setArchiving] = useState(false);
 
-  // Provider & model state
-  const [endpoint, setEndpoint] = useState(DEFAULT_ENDPOINT);
-  const [model, setModel] = useState("");
-  const [models, setModels] = useState<string[]>([]);
-  const [conn, setConn] = useState<Conn>("idle");
-  const [connMsg, setConnMsg] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [info, setInfo] = useState<AppInfo | null>(null);
-  const [modelView, setModelView] = useState<"server" | "browse">("server");
-
-  // Close on Escape.
-  // Load provider + app info on mount.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const providers = await core.listProviders();
-        if (cancelled) return;
-        const active = providers.find((p) => p.is_active) ?? providers[0];
-        if (active) {
-          setEndpoint(active.endpoint || DEFAULT_ENDPOINT);
-          setModel(active.model ?? "");
-        }
-      } catch {
-        // Keep defaults.
-      }
-      try {
-        const i = await core.appInfo();
-        if (!cancelled) setInfo(i);
-      } catch {
-        // About tab will show what it can.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // When catalogue opens, fetch models
-  useEffect(() => {
-    if (tab !== "provider" || modelView !== "browse") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await core.listModels(endpoint.trim());
-        if (!cancelled) setModels(list);
-      } catch {
-        // Offline
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, modelView, endpoint]);
-
-  async function refreshModels() {
-    setConn("testing");
-    setConnMsg("");
+  async function archive() {
+    if (!activeProject) return;
+    const ok = window.confirm(
+      `Archiver « ${activeProject.name} » ?\n\nLe projet disparaît de la liste. Ses conversations restent sur le disque.`,
+    );
+    if (!ok) return;
+    setArchiving(true);
     try {
-      const list = await core.listModels(endpoint.trim());
-      setModels(list);
-      setConn("ok");
-      setConnMsg(
-        list.length
-          ? `connecté · ${list.length} modèle${list.length === 1 ? "" : "s"}`
-          : "connecté · aucun modèle installé",
-      );
-      if ((!model || !list.includes(model)) && list.length) setModel(list[0]);
+      await core.archiveProject(activeProject.id);
+      onProjectArchived?.(activeProject);
+      setSettingsOpen(false);
     } catch (e) {
-      setModels([]);
-      setConn("error");
-      setConnMsg(String(e).replace(/^Error:\s*/, ""));
-    }
-  }
-
-  async function save() {
-    setSaving(true);
-    setSaved(false);
-    try {
-      await core.configureProvider(endpoint.trim(), model.trim() || null);
-      setSaved(true);
-      onProviderChanged?.();
-      window.setTimeout(() => setSaved(false), 1800);
-    } catch (e) {
-      setConn("error");
-      setConnMsg(String(e).replace(/^Error:\s*/, ""));
+      window.alert(`Archivage impossible : ${String(e).replace(/^Error:\s*/, "")}`);
     } finally {
-      setSaving(false);
+      setArchiving(false);
     }
   }
 
-  async function useCatalogModel(
-    tag: string,
-    _onProgress?: (pct: number) => void,
-    _heretic?: boolean,
-    consent?: boolean,
-    _selection?: unknown,
-    downloads?: ModelDownloadSource[],
-  ) {
-    try {
-      if (!models.includes(tag)) {
-        await core.pullModel(
-          endpoint.trim(),
-          tag,
-          undefined,
-          undefined,
-          consent,
-          undefined,
-          downloads,
-        );
-        await refreshModels();
-      }
-      setModel(tag);
-      await core.configureProvider(endpoint.trim(), tag);
-      setSaved(true);
-      onProviderChanged?.();
-      setModelView("server");
-      window.setTimeout(() => setSaved(false), 1800);
-    } catch (e) {
-      setConn("error");
-      setConnMsg(String(e).replace(/^Error:\s*/, ""));
-    }
-  }
-
-  // Keep the current model selectable even if it isn't in the fetched list.
-  const modelOptions = model && !models.includes(model) ? [model, ...models] : models;
+  if (!settingsOpen) return null;
 
   return (
     <>
@@ -195,17 +101,17 @@ export function SettingsPanel({
           <nav className="locaryn-settings-nav">
             <button
               type="button"
-              className={`locaryn-nav-item${tab === "provider" ? " locaryn-active" : ""}`}
-              onClick={() => setTab("provider")}
-            >
-              Modèle
-            </button>
-            <button
-              type="button"
               className={`locaryn-nav-item${tab === "performance" ? " locaryn-active" : ""}`}
               onClick={() => setTab("performance")}
             >
               <Icon name="speed" size={15} /> Performance
+            </button>
+            <button
+              type="button"
+              className={`locaryn-nav-item${tab === "permissions" ? " locaryn-active" : ""}`}
+              onClick={() => setTab("permissions")}
+            >
+              <Icon name="shield" size={15} /> Permissions
             </button>
             {onOpenFullSettings && (
               <button
@@ -225,117 +131,53 @@ export function SettingsPanel({
           <div className="locaryn-settings-pane">
             {tab === "performance" && <PerformancePanel />}
 
-            {tab === "provider" && (
-              <>
-                <div className="locaryn-store-tabs">
-                  <button
-                    type="button"
-                    className={`locaryn-tab-btn${modelView === "server" ? " locaryn-active" : ""}`}
-                    onClick={() => setModelView("server")}
-                  >
-                    Serveur
-                  </button>
-                  <button
-                    type="button"
-                    className={`locaryn-tab-btn${modelView === "browse" ? " locaryn-active" : ""}`}
-                    onClick={() => setModelView("browse")}
-                  >
-                    Parcourir les modèles
-                  </button>
-                </div>
+            {tab === "permissions" &&
+              (!activeProject ? (
+                <p className="locaryn-field-hint">
+                  Aucun projet n'est ouvert pour cette conversation : les permissions par projet ne
+                  s'appliquent qu'à une conversation liée à un dossier.
+                </p>
+              ) : (
+                <>
+                  <div className="locaryn-field">
+                    <label htmlFor="perm-trust" className="locaryn-field-label">
+                      Niveau de confiance — {activeProject.name}
+                    </label>
+                    <select
+                      id="perm-trust"
+                      className="locaryn-select"
+                      value={activeProject.trust_level}
+                      onChange={(e) => onTrustLevelChange?.(e.target.value as TrustLevel)}
+                    >
+                      {(Object.keys(TRUST_LABELS) as TrustLevel[]).map((level) => (
+                        <option key={level} value={level}>
+                          {TRUST_LABELS[level].label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="locaryn-field-hint">
+                      {TRUST_LABELS[activeProject.trust_level].hint} Définit l'autonomie accordée à
+                      l'agent pour exécuter des commandes et modifier vos fichiers dans ce projet.
+                    </p>
+                  </div>
 
-                {modelView === "browse" ? (
-                  <ModelBrowser
-                    onInstall={useCatalogModel}
-                    installed={models}
-                    activeCapabilities={activeCapabilities}
-                    activeExtensions={activeExtensions}
-                  />
-                ) : (
-                  <>
-                    <div className="locaryn-field">
-                      <label className="locaryn-field-label" htmlFor="locaryn-endpoint">
-                        Serveur de modèles local
-                      </label>
-                      <div className="locaryn-field-row">
-                        <input
-                          id="locaryn-endpoint"
-                          className="locaryn-input"
-                          value={endpoint}
-                          spellCheck={false}
-                          autoCapitalize="off"
-                          autoCorrect="off"
-                          placeholder={DEFAULT_ENDPOINT}
-                          onChange={(e) => {
-                            setEndpoint(e.target.value);
-                            setConn("idle");
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="locaryn-btn-ghost"
-                          onClick={refreshModels}
-                          disabled={conn === "testing" || !endpoint.trim()}
-                        >
-                          {conn === "testing" ? "Test…" : "Tester"}
-                        </button>
-                      </div>
-                      {conn !== "idle" && (
-                        <div className={`locaryn-conn locaryn-conn-${conn}`}>
-                          <span className="locaryn-conn-dot" />
-                          {connMsg ||
-                            (conn === "ok"
-                              ? "connecté"
-                              : conn === "testing"
-                                ? "connecting…"
-                                : "unreachable")}
-                        </div>
-                      )}
-                      <p className="locaryn-field-hint">
-                        Adresse du serveur de modèles local. Cliquez sur Tester pour lister les
-                        modèles qu'il expose.
-                      </p>
-                    </div>
-
-                    <div className="locaryn-field">
-                      <label className="locaryn-field-label" htmlFor="locaryn-model">
-                        Model
-                      </label>
-                      <select
-                        id="locaryn-model"
-                        className="locaryn-select"
-                        value={model}
-                        onChange={(e) => setModel(e.target.value)}
-                      >
-                        {modelOptions.length === 0 ? (
-                          <option value="">— testez la connexion pour lister les modèles —</option>
-                        ) : (
-                          modelOptions.map((m) => (
-                            <option key={m} value={m}>
-                              {m}
-                            </option>
-                          ))
-                        )}
-                      </select>
-                      <p className="locaryn-field-hint">
-                        L'agent utilise ce modèle pour chaque message en mode local.
-                      </p>
-                    </div>
-
-                    <div className="locaryn-field-actions">
-                      <button
-                        type="button"
-                        className="locaryn-btn-primary"
-                        onClick={save}
-                        disabled={saving || !endpoint.trim()}
-                      >
-                        {saving ? "Enregistrement…" : saved ? "Enregistré" : "Enregistrer"}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
+                  <div className="locaryn-settings-danger-zone">
+                    <div className="locaryn-field-label">Zone dangereuse</div>
+                    <p className="locaryn-field-hint">
+                      Archiver retire le projet de la liste ; ses conversations restent sur le
+                      disque et rien n'est supprimé.
+                    </p>
+                    <button
+                      type="button"
+                      className="locaryn-btn-ghost locaryn-btn-danger"
+                      disabled={archiving}
+                      onClick={() => void archive()}
+                    >
+                      <Icon name="archive" size={15} /> Archiver « {activeProject.name} »
+                    </button>
+                  </div>
+                </>
+              ))}
           </div>
         </div>
       </dialog>

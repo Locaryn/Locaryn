@@ -1175,7 +1175,77 @@ pub async fn set_extension_enabled(
         .await
         .map_err(|e| e.to_string())?;
     reload(&core).await?;
+    if enabled {
+        preparer_passerelle(&core, uid).await;
+    }
     build_installed(&core).await
+}
+
+/// Poser ce dont l'extension a besoin pour fonctionner, une fois activée.
+///
+/// Une extension qui apporte une passerelle locale n'apporte rien tant que
+/// celle-ci n'est pas sur la machine : son dossier s'ouvre sur un catalogue
+/// vide, et l'utilisateur doit deviner qu'il lui reste une commande à taper.
+/// Activer le morph installe donc aussi sa passerelle, puis la démarre.
+///
+/// En arrière-plan, et sans jamais faire échouer l'activation : un
+/// gestionnaire de paquets absent ou un réseau coupé sont des contretemps, pas
+/// une raison de refuser une extension par ailleurs installée. Le dossier du
+/// fournisseur dira ce qui manque, avec le bouton pour recommencer.
+async fn preparer_passerelle(core: &Core, extension_id: Uuid) {
+    let providers = locaryn_cloud_providers::list_infos(&locaryn_cloud_providers::Host {
+        storage: &core.storage,
+        data_dir: &core.data_dir,
+        http: &core.http,
+        keychain: core.keychain.as_ref(),
+    })
+    .await;
+    let Some(fournisseur) = providers
+        .into_iter()
+        .find(|p| p.extension_id == extension_id.to_string() && p.is_local)
+    else {
+        return;
+    };
+    if fournisseur.installed && !fournisseur.can_install {
+        return;
+    }
+
+    // La tâche emporte ce dont elle a besoin, pas le cœur de l'application :
+    // une installation dure des dizaines de secondes, et l'activation ne doit
+    // pas attendre.
+    let storage = core.storage.clone();
+    let data_dir = core.data_dir.clone();
+    let http = core.http.clone();
+    let keychain = core.keychain.clone();
+    tokio::spawn(async move {
+        let host = locaryn_cloud_providers::Host {
+            storage: &storage,
+            data_dir: &data_dir,
+            http: &http,
+            keychain: keychain.as_ref(),
+        };
+        let issue = match locaryn_cloud_providers::find(&host, &fournisseur.id).await {
+            Ok(p) => locaryn_cloud_providers::gateway::start(&host, &p)
+                .await
+                .map(|s| s.running),
+            Err(e) => Err(e),
+        };
+        match issue {
+            Ok(true) => tracing::info!(
+                fournisseur = %fournisseur.id,
+                "passerelle installée et démarrée à l'activation de l'extension"
+            ),
+            Ok(false) => tracing::warn!(
+                fournisseur = %fournisseur.id,
+                "passerelle lancée mais sans réponse : son dossier dira quoi faire"
+            ),
+            Err(e) => tracing::warn!(
+                fournisseur = %fournisseur.id,
+                erreur = %e,
+                "passerelle non préparée : son dossier dira quoi faire"
+            ),
+        }
+    });
 }
 
 #[tauri::command]

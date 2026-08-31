@@ -32,6 +32,7 @@ locaryn-events = { workspace = true }
 locaryn-storage = { workspace = true }
 locaryn-config = { workspace = true }
 locaryn-llmfit = { workspace = true }
+locaryn-cloud-providers = { workspace = true }
 locaryn-hook-runtime = { workspace = true }
 locaryn-extensions = { workspace = true }
 locaryn-command-runtime = { workspace = true }

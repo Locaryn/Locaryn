@@ -102,6 +102,28 @@ export interface CloudProvider {
   updated_at: string | null;
   /** Le modèle de ce catalogue actuellement actif, s'il l'est. */
   active_model: string | null;
+  /** Vrai quand la passerelle tourne sur la machine (OmniRoute et consorts). */
+  is_local: boolean;
+  /** Le tableau de bord de la passerelle, quand elle en a un. */
+  dashboard_url: string | null;
+  /** Comment l'installer, dit en une phrase quand elle ne répond pas. */
+  install_hint: string | null;
+  /** Une commande de démarrage est déclarée dans le manifeste. */
+  can_start: boolean;
+  /** L'application sait-elle l'installer elle-même ? */
+  can_install: boolean;
+  /** Le programme est-il déjà présent sur la machine ? */
+  installed: boolean;
+}
+
+/** L'état d'une passerelle locale. */
+export interface CloudProviderStatus {
+  running: boolean;
+  /** Le programme est-il présent sur la machine ? */
+  installed: boolean;
+  /** Ce qu'il faut faire quand elle ne répond pas — jamais un code. */
+  detail: string;
+  dashboard_url: string | null;
 }
 
 /** Un modèle du catalogue distant. */
@@ -393,16 +415,31 @@ export interface ExtensionUi {
   settings_sections?: ExtensionSettingsSection[];
 }
 
-/** Une chose que Locaryn retient de la personne. */
+/** Les quatre groupes fixes de l'écran de mémoire. */
+export type MemoryGroup = "vous" | "sujets" | "zones" | "personnes";
+
+/** Une fiche que Locaryn retient de la personne — un sujet, pas une phrase. */
 export interface MemoryEntry {
   id: string;
   user_id: string | null;
-  category: string;
-  content: string;
+  group: MemoryGroup;
+  title: string;
+  /** Une ligne, montrée sans ouvrir la fiche. */
+  summary: string;
+  /** S'accumule au fil des conversations. */
+  details: string[];
   /** `utilisateur` ou `assistant` : ce que le modèle a retenu se relit d'un autre œil. */
   source: string;
   created_at: string;
   updated_at: string;
+}
+
+/** Ce qu'a fait la boîte de commande, après avoir traduit une instruction en
+ *  actions sur des fiches existantes. */
+export interface MemoryCommandResult {
+  summary: string;
+  applied: number;
+  entries: MemoryEntry[];
 }
 
 /**
@@ -1526,10 +1563,16 @@ export interface CoreApi {
   // --- Extensions ---------------------------------------------------------
   listModelMetrics(): Promise<ModelMetric[]>;
   listMemory(): Promise<MemoryEntry[]>;
-  remember(category: string, content: string): Promise<MemoryEntry>;
-  editMemory(id: string, category: string, content: string): Promise<MemoryEntry>;
+  /** Retenir un détail à la main. `group` retombe sur « sujets » sinon. */
+  remember(group: MemoryGroup, title: string, detail: string): Promise<MemoryEntry>;
+  setMemorySummary(id: string, summary: string): Promise<MemoryEntry>;
+  renameMemoryEntry(id: string, title: string): Promise<MemoryEntry>;
+  setMemoryGroup(id: string, group: MemoryGroup): Promise<MemoryEntry>;
+  removeMemoryDetail(id: string, detail: string): Promise<MemoryEntry>;
   forgetMemory(id: string): Promise<void>;
   forgetAllMemory(): Promise<number>;
+  /** La boîte de commande : décrire ce qu'il faut changer, plutôt que le faire à la main. */
+  runMemoryCommand(instruction: string): Promise<MemoryCommandResult>;
   listExtensions(): Promise<InstalledExtension[]>;
   /** La liste canonique des capacités, telle que le serveur la connaît. */
   listCapabilities(): Promise<Capability[]>;
@@ -1716,6 +1759,14 @@ export interface CoreApi {
   cloudProviderModels(provider: string, refresh?: boolean): Promise<CloudModel[]>;
   /** Choisir un modèle distant : il devient le modèle actif de la conversation. */
   cloudProviderSelect(provider: string, model: string): Promise<void>;
+  /** La passerelle locale répond-elle ? */
+  cloudProviderStatus(provider: string): Promise<CloudProviderStatus>;
+  /** Démarrer la passerelle avec la commande déclarée par son manifeste. */
+  cloudProviderStart(provider: string): Promise<CloudProviderStatus>;
+  /** L'installer avec la commande déclarée par son manifeste. */
+  cloudProviderInstall(provider: string): Promise<string>;
+  /** Ouvrir son tableau de bord dans le navigateur du système. */
+  cloudProviderOpenDashboard(provider: string): Promise<string>;
 
   /** Ce que la machine a, mesuré : mémoire libre et bandes passantes. */
   llmfitHardware(): Promise<LlmfitHardware>;
@@ -1930,11 +1981,15 @@ const tauriCore: CoreApi = {
 
   listModelMetrics: () => invoke<ModelMetric[]>("list_model_metrics"),
   listMemory: () => invoke<MemoryEntry[]>("list_memory"),
-  remember: (category, content) => invoke<MemoryEntry>("remember", { category, content }),
-  editMemory: (id, category, content) =>
-    invoke<MemoryEntry>("edit_memory", { id, category, content }),
+  remember: (group, title, detail) => invoke<MemoryEntry>("remember", { group, title, detail }),
+  setMemorySummary: (id, summary) => invoke<MemoryEntry>("set_memory_summary", { id, summary }),
+  renameMemoryEntry: (id, title) => invoke<MemoryEntry>("rename_memory_entry", { id, title }),
+  setMemoryGroup: (id, group) => invoke<MemoryEntry>("set_memory_group", { id, group }),
+  removeMemoryDetail: (id, detail) => invoke<MemoryEntry>("remove_memory_detail", { id, detail }),
   forgetMemory: (id) => invoke<void>("forget_memory", { id }),
   forgetAllMemory: () => invoke<number>("forget_all_memory"),
+  runMemoryCommand: (instruction) =>
+    invoke<MemoryCommandResult>("run_memory_command", { instruction }),
   listExtensions: () => invoke<InstalledExtension[]>("list_extensions"),
   listCapabilities: () => invoke<Capability[]>("list_capabilities"),
   coreStatus: (id) => invoke<CoreStatus>("core_status", { id }),
@@ -2111,6 +2166,13 @@ const tauriCore: CoreApi = {
     invoke<CloudModel[]>("cloud_provider_models", { provider, refresh }),
   cloudProviderSelect: (provider, model) =>
     invoke<void>("cloud_provider_select", { provider, model }),
+  cloudProviderStatus: (provider) =>
+    invoke<CloudProviderStatus>("cloud_provider_status", { provider }),
+  cloudProviderStart: (provider) =>
+    invoke<CloudProviderStatus>("cloud_provider_start", { provider }),
+  cloudProviderInstall: (provider) => invoke<string>("cloud_provider_install", { provider }),
+  cloudProviderOpenDashboard: (provider) =>
+    invoke<string>("cloud_provider_open_dashboard", { provider }),
   llmfitHardware: () => invoke<LlmfitHardware>("llmfit_hardware"),
   llmfitCatalog: (entries) => invoke<ModelFit[]>("llmfit_catalog", { entries }),
   loadChatModel: (model, force) =>
@@ -2505,27 +2567,35 @@ const cloneHealth = (): Health => ({
 
 const demoCloudProviders: CloudProvider[] = [
   {
-    id: "openrouter",
-    label: "OpenRouter",
-    extension_id: "demo-openrouter",
-    extension_name: "morph-openrouter",
-    api_url: "https://openrouter.ai/api",
-    models_url: "https://openrouter.ai/api/v1/models",
-    keys_url: "https://openrouter.ai/keys",
-    docs_url: "https://openrouter.ai/docs",
-    key_hint: "sk-or-v1-…",
+    id: "omniroute",
+    label: "OmniRoute",
+    extension_id: "demo-omniroute",
+    extension_name: "morph-omniroute",
+    api_url: "http://localhost:20128",
+    models_url: "http://localhost:20128/v1/models",
+    keys_url: "http://localhost:20128",
+    docs_url: "https://github.com/pitbaden/omniroute#readme",
+    key_hint: "Clé émise par OmniRoute (page « Endpoints »)",
     has_key: false,
     model_count: 0,
     updated_at: null,
     active_model: null,
+    is_local: true,
+    dashboard_url: "http://localhost:20128",
+    install_hint: "npm install -g omniroute",
+    can_start: true,
+    can_install: true,
+    installed: false,
   },
 ];
 
+// Ce qu'OmniRoute expose une fois ses fournisseurs connectés : les modèles de
+// tout le monde, derrière une seule adresse et une seule clé.
 const demoCloudModels: CloudModel[] = [
   {
     id: "anthropic/claude-opus-5",
     name: "Claude Opus 5",
-    description: "Le modèle phare d'Anthropic : raisonnement long, outils, vision.",
+    description: "Routé vers Anthropic, avec repli automatique.",
     context_length: 1_000_000,
     prompt_price_per_m: 5,
     completion_price_per_m: 25,
@@ -2535,7 +2605,7 @@ const demoCloudModels: CloudModel[] = [
   {
     id: "openai/gpt-5",
     name: "GPT-5",
-    description: "Le généraliste d'OpenAI.",
+    description: "Routé vers OpenAI.",
     context_length: 400_000,
     prompt_price_per_m: 1.25,
     completion_price_per_m: 10,
@@ -2554,8 +2624,8 @@ const demoCloudModels: CloudModel[] = [
   },
   {
     id: "meta-llama/llama-4-maverick:free",
-    name: "Llama 4 Maverick (gratuit)",
-    description: "Ouvert, gratuit dans la limite du quota.",
+    name: "Llama 4 Maverick (quota gratuit)",
+    description: "Repli gratuit tant que le quota tient.",
     context_length: 128_000,
     prompt_price_per_m: 0,
     completion_price_per_m: 0,
@@ -2564,8 +2634,13 @@ const demoCloudModels: CloudModel[] = [
   },
 ];
 
-/** L'état du fournisseur en démonstration : la clé et le modèle choisi. */
-const demoCloudState = { key: "", model: null as string | null };
+/** L'état de la passerelle en démonstration : allumée ou non, clé, modèle. */
+const demoCloudState = {
+  key: "",
+  model: null as string | null,
+  running: false,
+  installed: false,
+};
 
 // Aucune extension installée : c'est l'état d'une application fraîche.
 //
@@ -3727,16 +3802,39 @@ function demoResidencyStatus(): ResidencyStatus {
   };
 }
 
-let demoUserMemory: MemoryEntry[] = [
-  {
-    id: "demo-mem-1",
+function demoMemoryEntry(
+  group: MemoryGroup,
+  title: string,
+  summary: string,
+  details: string[],
+): MemoryEntry {
+  return {
+    id: `demo-mem-${title.toLowerCase().replace(/\s+/g, "-")}`,
     user_id: null,
-    category: "preference",
-    content: "Réponds-moi en français, sans préambule.",
-    source: "utilisateur",
+    group,
+    title,
+    summary,
+    details,
+    source: "assistant",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  },
+  };
+}
+
+let demoUserMemory: MemoryEntry[] = [
+  demoMemoryEntry("vous", "Préférences", "Répond en français, sans préambule.", [
+    "Répond en français, sans préambule.",
+  ]),
+  demoMemoryEntry("sujets", "Coding Projects", "Projets de code personnels et scolaires.", [
+    "Projets de code personnels et scolaires.",
+  ]),
+  demoMemoryEntry("zones", "Bot Bastet", "Robot compagnon de campus.", [
+    "Robot compagnon de campus, équipe de trois personnes.",
+    "Pile : ROS2, YOLOv8, reconnaissance faciale, LM Studio, FastAPI, WebSockets.",
+  ]),
+  demoMemoryEntry("personnes", "Paul", "Coéquipier sur le projet Bot Bastet.", [
+    "Coéquipier sur le projet Bot Bastet.",
+  ]),
 ];
 
 const demoCore: CoreApi = {
@@ -4307,22 +4405,48 @@ const demoCore: CoreApi = {
     },
   ],
   listMemory: async () => demoUserMemory,
-  remember: async (category, content) => {
-    const entry: MemoryEntry = {
-      id: `demo-mem-${demoUserMemory.length + 1}`,
-      user_id: null,
-      category,
-      content,
-      source: "utilisateur",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+  remember: async (group, title, detail) => {
+    const existante = demoUserMemory.find(
+      (m) => m.group === group && m.title.toLowerCase() === title.toLowerCase(),
+    );
+    if (existante) {
+      if (detail && !existante.details.some((d) => d.toLowerCase() === detail.toLowerCase())) {
+        existante.details = [...existante.details, detail];
+      }
+      existante.updated_at = new Date().toISOString();
+      return existante;
+    }
+    const entry = demoMemoryEntry(group, title, detail || title, detail ? [detail] : []);
     demoUserMemory = [entry, ...demoUserMemory];
     return entry;
   },
-  editMemory: async (id, category, content) => {
+  setMemorySummary: async (id, summary) => {
     demoUserMemory = demoUserMemory.map((m) =>
-      m.id === id ? { ...m, category, content, updated_at: new Date().toISOString() } : m,
+      m.id === id ? { ...m, summary, updated_at: new Date().toISOString() } : m,
+    );
+    return demoUserMemory.find((m) => m.id === id) as MemoryEntry;
+  },
+  renameMemoryEntry: async (id, title) => {
+    demoUserMemory = demoUserMemory.map((m) =>
+      m.id === id ? { ...m, title, updated_at: new Date().toISOString() } : m,
+    );
+    return demoUserMemory.find((m) => m.id === id) as MemoryEntry;
+  },
+  setMemoryGroup: async (id, group) => {
+    demoUserMemory = demoUserMemory.map((m) =>
+      m.id === id ? { ...m, group, updated_at: new Date().toISOString() } : m,
+    );
+    return demoUserMemory.find((m) => m.id === id) as MemoryEntry;
+  },
+  removeMemoryDetail: async (id, detail) => {
+    demoUserMemory = demoUserMemory.map((m) =>
+      m.id === id
+        ? {
+            ...m,
+            details: m.details.filter((d) => d !== detail),
+            updated_at: new Date().toISOString(),
+          }
+        : m,
     );
     return demoUserMemory.find((m) => m.id === id) as MemoryEntry;
   },
@@ -4334,6 +4458,11 @@ const demoCore: CoreApi = {
     demoUserMemory = [];
     return n;
   },
+  runMemoryCommand: async () => ({
+    summary: "Mode aperçu navigateur : la boîte de commande a besoin d'un moteur actif.",
+    applied: 0,
+    entries: demoUserMemory,
+  }),
   listExtensions: async () => demoExtensions,
   listCapabilities: async () => [],
   coreStatus: async (id) => ({
@@ -4801,6 +4930,40 @@ const demoCore: CoreApi = {
     await new Promise((r) => setTimeout(r, 250));
     return demoCloudModels;
   },
+  async cloudProviderStatus(provider) {
+    const p = demoCloudProviders.find((x) => x.id === provider);
+    const label = p?.label ?? provider;
+    return {
+      running: demoCloudState.running,
+      installed: demoCloudState.installed,
+      detail: demoCloudState.running
+        ? `${label} répond sur ${p?.api_url ?? ""}.`
+        : demoCloudState.installed
+          ? `${label} est installée mais ne répond pas. Démarrez-la depuis ce dossier.`
+          : `${label} n'est pas installée. Locaryn peut le faire : npm install -g omniroute.`,
+      dashboard_url: p?.dashboard_url ?? null,
+    };
+  },
+  async cloudProviderInstall(provider) {
+    // Une installation par gestionnaire de paquets prend du temps : sans ce
+    // délai, l'état « installation… » de l'écran ne se voit jamais.
+    await new Promise((r) => setTimeout(r, 1200));
+    demoCloudState.installed = true;
+    const p = demoCloudProviders.find((x) => x.id === provider);
+    return `${p?.label ?? provider} est installée.`;
+  },
+  async cloudProviderStart(provider) {
+    // Démarrer installe d'abord quand le programme manque : c'est un
+    // enchaînement qui n'a qu'une issue possible.
+    if (!demoCloudState.installed) await demoCore.cloudProviderInstall(provider);
+    await new Promise((r) => setTimeout(r, 900));
+    demoCloudState.running = true;
+    return demoCore.cloudProviderStatus(provider);
+  },
+  async cloudProviderOpenDashboard(provider) {
+    const p = demoCloudProviders.find((x) => x.id === provider);
+    return p?.dashboard_url ?? "";
+  },
   async cloudProviderSelect(provider, model) {
     // Le refus sans clé est réel, pas décoratif : c'est le seul garde-fou qui
     // évite un appel payant sans authentification.
@@ -4809,6 +4972,29 @@ const demoCore: CoreApi = {
         `Aucune clé enregistrée pour ${provider}. Ouvrez son dossier dans « Mes modèles » et collez votre clé avant de choisir un modèle.`,
       );
     demoCloudState.model = model;
+    // Le fournisseur actif bascule sur le distant, comme en vrai : sans cela,
+    // le nom affiché sous le champ de saisie resterait celui du modèle local.
+    const p = demoCloudProviders.find((x) => x.id === provider);
+    demoProviders = [
+      {
+        id: `demo-cloud-${provider}`,
+        kind: "remote",
+        engine: "open_ai_compat",
+        endpoint: p?.api_url ?? "",
+        model,
+        is_active: true,
+        status: "healthy",
+        config: { cloud_provider: provider },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+    demoHealth.active_provider = {
+      kind: "remote",
+      engine: "open_ai_compat",
+      endpoint: p?.api_url ?? "",
+      model,
+    };
   },
   async llmfitHardware() {
     return demoHardware;

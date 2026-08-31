@@ -128,7 +128,11 @@ pub struct CloudProviderManifest {
     /// Au bout de combien d'heures la liste des modèles est relue. 0 = à
     /// chaque ouverture. C'est ce qui garde le catalogue à jour sans que
     /// l'extension ait à publier une version.
-    #[serde(default = "heures_de_fraicheur", rename = "refresh_hours", alias = "refreshHours")]
+    #[serde(
+        default = "heures_de_fraicheur",
+        rename = "refresh_hours",
+        alias = "refreshHours"
+    )]
     pub refresh_hours: u32,
     /// Quand le fournisseur tourne **sur la machine** — une passerelle
     /// auto-hébergée comme OmniRoute — ce bloc dit comment l'installer, la
@@ -170,6 +174,80 @@ pub struct CloudLocalRuntime {
     /// commande est introuvable.
     #[serde(default, rename = "install_hint", alias = "installHint")]
     pub install_hint: Option<String>,
+    /// Comment l'hôte l'installe lui-même.
+    ///
+    /// Sans ce bloc, `install_hint` reste une phrase à lire et à exécuter à la
+    /// main : installer le morph ne pose alors rien sur la machine, et le
+    /// dossier s'ouvre sur une passerelle absente. Avec, l'installation du
+    /// morph installe aussi ce dont il a besoin.
+    #[serde(default)]
+    pub install: Option<CloudLocalInstall>,
+}
+
+/// L'installation d'une passerelle locale.
+///
+/// Déclarative, comme le reste : l'application ne connaît aucun programme en
+/// particulier, elle sait exécuter `npm install -g <paquet>`, `pip install
+/// <paquet>`, `docker run …`, ou la commande explicite que le manifeste écrit.
+/// Le paquet et sa version sont épinglés par le manifeste — une chaîne
+/// d'approvisionnement sans version installe autre chose à chaque fois.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[allow(clippy::doc_markdown)]
+pub struct CloudLocalInstall {
+    /// `npm`, `pip`, `docker`, `command`, ou `manual`.
+    #[serde(default)]
+    pub kind: String,
+    /// Nom du paquet (`omniroute`).
+    #[serde(default)]
+    pub package: Option<String>,
+    /// Version épinglée. Absente : la dernière publiée.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Exécutable à chercher pour savoir si c'est déjà installé. À défaut, le
+    /// premier mot de la commande de démarrage.
+    #[serde(default, rename = "probe_bin", alias = "probeBin")]
+    pub probe_bin: Option<String>,
+    /// Commande explicite, quand aucun gestionnaire de paquets ne convient.
+    /// Exécutée sans shell.
+    #[serde(default)]
+    pub command: Vec<String>,
+}
+
+impl CloudLocalInstall {
+    /// L'hôte sait-il installer, ou faut-il le faire à la main ?
+    pub fn is_runnable(&self) -> bool {
+        self.command_line().is_some()
+    }
+
+    /// La commande à exécuter, déduite du gestionnaire déclaré.
+    ///
+    /// Rien n'est deviné : un `kind` inconnu, ou un paquet manquant, ne donne
+    /// pas de commande — mieux vaut renvoyer l'utilisateur à `install_hint`
+    /// que lancer une commande approximative en son nom.
+    pub fn command_line(&self) -> Option<Vec<String>> {
+        if !self.command.is_empty() {
+            return Some(self.command.clone());
+        }
+        let package = self.package.as_deref()?.trim();
+        if package.is_empty() {
+            return None;
+        }
+        let versionne = |sep: &str| match self.version.as_deref() {
+            Some(v) if !v.trim().is_empty() => format!("{package}{sep}{}", v.trim()),
+            _ => package.to_string(),
+        };
+        match self.kind.as_str() {
+            "npm" => Some(vec![
+                "npm".into(),
+                "install".into(),
+                "-g".into(),
+                versionne("@"),
+            ]),
+            "pip" => Some(vec!["pip".into(), "install".into(), versionne("==")]),
+            "docker" => Some(vec!["docker".into(), "pull".into(), versionne(":")]),
+            _ => None,
+        }
+    }
 }
 
 fn heures_de_fraicheur() -> u32 {
@@ -1025,13 +1103,13 @@ mod tests {
     #[test]
     fn une_section_cloud_provider_se_lit() {
         let json = r#"{
-            "schema": "x", "apiVersion": "0.1", "name": "morph-openrouter", "version": "1",
+            "schema": "x", "apiVersion": "0.1", "name": "morph-omniroute", "version": "1",
             "cloud_provider": {
-                "id": "openrouter",
-                "label": "OpenRouter",
-                "api_url": "https://openrouter.ai/api",
-                "keys_url": "https://openrouter.ai/keys",
-                "key_hint": "sk-or-v1-…",
+                "id": "omniroute",
+                "label": "OmniRoute",
+                "api_url": "http://localhost:20128",
+                "keys_url": "http://localhost:20128",
+                "key_hint": "Clé émise par OmniRoute",
                 "headers": { "X-Title": "Locaryn" },
                 "refresh_hours": 6
             }
@@ -1039,10 +1117,119 @@ mod tests {
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         assert!(validate(&m).is_ok());
         let p = m.cloud_provider.expect("la section doit être lue");
-        assert_eq!(p.effective_id("morph-openrouter"), "openrouter");
-        assert_eq!(p.label, "OpenRouter");
+        assert_eq!(p.effective_id("morph-omniroute"), "omniroute");
+        assert_eq!(p.label, "OmniRoute");
         assert_eq!(p.refresh_hours, 6);
-        assert_eq!(p.headers.get("X-Title").map(String::as_str), Some("Locaryn"));
+        assert_eq!(
+            p.headers.get("X-Title").map(String::as_str),
+            Some("Locaryn")
+        );
+    }
+
+    /// Le manifeste réellement livré avec `morph-omniroute` doit se lire, et
+    /// déclarer ce que l'application attend d'un fournisseur : une base sans
+    /// `/v1`, un dossier à ouvrir, et de quoi démarrer la passerelle.
+    ///
+    /// Un manifeste publié qui ne se lit pas ne se voit qu'à l'installation,
+    /// chez l'utilisateur.
+    #[test]
+    fn le_manifeste_livre_de_morph_omniroute_se_lit() {
+        let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins/morph-omniroute/morph.json");
+        let Ok(texte) = std::fs::read_to_string(&chemin) else {
+            // Le paquet est publié à part : son absence n'est pas un échec.
+            return;
+        };
+        let m: PluginManifest = serde_json::from_str(&texte).expect("manifeste lisible");
+        assert!(validate(&m).is_ok());
+
+        let p = m
+            .cloud_provider
+            .clone()
+            .expect("morph-omniroute doit déclarer un cloud_provider");
+        assert_eq!(p.effective_id(&m.name), "omniroute");
+        assert!(
+            !p.api_url.trim_end_matches('/').ends_with("/v1"),
+            "la base ne porte pas /v1 : la boucle de conversation l'ajoute"
+        );
+        assert_eq!(p.effective_models_url(), "http://localhost:20128/v1/models");
+
+        let local = p.local.expect("une passerelle locale");
+        assert!(!local.start.is_empty(), "de quoi la démarrer");
+        assert!(local.dashboard_url.is_some(), "un tableau de bord à ouvrir");
+        // Installer le morph doit installer la passerelle : sans commande
+        // déclarée, le dossier s'ouvrirait sur une phrase à recopier.
+        let install = local.install.expect("de quoi l'installer");
+        assert!(install.is_runnable(), "l'hôte doit savoir l'installer");
+        assert_eq!(
+            install.command_line().unwrap(),
+            vec!["npm", "install", "-g", "omniroute"]
+        );
+
+        // Le dossier dans « Mes modèles » et dans le sélecteur du chat.
+        let dossier =
+            m.ui.slots
+                .iter()
+                .find(|s| s.slot == "models.folder")
+                .expect("un écran de dossier");
+        assert_eq!(dossier.kind, "custom-element");
+        assert_eq!(dossier.entry.as_deref(), Some("dist/ui.js"));
+        assert_eq!(dossier.value.as_deref(), Some("omniroute"));
+
+        // Démarrer un programme au nom de l'utilisateur se demande.
+        let permissions = requested_permissions(&m);
+        assert!(
+            permissions
+                .iter()
+                .any(|(perm, _)| *perm == Permission::Shell),
+            "la permission shell doit être demandée pour démarrer la passerelle"
+        );
+    }
+
+    /// Une passerelle qui tourne sur la machine déclare comment la démarrer
+    /// et où est son tableau de bord. Sans ce bloc, le fournisseur est
+    /// purement distant — et il ne doit alors rien y avoir à lancer.
+    #[test]
+    fn une_passerelle_locale_se_lit() {
+        let json = r#"{
+            "schema": "x", "apiVersion": "0.1", "name": "morph-omniroute", "version": "1",
+            "cloud_provider": {
+                "id": "omniroute",
+                "label": "OmniRoute",
+                "api_url": "http://localhost:20128",
+                "local": {
+                    "start": ["omniroute"],
+                    "health_url": "http://localhost:20128/v1/models",
+                    "dashboard_url": "http://localhost:20128",
+                    "install_hint": "npm install -g omniroute"
+                }
+            }
+        }"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        let p = m.cloud_provider.expect("section lue");
+        let local = p.local.clone().expect("le bloc local doit être lu");
+        assert_eq!(local.start, vec!["omniroute".to_string()]);
+        assert_eq!(
+            local.dashboard_url.as_deref(),
+            Some("http://localhost:20128")
+        );
+        assert!(local.install_hint.is_some());
+        // La base ne porte pas « /v1 » : c'est la boucle de conversation qui
+        // l'ajoute pour atteindre /v1/chat/completions.
+        assert!(!p.api_url.ends_with("/v1"));
+        assert_eq!(p.effective_models_url(), "http://localhost:20128/v1/models");
+    }
+
+    /// Un service purement distant n'a rien à démarrer : le bloc local doit
+    /// rester absent plutôt que d'exister vide.
+    #[test]
+    fn un_service_distant_na_rien_a_demarrer() {
+        let json = r#"{
+            "schema": "x", "apiVersion": "0.1", "name": "morph-x", "version": "1",
+            "cloud_provider": { "api_url": "https://exemple.test/api" }
+        }"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        assert!(m.cloud_provider.expect("section lue").local.is_none());
     }
 
     /// L'URL des modèles se déduit de la base : un manifeste qui ne la
@@ -1056,7 +1243,10 @@ mod tests {
         }"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         let p = m.cloud_provider.expect("section lue");
-        assert_eq!(p.effective_models_url(), "https://exemple.test/api/v1/models");
+        assert_eq!(
+            p.effective_models_url(),
+            "https://exemple.test/api/v1/models"
+        );
         assert_eq!(
             p.effective_id("morph-truc"),
             "morph-truc",

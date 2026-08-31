@@ -2036,12 +2036,18 @@ async fn remove_model(name: String) -> Result<(), String> {
 // le modèle la lit. Le téléphone ne fait que la montrer et la corriger.
 // ============================================================================
 
-/// Une chose retenue, telle que le serveur la renvoie.
+/// Une fiche retenue, telle que le serveur la renvoie — un sujet, pas une
+/// phrase. `details` s'accumule au fil des conversations ; `summary` est ce
+/// que la liste montre sans ouvrir la fiche.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MemoryEntry {
     pub id: String,
-    pub category: String,
-    pub content: String,
+    /// `vous`, `sujets`, `zones` ou `personnes`.
+    pub group: String,
+    pub title: String,
+    pub summary: String,
+    #[serde(default)]
+    pub details: Vec<String>,
     #[serde(default)]
     pub source: String,
 }
@@ -2073,13 +2079,39 @@ async fn list_memory() -> Result<Vec<MemoryEntry>, String> {
 }
 
 #[tauri::command]
-async fn remember(category: String, content: String) -> Result<(), String> {
+async fn remember(group: String, title: String, detail: String) -> Result<(), String> {
     let (client, server, session) = authenticated()?;
     let base = server.current_url.trim_end_matches('/');
     let resp = client
         .post(format!("{base}/v1/memory"))
         .bearer_auth(&session.token)
-        .json(&serde_json::json!({ "category": category, "content": content }))
+        .json(&serde_json::json!({ "group": group, "title": title, "detail": detail }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a refusé ({}).", resp.status()));
+    }
+    Ok(())
+}
+
+/// Retire un détail précis d'une fiche, en gardant les autres. Le téléphone
+/// n'a pas de commande dédiée côté serveur pour ça : il relit la fiche,
+/// filtre localement, et pose la liste réduite — même geste que la
+/// correction d'un résumé.
+#[tauri::command]
+async fn remove_memory_detail(id: String, detail: String) -> Result<(), String> {
+    let entries = list_memory().await?;
+    let Some(entry) = entries.into_iter().find(|e| e.id == id) else {
+        return Err("fiche introuvable".into());
+    };
+    let restants: Vec<String> = entry.details.into_iter().filter(|d| d != &detail).collect();
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .put(format!("{base}/v1/memory/{id}/details"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "details": restants }))
         .send()
         .await
         .map_err(|_| unreachable(&server))?;
@@ -2485,6 +2517,7 @@ pub fn run() {
             load_conversation,
             list_memory,
             remember,
+            remove_memory_detail,
             forget,
             list_extensions,
             list_figures,

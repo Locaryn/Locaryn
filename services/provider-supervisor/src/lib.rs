@@ -1147,6 +1147,13 @@ async fn spawn_llama_server(
         cmd.creation_flags(0x08000008);
     }
 
+    // Sans ceci, fermer l'application laissait llama-server tourner : le
+    // processus n'était l'enfant de rien qui le tue à sa sortie, gardait le
+    // modèle en VRAM indéfiniment, et le superviseur du lancement suivant —
+    // sa table d'états repartant vide — ne pouvait plus jamais l'éteindre
+    // (« éjecter » n'avait alors aucune prise sur lui).
+    cmd.kill_on_drop(true);
+
     cmd.spawn()
         .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e.to_string()))
 }
@@ -1361,6 +1368,10 @@ async fn spawn_airllm_server(
     {
         cmd.creation_flags(0x08000008);
     }
+
+    // Même raison que pour llama-server : sans ceci, un AirLLM resté en
+    // mémoire après la fermeture de l'application n'était plus rattrapable.
+    cmd.kill_on_drop(true);
 
     cmd.spawn()
         .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::AirLlm, e.to_string()))
