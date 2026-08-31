@@ -37,6 +37,17 @@ pub(crate) fn is_chat_weight(path: &std::path::Path) -> bool {
         && ![
             "diffusion",
             "stable-diffusion",
+            // Les familles d'image ne portent pas toutes le mot « diffusion »
+            // dans leur nom : celles-ci sont arrivees dans le selecteur de chat
+            // d'une machine reelle, ou un client les proposait a l'utilisateur.
+            "sd_xl",
+            "sdxl",
+            "sd-xl",
+            "sd_1",
+            "z-image",
+            "z_image",
+            "qwen-image",
+            "qwen_image",
             "flux",
             "vae",
             "mmproj",
@@ -1299,6 +1310,18 @@ mod tests {
         assert!(!is_chat_weight(std::path::Path::new(
             "mtp-Qwen3.8-27B-Q4_0.gguf"
         )));
+        // Releves sur une machine reelle : sans le mot « diffusion » dans leur
+        // nom, ces poids d'image etaient annonces comme modeles de chat.
+        for image in [
+            "Z-Image-AbliteratedV1.Q4_K_M.gguf",
+            "sd_xl_turbo_1.0.q8_0.gguf",
+            "qwen-image-edit-Q4_K_M.gguf",
+        ] {
+            assert!(
+                !is_chat_weight(std::path::Path::new(image)),
+                "{image} est un modele d'image"
+            );
+        }
     }
 
     #[test]
