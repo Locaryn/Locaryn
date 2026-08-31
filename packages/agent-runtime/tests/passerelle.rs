@@ -19,7 +19,7 @@ use locaryn_agent_runtime::openai_tool_loop::run_openai_tool_loop;
 use locaryn_agent_runtime::AgentInput;
 use locaryn_events::StreamEvent;
 use locaryn_shared_types::{ConnectionMode, TrustLevel};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 /// Ce que la fausse passerelle a vu passer.
