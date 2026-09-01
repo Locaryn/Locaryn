@@ -398,6 +398,9 @@ export const core = {
   signOut: () => invoke<MobileStatus>("sign_out"),
   /** Verify a scanned code and apply it. Throws with a phrased message. */
   applyPairingLink: (uri: string) => invoke<PairingResult>("apply_pairing_link", { uri }),
+  /** Circuit B step 2: submit the 6-digit code shown under the QR on the host. */
+  confirmPairing: (pairingCode: string, deviceLabel?: string) =>
+    invoke<PairingResult>("confirm_pairing", { pairingCode, deviceLabel }),
   send: (text: string, conversationId: string | null, ephemeral = false) =>
     invoke<ChatReply>("send_message", { text, conversationId, ephemeral }),
   /** Les conversations du serveur — les mêmes que sur l'ordinateur. */
@@ -582,6 +585,11 @@ export const demoCore: typeof core = {
     travelling: false,
     signed_in: false,
     servers: 1,
+  }),
+  confirmPairing: async () => ({
+    server_name: "",
+    travelling: false,
+    message: "Appairé (simulation).",
   }),
   applyPairingLink: async () => ({
     server_name: "Atelier Vasseur",

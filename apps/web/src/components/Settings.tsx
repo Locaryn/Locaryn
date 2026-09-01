@@ -247,8 +247,8 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
         <section className="lo-section">
           <h2 className="lo-section-title">Clés API / Développeur</h2>
           <p className="lo-hint">
-            Pour les extensions d'IDE, scripts et intégrations tierces. La clé ne
-            s'affiche qu'une fois à sa création — copiez-la immédiatement.
+            Pour les extensions d'IDE, scripts et intégrations tierces. La clé ne s'affiche qu'une
+            fois à sa création — copiez-la immédiatement.
           </p>
 
           {freshToken && (
@@ -299,7 +299,9 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
               id="key-expiry"
               className="lo-input"
               value={newKeyExpiry ?? ""}
-              onChange={(e) => setNewKeyExpiry(e.target.value === "" ? null : Number(e.target.value))}
+              onChange={(e) =>
+                setNewKeyExpiry(e.target.value === "" ? null : Number(e.target.value))
+              }
             >
               {EXPIRATIONS.map((o) => (
                 <option key={o.label} value={o.value ?? ""}>
@@ -349,7 +351,9 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
                     <span className="lo-hint">
                       {" "}
                       ····{k.hint} · créée le {dateCourte(k.created_at)}
-                      {k.expires_at ? ` · expire le ${dateCourte(k.expires_at)}` : " · sans expiration"}
+                      {k.expires_at
+                        ? ` · expire le ${dateCourte(k.expires_at)}`
+                        : " · sans expiration"}
                       {k.revoked_at ? " · révoquée" : ""}
                     </span>
                   </span>
@@ -377,8 +381,8 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
         <section className="lo-section">
           <h2 className="lo-section-title">Appareils connectés</h2>
           <p className="lo-hint">
-            Sessions ouvertes par connexion ou appairage QR. Déconnecter un
-            appareil révoque sa session immédiatement.
+            Sessions ouvertes par connexion ou appairage QR. Déconnecter un appareil révoque sa
+            session immédiatement.
           </p>
           <div style={{ marginTop: 8 }}>
             {devices.map((d) => (

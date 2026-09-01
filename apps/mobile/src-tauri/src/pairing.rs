@@ -86,6 +86,98 @@ pub fn apply_pairing_link(uri: String) -> Result<PairingResult, String> {
     Ok(result)
 }
 
+/// The device session token delivered by `POST /v1/auth/pair/confirm`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PairConfirmResult {
+    /// Session token for this device — stored like a sign-in token.
+    pub token: String,
+    /// ISO expiry of the session, as returned by the server.
+    pub expires_at: Option<String>,
+    /// Normalized device label the server recorded.
+    pub device_label: String,
+}
+
+/// Circuit B, step 2: the person types the 6-digit code shown under the QR
+/// on the host. The server validates it (2 min TTL, single use, 5 attempts)
+/// and answers with a device session token — stored exactly like a sign-in
+/// token, so every later request uses the standard Bearer circuit.
+#[tauri::command]
+pub async fn confirm_pairing(
+    pairing_code: String,
+    device_label: Option<String>,
+) -> Result<PairingResult, String> {
+    let mut store = servers::load();
+    let active = store
+        .active
+        .clone()
+        .ok_or("Aucun serveur enregistré. Scannez d'abord le QR de l'hôte.")?;
+    let Some(server) = store.get(&active).cloned() else {
+        return Err("Aucun serveur enregistré sur cet appareil.".into());
+    };
+
+    let client = crate::client_for(&server)?;
+    let endpoint = format!(
+        "{}/v1/auth/pair/confirm",
+        server.current_url.trim_end_matches('/')
+    );
+    let resp = client
+        .post(&endpoint)
+        .json(&serde_json::json!({
+            "pairing_code": pairing_code.trim(),
+            "device_label": device_label.unwrap_or_else(|| "téléphone".into()),
+        }))
+        .send()
+        .await
+        .map_err(|_| format!("Serveur injoignable. Vérifiez que l'hôte est allumé."))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Code incorrect ou expiré. Affichez un nouveau QR sur l'hôte.".into());
+    }
+    if resp.status() == reqwest::StatusCode::CONFLICT {
+        return Err("Aucun compte administrateur sur ce serveur : l'appairage par code exige un compte à appairer.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé l'appairage ({}).",
+            resp.status()
+        ));
+    }
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let token = body
+        .get("token")
+        .and_then(|t| t.as_str())
+        .ok_or("Le serveur n'a pas renvoyé de jeton.")?
+        .to_string();
+    let device_label = body
+        .get("device_label")
+        .and_then(|d| d.as_str())
+        .unwrap_or("téléphone")
+        .to_string();
+
+    // The device session token is stored exactly like a sign-in token, so
+    // every later request rides the standard Bearer circuit.
+    let session = crate::Session {
+        key_id: server.key_id.clone(),
+        username: device_label.clone(),
+        token,
+    };
+    std::fs::create_dir_all(locaryn_config::default_data_dir()).map_err(|e| e.to_string())?;
+    std::fs::write(
+        crate::session_path(),
+        serde_json::to_string_pretty(&session).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("écriture : {e}"))?;
+
+    tracing::info!("appairage par code confirmé, session appareil enregistrée");
+    Ok(PairingResult {
+        server_name: server.name.clone(),
+        travelling: server.travelling,
+        message: format!("Appairé avec {}.", server.name),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

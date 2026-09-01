@@ -35,12 +35,14 @@ use std::sync::Arc;
 /// POST /api/chat avec GET /api/tags) sans retoucher la résolution de modèle
 /// ni le relais — chaque dialecte ne décrit que ses routes et son auth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // surface d'extension : les dialectes anthropic/ollama arrivent
 pub enum Dialect {
     OpenAi,
 }
 
 impl Dialect {
     /// Le chemin du chat, tel que le client standard l'appelle.
+    #[allow(dead_code)]
     pub fn chat_path(self) -> &'static str {
         match self {
             Dialect::OpenAi => "/v1/chat/completions",
@@ -486,6 +488,13 @@ mod api_tests {
             auth_required: false,
             local_url: "http://127.0.0.1".into(),
             cancel_map: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            pairing_pending: Arc::new(std::sync::Mutex::new(None)),
+            pairing_admin_user_id: None,
+            users: locaryn_storage::users::UserRepo::new(
+                locaryn_storage::open(&data_dir.join("test-users.db"))
+                    .await
+                    .unwrap(),
+            ),
         });
         (state, racine)
     }

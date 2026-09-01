@@ -286,8 +286,8 @@ export function PairingCodes() {
             <div className="locaryn-travel-say">
               <p className="locaryn-travel-title">Scannez avec le téléphone</p>
               <p className="locaryn-travel-sub">
-                Le code porte l'adresse et l'empreinte de cette machine. Après le scan,
-                saisissez-y le code de confirmation ci-dessous.
+                Le code porte l'adresse et l'empreinte de cette machine. Après le scan, saisissez-y
+                le code de confirmation ci-dessous.
               </p>
               {code.pairing_code && (
                 <div className="locaryn-pairing-code">
@@ -295,7 +295,8 @@ export function PairingCodes() {
                   <p className="locaryn-pairing-code-value">{code.pairing_code}</p>
                   {(code.pairing_ttl_seconds ?? 0) > 0 && (
                     <p className="locaryn-pairing-code-hint">
-                      Valable {Math.round((code.pairing_ttl_seconds ?? 0) / 60)} min, à usage unique.
+                      Valable {Math.round((code.pairing_ttl_seconds ?? 0) / 60)} min, à usage
+                      unique.
                     </p>
                   )}
                 </div>

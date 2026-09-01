@@ -253,7 +253,6 @@ pub async fn change_password(
 /// ne montre que ce que l'utilisateur a frappé à la main, l'écran « Appareils
 /// connectés » que ce qui s'est connecté tout seul. Le plaintext d'une clé
 /// n'existe qu'au moment de sa création ; après, il n'y a que le hint.
-
 fn token_info_json(t: &locaryn_storage::users::TokenInfo) -> serde_json::Value {
     serde_json::json!({
         "id": t.id,

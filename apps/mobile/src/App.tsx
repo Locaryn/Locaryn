@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArchivesScreen } from "./components/ArchivesScreen";
 import { Chat } from "./components/Chat";
+import { PairingCodeEntry } from "./components/ConfirmServer";
 import { ConfirmServer, type ProvisioningApercu, lireApercu } from "./components/ConfirmServer";
 import { ExtensionView } from "./components/ExtensionView";
 import { Extensions } from "./components/Extensions";
@@ -228,6 +229,24 @@ export function App() {
   }, [scanning]);
 
   const [provisioningSuccess, setProvisioningSuccess] = useState(false);
+  const [pairCodeNeeded, setPairCodeNeeded] = useState(false);
+  const [pairConfirmBusy, setPairConfirmBusy] = useState(false);
+  const [pairError, setPairError] = useState<string | null>(null);
+
+  /** Circuit B step 2: the person typed the 6-digit code shown under the QR. */
+  async function confirmerCodeAppairage(code: string) {
+    setPairConfirmBusy(true);
+    setPairError(null);
+    try {
+      await api.confirmPairing(code);
+      setPairCodeNeeded(false);
+      await refresh();
+    } catch (e) {
+      setPairError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPairConfirmBusy(false);
+    }
+  }
 
   /** La personne a vu à quel serveur elle se connecterait, et a confirmé. */
   async function confirmerProvisioning() {
@@ -240,6 +259,8 @@ export function App() {
       setStatus(nextStatus);
       setProvisioningSuccess(false);
       setPendingProvisioning(null);
+      // Circuit B step 2: the host now shows a 6-digit code under its QR.
+      setPairCodeNeeded(true);
       await refresh();
     } catch (e) {
       setScanError(e instanceof Error ? e.message : String(e));
@@ -270,6 +291,21 @@ export function App() {
 
   if (paired) {
     return <Paired result={paired} onDone={() => setPaired(null)} />;
+  }
+
+  if (pairCodeNeeded) {
+    return (
+      <PairingCodeEntry
+        serverName={status?.server_name ?? ""}
+        busy={pairConfirmBusy}
+        error={pairError}
+        onSubmit={(code) => void confirmerCodeAppairage(code)}
+        onCancel={() => {
+          setPairCodeNeeded(false);
+          setPairError(null);
+        }}
+      />
+    );
   }
 
   if (pendingProvisioning) {

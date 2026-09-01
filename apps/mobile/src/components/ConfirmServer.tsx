@@ -25,6 +25,65 @@ const MODES: Record<string, { label: string; explication: string }> = {
   },
 };
 
+/** Circuit B step 2: the 6-digit one-time code displayed under the QR on the host. */
+export function PairingCodeEntry({
+  serverName,
+  busy,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  serverName: string;
+  busy: boolean;
+  error: string | null;
+  onSubmit: (code: string) => void;
+  onCancel: () => void;
+}) {
+  const [code, setCode] = useState("");
+  return (
+    <div className="lo-screen">
+      <div className="lo-center">
+        <Icon name="shield" size={32} />
+        <h1 className="lo-title">Code d'appairage</h1>
+        <p className="lo-sub">
+          Saisissez le code à 6 chiffres affiché sous le QR code de « {serverName || "l'hôte"} ». Il
+          expire au bout de 2 minutes et ne peut être utilisé qu'une seule fois.
+        </p>
+        <input
+          className="lo-input"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={6}
+          style={{ letterSpacing: 8, textAlign: "center", fontSize: 24, width: 200 }}
+          value={code}
+          disabled={busy}
+          onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+          onKeyDown={(e) => e.key === "Enter" && code.length === 6 && onSubmit(code)}
+        />
+        <button
+          type="button"
+          className="lo-btn"
+          style={{ marginTop: 10 }}
+          disabled={busy || code.length !== 6}
+          onClick={() => onSubmit(code)}
+        >
+          {busy ? "Vérification…" : "Valider l'appairage"}
+        </button>
+        <button
+          type="button"
+          className="lo-btn-ghost"
+          style={{ marginTop: 6 }}
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Annuler
+        </button>
+        {error && <p className="lo-error">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
 type Props = {
   apercu: ProvisioningApercu;
   busy: boolean;

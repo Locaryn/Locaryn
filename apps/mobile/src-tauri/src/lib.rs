@@ -28,15 +28,15 @@ pub struct MobileStatus {
     pub servers: usize,
 }
 
-fn session_path() -> std::path::PathBuf {
+pub(crate) fn session_path() -> std::path::PathBuf {
     locaryn_config::default_data_dir().join("mobile-session.json")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Session {
-    key_id: String,
-    username: String,
-    token: String,
+pub(crate) struct Session {
+    pub(crate) key_id: String,
+    pub(crate) username: String,
+    pub(crate) token: String,
 }
 
 /// Ce que les extensions actives du serveur apportent.
@@ -560,7 +560,7 @@ fn sign_out() -> MobileStatus {
 ///
 /// Shared by sign-in and by messaging so both trust exactly the same thing —
 /// two anchors would eventually disagree, and the lenient one would win.
-fn client_for(server: &servers::KnownServer) -> Result<reqwest::Client, String> {
+pub(crate) fn client_for(server: &servers::KnownServer) -> Result<reqwest::Client, String> {
     // Media generation (image, TTS) can run for a minute or two on the machine
     // at the other end; a chat-friendly timeout would cut it.
     client_for_with(server, std::time::Duration::from_secs(180))
@@ -2539,6 +2539,7 @@ pub fn run() {
             save_image,
             generate_audio,
             pairing::apply_pairing_link,
+            pairing::confirm_pairing,
             server_capabilities,
             list_capabilities,
             update::check_update,

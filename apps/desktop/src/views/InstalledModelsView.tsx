@@ -73,7 +73,9 @@ function checkIsModelDebrided(entry: StoredEntry, debridedList: string[]): boole
       pathLow === d ||
       pathLow.includes(d) ||
       d.includes(pathLow) ||
-      (fileLow.length > 0 && dFile.length > 0 && (fileLow === dFile || fileLow.includes(dFile) || dFile.includes(fileLow)))
+      (fileLow.length > 0 &&
+        dFile.length > 0 &&
+        (fileLow === dFile || fileLow.includes(dFile) || dFile.includes(fileLow)))
     );
   });
 }
@@ -673,87 +675,88 @@ export function InstalledModelsView({
         })}
       </div>
 
-      {contextMenu && (() => {
-        const isCtxDebrided = checkIsModelDebrided(contextMenu.entry, debridedModels);
-        return createPortal(
-          <div
-            className="locaryn-ctx"
-            style={{
-              position: "fixed",
-              top: Math.max(10, Math.min(contextMenu.y, window.innerHeight - 200)),
-              left: Math.max(10, Math.min(contextMenu.x, window.innerWidth - 260)),
-              zIndex: 99999,
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            role="menu"
-            tabIndex={-1}
-          >
-            <div className="locaryn-ctx-label" style={{ paddingBottom: "4px", fontWeight: 700 }}>
-              {contextMenu.entry.title}
-            </div>
-            {contextMenu.entry.kind === "chat" && (
-              <button
-                type="button"
-                className="locaryn-ctx-item"
-                onClick={() => {
-                  const tag = contextMenu.entry.tag;
-                  setContextMenu(null);
-                  void handleUseForChat(tag);
-                }}
-              >
-                <Icon name="chat" size={14} /> Utiliser dans le chat
-              </button>
-            )}
-            {isCtxDebrided ? (
-              <button
-                type="button"
-                className="locaryn-ctx-item"
-                style={{ fontSize: 13 }}
-                onClick={() => void handleToggleDebridage(contextMenu.entry, false)}
-              >
-                <Icon name="shield" size={14} /> Rétablir par défaut (Éthique)
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="locaryn-ctx-item"
-                style={{ color: "var(--accent, #6366f1)", fontSize: 13, fontWeight: 600 }}
-                onClick={() => void handleToggleDebridage(contextMenu.entry, true)}
-              >
-                <Icon name="sparkle" size={14} /> Ajouter un débridage
-              </button>
-            )}
-            <div className="locaryn-ctx-sep" />
-            <button
-              type="button"
-              className="locaryn-ctx-item"
-              onClick={() => {
-                const path = contextMenu.entry.path;
-                setContextMenu(null);
-                void handleOpenFolder(path);
+      {contextMenu &&
+        (() => {
+          const isCtxDebrided = checkIsModelDebrided(contextMenu.entry, debridedModels);
+          return createPortal(
+            <div
+              className="locaryn-ctx"
+              style={{
+                position: "fixed",
+                top: Math.max(10, Math.min(contextMenu.y, window.innerHeight - 200)),
+                left: Math.max(10, Math.min(contextMenu.x, window.innerWidth - 260)),
+                zIndex: 99999,
               }}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              role="menu"
+              tabIndex={-1}
             >
-              <Icon name="project" size={14} /> Ouvrir l'emplacement
-            </button>
-            {onDeleteModel && (
+              <div className="locaryn-ctx-label" style={{ paddingBottom: "4px", fontWeight: 700 }}>
+                {contextMenu.entry.title}
+              </div>
+              {contextMenu.entry.kind === "chat" && (
+                <button
+                  type="button"
+                  className="locaryn-ctx-item"
+                  onClick={() => {
+                    const tag = contextMenu.entry.tag;
+                    setContextMenu(null);
+                    void handleUseForChat(tag);
+                  }}
+                >
+                  <Icon name="chat" size={14} /> Utiliser dans le chat
+                </button>
+              )}
+              {isCtxDebrided ? (
+                <button
+                  type="button"
+                  className="locaryn-ctx-item"
+                  style={{ fontSize: 13 }}
+                  onClick={() => void handleToggleDebridage(contextMenu.entry, false)}
+                >
+                  <Icon name="shield" size={14} /> Rétablir par défaut (Éthique)
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="locaryn-ctx-item"
+                  style={{ color: "var(--accent, #6366f1)", fontSize: 13, fontWeight: 600 }}
+                  onClick={() => void handleToggleDebridage(contextMenu.entry, true)}
+                >
+                  <Icon name="sparkle" size={14} /> Ajouter un débridage
+                </button>
+              )}
+              <div className="locaryn-ctx-sep" />
               <button
                 type="button"
                 className="locaryn-ctx-item"
-                style={{ color: "var(--danger)" }}
                 onClick={() => {
-                  const entryToDelete = contextMenu.entry;
+                  const path = contextMenu.entry.path;
                   setContextMenu(null);
-                  void handleDelete(entryToDelete);
+                  void handleOpenFolder(path);
                 }}
               >
-                <Icon name="trash" size={14} /> Supprimer
+                <Icon name="project" size={14} /> Ouvrir l'emplacement
               </button>
-            )}
-          </div>,
-          document.body,
-        );
-      })()}
+              {onDeleteModel && (
+                <button
+                  type="button"
+                  className="locaryn-ctx-item"
+                  style={{ color: "var(--danger)" }}
+                  onClick={() => {
+                    const entryToDelete = contextMenu.entry;
+                    setContextMenu(null);
+                    void handleDelete(entryToDelete);
+                  }}
+                >
+                  <Icon name="trash" size={14} /> Supprimer
+                </button>
+              )}
+            </div>,
+            document.body,
+          );
+        })()}
     </div>
   );
 }

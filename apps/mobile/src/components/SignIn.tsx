@@ -12,9 +12,18 @@ type Props = {
    * Les réglages, atteignables sans être connecté.
    */
   onSettings: () => void;
+  /** Circuit B step 2: valider le code à 6 chiffres affiché sous le QR de l'hôte. */
+  onPairConfirm?: (code: string) => Promise<void>;
 };
 
-export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }: Props) {
+export function SignIn({
+  status,
+  onSignedIn,
+  onRegistered,
+  onScan,
+  onSettings,
+  onPairConfirm,
+}: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [address, setAddress] = useState("");
@@ -23,6 +32,27 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
 
   // Animation de succès
   const [successInfo, setSuccessInfo] = useState<{ title: string; subtitle?: string } | null>(null);
+
+  // Circuit B step 2: saisie du code d'appairage à 6 chiffres
+  const [codeMode, setCodeMode] = useState(false);
+  const [pairCode, setPairCode] = useState("");
+  const [pairBusy, setPairBusy] = useState(false);
+  const [pairError, setPairError] = useState<string | null>(null);
+
+  async function submitPairCode() {
+    if (!onPairConfirm || pairCode.length !== 6) return;
+    setPairBusy(true);
+    setPairError(null);
+    try {
+      await onPairConfirm(pairCode);
+      setCodeMode(false);
+      setPairCode("");
+    } catch (e) {
+      setPairError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPairBusy(false);
+    }
+  }
 
   // Mode Découverte
   const [discoveryMode, setDiscoveryMode] = useState(false);
@@ -313,6 +343,58 @@ export function SignIn({ status, onSignedIn, onRegistered, onScan, onSettings }:
           <button type="button" className="lo-btn-ghost" onClick={onScan}>
             Scanner un QR code
           </button>
+
+          {onPairConfirm && (
+            <div style={{ marginTop: 14, width: "100%" }}>
+              {codeMode ? (
+                <>
+                  <p className="lo-hint">
+                    Saisissez le code à 6 chiffres affiché sous le QR code de l'hôte. Il expire au
+                    bout de 2 minutes et ne peut être utilisé qu'une seule fois.
+                  </p>
+                  <input
+                    className="lo-input"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    style={{ letterSpacing: 8, textAlign: "center", fontSize: 24, width: 200 }}
+                    value={pairCode}
+                    disabled={pairBusy}
+                    onChange={(e) => setPairCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && pairCode.length === 6 && void submitPairCode()
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="lo-btn"
+                    style={{ marginTop: 10 }}
+                    disabled={pairBusy || pairCode.length !== 6}
+                    onClick={() => void submitPairCode()}
+                  >
+                    {pairBusy ? "Vérification…" : "Valider l'appairage"}
+                  </button>
+                  <button
+                    type="button"
+                    className="lo-btn-ghost"
+                    style={{ marginTop: 6 }}
+                    disabled={pairBusy}
+                    onClick={() => {
+                      setCodeMode(false);
+                      setPairError(null);
+                    }}
+                  >
+                    Annuler
+                  </button>
+                  {pairError && <p className="lo-error">{pairError}</p>}
+                </>
+              ) : (
+                <button type="button" className="lo-btn-ghost" onClick={() => setCodeMode(true)}>
+                  J'ai un code d'appairage
+                </button>
+              )}
+            </div>
+          )}
 
           <div style={{ marginTop: 6 }}>
             <button
