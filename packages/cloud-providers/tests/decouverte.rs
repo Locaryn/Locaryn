@@ -19,6 +19,10 @@ use locaryn_storage::repos::{NewExtension, ProviderRepo, Storage};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+/// Les variables d'environnement sont globales au processus : les tests qui
+/// les lisent ou les écrivent partagent ce verrou pour rester déterministes.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
 /// Un trousseau en mémoire : le test ne touche pas à celui du système.
 #[derive(Default)]
 struct TrousseauDEssai {
@@ -222,6 +226,7 @@ async fn lapi_retrouve_le_fournisseur_dun_modele() {
 /// évite un appel non authentifié, et il doit dire quoi faire.
 #[tokio::test]
 async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
+    let _env = ENV_LOCK.lock().expect("verrou env");
     let m = Machine::nouvelle("selection").await;
     m.poser_catalogue();
     let h = m.host();
@@ -269,6 +274,7 @@ async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
 /// repli, le mode serveur ne pourrait jamais parler à une passerelle.
 #[tokio::test]
 async fn sans_trousseau_la_cle_vient_de_lenvironnement() {
+    let _env = ENV_LOCK.lock().expect("verrou env");
     let m = Machine::nouvelle("environnement").await;
     let nom = cloud::env_key_name("omniroute");
     assert_eq!(nom, "LOCARYN_CLOUD_OMNIROUTE_KEY");
