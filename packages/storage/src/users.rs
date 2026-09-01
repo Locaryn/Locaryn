@@ -718,14 +718,15 @@ mod tests {
         assert!(sess.expires_at.is_some());
 
         // Both kinds show up in the list with their metadata, never plaintext.
+        // (2 API keys + 1 session token = 3 rows)
         let listed = repo.list_tokens(u.id).await.unwrap();
-        assert_eq!(listed.len(), 2);
+        assert_eq!(listed.len(), 3);
         let kinds: Vec<_> = listed.iter().map(|t| t.kind).collect();
         assert!(kinds.contains(&TokenKind::Api));
         assert!(kinds.contains(&TokenKind::Session));
         let api = listed
             .iter()
-            .find(|t| t.kind == TokenKind::Api)
+            .find(|t| t.kind == TokenKind::Api && t.label.as_deref() == Some("vs-code"))
             .unwrap();
         assert_eq!(api.label.as_deref(), Some("vs-code"));
         assert_eq!(api.hint.len(), 6);
