@@ -35,9 +35,10 @@ use std::sync::Arc;
 /// POST /api/chat avec GET /api/tags) sans retoucher la résolution de modèle
 /// ni le relais — chaque dialecte ne décrit que ses routes et son auth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // surface d'extension : les dialectes anthropic/ollama arrivent
+#[allow(dead_code)] // surface d'extension : les dialectes ollama arrivent
 pub enum Dialect {
     OpenAi,
+    Anthropic,
 }
 
 impl Dialect {
@@ -46,6 +47,16 @@ impl Dialect {
     pub fn chat_path(self) -> &'static str {
         match self {
             Dialect::OpenAi => "/v1/chat/completions",
+            Dialect::Anthropic => "/v1/messages",
+        }
+    }
+
+    /// Le nom d'en-tête d'authentification attendu par ce dialecte.
+    #[allow(dead_code)]
+    pub fn auth_header(self) -> &'static str {
+        match self {
+            Dialect::OpenAi => "authorization",
+            Dialect::Anthropic => "x-api-key",
         }
     }
 }
@@ -268,6 +279,249 @@ pub async fn chat_completions(
                 "server_error",
             )
         })
+}
+
+// ============================================================================
+// POST /v1/messages - Anthropic-compatible dialect
+// ============================================================================
+
+/// Une conversation, dans le dialecte Anthropic.
+///
+/// Les clients Anthropic (SDK Python/TS, Claude Code, etc.) envoient
+/// POST /v1/messages avec x-api-key et anthropic-version. Le corps
+/// utilise model, messages, max_tokens, system (separe) et stream.
+/// Le serveur traduit vers le dialecte OpenAI du fournisseur en aval,
+/// relaye la reponse, puis re-traduit vers Anthropic en sortie.
+pub async fn messages(
+    State(state): State<Arc<DaemonState>>,
+    headers: HeaderMap,
+    body: Json<Value>,
+) -> Response {
+    let Json(corps) = body;
+
+    let modele = corps
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if modele.is_empty() {
+        return erreur(
+            StatusCode::BAD_REQUEST,
+            "Le champ model est obligatoire. Appelez GET /v1/models pour la liste.",
+            "invalid_request_error",
+        );
+    }
+
+    let max_tokens = corps
+        .get("max_tokens")
+        .and_then(|t| t.as_u64())
+        .unwrap_or(4096);
+
+    let anthropic_messages = corps
+        .get("messages")
+        .and_then(|m| m.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    if anthropic_messages.is_empty() {
+        return erreur(
+            StatusCode::BAD_REQUEST,
+            "Le champ messages est obligatoire et ne peut pas etre vide.",
+            "invalid_request_error",
+        );
+    }
+
+    // Traduire le corps Anthropic vers OpenAI.
+    // Anthropic separe system des messages ; OpenAI l'inclut comme
+    // le premier message avec role: system.
+    let mut openai_messages: Vec<Value> = Vec::new();
+
+    if let Some(system) = corps.get("system").and_then(|s| s.as_str()) {
+        if !system.is_empty() {
+            openai_messages.push(json!({ "role": "system", "content": system }));
+        }
+    } else if let Some(system_blocks) = corps.get("system").and_then(|s| s.as_array()) {
+        let text: String = system_blocks
+            .iter()
+            .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<&str>>()
+            .join("\n");
+        if !text.is_empty() {
+            openai_messages.push(json!({ "role": "system", "content": text }));
+        }
+    }
+
+    for msg in &anthropic_messages {
+        let role = msg
+            .get("role")
+            .and_then(|r| r.as_str())
+            .unwrap_or("user")
+            .to_string();
+        let content = msg.get("content");
+
+        let openai_content = match content {
+            Some(Value::String(s)) => Value::String(s.clone()),
+            Some(Value::Array(blocks)) => {
+                let text: String = blocks
+                    .iter()
+                    .filter_map(|b| {
+                        if b.get("type").and_then(|t| t.as_str()) == Some("text") {
+                            b.get("text").and_then(|t| t.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<&str>>()
+                    .join("\n");
+                Value::String(text)
+            }
+            _ => Value::String(String::new()),
+        };
+
+        openai_messages.push(json!({ "role": role, "content": openai_content }));
+    }
+
+    let openai_body = json!({
+        "model": modele,
+        "messages": openai_messages,
+        "max_tokens": max_tokens,
+        "stream": corps.get("stream").and_then(|s| s.as_bool()).unwrap_or(false),
+    });
+
+    // Resoudre le fournisseur et construire la requete aval.
+    let h = host(&state);
+    let (url, cle, modele_cible) = match cloud::provider_of_model(&h, &modele).await {
+        Some(p) => {
+            let cle = cloud::stored_key(&h, &p.id);
+            if cle.is_none() {
+                return erreur(
+                    StatusCode::UNAUTHORIZED,
+                    &format!(
+                        "Aucune cle enregistree pour {}. Renseignez-la dans son dossier, ou par la variable d'environnement {}.",
+                        p.label(),
+                        cloud::env_key_name(&p.id)
+                    ),
+                    "invalid_request_error",
+                );
+            }
+            (
+                format!(
+                    "{}/v1/chat/completions",
+                    p.manifest.api_url.trim_end_matches('/')
+                ),
+                cle,
+                cloud::strip_provider_prefix(&p.id, &modele),
+            )
+        }
+        None => match state.storage.providers.active().await.ok().flatten() {
+            Some(p) => (
+                format!("{}/v1/chat/completions", p.endpoint.trim_end_matches('/')),
+                cloud::key_for_active_provider(&h, &p),
+                modele.clone(),
+            ),
+            None => {
+                return erreur(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Aucun moteur actif et aucun fournisseur ne sert ce modele.",
+                    "server_error",
+                )
+            }
+        },
+    };
+
+    let mut openai_body = openai_body;
+    openai_body["model"] = Value::String(modele_cible);
+
+    let mut req = state.http.post(&url).json(&openai_body);
+    if let Some(k) = cle {
+        req = req.bearer_auth(k);
+    }
+    for nom in ["accept", "content-type"] {
+        if let Some(v) = headers.get(nom) {
+            req = req.header(nom, v);
+        }
+    }
+
+    let reponse = match req.send().await {
+        Ok(r) => r,
+        Err(e) => {
+            return erreur(
+                StatusCode::BAD_GATEWAY,
+                &format!("Le fournisseur de ce modele est injoignable : {e}"),
+                "server_error",
+            )
+        }
+    };
+
+    // Traduire la reponse OpenAI vers Anthropic.
+    let openai_body: Value = match reponse.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            return erreur(
+                StatusCode::BAD_GATEWAY,
+                &format!("Reponse du fournisseur illisible : {e}"),
+                "server_error",
+            )
+        }
+    };
+
+    let content_text = openai_body
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+        .unwrap_or_default()
+        .to_string();
+
+    let model_out = openai_body
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or(&modele)
+        .to_string();
+
+    let stop_reason = match openai_body
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("finish_reason"))
+        .and_then(|f| f.as_str())
+    {
+        Some("stop") => "end_turn",
+        Some("length") => "max_tokens",
+        _ => "end_turn",
+    };
+
+    let anthropic_response = json!({
+        "id": openai_body.get("id").and_then(|i| i.as_str()).unwrap_or("msg_unknown"),
+        "type": "message",
+        "role": "assistant",
+        "model": model_out,
+        "content": [
+            {
+                "type": "text",
+                "text": content_text
+            }
+        ],
+        "stop_reason": stop_reason,
+        "stop_sequence": Value::Null,
+        "usage": {
+            "input_tokens": openai_body
+                .get("usage")
+                .and_then(|u| u.get("prompt_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
+            "output_tokens": openai_body
+                .get("usage")
+                .and_then(|u| u.get("completion_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0),
+        }
+    });
+
+    let mut resp = Json(anthropic_response).into_response();
+    cors_headers(&mut resp);
+    resp
 }
 
 #[cfg(test)]

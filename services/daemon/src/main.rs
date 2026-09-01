@@ -450,6 +450,7 @@ async fn main() -> anyhow::Result<()> {
             "/v1/chat/completions",
             post(routes::openai::chat_completions),
         )
+        .route("/v1/messages", post(routes::openai::messages))
         // Le preflight CORS : les outils web (playgrounds, consoles de test)
         // sondent OPTIONS avant d'envoyer leur Bearer. Scopé à la surface
         // standard, pas au reste de l'API.
@@ -459,6 +460,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/v1/chat/completions",
+            axum::routing::options(routes::openai::cors_preflight),
+        )
+        .route(
+            "/v1/messages",
             axum::routing::options(routes::openai::cors_preflight),
         )
         .route("/v1/providers", get(list_providers))
