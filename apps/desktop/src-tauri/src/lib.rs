@@ -5954,6 +5954,7 @@ pub fn run() {
             client_cert::sign_out,
             client_cert::install_client_certificate,
             client_cert::remove_client_certificate,
+            client_cert::confirm_pairing,
             server_mode::server_status,
             server_mode::set_server_mode,
             server_mode::restart_server,

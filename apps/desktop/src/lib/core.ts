@@ -1545,6 +1545,11 @@ export interface CoreApi {
 
   /** Exchange credentials for a token, and remember it. */
   signIn(serverUrl: string, username: string, password: string): Promise<ServerSession>;
+  confirmPairing(
+    serverUrl: string,
+    pairingCode: string,
+    deviceLabel?: string,
+  ): Promise<ServerSession>;
   /** The stored session, if this machine already signed in. */
   currentSession(): Promise<ServerSession | null>;
   signOut(): Promise<void>;
@@ -1969,6 +1974,8 @@ const tauriCore: CoreApi = {
 
   signIn: (serverUrl, username, password) =>
     invoke<ServerSession>("sign_in", { serverUrl, username, password }),
+  confirmPairing: (serverUrl, pairingCode, deviceLabel) =>
+    invoke<ServerSession>("confirm_pairing", { serverUrl, pairingCode, deviceLabel }),
   currentSession: () => invoke<ServerSession | null>("current_session"),
   signOut: () => invoke<void>("sign_out"),
 
@@ -4316,6 +4323,11 @@ const demoCore: CoreApi = {
   signIn: async (serverUrl, username) => ({
     server_url: serverUrl,
     username,
+    token: "demo",
+  }),
+  confirmPairing: async (serverUrl, _pairingCode) => ({
+    server_url: serverUrl,
+    username: "desktop",
     token: "demo",
   }),
   currentSession: async () => null,
