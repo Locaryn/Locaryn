@@ -107,7 +107,7 @@ pub async fn confirm_pairing(
     pairing_code: String,
     device_label: Option<String>,
 ) -> Result<PairingResult, String> {
-    let mut store = servers::load();
+    let store = servers::load();
     let active = store
         .active
         .clone()
