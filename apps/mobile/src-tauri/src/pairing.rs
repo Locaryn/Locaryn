@@ -129,7 +129,7 @@ pub async fn confirm_pairing(
         }))
         .send()
         .await
-        .map_err(|_| format!("Serveur injoignable. Vérifiez que l'hôte est allumé."))?;
+        .map_err(|_| "Serveur injoignable. Vérifiez que l'hôte est allumé.".to_string())?;
 
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err("Code incorrect ou expiré. Affichez un nouveau QR sur l'hôte.".into());

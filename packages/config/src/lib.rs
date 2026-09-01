@@ -950,7 +950,7 @@ mod program_tests {
     #[test]
     fn debridage_matching_logic_works() {
         // Reproduit la logique exacte de apps/desktop/src-tauri/src/lib.rs L1819-1835
-        let debrided = vec![
+        let debrided = [
             "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf".to_string(),
         ];
         let effective_model =
