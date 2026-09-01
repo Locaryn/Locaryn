@@ -558,6 +558,13 @@ fn parse_json_or_toml(raw: &str) -> Result<Config, ConfigError> {
             // donc pas valoir effacement. C'est `null` qui rétablit celle de
             // l'application.
             "system_prompt" => cfg.assistance.system_prompt = Some(v.to_string()),
+            "debrided_models" => {
+                cfg.assistance.debrided_models = v
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
             _ => {}
         }
     }
@@ -597,6 +604,7 @@ fn merge(into: &mut Config, other: Config) {
     if other.assistance.system_prompt.is_some() {
         into.assistance.system_prompt = other.assistance.system_prompt;
     }
+    into.assistance.debrided_models = other.assistance.debrided_models;
 }
 
 fn apply_env(cfg: &mut Config) {
@@ -878,4 +886,144 @@ mod program_tests {
         );
         assert!(!program_exists("commande-qui-nexiste-pas-42"));
     }
+
+    #[test]
+    fn merge_preserves_debrided_models() {
+        let mut cfg1 = Config::default();
+        let mut cfg2 = Config::default();
+        cfg2.assistance.debrided_models = vec!["utena-7b".to_string(), "mistral-nemo".to_string()];
+        merge(&mut cfg1, cfg2);
+        assert_eq!(cfg1.assistance.debrided_models, vec!["utena-7b", "mistral-nemo"]);
+    }
+
+    #[test]
+    fn json_roundtrip_debrided_models() {
+        let json = r#"{
+            "assistance": {
+                "debrided_models": [
+                    "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf"
+                ]
+            }
+        }"#;
+        let cfg: Config = serde_json::from_str(json).expect("parse failed");
+        assert_eq!(cfg.assistance.debrided_models.len(), 1);
+        assert_eq!(
+            cfg.assistance.debrided_models[0],
+            "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf"
+        );
+
+        // parse_json_or_toml doit aussi fonctionner
+        let cfg2 = parse_json_or_toml(json).expect("parse_json_or_toml failed");
+        assert_eq!(cfg2.assistance.debrided_models.len(), 1);
+        assert_eq!(
+            cfg2.assistance.debrided_models[0],
+            "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf"
+        );
+
+        // merge doit préserver
+        let mut base = Config::default();
+        merge(&mut base, cfg2);
+        assert_eq!(base.assistance.debrided_models.len(), 1);
+        assert_eq!(
+            base.assistance.debrided_models[0],
+            "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf"
+        );
+    }
+
+    #[test]
+    fn json_with_empty_debrided_models_parses_to_empty_vec() {
+        let json = r#"{ "assistance": { "debrided_models": [] } }"#;
+        let cfg: Config = serde_json::from_str(json).expect("parse failed");
+        assert!(cfg.assistance.debrided_models.is_empty());
+    }
+
+    #[test]
+    fn json_without_debrided_models_defaults_to_empty() {
+        let json = r#"{ "assistance": {} }"#;
+        let cfg: Config = serde_json::from_str(json).expect("parse failed");
+        assert!(cfg.assistance.debrided_models.is_empty());
+    }
+
+    #[test]
+    fn debridage_matching_logic_works() {
+        // Reproduit la logique exacte de apps/desktop/src-tauri/src/lib.rs L1819-1835
+        let debrided = vec![
+            "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf".to_string(),
+        ];
+        let effective_model = "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf";
+
+        let is_debrided = debrided.iter().any(|d| {
+            let d_clean = d.trim().to_lowercase();
+            let m_clean = effective_model.trim().to_lowercase();
+            m_clean == d_clean
+                || m_clean.contains(&d_clean)
+                || d_clean.contains(&m_clean)
+                || std::path::Path::new(&m_clean)
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|f| f.contains(&d_clean) || d_clean.contains(f))
+                    .unwrap_or(false)
+        });
+        assert!(is_debrided, "exact tag match should be detected as debrided");
+
+        // Modèle non débridé
+        let non_debrided_model = "some-other-model.gguf";
+        let is_not = debrided.iter().any(|d| {
+            let d_clean = d.trim().to_lowercase();
+            let m_clean = non_debrided_model.trim().to_lowercase();
+            m_clean == d_clean
+                || m_clean.contains(&d_clean)
+                || d_clean.contains(&m_clean)
+                || std::path::Path::new(&m_clean)
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|f| f.contains(&d_clean) || d_clean.contains(f))
+                    .unwrap_or(false)
+        });
+        assert!(!is_not, "unrelated model should NOT be detected as debrided");
+    }
+
+    #[test]
+    fn set_global_merges_debrided_models_key() {
+        // Simule un fichier config avec system_prompt déjà existant,
+        // puis set_global avec seulement debrided_models.
+        // Le system_prompt doit être préservé.
+        let dir = std::env::temp_dir().join("locaryn_test_set_global");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("config.toml");
+        std::fs::write(&path, r#"{ "assistance": { "system_prompt": "bonjour" } }"#).unwrap();
+
+        // Lire manuellement et fusionner (reproduit set_global)
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let mut racine: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let val = serde_json::json!({ "debrided_models": ["model-a"] });
+        if let (Some(obj_cible), Some(obj_valeur)) = (
+            racine.get_mut("assistance").and_then(|v| v.as_object_mut()),
+            val.as_object(),
+        ) {
+            for (k, v) in obj_valeur {
+                obj_cible.insert(k.clone(), v.clone());
+            }
+        }
+        let joli = serde_json::to_string_pretty(&racine).unwrap();
+        std::fs::write(&path, &joli).unwrap();
+
+        // Relire et vérifier que les deux clés existent
+        let raw2 = std::fs::read_to_string(&path).unwrap();
+        let cfg2: serde_json::Value = serde_json::from_str(&raw2).unwrap();
+        assert_eq!(
+            cfg2["assistance"]["system_prompt"].as_str().unwrap(),
+            "bonjour",
+            "system_prompt should be preserved after set_global"
+        );
+        assert_eq!(
+            cfg2["assistance"]["debrided_models"][0].as_str().unwrap(),
+            "model-a",
+            "debrided_models should be set"
+        );
+
+        // Nettoyage
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
+

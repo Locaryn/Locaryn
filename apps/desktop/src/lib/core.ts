@@ -875,6 +875,10 @@ export interface PairingCode {
   mode: string;
   url: string;
   qr_svg: string;
+  /** Одноразовий код підтвердження (Circuit B). Порожній, якщо сервер старіший за цю функцію. */
+  pairing_code?: string;
+  /** Тривалість дії коду в секундах (зазвичай 120). */
+  pairing_ttl_seconds?: number;
 }
 
 /**

@@ -33,6 +33,10 @@ fn is_public(path: &str) -> bool {
         // l'autorité publique du déploiement. Il doit donc être demandable par
         // le desktop lui-même avant qu'il ait pu obtenir un jeton utilisateur.
         || path == "/v1/pairing"
+        // Le confirm d'appairage EST le second facteur : il porte un code
+        // affiché à l'écran de l'hôte, pas un secret stocké. Il doit donc
+        // être joignable par un appareil qui n'a pas encore de token.
+        || path == "/v1/auth/pair/confirm"
         || path == "/"
         || path == "/index.html"
         || path == "/manifest.webmanifest"
@@ -102,6 +106,16 @@ pub async fn require_token(
             unauthorised("Vérification impossible.")
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct CreateApiTokenBody {
+    /// Le nom qui permettra de reconnaître cette clé dans la liste.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// 7, 30 ou 90 jours. Absent ou 0 : la clé n'expire jamais.
+    #[serde(default)]
+    pub expires_in_days: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -230,6 +244,135 @@ pub async fn change_password(
             Json(serde_json::json!({ "error": "password_refused", "detail": e.to_string() })),
         )
             .into_response(),
+    }
+}
+
+/// ---- Circuit A (clés API) et Circuit B (sessions appareils) ---------------
+///
+/// Deux listes distinctes pour deux circuits distincts : l'écran « Clés API »
+/// ne montre que ce que l'utilisateur a frappé à la main, l'écran « Appareils
+/// connectés » que ce qui s'est connecté tout seul. Le plaintext d'une clé
+/// n'existe qu'au moment de sa création ; après, il n'y a que le hint.
+
+fn token_info_json(t: &locaryn_storage::users::TokenInfo) -> serde_json::Value {
+    serde_json::json!({
+        "id": t.id,
+        "kind": t.kind.as_str(),
+        "label": t.label,
+        "hint": t.hint,
+        "created_at": t.created_at,
+        "last_used_at": t.last_used_at,
+        "expires_at": t.expires_at,
+        "revoked_at": t.revoked_at,
+    })
+}
+
+/// GET /v1/auth/tokens — les deux circuits de l'appelant, séparés par kind.
+pub async fn list_tokens(
+    State(state): State<Arc<AuthState>>,
+    user: Option<axum::extract::Extension<User>>,
+) -> Response {
+    let Some(axum::extract::Extension(u)) = user else {
+        // Loopback sans compte : rien à lister, et le dire proprement.
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "no_account" })),
+        )
+            .into_response();
+    };
+    match state.users.list_tokens(u.id).await {
+        Ok(tokens) => {
+            let out: Vec<serde_json::Value> = tokens.iter().map(token_info_json).collect();
+            (StatusCode::OK, Json(out)).into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "liste des jetons impossible");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "tokens_unavailable" })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// POST /v1/auth/tokens — crée une clé développeur. Le plaintext part une
+/// seule fois, dans cette réponse ; le serveur n'en garde que le hash.
+pub async fn create_api_token(
+    State(state): State<Arc<AuthState>>,
+    user: Option<axum::extract::Extension<User>>,
+    Json(body): Json<CreateApiTokenBody>,
+) -> Response {
+    let Some(axum::extract::Extension(u)) = user else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "no_account" })),
+        )
+            .into_response();
+    };
+    let label = body.label.as_deref().filter(|l| !l.trim().is_empty());
+    let expires_days = body.expires_in_days.filter(|d| *d > 0);
+    match state
+        .users
+        .issue_api_token(u.id, label, expires_days)
+        .await
+    {
+        Ok(tok) => {
+            tracing::info!(user = %u.username, "clé API créée");
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({
+                    "id": tok.id,
+                    "token": tok.plaintext,
+                    "expires_at": tok.expires_at,
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "création de la clé impossible");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "token_issue_failed" })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// DELETE /v1/auth/tokens/:id — révoque une clé ou déconnecte un appareil.
+pub async fn revoke_token(
+    State(state): State<Arc<AuthState>>,
+    user: Option<axum::extract::Extension<User>>,
+    axum::extract::Path(token_id): axum::extract::Path<String>,
+) -> Response {
+    let Some(axum::extract::Extension(u)) = user else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "no_account" })),
+        )
+            .into_response();
+    };
+    let Ok(token_id) = uuid::Uuid::parse_str(&token_id) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid_token_id" })),
+        )
+            .into_response();
+    };
+    match state.users.revoke_token(token_id).await {
+        Ok(()) => {
+            tracing::info!(user = %u.username, "jeton révoqué");
+            (StatusCode::OK, Json(serde_json::json!({ "revoked": true }))).into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "révocation impossible");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "revoke_failed" })),
+            )
+                .into_response()
+        }
     }
 }
 

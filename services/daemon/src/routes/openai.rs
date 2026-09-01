@@ -20,12 +20,57 @@
 use crate::DaemonState;
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use locaryn_cloud_providers as cloud;
 use serde_json::{json, Value};
 use std::sync::Arc;
+
+/// ---- Le dialecte OpenAI ----------------------------------------------------
+///
+/// Un « dialecte » décrit comment une famille de clients parle : où envoyer le
+/// chat, comment se nommer. La structure est prête pour accueillir les
+/// prochains (`anthropic` : POST /v1/messages avec x-api-key ; `ollama` :
+/// POST /api/chat avec GET /api/tags) sans retoucher la résolution de modèle
+/// ni le relais — chaque dialecte ne décrit que ses routes et son auth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    OpenAi,
+}
+
+impl Dialect {
+    /// Le chemin du chat, tel que le client standard l'appelle.
+    pub fn chat_path(self) -> &'static str {
+        match self {
+            Dialect::OpenAi => "/v1/chat/completions",
+        }
+    }
+}
+
+/// Le préflight CORS de la surface standard : sans lui, un outil web ne peut
+/// même pas poser la question avant d'envoyer son Bearer. Aucun cookie n'est
+/// accepté — l'auth Bearer reste le seul facteur, donc `*` ne donne rien à
+/// un tiers qui n'a pas la clé.
+pub async fn cors_preflight() -> Response {
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .header("access-control-allow-origin", "*")
+        .header("access-control-allow-methods", "GET, POST, OPTIONS")
+        .header("access-control-allow-headers", "authorization, content-type")
+        .header("access-control-max-age", "86400")
+        .body(Body::empty())
+        .unwrap()
+}
+
+/// Les en-têtes CORS d'une réponse ordinaire de la surface standard.
+fn cors_headers(resp: &mut Response) {
+    let h = resp.headers_mut();
+    h.insert(
+        "access-control-allow-origin",
+        HeaderValue::from_static("*"),
+    );
+}
 
 /// Les poignées du service, prêtées au socle des fournisseurs.
 fn host(state: &DaemonState) -> cloud::Host<'_> {
@@ -92,7 +137,9 @@ pub async fn list_models(State(state): State<Arc<DaemonState>>) -> Response {
         }
     }
 
-    Json(json!({ "object": "list", "data": data })).into_response()
+    let mut resp = Json(json!({ "object": "list", "data": data })).into_response();
+    cors_headers(&mut resp);
+    resp
 }
 
 // ============================================================================
@@ -210,6 +257,7 @@ pub async fn chat_completions(
     Response::builder()
         .status(statut)
         .header("content-type", type_contenu)
+        .header("access-control-allow-origin", "*")
         .body(Body::from_stream(flux))
         .unwrap_or_else(|_| {
             erreur(

@@ -52,6 +52,32 @@ function identifyInstalledModel(rawTag: string): InstalledModelIdentity {
   return { model: model || withoutShard, quantization, format };
 }
 
+function checkIsModelDebrided(entry: StoredEntry, debridedList: string[]): boolean {
+  if (!debridedList || debridedList.length === 0) return false;
+  const tagLow = entry.tag.toLowerCase().trim();
+  const titleLow = entry.title.toLowerCase().trim();
+  const pathLow = (entry.path || "").toLowerCase().trim();
+  const fileLow = (entry.path || entry.tag).split(/[/\\]/).pop()?.toLowerCase().trim() ?? "";
+
+  return debridedList.some((raw) => {
+    const d = raw.toLowerCase().trim();
+    if (!d) return false;
+    const dFile = d.split(/[/\\]/).pop()?.toLowerCase().trim() ?? d;
+    return (
+      tagLow === d ||
+      tagLow.includes(d) ||
+      d.includes(tagLow) ||
+      titleLow === d ||
+      titleLow.includes(d) ||
+      d.includes(titleLow) ||
+      pathLow === d ||
+      pathLow.includes(d) ||
+      d.includes(pathLow) ||
+      (fileLow.length > 0 && dFile.length > 0 && (fileLow === dFile || fileLow.includes(dFile) || dFile.includes(fileLow)))
+    );
+  });
+}
+
 /** D'où vient un modèle stocké, et ce qu'on peut en faire.
  *
  *  `chat` : le moteur de conversation le charge. `extension` : une extension
@@ -508,12 +534,7 @@ export function InstalledModelsView({
         ))}
         {filtered.map((entry) => {
           const classification = classifyModel(entry.tag);
-          const isDebrided = debridedModels.some(
-            (m) =>
-              m.toLowerCase() === entry.tag.toLowerCase() ||
-              entry.tag.toLowerCase().includes(m.toLowerCase()) ||
-              m.toLowerCase().includes(entry.tag.toLowerCase()),
-          );
+          const isDebrided = checkIsModelDebrided(entry, debridedModels);
           return (
             <div
               key={`${entry.kind}:${entry.tag}`}
@@ -653,12 +674,7 @@ export function InstalledModelsView({
       </div>
 
       {contextMenu && (() => {
-        const isCtxDebrided = debridedModels.some(
-          (m) =>
-            m.toLowerCase() === contextMenu.entry.tag.toLowerCase() ||
-            contextMenu.entry.tag.toLowerCase().includes(m.toLowerCase()) ||
-            m.toLowerCase().includes(contextMenu.entry.tag.toLowerCase()),
-        );
+        const isCtxDebrided = checkIsModelDebrided(contextMenu.entry, debridedModels);
         return createPortal(
           <div
             className="locaryn-ctx"

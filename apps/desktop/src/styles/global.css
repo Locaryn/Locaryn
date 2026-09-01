@@ -10598,3 +10598,29 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-weight: 400;
   color: var(--text);
 }
+
+/* One-time pairing confirmation code (Circuit B) shown under the QR. */
+.locaryn-pairing-code {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(var(--accent-rgb, 74, 124, 89), 0.08);
+}
+.locaryn-pairing-code-label {
+  margin: 0 0 var(--space-1);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.locaryn-pairing-code-value {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  font-variant-numeric: tabular-nums;
+}
+.locaryn-pairing-code-hint {
+  margin: var(--space-1) 0 0;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}

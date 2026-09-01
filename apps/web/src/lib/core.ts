@@ -322,6 +322,19 @@ async function http<T>(
 /** The machine's name as shown in the top bar. */
 const SERVER_NAME = "Locaryn";
 
+/** Un jeton du serveur : clé API développeur ou session d'appareil. */
+export interface TokenInfo {
+  id: string;
+  kind: "session" | "api";
+  label: string | null;
+  /** Quelques caractères du milieu, pour reconnaître la sienne. */
+  hint: string;
+  created_at: string | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
 export const api = {
   /**
    * Ce que les extensions actives du serveur apportent.
@@ -408,6 +421,30 @@ export const api = {
   /** Changer mon mot de passe. L'actuel doit être fourni. */
   async changePassword(current: string, nouveau: string): Promise<void> {
     await http("/v1/auth/password", { method: "POST", body: { current, nouveau } });
+  },
+
+  /** Les clés API et les sessions d'appareils de l'utilisateur courant. */
+  async listTokens(): Promise<TokenInfo[]> {
+    return http("/v1/auth/tokens");
+  },
+
+  /**
+   * Créer une clé API développeur. Le plaintext n'existe qu'une fois, dans
+   * la réponse — c'est le seul moment où l'utilisateur peut le copier.
+   */
+  async createToken(
+    label: string,
+    expiresInDays: number | null,
+  ): Promise<{ id: string; token: string; expires_at: string | null }> {
+    return http("/v1/auth/tokens", {
+      method: "POST",
+      body: { label, expires_in_days: expiresInDays ?? 0 },
+    });
+  },
+
+  /** Révoquer une clé ou déconnecter un appareil. */
+  async revokeToken(id: string): Promise<void> {
+    await http(`/v1/auth/tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
 
   /** Les extensions installées sur le serveur, et leur pilotage. */

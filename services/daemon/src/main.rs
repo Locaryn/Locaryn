@@ -80,6 +80,17 @@ struct DaemonState {
     /// causing the SSE stream to terminate on the next poll.
     /// The background task removes the entry when the stream ends naturally.
     cancel_map: Arc<Mutex<HashMap<Uuid, Arc<AtomicBool>>>>,
+    /// Code d'appairage en attente (Circuit B) : généré par GET /v1/pairing,
+    /// consommé par POST /v1/auth/pair/confirm. En mémoire : un redémarrage
+    /// invalide le code, ce qui est le comportement voulu.
+    pub pairing_pending:
+        Arc<Mutex<Option<routes::pairing::PendingPairing>>>,
+    /// Le compte auquel sont rattachés les appareils appairés : le premier
+    /// administrateur, résolu au démarrage.
+    pub pairing_admin_user_id: Option<Uuid>,
+    /// Comptes et tokens : le confirm d'appairage émet un token de session
+    /// appareil via ce repo (partagé avec AuthState).
+    pub users: locaryn_storage::users::UserRepo,
 }
 
 /// Le trousseau du système, quand il y en a un.
@@ -210,6 +221,10 @@ async fn main() -> anyhow::Result<()> {
     let mcp_state = Arc::new(McpState::new());
     let travel_state = travel::TravelState::new();
 
+    // Les appareils appairés se rattachent au premier administrateur : c'est
+    // lui qui affiche le QR et son code à l'écran.
+    let pairing_admin = users.first_admin_id().await;
+
     let state = Arc::new(DaemonState {
         mode: cfg.connection.mode,
         start_time: chrono::Utc::now(),
@@ -235,6 +250,9 @@ async fn main() -> anyhow::Result<()> {
             local_ip_string()
         ),
         cancel_map: Arc::new(Mutex::new(HashMap::new())),
+        pairing_pending: Arc::new(Mutex::new(None)),
+        pairing_admin_user_id: pairing_admin,
+        users: users.clone(),
     });
 
     // Les extensions installées reviennent de la base : sans cela, un
@@ -369,6 +387,10 @@ async fn main() -> anyhow::Result<()> {
         // Le code d'appairage : local, port ouvert, ou tunnel.
         .route("/v1/pairing", get(routes::pairing::qr))
         .route(
+            "/v1/auth/pair/confirm",
+            post(routes::pairing::confirm),
+        )
+        .route(
             "/v1/mcp/servers",
             get(routes::mcp::list_servers).post(routes::mcp::register_server),
         )
@@ -432,6 +454,17 @@ async fn main() -> anyhow::Result<()> {
             "/v1/chat/completions",
             post(routes::openai::chat_completions),
         )
+        // Le preflight CORS : les outils web (playgrounds, consoles de test)
+        // sondent OPTIONS avant d'envoyer leur Bearer. Scopé à la surface
+        // standard, pas au reste de l'API.
+        .route(
+            "/v1/models",
+            axum::routing::options(routes::openai::cors_preflight),
+        )
+        .route(
+            "/v1/chat/completions",
+            axum::routing::options(routes::openai::cors_preflight),
+        )
         .route("/v1/providers", get(list_providers))
         .route("/v1/supervisor/status", get(supervisor_status))
         .route("/v1/supervisor/start", post(supervisor_start))
@@ -444,6 +477,10 @@ async fn main() -> anyhow::Result<()> {
                 .route("/v1/auth/login", post(auth::login))
                 .route("/v1/auth/me", get(auth::me))
                 .route("/v1/auth/password", post(auth::change_password))
+                // Circuit A (clés API) + Circuit B (sessions) : une seule
+                // ressource, filtrée par kind côté client.
+                .route("/v1/auth/tokens", get(auth::list_tokens).post(auth::create_api_token))
+                .route("/v1/auth/tokens/:id", delete(auth::revoke_token))
                 .route("/v1/users", get(auth::list_users).post(auth::create_user))
                 .route("/v1/users/:id", delete(auth::delete_user))
                 .with_state(auth_state.clone()),

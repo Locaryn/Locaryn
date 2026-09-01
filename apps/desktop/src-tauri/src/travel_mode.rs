@@ -320,6 +320,13 @@ pub struct PairingCode {
     pub mode: String,
     pub url: String,
     pub qr_svg: String,
+    /// Code à usage unique (Circuit B) : l'hôte l'affiche, le client le saisit
+    /// pour confirmer l'appairage. Vide si le serveur est trop vieux.
+    #[serde(default)]
+    pub pairing_code: String,
+    /// Durée de validité du code, en secondes (typiquement 120).
+    #[serde(default)]
+    pub pairing_ttl_seconds: u64,
 }
 
 /// Le code à photographier pour un premier appairage.
@@ -348,6 +355,8 @@ pub async fn pairing_code(mode: String, url: Option<String>) -> Result<PairingCo
         mode: body["mode"].as_str().unwrap_or(&mode).to_string(),
         url: body["url"].as_str().unwrap_or_default().to_string(),
         qr_svg: body["qr_svg"].as_str().unwrap_or_default().to_string(),
+        pairing_code: body["pairing_code"].as_str().unwrap_or_default().to_string(),
+        pairing_ttl_seconds: body["pairing_ttl_seconds"].as_u64().unwrap_or(0),
     })
 }
 

@@ -54,6 +54,7 @@ igd-next = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+rand = { workspace = true }
 
 # Le catalogue arrive en archive : une extension installée depuis un
 # téléphone ne peut pas désigner un dossier du serveur.

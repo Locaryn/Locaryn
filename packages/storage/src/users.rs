@@ -72,6 +72,47 @@ pub struct IssuedToken {
     pub expires_at: Option<String>,
 }
 
+/// The two access circuits share the `auth_tokens` table but must never be
+/// confused in the UI: a developer key minted by hand is not a device session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenKind {
+    /// Issued by a login or a device pairing — the default, so pre-existing
+    /// rows keep their meaning.
+    Session,
+    /// Created on purpose from the settings screen for programmatic use.
+    Api,
+}
+
+impl TokenKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TokenKind::Session => "session",
+            TokenKind::Api => "api",
+        }
+    }
+    fn parse(s: &str) -> TokenKind {
+        if s.eq_ignore_ascii_case("api") {
+            TokenKind::Api
+        } else {
+            TokenKind::Session
+        }
+    }
+}
+
+/// What the settings screen may show. No plaintext, ever — only the hint
+/// (a few middle characters) lets a user recognise one of their own tokens.
+#[derive(Debug, Clone)]
+pub struct TokenInfo {
+    pub id: Uuid,
+    pub kind: TokenKind,
+    pub label: Option<String>,
+    pub hint: String,
+    pub created_at: Option<String>,
+    pub last_used_at: Option<String>,
+    pub expires_at: Option<String>,
+    pub revoked_at: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct UserRepo {
     pool: SqlitePool,
@@ -85,9 +126,33 @@ struct TokenRow {
     expires_at: Option<String>,
 }
 
+#[derive(FromRow)]
+struct TokenListRow {
+    id: String,
+    kind: String,
+    label: Option<String>,
+    hint: String,
+    created_at: Option<String>,
+    last_used_at: Option<String>,
+    expires_at: Option<String>,
+    revoked_at: Option<String>,
+}
+
 impl UserRepo {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+
+    /// The first admin account, if any — the pairing host. Devices pair to
+    /// an account, and on a single-host deployment that account is this one.
+    pub async fn first_admin_id(&self) -> Option<Uuid> {
+        let (id,): (String,) = sqlx::query_as(
+            "SELECT id FROM users WHERE role = 'admin' AND disabled_at IS NULL              ORDER BY created_at ASC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .ok()??;
+        Uuid::parse_str(&id).ok()
     }
 
     pub async fn count(&self) -> Result<i64, StorageError> {
@@ -263,18 +328,16 @@ impl UserRepo {
         // Enough to recognise a token in a list, far too little to reconstruct.
         let hint: String = plaintext.chars().skip(7).take(6).collect();
 
-        sqlx::query(
-            "INSERT INTO auth_tokens (id, user_id, token_hash, hint, label, created_at, expires_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+        self.insert_token(
+            id,
+            user_id,
+            &hash,
+            &hint,
+            label,
+            &now,
+            expires.as_deref(),
+            TokenKind::Session,
         )
-        .bind(id.to_string())
-        .bind(user_id.to_string())
-        .bind(&hash)
-        .bind(&hint)
-        .bind(label)
-        .bind(now.to_rfc3339())
-        .bind(&expires)
-        .execute(&self.pool)
         .await?;
 
         Ok(IssuedToken {
@@ -282,6 +345,102 @@ impl UserRepo {
             plaintext,
             expires_at: expires,
         })
+    }
+
+    /// Mint a developer API key. `expires_days` of `None` means the key never
+    /// expires — the default, mirroring the API keys people already know;
+    /// the caller may pick 7/30/90 days for anything more cautious.
+    pub async fn issue_api_token(
+        &self,
+        user_id: Uuid,
+        label: Option<&str>,
+        expires_days: Option<i64>,
+    ) -> Result<IssuedToken, StorageError> {
+        let plaintext = locaryn_auth::generate_token();
+        let hash = locaryn_auth::hash_token(&plaintext).hash;
+        let id = Uuid::new_v4();
+        let now = Utc::now();
+        let expires =
+            expires_days.map(|d| (now + chrono::Duration::days(d)).to_rfc3339());
+        let hint: String = plaintext.chars().skip(7).take(6).collect();
+
+        self.insert_token(
+            id,
+            user_id,
+            &hash,
+            &hint,
+            label,
+            &now,
+            expires.as_deref(),
+            TokenKind::Api,
+        )
+        .await?;
+
+        Ok(IssuedToken {
+            id,
+            plaintext,
+            expires_at: expires,
+        })
+    }
+
+    /// Shared insert for both circuits. The plaintext never lands here — only
+    /// its Argon2id hash and a recognition hint.
+    #[allow(clippy::too_many_arguments)]
+    async fn insert_token(
+        &self,
+        token_id: Uuid,
+        user_id: Uuid,
+        token_hash: &str,
+        hint: &str,
+        label: Option<&str>,
+        created_at: &chrono::DateTime<Utc>,
+        expires_at: Option<&str>,
+        kind: TokenKind,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO auth_tokens (id, user_id, token_hash, hint, label, created_at, expires_at, kind)              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(token_id.to_string())
+        .bind(user_id.to_string())
+        .bind(token_hash)
+        .bind(hint)
+        .bind(label)
+        .bind(created_at.to_rfc3339())
+        .bind(expires_at)
+        .bind(kind.as_str())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Every token the user could see in their settings: both circuits,
+    /// including revoked and expired rows — a device list you cannot audit is
+    /// a device list you cannot trust. The plaintext is gone the moment it is
+    /// issued; only the hint comes back.
+    pub async fn list_tokens(&self, user_id: Uuid) -> Result<Vec<TokenInfo>, StorageError> {
+        let rows = sqlx::query_as::<_, TokenListRow>(
+            "SELECT id, kind, label, hint, created_at, last_used_at, expires_at, revoked_at              FROM auth_tokens WHERE user_id = ?              ORDER BY (revoked_at IS NULL) DESC, COALESCE(last_used_at, created_at) DESC",
+        )
+        .bind(user_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| {
+                let id = Uuid::parse_str(&r.id).ok()?;
+                Some(TokenInfo {
+                    id,
+                    kind: TokenKind::parse(&r.kind),
+                    label: r.label,
+                    hint: r.hint,
+                    created_at: r.created_at,
+                    last_used_at: r.last_used_at,
+                    expires_at: r.expires_at,
+                    revoked_at: r.revoked_at,
+                })
+            })
+            .collect())
     }
 
     /// Resolve a bearer token to its owner, or `None` if it is not valid.
@@ -532,6 +691,88 @@ mod tests {
                 .is_none(),
             "un jeton révoqué doit cesser de fonctionner immédiatement"
         );
+    }
+
+    #[tokio::test]
+    async fn api_tokens_are_typed_listed_and_never_expire_by_default() {
+        let (repo, _pool) = repo().await;
+        let u = repo
+            .create("frank", "mot-de-passe-valide", Role::Member)
+            .await
+            .unwrap();
+
+        // Default: no expiry. The plaintext is returned exactly once.
+        let key = repo.issue_api_token(u.id, Some("vs-code"), None).await.unwrap();
+        assert!(key.plaintext.starts_with("locaryn_"));
+        assert_eq!(key.expires_at, None);
+
+        // Optional expiry days are honoured.
+        let short = repo
+            .issue_api_token(u.id, Some("ci"), Some(7))
+            .await
+            .unwrap();
+        assert!(short.expires_at.is_some());
+
+        // A login-style session token (Circuit B) — same table, other kind.
+        let sess = repo.issue_token(u.id, Some("portable"), 30).await.unwrap();
+        assert!(sess.expires_at.is_some());
+
+        // Both kinds show up in the list with their metadata, never plaintext.
+        let listed = repo.list_tokens(u.id).await.unwrap();
+        assert_eq!(listed.len(), 2);
+        let kinds: Vec<_> = listed.iter().map(|t| t.kind).collect();
+        assert!(kinds.contains(&TokenKind::Api));
+        assert!(kinds.contains(&TokenKind::Session));
+        let api = listed
+            .iter()
+            .find(|t| t.kind == TokenKind::Api)
+            .unwrap();
+        assert_eq!(api.label.as_deref(), Some("vs-code"));
+        assert_eq!(api.hint.len(), 6);
+        assert!(api.revoked_at.is_none());
+
+        // An API key authenticates its owner just like a session token.
+        let who = repo.user_for_token(&key.plaintext).await.unwrap();
+        assert_eq!(who.expect("la clé API identifie son porteur").id, u.id);
+    }
+
+    #[tokio::test]
+    async fn the_first_admin_is_found_for_device_pairing() {
+        let (repo, _pool) = repo().await;
+        assert_eq!(repo.first_admin_id().await, None, "aucun compte: pas d'admin");
+
+        let admin = repo
+            .create("host", "mot-de-passe-valide", Role::Admin)
+            .await
+            .unwrap();
+        repo.create("membre", "mot-de-passe-valide", Role::Member)
+            .await
+            .unwrap();
+
+        assert_eq!(repo.first_admin_id().await, Some(admin.id));
+    }
+
+    #[tokio::test]
+    async fn revoking_an_api_key_kills_it_immediately() {
+        let (repo, _pool) = repo().await;
+        let u = repo
+            .create("gisel", "mot-de-passe-valide", Role::Member)
+            .await
+            .unwrap();
+        let key = repo
+            .issue_api_token(u.id, Some("script"), None)
+            .await
+            .unwrap();
+        assert!(repo.user_for_token(&key.plaintext).await.unwrap().is_some());
+
+        repo.revoke_token(key.id).await.unwrap();
+        assert!(
+            repo.user_for_token(&key.plaintext).await.unwrap().is_none(),
+            "révoquer une clé API doit cesser son accès immédiatement"
+        );
+        // The revoked key stays visible in the listing for audit.
+        let listed = repo.list_tokens(u.id).await.unwrap();
+        assert!(listed[0].revoked_at.is_some());
     }
 
     #[tokio::test]
