@@ -355,7 +355,10 @@ pub async fn pairing_code(mode: String, url: Option<String>) -> Result<PairingCo
         mode: body["mode"].as_str().unwrap_or(&mode).to_string(),
         url: body["url"].as_str().unwrap_or_default().to_string(),
         qr_svg: body["qr_svg"].as_str().unwrap_or_default().to_string(),
-        pairing_code: body["pairing_code"].as_str().unwrap_or_default().to_string(),
+        pairing_code: body["pairing_code"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
         pairing_ttl_seconds: body["pairing_ttl_seconds"].as_u64().unwrap_or(0),
     })
 }

@@ -312,11 +312,7 @@ pub async fn create_api_token(
     };
     let label = body.label.as_deref().filter(|l| !l.trim().is_empty());
     let expires_days = body.expires_in_days.filter(|d| *d > 0);
-    match state
-        .users
-        .issue_api_token(u.id, label, expires_days)
-        .await
-    {
+    match state.users.issue_api_token(u.id, label, expires_days).await {
         Ok(tok) => {
             tracing::info!(user = %u.username, "clé API créée");
             (

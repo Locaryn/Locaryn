@@ -360,8 +360,7 @@ impl UserRepo {
         let hash = locaryn_auth::hash_token(&plaintext).hash;
         let id = Uuid::new_v4();
         let now = Utc::now();
-        let expires =
-            expires_days.map(|d| (now + chrono::Duration::days(d)).to_rfc3339());
+        let expires = expires_days.map(|d| (now + chrono::Duration::days(d)).to_rfc3339());
         let hint: String = plaintext.chars().skip(7).take(6).collect();
 
         self.insert_token(
@@ -702,7 +701,10 @@ mod tests {
             .unwrap();
 
         // Default: no expiry. The plaintext is returned exactly once.
-        let key = repo.issue_api_token(u.id, Some("vs-code"), None).await.unwrap();
+        let key = repo
+            .issue_api_token(u.id, Some("vs-code"), None)
+            .await
+            .unwrap();
         assert!(key.plaintext.starts_with("locaryn_"));
         assert_eq!(key.expires_at, None);
 
@@ -740,7 +742,11 @@ mod tests {
     #[tokio::test]
     async fn the_first_admin_is_found_for_device_pairing() {
         let (repo, _pool) = repo().await;
-        assert_eq!(repo.first_admin_id().await, None, "aucun compte: pas d'admin");
+        assert_eq!(
+            repo.first_admin_id().await,
+            None,
+            "aucun compte: pas d'admin"
+        );
 
         let admin = repo
             .create("host", "mot-de-passe-valide", Role::Admin)

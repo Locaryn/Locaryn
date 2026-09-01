@@ -893,7 +893,10 @@ mod program_tests {
         let mut cfg2 = Config::default();
         cfg2.assistance.debrided_models = vec!["utena-7b".to_string(), "mistral-nemo".to_string()];
         merge(&mut cfg1, cfg2);
-        assert_eq!(cfg1.assistance.debrided_models, vec!["utena-7b", "mistral-nemo"]);
+        assert_eq!(
+            cfg1.assistance.debrided_models,
+            vec!["utena-7b", "mistral-nemo"]
+        );
     }
 
     #[test]
@@ -950,7 +953,8 @@ mod program_tests {
         let debrided = vec![
             "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf".to_string(),
         ];
-        let effective_model = "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf";
+        let effective_model =
+            "duyntnet__UTENA-7B-NSFW-V2-imatrix-GGUF/UTENA-7B-NSFW-V2-Q4_K_M.gguf";
 
         let is_debrided = debrided.iter().any(|d| {
             let d_clean = d.trim().to_lowercase();
@@ -964,7 +968,10 @@ mod program_tests {
                     .map(|f| f.contains(&d_clean) || d_clean.contains(f))
                     .unwrap_or(false)
         });
-        assert!(is_debrided, "exact tag match should be detected as debrided");
+        assert!(
+            is_debrided,
+            "exact tag match should be detected as debrided"
+        );
 
         // Modèle non débridé
         let non_debrided_model = "some-other-model.gguf";
@@ -980,7 +987,10 @@ mod program_tests {
                     .map(|f| f.contains(&d_clean) || d_clean.contains(f))
                     .unwrap_or(false)
         });
-        assert!(!is_not, "unrelated model should NOT be detected as debrided");
+        assert!(
+            !is_not,
+            "unrelated model should NOT be detected as debrided"
+        );
     }
 
     #[test]
@@ -1026,4 +1036,3 @@ mod program_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
-

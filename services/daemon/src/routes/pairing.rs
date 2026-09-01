@@ -166,9 +166,7 @@ pub async fn qr(State(s): State<Arc<DaemonState>>, Query(q): Query<QrQuery>) -> 
     // personne — c'est pourquoi il n'est pas dans le QR lui-même.
     let code = generer_code();
     {
-        let mut pending = s.pairing_pending
-            .lock()
-            .expect("verrou pairing");
+        let mut pending = s.pairing_pending.lock().expect("verrou pairing");
         *pending = Some(PendingPairing {
             code: code.clone(),
             created_at: std::time::Instant::now(),

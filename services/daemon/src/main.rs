@@ -83,8 +83,7 @@ struct DaemonState {
     /// Code d'appairage en attente (Circuit B) : généré par GET /v1/pairing,
     /// consommé par POST /v1/auth/pair/confirm. En mémoire : un redémarrage
     /// invalide le code, ce qui est le comportement voulu.
-    pub pairing_pending:
-        Arc<Mutex<Option<routes::pairing::PendingPairing>>>,
+    pub pairing_pending: Arc<Mutex<Option<routes::pairing::PendingPairing>>>,
     /// Le compte auquel sont rattachés les appareils appairés : le premier
     /// administrateur, résolu au démarrage.
     pub pairing_admin_user_id: Option<Uuid>,
@@ -386,10 +385,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/travel/home", get(routes::travel::home))
         // Le code d'appairage : local, port ouvert, ou tunnel.
         .route("/v1/pairing", get(routes::pairing::qr))
-        .route(
-            "/v1/auth/pair/confirm",
-            post(routes::pairing::confirm),
-        )
+        .route("/v1/auth/pair/confirm", post(routes::pairing::confirm))
         .route(
             "/v1/mcp/servers",
             get(routes::mcp::list_servers).post(routes::mcp::register_server),
@@ -479,7 +475,10 @@ async fn main() -> anyhow::Result<()> {
                 .route("/v1/auth/password", post(auth::change_password))
                 // Circuit A (clés API) + Circuit B (sessions) : une seule
                 // ressource, filtrée par kind côté client.
-                .route("/v1/auth/tokens", get(auth::list_tokens).post(auth::create_api_token))
+                .route(
+                    "/v1/auth/tokens",
+                    get(auth::list_tokens).post(auth::create_api_token),
+                )
                 .route("/v1/auth/tokens/:id", delete(auth::revoke_token))
                 .route("/v1/users", get(auth::list_users).post(auth::create_user))
                 .route("/v1/users/:id", delete(auth::delete_user))

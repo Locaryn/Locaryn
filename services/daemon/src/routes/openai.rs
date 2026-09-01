@@ -57,7 +57,10 @@ pub async fn cors_preflight() -> Response {
         .status(StatusCode::NO_CONTENT)
         .header("access-control-allow-origin", "*")
         .header("access-control-allow-methods", "GET, POST, OPTIONS")
-        .header("access-control-allow-headers", "authorization, content-type")
+        .header(
+            "access-control-allow-headers",
+            "authorization, content-type",
+        )
         .header("access-control-max-age", "86400")
         .body(Body::empty())
         .unwrap()
@@ -66,10 +69,7 @@ pub async fn cors_preflight() -> Response {
 /// Les en-têtes CORS d'une réponse ordinaire de la surface standard.
 fn cors_headers(resp: &mut Response) {
     let h = resp.headers_mut();
-    h.insert(
-        "access-control-allow-origin",
-        HeaderValue::from_static("*"),
-    );
+    h.insert("access-control-allow-origin", HeaderValue::from_static("*"));
 }
 
 /// Les poignées du service, prêtées au socle des fournisseurs.
