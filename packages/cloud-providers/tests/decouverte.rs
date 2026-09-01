@@ -225,10 +225,8 @@ async fn lapi_retrouve_le_fournisseur_dun_modele() {
 /// Choisir un modèle sans clé doit être refusé — c'est le seul garde-fou qui
 /// évite un appel non authentifié, et il doit dire quoi faire.
 #[tokio::test]
+#[allow(clippy::await_holding_lock)] // env guard held across awaits on purpose
 async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
-    // The guard is deliberately held across awaits: the env var must stay
-    // set (or absent) for the whole test body.
-    #[allow(clippy::await_holding_lock)]
     let _env = ENV_LOCK.lock().expect("verrou env");
     let m = Machine::nouvelle("selection").await;
     m.poser_catalogue();
@@ -276,10 +274,8 @@ async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
 /// Sur un serveur sans trousseau, la clé vient de l'environnement : sans ce
 /// repli, le mode serveur ne pourrait jamais parler à une passerelle.
 #[tokio::test]
+#[allow(clippy::await_holding_lock)] // env guard held across awaits on purpose
 async fn sans_trousseau_la_cle_vient_de_lenvironnement() {
-    // The guard is deliberately held across awaits: the env var must stay
-    // set (or absent) for the whole test body.
-    #[allow(clippy::await_holding_lock)]
     let _env = ENV_LOCK.lock().expect("verrou env");
     let m = Machine::nouvelle("environnement").await;
     let nom = cloud::env_key_name("omniroute");
