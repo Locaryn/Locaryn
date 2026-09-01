@@ -21,7 +21,7 @@ use std::sync::Mutex;
 
 /// Les variables d'environnement sont globales au processus : les tests qui
 /// les lisent ou les écrivent partagent ce verrou pour rester déterministes.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Un trousseau en mémoire : le test ne touche pas à celui du système.
 #[derive(Default)]
@@ -226,6 +226,9 @@ async fn lapi_retrouve_le_fournisseur_dun_modele() {
 /// évite un appel non authentifié, et il doit dire quoi faire.
 #[tokio::test]
 async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
+    // The guard is deliberately held across awaits: the env var must stay
+    // set (or absent) for the whole test body.
+    #[allow(clippy::await_holding_lock)]
     let _env = ENV_LOCK.lock().expect("verrou env");
     let m = Machine::nouvelle("selection").await;
     m.poser_catalogue();
@@ -274,6 +277,9 @@ async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
 /// repli, le mode serveur ne pourrait jamais parler à une passerelle.
 #[tokio::test]
 async fn sans_trousseau_la_cle_vient_de_lenvironnement() {
+    // The guard is deliberately held across awaits: the env var must stay
+    // set (or absent) for the whole test body.
+    #[allow(clippy::await_holding_lock)]
     let _env = ENV_LOCK.lock().expect("verrou env");
     let m = Machine::nouvelle("environnement").await;
     let nom = cloud::env_key_name("omniroute");
