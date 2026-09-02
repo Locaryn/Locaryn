@@ -4350,8 +4350,10 @@ async fn compress_chat_context(core: State<'_, Core>, session_id: Uuid) -> Resul
         .append_full(
             session_id,
             MessageRole::Assistant,
-            &format!("[Resume des echanges precedents]
-{summary}"),
+            &format!(
+                "[Resume des echanges precedents]
+{summary}"
+            ),
             None,
             None,
             0,

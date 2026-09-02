@@ -21,8 +21,10 @@ use crate::DaemonState;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use futures::{Stream, StreamExt};
 use locaryn_cloud_providers as cloud;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -282,6 +284,195 @@ pub async fn chat_completions(
 }
 
 // ============================================================================
+// Le flux Anthropic, traduit depuis le flux OpenAI
+// ============================================================================
+
+/// Ce qu'on retient entre deux paquets reseau.
+struct EtatFlux<S> {
+    octets: S,
+    tampon: String,
+    /// Evenements prets a partir, dans l'ordre.
+    sortie: std::collections::VecDeque<Event>,
+    ouvert: bool,
+    termine: bool,
+    morceaux: u64,
+    arret: &'static str,
+}
+
+/// Rejoue le flux du fournisseur dans la suite d'evenements qu'un client
+/// Anthropic attend.
+///
+/// Les deux dialectes ne decoupent pas au meme endroit. OpenAI envoie des
+/// `chat.completion.chunk` qui portent chacun un morceau de texte, et termine
+/// par `[DONE]`. Anthropic encadre : ouverture du message, ouverture du bloc,
+/// un `text_delta` par morceau, fermeture du bloc, raison d'arret, fermeture.
+/// Un client qui n'a pas recu son `message_start` n'affiche rien, meme si le
+/// texte suit — d'ou l'encadrement complet plutot que les seuls deltas.
+///
+/// Le decoupage reseau ne suit pas les lignes : un `data:` peut arriver coupe
+/// en deux paquets. On garde donc un tampon et on ne traite que les lignes
+/// completes.
+fn flux_anthropic(
+    reponse: reqwest::Response,
+    modele: &str,
+) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
+    let modele = modele.to_string();
+    let debut = EtatFlux {
+        octets: Box::pin(reponse.bytes_stream()),
+        tampon: String::new(),
+        sortie: std::collections::VecDeque::new(),
+        ouvert: false,
+        termine: false,
+        morceaux: 0,
+        arret: "end_turn",
+    };
+
+    let flux = futures::stream::unfold(debut, move |mut e| {
+        let modele = modele.clone();
+        async move {
+            loop {
+                if let Some(ev) = e.sortie.pop_front() {
+                    return Some((Ok(ev), e));
+                }
+                if e.termine {
+                    return None;
+                }
+
+                let paquet = match e.octets.next().await {
+                    Some(Ok(b)) => b,
+                    // Une coupure en cours de route : on ferme proprement,
+                    // sinon le client reste suspendu sur un message que rien
+                    // ne vient terminer.
+                    Some(Err(_)) | None => {
+                        e.termine = true;
+                        if e.ouvert {
+                            pousser_fin(&mut e.sortie, e.arret, e.morceaux);
+                        }
+                        continue;
+                    }
+                };
+
+                e.tampon.push_str(&String::from_utf8_lossy(&paquet));
+                while let Some(coupe) = e.tampon.find('\n') {
+                    let ligne = e.tampon[..coupe].trim().to_string();
+                    e.tampon.drain(..=coupe);
+                    let Some(charge) = ligne.strip_prefix("data:") else {
+                        continue;
+                    };
+                    let charge = charge.trim();
+                    if charge.is_empty() {
+                        continue;
+                    }
+                    if charge == "[DONE]" {
+                        e.termine = true;
+                        if !e.ouvert {
+                            pousser_debut(&mut e.sortie, &modele);
+                            e.ouvert = true;
+                        }
+                        pousser_fin(&mut e.sortie, e.arret, e.morceaux);
+                        break;
+                    }
+                    let Ok(bloc) = serde_json::from_str::<Value>(charge) else {
+                        continue;
+                    };
+                    let choix = bloc.get("choices").and_then(|c| c.get(0));
+                    if let Some(raison) = choix
+                        .and_then(|c| c.get("finish_reason"))
+                        .and_then(|f| f.as_str())
+                    {
+                        e.arret = match raison {
+                            "length" => "max_tokens",
+                            _ => "end_turn",
+                        };
+                    }
+                    let texte = choix
+                        .and_then(|c| c.get("delta"))
+                        .and_then(|d| d.get("content"))
+                        .and_then(|c| c.as_str())
+                        .unwrap_or_default();
+                    if texte.is_empty() {
+                        continue;
+                    }
+                    if !e.ouvert {
+                        pousser_debut(&mut e.sortie, &modele);
+                        e.ouvert = true;
+                    }
+                    e.morceaux += 1;
+                    e.sortie.push_back(
+                        Event::default().event("content_block_delta").data(
+                            json!({
+                                "type": "content_block_delta",
+                                "index": 0,
+                                "delta": { "type": "text_delta", "text": texte },
+                            })
+                            .to_string(),
+                        ),
+                    );
+                }
+            }
+        }
+    });
+
+    Sse::new(flux).keep_alive(KeepAlive::default())
+}
+
+/// L'ouverture : le message, puis le bloc de texte.
+fn pousser_debut(sortie: &mut std::collections::VecDeque<Event>, modele: &str) {
+    sortie.push_back(
+        Event::default().event("message_start").data(
+            json!({
+                "type": "message_start",
+                "message": {
+                    "id": "msg_flux",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": modele,
+                    "content": [],
+                    "stop_reason": Value::Null,
+                    "stop_sequence": Value::Null,
+                    "usage": { "input_tokens": 0, "output_tokens": 0 },
+                },
+            })
+            .to_string(),
+        ),
+    );
+    sortie.push_back(
+        Event::default().event("content_block_start").data(
+            json!({
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": { "type": "text", "text": "" },
+            })
+            .to_string(),
+        ),
+    );
+}
+
+/// La fermeture : bloc, raison d'arret, message.
+fn pousser_fin(sortie: &mut std::collections::VecDeque<Event>, arret: &str, morceaux: u64) {
+    sortie.push_back(
+        Event::default()
+            .event("content_block_stop")
+            .data(json!({ "type": "content_block_stop", "index": 0 }).to_string()),
+    );
+    sortie.push_back(
+        Event::default().event("message_delta").data(
+            json!({
+                "type": "message_delta",
+                "delta": { "stop_reason": arret, "stop_sequence": Value::Null },
+                "usage": { "output_tokens": morceaux },
+            })
+            .to_string(),
+        ),
+    );
+    sortie.push_back(
+        Event::default()
+            .event("message_stop")
+            .data(json!({ "type": "message_stop" }).to_string()),
+    );
+}
+
+// ============================================================================
 // POST /v1/messages - Anthropic-compatible dialect
 // ============================================================================
 
@@ -317,6 +508,11 @@ pub async fn messages(
         .get("max_tokens")
         .and_then(|t| t.as_u64())
         .unwrap_or(4096);
+
+    let veut_streamer = corps
+        .get("stream")
+        .and_then(|s| s.as_bool())
+        .unwrap_or(false);
 
     let anthropic_messages = corps
         .get("messages")
@@ -453,6 +649,15 @@ pub async fn messages(
             )
         }
     };
+
+    // Un client qui streame ne peut pas recevoir un corps unique : il attend la
+    // suite d'evenements du dialecte Anthropic. On la fabrique a partir du flux
+    // OpenAI d'en face, plutot que de lire la reponse d'un bloc — `.json()` sur
+    // un `text/event-stream` echouait, et l'endpoint rendait un 502 a tous les
+    // clients qui streament, ce qui est le cas par defaut des SDK Anthropic.
+    if veut_streamer {
+        return flux_anthropic(reponse, &modele).into_response();
+    }
 
     // Traduire la reponse OpenAI vers Anthropic.
     let openai_body: Value = match reponse.json().await {
