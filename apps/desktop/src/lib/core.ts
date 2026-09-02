@@ -1708,6 +1708,13 @@ export interface CoreApi {
   approveToolCall: (decision: ToolApprovalDecision) => Promise<void>;
   updateProviderModelParams(params: ModelParams): Promise<void>;
   getProviderModelParams(): Promise<ModelParams>;
+  /** Plus grande fenetre de contexte que le modele/moteur actif peut offrir
+   *  (Ollama /api/show, GGUF du modele charge). `null` : inconnue — l'UI
+   *  garde son maximum generique. */
+  getModelCtxCapacity(): Promise<number | null>;
+  /** Compresser la conversation : vieux tours -> resume modele. Retourne le
+   *  nombre de messages retires. */
+  compressChatContext(sessionId: string): Promise<number>;
   /** Inspect a HuggingFace repository before downloading one variant. */
   inspectHuggingFaceRepo(source: string, hfToken?: string): Promise<HfRepoInspection>;
   /** Install a model. `selection` prevents a multi-variant HF repository from
@@ -2110,6 +2117,8 @@ const tauriCore: CoreApi = {
 
   updateProviderModelParams: (params) => invoke("update_provider_model_params", { params }),
   getProviderModelParams: () => invoke<ModelParams>("get_provider_model_params"),
+  getModelCtxCapacity: () => invoke<number | null>("get_model_ctx_capacity"),
+  compressChatContext: (sessionId) => invoke<number>("compress_chat_context", { sessionId }),
   inspectHuggingFaceRepo: (source, hfToken) =>
     invoke<HfRepoInspection>("inspect_huggingface_repo", {
       source,
@@ -4861,6 +4870,13 @@ const demoCore: CoreApi = {
 
   async updateProviderModelParams(_params) {
     // Demo: no-op, params not persisted in browser mode.
+  },
+  async getModelCtxCapacity() {
+    return null;
+  },
+  async compressChatContext() {
+    // Demo: rien a compresser, la conversation n'est pas persistee.
+    return 0;
   },
   async getProviderModelParams() {
     return {

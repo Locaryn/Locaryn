@@ -1015,6 +1015,24 @@ impl MessageRepo {
         rows.into_iter().map(Message::try_from).collect()
     }
 
+    /// Supprimer les messages anterieurs a une date, sauf les referes par
+    /// un autre (`tool_call_id`). Utilise par la compression de conversation :
+    /// les vieux tours sont remplaces par un resume, pas effaces en douceur.
+    pub async fn delete_before(
+        &self,
+        session_id: Uuid,
+        cutoff: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, StorageError> {
+        let res = sqlx::query(
+            "DELETE FROM messages WHERE session_id = ? AND created_at < ?              AND tool_call_id IS NULL",
+        )
+        .bind(session_id.to_string())
+        .bind(cutoff.to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+        Ok(res.rows_affected())
+    }
+
     pub async fn append(
         &self,
         session_id: Uuid,

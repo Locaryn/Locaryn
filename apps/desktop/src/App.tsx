@@ -123,6 +123,15 @@ export function App() {
   // Toggleable panels & drawers
   const [leftOpen, setLeftOpen] = useState(true);
   const [showModelConfig, setShowModelConfig] = useState(false);
+  /** Fenetre de contexte appliquee au moteur (panneau Parametres du Modele).
+   *  La jauge du chat la lit : elle doit raconter ce que le moteur a. */
+  const [appliedCtx, setAppliedCtx] = useState<number | null>(null);
+  useEffect(() => {
+    core
+      .getProviderModelParams()
+      .then((p) => setAppliedCtx(p.ctx_size))
+      .catch(() => {});
+  }, []);
   const [showPreview, setShowPreview] = useState(false);
   // A run opens the pane that displays it, so output is never produced into a
   // panel the user cannot see.

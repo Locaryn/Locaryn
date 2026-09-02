@@ -1233,6 +1233,13 @@ async fn send_message(
         approval: None,
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
+        // Le démon parle aux moteurs locaux comme le bureau : le drapeau suit
+        // le moteur du fournisseur actif (Ollama n'honore num_ctx que sur son
+        // API native).
+        native_chat_api: {
+            let provider = s.storage.providers.active().await.ok().flatten();
+            provider.is_some_and(|p| p.engine == locaryn_shared_types::ProviderEngine::Ollama)
+        },
     };
 
     // 4. Run the agent: OpenAiCompatAgent (llama-server) when one answers,

@@ -88,6 +88,12 @@ pub struct AgentInput {
     /// Jeton Bearer envoyé à l'endpoint (noyaux alternatifs : OpenClaw,
     /// Hermes…). `None` = pas d'en-tête d'authentification.
     pub bearer_token: Option<String>,
+    /// Parler l'API native `/api/chat` d'Ollama plutôt que son endpoint
+    /// OpenAI-compat. Mesure du 0.33.x : `/v1/chat/completions` ignore
+    /// silencieusement les options — un prompt de 10k jetons y est coupé à
+    /// 2048, alors que `/api/chat` le traite en entier. Le drapeau est posé
+    /// par l'hôte quand le moteur actif est Ollama ; faux ailleurs.
+    pub native_chat_api: bool,
 }
 
 /// Ce qu'il faut dire au modèle pour qu'il se serve correctement des outils.

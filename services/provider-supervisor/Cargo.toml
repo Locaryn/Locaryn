@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 locaryn-shared-types = { workspace = true }
 locaryn-config = { workspace = true }
+locaryn-llmfit = { workspace = true }
 locaryn-storage = { workspace = true }
 locaryn-extensions = { workspace = true }
 reqwest.workspace = true

@@ -635,6 +635,33 @@ impl Supervisor {
         }
     }
 
+    /// Stop the spawned runtime on purpose: the next `ensure_running()`
+    /// restarts it from the configuration now on disk.
+    ///
+    /// The context window is not a request setting — llama-server sizes its
+    /// KV cache at boot. Editing `inference_config.json` while the process
+    /// keeps running changes nothing, so "Appliquer" would be a lie. Asking
+    /// for a restart is the only honest way a saved context length reaches
+    /// the model.
+    pub async fn restart_requested(&self, engine: &ProviderEngine) {
+        self.kill_owned(engine).await;
+        #[cfg(windows)]
+        {
+            let _ = tokio::process::Command::new("taskkill")
+                .args(["/F", "/IM", "llama-server.exe"])
+                .output()
+                .await;
+        }
+        #[cfg(unix)]
+        {
+            let _ = tokio::process::Command::new("pkill")
+                .args(["-9", "-f", "llama-server"])
+                .output()
+                .await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+
     /// Kill a spawned child process (owned only). Removes the entry from the
     /// state map.
     async fn kill_owned(&self, engine: &ProviderEngine) {
@@ -966,6 +993,15 @@ pub async fn provision_llama_server(http: &reqwest::Client) -> Result<PathBuf, S
     })
 }
 
+/// Ollama's OpenAI-compatible endpoint ignores `options` silently — the
+/// context only follows `num_ctx` on its native `/api/chat` (measured on
+/// 0.33.x: a 10k-token prompt is cut at 2048 through /v1, processed in full
+/// through /api/chat). Callers that send `num_ctx` must know where to send
+/// it, or the setting is decorative.
+pub fn ollama_options_hint() -> serde_json::Value {
+    serde_json::json!({ "endpoint": "/api/chat", "body_key": "options.num_ctx" })
+}
+
 /// Spawn `ollama serve` as a detached child process.
 ///
 /// We set `OLLAMA_HOST=127.0.0.1:11434` to guarantee loopback binding even
@@ -1131,6 +1167,19 @@ async fn spawn_llama_server(
     // Context length.
     let ctx = inference_cfg["context_length"].as_u64().unwrap_or(8192);
     cmd.arg("-c").arg(ctx.to_string());
+
+    // Suggest to the UI the largest context this model was trained for: a
+    // slider that proposes 128k to a 32k model invites a request the engine
+    // must quietly clamp. Best effort — the file may not declare it.
+    if let Ok(sum) = locaryn_llmfit::read_summary(&full_model_path) {
+        if sum.train_context > 0 {
+            let cap = (sum.train_context as f64 * 1.5).round() as u64;
+            let _ = std::fs::write(
+                data_dir.join("model_ctx_capacity.json"),
+                format!("{{\"max_ctx\":{cap}}}"),
+            );
+        }
+    }
 
     // Flash attention takes a value (on|off|auto). If the user disabled it, pass
     // off. Otherwise, when the KV cache is quantized we force it on, because a

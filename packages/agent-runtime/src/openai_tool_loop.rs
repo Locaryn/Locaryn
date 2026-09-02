@@ -153,8 +153,12 @@ pub async fn run_openai_tool_loop(
 
     let (tx, rx) = tokio::sync::mpsc::channel::<StreamEvent>(256);
 
-    // Build the request body once per round from shared parts.
+    // Build the request body once per round from shared parts. Ollama's
+    // native API gets its own shape: /api/chat wants options.{...} and a
+    // flat tools list, and it is the only endpoint of its that honours
+    // num_ctx — so the context setting only lands when this branch runs.
     let params = input.params.clone();
+    let native_ollama = input.native_chat_api;
     let make_body = {
         let model = model.clone();
         move |messages: &serde_json::Value, tools_json: &Option<serde_json::Value>| {
@@ -167,22 +171,52 @@ pub async fn run_openai_tool_loop(
             if let Some(t) = tools_json {
                 body["tools"] = t.clone();
             }
-            // Sampling parameters (temperature, top_p, top_k, max_tokens,
-            // repeat_penalty, seed) merged in from the provider config.
+            let mut native_body = serde_json::json!({
+                "model": model,
+                "messages": messages,
+                "stream": true,
+            });
             if let Some(serde_json::Value::Object(p)) = &params {
+                let mut options = serde_json::Map::new();
                 for (k, v) in p {
-                    body[k] = v.clone();
+                    body[k.clone()] = v.clone();
+                    if k == "num_ctx" {
+                        options.insert("num_ctx".into(), v.clone());
+                    } else if k == "max_tokens" {
+                        options.insert("num_predict".into(), v.clone());
+                    } else if k == "repeat_penalty" {
+                        options.insert("repeat_penalty".into(), v.clone());
+                    } else if k == "seed" {
+                        options.insert("seed".into(), v.clone());
+                    } else {
+                        // temperature / top_p / top_k : mêmes noms des deux
+                        // côtés, au niveau options pour l'API native.
+                        options.insert(k.clone(), v.clone());
+                    }
+                }
+                if !options.is_empty() {
+                    native_body["options"] = serde_json::Value::Object(options);
                 }
             }
-            body
+            if let Some(t) = tools_json {
+                native_body["tools"] = t.clone();
+            }
+            (body, native_body)
         }
     };
 
     // First round runs BEFORE we return the stream so connection errors are
     // reported synchronously (the caller falls back to a helpful message).
     let bearer = input.bearer_token.clone();
+    let native_url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
     let first_body = make_body(&messages, &tools_json);
-    let first_resp = post_json(client, &chat_url, &first_body, bearer.as_deref())
+    let (openai_body, native_body) = first_body;
+    let (first_url, first_payload) = if native_ollama {
+        (native_url.clone(), native_body)
+    } else {
+        (chat_url.clone(), openai_body)
+    };
+    let first_resp = post_json(client, &first_url, &first_payload, bearer.as_deref())
         .await
         .map_err(|e| {
             tracing::warn!(error = %e, "openai-compat connection failed");
@@ -194,6 +228,11 @@ pub async fn run_openai_tool_loop(
         tracing::warn!(%status, body = %body_text, "openai-compat returned non-2xx");
         return Err(AgentError::ProviderUnavailable);
     }
+    let first_resp = if native_ollama {
+        convert_native_to_openai_stream(first_resp)
+    } else {
+        first_resp
+    };
 
     let _ = tx
         .send(StreamEvent::MessageStart {
@@ -205,6 +244,8 @@ pub async fn run_openai_tool_loop(
     let input = input.clone();
     let client = client.clone();
     let chat_url = chat_url.clone();
+    let native_ollama_loop = native_ollama;
+    let native_url_loop = native_url;
     let message_id_loop = message_id.clone();
     let tools_for_dispatch = all_tools.clone();
     let mcp_state_for_dispatch = input.mcp_state.clone();
@@ -232,24 +273,38 @@ pub async fn run_openai_tool_loop(
             let resp = match pending_resp.take() {
                 Some(r) => r,
                 None => {
-                    let body = make_body(&messages, &tools_json);
-                    match post_json(&client, &chat_url, &body, bearer.as_deref()).await {
-                        Ok(r) if r.status().is_success() => r,
-                        Ok(r) => {
-                            let _ = tx
-                                .send(StreamEvent::Log {
-                                    level: LogLevel::Warn,
-                                    msg: format!("model server returned {}", r.status()),
-                                    source: "openai_tool_loop".into(),
-                                })
-                                .await;
-                            break;
-                        }
+                    let (openai_body, native_body) = make_body(&messages, &tools_json);
+                    let (url, body) = if native_ollama_loop {
+                        (native_url_loop.clone(), native_body)
+                    } else {
+                        (chat_url.clone(), openai_body)
+                    };
+                    let posted = post_json(&client, &url, &body, bearer.as_deref()).await;
+                    let resp = match posted {
+                        Ok(r) => r,
                         Err(e) => {
                             let _ = tx
                                 .send(StreamEvent::Log {
                                     level: LogLevel::Warn,
                                     msg: format!("model server connection failed: {e}"),
+                                    source: "openai_tool_loop".into(),
+                                })
+                                .await;
+                            break;
+                        }
+                    };
+                    let resp = if native_ollama_loop {
+                        convert_native_to_openai_stream(resp)
+                    } else {
+                        resp
+                    };
+                    match resp {
+                        r if r.status().is_success() => r,
+                        r => {
+                            let _ = tx
+                                .send(StreamEvent::Log {
+                                    level: LogLevel::Warn,
+                                    msg: format!("model server returned {}", r.status()),
                                     source: "openai_tool_loop".into(),
                                 })
                                 .await;
@@ -365,6 +420,106 @@ pub async fn run_openai_tool_loop(
     });
 
     Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)))
+}
+
+/// Réécrire la réponse NDJSON d'Ollama (`/api/chat`) dans la forme SSE
+/// OpenAI que `stream_one_round` sait lire : chaque objet natif devient une
+/// ligne `data: {...}` avec `choices[0].delta.content`, les fragments
+/// d'appel d'outil deviennent des fragments `tool_calls`, l'objet final
+/// (`done: true`) fournit l'usage. Le flux, lui, ne change pas — on filtre
+/// les octets au vol.
+fn convert_native_to_openai_stream(resp: reqwest::Response) -> reqwest::Response {
+    use futures::StreamExt;
+
+    let status = resp.status();
+    let headers = resp.headers().clone();
+    let translated = resp
+        .bytes_stream()
+        .map(|chunk| match chunk {
+            Ok(bytes) => {
+                let mut out = Vec::with_capacity(bytes.len() + 16);
+                for line in bytes.split(|b| *b == 10) {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if let Ok(val) = serde_json::from_slice::<serde_json::Value>(line) {
+                        let message = val.get("message");
+                        let content = message
+                            .and_then(|m| m.get("content"))
+                            .and_then(|c| c.as_str())
+                            .unwrap_or("");
+                        let tool_calls = message.and_then(|m| m.get("tool_calls"));
+                        let mut delta = serde_json::Map::new();
+                        if !content.is_empty() {
+                            delta.insert("content".into(), serde_json::json!(content));
+                        }
+                        if let Some(tcs) = tool_calls {
+                            let arr: Vec<serde_json::Value> = tcs
+                                .as_array()
+                                .map(|a| {
+                                    a.iter()
+                                        .enumerate()
+                                        .map(|(i, tc)| {
+                                            serde_json::json!({
+                                                "index": i,
+                                                "id": format!("call_{}", i),
+                                                "type": "function",
+                                                "function": {
+                                                    "name": tc.pointer("/function/name").cloned().unwrap_or_default(),
+                                                    "arguments": tc.pointer("/function/arguments").cloned().unwrap_or_else(|| serde_json::json!("{}")),
+                                                }
+                                            })
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+                            if !arr.is_empty() {
+                                delta.insert("tool_calls".into(), serde_json::json!(arr));
+                            }
+                        }
+                        let mut frame = serde_json::Map::new();
+                        frame.insert("id".into(), serde_json::json!("ollama-native"));
+                        frame.insert("choices".into(), serde_json::json!([{ "delta": delta }]));
+                        if val.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
+                            let pi = val
+                                .get("prompt_eval_count")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+                            let co = val.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                            frame.insert(
+                                "usage".into(),
+                                serde_json::json!({
+                                    "prompt_tokens": pi,
+                                    "completion_tokens": co,
+                                }),
+                            );
+                        }
+                        out.extend_from_slice(
+                            format!("data: {}
+
+", serde_json::Value::Object(frame)).as_bytes(),
+                        );
+                    }
+                }
+                if out.is_empty() {
+                    None
+                } else {
+                    Some(Ok(bytes::Bytes::from(out)))
+                }
+            }
+            // Une erreur de transport traverse telle quelle : le consommateur
+            // la verra au meme endroit qu'un flux OpenAI natif.
+            Err(e) => Some(Err(e)),
+        })
+        .filter_map(|res| async move { res });
+
+    let mut builder = http::Response::builder().status(status);
+    for (k, v) in headers.iter() {
+        builder = builder.header(k, v);
+    }
+    let body = reqwest::Body::wrap_stream(translated);
+    let rebuilt = builder.body(body).expect("valid http response");
+    reqwest::Response::from(rebuilt)
 }
 
 /// POST JSON, with the optional Bearer header used by alternate cores

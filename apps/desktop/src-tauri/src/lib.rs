@@ -1710,6 +1710,11 @@ async fn send_message(
             if p.seed >= 0 {
                 m.insert("seed".into(), serde_json::json!(p.seed));
             }
+            // Contexte : Ollama n'ecoute `num_ctx` que sur son API native
+            // /api/chat (son endpoint /v1 ignore silencieusement les options —
+            // mesure sur 0.33.x). Les autres moteurs OpenAI-compat recolteront
+            // une cle qu'ils ignorent, sans risque.
+            m.insert("num_ctx".into(), serde_json::json!(p.context_length));
             serde_json::Value::Object(m)
         });
 
@@ -1907,6 +1912,11 @@ async fn send_message(
         ))),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
+        // Ollama n'honore num_ctx que sur son API native (son endpoint /v1
+        // ignore les options en silence) : le drapeau suit le moteur actif.
+        native_chat_api: active_provider
+            .as_ref()
+            .is_some_and(|p| p.engine == ProviderEngine::Ollama),
     };
 
     let mut event_stream: EventStream = if let Some(core_id) = &session_core_id {
@@ -4228,6 +4238,141 @@ async fn do_pull_with_aggregate(
 /// Arrete la generation en cours d'une session : le jeton d'annulation fait
 /// sortir la boucle d'ecoute du flux, la requete vers le moteur est abandonnee
 /// et llama-server cesse de generer — sans decharger le modele.
+/// Compresser la conversation : les vieux tours deviennent un resume produit
+/// par le modele, les recents restent verbatim. Le meme travail que la
+/// compaction automatique de `send_message`, mais declenche a la main —
+/// quand l'utilisateur a reduit la fenetre en pleine conversation et choisit
+/// de faire tenir le fil plutot que de tronquer.
+///
+/// Retourne le nombre de messages retires. Un fil trop court n'a rien a
+/// compresser : on refuse, la popup ne s'ouvre pas pour rien.
+#[tauri::command]
+async fn compress_chat_context(core: State<'_, Core>, session_id: Uuid) -> Result<u64, String> {
+    let msgs = core
+        .storage
+        .messages
+        .list_for_session(session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let convo: Vec<_> = msgs
+        .iter()
+        .filter(|m| matches!(m.role, MessageRole::User | MessageRole::Assistant))
+        .collect();
+    if convo.len() < 6 {
+        return Err("La conversation est trop courte pour avoir a compresser".into());
+    }
+
+    // Le resume porte sur tout sauf les derniers echanges.
+    let keep = 4;
+    let split = convo.len() - keep;
+    let transcript: String = convo[..split]
+        .iter()
+        .map(|m| {
+            format!(
+                "{}: {}",
+                if m.role == MessageRole::Assistant {
+                    "assistant"
+                } else {
+                    "user"
+                },
+                strip_ui_markers(&m.content)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(
+            "
+",
+        )
+        .chars()
+        .take(12000)
+        .collect();
+
+    let active = core
+        .storage
+        .providers
+        .active()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "aucun fournisseur actif".to_string())?;
+    let model = active
+        .model
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    let url = format!(
+        "{}/v1/chat/completions",
+        active.endpoint.trim_end_matches('/')
+    );
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [
+            { "role": "system", "content":
+              "Resume la conversation ci-dessous en francais, en moins de 200 mots. Conserve les decisions, contraintes, noms de fichiers et faits techniques. Pas de preambule, uniquement le resume." },
+            { "role": "user", "content": transcript }
+        ],
+        "max_tokens": 320,
+        "temperature": 0.2,
+        "stream": false,
+        "reasoning_budget": 0,
+        "chat_template_kwargs": { "enable_thinking": false }
+    });
+    let resp = core
+        .http
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("moteur injoignable : {e}"))?;
+    let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let summary = val["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if summary.is_empty() {
+        return Err("le modele n'a pas produit de resume".into());
+    }
+
+    // Le resume remplace les vieux tours. La coupure se fait au message
+    // conserve le plus ancien : tout ce qui est avant part, le resume entre.
+    let cutoff = convo[split].created_at;
+    let removed = core
+        .storage
+        .messages
+        .delete_before(session_id, cutoff)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Le resume entre comme un message assistant date d'avant le premier
+    // tour conserve : l'historique le lit comme un tour normal.
+    let _ = core
+        .storage
+        .messages
+        .append_full(
+            session_id,
+            MessageRole::Assistant,
+            &format!("[Resume des echanges precedents]
+{summary}"),
+            None,
+            None,
+            0,
+            0,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tracing::info!(session = %session_id, removed, "conversation compressed on request");
+    Ok(removed)
+}
+
+/// Diffuser un evenement au frontend depuis une commande sans AppHandle :
+/// le handle vit dans l'etat applicatif, on le demande a Tauri.
+fn broadcast(app: &tauri::AppHandle, event: &str, payload: serde_json::Value) {
+    if let Err(e) = app.emit(event, payload) {
+        tracing::warn!(error = %e, event, "broadcast failed");
+    }
+}
+
 #[tauri::command]
 async fn stop_generation(core: State<'_, Core>, session_id: Uuid) -> Result<(), String> {
     let token = core.chat_cancels.lock().await.remove(&session_id);
@@ -4948,6 +5093,7 @@ async fn get_provider_model_params(core: State<'_, Core>) -> Result<ModelParams,
 #[tauri::command]
 async fn update_provider_model_params(
     core: State<'_, Core>,
+    app: tauri::AppHandle,
     params: ModelParams,
 ) -> Result<(), String> {
     params.save(&core.data_dir).map_err(|e| e.to_string())?;
@@ -4958,9 +5104,92 @@ async fn update_provider_model_params(
             .set_config(active.id, config)
             .await
             .map_err(|e| e.to_string())?;
+
+        // La fenetre de contexte n'est pas un reglage de requete : llama-server
+        // dimensionne son cache KV au demarrage. La porter dans
+        // inference_config.json (ce que le lanceur lit) et redemarrer le moteur
+        // gere est ce qui separe un reglage actif d'un reglage decoratif.
+        let changed_ctx =
+            InferenceConfig::load(&core.data_dir).context_length != params.context_length;
+        if changed_ctx {
+            let mut cfg = InferenceConfig::load(&core.data_dir);
+            cfg.context_length = params.context_length;
+            cfg.save(&core.data_dir).map_err(|e| e.to_string())?;
+            if active.engine == ProviderEngine::LlamaCpp {
+                core.supervisor.restart_requested(&active.engine).await;
+                tracing::info!(
+                    ctx = params.context_length,
+                    "context length changed — llama-server restarts with the new window"
+                );
+            }
+            // Signal to the UI: the gauge can follow, the slider can clamp.
+            broadcast(
+                &app,
+                "model-ctx-applied",
+                serde_json::json!({
+                    "ctx_size": params.context_length,
+                    "engine": active.engine.as_token(),
+                }),
+            );
+        }
     }
     tracing::info!(temp = params.temperature, "model params updated");
     Ok(())
+}
+
+/// Fenetre de contexte maximale que le moteur courant peut offrir, pour
+/// borner le curseur du panneau : proposer 128k a un modele entraîne pour
+/// 32k, c'est inviter une demande que le moteur va reduire en silence.
+///
+/// Deux sources, la premiere qui repond gagne :
+/// - Ollama : `/api/show` donne `model_info.<arch>.context_length` — la
+///   limite reelle du modele.
+/// - llama.cpp : le lanceur ecrit `model_ctx_capacity.json` au demarrage,
+///   lu depuis le GGUF du modele charge (`train_context` + marge de 50 %
+///   pour les modeles a RoPE scalé).
+///
+/// `None` : rien n'a repondu — le panneau garde son maximum générique.
+#[tauri::command]
+async fn get_model_ctx_capacity(core: State<'_, Core>) -> Result<Option<u32>, String> {
+    let active = core
+        .storage
+        .providers
+        .active()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "aucun fournisseur actif".to_string())?;
+
+    if active.engine == ProviderEngine::Ollama {
+        let url = format!("{}/api/show", active.endpoint.trim_end_matches('/'));
+        let body = serde_json::json!({ "model": active.model.clone().unwrap_or_default() });
+        if let Ok(resp) = core.http.post(&url).json(&body).send().await {
+            if let Ok(v) = resp.json::<serde_json::Value>().await {
+                if let Some(info) = v.get("model_info").and_then(|m| m.as_object()) {
+                    for (k, val) in info {
+                        if k.ends_with(".context_length") {
+                            if let Some(n) = val.as_u64() {
+                                let cap = (n as f64 * 1.5).round().min(u32::MAX as f64) as u32;
+                                return Ok(Some(cap.max(4096)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return Ok(None);
+    }
+
+    // llama.cpp géré : la capacité ecrite par le lanceur au demarrage.
+    let cap_path = core.data_dir.join("model_ctx_capacity.json");
+    if let Ok(s) = std::fs::read_to_string(&cap_path) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+            if let Some(n) = v.get("max_ctx").and_then(|m| m.as_u64()) {
+                let cap = n.min(u32::MAX as u64) as u32;
+                return Ok(Some(cap.max(4096)));
+            }
+        }
+    }
+    Ok(None)
 }
 
 // ============================================================================
@@ -5992,6 +6221,7 @@ pub fn run() {
             list_messages,
             send_message,
             stop_generation,
+            compress_chat_context,
             run_terminal,
             list_providers,
             set_active_provider,
@@ -6034,6 +6264,7 @@ pub fn run() {
             approve_tool_call,
             update_provider_model_params,
             get_provider_model_params,
+            get_model_ctx_capacity,
             get_inference_config,
             set_inference_config,
             get_profile_preset,

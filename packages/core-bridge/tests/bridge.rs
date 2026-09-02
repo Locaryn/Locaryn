@@ -82,6 +82,7 @@ fn input(session: uuid::Uuid, message: &str) -> AgentInput {
         tools: None,
         approval: Some(ApprovalHandle::new(YesGate)),
         bearer_token: None,
+        native_chat_api: false,
     }
 }
 

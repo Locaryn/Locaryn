@@ -71,6 +71,9 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Plafond que le modele actif sait tenir. Ollama le declare via
+   *  /api/show, llama.cpp via le GGUF lu au demarrage du moteur. */
+  const [ctxCap, setCtxCap] = useState<number | null>(null);
 
   // Load from active provider config on mount.
   useEffect(() => {
@@ -82,6 +85,12 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
         if (active?.config) {
           const cfg = active.config as Partial<ModelParams>;
           setParams((prev) => ({ ...prev, ...cfg }));
+        }
+        try {
+          const cap = await core.getModelCtxCapacity();
+          if (!cancelled && cap) setCtxCap(cap);
+        } catch {
+          // Pas de plafond connu : le curseur garde son maximum generique.
         }
       } catch {
         // Keep defaults silently.
@@ -110,6 +119,10 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
     setError(null);
     try {
       await core.updateProviderModelParams(params);
+      // La jauge du chat suit la fenetre nouvellement appliquee, sans
+      // attendre une reouverture de conversation.
+      window.dispatchEvent(new CustomEvent("locaryn:model-params-applied", { detail: { params } }));
+      onParamsChange?.(params);
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
     } catch (e) {
@@ -206,13 +219,18 @@ export function ModelConfigPanel({ onParamsChange, onClose }: Props) {
         <Slider
           id="lmc-ctx-size"
           label="Context window"
-          value={params.ctx_size}
+          value={Math.min(params.ctx_size, ctxCap ?? params.ctx_size)}
           min={512}
-          max={131072}
+          max={ctxCap ?? 131072}
           step={512}
           format={(v) => (v >= 1024 ? `${(v / 1024).toFixed(0)}k` : `${v}`)}
           onChange={(v) => update("ctx_size", v)}
         />
+        {ctxCap && (
+          <p className="lmc-ctx-cap">
+            Plafond du modele actif : {(ctxCap / 1024).toFixed(0)}k tokens.
+          </p>
+        )}
 
         <Slider
           id="lmc-max-tokens"

@@ -1,5 +1,6 @@
 import { Icon, LoProgress, isIconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ModalShell } from "../components/ModalShell";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
@@ -848,6 +849,27 @@ export function ChatPanel({
     }
   }
 
+  /** Compression proposee quand la fenetre appliquee passe sous ce que la
+   *  conversation a deja consomme. Les vieux tours partent dans un resume
+   *  produit par le modele lui-meme — le meme travail que la compaction
+   *  automatique, ici declenche a la main. */
+  async function compressConversation() {
+    if (!sessionId || compressing) return;
+    setCompressing(true);
+    try {
+      await core.compressChatContext(sessionId);
+      const fresh = await core.listMessages(sessionId);
+      setItems(fresh.flatMap(storedMessageItems));
+      setCompressProposal(null);
+    } catch {
+      // Le resume a echoue : la proposition reste, l'utilisateur peut
+      // retenter. Rien n'a ete efface — la commande ne supprime qu'apres un
+      // resume reussi.
+    } finally {
+      setCompressing(false);
+    }
+  }
+
   function removeQueuedMessage(index: number) {
     setMessageQueue((prev) => prev.filter((_, i) => i !== index));
   }
@@ -1160,7 +1182,29 @@ export function ChatPanel({
     if (it.kind === "tool") return acc + Math.ceil((it.output?.length ?? 0) / 4);
     return acc;
   }, 0);
-  const ctxWindow = ctxSize || DEFAULT_MODEL_PARAMS.ctx_size;
+  // Fenetre reellement appliquee au moteur : la prop d'App, sinon ce que le
+  // panneau de reglages annonce (Appliquer), sinon la valeur par defaut. La
+  // jauge doit raconter ce que le moteur a, pas ce qu'un menu laisse croire.
+  const [appliedCtx, setAppliedCtx] = useState<number | null>(null);
+  const ctxWindow = ctxSize ?? appliedCtx ?? DEFAULT_MODEL_PARAMS.ctx_size;
+  // Reduire sous ce qui est deja utilise : la conversation ne tiendrait plus.
+  // On ne bloque pas — on propose de compresser, c'est l'utilisateur qui decide.
+  const [compressProposal, setCompressProposal] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
+  const [compressing, setCompressing] = useState(false);
+  useEffect(() => {
+    const onApplied = (e: Event) => {
+      const detail = (e as CustomEvent<{ params?: { ctx_size?: number } }>).detail;
+      const next = detail?.params?.ctx_size;
+      if (!next) return;
+      setAppliedCtx(next);
+      if (next < usedTokens) setCompressProposal({ from: usedTokens, to: next });
+    };
+    window.addEventListener("locaryn:model-params-applied", onApplied);
+    return () => window.removeEventListener("locaryn:model-params-applied", onApplied);
+  }, [usedTokens]);
   const ctxPct = Math.min(usedTokens / ctxWindow, 1);
   const ctxWarnLevel = ctxPct > 0.85 ? "danger" : ctxPct > 0.6 ? "warn" : "ok";
 
@@ -1623,6 +1667,45 @@ export function ChatPanel({
           </div>
         </div>
       </div>
+
+      {compressProposal && (
+        <ModalShell
+          onClose={() => setCompressProposal(null)}
+          label="Compression de la conversation"
+          role="alertdialog"
+          className="locaryn-card locaryn-compress-card"
+        >
+          <h3 style={{ margin: "0 0 8px", fontSize: "var(--text-md)", fontWeight: 700 }}>
+            Fenetre reduite sous la conversation
+          </h3>
+          <p style={{ margin: "0 0 16px", color: "var(--muted)", lineHeight: 1.5 }}>
+            La conversation utilise deja ~{ctxFmt(compressProposal.from)} tokens, la nouvelle
+            fenetre n'en offre que {ctxFmt(compressProposal.to)}. Le modele ne verrait plus le debut
+            du fil.
+            <br />
+            Compresser maintenant ? Les anciens echanges deviennent un resume concis, les derniers
+            restent intacts.
+          </p>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() => setCompressProposal(null)}
+              disabled={compressing}
+            >
+              Garder le fil tronque
+            </button>
+            <button
+              type="button"
+              className="locaryn-send"
+              onClick={compressConversation}
+              disabled={compressing}
+            >
+              {compressing ? "Compression…" : "Compresser la conversation"}
+            </button>
+          </div>
+        </ModalShell>
+      )}
 
       {ragOpen && projectId && <RagPanel projectId={projectId} onClose={() => setRagOpen(false)} />}
 
