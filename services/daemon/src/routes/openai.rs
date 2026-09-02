@@ -106,6 +106,23 @@ fn erreur(code: StatusCode, message: &str, kind: &str) -> Response {
         .into_response()
 }
 
+/// La meme erreur, dans l'enveloppe qu'un client Anthropic sait lire.
+///
+/// Anthropic emboite : un `type: "error"` au premier niveau, puis l'objet
+/// `error`. Un SDK qui deballe strictement ne trouve pas son compte dans la
+/// forme OpenAI, et remonte une erreur de deserialisation a la place du
+/// message — celui-la meme qui disait quoi corriger.
+fn erreur_anthropic(code: StatusCode, message: &str, kind: &str) -> Response {
+    (
+        code,
+        Json(json!({
+            "type": "error",
+            "error": { "type": kind, "message": message },
+        })),
+    )
+        .into_response()
+}
+
 // ============================================================================
 // GET /v1/models
 // ============================================================================
@@ -287,6 +304,58 @@ pub async fn chat_completions(
 // Le flux Anthropic, traduit depuis le flux OpenAI
 // ============================================================================
 
+/// Ce qu'une ligne `data:` du flux OpenAI apporte.
+///
+/// Un meme morceau peut porter du texte *et* la raison d'arret, d'ou les trois
+/// champs plutot qu'un choix exclusif.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Apport {
+    texte: String,
+    arret: Option<&'static str>,
+    fin: bool,
+}
+
+/// Lit une ligne du flux amont. Fonction pure : c'est elle qu'on teste.
+///
+/// Tout ce qui n'est pas une ligne `data:` exploitable ne rapporte rien —
+/// commentaires de maintien en vie, lignes vides, JSON illisible. Les ignorer
+/// vaut mieux que couper le flux : le morceau suivant est souvent bon.
+fn lire_ligne(ligne: &str) -> Apport {
+    let Some(charge) = ligne.trim().strip_prefix("data:") else {
+        return Apport::default();
+    };
+    let charge = charge.trim();
+    if charge.is_empty() {
+        return Apport::default();
+    }
+    if charge == "[DONE]" {
+        return Apport {
+            fin: true,
+            ..Apport::default()
+        };
+    }
+    let Ok(bloc) = serde_json::from_str::<Value>(charge) else {
+        return Apport::default();
+    };
+    let choix = bloc.get("choices").and_then(|c| c.get(0));
+    Apport {
+        texte: choix
+            .and_then(|c| c.get("delta"))
+            .and_then(|d| d.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        arret: choix
+            .and_then(|c| c.get("finish_reason"))
+            .and_then(|f| f.as_str())
+            .map(|r| match r {
+                "length" => "max_tokens",
+                _ => "end_turn",
+            }),
+        fin: false,
+    }
+}
+
 /// Ce qu'on retient entre deux paquets reseau.
 struct EtatFlux<S> {
     octets: S,
@@ -356,14 +425,11 @@ fn flux_anthropic(
                 while let Some(coupe) = e.tampon.find('\n') {
                     let ligne = e.tampon[..coupe].trim().to_string();
                     e.tampon.drain(..=coupe);
-                    let Some(charge) = ligne.strip_prefix("data:") else {
-                        continue;
-                    };
-                    let charge = charge.trim();
-                    if charge.is_empty() {
-                        continue;
+                    let apport = lire_ligne(&ligne);
+                    if let Some(a) = apport.arret {
+                        e.arret = a;
                     }
-                    if charge == "[DONE]" {
+                    if apport.fin {
                         e.termine = true;
                         if !e.ouvert {
                             pousser_debut(&mut e.sortie, &modele);
@@ -372,25 +438,7 @@ fn flux_anthropic(
                         pousser_fin(&mut e.sortie, e.arret, e.morceaux);
                         break;
                     }
-                    let Ok(bloc) = serde_json::from_str::<Value>(charge) else {
-                        continue;
-                    };
-                    let choix = bloc.get("choices").and_then(|c| c.get(0));
-                    if let Some(raison) = choix
-                        .and_then(|c| c.get("finish_reason"))
-                        .and_then(|f| f.as_str())
-                    {
-                        e.arret = match raison {
-                            "length" => "max_tokens",
-                            _ => "end_turn",
-                        };
-                    }
-                    let texte = choix
-                        .and_then(|c| c.get("delta"))
-                        .and_then(|d| d.get("content"))
-                        .and_then(|c| c.as_str())
-                        .unwrap_or_default();
-                    if texte.is_empty() {
+                    if apport.texte.is_empty() {
                         continue;
                     }
                     if !e.ouvert {
@@ -403,7 +451,7 @@ fn flux_anthropic(
                             json!({
                                 "type": "content_block_delta",
                                 "index": 0,
-                                "delta": { "type": "text_delta", "text": texte },
+                                "delta": { "type": "text_delta", "text": apport.texte },
                             })
                             .to_string(),
                         ),
@@ -497,7 +545,7 @@ pub async fn messages(
         .trim()
         .to_string();
     if modele.is_empty() {
-        return erreur(
+        return erreur_anthropic(
             StatusCode::BAD_REQUEST,
             "Le champ model est obligatoire. Appelez GET /v1/models pour la liste.",
             "invalid_request_error",
@@ -521,7 +569,7 @@ pub async fn messages(
         .unwrap_or_default();
 
     if anthropic_messages.is_empty() {
-        return erreur(
+        return erreur_anthropic(
             StatusCode::BAD_REQUEST,
             "Le champ messages est obligatoire et ne peut pas etre vide.",
             "invalid_request_error",
@@ -591,7 +639,7 @@ pub async fn messages(
         Some(p) => {
             let cle = cloud::stored_key(&h, &p.id);
             if cle.is_none() {
-                return erreur(
+                return erreur_anthropic(
                     StatusCode::UNAUTHORIZED,
                     &format!(
                         "Aucune cle enregistree pour {}. Renseignez-la dans son dossier, ou par la variable d'environnement {}.",
@@ -617,7 +665,7 @@ pub async fn messages(
                 modele.clone(),
             ),
             None => {
-                return erreur(
+                return erreur_anthropic(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Aucun moteur actif et aucun fournisseur ne sert ce modele.",
                     "server_error",
@@ -642,7 +690,7 @@ pub async fn messages(
     let reponse = match req.send().await {
         Ok(r) => r,
         Err(e) => {
-            return erreur(
+            return erreur_anthropic(
                 StatusCode::BAD_GATEWAY,
                 &format!("Le fournisseur de ce modele est injoignable : {e}"),
                 "server_error",
@@ -663,7 +711,7 @@ pub async fn messages(
     let openai_body: Value = match reponse.json().await {
         Ok(v) => v,
         Err(e) => {
-            return erreur(
+            return erreur_anthropic(
                 StatusCode::BAD_GATEWAY,
                 &format!("Reponse du fournisseur illisible : {e}"),
                 "server_error",
@@ -732,6 +780,78 @@ pub async fn messages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un client Anthropic deballe `error.message` sous un `type: "error"` au
+    /// premier niveau. La forme OpenAI lui ferait remonter une erreur de
+    /// deserialisation au lieu du message qui dit quoi corriger.
+    #[test]
+    fn l_erreur_anthropic_porte_son_enveloppe() {
+        let corps = json!({
+            "type": "error",
+            "error": { "type": "invalid_request_error", "message": "modele manquant" },
+        });
+        assert_eq!(corps["type"], "error");
+        assert_eq!(corps["error"]["message"], "modele manquant");
+        let r = erreur_anthropic(
+            StatusCode::BAD_REQUEST,
+            "modele manquant",
+            "invalid_request_error",
+        );
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Ce que le flux amont apporte, ligne par ligne.
+    #[test]
+    fn une_ligne_du_flux_amont_est_lue_pour_ce_qu_elle_apporte() {
+        let texte = lire_ligne(&format!(
+            "data: {}",
+            json!({ "choices": [{ "delta": { "content": "Bonjour" } }] })
+        ));
+        assert_eq!(texte.texte, "Bonjour");
+        assert!(!texte.fin);
+
+        // Texte et raison d'arret peuvent arriver ensemble.
+        let ensemble = lire_ligne(&format!(
+            "data: {}",
+            json!({ "choices": [{ "delta": { "content": "!" }, "finish_reason": "length" }] })
+        ));
+        assert_eq!(ensemble.texte, "!");
+        assert_eq!(ensemble.arret, Some("max_tokens"));
+
+        assert!(lire_ligne("data: [DONE]").fin);
+
+        // Rien d'exploitable ne doit rien rapporter, sans couper le flux.
+        for muet in [
+            ": maintien en vie",
+            "",
+            "data:",
+            "data: {ceci n'est pas du json",
+            "event: content_block_delta",
+        ] {
+            assert_eq!(
+                lire_ligne(muet),
+                Apport::default(),
+                "{muet} devait etre ignore"
+            );
+        }
+    }
+
+    /// L'encadrement complet : sans `message_start` ni `content_block_start`,
+    /// un client Anthropic n'affiche rien meme quand le texte suit.
+    #[test]
+    fn l_encadrement_du_message_est_complet() {
+        let mut sortie = std::collections::VecDeque::new();
+        pousser_debut(&mut sortie, "modele-temoin");
+        assert_eq!(sortie.len(), 2, "message_start puis content_block_start");
+
+        sortie.clear();
+        pousser_fin(&mut sortie, "end_turn", 3);
+        assert_eq!(
+            sortie.len(),
+            3,
+            "content_block_stop, message_delta, message_stop"
+        );
+    }
     /// Ce que `/v1/models` annonce doit etre chargeable par un moteur de chat.
     ///
     /// Le test porte sur `is_chat_weight`, la regle que la route emprunte
