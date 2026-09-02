@@ -1492,6 +1492,8 @@ export interface CoreApi {
     responseFormat?: ResponseFormat | null,
     reasoning?: Record<string, unknown> | null,
   ): Promise<void>;
+  /** Arrete la generation en cours de la session (sans decharger le modele). */
+  stopGeneration(sessionId: string): Promise<void>;
   runTerminal(
     command: string,
     cwd: string | null,
@@ -1898,6 +1900,10 @@ const tauriCore: CoreApi = {
       reasoning: reasoning ?? null,
       onEvent: chan,
     });
+  },
+
+  stopGeneration(sessionId) {
+    return invoke<void>("stop_generation", { sessionId });
   },
 
   runTerminal(command, cwd, onOutput) {
@@ -2319,6 +2325,7 @@ const demoHealth: Health = {
   },
 };
 
+const demoStreaming = { current: false };
 let demoProviders: Provider[] = [
   {
     id: "demo-ollama",
@@ -4013,6 +4020,7 @@ const demoCore: CoreApi = {
   listMessages: async (sessionId) => demoMessages.filter((m) => m.session_id === sessionId),
 
   async sendMessage(_sessionId, content, onEvent, images, _responseFormat, _reasoning) {
+    demoStreaming.current = true;
     onEvent({ type: "message_start", message_id: "demo", task_id: "demo" });
     // Reasoning models stream a scratchpad before the answer; emit one so the
     // collapsing behaviour can be developed without a local model loaded.
@@ -4069,6 +4077,17 @@ const demoCore: CoreApi = {
     await sleep(400);
     const reply = `Demo mode — no Rust core attached. You said:\n\n> ${content}\n\nHere is a *markdown* sample with \`inline code\` and a block:\n\n\`\`\`ts\nconst answer = 42;\nexport default answer;\n\`\`\`\n\n1. First step\n2. Second step`;
     for (const word of reply.split(/(?<=\s)/)) {
+      // Un Stop du composeur coupe le flux de demo comme le vrai noyau.
+      if (!demoStreaming.current) {
+        onEvent({
+          type: "message_end",
+          message_id: "demo-stopped",
+          tokens_in: 120,
+          tokens_out: 0,
+          duration_ms: 0,
+        });
+        return;
+      }
       onEvent({ type: "token", text: word });
       await sleep(18);
     }
@@ -4079,6 +4098,11 @@ const demoCore: CoreApi = {
       tokens_out: 60,
       duration_ms: 1800,
     });
+  },
+
+  stopGeneration() {
+    demoStreaming.current = false;
+    return Promise.resolve();
   },
 
   async runTerminal(command, _cwd, onOutput) {

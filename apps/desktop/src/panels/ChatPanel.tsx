@@ -243,6 +243,8 @@ export function ChatPanel({
   const [reasoning, setReasoning] = useState<ReasoningLevel>("auto");
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const stopRequestedRef = useRef(false);
   /**
    * Ce qu'on attend avant le premier jeton.
    *
@@ -699,6 +701,7 @@ export function ChatPanel({
     }
 
     if (streaming) {
+      if (stopping) return;
       if (!textOverride) {
         setMessageQueue((prev) => [...prev, { id: nextId("q"), text, attachments: [...imgs] }]);
         setInput("");
@@ -828,19 +831,40 @@ export function ChatPanel({
           .finally(() => setFollowupsLoading(false));
       }
 
-      const currentQ = queueRef.current;
-      if (currentQ.length > 0) {
-        const nextMsg = currentQ[0];
-        setMessageQueue((prev) => prev.slice(1));
-        setTimeout(() => {
-          send(nextMsg.text, nextMsg.attachments);
-        }, 50);
+      // Un Stop explicite laisse la main a l'utilisateur : la file
+      // attend son prochain envoi au lieu de demarrer toute seule.
+      if (stopRequestedRef.current) {
+        stopRequestedRef.current = false;
+      } else {
+        const currentQ = queueRef.current;
+        if (currentQ.length > 0) {
+          const nextMsg = currentQ[0];
+          setMessageQueue((prev) => prev.slice(1));
+          setTimeout(() => {
+            send(nextMsg.text, nextMsg.attachments);
+          }, 50);
+        }
       }
     }
   }
 
   function removeQueuedMessage(index: number) {
     setMessageQueue((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  /** Stop coupe la generation sans decharger le modele : la reponse
+   *  partielle est conservee, la file attend, on peut retaper derriere. */
+  async function stopGeneration() {
+    if (!sessionId || stopping) return;
+    setStopping(true);
+    stopRequestedRef.current = true;
+    try {
+      await core.stopGeneration(sessionId);
+    } catch {
+      // Le flux s'est deja termine tout seul — rien a faire.
+    } finally {
+      setStopping(false);
+    }
   }
 
   function editLastUserMessage() {
@@ -1483,6 +1507,18 @@ export function ChatPanel({
               context={{ input, setInput, send, canCompose }}
             />
 
+            {streaming && (
+              <button
+                type="button"
+                className="locaryn-send locaryn-send-stopping"
+                onClick={stopGeneration}
+                disabled={stopping}
+                title="Interrompt la generation sans decharger le modele"
+                aria-label="Arreter la generation"
+              >
+                <Icon name="close" size={14} /> {stopping ? "Arret…" : "Stop"}
+              </button>
+            )}
             <button
               type="button"
               className="locaryn-send"

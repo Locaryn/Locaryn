@@ -1523,6 +1523,18 @@ body.locaryn-resizing .locaryn-resizer::after {
   color: var(--text-faint);
   cursor: default;
 }
+.locaryn-send-stopping {
+  background: var(--danger);
+  color: var(--on-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.locaryn-send-stopping:disabled {
+  background: var(--danger);
+  opacity: 0.6;
+  cursor: default;
+}
 
 /* ═══════════════════════════════════════════════════════════
    RIGHT PANEL — preview
