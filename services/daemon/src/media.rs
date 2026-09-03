@@ -324,7 +324,7 @@ pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
     // Une étiquette du registre Ollama (`llama3.2:3b`, `ollama/qwen3:8b`)
     // désigne un GGUF téléchargeable sans qu'Ollama soit installé : la
     // reconnaître avant toute autre interprétation de l'adresse.
-    if let Some(tag) = classify_ollama_tag(raw_url.trim()) {
+    if let Some(tag) = locaryn_shared_types::model_source::ollama_registry_tag(raw_url.trim()) {
         return pull_ollama_tag(&tag, body).await;
     }
     if url.starts_with("hf.co/") {
@@ -624,10 +624,11 @@ pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>
     let name = name.trim().replace('\\', "/");
     // Une étiquette Ollama désigne le fichier écrit par le pull
     // (`{name}_{tag}.gguf`) : traduire avant la validation de chemin.
-    let name = match classify_ollama_tag(&format!("ollama/{name}")) {
-        Some(tag) => tag.replace(['/', ':'], "_") + ".gguf",
-        None => name,
-    };
+    let name =
+        match locaryn_shared_types::model_source::ollama_registry_tag(&format!("ollama/{name}")) {
+            Some(tag) => tag.replace(['/', ':'], "_") + ".gguf",
+            None => name,
+        };
     if !nom_modele_valide(&name) {
         return err_response(
             StatusCode::BAD_REQUEST,
@@ -883,37 +884,6 @@ async fn pull_ollama_tag(tag: &str, body: PullBody) -> Response {
     )
     .keep_alive(KeepAlive::default());
     sse.into_response()
-}
-
-/// Reconnaître une étiquette du registre Ollama — `llama3.2:3b`,
-/// `qwen3:8b-instruct`, éventuellement préfixée `ollama/` par le marketplace.
-/// Retourne l'étiquette normalisée `name:tag`. Un identifiant HuggingFace (une
-/// seule barre oblique), une URL ou un chemin local ne correspondent jamais.
-fn classify_ollama_tag(model: &str) -> Option<String> {
-    let raw = model.trim();
-    let had_prefix = raw.starts_with("ollama/");
-    let raw = raw.strip_prefix("ollama/").unwrap_or(raw);
-    // Sans le prefixe explicite `ollama/`, une barre oblique sans
-    // etiquette est un identifiant HuggingFace, pas un modele Ollama.
-    if !had_prefix && raw.contains('/') && !raw.contains(':') {
-        return None;
-    }
-    if raw.len() < 3 || raw.contains('\\') || raw.contains(' ') || raw.starts_with('/') {
-        return None;
-    }
-    let (name, tag) = match raw.split_once(':') {
-        Some((n, t)) if n.len() >= 2 && !t.is_empty() => (n, t),
-        Some(_) => return None,
-        None => (raw, "latest"),
-    };
-    let ok = |s: &str| {
-        s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
-    };
-    if name.split('/').any(|part| part.is_empty() || !ok(part)) || !ok(tag) {
-        return None;
-    }
-    Some(format!("{name}:{tag}"))
 }
 
 fn nom_modele_valide(name: &str) -> bool {

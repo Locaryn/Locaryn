@@ -649,7 +649,17 @@ export function App() {
   ) {
     const p = await core.listProviders();
     const active = p.find((pr) => pr.is_active) ?? p[0];
-    if (!active) return;
+    // Sans fournisseur, le clic ne faisait rien et ne disait rien : l'utilisateur
+    // relançait le téléchargement en croyant avoir mal cliqué. Le dire coûte une
+    // ligne, et indique quoi faire.
+    if (!active) {
+      const id = taskCenter.add({ type: "download", label: `Téléchargement : ${tag}` });
+      taskCenter.fail(
+        id,
+        "Aucun moteur n'est configuré : ouvrez Réglages → Moteur avant d'installer un modèle.",
+      );
+      return;
+    }
 
     setDownloadProgress({ tag, progress: 0, status: "Démarrage du téléchargement..." });
     const shortName = tag.split("/").pop() || tag;

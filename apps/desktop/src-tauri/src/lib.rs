@@ -3590,17 +3590,26 @@ async fn pull_model(
     companions: Option<Vec<MarketplaceCompanionDownload>>,
     on_event: Channel<PullProgressEvent>,
 ) -> Result<(), String> {
-    let url = model.trim().to_string();
-    let url = if url.starts_with("hf.co/") {
-        url.replace("hf.co/", "https://huggingface.co/")
-    } else if !url.starts_with("http")
-        && url.contains('/')
-        && !url.contains('\\')
-        && !url.contains(' ')
+    let brut = model.trim().to_string();
+    // Le registre Ollama se reconnait sur l'entree brute, avant toute
+    // reecriture. La normalisation ci-dessous prefixe HuggingFace des qu'elle
+    // voit une barre oblique : elle transformait `ollama/llama3.2:3b` en une
+    // adresse HuggingFace inexistante, et le prefixe documente ne pouvait donc
+    // jamais aboutir. Le tester ici, sur le texte tel que l'utilisateur l'a
+    // donne, est le seul ordre qui laisse les deux formes fonctionner.
+    let etiquette_ollama = locaryn_shared_types::model_source::ollama_registry_tag(&brut);
+    let url = if etiquette_ollama.is_some() {
+        brut.clone()
+    } else if brut.starts_with("hf.co/") {
+        brut.replace("hf.co/", "https://huggingface.co/")
+    } else if !brut.starts_with("http")
+        && brut.contains('/')
+        && !brut.contains('\\')
+        && !brut.contains(' ')
     {
-        format!("https://huggingface.co/{url}")
+        format!("https://huggingface.co/{brut}")
     } else {
-        url
+        brut.clone()
     };
     let hf_token = hf_token.unwrap_or_default();
     let planned_companions = validate_marketplace_companions(companions.unwrap_or_default())?;
@@ -3691,7 +3700,7 @@ async fn pull_model(
             Err(e) => return Err(e.to_string()),
         }
     }
-    if let Some(tag) = ollama_registry_tag(&url) {
+    if let Some(tag) = etiquette_ollama {
         return pull_ollama_registry(&core, &tag, &on_event).await;
     }
 
@@ -4040,40 +4049,6 @@ async fn pull_hf_repo(
 // ============================================================================
 // Model download — streaming with progress + cancellation
 // ============================================================================
-
-/// Stream-download `url` to `final_path`, writing to `part_path` first and
-/// renaming on success. Reports progress via `on_event`. Resumable: if
-/// `part_path` exists, the download continues from the current byte offset.
-// Un téléchargement a légitimement beaucoup de paramètres (source, destination,
-// fichier partiel, progression, annulation, jeton). Les regrouper dans une
-// structure n'apporterait rien ici : ils n'ont pas de vie commune ailleurs.
-#[allow(clippy::too_many_arguments)]
-fn ollama_registry_tag(model: &str) -> Option<String> {
-    let raw = model.trim();
-    let had_prefix = raw.starts_with("ollama/");
-    let raw = raw.strip_prefix("ollama/").unwrap_or(raw);
-    // Sans le prefixe explicite `ollama/`, une barre oblique sans
-    // etiquette est un identifiant HuggingFace, pas un modele Ollama.
-    if !had_prefix && raw.contains('/') && !raw.contains(':') {
-        return None;
-    }
-    if raw.len() < 3 || raw.contains('\\') || raw.contains(' ') || raw.starts_with('/') {
-        return None;
-    }
-    let (name, explicit) = match raw.split_once(':') {
-        Some((n, t)) if n.len() >= 2 && !t.is_empty() => (n, t),
-        Some(_) => return None,
-        None => (raw, "latest"),
-    };
-    let ok = |s: &str| {
-        s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
-    };
-    if name.split('/').any(|part| part.is_empty() || !ok(part)) || !ok(explicit) {
-        return None;
-    }
-    Some(format!("{name}:{explicit}"))
-}
 
 /// Télécharge un modèle depuis le registre Ollama. Le manifeste de
 /// l'étiquette (`llama3.2:3b`, `qwen3:8b`, …) liste les blobs ; celui de
@@ -5611,7 +5586,9 @@ async fn delete_model_cmd(
     // Une étiquette Ollama n'est pas un lecteur Windows : elle désigne le
     // fichier écrit par le pull (`llama3.2_3b.gguf`). Traduire avant tout
     // usage comme chemin.
-    if let Some(tag) = ollama_registry_tag(&format!("ollama/{model}")) {
+    if let Some(tag) =
+        locaryn_shared_types::model_source::ollama_registry_tag(&format!("ollama/{model}"))
+    {
         model = tag.replace(['/', ':'], "_");
         model.push_str(".gguf");
     } else if model.contains(':') {
