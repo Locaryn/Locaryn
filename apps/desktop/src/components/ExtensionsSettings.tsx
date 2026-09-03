@@ -1504,6 +1504,17 @@ export function ExtensionsSettings() {
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "space-between",
+                        cursor: "pointer",
+                      }}
+                      title="Voir le détail"
+                      onClick={(e) => {
+                        // Comme au catalogue de modeles : toute la carte ouvre
+                        // le detail. Viser un bouton de trois lignes de haut
+                        // pour lire une fiche est une precision qu'on demande
+                        // sans raison. Les commandes internes — installer, le
+                        // lien vers la source — gardent la main.
+                        if ((e.target as HTMLElement).closest("button, a")) return;
+                        setSelectedDetailEntry(c);
                       }}
                     >
                       <div>
