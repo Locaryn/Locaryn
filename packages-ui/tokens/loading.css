@@ -23,7 +23,11 @@
   position: relative;
   height: 24px;
   width: 100%;
-  overflow: hidden;
+  /* Pas de rognage ici : le rail et la part faite coupent deja leur propre
+     tracé de 900 px. Le seul effet qui restait à ce niveau était de couper le
+     point — moitié absente à 0 %, entièrement disparu à 100 %, c'est-à-dire
+     exactement au moment où l'on regarde s'il est arrivé au bout. */
+  overflow: visible;
 }
 .lo-progress-rail,
 .lo-progress-done {

@@ -23,6 +23,9 @@ import { useEffect, useRef } from "react";
 /** Une longueur d'onde du tracé — `lo-wave` défile exactement de ça. */
 const WAVELENGTH = 24;
 
+/** Rayon du point de tête, cerclage compris — voir `.lo-progress-head`. */
+const HEAD_R = 7.5;
+
 /**
  * Le chemin d'une onde continue, en demi-arcs alternés. La largeur doit
  * dépasser largement le conteneur pour que le défilement soit continu.
@@ -78,7 +81,15 @@ export function LoProgress({ value, on = "surface", label }: LoProgressProps) {
           <path d={d} stroke="var(--surface-3)" strokeWidth={4} strokeLinecap="round" fill="none" />
         </svg>
       </div>
-      <div className="lo-progress-done" style={sweep ? undefined : { width: `${pct}%` }}>
+      {/* La part faite s'arrête avant le point, pas dessous.
+          Coupée pile à la valeur, l'onde passait sous le point : la bille
+          semblait enfilée sur le fil plutôt que posée à son extrémité, et on
+          ne lisait plus où le téléchargement en était. `HEAD_R` est le rayon
+          du point, cerclage compris. */}
+      <div
+        className="lo-progress-done"
+        style={sweep ? undefined : { width: `calc(${pct}% - ${HEAD_R}px)` }}
+      >
         <svg width={900} height={24} aria-hidden="true">
           <path d={d} stroke="var(--accent)" strokeWidth={4} strokeLinecap="round" fill="none" />
         </svg>
