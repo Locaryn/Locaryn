@@ -1452,8 +1452,6 @@ export interface ModelAbilities {
   tools: Certitude;
   /** D'ou vient la reponse sur les outils : `props`, `entete` ou `aucune`. */
   tools_source: string;
-  /** Ce que la fenetre de selection doit accepter. */
-  accept: string[];
 }
 
 export interface CoreApi {
@@ -4099,7 +4097,6 @@ const demoCore: CoreApi = {
       projector: null,
       tools: "non" as const,
       tools_source: "entete",
-      accept: [".txt", ".md", ".csv", ".json", ".rs", ".ts"],
     };
   },
 

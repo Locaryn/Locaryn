@@ -10,6 +10,12 @@
 //! Ce module répond donc à deux questions, avec les mêmes sources que le
 //! lancement, pour que l'interface ne promette rien que le moteur ne tienne.
 //!
+//! Ce module ne dit **pas** quels fichiers sont joignables : tous le sont. Ce
+//! que l'utilisateur veut joindre, il le joint — c'est à la lecture qu'on
+//! constate si le fichier porte du texte, et on le lui dit quand ce n'est pas
+//! le cas. Une liste blanche d'extensions écartait des fichiers parfaitement
+//! lisibles pour la seule raison qu'ils n'y figuraient pas.
+//!
 //! **Les images.** Le superviseur passe `--mmproj` si et seulement si un
 //! projecteur accompagne les poids. C'est la même fonction qui répond ici, donc
 //! la même réponse — et comme elle ne lit que le dossier, elle répond aussi
@@ -62,60 +68,7 @@ pub struct ModelAbilities {
     pub tools: Certitude,
     /// D'où vient la réponse sur les outils : `props`, `entete`, ou `aucune`.
     pub tools_source: String,
-    /// Ce que la fenêtre de sélection de fichiers doit accepter.
-    pub accept: Vec<String>,
 }
-
-/// Les formats texte que l'application sait lire et joindre.
-///
-/// Volontairement du texte brut et des formats de données : ils se lisent sans
-/// bibliothèque et se donnent au modèle tels quels. Un `.pdf` ou un `.docx`
-/// demanderait une extraction — le proposer sans l'avoir écrite enverrait au
-/// modèle des octets compressés, ce qui n'aide personne.
-pub const FORMATS_TEXTE: &[&str] = &[
-    ".txt",
-    ".md",
-    ".markdown",
-    ".csv",
-    ".tsv",
-    ".json",
-    ".jsonl",
-    ".yaml",
-    ".yml",
-    ".toml",
-    ".xml",
-    ".html",
-    ".css",
-    ".log",
-    ".ini",
-    ".cfg",
-    ".env",
-    ".sql",
-    ".rs",
-    ".py",
-    ".js",
-    ".ts",
-    ".tsx",
-    ".jsx",
-    ".go",
-    ".java",
-    ".c",
-    ".h",
-    ".cpp",
-    ".hpp",
-    ".cs",
-    ".rb",
-    ".php",
-    ".sh",
-    ".ps1",
-    ".bat",
-    ".swift",
-    ".kt",
-    ".lua",
-    ".r",
-    ".dockerfile",
-    ".gitignore",
-];
 
 /// Ce que le modèle actif accepte et sait faire.
 #[tauri::command]
@@ -135,22 +88,12 @@ pub async fn model_abilities(core: State<'_, Core>) -> Result<ModelAbilities, St
 
     let (tools, tools_source) = capacite_outils(&core, active.as_ref(), chemin.as_deref()).await;
 
-    let vision = projector.is_some();
-    let mut accept: Vec<String> = FORMATS_TEXTE.iter().map(|s| s.to_string()).collect();
-    if vision {
-        // `image/*` plutôt qu'une liste d'extensions : le sélecteur du système
-        // sait déjà ce qu'il affiche comme image, et la liste changerait avec
-        // lui.
-        accept.insert(0, "image/*".to_string());
-    }
-
     Ok(ModelAbilities {
         model,
-        vision,
+        vision: projector.is_some(),
         projector,
         tools,
         tools_source,
-        accept,
     })
 }
 
@@ -211,19 +154,5 @@ mod tests {
         assert_eq!(rendu(Certitude::Oui), "\"oui\"");
         assert_eq!(rendu(Certitude::Non), "\"non\"");
         assert_eq!(rendu(Certitude::Inconnu), "\"inconnu\"");
-    }
-
-    /// Les formats texte n'incluent rien qui demanderait une extraction : les
-    /// proposer sans l'avoir ecrite enverrait des octets illisibles au modele.
-    #[test]
-    fn aucun_format_ne_demande_dextraction() {
-        for interdit in [".pdf", ".docx", ".xlsx", ".pptx", ".odt", ".zip"] {
-            assert!(
-                !FORMATS_TEXTE.contains(&interdit),
-                "{interdit} demande une extraction que personne n'a ecrite"
-            );
-        }
-        assert!(FORMATS_TEXTE.contains(&".txt"));
-        assert!(FORMATS_TEXTE.contains(&".md"));
     }
 }

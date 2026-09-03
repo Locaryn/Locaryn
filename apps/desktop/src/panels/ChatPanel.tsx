@@ -230,13 +230,11 @@ function storedMessageItems(m: { id: string; role: string; content: string }): C
  * elle nomme le fichier qui manque plutot que de rester vague.
  */
 function infobulleJoindre(a: ModelAbilities | null): string {
-  if (!a) return "Joindre un fichier au message";
-  const combien = a.accept.filter((x) => x !== "image/*").length;
-  const texte = `${combien} formats texte (.txt, .md, .csv, code…)`;
+  if (!a) return "Joindre des fichiers au message";
   if (a.vision) {
-    return `Joindre au message : images et ${texte}. Le modèle chargé accepte les images grâce à son projecteur ${a.projector ?? "multimodal"}.`;
+    return `Joindre des images ou des fichiers. Le modèle chargé sait analyser les images, grâce au projecteur ${a.projector ?? "multimodal"} qui accompagne ses poids.`;
   }
-  return `Joindre au message : ${texte}. Les images n'apparaissent pas dans la fenêtre parce que le modèle chargé n'en accepte pas — il lui faudrait un fichier « mmproj » à côté de ses poids. Chargez un modèle multimodal pour les activer.`;
+  return "Joindre uniquement des fichiers. Le modèle chargé ne sait pas analyser d'images — il lui faudrait un fichier « mmproj » à côté de ses poids ; chargez un modèle multimodal pour les joindre aussi.";
 }
 
 /** Au-dela, un fichier texte remplirait la fenetre de contexte a lui seul. */
@@ -247,35 +245,93 @@ function estImage(file: File): boolean {
   return file.type.startsWith("image/");
 }
 
-function readFile(file: File): Promise<Attachment> {
+/**
+ * Le fichier porte-t-il du texte ?
+ *
+ * Constate au lieu de deviner : plutot qu'une liste d'extensions autorisees —
+ * qui ecarte un fichier lisible pour la seule raison qu'il n'y figure pas — on
+ * regarde les octets. Un octet nul ou une sequence UTF-8 invalide signe un
+ * binaire ; le reste se lit.
+ *
+ * L'examen porte sur le debut du fichier, assez pour trancher sans le charger
+ * en entier.
+ */
+function porteDuTexte(octets: ArrayBuffer): boolean {
+  const debut = new Uint8Array(octets, 0, Math.min(octets.byteLength, 8192));
+  if (debut.some((o) => o === 0)) return false;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(debut);
+    return true;
+  } catch {
+    // Un texte legitime coupe au milieu d'un caractere multi-octets echouerait
+    // aussi : on retente sans le dernier fragment avant de conclure.
+    if (debut.length < 4) return false;
+    try {
+      new TextDecoder("utf-8", { fatal: true }).decode(debut.subarray(0, debut.length - 3));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Ce qu'une lecture a produit : une piece jointe, ou la raison du refus. */
+type Lecture = { ok: true; piece: Attachment } | { ok: false; nom: string; raison: string };
+
+/**
+ * Lit un fichier joint, quel qu'il soit.
+ *
+ * Tout se joint : c'est la lecture qui constate ce qu'on peut en faire. Une
+ * image part telle quelle vers un modele qui sait la voir ; un fichier qui
+ * porte du texte devient un document ; un binaire est refuse **en le disant**,
+ * parce qu'en donner les octets a un modele de texte ne produirait que du
+ * charabia dont personne ne saurait d'ou il vient.
+ */
+async function readFile(file: File, vision: boolean): Promise<Lecture> {
   if (estImage(file)) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
-        resolve({ id: nextId("att"), kind: "image", dataUrl, base64, name: file.name });
+    if (!vision) {
+      return {
+        ok: false,
+        nom: file.name,
+        raison: "le modèle chargé ne sait pas analyser d'images",
       };
-      reader.onerror = reject;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(file);
     });
-  }
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      let texte = (reader.result as string) ?? "";
-      // Tronquer plutot que refuser : un journal de 40 Mo reste utile par son
-      // debut, et un refus sec obligerait l'utilisateur a le decouper lui-meme.
-      // La coupure est annoncee dans le texte, pour que le modele ne conclue
-      // pas sur un fichier qu'il n'a pas vu en entier.
-      if (texte.length > MAX_TEXTE_OCTETS) {
-        texte = `${texte.slice(0, MAX_TEXTE_OCTETS)}\n\n[Document tronqué : seuls les ${MAX_TEXTE_OCTETS} premiers caractères ont été joints.]`;
-      }
-      resolve({ id: nextId("att"), kind: "text", text: texte, name: file.name });
+    return {
+      ok: true,
+      piece: {
+        id: nextId("att"),
+        kind: "image",
+        dataUrl,
+        base64: dataUrl.replace(/^data:[^;]+;base64,/, ""),
+        name: file.name,
+      },
     };
-    reader.onerror = reject;
-    reader.readAsText(file);
-  });
+  }
+
+  const octets = await file.arrayBuffer();
+  if (!porteDuTexte(octets)) {
+    return {
+      ok: false,
+      nom: file.name,
+      raison: "ce fichier ne contient pas de texte lisible (PDF, archive, binaire…)",
+    };
+  }
+
+  let texte = new TextDecoder("utf-8").decode(octets);
+  // Tronquer plutot que refuser : un journal de 40 Mo reste utile par son
+  // debut, et un refus sec obligerait l'utilisateur a le decouper lui-meme.
+  // La coupure est annoncee dans le texte, pour que le modele ne conclue pas
+  // sur un fichier qu'il n'a pas vu en entier.
+  if (texte.length > MAX_TEXTE_OCTETS) {
+    texte = `${texte.slice(0, MAX_TEXTE_OCTETS)}\n\n[Document tronqué : seuls les ${MAX_TEXTE_OCTETS} premiers caractères ont été joints.]`;
+  }
+  return { ok: true, piece: { id: nextId("att"), kind: "text", text: texte, name: file.name } };
 }
 
 export function ChatPanel({
@@ -753,28 +809,37 @@ export function ChatPanel({
     const picked = Array.from(e.target.files);
     e.target.value = "";
 
-    // Le filtre de la fenetre de selection se contourne — glisser-deposer, ou
-    // « tous les fichiers » sur certains systemes. On refait donc le tri ici,
-    // et on le dit : une image acceptee en silence par un modele qui ne la
-    // recevra jamais est pire qu'un refus explique.
-    const refusees = abilities && !abilities.vision ? picked.filter(estImage) : [];
-    const gardees = refusees.length ? picked.filter((f) => !estImage(f)) : picked;
+    // Rien n'est ecarte avant lecture : c'est elle qui dit ce qu'on peut faire
+    // de chaque fichier. Ce qui ne passe pas est rapporte nommement — un
+    // fichier avale en silence, dont le modele ne verra rien, est pire qu'un
+    // refus explique.
+    const lectures = await Promise.all(
+      picked.map((f) =>
+        readFile(f, abilities?.vision ?? false).catch((e) => ({
+          ok: false as const,
+          nom: f.name,
+          raison: `lecture impossible (${String(e).replace(/^Error:\s*/, "")})`,
+        })),
+      ),
+    );
+
+    const gardees = lectures.filter((l) => l.ok).map((l) => l.piece);
+    const refusees = lectures.filter((l) => !l.ok);
 
     if (refusees.length) {
+      // Une entree par fichier : reunies dans un seul bloc, les raisons se
+      // collaient bout a bout et devenaient illisibles des qu'il y en avait
+      // deux.
       setItems((prev) => [
         ...prev,
-        {
+        ...refusees.map((r) => ({
           id: nextId("log"),
-          kind: "log",
-          text: `[${refusees.length} image${refusees.length === 1 ? "" : "s"} ignorée${
-            refusees.length === 1 ? "" : "s"
-          } : le modèle chargé n'accepte que du texte.]`,
-        },
+          kind: "log" as const,
+          text: `« ${r.nom} » non joint : ${r.raison}.`,
+        })),
       ]);
     }
-    if (!gardees.length) return;
-    const read = await Promise.all(gardees.map(readFile));
-    setAttachments((prev) => [...prev, ...read]);
+    if (gardees.length) setAttachments((prev) => [...prev, ...gardees]);
   }
 
   async function send(textOverride?: string, attachOverride?: Attachment[]) {
@@ -1649,10 +1714,10 @@ export function ChatPanel({
             <input
               ref={fileRef}
               type="file"
-              // Le filtre vient du modele charge : sans projecteur multimodal,
-              // aucune image n'apparait dans la fenetre. C'est ce silence que
-              // l'infobulle du bouton explique.
-              accept={(abilities?.accept ?? [".txt", ".md"]).join(",")}
+              // Aucun filtre : tout ce que l'utilisateur veut joindre doit
+              // apparaitre dans la fenetre. Ce qu'on peut en faire se constate
+              // a la lecture, et se dit alors — une liste blanche d'extensions
+              // cachait des fichiers parfaitement lisibles.
               multiple
               hidden
               onChange={onPickFiles}
