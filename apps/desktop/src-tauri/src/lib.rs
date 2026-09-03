@@ -3604,13 +3604,6 @@ async fn pull_model(
     };
     let hf_token = hf_token.unwrap_or_default();
     let planned_companions = validate_marketplace_companions(companions.unwrap_or_default())?;
-    if !url.starts_with("http") {
-        return Err(
-            "Pour installer un modèle, utilisez un identifiant HuggingFace (ex: stablediffusionapi/deliberate-v2) \
-             ou une URL directe vers un fichier .safetensors / .gguf."
-                .into(),
-        );
-    }
 
     if let Some(client) = core.remote_client() {
         let selection_value = selection
@@ -3697,6 +3690,16 @@ async fn pull_model(
             }
             Err(e) => return Err(e.to_string()),
         }
+    }
+    if let Some(tag) = ollama_registry_tag(&url) {
+        return pull_ollama_registry(&core, &tag, &on_event).await;
+    }
+
+    if !url.starts_with("http") {
+        return Err(
+            "Pour installer un modèle, utilisez un identifiant HuggingFace (ex: stablediffusionapi/deliberate-v2), \n             une URL directe vers un fichier .safetensors / .gguf, ou une étiquette Ollama (ex: llama3.2:3b)."
+                .into(),
+        );
     }
 
     // A selected HuggingFace candidate is deliberately handled as a local
@@ -4044,6 +4047,149 @@ async fn pull_hf_repo(
 // Un téléchargement a légitimement beaucoup de paramètres (source, destination,
 // fichier partiel, progression, annulation, jeton). Les regrouper dans une
 // structure n'apporterait rien ici : ils n'ont pas de vie commune ailleurs.
+#[allow(clippy::too_many_arguments)]
+fn ollama_registry_tag(model: &str) -> Option<String> {
+    let raw = model.trim();
+    let had_prefix = raw.starts_with("ollama/");
+    let raw = raw.strip_prefix("ollama/").unwrap_or(raw);
+    // Sans le prefixe explicite `ollama/`, une barre oblique sans
+    // etiquette est un identifiant HuggingFace, pas un modele Ollama.
+    if !had_prefix && raw.contains('/') && !raw.contains(':') {
+        return None;
+    }
+    if raw.len() < 3 || raw.contains('\\') || raw.contains(' ') || raw.starts_with('/') {
+        return None;
+    }
+    let (name, explicit) = match raw.split_once(':') {
+        Some((n, t)) if n.len() >= 2 && !t.is_empty() => (n, t),
+        Some(_) => return None,
+        None => (raw, "latest"),
+    };
+    let ok = |s: &str| {
+        s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    };
+    if name.split('/').any(|part| part.is_empty() || !ok(part)) || !ok(explicit) {
+        return None;
+    }
+    Some(format!("{name}:{explicit}"))
+}
+
+/// Télécharge un modèle depuis le registre Ollama. Le manifeste de
+/// l'étiquette (`llama3.2:3b`, `qwen3:8b`, …) liste les blobs ; celui de
+/// type `application/vnd.ollama.image.model` est le GGUF. Écrit dans
+/// models_dir sous `{name}_{tag}.gguf` — les GGUF en plusieurs parties
+/// reçoivent les noms `-00001-of-00002` que llama.cpp sait réassembler.
+async fn pull_ollama_registry(
+    core: &Core,
+    tag: &str,
+    on_event: &Channel<PullProgressEvent>,
+) -> Result<(), String> {
+    let (name, version) = tag
+        .split_once(':')
+        .map(|(n, t)| (n.to_string(), t.to_string()))
+        .unwrap_or_else(|| (tag.to_string(), "latest".to_string()));
+    // Les modeles sans espace de nommage vivent sous `library/`
+    // dans le registre ; ceux d'un utilisateur gardent leur chemin.
+    let reg_name = if name.contains('/') {
+        name.clone()
+    } else {
+        format!("library/{name}")
+    };
+    let file_name = format!("{}_{}.gguf", name.replace('/', "_"), version);
+    let models_dir = locaryn_config::models_dir();
+    std::fs::create_dir_all(&models_dir).map_err(|e| e.to_string())?;
+    let final_path = models_dir.join(&file_name);
+
+    let manifest: serde_json::Value = core
+        .http
+        .get(format!(
+            "https://registry.ollama.ai/v2/{reg_name}/manifests/{version}"
+        ))
+        .header(
+            "Accept",
+            "application/vnd.docker.distribution.manifest.v2+json",
+        )
+        .send()
+        .await
+        .map_err(|e| format!("registre Ollama injoignable : {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("étiquette Ollama `{tag}` introuvable : {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("manifeste Ollama illisible : {e}"))?;
+
+    let mut digests: Vec<String> = Vec::new();
+    for layer in manifest
+        .get("layers")
+        .and_then(|l| l.as_array())
+        .into_iter()
+        .flatten()
+    {
+        if layer.get("mediaType").and_then(|m| m.as_str())
+            == Some("application/vnd.ollama.image.model")
+        {
+            if let Some(d) = layer.get("digest").and_then(|d| d.as_str()) {
+                digests.push(d.to_string());
+            }
+        }
+    }
+    if digests.is_empty() {
+        return Err(format!(
+            "Le manifeste Ollama de `{tag}` ne contient pas de blobs de modèle."
+        ));
+    }
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    core.pull_cancels
+        .lock()
+        .await
+        .insert(file_name.clone(), cancel.clone());
+    let result = async {
+        if final_path.exists() {
+            let size = std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0);
+            let _ = on_event.send(PullProgressEvent {
+                status: format!("{file_name} déjà installé"),
+                completed: size,
+                total: size,
+                percentage: 100.0,
+            });
+            return Ok(());
+        }
+        for (idx, digest) in digests.iter().enumerate() {
+            let this_name = if digests.len() > 1 {
+                format!(
+                    "{name}_{version}-{:05}-of-{:05}.gguf",
+                    idx + 1,
+                    digests.len()
+                )
+            } else {
+                file_name.clone()
+            };
+            let this_final = models_dir.join(&this_name);
+            if this_final.exists() {
+                continue;
+            }
+            let this_part = models_dir.join(format!("{this_name}.part"));
+            do_pull(
+                core,
+                &format!("https://registry.ollama.ai/v2/{reg_name}/blobs/{digest}"),
+                &this_name,
+                &this_final,
+                &this_part,
+                on_event,
+                &cancel,
+                "",
+            )
+            .await?;
+        }
+        Ok(())
+    }
+    .await;
+    core.pull_cancels.lock().await.remove(&file_name);
+    result
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn do_pull(
     core: &Core,
@@ -5454,13 +5600,21 @@ async fn delete_model_cmd(
     _endpoint: String,
     model: String,
 ) -> Result<(), String> {
-    let model = model.trim().replace('\\', "/");
+    let mut model = model.trim().replace('\\', "/");
     if model.is_empty()
         || model.starts_with('/')
         || model.contains("..")
-        || model.contains(':')
         || std::path::Path::new(&model).is_absolute()
     {
+        return Err("nom de modèle invalide".into());
+    }
+    // Une étiquette Ollama n'est pas un lecteur Windows : elle désigne le
+    // fichier écrit par le pull (`llama3.2_3b.gguf`). Traduire avant tout
+    // usage comme chemin.
+    if let Some(tag) = ollama_registry_tag(&format!("ollama/{model}")) {
+        model = tag.replace(['/', ':'], "_");
+        model.push_str(".gguf");
+    } else if model.contains(':') {
         return Err("nom de modèle invalide".into());
     }
     if let Some(client) = core.remote_client() {

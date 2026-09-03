@@ -205,6 +205,10 @@ function getQuantTag(baseTag: string, quant: string): string {
     return baseTag.replace(/-(q[4568]_[a-z0-9_]+|fp16|f16)$/i, `-${qLower}`);
   }
 
+  // Une étiquette Ollama (`qwen3:8b`) désigne déjà une quantisation
+  // précise du registre : ne rien transformer.
+  if (baseTag.includes(":")) return baseTag;
+
   if (qLower === "q4_k_m" || qLower === "q4_0") {
     return baseTag;
   }
@@ -444,6 +448,20 @@ function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?
   if (installedSet.has(`${tag}:latest`)) return true;
   const fileName = tag.startsWith("http") ? tag.split("/").pop()! : tag;
   if (installedSet.has(fileName)) return true;
+
+  // Étiquette du registre Ollama (`qwen3:8b`, `ollama/llama3.2:3b`) : le
+  // pull l'écrit sous `{name}_{tag}.gguf`.
+  {
+    const bare = tag.replace(/^ollama\//, "");
+    if (bare.includes(":") && !bare.includes("/")) {
+      const asFile = `${bare.replace(":", "_")}.gguf`;
+      if (installedSet.has(asFile)) return true;
+      const asFileLower = asFile.toLowerCase();
+      for (const inst of installedSet) {
+        if (inst.toLowerCase() === asFileLower) return true;
+      }
+    }
+  }
 
   // HuggingFace repo URLs (e.g. https://huggingface.co/coqui/XTTS-v2, deliberate-v2, etc.)
   if (tag.startsWith("https://huggingface.co/")) {
@@ -2283,7 +2301,18 @@ export function ModelBrowser({
                 : null;
 
             return (
-              <div key={f.id} className={`locaryn-box-card locaryn-compat-${compat.level}`}>
+              <div
+                key={f.id}
+                className={`locaryn-box-card locaryn-compat-${compat.level}`}
+                style={{ cursor: "pointer" }}
+                onClick={(e) => {
+                  // Les boutons internes (installer, quants, détail)
+                  // gardent la main : seule une zone neutre ouvre le tiroir.
+                  if ((e.target as HTMLElement).closest("button")) return;
+                  setDrawerFamily(f.id);
+                }}
+                title="Voir le détail"
+              >
                 <div className="locaryn-box-head">
                   <div style={{ minWidth: 140, flex: "1 1 55%" }}>
                     <span className="locaryn-box-brand" title={f.brand}>

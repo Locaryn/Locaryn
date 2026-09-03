@@ -314,8 +314,19 @@ pub struct AudioGenBody {
 /// téléchargement casse en route. Les refus qui précèdent tout octet reçu
 /// (adresse invalide, déjà installé) restent des réponses JSON ordinaires.
 pub async fn pull_model(Json(body): Json<PullBody>) -> Response {
-    let raw_url = body.url.or(body.name).or(body.model).unwrap_or_default();
+    let raw_url = body
+        .url
+        .clone()
+        .or(body.name.clone())
+        .or_else(|| body.model.clone())
+        .unwrap_or_default();
     let mut url = raw_url.trim().to_string();
+    // Une étiquette du registre Ollama (`llama3.2:3b`, `ollama/qwen3:8b`)
+    // désigne un GGUF téléchargeable sans qu'Ollama soit installé : la
+    // reconnaître avant toute autre interprétation de l'adresse.
+    if let Some(tag) = classify_ollama_tag(raw_url.trim()) {
+        return pull_ollama_tag(&tag, body).await;
+    }
     if url.starts_with("hf.co/") {
         url = url.replace("hf.co/", "https://huggingface.co/");
     } else if !url.starts_with("http")
@@ -611,6 +622,12 @@ fn remove_model_artifacts(name: &str) -> Result<(), String> {
 /// ne doit pas en casser un autre.
 pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>) -> Response {
     let name = name.trim().replace('\\', "/");
+    // Une étiquette Ollama désigne le fichier écrit par le pull
+    // (`{name}_{tag}.gguf`) : traduire avant la validation de chemin.
+    let name = match classify_ollama_tag(&format!("ollama/{name}")) {
+        Some(tag) => tag.replace(['/', ':'], "_") + ".gguf",
+        None => name,
+    };
     if !nom_modele_valide(&name) {
         return err_response(
             StatusCode::BAD_REQUEST,
@@ -652,9 +669,253 @@ pub async fn remove_model(axum::extract::Path(name): axum::extract::Path<String>
     }
 }
 
-/// Un nom de modèle est-il sûr à utiliser comme chemin, sans sortir du
-/// dossier des modèles ? Les sous-chemins `repo/variant.gguf` sont autorisés
-/// pour pouvoir supprimer une quantisation précise d'un dépôt multi-modèles.
+/// Installer un modèle désigné par une étiquette du registre Ollama.
+///
+/// Le manifeste de l'étiquette liste les blobs ; celui de type
+/// `application/vnd.ollama.image.model` est le GGUF (un par partie pour un
+/// GGUF fragmenté). Le fichier reçoit le nom `{name}_{tag}.gguf` dans le
+/// dossier des modèles — avec les suffixes `-00001-of-00002` que llama.cpp
+/// réassemble quand le GGUF est en plusieurs parties. La réponse est le même
+/// flux SSE que les autres installations.
+async fn pull_ollama_tag(tag: &str, body: PullBody) -> Response {
+    let (name, version) = tag
+        .split_once(':')
+        .map(|(n, t)| (n.to_string(), t.to_string()))
+        .unwrap_or_else(|| (tag.to_string(), "latest".to_string()));
+    // Les modeles sans espace de nommage vivent sous `library/`
+    // dans le registre ; ceux d'un utilisateur gardent leur chemin.
+    let reg_name = if name.contains('/') {
+        name.clone()
+    } else {
+        format!("library/{name}")
+    };
+    let file_name = format!("{}_{}.gguf", name.replace('/', "_"), version);
+    let models_dir = locaryn_config::models_dir();
+    if let Err(e) = std::fs::create_dir_all(&models_dir) {
+        return err_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "mkdir_failed",
+            &format!("dossier des modèles illisible : {e}"),
+        );
+    }
+    let final_path = models_dir.join(&file_name);
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3600))
+        .user_agent("locaryn-daemon")
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "client_failed",
+                &format!("client : {e}"),
+            );
+        }
+    };
+    let manifest = match client
+        .get(format!(
+            "https://registry.ollama.ai/v2/{reg_name}/manifests/{version}"
+        ))
+        .header(
+            "Accept",
+            "application/vnd.docker.distribution.manifest.v2+json",
+        )
+        .send()
+        .await
+    {
+        Ok(resp) => match resp.error_for_status() {
+            Ok(resp) => match resp.json::<serde_json::Value>().await {
+                Ok(v) => v,
+                Err(e) => {
+                    return err_response(
+                        StatusCode::BAD_GATEWAY,
+                        "download_failed",
+                        &format!("manifeste Ollama illisible : {e}"),
+                    );
+                }
+            },
+            Err(e) => {
+                return err_response(
+                    StatusCode::BAD_GATEWAY,
+                    "download_failed",
+                    &format!("étiquette Ollama `{tag}` introuvable : {e}"),
+                );
+            }
+        },
+        Err(e) => {
+            return err_response(
+                StatusCode::BAD_GATEWAY,
+                "download_failed",
+                &format!("registre Ollama injoignable : {e}"),
+            );
+        }
+    };
+    let mut digests: Vec<String> = Vec::new();
+    for layer in manifest
+        .get("layers")
+        .and_then(|l| l.as_array())
+        .into_iter()
+        .flatten()
+    {
+        if layer.get("mediaType").and_then(|m| m.as_str())
+            == Some("application/vnd.ollama.image.model")
+        {
+            if let Some(d) = layer.get("digest").and_then(|d| d.as_str()) {
+                digests.push(d.to_string());
+            }
+        }
+    }
+    if digests.is_empty() {
+        return err_response(
+            StatusCode::BAD_GATEWAY,
+            "download_failed",
+            &format!("Le manifeste Ollama de `{tag}` ne contient pas de blobs de modèle."),
+        );
+    }
+
+    // Déjà installé ? Les fichiers compagnons déclarés restent possibles,
+    // comme pour un fichier direct.
+    let mut compagnons: Vec<MarketplaceCompanionDownload> = Vec::new();
+    for comp in body.companions {
+        if !models_dir.join(&comp.file).exists() {
+            compagnons.push(comp);
+        }
+    }
+    let already_installed = final_path.exists();
+    if already_installed && compagnons.is_empty() {
+        let _ = std::fs::remove_file(final_path.with_extension("part"));
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "error": { "code": "already_installed", "message": format!("{file_name} est déjà installé.") }
+            })),
+        )
+            .into_response();
+    }
+    let mut total = if already_installed {
+        0
+    } else {
+        // La taille de chaque blob est connue d'avance : la barre est vraie
+        // dès la première seconde.
+        let mut somme = 0u64;
+        for digest in &digests {
+            somme += head_length(
+                &client,
+                &format!("https://registry.ollama.ai/v2/{reg_name}/blobs/{digest}"),
+            )
+            .await
+            .unwrap_or(0);
+        }
+        somme
+    };
+    for comp in &compagnons {
+        total += head_length(&client, &comp.url).await.unwrap_or(0);
+    }
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<serde_json::Value>(32);
+    let progress = PullProgress::nouvelle(tx, total);
+    progress.emettre(None);
+    tokio::spawn(async move {
+        let resultat = async {
+            if already_installed {
+                return std::fs::metadata(&final_path)
+                    .map(|m| m.len())
+                    .map_err(|e| e.to_string());
+            }
+            for (idx, digest) in digests.iter().enumerate() {
+                let this_name = if digests.len() > 1 {
+                    format!(
+                        "{name}_{version}-{:05}-of-{:05}.gguf",
+                        idx + 1,
+                        digests.len()
+                    )
+                } else {
+                    file_name.clone()
+                };
+                let this_final = models_dir.join(&this_name);
+                if this_final.exists() {
+                    if let Ok(meta) = std::fs::metadata(&this_final) {
+                        progress.ajouter(meta.len(), None);
+                    }
+                    continue;
+                }
+                let this_part = models_dir.join(format!("{this_name}.part"));
+                download_to(
+                    &client,
+                    &format!("https://registry.ollama.ai/v2/{reg_name}/blobs/{digest}"),
+                    &this_final,
+                    &this_part,
+                    &progress,
+                )
+                .await?;
+            }
+            if compagnons.is_empty() {
+                Ok(0u64)
+            } else {
+                progress.noter("Installation des compagnons…");
+                Ok(0u64)
+            }
+        }
+        .await;
+        match resultat {
+            Ok(_) => {
+                progress.terminer();
+                let _ = progress.tx.try_send(serde_json::json!({
+                    "done": true,
+                    "name": file_name,
+                    "size": total,
+                }));
+            }
+            Err(msg) => {
+                let _ = progress.tx.try_send(serde_json::json!({ "error": msg }));
+            }
+        }
+    });
+
+    let stream = futures::stream::unfold(rx, |mut rx| async move {
+        rx.recv()
+            .await
+            .map(|v| (serde_json::to_string(&v).unwrap_or_default(), rx))
+    });
+    let sse = Sse::new(
+        stream.map(|ligne| Ok::<Event, std::convert::Infallible>(Event::default().data(ligne))),
+    )
+    .keep_alive(KeepAlive::default());
+    sse.into_response()
+}
+
+/// Reconnaître une étiquette du registre Ollama — `llama3.2:3b`,
+/// `qwen3:8b-instruct`, éventuellement préfixée `ollama/` par le marketplace.
+/// Retourne l'étiquette normalisée `name:tag`. Un identifiant HuggingFace (une
+/// seule barre oblique), une URL ou un chemin local ne correspondent jamais.
+fn classify_ollama_tag(model: &str) -> Option<String> {
+    let raw = model.trim();
+    let had_prefix = raw.starts_with("ollama/");
+    let raw = raw.strip_prefix("ollama/").unwrap_or(raw);
+    // Sans le prefixe explicite `ollama/`, une barre oblique sans
+    // etiquette est un identifiant HuggingFace, pas un modele Ollama.
+    if !had_prefix && raw.contains('/') && !raw.contains(':') {
+        return None;
+    }
+    if raw.len() < 3 || raw.contains('\\') || raw.contains(' ') || raw.starts_with('/') {
+        return None;
+    }
+    let (name, tag) = match raw.split_once(':') {
+        Some((n, t)) if n.len() >= 2 && !t.is_empty() => (n, t),
+        Some(_) => return None,
+        None => (raw, "latest"),
+    };
+    let ok = |s: &str| {
+        s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    };
+    if name.split('/').any(|part| part.is_empty() || !ok(part)) || !ok(tag) {
+        return None;
+    }
+    Some(format!("{name}:{tag}"))
+}
+
 fn nom_modele_valide(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with('/')
