@@ -19,6 +19,7 @@ mod inference_engines;
 mod local_profile;
 mod mcp_servers;
 mod memory;
+mod model_abilities;
 mod model_residency;
 mod secure_client;
 mod server_mode;
@@ -1618,16 +1619,31 @@ async fn bootstrap(core: State<'_, Core>) -> Result<Bootstrap, String> {
 // Chat — the agent loop, streamed to the frontend over a Tauri Channel
 // ============================================================================
 
+/// Un document joint par l'utilisateur, tel que l'interface l'a lu.
+///
+/// Le texte ne rejoint jamais l'invite tel quel : il passe par l'enveloppe de
+/// `locaryn_shared_types::joint_document`, qui le donne au modele comme une
+/// donnee a lire et non comme une consigne a suivre.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct JointDocumentIn {
+    pub name: String,
+    pub text: String,
+}
+
 /// Send a user message and stream the agent's reply. Mirrors the daemon's
 /// `send_message` handler: persist the user message, resolve project context,
 /// ensure the local runtime is up, run OllamaAgent (StubAgent fallback), and
 /// persist the assistant reply when the stream ends.
 #[tauri::command]
+// Tauri serialise chaque parametre par son nom : les regrouper changerait
+// l'API IPC et casserait tous les appelants.
+#[allow(clippy::too_many_arguments)]
 async fn send_message(
     core: State<'_, Core>,
     session_id: Uuid,
     content: String,
     images: Option<Vec<String>>,
+    documents: Option<Vec<JointDocumentIn>>,
     response_format: Option<serde_json::Value>,
     reasoning: Option<serde_json::Value>,
     on_event: Channel<StreamEvent>,
@@ -1881,15 +1897,29 @@ async fn send_message(
         turns
     };
 
+    // Les documents joints entrent dans l'invite sous enveloppe, jamais bruts :
+    // leur contenu est une donnee, et un fichier ne doit pas pouvoir donner des
+    // ordres a la place de l'utilisateur. Le message *enregistre* reste celui
+    // qui a ete tape — meme regle que le contexte RAG ci-dessous.
+    let joints: Vec<locaryn_shared_types::joint_document::JointDocument> = documents
+        .unwrap_or_default()
+        .into_iter()
+        .map(|d| locaryn_shared_types::joint_document::JointDocument {
+            name: d.name,
+            text: d.text,
+        })
+        .collect();
+    let avec_documents = locaryn_shared_types::joint_document::compose_message(&content, &joints);
+
     // RAG: if this project has an index, retrieve relevant chunks and prepend
-    // them to the message the model sees (the stored user message stays raw).
-    // No index → build_rag_context returns immediately and spawns nothing.
+    // them to the message the model sees. La recherche porte sur ce que
+    // l'utilisateur a demande, pas sur le contenu des documents joints.
     let agent_message = match project_id {
         Some(pid) => match build_rag_context(&core, &pid.to_string(), &content).await {
-            Some(ctx) => format!("{ctx}{content}"),
-            None => content,
+            Some(ctx) => format!("{ctx}{avec_documents}"),
+            None => avec_documents,
         },
-        None => content,
+        None => avec_documents,
     };
 
     // Une figure peut restreindre les outils du modèle à ceux qu'elle nomme.
@@ -6496,6 +6526,7 @@ pub fn run() {
             set_inference_config,
             get_profile_preset,
             check_hardware,
+            model_abilities::model_abilities,
             model_residency::model_residency,
             model_residency::check_model_fit,
             model_residency::llmfit_hardware,

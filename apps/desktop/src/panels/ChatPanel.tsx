@@ -16,6 +16,7 @@ import { FREE_CHAT_PATH } from "../lib/constants";
 import {
   type ConnectionMode,
   type InstalledExtension,
+  type ModelAbilities,
   type ReasoningLevel,
   type Session,
   type StreamEvent,
@@ -67,7 +68,22 @@ type ChatItem =
     }
   | { id: string; kind: "log"; text: string };
 
-type Attachment = { id: string; dataUrl: string; base64: string; name: string };
+/**
+ * Une piece jointe. Les deux natures ne suivent pas le meme chemin : une image
+ * part dans le champ `images` de la requete, un texte entre dans l'invite sous
+ * l'enveloppe du coeur, qui le donne au modele comme donnee et non comme
+ * consigne.
+ */
+type Attachment = {
+  id: string;
+  name: string;
+  kind: "image" | "text";
+  /** Image seulement : la miniature et le corps envoye au modele. */
+  dataUrl?: string;
+  base64?: string;
+  /** Texte seulement : le contenu lu. */
+  text?: string;
+};
 type QueuedMessage = { id: string; text: string; attachments: Attachment[] };
 
 /** Identités locales pour les clés React. Rien de ce qui s'affiche dans le fil
@@ -205,16 +221,60 @@ function storedMessageItems(m: { id: string; role: string; content: string }): C
   return result;
 }
 
+/**
+ * Ce que le bouton « Joindre » annonce au survol.
+ *
+ * L'utilisateur qui ouvre la fenetre de selection et n'y voit aucune image n'a
+ * aucune raison de deviner pourquoi : le filtre vient du modele charge, et rien
+ * a l'ecran ne le disait. L'infobulle est donc l'endroit ou on l'explique, et
+ * elle nomme le fichier qui manque plutot que de rester vague.
+ */
+function infobulleJoindre(a: ModelAbilities | null): string {
+  if (!a) return "Joindre un fichier au message";
+  const combien = a.accept.filter((x) => x !== "image/*").length;
+  const texte = `${combien} formats texte (.txt, .md, .csv, code…)`;
+  if (a.vision) {
+    return `Joindre au message : images et ${texte}. Le modèle chargé accepte les images grâce à son projecteur ${a.projector ?? "multimodal"}.`;
+  }
+  return `Joindre au message : ${texte}. Les images n'apparaissent pas dans la fenêtre parce que le modèle chargé n'en accepte pas — il lui faudrait un fichier « mmproj » à côté de ses poids. Chargez un modèle multimodal pour les activer.`;
+}
+
+/** Au-dela, un fichier texte remplirait la fenetre de contexte a lui seul. */
+const MAX_TEXTE_OCTETS = 256 * 1024;
+
+/** Un fichier est-il une image, d'apres ce que le systeme en dit. */
+function estImage(file: File): boolean {
+  return file.type.startsWith("image/");
+}
+
 function readFile(file: File): Promise<Attachment> {
+  if (estImage(file)) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
+        resolve({ id: nextId("att"), kind: "image", dataUrl, base64, name: file.name });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
-      resolve({ id: nextId("att"), dataUrl, base64, name: file.name });
+      let texte = (reader.result as string) ?? "";
+      // Tronquer plutot que refuser : un journal de 40 Mo reste utile par son
+      // debut, et un refus sec obligerait l'utilisateur a le decouper lui-meme.
+      // La coupure est annoncee dans le texte, pour que le modele ne conclue
+      // pas sur un fichier qu'il n'a pas vu en entier.
+      if (texte.length > MAX_TEXTE_OCTETS) {
+        texte = `${texte.slice(0, MAX_TEXTE_OCTETS)}\n\n[Document tronqué : seuls les ${MAX_TEXTE_OCTETS} premiers caractères ont été joints.]`;
+      }
+      resolve({ id: nextId("att"), kind: "text", text: texte, name: file.name });
     };
     reader.onerror = reject;
-    reader.readAsDataURL(file);
+    reader.readAsText(file);
   });
 }
 
@@ -287,6 +347,12 @@ export function ChatPanel({
   const streamRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  /**
+   * Ce que le modele charge accepte. Recharge quand le modele change : c'est
+   * lui qui decide de ce que la fenetre de selection affiche, et de ce que
+   * l'infobulle du bouton annonce.
+   */
+  const [abilities, setAbilities] = useState<ModelAbilities | null>(null);
   const queueRef = useRef<QueuedMessage[]>([]);
   queueRef.current = messageQueue;
   /** Session we just created from the home screen: skip the DB reload once so
@@ -662,12 +728,53 @@ export function ChatPanel({
     }
   }
 
+  // Une premiere lecture au montage, pour que le bouton soit juste avant tout
+  // survol. Le changement de modele est rattrape par le survol du bouton
+  // lui-meme : c'est l'instant qui precede le clic, donc celui ou la reponse
+  // doit etre a jour.
+  useEffect(() => {
+    let vivant = true;
+    void core
+      .modelAbilities()
+      .then((a) => {
+        if (vivant) setAbilities(a);
+      })
+      .catch(() => {
+        // Capacites inconnues : l'infobulle reste generique, et le filtre
+        // retombe sur le texte seul. On ne promet pas ce qu'on n'a pas verifie.
+      });
+    return () => {
+      vivant = false;
+    };
+  }, []);
+
   async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files) return;
     const picked = Array.from(e.target.files);
-    const read = await Promise.all(picked.map(readFile));
-    setAttachments((prev) => [...prev, ...read]);
     e.target.value = "";
+
+    // Le filtre de la fenetre de selection se contourne — glisser-deposer, ou
+    // « tous les fichiers » sur certains systemes. On refait donc le tri ici,
+    // et on le dit : une image acceptee en silence par un modele qui ne la
+    // recevra jamais est pire qu'un refus explique.
+    const refusees = abilities && !abilities.vision ? picked.filter(estImage) : [];
+    const gardees = refusees.length ? picked.filter((f) => !estImage(f)) : picked;
+
+    if (refusees.length) {
+      setItems((prev) => [
+        ...prev,
+        {
+          id: nextId("log"),
+          kind: "log",
+          text: `[${refusees.length} image${refusees.length === 1 ? "" : "s"} ignorée${
+            refusees.length === 1 ? "" : "s"
+          } : le modèle chargé n'accepte que du texte.]`,
+        },
+      ]);
+    }
+    if (!gardees.length) return;
+    const read = await Promise.all(gardees.map(readFile));
+    setAttachments((prev) => [...prev, ...read]);
   }
 
   async function send(textOverride?: string, attachOverride?: Attachment[]) {
@@ -750,7 +857,13 @@ export function ChatPanel({
     fullTextRef.current = "";
     setItems((prev) => [
       ...prev,
-      { id: nextId("msg"), kind: "msg", role: "user", text, images: imgs.map((a) => a.dataUrl) },
+      {
+        id: nextId("msg"),
+        kind: "msg",
+        role: "user",
+        text,
+        images: imgs.filter((a) => a.kind === "image" && a.dataUrl).map((a) => a.dataUrl as string),
+      },
     ]);
 
     const t0 = Date.now();
@@ -794,15 +907,22 @@ export function ChatPanel({
 
     try {
       const chatStart = t0;
+      const images = imgs
+        .filter((a) => a.kind === "image" && a.base64)
+        .map((a) => a.base64 as string);
+      const documents = imgs
+        .filter((a) => a.kind === "text" && a.text)
+        .map((a) => ({ name: a.name, text: a.text as string }));
       await core.sendMessage(
         sid,
         text,
         handleEvent,
-        imgs.length ? imgs.map((a) => a.base64) : undefined,
+        images.length ? images : undefined,
         jsonMode === "on" || (jsonMode === "auto" && wantsJson(text))
           ? { type: "json_object" }
           : null,
         reasoningPayload(reasoning),
+        documents.length ? documents : undefined,
       );
     } catch (e) {
       setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `send failed: ${e}` }]);
@@ -1473,12 +1593,27 @@ export function ChatPanel({
           {attachments.length > 0 && (
             <div className="locaryn-attach-strip">
               {attachments.map((a, i) => (
-                <div key={a.id} className="locaryn-attach-chip">
-                  <img src={a.dataUrl} alt={a.name} />
+                <div
+                  key={a.id}
+                  className={`locaryn-attach-chip${
+                    a.kind === "text" ? " locaryn-attach-chip-doc" : ""
+                  }`}
+                >
+                  {a.kind === "image" ? (
+                    <img src={a.dataUrl} alt={a.name} />
+                  ) : (
+                    // Un document n'a pas de miniature : il se nomme. Sans quoi
+                    // la bande restait vide et rien ne disait qu'un fichier
+                    // partait avec le message.
+                    <span className="locaryn-attach-doc" title={a.name}>
+                      <Icon name="notebook" size={14} />
+                      <span className="locaryn-attach-doc-name">{a.name}</span>
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="locaryn-attach-remove"
-                    aria-label="Retirer l'image"
+                    aria-label={a.kind === "image" ? "Retirer l'image" : "Retirer le document"}
                     onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
                   >
                     <Icon name="close" size={13} />
@@ -1514,7 +1649,10 @@ export function ChatPanel({
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              // Le filtre vient du modele charge : sans projecteur multimodal,
+              // aucune image n'apparait dans la fenetre. C'est ce silence que
+              // l'infobulle du bouton explique.
+              accept={(abilities?.accept ?? [".txt", ".md"]).join(",")}
               multiple
               hidden
               onChange={onPickFiles}
@@ -1523,8 +1661,17 @@ export function ChatPanel({
             <button
               type="button"
               className="locaryn-chip-btn"
-              title="Joindre une image au message"
+              title={infobulleJoindre(abilities)}
               disabled={!canCompose}
+              // Le survol precede le clic : c'est le moment ou l'infobulle doit
+              // etre juste, y compris si le modele a change depuis l'ouverture
+              // de la conversation.
+              onMouseEnter={() => {
+                void core
+                  .modelAbilities()
+                  .then(setAbilities)
+                  .catch(() => {});
+              }}
               onClick={() => fileRef.current?.click()}
             >
               <Icon name="plus" size={15} /> Joindre

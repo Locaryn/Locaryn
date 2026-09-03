@@ -1428,6 +1428,34 @@ export interface Capability {
   description: string;
 }
 
+/** Un document joint : lu cote interface, mis sous enveloppe cote coeur. */
+export interface JointDocument {
+  name: string;
+  text: string;
+}
+
+/**
+ * Ce qu'on sait d'une capacite du modele.
+ *
+ * `inconnu` n'est pas `non` : beaucoup de fichiers GGUF ne declarent aucun
+ * gabarit de conversation, et annoncer une incapacite non verifiee tromperait
+ * dans l'autre sens. L'interface doit donc traiter les trois cas.
+ */
+export type Certitude = "oui" | "non" | "inconnu";
+
+export interface ModelAbilities {
+  model: string | null;
+  /** Le modele accepte des images : un projecteur accompagne ses poids. */
+  vision: boolean;
+  /** Le projecteur trouve, pour pouvoir le nommer. */
+  projector: string | null;
+  tools: Certitude;
+  /** D'ou vient la reponse sur les outils : `props`, `entete` ou `aucune`. */
+  tools_source: string;
+  /** Ce que la fenetre de selection doit accepter. */
+  accept: string[];
+}
+
 export interface CoreApi {
   health(): Promise<Health>;
   bootstrap(): Promise<Bootstrap>;
@@ -1505,7 +1533,10 @@ export interface CoreApi {
     images?: string[],
     responseFormat?: ResponseFormat | null,
     reasoning?: Record<string, unknown> | null,
+    documents?: JointDocument[],
   ): Promise<void>;
+  /** Ce que le modele actif accepte en entree, et ce qu'il sait faire. */
+  modelAbilities(): Promise<ModelAbilities>;
   /** Arrete la generation en cours de la session (sans decharger le modele). */
   stopGeneration(sessionId: string): Promise<void>;
   runTerminal(
@@ -1918,18 +1949,21 @@ const tauriCore: CoreApi = {
   figureSessions: (figureId) => invoke<Session[]>("figure_sessions", { figureId }),
   listMessages: (sessionId) => invoke<Message[]>("list_messages", { sessionId }),
 
-  sendMessage(sessionId, content, onEvent, images, responseFormat, reasoning) {
+  sendMessage(sessionId, content, onEvent, images, responseFormat, reasoning, documents) {
     const chan = new Channel<StreamEvent>();
     chan.onmessage = onEvent;
     return invoke("send_message", {
       sessionId,
       content,
       images: images ?? null,
+      documents: documents ?? null,
       responseFormat: responseFormat ?? null,
       reasoning: reasoning ?? null,
       onEvent: chan,
     });
   },
+
+  modelAbilities: () => invoke<ModelAbilities>("model_abilities"),
 
   stopGeneration(sessionId) {
     return invoke<void>("stop_generation", { sessionId });
@@ -4055,7 +4089,21 @@ const demoCore: CoreApi = {
   }),
   listMessages: async (sessionId) => demoMessages.filter((m) => m.session_id === sessionId),
 
-  async sendMessage(_sessionId, content, onEvent, images, _responseFormat, _reasoning) {
+  async modelAbilities() {
+    // La demo montre le cas le plus instructif : un modele texte seul, dont on
+    // sait qu'il ne gere pas les outils. C'est celui ou l'interface doit
+    // expliquer, plutot que de proposer puis laisser echouer.
+    return {
+      model: "demo-7b-instruct.gguf",
+      vision: false,
+      projector: null,
+      tools: "non" as const,
+      tools_source: "entete",
+      accept: [".txt", ".md", ".csv", ".json", ".rs", ".ts"],
+    };
+  },
+
+  async sendMessage(_sessionId, content, onEvent, images, _responseFormat, _reasoning, documents) {
     demoStreaming.current = true;
     onEvent({ type: "message_start", message_id: "demo", task_id: "demo" });
     // Reasoning models stream a scratchpad before the answer; emit one so the
@@ -4074,6 +4122,15 @@ const demoCore: CoreApi = {
       onEvent({
         type: "token",
         text: `(demo) received ${images.length} image${images.length === 1 ? "" : "s"}. A vision model would describe them here.\n\n`,
+      });
+    }
+    if (documents && documents.length > 0) {
+      await sleep(200);
+      onEvent({
+        type: "token",
+        text: `(demo) ${documents.length} document${documents.length === 1 ? "" : "s"} joint${
+          documents.length === 1 ? "" : "s"
+        } : ${documents.map((d) => d.name).join(", ")}. Le contenu arrive sous enveloppe, comme donnée à lire.\n\n`,
       });
     }
     await sleep(350);

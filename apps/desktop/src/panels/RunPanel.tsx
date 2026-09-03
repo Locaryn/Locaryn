@@ -1,6 +1,53 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
+import { type ModelAbilities, core } from "../lib/core";
 import { type RunView, clearRun, getRun, subscribeRun } from "../lib/runPanel";
+
+/**
+ * Ce qu'il faut dire du modèle chargé avant qu'on attende un artefact de lui.
+ *
+ * Un artefact vient d'un appel d'outil. Un modèle dont le gabarit de
+ * conversation ne mentionne pas les outils n'en appellera jamais : il répondra
+ * en prose, ce panneau restera vide, et rien n'aura dit pourquoi. Le bouton
+ * reste donc actif — le panneau sert aussi à exécuter un bloc de code à la
+ * main — mais il annonce la limite au lieu de la laisser découvrir.
+ *
+ * `inconnu` ne se dit pas comme `non` : beaucoup de fichiers GGUF ne déclarent
+ * aucun gabarit, et le moteur en choisit un au chargement. Annoncer une
+ * incapacité qu'on n'a pas vérifiée serait une erreur de plus, dans l'autre
+ * sens.
+ */
+function AvertissementOutils({ abilities }: { abilities: ModelAbilities | null }) {
+  if (!abilities || abilities.tools === "oui") return null;
+  const inconnu = abilities.tools === "inconnu";
+  return (
+    <div className={`locaryn-run-notice${inconnu ? "" : " locaryn-run-notice-bad"}`} role="note">
+      <Icon name={inconnu ? "info" : "warning"} size={15} />
+      <div>
+        <strong>
+          {inconnu
+            ? "Capacité aux outils non vérifiée"
+            : "Le modèle chargé ne sait pas appeler d'outils"}
+        </strong>
+        <p>
+          {inconnu ? (
+            <>
+              {abilities.model ?? "Ce modèle"} ne déclare pas de gabarit de conversation dans son
+              fichier : impossible de dire d'ici s'il gère les outils. Chargez-le et la réponse
+              deviendra certaine — le moteur dira alors quel gabarit il a retenu.
+            </>
+          ) : (
+            <>
+              Un artefact naît d'un appel d'outil, et le gabarit de {abilities.model ?? "ce modèle"}{" "}
+              n'en prévoit aucun : il répondra en prose sans rien produire ici. Ce panneau reste
+              utilisable pour exécuter un bloc de code à la main.
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 /**
  * The right-hand pane: what running a code block produced.
@@ -12,11 +59,29 @@ import { type RunView, clearRun, getRun, subscribeRun } from "../lib/runPanel";
  */
 export function RunPanel() {
   const [run, setRun] = useState<RunView | null>(getRun());
+  const [abilities, setAbilities] = useState<ModelAbilities | null>(null);
   useEffect(() => subscribeRun(() => setRun(getRun())), []);
+  // Relu à chaque ouverture du panneau : le modèle a pu changer depuis.
+  useEffect(() => {
+    let vivant = true;
+    void core
+      .modelAbilities()
+      .then((a) => {
+        if (vivant) setAbilities(a);
+      })
+      .catch(() => {
+        // Capacités inconnues : on n'affiche aucun avertissement plutôt qu'un
+        // avertissement dont on ne sait pas s'il est fondé.
+      });
+    return () => {
+      vivant = false;
+    };
+  }, []);
 
   if (!run) {
     return (
       <aside className="locaryn-right">
+        <AvertissementOutils abilities={abilities} />
         <div className="locaryn-run-empty">
           <div className="locaryn-run-empty-title">Rien à afficher</div>
           <div className="locaryn-run-empty-sub">

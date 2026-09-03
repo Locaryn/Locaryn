@@ -219,6 +219,12 @@ pub struct GgufSummary {
     pub layer_bytes: u64,
     /// Tout ce qui n'appartient à aucun bloc : embeddings, sortie, normes.
     pub non_layer_bytes: u64,
+    /// Le gabarit de conversation declare par le modele, s'il en porte un.
+    ///
+    /// C'est lui qui dit ce que le modele sait recevoir : un gabarit qui ne
+    /// mentionne jamais d'outils n'en placera aucun dans l'invite, quoi que le
+    /// client envoie.
+    pub chat_template: String,
     /// Type ggml majoritaire en volume — la quantification effective.
     pub dominant_type: u32,
     pub tensor_count: u64,
@@ -236,6 +242,22 @@ impl GgufSummary {
         } else {
             0
         }
+    }
+
+    /// Le modele sait-il recevoir une liste d'outils.
+    ///
+    /// La reponse est dans son gabarit : celui qui gere les outils parcourt la
+    /// liste `tools` pour la decrire au modele. Un gabarit qui ne la nomme
+    /// jamais ignore les outils envoyes — le modele repond en prose au lieu
+    /// d'appeler quoi que ce soit, et rien dans l'echange ne dit pourquoi.
+    ///
+    /// Un en-tete sans gabarit ne permet pas de conclure : on renvoie alors
+    /// `None` plutot que de trancher a sa place.
+    pub fn supports_tools(&self) -> Option<bool> {
+        if self.chat_template.is_empty() {
+            return None;
+        }
+        Some(self.chat_template.contains("tools"))
     }
 
     /// Nom court de la quantification effective (« Q4_K », « Q8_0 »…).
@@ -338,7 +360,11 @@ fn read_value<R: Read + Seek>(r: &mut Reader<R>, kind: u32) -> Result<MetaValue,
         5 => MetaValue::Int(r.u32()? as i32 as i64),
         6 => MetaValue::Float(r.f32()? as f64),
         7 => MetaValue::Bool(r.u8()? != 0),
-        8 => MetaValue::Str(r.string(4096)?),
+        // 64 Kio, et non 4 Kio : un gabarit de conversation en depasse
+        // couramment 4 000 octets, et la lecture rendait alors une chaine vide
+        // — le modele paraissait n'en declarer aucun. Les valeurs de chaine
+        // sont une trentaine dans un en-tete, le cout reste negligeable.
+        8 => MetaValue::Str(r.string(64 * 1024)?),
         9 => {
             let elem = r.u32()?;
             let count = r.u64()?;
@@ -444,6 +470,11 @@ pub fn read_summary(path: &Path) -> Result<GgufSummary, GgufError> {
         expert_count: arch_u32(&meta, &architecture, "expert_count"),
         expert_used_count: arch_u32(&meta, &architecture, "expert_used_count"),
         n_vocab: arch_u32(&meta, &architecture, "vocab_size"),
+        chat_template: meta
+            .get("tokenizer.chat_template")
+            .and_then(MetaValue::as_str)
+            .unwrap_or_default()
+            .to_string(),
         architecture,
         tensor_count,
         file_bytes,
@@ -603,5 +634,31 @@ mod tests {
         std::fs::write(&path, b"PAS DU GGUF DU TOUT ------------").unwrap();
         assert!(matches!(read_summary(&path), Err(GgufError::NotGguf)));
         let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[cfg(test)]
+mod capacites_tests {
+    use super::*;
+
+    /// La detection porte sur le gabarit, pas sur le nom du modele.
+    #[test]
+    fn le_gabarit_dit_si_les_outils_sont_geres() {
+        let sans = GgufSummary {
+            chat_template: "{% for m in messages %}{{ m.content }}{% endfor %}".into(),
+            ..Default::default()
+        };
+        assert_eq!(sans.supports_tools(), Some(false));
+
+        let avec = GgufSummary {
+            chat_template:
+                "{% if tools %}{% for t in tools %}{{ t.function.name }}{% endfor %}{% endif %}"
+                    .into(),
+            ..Default::default()
+        };
+        assert_eq!(avec.supports_tools(), Some(true));
+
+        // Aucun gabarit : on ne conclut pas a sa place.
+        assert_eq!(GgufSummary::default().supports_tools(), None);
     }
 }

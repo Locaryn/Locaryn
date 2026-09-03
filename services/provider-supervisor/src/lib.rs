@@ -1523,7 +1523,13 @@ async fn spawn_airllm_server(
 /// Find the multimodal projector that belongs to `model_path`, if any:
 /// prefer an `mmproj-*` file sharing the model's stem prefix, else a single
 /// unambiguous `mmproj-*.gguf` in the same directory.
-fn find_mmproj_for(model_path: &std::path::Path) -> Option<std::path::PathBuf> {
+///
+/// Public parce que c'est aussi la reponse a « ce modele accepte-t-il des
+/// images ». Le lancement passe `--mmproj` si et seulement si cette fonction
+/// trouve quelque chose : l'interface doit se fonder sur le meme fichier, sans
+/// quoi elle proposerait de joindre des images que le moteur ne recevrait pas.
+/// Elle ne lit que le dossier, donc elle repond aussi quand rien n'est charge.
+pub fn find_mmproj_for(model_path: &std::path::Path) -> Option<std::path::PathBuf> {
     let dir = model_path.parent()?;
     let stem = model_path.file_stem()?.to_string_lossy().to_lowercase();
     // Base model name without the quant suffix, e.g. "qwen2-vl-2b-instruct".

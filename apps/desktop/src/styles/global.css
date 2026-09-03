@@ -3009,6 +3009,34 @@ dialog:where([open]) {
   object-fit: cover;
   display: block;
 }
+/* Un document n'a pas de miniature : la puce s'elargit pour son nom au lieu
+   de rester au carre d'une image. Bornee, pour qu'un nom long ne pousse pas
+   le composeur. */
+.locaryn-attach-chip-doc {
+  width: auto;
+  max-width: min(220px, 60vw);
+  height: auto;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  background: var(--surface-2);
+}
+.locaryn-attach-doc {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) calc(var(--space-2) + 18px) var(--space-2) var(--space-2);
+  color: var(--text-dim);
+}
+.locaryn-attach-doc-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
 .locaryn-attach-remove {
   position: absolute;
   top: 2px;
@@ -8340,6 +8368,35 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   text-align: center;
   color: var(--text-faint);
 }
+/* L'avertissement qui ouvre le panneau des artefacts. Deux tons : un simple
+   rappel quand la capacite est seulement inconnue, un avertissement franc
+   quand on a verifie que le modele ne sait pas appeler d'outils. */
+.locaryn-run-notice {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  margin: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 92%, var(--text) 8%);
+}
+.locaryn-run-notice strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.locaryn-run-notice p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.locaryn-run-notice-bad {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+
 .locaryn-run-empty-title {
   font-size: var(--text-base);
   color: var(--text-dim);
@@ -9482,7 +9539,7 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface-2, var(--surface));
+  background: var(--surface-2);
   font-size: 13px;
   animation: locaryn-suggest-entre 240ms ease-out;
 }
