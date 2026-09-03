@@ -200,6 +200,8 @@ interface SessionRow {
   id: string;
   title: string | null;
   last_message_at: string | null;
+  /** Les permissions propres a la conversation, si la personne les a changees. */
+  trust_override?: "trusted" | "untrusted" | "sandbox" | null;
   archived_at: string | null;
 }
 interface MessageRow {
@@ -322,6 +324,19 @@ async function http<T>(
 /** The machine's name as shown in the top bar. */
 const SERVER_NAME = "Locaryn";
 
+/** Ce que le modele peut faire dans une conversation, et d'ou ca vient. */
+export interface SessionTrust {
+  /** La permission effective : ce que la boucle d'outils recevra. */
+  effective: TrustLevel;
+  /** L'exception posee sur cette conversation ; `null` : heritee du projet. */
+  override_value: TrustLevel | null;
+  /** Ce que porte le projet, pour montrer d'ou part l'heritage. */
+  project: TrustLevel;
+}
+
+/** Les permissions, du plus permissif au plus ferme. */
+export type TrustLevel = "trusted" | "untrusted" | "sandbox";
+
 /** Un jeton du serveur : clé API développeur ou session d'appareil. */
 export interface TokenInfo {
   id: string;
@@ -426,6 +441,34 @@ export const api = {
   /** Les clés API et les sessions d'appareils de l'utilisateur courant. */
   async listTokens(): Promise<TokenInfo[]> {
     return http("/v1/auth/tokens");
+  },
+
+  /** Les permissions d'une conversation : ce que le modele peut faire ici. */
+  async sessionTrust(sessionId: string): Promise<SessionTrust> {
+    return http<SessionTrust>(`/v1/sessions/${sessionId}/trust`);
+  },
+  /** Les changer ; `null` remet l'heritage du projet. */
+  async setSessionTrust(
+    sessionId: string,
+    trust: TrustLevel | null,
+  ): Promise<{ effective: TrustLevel }> {
+    return http<{ effective: TrustLevel }>(`/v1/sessions/${sessionId}/trust`, {
+      method: "POST",
+      body: { trust },
+    });
+  },
+  /** Les permissions par defaut des nouvelles conversations libres. */
+  async defaultTrust(): Promise<TrustLevel> {
+    const r = await http<{ default_trust: TrustLevel }>("/v1/assistance/default-trust");
+    return r.default_trust;
+  },
+  /** Les decider ; les conversations deja ouvertes gardent les leurs. */
+  async setDefaultTrust(trust: TrustLevel): Promise<TrustLevel> {
+    const r = await http<{ default_trust: TrustLevel }>("/v1/assistance/default-trust", {
+      method: "POST",
+      body: { default_trust: trust },
+    });
+    return r.default_trust;
   },
 
   /**

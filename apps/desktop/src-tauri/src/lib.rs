@@ -1254,6 +1254,75 @@ async fn create_ephemeral_session(
         .map_err(|e| e.to_string())
 }
 
+/// Ce que le modèle peut faire dans une conversation, et d'où ça vient.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionTrust {
+    /// La permission effective : ce que la boucle d'outils recevra.
+    pub effective: TrustLevel,
+    /// L'exception posée sur cette conversation, si la personne en a écrit
+    /// une. `None` : la permission vient du projet qui la porte.
+    pub override_value: Option<TrustLevel>,
+    /// Ce que porte le projet, pour montrer d'où part l'héritage.
+    pub project: TrustLevel,
+}
+
+/// Les permissions d'une conversation, vues comme les reçoit le modèle.
+#[tauri::command]
+async fn session_trust(core: State<'_, Core>, session_id: Uuid) -> Result<SessionTrust, String> {
+    let session = core
+        .storage
+        .sessions
+        .get(session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let project = core
+        .storage
+        .projects
+        .get(session.project_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(SessionTrust {
+        effective: session.trust_override.unwrap_or(project.trust_level),
+        override_value: session.trust_override,
+        project: project.trust_level,
+    })
+}
+
+/// Changer les permissions d'une conversation : ce que le modèle peut faire
+/// ici, sans toucher aux autres conversations ni au projet qui la porte.
+///
+/// `trust: None` efface l'exception — la conversation redescend à
+/// l'héritage. On renvoie la permission effective après écriture, pour que
+/// le sélecteur affiche ce que le modèle recevra, jamais un intermédiaire.
+#[tauri::command]
+async fn set_session_trust(
+    core: State<'_, Core>,
+    session_id: Uuid,
+    trust: Option<TrustLevel>,
+) -> Result<TrustLevel, String> {
+    core.storage
+        .sessions
+        .set_trust_override(session_id, trust)
+        .await
+        .map_err(|e| e.to_string())?;
+    let session = core
+        .storage
+        .sessions
+        .get(session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(match session.trust_override {
+        Some(t) => t,
+        None => core
+            .storage
+            .projects
+            .get(session.project_id)
+            .await
+            .map(|p| p.trust_level)
+            .unwrap_or_default(),
+    })
+}
+
 #[tauri::command]
 async fn delete_session(core: State<'_, Core>, id: Uuid) -> Result<(), String> {
     // Tiré avant la suppression : le hook peut encore lire la session.
@@ -1321,12 +1390,33 @@ async fn create_session(
             Some(t)
         }
     });
-    let session = core
+    let mut session = core
         .storage
         .sessions
         .create_with_core(project_id, title, false, core_id.as_deref())
         .await
         .map_err(|e| e.to_string())?;
+    // Les conversations libres portent les permissions par défaut du compte :
+    // c'est là que « chaque nouveau chat » se décide. Une conversation de
+    // projet garde celles du projet, choisies à sa création.
+    if let Ok(project) = core.storage.projects.get(project_id).await {
+        if project.path == FREE_CHAT_PROJECT_PATH {
+            let defaut = locaryn_config::load(None)
+                .map(|c| c.assistance.default_trust)
+                .unwrap_or_default();
+            if core
+                .storage
+                .sessions
+                .set_trust_override(session.id, Some(defaut))
+                .await
+                .is_ok()
+            {
+                if let Ok(apres) = core.storage.sessions.get(session.id).await {
+                    session = apres;
+                }
+            }
+        }
+    }
 
     let root = hooks::project_root_or_cwd(
         core.storage
@@ -1652,7 +1742,9 @@ async fn send_message(
                 (
                     Some(session.project_id),
                     Some(path),
-                    Some(project.trust_level),
+                    // L'exception de la conversation d'abord : c'est elle que
+                    // la personne a réglée pour ce chat, pas pour le projet.
+                    Some(session.trust_override.unwrap_or(project.trust_level)),
                 )
             }
             Err(e) => {
@@ -6215,6 +6307,8 @@ pub fn run() {
             move_session,
             rename_session,
             create_ephemeral_session,
+            session_trust,
+            set_session_trust,
             list_figures,
             save_figure,
             delete_figure,
@@ -6314,6 +6408,8 @@ pub fn run() {
             travel_mode::definir_consigne_systeme,
             travel_mode::modeles_debrides,
             travel_mode::basculer_debridage_modele,
+            travel_mode::permission_defaut,
+            travel_mode::definir_permission_defaut,
             travel_mode::set_micro_model,
             memory::list_memory,
             memory::list_model_metrics,

@@ -10,7 +10,7 @@
 pub mod mtls;
 pub mod provision;
 
-use locaryn_shared_types::ConnectionMode;
+use locaryn_shared_types::{ConnectionMode, TrustLevel};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -55,6 +55,14 @@ pub struct AssistanceConfig {
     /// Les modèles pour lesquels le débridage (mode permissif sans restriction) est activé.
     #[serde(default)]
     pub debrided_models: Vec<String>,
+    /// Les permissions que portent les nouvelles conversations libres.
+    ///
+    /// Un projet ouvert a ses propres permissions, choisies à sa création ;
+    /// ce réglage décide pour les conversations sans projet — celles qu'on
+    /// ouvre pour poser une question. `Untrusted` par défaut : le modèle
+    /// demande avant d'écrire ou d'exécuter.
+    #[serde(default)]
+    pub default_trust: TrustLevel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

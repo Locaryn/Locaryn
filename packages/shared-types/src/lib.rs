@@ -65,6 +65,10 @@ pub struct Session {
     /// installée, ex. OpenClaw ou Hermes). NULL = noyau Locaryn natif.
     #[serde(default)]
     pub core_id: Option<String>,
+    /// Les permissions propres à cette conversation, quand la personne les a
+    /// changées. `None` : elle hérite du projet qui la porte.
+    #[serde(default)]
+    pub trust_override: Option<TrustLevel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

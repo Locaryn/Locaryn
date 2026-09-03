@@ -288,6 +288,17 @@ async fn main() -> anyhow::Result<()> {
             get(list_messages).post(send_message),
         )
         .route("/v1/sessions/:id/cancel", post(cancel_session))
+        // Les permissions d'une conversation : ce que le modele peut faire
+        // ici, regle depuis le client mobile ou le web.
+        .route(
+            "/v1/sessions/:id/trust",
+            get(session_trust).post(set_session_trust),
+        )
+        // Les permissions par defaut des nouvelles conversations libres.
+        .route(
+            "/v1/assistance/default-trust",
+            get(get_default_trust).post(set_default_trust),
+        )
         // Renommer à la main : le titre devient définitif, aucun modèle n'y
         // touche plus.
         .route("/v1/sessions/:id/title", post(rename_session))
@@ -870,21 +881,43 @@ async fn create_session(
     }
 
     let title = None;
-    match s
+    let cree = s
         .storage
         .sessions
         .create_with_core(project_id, title, ephemeral, b.core_id.as_deref())
-        .await
-    {
-        Ok(session) => (StatusCode::CREATED, Json(session)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": { "code": "storage_error", "message": e.to_string() }
-            })),
-        )
-            .into_response(),
+        .await;
+    let mut session = match cree {
+        Ok(session) => session,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": { "code": "storage_error", "message": e.to_string() }
+                })),
+            )
+                .into_response()
+        }
+    };
+    // Les conversations libres portent les permissions par defaut du compte :
+    // c'est la que « chaque nouveau chat » se decide sur le web et le mobile.
+    if let Ok(project) = s.storage.projects.get(project_id).await {
+        if project.path == "__locaryn_free_chats__" {
+            let defaut = locaryn_config::load(None)
+                .map(|c| c.assistance.default_trust)
+                .unwrap_or_default();
+            if s.storage
+                .sessions
+                .set_trust_override(session.id, Some(defaut))
+                .await
+                .is_ok()
+            {
+                if let Ok(apres) = s.storage.sessions.get(session.id).await {
+                    session = apres;
+                }
+            }
+        }
     }
+    (StatusCode::CREATED, Json(session)).into_response()
 }
 
 async fn get_session(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> Response {
@@ -1067,7 +1100,9 @@ async fn send_message(
                 Ok(project) if std::path::Path::new(&project.path).is_dir() => (
                     Some(session.project_id),
                     Some(std::path::PathBuf::from(&project.path)),
-                    Some(project.trust_level),
+                    // L'exception de la conversation d'abord : c'est elle que
+                    // la personne a reglee pour ce chat, pas pour le projet.
+                    Some(session.trust_override.unwrap_or(project.trust_level)),
                 ),
                 Ok(project) => {
                     tracing::debug!(
@@ -1950,6 +1985,161 @@ fn modeles_de_conversation() -> Vec<String> {
         out.push(nom.to_string());
     }
     out
+}
+
+/// Ce que le modele peut faire dans une conversation, et d'ou ca vient.
+#[derive(serde::Serialize)]
+struct SessionTrust {
+    /// La permission effective : ce que la boucle d'outils recevra.
+    effective: locaryn_shared_types::TrustLevel,
+    /// L'exception posee sur cette conversation, si la personne en a ecrit
+    /// une. `null` : la permission vient du projet qui la porte.
+    override_value: Option<locaryn_shared_types::TrustLevel>,
+    /// Ce que porte le projet, pour montrer d'ou part l'heritage.
+    project: locaryn_shared_types::TrustLevel,
+}
+
+/// GET /v1/sessions/{id}/trust — les permissions d'une conversation.
+async fn session_trust(State(s): State<Arc<DaemonState>>, Path(id): Path<String>) -> Response {
+    let Ok(uid) = Uuid::parse_str(&id) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": { "code": "bad_request", "message": "invalid session id" }
+            })),
+        )
+            .into_response();
+    };
+    let session = match s.storage.sessions.get(uid).await {
+        Ok(sess) => sess,
+        Err(e) => {
+            let status = match &e {
+                locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            return (
+                status,
+                Json(serde_json::json!({
+                    "error": { "code": "storage_error", "message": e.to_string() }
+                })),
+            )
+                .into_response();
+        }
+    };
+    let project = match s.storage.projects.get(session.project_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": { "code": "storage_error", "message": e.to_string() }
+                })),
+            )
+                .into_response();
+        }
+    };
+    Json(SessionTrust {
+        effective: session.trust_override.unwrap_or(project.trust_level),
+        override_value: session.trust_override,
+        project: project.trust_level,
+    })
+    .into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct SetTrustBody {
+    /// La permission a poser sur la conversation. `null` : remettre
+    /// l'heritage du projet — l'exception s'efface.
+    trust: Option<locaryn_shared_types::TrustLevel>,
+}
+
+/// POST /v1/sessions/{id}/trust — changer les permissions d'une conversation.
+async fn set_session_trust(
+    State(s): State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+    Json(body): Json<SetTrustBody>,
+) -> Response {
+    let Ok(uid) = Uuid::parse_str(&id) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": { "code": "bad_request", "message": "invalid session id" }
+            })),
+        )
+            .into_response();
+    };
+    if let Err(e) = s.storage.sessions.set_trust_override(uid, body.trust).await {
+        let status = match &e {
+            locaryn_storage::StorageError::NotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        return (
+            status,
+            Json(serde_json::json!({
+                "error": { "code": "storage_error", "message": e.to_string() }
+            })),
+        )
+            .into_response();
+    }
+    // La permission effective apres ecriture : l'exception si elle existe,
+    // sinon ce que porte le projet — le client affiche ce que le modele
+    // recevra, jamais un intermediaire.
+    let session = match s.storage.sessions.get(uid).await {
+        Ok(sess) => sess,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": { "code": "storage_error", "message": e.to_string() }
+                })),
+            )
+                .into_response();
+        }
+    };
+    let effective = match session.trust_override {
+        Some(t) => t,
+        None => s
+            .storage
+            .projects
+            .get(session.project_id)
+            .await
+            .map(|p| p.trust_level)
+            .unwrap_or_default(),
+    };
+    Json(serde_json::json!({ "effective": effective })).into_response()
+}
+
+/// GET /v1/assistance/default-trust — les permissions des nouveaux chats.
+async fn get_default_trust() -> Response {
+    let niveau = locaryn_config::load(None)
+        .map(|c| c.assistance.default_trust)
+        .unwrap_or_default();
+    Json(serde_json::json!({ "default_trust": niveau })).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct DefaultTrustBody {
+    default_trust: locaryn_shared_types::TrustLevel,
+}
+
+/// POST /v1/assistance/default-trust — les decider.
+///
+/// Ca ne rouvre pas le passe : les conversations deja ouvertes gardent ce
+/// qu'elles portent, et chacune reste modifiable dans son panneau.
+async fn set_default_trust(Json(body): Json<DefaultTrustBody>) -> Response {
+    if let Err(e) = locaryn_config::set_global(
+        "assistance",
+        serde_json::json!({ "default_trust": body.default_trust }),
+    ) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": { "code": "config", "message": e.to_string() }
+            })),
+        )
+            .into_response();
+    }
+    Json(serde_json::json!({ "default_trust": body.default_trust })).into_response()
 }
 
 #[derive(serde::Deserialize)]

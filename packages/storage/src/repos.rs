@@ -52,6 +52,7 @@ struct SessionRow {
     archived_at: Option<String>,
     ephemeral: i64,
     core_id: Option<String>,
+    trust_override: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -221,6 +222,7 @@ impl TryFrom<SessionRow> for Session {
             archived_at: opt_dt(r.archived_at.as_deref())?,
             ephemeral: r.ephemeral != 0,
             core_id: r.core_id,
+            trust_override: r.trust_override.as_deref().map(TrustLevel::from_token),
         })
     }
 }
@@ -753,7 +755,7 @@ impl SessionRepo {
     pub async fn list_for_project(&self, project_id: Uuid) -> Result<Vec<Session>, StorageError> {
         let rows = sqlx::query_as::<_, SessionRow>(
             "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
-             closed_at, archived_at, ephemeral, core_id \
+             closed_at, archived_at, ephemeral, core_id, trust_override \
              FROM sessions \
              WHERE project_id = ? AND closed_at IS NULL AND archived_at IS NULL \
              AND (ephemeral = 0 OR ephemeral IS NULL) \
@@ -804,8 +806,8 @@ impl SessionRepo {
         let now = chrono::Utc::now().to_rfc3339();
         let row = sqlx::query_as::<_, SessionRow>(
             "INSERT INTO sessions (id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral, core_id) \
-             VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, ?, ?) \
-             RETURNING id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral, core_id",
+             VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, ?, ?, NULL) \
+             RETURNING id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral, core_id, trust_override",
         )
         .bind(id.to_string())
         .bind(project_id.to_string())
@@ -840,7 +842,7 @@ impl SessionRepo {
     pub async fn list_archived(&self, project_id: Uuid) -> Result<Vec<Session>, StorageError> {
         let rows = sqlx::query_as::<_, SessionRow>(
             "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
-             closed_at, archived_at, ephemeral, core_id \
+             closed_at, archived_at, ephemeral, core_id, trust_override \
              FROM sessions WHERE project_id = ? AND archived_at IS NOT NULL \
              ORDER BY archived_at DESC",
         )
@@ -866,7 +868,7 @@ impl SessionRepo {
     pub async fn get(&self, id: Uuid) -> Result<Session, StorageError> {
         let row = sqlx::query_as::<_, SessionRow>(
             "SELECT id, project_id, title, provider_id, model, created_at, last_message_at, \
-             closed_at, archived_at, ephemeral, core_id \
+             closed_at, archived_at, ephemeral, core_id, trust_override \
              FROM sessions WHERE id = ?",
         )
         .bind(id.to_string())
@@ -944,6 +946,33 @@ impl SessionRepo {
         }
         let res = sqlx::query("UPDATE sessions SET title = ?, title_locked = 1 WHERE id = ?")
             .bind(titre)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        if res.rows_affected() == 0 {
+            return Err(StorageError::NotFound(format!("session {id}")));
+        }
+        Ok(())
+    }
+
+    /// Changer les permissions d'une conversation, ou les remettre à celles
+    /// du projet qui la porte.
+    ///
+    /// `None` efface l'exception : la conversation redescend à l'héritage.
+    /// La valeur effective se lit ensuite sur la session — l'exception si
+    /// elle existe, sinon ce que porte le projet.
+    pub async fn set_trust_override(
+        &self,
+        id: Uuid,
+        trust: Option<TrustLevel>,
+    ) -> Result<(), StorageError> {
+        let jeton = trust.map(|t| match t {
+            TrustLevel::Trusted => "trusted",
+            TrustLevel::Untrusted => "untrusted",
+            TrustLevel::Sandbox => "sandbox",
+        });
+        let res = sqlx::query("UPDATE sessions SET trust_override = ? WHERE id = ?")
+            .bind(jeton)
             .bind(id.to_string())
             .execute(&self.pool)
             .await?;

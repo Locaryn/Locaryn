@@ -37,6 +37,9 @@ export interface Session {
   /** Noyau choisi pour cette conversation (id de l'extension de noyau).
    *  Absent ou null = noyau Locaryn natif. */
   core_id?: string | null;
+  /** Les permissions propres a cette conversation, quand la personne les a
+   *  changees. Absent ou null : elle herite du projet qui la porte. */
+  trust_override?: "trusted" | "untrusted" | "sandbox" | null;
 }
 
 export interface Message {
@@ -865,6 +868,17 @@ export interface SystemPrompt {
   envoye: string;
 }
 
+/** Ce que le modele peut faire dans une conversation, et d'ou ca vient. */
+export interface SessionTrust {
+  /** La permission effective : ce que la boucle d'outils recevra. */
+  effective: TrustLevel;
+  /** L'exception posee sur cette conversation, si la personne en a ecrit
+   *  une. `null` : la permission vient du projet qui la porte. */
+  override_value: TrustLevel | null;
+  /** Ce que porte le projet, pour montrer d'ou part l'heritage. */
+  project: TrustLevel;
+}
+
 export interface MicroModel {
   model: string | null;
   available: string[];
@@ -1661,6 +1675,14 @@ export interface CoreApi {
   systemPrompt(): Promise<SystemPrompt>;
   /** `null` ou un texte vide : ne rien poser devant le modèle. */
   setSystemPrompt(texte: string | null): Promise<SystemPrompt>;
+  /** Les permissions d'une conversation : ce que le modele peut faire ici. */
+  sessionTrust(sessionId: string): Promise<SessionTrust>;
+  /** Les changer ; `null` remet l'heritage du projet. */
+  setSessionTrust(sessionId: string, trust: TrustLevel | null): Promise<TrustLevel>;
+  /** Les permissions par defaut des nouvelles conversations libres. */
+  defaultTrust(): Promise<TrustLevel>;
+  /** Les decider ; les conversations deja ouvertes gardent les leurs. */
+  setDefaultTrust(trust: TrustLevel): Promise<TrustLevel>;
   /** Liste des modèles dont le débridage est actif. */
   listDebridedModels(): Promise<string[]>;
   /** Activer ou désactiver le débridage pour un modèle. */
@@ -2072,6 +2094,11 @@ const tauriCore: CoreApi = {
   pairingCode: (mode, url) => invoke<PairingCode>("pairing_code", { mode, url }),
   systemPrompt: () => invoke<SystemPrompt>("consigne_systeme"),
   setSystemPrompt: (texte) => invoke<SystemPrompt>("definir_consigne_systeme", { texte }),
+  sessionTrust: (sessionId) => invoke<SessionTrust>("session_trust", { sessionId }),
+  setSessionTrust: (sessionId, trust) =>
+    invoke<TrustLevel>("set_session_trust", { sessionId, trust }),
+  defaultTrust: () => invoke<TrustLevel>("permission_defaut"),
+  setDefaultTrust: (trust) => invoke<TrustLevel>("definir_permission_defaut", { trust }),
   listDebridedModels: () => invoke<string[]>("modeles_debrides"),
   toggleModelDebridage: (tag: string, active: boolean) =>
     invoke<string[]>("basculer_debridage_modele", { tag, actif: active }),
@@ -4783,6 +4810,14 @@ const demoCore: CoreApi = {
   }),
   systemPrompt: async () => ({ texte: null, envoye: "" }),
   setSystemPrompt: async (texte) => ({ texte, envoye: texte ?? "" }),
+  sessionTrust: async () => ({
+    effective: "untrusted",
+    override_value: null,
+    project: "untrusted",
+  }),
+  setSessionTrust: async (_sessionId, trust) => trust ?? "untrusted",
+  defaultTrust: async () => "untrusted",
+  setDefaultTrust: async (trust) => trust,
   listDebridedModels: async () => [],
   toggleModelDebridage: async () => [],
   microModel: async () => ({ model: null, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),

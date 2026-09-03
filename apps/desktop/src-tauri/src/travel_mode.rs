@@ -226,6 +226,33 @@ pub async fn basculer_debridage_modele(tag: String, actif: bool) -> Result<Vec<S
     modeles_debrides().await
 }
 
+/// Les permissions que portent les nouvelles conversations libres.
+///
+/// Un projet ouvert a les siennes, choisies à sa création ; ce réglage décide
+/// pour les conversations qu'on ouvre pour poser une question. `Untrusted`
+/// par défaut : le modèle demande avant d'écrire ou d'exécuter.
+#[tauri::command]
+pub async fn permission_defaut() -> Result<locaryn_shared_types::TrustLevel, String> {
+    Ok(locaryn_config::load(None)
+        .map(|c| c.assistance.default_trust)
+        .unwrap_or_default())
+}
+
+/// Changer les permissions par défaut des nouvelles conversations libres.
+///
+/// Ça ne rouvre pas le passé : les conversations déjà ouvertes gardent ce
+/// qu'elles portent, et chacune reste modifiable dans son panneau.
+#[tauri::command]
+pub async fn definir_permission_defaut(
+    trust: locaryn_shared_types::TrustLevel,
+) -> Result<locaryn_shared_types::TrustLevel, String> {
+    // `TrustLevel` est Copy et sérialise en minuscules — le même jeton que
+    // celui que la base stocke, donc un seul vocabulaire de bout en bout.
+    locaryn_config::set_global("assistance", serde_json::json!({ "default_trust": trust }))
+        .map_err(|e| e.to_string())?;
+    Ok(trust)
+}
+
 /// Le modèle des micro-tâches, et ce qu'on peut choisir.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MicroModel {

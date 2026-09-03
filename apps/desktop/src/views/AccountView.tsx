@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { ConversationHistorySettings } from "../components/ConversationHistorySettings";
+import { DefaultPermissionsSettings } from "../components/DefaultPermissionsSettings";
 import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
 import { type LocalProfile, type Project, type Session, core } from "../lib/core";
@@ -28,7 +29,13 @@ type Props = {
   onSectionChange?: (section: AccountSection) => void;
 };
 
-export type AccountSection = "profile" | "models" | "memory" | "archives" | "conversations";
+export type AccountSection =
+  | "profile"
+  | "models"
+  | "permissions"
+  | "memory"
+  | "archives"
+  | "conversations";
 
 /**
  * Espace compte.
@@ -173,6 +180,19 @@ export function AccountView({
           </button>
           <button
             type="button"
+            className={`locaryn-account-nav-item${section === "permissions" ? " locaryn-active" : ""}`}
+            onClick={() => setSection("permissions")}
+          >
+            <span className="locaryn-account-nav-icon locaryn-account-nav-icon-models">
+              <Icon name="shield" size={15} />
+            </span>
+            <span className="locaryn-account-nav-text">
+              <strong>Permissions</strong>
+              <small>Ce que le modèle peut faire</small>
+            </span>
+          </button>
+          <button
+            type="button"
             className={`locaryn-account-nav-item${section === "conversations" ? " locaryn-active" : ""}`}
             onClick={() => setSection("conversations")}
           >
@@ -218,6 +238,8 @@ export function AccountView({
           <ArchivesView onOpenSession={onOpenSession} />
         ) : section === "models" ? (
           <ModelPreferencesSettings activeCapabilities={activeCapabilities} />
+        ) : section === "permissions" ? (
+          <DefaultPermissionsSettings />
         ) : section === "memory" ? (
           <MemorySettings />
         ) : section === "conversations" ? (

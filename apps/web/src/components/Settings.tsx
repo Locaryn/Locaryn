@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
-import { type TokenInfo, type WebStatus, api } from "../lib/core";
+import { type TokenInfo, type TrustLevel, type WebStatus, api } from "../lib/core";
 
 /** Les choix d'expiration d'une clé API, dans l'ordre où on les lit. */
 const EXPIRATIONS: { value: number | null; label: string }[] = [
@@ -58,6 +58,8 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
   const [devices, setDevices] = useState<TokenInfo[]>([]);
   const [newKeyLabel, setNewKeyLabel] = useState("");
   const [newKeyExpiry, setNewKeyExpiry] = useState<number | null>(null);
+  // Les permissions par defaut des nouvelles conversations libres.
+  const [defaultTrust, setDefaultTrust] = useState<TrustLevel | null>(null);
   const [freshToken, setFreshToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -73,6 +75,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
       setDevices(tokens.filter((t) => t.kind === "session"));
     } catch {
       // Pas de compte : les listes restent vides, les sections ne s'affichent pas.
+    }
+    try {
+      setDefaultTrust(await api.defaultTrust());
+    } catch {
+      // Le reglage garde sa valeur d'origine.
     }
   }, []);
 
@@ -419,6 +426,40 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
                   </button>
                 )}
               </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {status.signed_in && (
+        <section className="lo-section">
+          <h2 className="lo-section-title">Permissions des nouvelles conversations</h2>
+          <p className="lo-hint">
+            Ce que le modele pourra faire dans chaque nouveau chat ouvert sur ce serveur. Les
+            conversations deja ouvertes gardent les leurs.
+          </p>
+          <div className="lo-segmented" style={{ marginTop: 12 }} role="group">
+            {(
+              [
+                ["untrusted", "Demander avant d'agir"],
+                ["trusted", "Tout autoriser"],
+                ["sandbox", "Apercu seul"],
+              ] as [TrustLevel, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={defaultTrust === value ? "lo-segment-on" : undefined}
+                onClick={async () => {
+                  try {
+                    setDefaultTrust(await api.setDefaultTrust(value));
+                  } catch {
+                    // Le reglage reste tel quel.
+                  }
+                }}
+              >
+                {label}
+              </button>
             ))}
           </div>
         </section>

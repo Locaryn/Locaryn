@@ -1334,7 +1334,10 @@ export function App() {
               tabIndex={0}
             />
             <div style={{ width: rightW, flex: "none", display: "flex", minWidth: 0 }}>
-              <ModelConfigPanel onClose={() => setShowModelConfig(false)} />
+              <ModelConfigPanel
+                sessionId={activeSession?.id ?? null}
+                onClose={() => setShowModelConfig(false)}
+              />
             </div>
           </>
         )}

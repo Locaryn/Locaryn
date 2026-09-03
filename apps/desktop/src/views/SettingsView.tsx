@@ -36,6 +36,12 @@ const ACCOUNT_SECTIONS: { id: AccountSection; label: string; desc: string; icon:
     icon: "models",
   },
   {
+    id: "permissions",
+    label: "Permissions",
+    desc: "Ce que le modèle peut faire dans les nouveaux chats",
+    icon: "shield",
+  },
+  {
     id: "conversations",
     label: "Conversations",
     desc: "Historique et conversations récentes",
