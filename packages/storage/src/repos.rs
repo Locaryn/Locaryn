@@ -1377,6 +1377,23 @@ impl ProviderRepo {
         Ok(())
     }
 
+    /// Change — ou efface — le modèle de ce fournisseur.
+    ///
+    /// Effacer sert au démarrage : un nom qui désigne des poids absents du
+    /// disque doit disparaître, sinon l'application annonce un modèle installé
+    /// que la bibliothèque ne connaît pas, et chaque envoi finit sur « aucun
+    /// modèle local n'a répondu ». Les poids ne sont jamais touchés ici : seul
+    /// le nom enregistré change.
+    pub async fn set_model(&self, id: Uuid, model: Option<&str>) -> Result<(), StorageError> {
+        sqlx::query("UPDATE providers SET model = ?, updated_at = ? WHERE id = ?")
+            .bind(model)
+            .bind(chrono::Utc::now().to_rfc3339())
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     /// Could this name plausibly be loaded by a text-generation server?
     ///
     /// A speech or image checkpoint stored as the chat model makes

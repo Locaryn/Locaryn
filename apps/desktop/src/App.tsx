@@ -624,7 +624,17 @@ export function App() {
 
       return s;
     } catch (e) {
+      // Ce chemin est celui du premier message depuis l'écran d'accueil. Quand
+      // il échouait, l'envoi retournait sans rien faire : pas de message, pas
+      // d'erreur, rien — et le chat paraissait simplement ne pas marcher. La
+      // raison doit sortir de la console.
       console.warn("Create session from prompt failed:", e);
+      const raison = String(e).replace(/^Error:\s*/, "");
+      const id = taskCenter.add({ type: "edit", label: "Nouvelle conversation" });
+      taskCenter.fail(id, `Impossible de créer la conversation : ${raison}`);
+      window.alert(
+        `La conversation n'a pas pu être créée, votre message n'a donc pas été envoyé.\n\n${raison}`,
+      );
       return null;
     }
   }

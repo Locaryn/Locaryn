@@ -5463,6 +5463,45 @@ pre.md-code {
 }
 
 /* Grid layout */
+/* La classe etait utilisee par le bouton « Rafraichir le catalogue » sans etre
+   definie nulle part : l'icone restait immobile pendant tout le chargement, et
+   rien ne disait que quelque chose se passait. */
+@keyframes locaryn-spin-tour {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.locaryn-spin {
+  animation: locaryn-spin-tour 900ms linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-spin {
+    animation-duration: 2.4s;
+  }
+}
+
+.locaryn-model-loading {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.locaryn-model-loading strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.locaryn-model-loading p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
 .locaryn-model-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));

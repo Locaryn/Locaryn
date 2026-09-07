@@ -889,9 +889,9 @@ export interface PairingCode {
   mode: string;
   url: string;
   qr_svg: string;
-  /** Одноразовий код підтвердження (Circuit B). Порожній, якщо сервер старіший за цю функцію. */
+  /** Code de confirmation à usage unique. Absent d'un serveur plus ancien. */
   pairing_code?: string;
-  /** Тривалість дії коду в секундах (зазвичай 120). */
+  /** Durée de validité du code, en secondes (120 en pratique). */
   pairing_ttl_seconds?: number;
 }
 

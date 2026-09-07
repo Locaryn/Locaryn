@@ -9,16 +9,13 @@ pub mod exec;
 pub mod reasoning;
 
 pub mod mcp_tools;
-pub mod ollama;
 pub mod openai_compat;
 pub mod openai_tool_loop;
 pub mod profile;
 pub mod titling;
-pub mod tool_loop;
 pub mod tools;
 
 pub use exec::execute_tool_call;
-pub use ollama::OllamaAgent;
 pub use openai_compat::OpenAiCompatAgent;
 pub use profile::{AgentProfile, AgentRegistry};
 pub use tools::{ToolContext, ToolError, ToolResult, ToolSpec};
@@ -35,13 +32,13 @@ pub struct AgentInput {
     pub mode: ConnectionMode,
     pub model: Option<String>,
     pub agent: Option<String>,
-    /// S4: project context for the tool-use loop. When all three are `Some`,
-    /// `OllamaAgent` runs the agentic tool-use loop instead of simple streaming.
+    /// Contexte projet de la boucle d'outils. Quand les trois sont `Some`,
+    /// l'agent tourne la boucle agentique au lieu d'un simple flux.
     pub project_id: Option<uuid::Uuid>,
     pub project_path: Option<std::path::PathBuf>,
     pub trust: Option<locaryn_shared_types::TrustLevel>,
     /// Base64-encoded images attached to the user message (no data-URL prefix).
-    /// Passed through to vision-capable models via Ollama's `images` field.
+    /// Transmises aux modeles multimodaux par le champ `images` de la requete.
     pub images: Vec<String>,
     /// Sampling parameters merged verbatim into the request body
     /// (temperature, top_p, top_k, max_tokens, repeat_penalty, seed…).

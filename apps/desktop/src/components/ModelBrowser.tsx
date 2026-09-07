@@ -2267,7 +2267,27 @@ export function ModelBrowser({
         </div>
       )}
 
-      {families.length === 0 && (
+      {/* Le catalogue arrive du réseau. Tant qu'il n'est pas là, on le dit au
+          lieu de laisser croire que la bibliothèque tient à ce qu'on voit :
+          la liste partielle affichée pendant le chargement se lisait comme un
+          catalogue erroné, et « aucun modèle ne correspond » comme un résultat
+          définitif. */}
+      {isLoadingRegistry && registryModels.length === 0 && (
+        <div className="locaryn-model-loading" role="status" aria-live="polite">
+          <span className="locaryn-spin" style={{ display: "inline-flex" }}>
+            <Icon name="refresh" size={18} />
+          </span>
+          <div>
+            <strong>Actualisation du catalogue…</strong>
+            <p>
+              Les modèles disponibles sont relus depuis HuggingFace. Vos modèles déjà installés
+              restent utilisables pendant ce temps.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {families.length === 0 && !(isLoadingRegistry && registryModels.length === 0) && (
         <div className="locaryn-field-hint" style={{ marginTop: "24px", textAlign: "center" }}>
           Aucun modèle ne correspond à vos filtres.
         </div>

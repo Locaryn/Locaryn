@@ -301,19 +301,6 @@ export function PairingCodes() {
                   )}
                 </div>
               )}
-              {code.pairing_code && (
-                <div className="locaryn-pairing-code">
-                  <p className="locaryn-pairing-code-label">
-                    Код подтверждения — назовите его пользователю телефона
-                  </p>
-                  <p className="locaryn-pairing-code-value">{code.pairing_code}</p>
-                  {(code.pairing_ttl_seconds ?? 0) > 0 && (
-                    <p className="locaryn-pairing-code-hint">
-                      Действует {Math.round((code.pairing_ttl_seconds ?? 0) / 60)} мин, одноразовый.
-                    </p>
-                  )}
-                </div>
-              )}
               <div className="locaryn-pairing-actions">
                 <button
                   type="button"

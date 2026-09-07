@@ -62,16 +62,21 @@ export function QuickModelSelector({
       .catch(() => {});
   }, [isOpen]);
 
+  /**
+   * Ce que la machine a vraiment sur son disque, et rien d'autre.
+   *
+   * Le repli precedent affichait le modele du fournisseur actif quand la liste
+   * installee etait vide, et lui posait l'etiquette LOCAL. Or ce nom peut
+   * designer un fichier absent — un telechargement interrompu laisse le
+   * fournisseur pointer sur des poids qui ne sont jamais arrives. Le selecteur
+   * annoncait alors un modele installe et actif que la bibliotheque ne
+   * connaissait pas, et l'envoi echouait sur « aucun modele local n'a repondu ».
+   *
+   * Mieux vaut une liste vide, qui dit la verite, qu'une entree inventee.
+   */
   const dedupedModels = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          installedModels.length > 0
-            ? installedModels
-            : ([activeModel].filter(Boolean) as string[]),
-        ),
-      ).sort((a, b) => a.localeCompare(b)),
-    [installedModels, activeModel],
+    () => Array.from(new Set(installedModels)).sort((a, b) => a.localeCompare(b)),
+    [installedModels],
   );
 
   // Les dépendances suivent ce que le mémo lit réellement : `dedupedModels`.

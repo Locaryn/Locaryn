@@ -745,7 +745,12 @@ export function ChatPanel({
           );
         });
     } else if (ev.type === "log") {
-      setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `[Log: ${ev.msg}]` }]);
+      // Un avis d'erreur est adresse a la personne, pas au journal : il porte
+      // l'explication de ce qui vient d'echouer et ce qu'il faut faire. Le
+      // prefixe « [Log: … ] » convenait a une trace de moteur, pas a un
+      // paragraphe qu'on doit lire.
+      const texte = ev.level === "error" || ev.level === "warn" ? ev.msg : `[Log: ${ev.msg}]`;
+      setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: texte }]);
     }
   }
 
@@ -1692,7 +1697,14 @@ export function ChatPanel({
             className="locaryn-composer-input"
             rows={1}
             placeholder={
-              sessionId ? "Posez votre question à Locaryn…" : "Sélectionnez ou créez une session"
+              // Sur l'ecran d'accueil, le premier message cree la conversation
+              // tout seul. L'ancien texte demandait d'en choisir une d'abord :
+              // il decourageait d'ecrire, alors que c'etait la bonne chose a
+              // faire. On ne renvoie a une selection que si rien ne peut etre
+              // cree.
+              sessionId || onCreateSessionForPrompt
+                ? "Posez votre question à Locaryn…"
+                : "Sélectionnez ou créez une conversation"
             }
             value={input}
             disabled={!canCompose}

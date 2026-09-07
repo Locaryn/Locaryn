@@ -316,6 +316,34 @@ async fn init_core() -> anyhow::Result<Core> {
         }
     }
 
+    // Un modèle actif dont les poids ne sont plus là ne doit pas rester
+    // affiché comme installé. Le cas arrive après un téléchargement interrompu
+    // ou une suppression manuelle : l'application annonçait le modèle en bas de
+    // l'écran, la bibliothèque ne le listait pas, et l'envoi échouait sur
+    // « aucun modèle local n'a répondu ». On efface le nom plutôt que de le
+    // laisser mentir — les poids, eux, ne sont pas touchés.
+    if let Ok(list) = storage.providers.list().await {
+        let models_dir = locaryn_config::models_dir();
+        for p in list
+            .into_iter()
+            .filter(|p| p.engine == ProviderEngine::LlamaCpp)
+        {
+            let Some(model) = p.model.as_deref() else {
+                continue;
+            };
+            if modele_present(&models_dir, model) {
+                continue;
+            }
+            tracing::warn!(
+                model = %model,
+                "les poids du modèle actif sont absents du disque — le nom est effacé"
+            );
+            if let Err(e) = storage.providers.set_model(p.id, None).await {
+                tracing::warn!(error = %e, "impossible d'effacer le modèle absent");
+            }
+        }
+    }
+
     let supervisor = Supervisor::new(
         SupervisorConfig {
             airllm_python: find_python().map(std::path::PathBuf::from),
@@ -1632,7 +1660,7 @@ pub struct JointDocumentIn {
 
 /// Send a user message and stream the agent's reply. Mirrors the daemon's
 /// `send_message` handler: persist the user message, resolve project context,
-/// ensure the local runtime is up, run OllamaAgent (StubAgent fallback), and
+/// ensure the local runtime is up, run the OpenAI-compatible agent, and
 /// persist the assistant reply when the stream ends.
 #[tauri::command]
 // Tauri serialise chaque parametre par son nom : les regrouper changerait
@@ -2221,10 +2249,16 @@ fn strip_ui_markers(content: &str) -> String {
 
 /// When no local model can answer, stream a clear, actionable explanation
 /// instead of silently echoing (which reads as "the app is broken").
+///
+/// L'explication part comme un **avis**, pas comme une réponse du modèle. Elle
+/// était auparavant diffusée en `MessageStart` / `Token` / `MessageEnd`, donc
+/// traitée comme une vraie réponse : elle était enregistrée dans l'historique,
+/// elle comptait dans la jauge de contexte — d'où un contexte qui grossissait
+/// alors qu'aucun modèle n'avait tourné — et elle repartait au modèle au tour
+/// suivant, qui lisait le message d'erreur de l'application comme s'il venait
+/// de son interlocuteur.
 fn no_model_stream(reason: &str) -> EventStream {
     use futures::stream;
-    let message_id = Uuid::new_v4().to_string();
-    let task_id = Uuid::new_v4().to_string();
     // Le conseil suit la cause. L'ancien bloc valait pour tout : il renvoyait
     // installer un modèle qu'on venait d'installer, et lire un
     // `llama-server.log` qui n'existe pas tant que le moteur n'a jamais
@@ -2250,19 +2284,11 @@ fn no_model_stream(reason: &str) -> EventStream {
              Détails techniques : consultez `llama-server.log` dans le dossier de données."
         )
     };
-    let events = vec![
-        StreamEvent::MessageStart {
-            message_id: message_id.clone(),
-            task_id,
-        },
-        StreamEvent::Token { text },
-        StreamEvent::MessageEnd {
-            message_id,
-            tokens_in: 0,
-            tokens_out: 0,
-            duration_ms: 0,
-        },
-    ];
+    let events = vec![StreamEvent::Log {
+        level: locaryn_events::LogLevel::Error,
+        msg: text,
+        source: "moteur".to_string(),
+    }];
     Box::pin(stream::iter(events))
 }
 
@@ -2459,6 +2485,23 @@ fn is_image_asset(file_name: &str) -> bool {
         "text-encoder",
     ];
     DIFFUSION.iter().any(|p| n.contains(p)) || AUX.iter().any(|p| n.contains(p))
+}
+
+/// Ces poids sont-ils réellement sur le disque ?
+///
+/// Un nom enregistré comme modèle actif ne prouve rien : un téléchargement
+/// interrompu, ou un fichier supprimé à la main, laisse le fournisseur pointer
+/// sur des poids absents. L'application annonçait alors un modèle « installé et
+/// actif » que la bibliothèque ne listait pas, et chaque envoi finissait sur
+/// « aucun modèle local n'a répondu » sans dire pourquoi.
+pub(crate) fn modele_present(models_dir: &std::path::Path, model: &str) -> bool {
+    if model.trim().is_empty() {
+        return false;
+    }
+    if models_dir.join(model).exists() {
+        return true;
+    }
+    resolve_model_path(models_dir, model).exists()
 }
 
 /// Resolve a model specification (filename, HuggingFace repo tag, URL) to its actual file/dir path in `models_dir`.
@@ -5599,13 +5642,21 @@ fn delete_local_model_artifacts(models_dir: &std::path::Path, model: &str) -> Re
     Ok(())
 }
 
-#[tauri::command]
-async fn delete_model_cmd(
-    core: State<'_, Core>,
-    _endpoint: String,
-    model: String,
-) -> Result<(), String> {
-    let mut model = model.trim().replace('\\', "/");
+/// Le fichier que désigne ce que l'interface appelle « un modèle ».
+///
+/// Deux formes circulent. Un chemin relatif au dossier des modèles — un nom de
+/// fichier, ou `dépôt/fichier.gguf` — qu'on garde tel quel. Ou une étiquette du
+/// registre Ollama (`llama3.2:3b`), que le téléchargement a écrite sous
+/// `llama3.2_3b.gguf` : il faut alors la traduire avant de s'en servir comme
+/// chemin.
+///
+/// Le deux-points départage, et c'est important : la version précédente forçait
+/// le préfixe `ollama/` sur l'entrée, ce qui faisait accepter *tout* nom de
+/// fichier comme étiquette. Supprimer `Qwen3-4B-Q4_K_M.gguf` visait alors
+/// `Qwen3-4B-Q4_K_M.gguf_latest.gguf`, qui n'existe pas — le vrai fichier
+/// survivait, et le modèle réapparaissait à la liste suivante.
+fn fichier_du_modele(model: &str) -> Result<String, String> {
+    let model = model.trim().replace('\\', "/");
     if model.is_empty()
         || model.starts_with('/')
         || model.contains("..")
@@ -5613,17 +5664,22 @@ async fn delete_model_cmd(
     {
         return Err("nom de modèle invalide".into());
     }
-    // Une étiquette Ollama n'est pas un lecteur Windows : elle désigne le
-    // fichier écrit par le pull (`llama3.2_3b.gguf`). Traduire avant tout
-    // usage comme chemin.
-    if let Some(tag) =
-        locaryn_shared_types::model_source::ollama_registry_tag(&format!("ollama/{model}"))
-    {
-        model = tag.replace(['/', ':'], "_");
-        model.push_str(".gguf");
-    } else if model.contains(':') {
-        return Err("nom de modèle invalide".into());
+    if !model.contains(':') {
+        return Ok(model);
     }
+    match locaryn_shared_types::model_source::ollama_registry_tag(&model) {
+        Some(tag) => Ok(format!("{}.gguf", tag.replace(['/', ':'], "_"))),
+        None => Err("nom de modèle invalide".into()),
+    }
+}
+
+#[tauri::command]
+async fn delete_model_cmd(
+    core: State<'_, Core>,
+    _endpoint: String,
+    model: String,
+) -> Result<(), String> {
+    let model = fichier_du_modele(&model)?;
     if let Some(client) = core.remote_client() {
         // In remote mode the server is authoritative. Do not silently fall
         // back to deleting a similarly named local file when the server says
@@ -6658,6 +6714,58 @@ pub fn run() {
 
 // Le module de test ferme le fichier : tout élément placé après lui se lit
 // mal et s'oublie facilement — c'est précisément ce que signale clippy.
+
+#[cfg(test)]
+mod suppression_modele_tests {
+    use super::fichier_du_modele;
+
+    /// Un nom de fichier doit rester ce qu'il est. C'est le cas qui echouait :
+    /// tout nom passait pour une etiquette Ollama, et la suppression visait un
+    /// chemin inexistant — le modele reapparaissait.
+    #[test]
+    fn un_nom_de_fichier_traverse_intact() {
+        for nom in [
+            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+            "duyntnet__UTENA-7B-imatrix-GGUF/UTENA-7B-Q4_K_M.gguf",
+            "hexgrad__Kokoro-82M",
+            "modele.avec.beaucoup.de.points.gguf",
+        ] {
+            assert_eq!(fichier_du_modele(nom).as_deref(), Ok(nom), "{nom} altere");
+        }
+    }
+
+    /// Une vraie etiquette, elle, designe le fichier ecrit par le pull.
+    #[test]
+    fn une_etiquette_ollama_devient_son_fichier() {
+        assert_eq!(
+            fichier_du_modele("llama3.2:3b").as_deref(),
+            Ok("llama3.2_3b.gguf")
+        );
+        assert_eq!(
+            fichier_du_modele("ollama/qwen3:8b").as_deref(),
+            Ok("qwen3_8b.gguf")
+        );
+    }
+
+    /// Et rien ne doit permettre de sortir du dossier des modeles.
+    #[test]
+    fn aucune_echappee_hors_du_dossier() {
+        for mauvais in [
+            "",
+            "   ",
+            "/etc/passwd",
+            "../secrets.gguf",
+            "a/../../b.gguf",
+            "C:/Windows/System32/x.gguf",
+            "nom:avec:trop:de:deux-points",
+        ] {
+            assert!(
+                fichier_du_modele(mauvais).is_err(),
+                "{mauvais:?} devait etre refuse"
+            );
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
