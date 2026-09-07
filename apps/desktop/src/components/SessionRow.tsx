@@ -8,6 +8,15 @@ type Props = {
   active: boolean;
   /** Marqueur de tête : icône pour une conversation libre, point pour l'historique groupé. */
   bullet: "chat" | "dot" | "";
+  /**
+   * Ce que cette conversation attend, s'il y a quelque chose.
+   *
+   * `attente` : le modèle est en pause, il attend une réponse — c'est la seule
+   * chose qui débloque le travail, et c'est pour cela qu'on la voit depuis la
+   * liste plutôt qu'en ouvrant la conversation. `erreur` : quelque chose est
+   * cassé et demande une action, pas une réponse.
+   */
+  etat?: "attente" | "erreur" | null;
   onSelect: () => void;
   onRename: (title: string) => void;
   onArchive: () => void;
@@ -34,6 +43,7 @@ export function SessionRow({
   label,
   active,
   bullet,
+  etat = null,
   onSelect,
   onRename,
   onArchive,
@@ -204,6 +214,18 @@ export function SessionRow({
             {label}
           </span>
           {session.ephemeral && <span className="locaryn-ephemeral-dot" title="Éphémère" />}
+          {etat && (
+            <span
+              className={`locaryn-etat-pastille ${
+                etat === "attente" ? "locaryn-etat-attente" : "locaryn-etat-erreur"
+              }`}
+              title={
+                etat === "attente"
+                  ? "En pause : le modèle attend votre réponse"
+                  : "Quelque chose est cassé dans cette conversation"
+              }
+            />
+          )}
         </button>
       )}
 

@@ -128,6 +128,14 @@ type Props = {
    *  Hermes…). Absent = noyau Locaryn natif. */
   coreName?: string | null;
   activeCapabilities?: string[];
+  /**
+   * Signale que cette conversation attend une réponse, ou qu'elle est cassée.
+   *
+   * L'appelant en fait une pastille dans la liste : sans cela, une conversation
+   * en pause depuis dix minutes ne se distingue pas d'une conversation finie —
+   * or l'une bloque le travail et l'autre non.
+   */
+  onEtatChange?: (sessionId: string, etat: "attente" | "erreur" | null) => void;
   extensions?: InstalledExtension[];
 };
 
@@ -351,6 +359,7 @@ export function ChatPanel({
   onSessionMoved,
   coreName,
   activeCapabilities = [],
+  onEtatChange,
   extensions = [],
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
@@ -828,6 +837,13 @@ export function ChatPanel({
       vivant = false;
     };
   }, []);
+
+  // L'attente d'une approbation est la seule pause qui bloque le travail : elle
+  // remonte donc, pour que la liste des conversations la montre.
+  useEffect(() => {
+    if (!sessionId) return;
+    onEtatChange?.(sessionId, approval ? "attente" : null);
+  }, [sessionId, approval, onEtatChange]);
 
   async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files) return;
@@ -1712,6 +1728,27 @@ export function ChatPanel({
           />
         </div>
 
+        {/* La demande d'autorisation vit ici, au-dessus du composeur, et non
+            plus en pop-up par-dessus l'application. Rien ne s'exécute sans
+            réponse : la faire attendre est sans risque, et l'on peut changer
+            d'écran entre-temps. La pastille orange du chat rappelle qu'elle
+            attend. */}
+        <ToolApprovalModal
+          approval={approval}
+          onResolve={(decision) => void resolveApproval(decision)}
+          onCancel={() => {
+            if (!approval) return;
+            void resolveApproval({
+              call_id: approval.call_id,
+              tool: approval.tool,
+              risk: approval.risk,
+              decision: "deny",
+              scope: "once",
+              note: null,
+            });
+          }}
+        />
+
         <div className="locaryn-composer-card">
           {attachments.length > 0 && (
             <div className="locaryn-attach-strip">
@@ -1985,25 +2022,6 @@ export function ChatPanel({
       )}
 
       {ragOpen && projectId && <RagPanel projectId={projectId} onClose={() => setRagOpen(false)} />}
-
-      {/* Approbation d'un appel d'outil. La boucle d'agent attend ce verdict :
-          fermer sans répondre vaut refus, et le runtime finit par se lasser
-          de son côté plutôt que d'attendre indéfiniment. */}
-      <ToolApprovalModal
-        approval={approval}
-        onResolve={(decision) => void resolveApproval(decision)}
-        onCancel={() => {
-          if (!approval) return;
-          void resolveApproval({
-            call_id: approval.call_id,
-            tool: approval.tool,
-            risk: approval.risk,
-            decision: "deny",
-            scope: "once",
-            note: null,
-          });
-        }}
-      />
     </section>
   );
 }

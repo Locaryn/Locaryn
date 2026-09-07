@@ -2241,17 +2241,56 @@ dialog:where([open]) {
 /* ═══════════════════════════════════════════════════════════
    TOOL APPROVAL MODAL (doc 11 §5/§6.5)
    ═══════════════════════════════════════════════════════════ */
-.locaryn-approval-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  animation: lo-fade-in var(--dur-med) var(--ease) both;
+/* La demande d'autorisation en bandeau : elle vit au-dessus du composeur, dans
+   le flux, et n'empeche ni de naviguer ni de taper. Elle remplace un pop-up
+   modal qui obligeait a repondre sur l'instant. */
+/* ── Pastilles d'etat d'une conversation ──────────────────────────────────
+   Orange : le modele est en pause, il attend une reponse — c'est la seule
+   chose qui debloque le travail. Rouge : quelque chose est casse et demande
+   une action, pas une reponse. Les deux se voient sans ouvrir la
+   conversation, ce qui est tout l'interet. */
+.locaryn-etat-pastille {
+  display: inline-flex;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
 }
+.locaryn-etat-attente {
+  background: var(--warn);
+  /* Le battement dit « ca attend » plutot que « c'est ainsi ». */
+  animation: locaryn-battement 1.8s ease-in-out infinite;
+}
+.locaryn-etat-erreur {
+  background: var(--danger);
+}
+@keyframes locaryn-battement {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-etat-attente {
+    animation: none;
+  }
+}
+
+.locaryn-approval-bandeau {
+  width: 100%;
+  max-width: 100%;
+  max-height: min(52vh, 460px);
+  margin: 0 0 var(--space-2);
+  border-radius: var(--radius-md);
+  /* Pas d'ombre portee de pop-up : ce bandeau appartient a la page. */
+  box-shadow: none;
+  animation: lo-fade-in var(--dur-fast, 140ms) var(--ease) both;
+}
+
 .locaryn-approval {
   width: min(600px, calc(100vw - 48px));
   max-height: calc(100vh - 64px);

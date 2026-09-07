@@ -14,6 +14,14 @@ type Props = {
   standaloneSessions: Session[];
   activeProject: Project | null;
   activeSession: Session | null;
+  /**
+   * Les conversations en pause, et celles en erreur, par identifiant.
+   *
+   * L'état vit au-dessus : une conversation peut attendre une réponse alors
+   * qu'on regarde ailleurs, et c'est justement le cas où la pastille sert.
+   */
+  sessionsEnAttente?: ReadonlySet<string>;
+  sessionsEnErreur?: ReadonlySet<string>;
   onSelectProject: (p: Project | null) => void;
   onSelectSession: (s: Session) => void;
   onNewSession: (p: Project) => void;
@@ -61,6 +69,17 @@ const RAIL_LABELS: Record<string, string> = {
 /** Les destinations que le rail ne montre pas : elles vivent dans les réglages. */
 const RAIL_HIDDEN = new Set(["account"]);
 
+/** L'état d'une conversation, l'erreur passant devant l'attente. */
+function etatDe(
+  id: string,
+  attente?: ReadonlySet<string>,
+  erreur?: ReadonlySet<string>,
+): "attente" | "erreur" | null {
+  if (erreur?.has(id)) return "erreur";
+  if (attente?.has(id)) return "attente";
+  return null;
+}
+
 function sessionLabel(s: Session, index: number) {
   if (s.title) return s.title;
   const d = new Date(s.created_at);
@@ -74,6 +93,8 @@ export function LeftPanel({
   standaloneSessions,
   activeProject,
   activeSession,
+  sessionsEnAttente,
+  sessionsEnErreur,
   onSelectProject,
   onSelectSession,
   onNewSession,
@@ -360,6 +381,7 @@ export function LeftPanel({
                   label={sessionLabel(s, idx)}
                   bullet="chat"
                   active={activeSession?.id === s.id}
+                  etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
                   leaving={leaving === s.id}
                   projects={projects.map((p) => ({ id: p.id, name: p.name }))}
                   onSelect={() => onSelectSession(s)}
@@ -539,6 +561,7 @@ export function LeftPanel({
                           label={sessionLabel(s, idx)}
                           bullet="dot"
                           active={activeSession?.id === s.id}
+                          etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
                           leaving={leaving === s.id}
                           projects={projects.map((proj) => ({ id: proj.id, name: proj.name }))}
                           onSelect={() => onSelectSession(s)}

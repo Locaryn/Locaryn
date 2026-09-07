@@ -88,6 +88,26 @@ export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   /**
+   * Les conversations qui attendent une réponse, et celles qui sont cassées.
+   *
+   * L'état est ici et non dans le chat : une conversation en pause pendant
+   * qu'on regarde ailleurs est justement le cas où la pastille sert.
+   */
+  const [sessionsEnAttente, setSessionsEnAttente] = useState<ReadonlySet<string>>(new Set());
+  const [sessionsEnErreur, setSessionsEnErreur] = useState<ReadonlySet<string>>(new Set());
+
+  const noterEtatSession = useCallback((id: string, etat: "attente" | "erreur" | null) => {
+    const maj = (prev: ReadonlySet<string>, present: boolean) => {
+      if (present === prev.has(id)) return prev;
+      const suivant = new Set(prev);
+      if (present) suivant.add(id);
+      else suivant.delete(id);
+      return suivant;
+    };
+    setSessionsEnAttente((p) => maj(p, etat === "attente"));
+    setSessionsEnErreur((p) => maj(p, etat === "erreur"));
+  }, []);
+  /**
    * Ce que les extensions actives savent faire.
    *
    * Décide de la présence d'écrans entiers : le Studio de génération n'existe
@@ -1024,6 +1044,8 @@ export function App() {
               <LeftPanel
                 projects={projects}
                 sessions={sessions}
+                sessionsEnAttente={sessionsEnAttente}
+                sessionsEnErreur={sessionsEnErreur}
                 sessionsByProject={sessionsByProject}
                 standaloneSessions={standaloneSessions}
                 activeProject={activeProject}
@@ -1095,6 +1117,7 @@ export function App() {
               : null
           }
           onCreateSessionForPrompt={handleCreateSessionForPrompt}
+          onEtatChange={noterEtatSession}
           onSessionMoved={(projectId) => {
             if (activeSession) void handleMoveSession(activeSession, projectId);
           }}
