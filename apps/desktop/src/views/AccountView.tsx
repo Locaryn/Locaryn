@@ -4,6 +4,7 @@ import { ConversationHistorySettings } from "../components/ConversationHistorySe
 import { DefaultPermissionsSettings } from "../components/DefaultPermissionsSettings";
 import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
+import { NotificationSettings } from "../components/NotificationSettings";
 import { type LocalProfile, type Project, type Session, core } from "../lib/core";
 import { pickImageFile } from "../lib/dialog";
 import { toMediaUrl } from "../lib/media";
@@ -33,6 +34,7 @@ export type AccountSection =
   | "profile"
   | "models"
   | "permissions"
+  | "notifications"
   | "memory"
   | "archives"
   | "conversations";
@@ -206,6 +208,19 @@ export function AccountView({
           </button>
           <button
             type="button"
+            className={`locaryn-account-nav-item${section === "notifications" ? " locaryn-active" : ""}`}
+            onClick={() => setSection("notifications")}
+          >
+            <span className="locaryn-account-nav-icon locaryn-account-nav-icon-memory">
+              <Icon name="bell" size={15} />
+            </span>
+            <span className="locaryn-account-nav-text">
+              <strong>Notifications</strong>
+              <small>Ce pour quoi Locaryn vous dérange</small>
+            </span>
+          </button>
+          <button
+            type="button"
             className={`locaryn-account-nav-item${section === "memory" ? " locaryn-active" : ""}`}
             onClick={() => setSection("memory")}
           >
@@ -240,6 +255,8 @@ export function AccountView({
           <ModelPreferencesSettings activeCapabilities={activeCapabilities} />
         ) : section === "permissions" ? (
           <DefaultPermissionsSettings />
+        ) : section === "notifications" ? (
+          <NotificationSettings />
         ) : section === "memory" ? (
           <MemorySettings />
         ) : section === "conversations" ? (

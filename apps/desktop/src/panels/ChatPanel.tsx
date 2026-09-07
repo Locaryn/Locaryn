@@ -28,6 +28,7 @@ import {
 import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
+import { notifierSysteme } from "../lib/osNotify";
 import { pluginBridge } from "../lib/pluginBridge";
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
@@ -701,6 +702,15 @@ export function ChatPanel({
         diff: ev.diff,
         is_remote: ev.is_remote,
       });
+      // Une bannière du système, parce que c'est le seul cas où ne pas
+      // prévenir **arrête le travail** : l'agent reste garé tant que personne
+      // ne répond. Sans durée : elle part tout de suite, le seuil qui filtre
+      // les tâches trop courtes n'a pas de sens ici.
+      void notifierSysteme(
+        "Locaryn attend votre accord",
+        `L'outil « ${ev.tool} » ne s'exécutera pas sans votre réponse.`,
+        "approvals",
+      );
     } else if (ev.type === "artifact" && ev.kind === "image_png") {
       // Image generation is owned by an MCP extension. The host only renders
       // the generic artifact it receives; it does not know how it was made.

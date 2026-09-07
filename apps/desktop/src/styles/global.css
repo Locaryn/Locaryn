@@ -5480,6 +5480,83 @@ pre.md-code {
   }
 }
 
+/* ── Préférences de notification ───────────────────────────────────────────
+   Les groupes se lisent en colonne, chacun avec sa raison sous son nom : une
+   case sans explication laisse deviner ce qu'on coupe. */
+.locaryn-notif-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.locaryn-notif-master,
+.locaryn-notif-groupe {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  /* 40px de haut au moins : une case à cocher de 13px n'est pas une cible. */
+  min-height: 40px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.locaryn-notif-master {
+  border-color: var(--border-strong);
+}
+.locaryn-notif-master input,
+.locaryn-notif-groupe input {
+  margin-top: 2px;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.locaryn-notif-master > span,
+.locaryn-notif-groupe-texte {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.locaryn-notif-master strong,
+.locaryn-notif-groupe strong {
+  font-size: 13px;
+}
+.locaryn-notif-groupe-icone {
+  display: flex;
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-dim);
+}
+.locaryn-notif-groupes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* Éteint globalement : les groupes restent lisibles mais cessent d'inviter. */
+.locaryn-notif-eteint {
+  opacity: 0.5;
+  cursor: default;
+}
+.locaryn-notif-avertit {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger);
+}
+.locaryn-notif-quand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
 .locaryn-model-loading {
   display: flex;
   gap: var(--space-3);

@@ -21,6 +21,7 @@ mod mcp_servers;
 mod memory;
 mod model_abilities;
 mod model_residency;
+mod notifications;
 mod secure_client;
 mod server_mode;
 mod storage_root;
@@ -6556,6 +6557,9 @@ pub fn run() {
             get_profile_preset,
             check_hardware,
             model_abilities::model_abilities,
+            notifications::get_notification_prefs,
+            notifications::set_notification_prefs,
+            notifications::set_taskbar_progress,
             model_residency::model_residency,
             model_residency::check_model_fit,
             model_residency::llmfit_hardware,

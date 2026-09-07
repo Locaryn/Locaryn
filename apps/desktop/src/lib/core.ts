@@ -1342,6 +1342,47 @@ export interface ModelAbilities {
   tools_source: string;
 }
 
+/**
+ * Ce pour quoi l'application accepte de deranger.
+ *
+ * Les preferences vont par **groupe** et non par evenement : une case par
+ * notification aurait donne une page de trente interrupteurs que personne ne
+ * lit.
+ */
+export interface NotificationPrefs {
+  /** A `false`, aucune banniere du systeme ne part. */
+  enabled: boolean;
+  /**
+   * Un outil attend une approbation.
+   *
+   * Le seul groupe dont l'absence **arrete le travail** : tant que personne ne
+   * repond, l'agent est suspendu.
+   */
+  approvals: boolean;
+  downloads: boolean;
+  long_tasks: boolean;
+  model_lifecycle: boolean;
+  security: boolean;
+  maintenance: boolean;
+  /** Ne prevenir que si la fenetre n'est pas au premier plan. */
+  only_when_hidden: boolean;
+  /** En dessous, une tache se termine sans banniere. */
+  min_duration_seconds: number;
+  taskbar_progress: boolean;
+}
+
+/** Les groupes, tels que l'interface les nomme. */
+export type NotificationGroup =
+  | "approvals"
+  | "downloads"
+  | "long_tasks"
+  | "model_lifecycle"
+  | "security"
+  | "maintenance";
+
+/** L'etat de la barre de progression du systeme. */
+export type TaskbarStatus = "none" | "normal" | "indeterminate" | "paused" | "error";
+
 export interface CoreApi {
   health(): Promise<Health>;
   bootstrap(): Promise<Bootstrap>;
@@ -1423,6 +1464,10 @@ export interface CoreApi {
   ): Promise<void>;
   /** Ce que le modele actif accepte en entree, et ce qu'il sait faire. */
   modelAbilities(): Promise<ModelAbilities>;
+  notificationPrefs(): Promise<NotificationPrefs>;
+  setNotificationPrefs(prefs: NotificationPrefs): Promise<void>;
+  /** Pose l'avancement sur l'icone de la barre des taches. */
+  setTaskbarProgress(status: TaskbarStatus, progress?: number): Promise<void>;
   /** Arrete la generation en cours de la session (sans decharger le modele). */
   stopGeneration(sessionId: string): Promise<void>;
   runTerminal(
@@ -1825,6 +1870,10 @@ const tauriCore: CoreApi = {
   },
 
   modelAbilities: () => invoke<ModelAbilities>("model_abilities"),
+  notificationPrefs: () => invoke<NotificationPrefs>("get_notification_prefs"),
+  setNotificationPrefs: (prefs) => invoke<void>("set_notification_prefs", { prefs }),
+  setTaskbarProgress: (status, progress) =>
+    invoke<void>("set_taskbar_progress", { state: { status, progress: progress ?? null } }),
 
   stopGeneration(sessionId) {
     return invoke<void>("stop_generation", { sessionId });
@@ -3927,6 +3976,25 @@ const demoCore: CoreApi = {
     ephemeral: true,
   }),
   listMessages: async (sessionId) => demoMessages.filter((m) => m.session_id === sessionId),
+
+  async notificationPrefs() {
+    return {
+      enabled: true,
+      approvals: true,
+      downloads: true,
+      long_tasks: true,
+      model_lifecycle: true,
+      security: true,
+      maintenance: true,
+      only_when_hidden: true,
+      min_duration_seconds: 20,
+      taskbar_progress: true,
+    };
+  },
+  async setNotificationPrefs() {},
+  // Un navigateur n'a pas d'icone dans la barre des taches : ne rien faire est
+  // la reponse juste, pas un echec.
+  async setTaskbarProgress() {},
 
   async modelAbilities() {
     // La demo montre le cas le plus instructif : un modele texte seul, dont on

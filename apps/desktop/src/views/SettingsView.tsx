@@ -47,6 +47,12 @@ const ACCOUNT_SECTIONS: { id: AccountSection; label: string; desc: string; icon:
     desc: "Historique et conversations récentes",
     icon: "chat",
   },
+  {
+    id: "notifications",
+    label: "Notifications",
+    desc: "Ce pour quoi Locaryn vous dérange",
+    icon: "bell",
+  },
   { id: "memory", label: "Mémoire", desc: "Ce que Locaryn retient", icon: "memory" },
   { id: "archives", label: "Archives", desc: "Conversations rangées", icon: "archive" },
 ];
