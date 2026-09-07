@@ -744,74 +744,6 @@ export const TTS_SAMPLING_DEFAULTS: TtsSampling = {
 // A saved voice: the reference recording plus how to speak with it, so a
 // voice can be reused without re-uploading a sample and re-tuning sliders.
 
-export interface VoiceSettings {
-  speed: number;
-  pitch: number;
-  energy: number;
-  clarity: number;
-  /** Silence stretch. >1 = more measured. Post-processing, works everywhere. */
-  pauseScale: number;
-  temperature: number;
-  topK: number;
-  topP: number;
-  repetitionPenalty: number;
-  /** In-context cloning: reproduce the speaker's rhythm, not only timbre. */
-  expressive: boolean;
-  instruct: string;
-}
-
-export const VOICE_SETTINGS_DEFAULTS: VoiceSettings = {
-  speed: 1.0,
-  pitch: 1.0,
-  energy: 0.7,
-  clarity: 0.8,
-  pauseScale: 1.0,
-  temperature: 0.9,
-  topK: 50,
-  topP: 1.0,
-  repetitionPenalty: 1.05,
-  expressive: true,
-  instruct: "",
-};
-
-export interface VoicePreset {
-  id: string;
-  name: string;
-  note: string;
-  /** Absolute path to the copied reference recording. */
-  referenceAudio: string;
-  referenceText: string;
-  language: string;
-  durationS: number;
-  settings: VoiceSettings;
-  engine: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** What a given model actually honours from a preset. */
-export interface EngineSupport {
-  engine: string;
-  cloning: boolean;
-  referenceText: boolean;
-  temperature: boolean;
-  speed: boolean;
-  pitch: boolean;
-  pauseScale: boolean;
-  instruct: boolean;
-}
-
-export interface SavePresetArgs {
-  id?: string;
-  name: string;
-  note?: string;
-  referenceAudio?: string;
-  referenceText?: string;
-  language?: string;
-  engine?: string;
-  settings: VoiceSettings;
-}
-
 // ── Server mode ────────────────────────────────────────────────────────
 // The app supervises the Locaryn service rather than serving HTTP itself, so
 // the accounts, tokens and encryption all live in one implementation.
@@ -1530,11 +1462,6 @@ export interface CoreApi {
   airllmUninstall(repo: string): Promise<void>;
   configureAirllmProvider(repo: string): Promise<Provider>;
 
-  listVoicePresets(): Promise<VoicePreset[]>;
-  saveVoicePreset(args: SavePresetArgs): Promise<VoicePreset>;
-  deleteVoicePreset(id: string): Promise<void>;
-  /** Which preset settings the given model will actually use. */
-  voicePresetSupport(model: string): Promise<EngineSupport>;
   serverStatus(): Promise<ServerStatus>;
   setServerMode(enabled: boolean, port?: number): Promise<ServerStatus>;
   restartServer(): Promise<ServerStatus>;
@@ -1957,11 +1884,6 @@ const tauriCore: CoreApi = {
   setLocalProfile: (displayName) => invoke<LocalProfile>("set_local_profile", { displayName }),
   setLocalAvatar: (sourcePath) => invoke<LocalProfile>("set_local_avatar", { sourcePath }),
   clearLocalAvatar: () => invoke<LocalProfile>("clear_local_avatar"),
-
-  listVoicePresets: () => invoke<VoicePreset[]>("list_voice_presets"),
-  saveVoicePreset: (args) => invoke<VoicePreset>("save_voice_preset", { args }),
-  deleteVoicePreset: (id) => invoke("delete_voice_preset", { id }),
-  voicePresetSupport: (model) => invoke<EngineSupport>("voice_preset_support", { model }),
 
   serverStatus: () => invoke<ServerStatus>("server_status"),
   setServerMode: (enabled, port) =>
@@ -4260,46 +4182,6 @@ const demoCore: CoreApi = {
     // qu'une valeur inventée qui masquerait un écran mal adapté.
     platform: navigator.platform || "navigateur",
     arch: "inconnue",
-  }),
-
-  listVoicePresets: async () => [
-    {
-      id: "demo-1",
-      name: "Ma petite soeur",
-      note: "voix douce, débit rapide",
-      referenceAudio: "C:/Users/you/.locaryn/voice_presets/demo-1/reference.wav",
-      referenceText: "et ça m'énerve genre pendant le chargement là tu vois",
-      language: "fr",
-      durationS: 12,
-      settings: { ...VOICE_SETTINGS_DEFAULTS, temperature: 0.95, pauseScale: 0.9 },
-      engine: "Qwen3-TTS",
-      createdAt: "2026-07-31T10:00:00Z",
-      updatedAt: "",
-    },
-  ],
-  saveVoicePreset: async (args) => ({
-    id: args.id ?? "demo-new",
-    name: args.name,
-    note: args.note ?? "",
-    referenceAudio: args.referenceAudio ?? "",
-    referenceText: args.referenceText ?? "",
-    language: args.language ?? "fr",
-    durationS: 12,
-    settings: args.settings,
-    engine: args.engine ?? "",
-    createdAt: "2026-07-31T10:00:00Z",
-    updatedAt: "",
-  }),
-  deleteVoicePreset: async () => {},
-  voicePresetSupport: async (model) => ({
-    engine: "Qwen3-TTS",
-    cloning: model.toLowerCase().includes("base"),
-    referenceText: model.toLowerCase().includes("base"),
-    temperature: true,
-    speed: true,
-    pitch: true,
-    pauseScale: true,
-    instruct: true,
   }),
 
   serverStatus: async () => ({

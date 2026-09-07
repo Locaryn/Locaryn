@@ -25,7 +25,6 @@ mod secure_client;
 mod server_mode;
 mod storage_root;
 mod travel_mode;
-mod voice_presets;
 
 use futures::StreamExt as _;
 use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent};
@@ -6543,10 +6542,6 @@ pub fn run() {
             server_mode::create_server_user,
             server_mode::delete_server_user,
             storage_root::storage_info,
-            voice_presets::list_voice_presets,
-            voice_presets::save_voice_preset,
-            voice_presets::delete_voice_preset,
-            voice_presets::voice_preset_support,
             storage_root::set_storage_root,
             storage_root::clean_temp,
             pull_model,
