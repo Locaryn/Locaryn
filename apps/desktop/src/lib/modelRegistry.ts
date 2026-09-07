@@ -1382,16 +1382,6 @@ const LARGE_LOCAL_MODELS: ModelFamily[] = [
   },
 ];
 
-// ── Ollama Library Model (from Rust IPC search) ─────────────────────────────
-
-export interface OllamaLibraryModel {
-  name: string;
-  description: string;
-  tags: string[];
-  pulls: number;
-  updated: string;
-}
-
 // ── Cache helpers ───────────────────────────────────────────────────────────
 
 interface CacheEntry {
@@ -1421,132 +1411,6 @@ function saveCache(families: ModelFamily[]): void {
   } catch {
     // localStorage full or unavailable — ignore
   }
-}
-
-// ── Parse Ollama /api/tags response into installed tags ──────────────────────
-
-export interface OllamaLocalModel {
-  name: string;
-  model: string;
-  size: number;
-  digest: string;
-  modified_at: string;
-  details?: {
-    parent_model?: string;
-    format?: string;
-    family?: string;
-    families?: string[];
-    parameter_size?: string;
-    quantization_level?: string;
-  };
-}
-
-export async function fetchInstalledModels(endpoint: string): Promise<OllamaLocalModel[]> {
-  try {
-    const url = `${endpoint.replace(/\/+$/, "")}/api/tags`;
-    const resp = await fetch(url);
-    if (!resp.ok) return [];
-    const body = await resp.json();
-    return (body.models || []) as OllamaLocalModel[];
-  } catch {
-    return [];
-  }
-}
-
-// ── Parse Ollama library search results into ModelFamilies ──────────────────
-
-function ollamaLibraryToFamilies(models: OllamaLibraryModel[]): ModelFamily[] {
-  const families: ModelFamily[] = [];
-
-  for (const m of models) {
-    const tags = m.tags || [];
-    if (tags.length === 0) continue;
-
-    const isVision = /vision|vl|multimodal/i.test(`${m.name} ${m.description}`);
-    const isCode = /code|coder/i.test(`${m.name} ${m.description}`);
-    const isReasoning = /reason|thinking|r1|qwq/i.test(`${m.name} ${m.description}`);
-    const isTTS = /tts|text.to.speech|synthes|voice|speech|piper|xtts|melotts/i.test(
-      `${m.name} ${m.description}`,
-    );
-    const isAudio = isTTS || /audio|voice|whisper|omni/i.test(`${m.name} ${m.description}`);
-    const isVideoGen = /video.*gen|text.to.video|video.diffusion|wan2.1|sora|ltx/i.test(
-      `${m.name} ${m.description}`,
-    );
-    const isMusicGen = /music.*gen|audio.*gen|sound.gen|musicgen|audiogen/i.test(
-      `${m.name} ${m.description}`,
-    );
-    const is3D = /3d.*model|mesh|shap|threestudio/i.test(`${m.name} ${m.description}`);
-    const isTranslation = /translation|translate|nllb|m2m|opus/i.test(`${m.name} ${m.description}`);
-    const isObjectDetection = /object.*detect|detection|yolo/i.test(`${m.name} ${m.description}`);
-    const isTextAnalysis = /sentiment|classification|analysis|ner|embed|semantic/i.test(
-      `${m.name} ${m.description}`,
-    );
-    const isQuestionAnswering = /question.*answer|qa|extractive.qa/i.test(
-      `${m.name} ${m.description}`,
-    );
-    const isInstruct =
-      /instruct|chat/i.test(`${m.name} ${m.description}`) ||
-      (!isTTS && !isVideoGen && !isMusicGen && !is3D);
-
-    const variants: ModelVariant[] = tags
-      .filter((t) => !t.toLowerCase().includes("cloud"))
-      .map((t) => {
-        const paramMatch = t.match(/(\d+\.?\d*)[bB]/);
-        const params = paramMatch ? Number.parseFloat(paramMatch[1]) : 7;
-        const sizeLabel = paramMatch ? `${params}B` : t.split(":")[1] || "default";
-        return {
-          size: sizeLabel,
-          params,
-          tag: t.includes(":") ? t : `${m.name}:${t}`,
-          quants: params > 14 ? QUANTS_BIG : QUANTS_SMALL,
-          storageGb: Math.round(params * 0.65 * 10) / 10 || 4.0,
-          instruct: isInstruct,
-        };
-      });
-
-    // Deduplicate variants by tag
-    const seen = new Set<string>();
-    const dedupedVariants = variants.filter((v) => {
-      if (seen.has(v.tag)) return false;
-      seen.add(v.tag);
-      return true;
-    });
-
-    const year = m.updated ? new Date(m.updated).getFullYear() : 2025;
-    const dateStr = m.updated ? m.updated.slice(0, 7) : "2025-01";
-
-    families.push({
-      id: `ollama-${m.name}`,
-      name: m.name,
-      brand: guessBrand(m.name),
-      description:
-        m.description ||
-        `Modèle ${m.name} disponible sur Ollama (${(m.pulls || 0).toLocaleString()} pulls).`,
-      license: "Open Weights",
-      contextWindow: "128k",
-      releaseDate: dateStr,
-      releaseYear: year,
-      vision: isVision,
-      audio: isAudio,
-      code: isCode,
-      reasoning: isReasoning,
-      instruct: isInstruct,
-      tts: isTTS,
-      videoGen: isVideoGen,
-      musicGen: isMusicGen,
-      model3d: is3D,
-      translation: isTranslation,
-      objectDetection: isObjectDetection,
-      textAnalysis: isTextAnalysis,
-      questionAnswering: isQuestionAnswering,
-      finetunable: true,
-      variants: dedupedVariants,
-      pulls: m.pulls || 0,
-      source: "ollama",
-    });
-  }
-
-  return families;
 }
 
 function guessBrand(name: string): string {
@@ -1727,9 +1591,7 @@ function mergeFamilies(...sources: (ModelFamily[] | ModelFamily)[]): ModelFamily
   return Array.from(map.values());
 }
 
-export async function fetchFullRegistry(
-  searchOllamaLibrary?: (query: string, category?: string) => Promise<OllamaLibraryModel[]>,
-): Promise<RegistryResult> {
+export async function fetchFullRegistry(): Promise<RegistryResult> {
   // 1. Check cache
   const cached = loadCache();
   if (cached) {
@@ -1749,23 +1611,16 @@ export async function fetchFullRegistry(
     };
   }
 
-  // 2. Fetch in parallel
-  const [ollamaModels, hfModels] = await Promise.all([
-    searchOllamaLibrary
-      ? searchOllamaLibrary("", undefined).catch(() => [] as OllamaLibraryModel[])
-      : Promise.resolve([] as OllamaLibraryModel[]),
-    fetchHuggingFaceModels("gguf").catch(() => [] as ModelFamily[]),
-  ]);
+  // 2. Une seule source distante : HuggingFace. La bibliotheque Ollama etait
+  //    interrogee ici et ne rendait jamais rien — sa commande renvoyait une
+  //    liste vide, faute d'implementation.
+  const hfModels = await fetchHuggingFaceModels("gguf").catch(() => [] as ModelFamily[]);
 
-  // 3. Convert ollama library results
-  const ollamaFamilies = ollamaLibraryToFamilies(ollamaModels);
-
-  // 4. Merge all sources: seed + large local + airllm + ollama + HF (GGUF)
+  // 3. Toutes les sources : socle + gros modeles locaux + airllm + HF (GGUF)
   const allFamilies = mergeFamilies(
     SEED_CATALOG,
     LARGE_LOCAL_MODELS,
     AIRLLM_CATALOG_MODELS,
-    ollamaFamilies,
     hfModels,
   );
 

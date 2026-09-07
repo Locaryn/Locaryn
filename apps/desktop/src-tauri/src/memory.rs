@@ -281,7 +281,6 @@ async fn endpoint_et_micro_modele(core: &Core) -> Result<(String, String), Strin
                     p.engine,
                     locaryn_shared_types::ProviderEngine::LlamaCpp
                         | locaryn_shared_types::ProviderEngine::OpenAiCompat
-                        | locaryn_shared_types::ProviderEngine::Ollama
                         | locaryn_shared_types::ProviderEngine::Extension(_)
                 )
         })

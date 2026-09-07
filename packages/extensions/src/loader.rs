@@ -342,7 +342,8 @@ fn expand_entry(entry: &mut McpServerEntry, root: &Path) {
 
 fn parse_agent(path: &Path) -> Result<AgentDef, std::io::Error> {
     let raw = std::fs::read_to_string(path)?;
-    let (fm, body) = split_frontmatter(&raw);
+    let locaryn_shared_types::frontmatter::Frontmatter { header: fm, body } =
+        locaryn_shared_types::frontmatter::split(&raw);
     let mut def = AgentDef {
         name: path
             .file_stem()
@@ -375,7 +376,8 @@ fn parse_agent(path: &Path) -> Result<AgentDef, std::io::Error> {
 
 fn parse_rule(path: &Path) -> Result<RuleDoc, std::io::Error> {
     let raw = std::fs::read_to_string(path)?;
-    let (fm, body) = split_frontmatter(&raw);
+    let locaryn_shared_types::frontmatter::Frontmatter { header: fm, body } =
+        locaryn_shared_types::frontmatter::split(&raw);
     let mut name = path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -398,22 +400,6 @@ fn parse_rule(path: &Path) -> Result<RuleDoc, std::io::Error> {
         content,
         source_path: path.to_path_buf(),
     })
-}
-
-fn split_frontmatter(raw: &str) -> (String, &str) {
-    let trimmed = raw.trim_start_matches('\u{feff}');
-    let Some(rest) = trimmed.strip_prefix("---") else {
-        return (String::new(), trimmed);
-    };
-    let rest = rest.trim_start_matches(['\r', '\n']);
-    match rest.find("\n---") {
-        Some(end) => {
-            let fm = &rest[..end];
-            let body = rest[end + 4..].trim_start_matches(['\r', '\n']);
-            (fm.to_string(), body)
-        }
-        None => (String::new(), trimmed),
-    }
 }
 
 fn unquote(v: &str) -> String {

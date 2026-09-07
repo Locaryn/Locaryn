@@ -12,6 +12,7 @@ use uuid::Uuid;
 // ============================================================================
 
 pub mod capabilities;
+pub mod frontmatter;
 pub mod joint_document;
 pub mod model_source;
 
@@ -194,7 +195,6 @@ pub enum ProviderKind {
 /// une chaîne.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProviderEngine {
-    Ollama,
     LlamaCpp,
     Lmstudio,
     Vllm,
@@ -214,7 +214,6 @@ impl ProviderEngine {
     /// journaux. Stable — la base de données en dépend.
     pub fn as_token(&self) -> String {
         match self {
-            ProviderEngine::Ollama => "ollama".to_string(),
             ProviderEngine::LlamaCpp => "llama_cpp".to_string(),
             ProviderEngine::Lmstudio => "lmstudio".to_string(),
             ProviderEngine::Vllm => "vllm".to_string(),
@@ -238,7 +237,6 @@ impl ProviderEngine {
             return Some(ProviderEngine::Extension(id.to_string()));
         }
         match t.to_ascii_lowercase().as_str() {
-            "ollama" => Some(ProviderEngine::Ollama),
             "llama_cpp" | "llama-cpp" | "llamacpp" => Some(ProviderEngine::LlamaCpp),
             "lmstudio" | "lm_studio" | "lm-studio" => Some(ProviderEngine::Lmstudio),
             "vllm" => Some(ProviderEngine::Vllm),
@@ -1153,7 +1151,6 @@ mod provider_engine_tests {
     #[test]
     fn les_jetons_integres_ne_bougent_pas() {
         for (engine, token) in [
-            (ProviderEngine::Ollama, "ollama"),
             (ProviderEngine::LlamaCpp, "llama_cpp"),
             (ProviderEngine::Lmstudio, "lmstudio"),
             (ProviderEngine::Vllm, "vllm"),
@@ -1176,10 +1173,15 @@ mod provider_engine_tests {
         );
     }
 
-    /// Un jeton inconnu ne devient pas Ollama en silence : c'est ainsi qu'un
+    /// Un jeton inconnu ne devient pas un moteur au hasard : c'est ainsi qu'un
     /// moteur mal orthographié se met à répondre à la place d'un autre.
+    ///
+    /// `ollama` en fait desormais partie : le moteur a ete retire, et les
+    /// lignes en base qui le nommaient encore sont relues comme le runtime
+    /// integre, avec un avertissement.
     #[test]
     fn un_jeton_inconnu_est_refuse() {
+        assert_eq!(ProviderEngine::from_token("ollama"), None);
         assert_eq!(ProviderEngine::from_token("mistral_rs"), None);
         assert_eq!(ProviderEngine::from_token("ext:"), None);
         assert_eq!(ProviderEngine::from_token("ext:   "), None);

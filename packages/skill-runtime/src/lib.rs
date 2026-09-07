@@ -34,7 +34,8 @@ pub fn parse_file(path: &Path) -> Result<SkillDef, SkillError> {
 }
 
 pub fn parse_str(raw: &str, source_path: PathBuf) -> Result<SkillDef, SkillError> {
-    let (fm, body) = split_frontmatter(raw);
+    let locaryn_shared_types::frontmatter::Frontmatter { header: fm, body } =
+        locaryn_shared_types::frontmatter::split(raw);
     let mut name = source_path
         .parent()
         .and_then(|p| p.file_stem())
@@ -56,7 +57,7 @@ pub fn parse_str(raw: &str, source_path: PathBuf) -> Result<SkillDef, SkillError
         } else if let Some(v) = line.strip_prefix("auto_trigger:") {
             auto_trigger = v.trim() == "true";
         } else if let Some(v) = line.strip_prefix("allowed_tools:") {
-            allowed_tools = parse_list(v.trim());
+            allowed_tools = locaryn_shared_types::frontmatter::parse_list(v.trim());
         }
     }
     Ok(SkillDef {
@@ -68,36 +69,6 @@ pub fn parse_str(raw: &str, source_path: PathBuf) -> Result<SkillDef, SkillError
         body: body.trim().to_string(),
         source_path,
     })
-}
-
-fn split_frontmatter(raw: &str) -> (String, String) {
-    let raw_clean = raw.trim_start_matches('\u{feff}');
-    let raw_stripped = raw_clean
-        .strip_prefix("---\n")
-        .or_else(|| raw_clean.strip_prefix("---\r\n"));
-    let Some(rest) = raw_stripped else {
-        return (String::new(), raw.to_string());
-    };
-    if let Some(end) = rest.find("\n---\n").or_else(|| rest.find("\r\n---\r\n")) {
-        let (fm, body) = rest.split_at(end);
-        let body = body.trim_start_matches(['\n', '\r', '-', '-']);
-        (fm.to_string(), body.trim_start().to_string())
-    } else {
-        (String::new(), raw.to_string())
-    }
-}
-
-fn parse_list(s: &str) -> Vec<String> {
-    let s = s.trim();
-    if let Some(inner) = s.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-        inner
-            .split(',')
-            .map(|x| x.trim().trim_matches('"').to_string())
-            .filter(|x| !x.is_empty())
-            .collect()
-    } else {
-        s.split_whitespace().map(str::to_string).collect()
-    }
 }
 
 /// The skill registry.

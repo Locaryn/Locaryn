@@ -971,50 +971,6 @@ export interface AddMcpServerArgs {
   autoStart?: boolean;
 }
 
-export interface AndroidVmStatus {
-  sdkRoot: string | null;
-  sdkmanager: string | null;
-  avdmanager: string | null;
-  emulator: string | null;
-  avds: string[];
-  runningEmulators: string[];
-  recommendedAvd: string;
-  detail: string;
-}
-
-export interface AndroidVmSetupArgs {
-  avdName?: string;
-  apiLevel?: number;
-  installComponents?: boolean;
-}
-
-export interface AndroidScreenProbe {
-  serial: string;
-  state: string;
-  bootCompleted: boolean;
-  displaySize: string | null;
-  screenshotBase64: string;
-  uiXml: string;
-  uiText: string[];
-  ocrText: string | null;
-  ocrAvailable: boolean;
-  ocrDetail: string;
-}
-
-export interface AndroidScreenArgs {
-  serial?: string;
-  ocr?: boolean;
-}
-
-export interface AndroidScreenActionArgs extends AndroidScreenArgs {
-  action: "tap" | "swipe" | "back" | "home" | "refresh";
-  x?: number;
-  y?: number;
-  x2?: number;
-  y2?: number;
-  durationMs?: number;
-}
-
 /** The client certificate registered with this installation, if any. */
 export interface CertificateStatus {
   installed: boolean;
@@ -1731,22 +1687,6 @@ export interface CoreApi {
   /** Invoke a tool exposed by any enabled extension through the generic bridge. */
   invokeExtensionTool(tool: string, args: Record<string, unknown>): Promise<string>;
 
-  /** Android SDK, AVDs et émulateurs présents sur cette machine. Lecture seule. */
-  diagnoseAndroidVm(): Promise<AndroidVmStatus>;
-  /** Installe les composants manquants et crée l'AVD demandé. */
-  setupAndroidVm(args: AndroidVmSetupArgs): Promise<AndroidVmStatus>;
-  /** Démarre un AVD existant. */
-  startAndroidVm(args: {
-    avdName: string;
-    memoryMb?: number;
-    camera?: string;
-    microphone?: string;
-  }): Promise<AndroidVmStatus>;
-  stopAndroidVm(args?: { consolePort?: number }): Promise<AndroidVmStatus>;
-  /** Capture screen pixels plus semantic UI tree; OCR is optional and never required. */
-  androidScreenProbe(args?: AndroidScreenArgs): Promise<AndroidScreenProbe>;
-  /** Send a bounded, explicit screen action, then return a fresh probe. */
-  androidScreenAction(args: AndroidScreenActionArgs): Promise<AndroidScreenProbe>;
   /** Save a browser-recorded audio blob for tools that require a local path. */
   writeTestAudio(audioBase64: string, mimeType: string): Promise<string>;
   removeTestAudio(path: string): Promise<void>;
@@ -1783,10 +1723,6 @@ export interface CoreApi {
   /** Cancel one download (by model URL/name) or all when omitted. */
   cancelPullModel(model?: string): Promise<void>;
   deleteModel(endpoint: string, model: string): Promise<void>;
-  searchOllamaLibrary(
-    query: string,
-    category?: string,
-  ): Promise<import("./modelRegistry").OllamaLibraryModel[]>;
   /** Unified snapshot of what the local runtime can do (honest, install-based). */
   runtimeCapabilities(): Promise<RuntimeCapabilities>;
   /** LoRA adapters currently loaded on the running server (with live scales). */
@@ -2153,18 +2089,6 @@ const tauriCore: CoreApi = {
   stopMcpServer: (name) => invoke<void>("stop_mcp_server", { name }),
   invokeMcpTool: (name, tool, args) => invoke<unknown>("invoke_mcp_tool", { name, tool, args }),
   invokeExtensionTool: (tool, args) => invoke<string>("invoke_extension_tool", { tool, args }),
-  diagnoseAndroidVm: () => invoke<AndroidVmStatus>("diagnose_android_vm"),
-  setupAndroidVm: (args: AndroidVmSetupArgs) =>
-    invoke<AndroidVmStatus>("setup_android_vm", { args }),
-  startAndroidVm: (args: {
-    avdName: string;
-    memoryMb?: number;
-    camera?: string;
-    microphone?: string;
-  }) => invoke<AndroidVmStatus>("start_android_vm", { args }),
-  stopAndroidVm: (args = {}) => invoke<AndroidVmStatus>("stop_android_vm", { args }),
-  androidScreenProbe: (args = {}) => invoke<AndroidScreenProbe>("android_screen_probe", { args }),
-  androidScreenAction: (args) => invoke<AndroidScreenProbe>("android_screen_action", { args }),
   writeTestAudio: (audioBase64, mimeType) =>
     invoke<string>("write_test_audio", { audioBase64, mimeType }),
   removeTestAudio: (path) => invoke<void>("remove_test_audio", { path }),
@@ -2211,11 +2135,6 @@ const tauriCore: CoreApi = {
   },
   cancelPullModel: (model) => invoke("cancel_pull_model", { model: model ?? null }),
   deleteModel: (endpoint, model) => invoke("delete_model_cmd", { endpoint, model }),
-  searchOllamaLibrary: (query, category) =>
-    invoke<import("./modelRegistry").OllamaLibraryModel[]>("search_ollama_library", {
-      query,
-      category,
-    }),
   runtimeCapabilities: () => invoke<RuntimeCapabilities>("runtime_capabilities"),
   listLoraAdapters: () => invoke<LoraAdapter[]>("list_lora_adapters"),
   setLoraAdapters: (scales) => invoke<void>("set_lora_adapters", { scales }),
@@ -4899,35 +4818,6 @@ const demoCore: CoreApi = {
     arguments: args,
     message: `Outil ${tool} simulé en mode navigateur. Lancez Locaryn Tauri pour un compte réel.`,
   }),
-  // Aucun SDK Android n'est joignable depuis un navigateur : la démo le dit
-  // plutôt que d'inventer un émulateur qui n'existe pas.
-  diagnoseAndroidVm: async () => ({
-    sdkRoot: null,
-    sdkmanager: null,
-    avdmanager: null,
-    emulator: null,
-    avds: [],
-    runningEmulators: [],
-    recommendedAvd: "Locaryn_API34",
-    detail: "Le SDK Android n'est pas joignable en mode navigateur. Lancez l'application Locaryn.",
-  }),
-  setupAndroidVm: async () => {
-    throw new Error(
-      "L'installation du SDK Android exige l'application Locaryn, pas le navigateur.",
-    );
-  },
-  startAndroidVm: async () => {
-    throw new Error("Démarrer un émulateur exige l'application Locaryn, pas le navigateur.");
-  },
-  stopAndroidVm: async () => {
-    throw new Error("Arrêter un émulateur exige l'application Locaryn, pas le navigateur.");
-  },
-  androidScreenProbe: async () => {
-    throw new Error("La capture écran Android exige l'application Locaryn, pas le navigateur.");
-  },
-  androidScreenAction: async () => {
-    throw new Error("Le contrôle écran Android exige l'application Locaryn, pas le navigateur.");
-  },
   writeTestAudio: async () => "demo://audio",
   removeTestAudio: async () => {},
   saveAudioAs: async (sourcePath, destinationPath) => {
@@ -4977,9 +4867,6 @@ const demoCore: CoreApi = {
       repeat_penalty: 1.1,
       seed: -1,
     };
-  },
-  async searchOllamaLibrary() {
-    return [];
   },
   async runtimeCapabilities() {
     return {

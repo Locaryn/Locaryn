@@ -745,7 +745,7 @@ export function ModelBrowser({
   useEffect(() => {
     let active = true;
     setIsLoadingRegistry(true);
-    fetchFullRegistry((q, cat) => core.searchOllamaLibrary(q, cat))
+    fetchFullRegistry()
       .then((res) => {
         if (active) {
           setRegistryModels(res.families);
@@ -768,7 +768,7 @@ export function ModelBrowser({
   useEffect(() => {
     const interval = setInterval(
       () => {
-        fetchFullRegistry((q, cat) => core.searchOllamaLibrary(q, cat))
+        fetchFullRegistry()
           .then((res) => {
             setRegistryModels(res.families);
             setLastUpdated(res.lastFetched ?? Date.now());
@@ -1937,7 +1937,7 @@ export function ModelBrowser({
                 onClick={async () => {
                   clearRegistryCache();
                   setIsLoadingRegistry(true);
-                  const res = await fetchFullRegistry((q, cat) => core.searchOllamaLibrary(q, cat));
+                  const res = await fetchFullRegistry();
                   setRegistryModels(res.families);
                   setLastUpdated(res.lastFetched ?? Date.now());
                   setIsLoadingRegistry(false);

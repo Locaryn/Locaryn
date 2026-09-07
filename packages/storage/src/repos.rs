@@ -418,16 +418,22 @@ impl FromToken for ProviderKind {
 impl FromToken for ProviderEngine {
     /// Le jeton fait autorité et vit dans `shared-types` — il n'est pas
     /// recopié ici. Une ligne dont le moteur ne se lit pas est signalée :
-    /// c'est le symptôme d'une extension retirée ou d'une base écrite par une
-    /// version plus récente, et le confondre avec Ollama en silence fait
-    /// répondre le mauvais moteur.
+    /// c'est le symptôme d'une extension retirée, d'une base écrite par une
+    /// version plus récente, ou d'un moteur qui n'existe plus — les
+    /// installations d'avant le retrait d'Ollama passent par ici.
+    ///
+    /// Le repli est le runtime intégré, seul moteur que l'application apporte.
+    /// Un endpoint resté sur le port d'Ollama est corrigé au démarrage, si bien
+    /// qu'une ancienne ligne redevient fonctionnelle au lieu de désigner un
+    /// moteur absent.
     fn from_token(s: &str) -> Self {
         ProviderEngine::from_token(s).unwrap_or_else(|| {
             tracing::warn!(
                 jeton = %s,
-                "moteur inconnu en base — la ligne est lue comme Ollama ;                  vérifiez l'extension qui l'avait écrite"
+                "moteur inconnu en base — la ligne est lue comme le runtime intégré ; \
+                 vérifiez l'extension qui l'avait écrite"
             );
-            ProviderEngine::Ollama
+            ProviderEngine::LlamaCpp
         })
     }
 }

@@ -43,7 +43,8 @@ pub fn parse_file(path: &Path) -> Result<AgentProfile, ProfileError> {
 }
 
 pub fn parse_str(raw: &str, source_path: PathBuf) -> Result<AgentProfile, ProfileError> {
-    let (fm, body) = split_frontmatter(raw);
+    let locaryn_shared_types::frontmatter::Frontmatter { header: fm, body } =
+        locaryn_shared_types::frontmatter::split(raw);
     let mut name = source_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -62,7 +63,7 @@ pub fn parse_str(raw: &str, source_path: PathBuf) -> Result<AgentProfile, Profil
         } else if let Some(v) = line.strip_prefix("model:") {
             model = Some(v.trim().trim_matches('"').to_string());
         } else if let Some(v) = line.strip_prefix("tools:") {
-            tools = parse_list(v.trim());
+            tools = locaryn_shared_types::frontmatter::parse_list(v.trim());
         } else if let Some(v) = line.strip_prefix("output_style:") {
             output_style = Some(v.trim().trim_matches('"').to_string());
         }
@@ -76,36 +77,6 @@ pub fn parse_str(raw: &str, source_path: PathBuf) -> Result<AgentProfile, Profil
         system_prompt: body.trim().to_string(),
         source_path,
     })
-}
-
-fn split_frontmatter(raw: &str) -> (String, String) {
-    let raw = raw.trim_start_matches('\u{feff}');
-    let raw = raw
-        .strip_prefix("---\n")
-        .or_else(|| raw.strip_prefix("---\r\n"));
-    let Some(rest) = raw else {
-        return (String::new(), String::new());
-    };
-    if let Some(end) = rest.find("\n---\n").or_else(|| rest.find("\r\n---\r\n")) {
-        let (fm, body) = rest.split_at(end);
-        let body = body.trim_start_matches(['\n', '\r', '-', '-']);
-        (fm.to_string(), body.trim_start().to_string())
-    } else {
-        (rest.to_string(), String::new())
-    }
-}
-
-fn parse_list(s: &str) -> Vec<String> {
-    let s = s.trim();
-    if let Some(inner) = s.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-        inner
-            .split(',')
-            .map(|x| x.trim().trim_matches('"').to_string())
-            .filter(|x| !x.is_empty())
-            .collect()
-    } else {
-        s.split_whitespace().map(str::to_string).collect()
-    }
 }
 
 #[derive(Debug, Default)]

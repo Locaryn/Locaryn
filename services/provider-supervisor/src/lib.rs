@@ -240,15 +240,10 @@ impl Supervisor {
 
     /// Sonde un moteur. Un moteur d'extension utilise l'URL de sa propre
     /// sonde ; les autres passent par `/v1/models`.
-    async fn probe(
-        &self,
-        engine: &ProviderEngine,
-        endpoint: &str,
-        spec: Option<&ExtensionEngineSpec>,
-    ) -> bool {
+    async fn probe(&self, endpoint: &str, spec: Option<&ExtensionEngineSpec>) -> bool {
         match spec {
             Some(spec) => probe_url(&self.inner.http, &spec.health_url()).await,
-            None => healthcheck_engine(&self.inner.http, engine, endpoint).await,
+            None => healthcheck_engine(&self.inner.http, endpoint).await,
         }
     }
 
@@ -274,7 +269,7 @@ impl Supervisor {
         let active_model = p.and_then(|p| p.model);
 
         // Fast path: already healthy and serving the expected model?
-        let is_healthy = self.probe(engine, &endpoint, spec.as_ref()).await;
+        let is_healthy = self.probe(&endpoint, spec.as_ref()).await;
         if is_healthy {
             let model_matches = if matches!(engine, ProviderEngine::LlamaCpp) {
                 is_llama_server_model_match(&self.inner.http, &endpoint, active_model.as_deref())
@@ -381,7 +376,7 @@ impl Supervisor {
         };
         let deadline = Instant::now() + startup_budget;
         loop {
-            if self.probe(engine, &endpoint, spec.as_ref()).await {
+            if self.probe(&endpoint, spec.as_ref()).await {
                 let _ = self
                     .inner
                     .storage
@@ -427,7 +422,7 @@ impl Supervisor {
                 None => return false,
             },
         };
-        self.probe(engine, &endpoint, spec.as_ref()).await
+        self.probe(&endpoint, spec.as_ref()).await
     }
 
     /// Keep this engine in memory regardless of the idle timer, or release it
@@ -502,7 +497,6 @@ impl Supervisor {
         // Les moteurs intégrés, puis ceux qu'apportent les extensions
         // installées : l'écran des réglages les montre dans une seule liste.
         let mut entrees: Vec<(ProviderEngine, String, Option<ExtensionEngineSpec>)> = [
-            ProviderEngine::Ollama,
             ProviderEngine::LlamaCpp,
             ProviderEngine::Lmstudio,
             ProviderEngine::Vllm,
@@ -527,7 +521,7 @@ impl Supervisor {
                     None => (false, false),
                 }
             };
-            let healthy = self.probe(&engine, &endpoint, spec.as_ref()).await;
+            let healthy = self.probe(&endpoint, spec.as_ref()).await;
             out.push(EngineSnapshot {
                 label: spec.as_ref().map(|s| s.label.clone()),
                 engine,
@@ -591,7 +585,7 @@ impl Supervisor {
                     // serveur qui n'expose pas `/v1/models`.
                     let healthy = match extension_specs.get(engine.as_token().as_str()) {
                         Some(spec) => probe_url(&self.inner.http, &spec.health_url()).await,
-                        None => healthcheck_engine(&self.inner.http, engine, &state.endpoint).await,
+                        None => healthcheck_engine(&self.inner.http, &state.endpoint).await,
                     };
                     let new_status = if healthy {
                         ProviderStatus::Healthy
@@ -733,7 +727,6 @@ pub struct EngineSnapshot {
 /// Utilisez [`Supervisor::endpoint_for`] pour couvrir les deux cas.
 pub fn default_endpoint(e: &ProviderEngine) -> Option<&'static str> {
     match e {
-        ProviderEngine::Ollama => Some("http://127.0.0.1:11434"),
         ProviderEngine::LlamaCpp => Some("http://127.0.0.1:8080"),
         ProviderEngine::Lmstudio => Some("http://127.0.0.1:1234"),
         ProviderEngine::Vllm => Some("http://127.0.0.1:8000"),
@@ -756,20 +749,11 @@ pub async fn probe_url(client: &reqwest::Client, url: &str) -> bool {
 
 /// Healthcheck an engine by hitting its HTTP endpoint.
 /// Returns `true` if the runtime responds with a 2xx status.
-pub async fn healthcheck_engine(
-    client: &reqwest::Client,
-    engine: &ProviderEngine,
-    endpoint: &str,
-) -> bool {
-    // Try the OpenAI-compatible /v1/models endpoint first (works for all
-    // engines). Fall back to Ollama's native /api/version for Ollama.
-    if probe_url(client, &format!("{endpoint}/v1/models")).await {
-        return true;
-    }
-    if matches!(engine, ProviderEngine::Ollama) {
-        return probe_url(client, &format!("{endpoint}/api/version")).await;
-    }
-    false
+pub async fn healthcheck_engine(client: &reqwest::Client, endpoint: &str) -> bool {
+    // Tous les moteurs servis ici parlent le dialecte OpenAI : `/v1/models`
+    // suffit, et c'est la seule sonde a maintenir. Le repli sur
+    // `/api/version`, propre a Ollama, est parti avec lui.
+    probe_url(client, &format!("{endpoint}/v1/models")).await
 }
 
 /// Vérifie si l'instance llama-server qui tourne actuellement sert bien le
@@ -1008,41 +992,6 @@ pub fn ollama_options_hint() -> serde_json::Value {
 /// if the user's environment defaults to something else. stdout/stderr are
 /// piped to /dev/null (or NUL on Windows) to avoid the child holding the
 /// daemon's terminal.
-#[allow(dead_code)]
-async fn spawn_ollama(cfg: &SupervisorConfig) -> Result<Child, SupervisorError> {
-    let bin = cfg
-        .ollama_bin
-        .clone()
-        .or_else(|| which("ollama"))
-        .ok_or_else(|| SupervisorError::BinaryNotFound("ollama".into()))?;
-
-    tracing::info!(bin = %bin.display(), "spawning ollama serve");
-
-    let mut cmd = Command::new(&bin);
-    cmd.arg("serve")
-        .env("OLLAMA_HOST", "127.0.0.1:11434")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-
-    // On Windows, CREATE_NO_WINDOW + DETACHED_PROCESS to avoid a console
-    // popup and detach from the daemon's process group.
-    // On Unix, the child inherits null stdio (set above) which is sufficient
-    // for V1 â€” the idle timer and explicit shutdown handle cleanup.
-    // (V1.1: add `nix` crate for proper setsid detachment on Unix.)
-    #[cfg(windows)]
-    {
-        // CREATE_NO_WINDOW = 0x08000000
-        // DETACHED_PROCESS  = 0x00000008
-        // tokio::process::Command has an inherent creation_flags() method
-        // on Windows â€” no trait import needed.
-        cmd.creation_flags(0x08000008);
-    }
-
-    cmd.spawn()
-        .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::Ollama, e.to_string()))
-}
-
 async fn spawn_llama_server(
     _cfg: &SupervisorConfig,
     active_model: Option<&str>,

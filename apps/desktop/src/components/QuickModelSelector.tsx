@@ -57,7 +57,7 @@ export function QuickModelSelector({
 
   useEffect(() => {
     if (!isOpen) return;
-    fetchFullRegistry((q, cat) => core.searchOllamaLibrary(q, cat))
+    fetchFullRegistry()
       .then((res) => setRegistry(res.families))
       .catch(() => {});
   }, [isOpen]);

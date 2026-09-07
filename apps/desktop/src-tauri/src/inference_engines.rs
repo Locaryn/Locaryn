@@ -58,7 +58,6 @@ pub struct EngineInfo {
 
 fn nom_integre(engine: &ProviderEngine) -> &'static str {
     match engine {
-        ProviderEngine::Ollama => "Ollama",
         ProviderEngine::LlamaCpp => "llama.cpp (intégré)",
         ProviderEngine::Lmstudio => "LM Studio",
         ProviderEngine::Vllm => "vLLM",

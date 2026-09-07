@@ -1492,7 +1492,7 @@ fn parse_trust(s: &str) -> anyhow::Result<locaryn_shared_types::TrustLevel> {
 fn parse_engine(s: &str) -> anyhow::Result<locaryn_shared_types::ProviderEngine> {
     locaryn_shared_types::ProviderEngine::from_token(s).ok_or_else(|| {
         anyhow::anyhow!(
-            "moteur inconnu : {s} — attendus : ollama, llama_cpp, lmstudio, vllm,              open_ai_compat, airllm, ou ext:<id> pour un moteur apporté par une extension"
+            "moteur inconnu : {s} — attendus : llama_cpp, lmstudio, vllm, open_ai_compat, \n             airllm, ou ext:<id> pour un moteur apporté par une extension"
         )
     })
 }

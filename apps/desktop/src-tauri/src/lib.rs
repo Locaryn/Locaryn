@@ -1846,10 +1846,8 @@ async fn send_message(
             if p.seed >= 0 {
                 m.insert("seed".into(), serde_json::json!(p.seed));
             }
-            // Contexte : Ollama n'ecoute `num_ctx` que sur son API native
-            // /api/chat (son endpoint /v1 ignore silencieusement les options —
-            // mesure sur 0.33.x). Les autres moteurs OpenAI-compat recolteront
-            // une cle qu'ils ignorent, sans risque.
+            // `num_ctx` part avec les autres options : les moteurs qui ne
+            // la connaissent pas l'ignorent, sans risque.
             m.insert("num_ctx".into(), serde_json::json!(p.context_length));
             serde_json::Value::Object(m)
         });
@@ -2062,11 +2060,9 @@ async fn send_message(
         ))),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
-        // Ollama n'honore num_ctx que sur son API native (son endpoint /v1
-        // ignore les options en silence) : le drapeau suit le moteur actif.
-        native_chat_api: active_provider
-            .as_ref()
-            .is_some_and(|p| p.engine == ProviderEngine::Ollama),
+        // Le dialecte natif n'existait que pour Ollama, qui n'honorait
+        // `num_ctx` que la ; plus aucun moteur servi ici n'en a besoin.
+        native_chat_api: false,
     };
 
     let mut event_stream: EventStream = if let Some(core_id) = &session_core_id {
@@ -2747,9 +2743,11 @@ pub(crate) fn is_chat_model_for(file_name: &str, formats: &FormatsDeChat) -> boo
         .any(|ext| n.ends_with(&format!(".{ext}")))
 }
 
-/// List the models actually installed on the Ollama runtime at `endpoint`.
-/// Hits `{endpoint}/api/tags` and returns the model names, sorted. Doubles as
-/// a connection test: an error means the runtime is unreachable.
+/// Les modeles reellement installes sur cette machine.
+///
+/// La liste vient du dossier des modeles, pas d'un moteur : elle repond donc
+/// meme quand rien ne tourne. `endpoint` n'est plus lu — il datait de l'epoque
+/// ou la liste etait demandee a Ollama.
 #[tauri::command]
 async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<String>, String> {
     if let Some(client) = core.remote_client() {
@@ -5429,45 +5427,24 @@ async fn update_provider_model_params(
 /// borner le curseur du panneau : proposer 128k a un modele entraîne pour
 /// 32k, c'est inviter une demande que le moteur va reduire en silence.
 ///
-/// Deux sources, la premiere qui repond gagne :
-/// - Ollama : `/api/show` donne `model_info.<arch>.context_length` — la
-///   limite reelle du modele.
-/// - llama.cpp : le lanceur ecrit `model_ctx_capacity.json` au demarrage,
-///   lu depuis le GGUF du modele charge (`train_context` + marge de 50 %
-///   pour les modeles a RoPE scalé).
+/// La source est le lanceur : il ecrit `model_ctx_capacity.json` au
+/// demarrage, lu depuis le GGUF du modele charge (`train_context` + marge de
+/// 50 % pour les modeles a RoPE scalé). L'autre source etait `/api/show`
+/// d'Ollama, partie avec lui.
 ///
 /// `None` : rien n'a repondu — le panneau garde son maximum générique.
 #[tauri::command]
 async fn get_model_ctx_capacity(core: State<'_, Core>) -> Result<Option<u32>, String> {
-    let active = core
-        .storage
+    // Sans moteur actif, il n'y a pas de capacité a annoncer : le dire vaut
+    // mieux que rendre celle d'un moteur qui ne tourne pas.
+    core.storage
         .providers
         .active()
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "aucun fournisseur actif".to_string())?;
 
-    if active.engine == ProviderEngine::Ollama {
-        let url = format!("{}/api/show", active.endpoint.trim_end_matches('/'));
-        let body = serde_json::json!({ "model": active.model.clone().unwrap_or_default() });
-        if let Ok(resp) = core.http.post(&url).json(&body).send().await {
-            if let Ok(v) = resp.json::<serde_json::Value>().await {
-                if let Some(info) = v.get("model_info").and_then(|m| m.as_object()) {
-                    for (k, val) in info {
-                        if k.ends_with(".context_length") {
-                            if let Some(n) = val.as_u64() {
-                                let cap = (n as f64 * 1.5).round().min(u32::MAX as f64) as u32;
-                                return Ok(Some(cap.max(4096)));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return Ok(None);
-    }
-
-    // llama.cpp géré : la capacité ecrite par le lanceur au demarrage.
+    // La capacité ecrite par le lanceur au demarrage.
     let cap_path = core.data_dir.join("model_ctx_capacity.json");
     if let Ok(s) = std::fs::read_to_string(&cap_path) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
@@ -5952,7 +5929,6 @@ async fn modele_de_plongement(core: &Core) -> Result<(String, String), String> {
                     p.engine,
                     locaryn_shared_types::ProviderEngine::LlamaCpp
                         | locaryn_shared_types::ProviderEngine::OpenAiCompat
-                        | locaryn_shared_types::ProviderEngine::Ollama
                         | locaryn_shared_types::ProviderEngine::Extension(_)
                 )
         })
@@ -6164,31 +6140,6 @@ async fn rag_search(
             score: h.score,
         })
         .collect())
-}
-
-// ============================================================================
-// Ollama library search
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize)]
-pub struct OllamaLibraryModel {
-    pub name: String,
-    pub description: String,
-    pub pulls: String,
-    pub tags: Vec<String>,
-    pub category: String,
-}
-
-#[tauri::command]
-async fn search_ollama_library(
-    _core: State<'_, Core>,
-    query: String,
-    _category: Option<String>,
-) -> Result<Vec<OllamaLibraryModel>, String> {
-    let _ = query;
-    // The real implementation fetches from https://ollama.com/library/{query}
-    // and parses the model list. For now, return empty.
-    Ok(Vec::new())
 }
 
 // ============================================================================
@@ -6609,7 +6560,6 @@ pub fn run() {
             rag_status,
             rag_clear,
             rag_search,
-            search_ollama_library,
             llama_runtime_status,
             setup_llama_runtime,
             list_connector_types,
@@ -6685,12 +6635,6 @@ pub fn run() {
             mcp_servers::start_mcp_server,
             mcp_servers::stop_mcp_server,
             mcp_servers::invoke_mcp_tool,
-            mcp_servers::diagnose_android_vm,
-            mcp_servers::setup_android_vm,
-            mcp_servers::start_android_vm,
-            mcp_servers::stop_android_vm,
-            mcp_servers::android_screen_probe,
-            mcp_servers::android_screen_action,
             write_test_audio,
             remove_test_audio,
             save_audio_as,
