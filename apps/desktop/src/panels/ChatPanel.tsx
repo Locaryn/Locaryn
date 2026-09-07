@@ -37,6 +37,7 @@ import {
   argToSize,
   matchExtensionCommand,
   matchSlashInput,
+  parseModifiers,
 } from "../lib/slashCommands";
 import { runWorkflow } from "../lib/workflow";
 import { DEFAULT_MODEL_PARAMS } from "./ModelConfigPanel";
@@ -400,6 +401,15 @@ export function ChatPanel({
   const [slashIndex, setSlashIndex] = useState(0);
   /** Set by /plan: the next message is executed as a step-by-step plan. */
   const [planNext, setPlanNext] = useState(false);
+  /**
+   * Ce que `/workflow` et `/loop` ont impose au prochain message.
+   *
+   * Ils ne remplacent pas le message : ils le modifient, et se cumulent. L'etat
+   * vit donc a cote de `planNext` plutot que de le remplacer — `/plan` laisse
+   * le modele decider, `/workflow` ne le laisse pas.
+   */
+  const [forceWorkflow, setForceWorkflow] = useState(false);
+  const [loopCount, setLoopCount] = useState<number | null>(null);
 
   const streamRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -868,10 +878,31 @@ export function ChatPanel({
         return;
       }
     }
-    const text = (textOverride ?? input).trim();
+    // Les modificateurs poses devant la demande — `/workflow`, `/loop 3` — se
+    // detachent avant tout le reste, et se cumulent avec ceux qu'un passage
+    // precedent par la palette avait deja armes.
+    const brut = (textOverride ?? input).trim();
+    const mods = parseModifiers(brut);
+    const text = mods.rest;
+    const imposeWorkflow = forceWorkflow || mods.force;
+    const reprises = mods.loops ?? loopCount;
     const imgs = attachOverride ?? attachments;
 
-    if (!text && imgs.length === 0) return;
+    if (!text && imgs.length === 0) {
+      // Des modificateurs sans demande : le dire, sinon la palette parait
+      // avoir avale le message.
+      if (mods.force || mods.loops !== null) {
+        setItems((prev) => [
+          ...prev,
+          {
+            id: nextId("log"),
+            kind: "log",
+            text: "Ces commandes modifient une demande : écrivez-la à la suite, par exemple « /workflow répare le parseur ».",
+          },
+        ]);
+      }
+      return;
+    }
 
     // Home screen: no chat yet — the first prompt creates one, auto-named after
     // its subject. `skipLoadRef` stops the load effect from wiping what we are
@@ -949,8 +980,10 @@ export function ChatPanel({
     const t0 = Date.now();
 
     // /plan → decompose and execute step by step, with a verification loop.
-    if (planNext) {
+    if (planNext || imposeWorkflow || reprises !== null) {
       setPlanNext(false);
+      setForceWorkflow(false);
+      setLoopCount(null);
       try {
         const ran = await runWorkflow(sid, text, {
           onEvent: handleEvent,
@@ -1214,6 +1247,16 @@ export function ChatPanel({
       case "plan":
         setPlanNext(true);
         break;
+      case "workflow":
+        setForceWorkflow(true);
+        break;
+      case "loop": {
+        // Le nombre tape apres la commande, borne comme dans `parseModifiers`.
+        const apres = raw.replace(/^\/\S+\s*/, "").trim();
+        const n = Number.parseInt(apres, 10);
+        setLoopCount(Number.isFinite(n) ? Math.min(5, Math.max(2, n)) : 3);
+        break;
+      }
       case "clear":
         setItems([]);
         setFollowups([]);

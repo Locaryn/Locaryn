@@ -1397,7 +1397,13 @@ export interface CoreApi {
   /** Workspace directory for a session (project path, or temp folder for free chats). */
   sessionWorkspace(sessionId: string): Promise<string>;
   /** A plan the model produced for a substantial request. */
-  planTask(request: string): Promise<TaskPlan>;
+  /**
+   * Decoupe une demande en plan.
+   *
+   * `force` retire au modele le droit de repondre « pas besoin de plan » :
+   * c'est ce que `/workflow` impose.
+   */
+  planTask(request: string, force?: boolean): Promise<TaskPlan>;
   /** Legacy wire method used by older image extensions. */
   getImageDefaults(): Promise<ImageDefaults>;
   setImageDefaults(config: ImageDefaults): Promise<void>;
@@ -1809,7 +1815,7 @@ const tauriCore: CoreApi = {
   sessionWorkspace: (sessionId) => invoke<string>("session_workspace", { sessionId }),
   suggestFollowups: (answer, question) =>
     invoke<string[]>("suggest_followups", { answer, question }),
-  planTask: (request) => invoke<TaskPlan>("plan_task", { request }),
+  planTask: (request, force) => invoke<TaskPlan>("plan_task", { request, force: force ?? null }),
   appendChatMessage: (sessionId, role, content) =>
     invoke<void>("append_chat_message", { sessionId, role, content }),
   appendAssistantMessage: (sessionId, content) =>

@@ -859,11 +859,25 @@ struct TaskPlan {
     steps: Vec<String>,
 }
 
-/// Ask the model to turn a request into an executable plan. Returns
-/// `needs_plan: false` for requests that don't warrant one, so the caller can
-/// fall back to a normal single answer.
+/// Découpe une demande en plan exécutable.
+///
+/// C'est normalement le modèle qui décide s'il faut un plan : la plupart des
+/// demandes se traitent en une réponse, et orchestrer pour une question simple
+/// coûte du temps pour rien. `needs_plan: false` laisse alors l'appelant
+/// répondre d'un seul tour.
+///
+/// `force` renverse cette décision. La personne qui tape `/workflow` a jugé que
+/// sa demande méritait une orchestration, et elle en sait souvent plus que le
+/// modèle sur ce qui l'attend. On ne triche pas pour autant en posant
+/// `needs_plan = true` sur un plan vide : c'est la **consigne** qui change, et
+/// le modèle produit alors de vraies étapes.
 #[tauri::command]
-async fn plan_task(core: State<'_, Core>, request: String) -> Result<TaskPlan, String> {
+async fn plan_task(
+    core: State<'_, Core>,
+    request: String,
+    force: Option<bool>,
+) -> Result<TaskPlan, String> {
+    let force = force.unwrap_or(false);
     let provider = core
         .storage
         .providers
@@ -879,11 +893,24 @@ async fn plan_task(core: State<'_, Core>, request: String) -> Result<TaskPlan, S
         "{}/v1/chat/completions",
         provider.endpoint.trim_end_matches('/')
     );
+    // Deux consignes pour un meme travail : la seconde retire au modele le
+    // droit de repondre « pas besoin de plan », puisque la personne a deja
+    // tranche.
+    let commun = "Reponds UNIQUEMENT en JSON:         {\"needs_plan\":bool,\"needs_loop\":bool,\"steps\":[\"...\"]}.         needs_loop=true seulement si le resultat doit etre VERIFIE et la tache         reprise en cas d echec (correction de bug, faire marcher quelque chose);         false pour une creation ponctuelle.         2 a 5 etapes maximum, chacune une instruction courte a l imperatif,         dans la MEME LANGUE que la demande. La derniere etape doit verifier le         resultat quand needs_loop est true.";
+    let consigne = if force {
+        format!(
+            "Tu decomposes une demande en plan executable. L'utilisateur a EXPLICITEMENT              demande une orchestration : needs_plan DOIT valoir true et steps ne doit PAS              etre vide, meme si la demande te parait simple. Decoupe-la en etapes utiles              plutot que de la refuser. {commun}"
+        )
+    } else {
+        format!(
+            "Tu decomposes une demande en plan executable. needs_plan=false si la demande              est simple (une question, une petite modif) et peut etre traitee en une seule              reponse: dans ce cas steps=[]. {commun}"
+        )
+    };
+
     let body = serde_json::json!({
         "model": provider.model.clone().unwrap_or_else(|| "default".into()),
         "messages": [
-            { "role": "system", "content":
-              "Tu decomposes une demande en plan executable. Reponds UNIQUEMENT en JSON:                {\"needs_plan\":bool,\"needs_loop\":bool,\"steps\":[\"...\"]}.                needs_plan=false si la demande est simple (une question, une petite modif)                et peut etre traitee en une seule reponse: dans ce cas steps=[].                needs_loop=true seulement si le resultat doit etre VERIFIE et la tache                reprise en cas d echec (correction de bug, faire marcher quelque chose);                false pour une creation ponctuelle.                2 a 5 etapes maximum, chacune une instruction courte a l imperatif,                dans la MEME LANGUE que la demande. La derniere etape doit verifier le                resultat quand needs_loop est true." },
+            { "role": "system", "content": consigne },
             { "role": "user", "content": request }
         ],
         "response_format": { "type": "json_object" },

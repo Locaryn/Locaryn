@@ -12,6 +12,8 @@ export type SlashAction =
   | "settings"
   | "new-chat"
   | "plan"
+  | "workflow"
+  | "loop"
   | "clear"
   /** Commande apportee par un plugin : le corps est resolu par le backend. */
   | "extension";
@@ -44,6 +46,68 @@ export interface SlashCommand {
   extension?: string;
 }
 
+/**
+ * Ce que des commandes posees devant une demande changent a son execution.
+ *
+ * `/workflow` et `/loop` ne sont pas des actions qui remplacent le message :
+ * elles le **modifient**. On peut donc les cumuler — `/workflow /loop 3 repare
+ * le parseur` impose une orchestration et la rejoue jusqu'a trois fois — la ou
+ * une commande ordinaire consomme tout le message.
+ */
+export interface SlashModifiers {
+  /** Imposer l'orchestration, sans laisser le modele en decider. */
+  force: boolean;
+  /** Nombre de tentatives quand la verification echoue. `null` = defaut. */
+  loops: number | null;
+  /** Ce qui reste de la demande, les modificateurs retires. */
+  rest: string;
+}
+
+/** Les noms qui declenchent chaque modificateur, alias compris. */
+const MODS_FORCE = new Set(["workflow", "orchestre", "orchestration"]);
+const MODS_LOOP = new Set(["loop", "boucle", "repete", "répète"]);
+
+/**
+ * Detache les modificateurs poses au debut d'une demande.
+ *
+ * Boucle tant que le texte commence par l'un d'eux, pour qu'ils se cumulent
+ * dans n'importe quel ordre. Le nombre qui suit `/loop` est avale seulement
+ * s'il en est un : `/loop repare le bug` garde « repare le bug » comme demande
+ * et retombe sur le nombre de tentatives par defaut.
+ */
+export function parseModifiers(input: string): SlashModifiers {
+  let rest = input.trim();
+  let force = false;
+  let loops: number | null = null;
+
+  for (;;) {
+    const m = rest.match(/^\/([\p{L}]+)\s*/u);
+    if (!m) break;
+    const nom = m[1].toLowerCase();
+    if (MODS_FORCE.has(nom)) {
+      force = true;
+      rest = rest.slice(m[0].length);
+      continue;
+    }
+    if (MODS_LOOP.has(nom)) {
+      rest = rest.slice(m[0].length);
+      const n = rest.match(/^(\d+)\s*/);
+      if (n) {
+        // Borne haute assumee : au-dela de cinq reprises, ce n'est plus une
+        // verification qui echoue, c'est une demande a reformuler.
+        loops = Math.min(5, Math.max(2, Number(n[1])));
+        rest = rest.slice(n[0].length);
+      } else {
+        loops = 3;
+      }
+      continue;
+    }
+    break;
+  }
+
+  return { force, loops, rest: rest.trim() };
+}
+
 /** Map a typed argument to a resolution, or null when it isn't one. */
 export function argToSize(arg: string): number | null {
   const a = arg.trim().toLowerCase();
@@ -71,11 +135,32 @@ export function argToSize(arg: string): number | null {
 export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "plan",
-    aliases: ["workflow", "etapes", "étapes"],
+    aliases: ["etapes", "étapes"],
     icon: "list-bullets",
-    label: "Plan par etapes",
-    hint: "Decompose la demande et l execute etape par etape",
+    label: "Plan par étapes",
+    hint: "Le modèle décide s'il faut un plan, et l'exécute le cas échéant",
     action: "plan",
+  },
+  {
+    name: "workflow",
+    aliases: ["orchestre", "orchestration"],
+    icon: "extensions",
+    label: "Forcer un workflow",
+    hint: "Orchestration imposée, même si le modèle la juge inutile",
+    action: "workflow",
+  },
+  {
+    name: "loop",
+    aliases: ["boucle", "repete", "répète"],
+    icon: "refresh",
+    label: "Répéter jusqu'à ce que ça passe",
+    hint: "Rejoue la demande jusqu'à ce qu'elle se vérifie (2 à 5 fois)",
+    action: "loop",
+    args: [
+      { value: "2", label: "2 fois", hint: "deux tentatives au plus" },
+      { value: "3", label: "3 fois", hint: "le défaut" },
+      { value: "5", label: "5 fois", hint: "pour ce qui résiste" },
+    ],
   },
   {
     name: "documents",

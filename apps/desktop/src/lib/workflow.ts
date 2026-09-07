@@ -18,8 +18,22 @@ export interface WorkflowHooks {
   onDone?: (ok: boolean, attempts: number) => void;
 }
 
-/** Max times the plan is replayed when its verification step fails. */
+/** Reprises par defaut quand l'etape de verification echoue. */
 const MAX_ATTEMPTS = 3;
+
+/** Ce que la personne a impose devant sa demande. */
+export interface WorkflowOptions {
+  /**
+   * Imposer l'orchestration.
+   *
+   * Sans cela, un plan que le modele juge inutile fait retomber l'appelant sur
+   * une reponse simple — ce qui est le bon defaut, mais pas ce que veut
+   * quelqu'un qui a tape `/workflow`.
+   */
+  force?: boolean;
+  /** Reprises voulues. Au-dela du defaut, et borne a cinq. */
+  loops?: number | null;
+}
 
 /**
  * Did the verification step report a failure?
@@ -50,14 +64,25 @@ export async function runWorkflow(
   sessionId: string,
   request: string,
   hooks: WorkflowHooks,
+  options: WorkflowOptions = {},
 ): Promise<boolean> {
+  const force = options.force === true;
   let plan: TaskPlan;
   try {
-    plan = await core.planTask(request);
+    plan = await core.planTask(request, force);
   } catch {
     return false; // planning unavailable → plain answer
   }
-  if (!plan.needs_plan || plan.steps.length === 0) return false;
+  // Un plan sans etape n'est pas un plan : meme force, on rend la main plutot
+  // que de lancer une orchestration vide. L'appelant dira alors pourquoi.
+  if (plan.steps.length === 0) return false;
+  if (!plan.needs_plan && !force) return false;
+
+  // `/loop` demande une verification : sans elle, il n'y aurait rien a
+  // reprendre, et la boucle ne servirait a rien.
+  const loops = options.loops ?? null;
+  if (loops !== null) plan = { ...plan, needs_loop: true };
+  const maxAttempts = loops ?? MAX_ATTEMPTS;
 
   const taskId = taskCenter.addWorkflow(
     `Plan : ${request.slice(0, 40)}${request.length > 40 ? "…" : ""}`,
@@ -67,7 +92,7 @@ export async function runWorkflow(
   let attempt = 1;
   let ok = false;
 
-  while (attempt <= (plan.needs_loop ? MAX_ATTEMPTS : 1)) {
+  while (attempt <= (plan.needs_loop ? maxAttempts : 1)) {
     if (attempt > 1) taskCenter.retryWorkflow(taskId);
     let failed = false;
 
