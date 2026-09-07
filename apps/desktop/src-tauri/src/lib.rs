@@ -5832,7 +5832,13 @@ async fn runtime_capabilities(core: State<'_, Core>) -> Result<RuntimeCapabiliti
         runtime_installed,
         runtime_version: None,
         chat: runtime_installed,
-        vision: false,
+        // Le runtime sait recevoir des images des lors qu'un projecteur
+        // accompagne les poids : c'est `--mmproj` qui decide, modele par
+        // modele. La valeur etait figee a `false`, ce qui annoncait une
+        // incapacite du moteur alors que la reponse depend du modele charge —
+        // `model_abilities` la donne pour de vrai, et c'est elle que
+        // l'interface consulte.
+        vision: runtime_installed,
         embeddings: runtime_installed,
         image_gen,
         finetune: false,
@@ -5851,7 +5857,7 @@ async fn runtime_capabilities(core: State<'_, Core>) -> Result<RuntimeCapabiliti
 // LoRA adapters
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct LoraAdapter {
     pub id: u32,
@@ -5866,11 +5872,32 @@ pub struct LoraScale {
     pub scale: f32,
 }
 
+/// Les adaptateurs LoRA que le moteur a chargés.
+///
+/// Interroge `/lora-adapters` sur le moteur actif — c'est llama-server qui en
+/// tient la liste, puisqu'ils ne vivent qu'avec l'instance lancée avec
+/// `--lora`. Deux écrans l'affichent ; la fonction rendait auparavant une liste
+/// vide sans jamais rien demander, si bien qu'aucun adaptateur ne pouvait
+/// apparaître, même chargé.
+///
+/// Un moteur éteint, ou une version qui n'expose pas la route, rend une liste
+/// vide : c'est la vérité — sans moteur, aucun adaptateur n'est chargé. Une
+/// réponse illisible, en revanche, est signalée plutôt que masquée.
 #[tauri::command]
-async fn list_lora_adapters() -> Result<Vec<LoraAdapter>, String> {
-    // The running llama-server exposes /v1/lora-adapters when LoRA is loaded.
-    // For now, return empty — the real implementation will query the server.
-    Ok(Vec::new())
+async fn list_lora_adapters(core: State<'_, Core>) -> Result<Vec<LoraAdapter>, String> {
+    let Some(active) = core.storage.providers.active().await.ok().flatten() else {
+        return Ok(Vec::new());
+    };
+    let url = format!("{}/lora-adapters", active.endpoint.trim_end_matches('/'));
+    let Ok(res) = core.http.get(&url).send().await else {
+        return Ok(Vec::new());
+    };
+    if !res.status().is_success() {
+        return Ok(Vec::new());
+    }
+    res.json::<Vec<LoraAdapter>>()
+        .await
+        .map_err(|e| format!("réponse illisible du moteur sur /lora-adapters : {e}"))
 }
 
 #[tauri::command]

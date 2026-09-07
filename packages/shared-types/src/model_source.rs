@@ -123,3 +123,43 @@ mod tests {
         }
     }
 }
+
+/// Le dossier d'une extension, depuis le chemin de son manifeste.
+///
+/// Le chemin enregistré désigne tantôt le manifeste (`.../morph.json`), tantôt
+/// le dossier qui le contient : les deux formes circulent selon la voie
+/// d'installation. La réponse est le dossier dans les deux cas.
+///
+/// Trois copies en existaient — l'application, le service, et le socle des
+/// fournisseurs — l'une prenant un `&Path`, les deux autres un `&str`. Même
+/// courtes, trois copies d'une règle de chemin finissent par ne plus s'accorder
+/// sur un cas limite.
+pub fn extension_root(manifest_path: &std::path::Path) -> Option<std::path::PathBuf> {
+    if manifest_path.is_dir() {
+        return Some(manifest_path.to_path_buf());
+    }
+    manifest_path.parent().map(std::path::Path::to_path_buf)
+}
+
+#[cfg(test)]
+mod racine_tests {
+    use super::extension_root;
+    use std::path::Path;
+
+    #[test]
+    fn un_manifeste_donne_son_dossier() {
+        let r = extension_root(Path::new("/a/b/morph.json")).unwrap();
+        assert_eq!(r, Path::new("/a/b"));
+    }
+
+    /// Un manifeste sans dossier devant lui donne le dossier courant, vide ;
+    /// un chemin vide n'a pas de parent du tout.
+    #[test]
+    fn les_chemins_degeneres_repondent_sans_paniquer() {
+        assert_eq!(extension_root(Path::new("")), None);
+        assert_eq!(
+            extension_root(Path::new("morph.json")),
+            Some(Path::new("").to_path_buf())
+        );
+    }
+}

@@ -30,12 +30,6 @@ use uuid::Uuid;
 use crate::DaemonState;
 
 /// Dossier racine d'une extension, à partir du chemin du manifeste.
-fn plugin_root(manifest_path: &Path) -> Option<PathBuf> {
-    if manifest_path.is_dir() {
-        return Some(manifest_path.to_path_buf());
-    }
-    manifest_path.parent().map(|x| x.to_path_buf())
-}
 
 #[async_trait::async_trait]
 impl CoreHost for DaemonState {
@@ -55,8 +49,9 @@ impl CoreHost for DaemonState {
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "extension introuvable".to_string())?;
-        let root = plugin_root(Path::new(&row.manifest_path))
-            .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
+        let root =
+            locaryn_shared_types::model_source::extension_root(Path::new(&row.manifest_path))
+                .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
         let manifest = locaryn_extensions::manifest::load(&root).map_err(|e| e.to_string())?;
         let core_m = manifest
             .core
@@ -85,7 +80,9 @@ impl CoreHost for DaemonState {
 pub async fn list_cores(State(s): State<Arc<DaemonState>>) -> Response {
     let mut out = Vec::new();
     for e in s.extensions.list() {
-        let Some(root) = plugin_root(&e.manifest_path) else {
+        let Some(root) =
+            locaryn_shared_types::model_source::extension_root(Path::new(&e.manifest_path))
+        else {
             continue;
         };
         let Ok(manifest) = locaryn_extensions::manifest::load(&root) else {
@@ -196,7 +193,9 @@ pub async fn agent_for_core(
 pub async fn verifier_noyau(s: &DaemonState, id: Uuid) -> Result<bool, String> {
     match s.storage.extensions.get(id).await {
         Ok(Some(row)) => {
-            let Some(root) = plugin_root(Path::new(&row.manifest_path)) else {
+            let Some(root) =
+                locaryn_shared_types::model_source::extension_root(Path::new(&row.manifest_path))
+            else {
                 return Ok(false);
             };
             match locaryn_extensions::manifest::load(&root) {

@@ -262,12 +262,11 @@ fn sanitize_server(s: &str) -> String {
         .collect()
 }
 
+/// Le dossier d'une extension. La regle vit dans `shared-types` — trois copies
+/// en circulaient — et cette enveloppe garde la commodite du `&str` que les
+/// lignes de la base fournissent.
 pub(crate) fn plugin_root(manifest_path: &str) -> Option<PathBuf> {
-    let p = Path::new(manifest_path);
-    if p.is_dir() {
-        return Some(p.to_path_buf());
-    }
-    p.parent().map(|x| x.to_path_buf())
+    locaryn_shared_types::model_source::extension_root(Path::new(manifest_path))
 }
 
 // ============================================================================

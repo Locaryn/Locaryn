@@ -147,12 +147,9 @@ impl DeclaredProvider {
 }
 
 /// Racine du paquet à partir du chemin de son manifeste.
+/// Le dossier d'une extension. La regle vit dans `shared-types`.
 pub fn plugin_root(manifest_path: &str) -> Option<PathBuf> {
-    let p = Path::new(manifest_path);
-    if p.is_dir() {
-        return Some(p.to_path_buf());
-    }
-    p.parent().map(Path::to_path_buf)
+    locaryn_shared_types::model_source::extension_root(Path::new(manifest_path))
 }
 
 // ============================================================================
