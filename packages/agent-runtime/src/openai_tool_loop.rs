@@ -59,7 +59,11 @@ pub async fn run_openai_tool_loop(
     let tools = if in_project {
         builtin_tools()
     } else {
-        Vec::new()
+        // Hors d'un projet, les outils de fichiers n'ont pas de racine ou
+        // travailler. Demander, si : une conversation libre souleve une
+        // question aussi bien qu'un projet, et l'en priver forcerait le
+        // modele a deviner la ou il pouvait poser la question.
+        vec![crate::tools::question_tool()]
     };
     // MCP extensions are valid in a free conversation too (for example an
     // image plugin writes only to its own storage). Only the host's built-in

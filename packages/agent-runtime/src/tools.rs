@@ -156,38 +156,49 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
             risk: Risk::High,
             required_permissions: vec![locaryn_shared_types::Permission::Shell],
         },
-        ToolSpec {
-            name: "ask_user".into(),
-            description: "Ask the user a question when you are genuinely unsure and guessing would waste their time or produce the wrong thing — an ambiguous requirement, two defensible directions, a missing constraint, or who should be able to see something you are about to record. The question appears above their message box without interrupting them: they can answer later, and other work keeps running. Offer 2 to 4 concrete options in `options`; a free-text field is added for you. Do NOT use it for permission to run a tool (that is asked separately), and do not use it for something you can find out yourself.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "question": {
-                        "type": "string",
-                        "description": "The question, in one sentence, in the user's language."
-                    },
-                    "detail": {
-                        "type": "string",
-                        "description": "What is at stake, if explaining it helps them choose."
-                    },
-                    "options": {
-                        "type": "array",
-                        "description": "The answers you propose. Each is either a string or {label, hint}, where hint says what that choice implies.",
-                        "items": { "type": "string" }
-                    },
-                    "allow_free_text": {
-                        "type": "boolean",
-                        "description": "Leave unset to keep the free-text field. Set false only when an answer outside your options would be meaningless."
-                    }
-                },
-                "required": ["question"]
-            }),
-            // Rien n'est modifie, rien n'est execute : demander ne se fait pas
-            // approuver, sinon on demanderait la permission de demander.
-            risk: Risk::Low,
-            required_permissions: Vec::new(),
-        },
+        question_tool(),
     ]
+}
+
+/// Demander a l'utilisateur, quand on doute.
+///
+/// A part des autres outils integres : ceux-la exigent un projet ouvert — ils
+/// lisent et ecrivent des fichiers. Douter n'exige rien. Une conversation
+/// libre souleve une question aussi bien qu'un projet, et l'y priver forcerait
+/// le modele a deviner la ou il pouvait demander.
+#[must_use]
+pub fn question_tool() -> ToolSpec {
+    ToolSpec {
+        name: "ask_user".into(),
+        description: "Ask the user a question when you are genuinely unsure and guessing would waste their time or produce the wrong thing — an ambiguous requirement, two defensible directions, a missing constraint, or who should be able to see something you are about to record. The question appears above their message box without interrupting them: they can answer later, and other work keeps running. Offer 2 to 4 concrete options in `options`; a free-text field is added for you. Do NOT use it for permission to run a tool (that is asked separately), and do not use it for something you can find out yourself.".into(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question, in one sentence, in the user's language."
+                },
+                "detail": {
+                    "type": "string",
+                    "description": "What is at stake, if explaining it helps them choose."
+                },
+                "options": {
+                    "type": "array",
+                    "description": "The answers you propose. Each is either a string or {label, hint}, where hint says what that choice implies.",
+                    "items": { "type": "string" }
+                },
+                "allow_free_text": {
+                    "type": "boolean",
+                    "description": "Leave unset to keep the free-text field. Set false only when an answer outside your options would be meaningless."
+                }
+            },
+            "required": ["question"]
+        }),
+        // Rien n'est modifie, rien n'est execute : demander ne se fait pas
+        // approuver, sinon on demanderait la permission de demander.
+        risk: Risk::Low,
+        required_permissions: Vec::new(),
+    }
 }
 
 /// Les outils apportés par les extensions actives.
@@ -914,6 +925,26 @@ pub fn ollama_tools_json(specs: &[ToolSpec]) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
+    /// Une seule definition : `builtin_tools` reprend `question_tool`, et la
+    /// boucle peut l'offrir seule hors d'un projet. Deux specs divergentes
+    /// donneraient au modele une description differente selon qu'un projet est
+    /// ouvert ou non.
+    #[test]
+    fn demander_est_un_outil_integre_et_offert_seul() {
+        let seul = super::question_tool();
+        assert_eq!(seul.name, "ask_user");
+        assert!(
+            seul.required_permissions.is_empty(),
+            "demander ne modifie rien : aucune permission a arbitrer"
+        );
+        let dans_la_liste = super::builtin_tools()
+            .into_iter()
+            .find(|t| t.name == "ask_user")
+            .expect("ask_user doit rester dans les outils integres");
+        assert_eq!(dans_la_liste.description, seul.description);
+        assert!(super::is_native_tool("ask_user"));
+    }
+
     use super::*;
 
     /// La liste des outils natifs décide du routage : un nom oublié ici part
