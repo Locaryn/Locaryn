@@ -2,6 +2,7 @@ import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 import type { Project, TrustLevel } from "../lib/core";
 import { ModalShell } from "./ModalShell";
+import { ProjectContextSettings } from "./ProjectContextSettings";
 
 type Props = {
   project: Project | null;
@@ -27,10 +28,6 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
   const [saved, setSaved] = useState(false);
 
   if (!isOpen || !project) return null;
-
-  function toggleConnector(id: string) {
-    setAllowedConnectors((prev) => ({ ...prev, [id]: !prev[id] }));
-  }
 
   function handleSave() {
     if (project) {
@@ -254,6 +251,14 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
             </div>
           </label>
         </div>
+      </div>
+
+      {/* Le contexte du projet. Il s'enregistre de lui-meme a chaque fiche
+          ajoutee, sans passer par le bouton d'enregistrement ci-dessous : une
+          fiche perdue parce qu'on a ferme la fenetre serait une mauvaise
+          surprise. */}
+      <div className="locaryn-field" style={{ marginTop: "24px" }}>
+        <ProjectContextSettings projectId={project.id} />
       </div>
 
       <div

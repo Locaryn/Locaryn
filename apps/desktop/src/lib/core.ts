@@ -1383,6 +1383,44 @@ export type NotificationGroup =
 /** L'etat de la barre de progression du systeme. */
 export type TaskbarStatus = "none" | "normal" | "indeterminate" | "paused" | "error";
 
+/**
+ * Qui verra une fiche de contexte.
+ *
+ * `machine` ne quitte jamais l'ordinateur. `compte` suit la personne entre ses
+ * appareils. `partage` est visible de tous ceux qui travaillent sur le projet.
+ * Les deux dernieres exigent un serveur : sans lui, il n'y a ni compte a suivre
+ * ni personne avec qui partager.
+ */
+export type ContextScope = "machine" | "compte" | "partage";
+
+/**
+ * Une fiche de contexte de projet.
+ *
+ * Sans domaine : « le rendu final est en A2 », « les mesures se font a 20 °C »,
+ * « le client refuse le violet », « les tests passent par cargo test ». Un
+ * projet d'art et du code s'y rangent pareil.
+ */
+export interface ContextEntry {
+  id: string;
+  project_id: string;
+  scope: ContextScope;
+  /** Qui a pose la fiche. Renseigne en mode serveur. */
+  author: string | null;
+  title: string;
+  summary: string;
+  details: string[];
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Ce que cette installation peut faire du contexte, et ce qui manque sinon. */
+export interface ContextAvailability {
+  scopes: ContextScope[];
+  server: boolean;
+  blocker: string | null;
+}
+
 export interface CoreApi {
   health(): Promise<Health>;
   bootstrap(): Promise<Bootstrap>;
@@ -1470,6 +1508,21 @@ export interface CoreApi {
   ): Promise<void>;
   /** Ce que le modele actif accepte en entree, et ce qu'il sait faire. */
   modelAbilities(): Promise<ModelAbilities>;
+  /** Les portees utilisables ici, et ce qui manque pour les autres. */
+  contextAvailability(): Promise<ContextAvailability>;
+  listContext(projectId: string): Promise<ContextEntry[]>;
+  rememberContext(args: {
+    projectId: string;
+    scope: ContextScope;
+    title: string;
+    detail: string;
+    source?: string;
+  }): Promise<ContextEntry>;
+  /** Change la portee d'une fiche. Refuse d'ecraser un meme titre. */
+  setContextScope(id: string, scope: ContextScope): Promise<ContextEntry>;
+  setContextSummary(id: string, summary: string): Promise<void>;
+  removeContextDetail(id: string, detail: string): Promise<ContextEntry>;
+  forgetContext(id: string): Promise<void>;
   notificationPrefs(): Promise<NotificationPrefs>;
   setNotificationPrefs(prefs: NotificationPrefs): Promise<void>;
   /** Pose l'avancement sur l'icone de la barre des taches. */
@@ -1876,6 +1929,15 @@ const tauriCore: CoreApi = {
   },
 
   modelAbilities: () => invoke<ModelAbilities>("model_abilities"),
+  contextAvailability: () => invoke<ContextAvailability>("context_availability"),
+  listContext: (projectId) => invoke<ContextEntry[]>("list_context", { projectId }),
+  rememberContext: (args) => invoke<ContextEntry>("remember_context", { args }),
+  setContextScope: (id, scope) =>
+    invoke<ContextEntry>("set_context_scope", { args: { id, scope } }),
+  setContextSummary: (id, summary) => invoke<void>("set_context_summary", { id, summary }),
+  removeContextDetail: (id, detail) =>
+    invoke<ContextEntry>("remove_context_detail", { id, detail }),
+  forgetContext: (id) => invoke<void>("forget_context", { id }),
   notificationPrefs: () => invoke<NotificationPrefs>("get_notification_prefs"),
   setNotificationPrefs: (prefs) => invoke<void>("set_notification_prefs", { prefs }),
   setTaskbarProgress: (status, progress) =>
@@ -3982,6 +4044,66 @@ const demoCore: CoreApi = {
     ephemeral: true,
   }),
   listMessages: async (sessionId) => demoMessages.filter((m) => m.session_id === sessionId),
+
+  // La demo n'a pas de serveur : seule la portee machine a un sens, et le
+  // dire est plus utile que de proposer un partage qui n'irait nulle part.
+  async contextAvailability() {
+    return {
+      scopes: ["machine" as const],
+      server: false,
+      blocker:
+        "Le contexte du compte et le contexte partagé passent par un serveur : activez le mode serveur, ou connectez-vous à un serveur existant.",
+    };
+  },
+  async listContext() {
+    return [
+      {
+        id: "ctx-demo",
+        project_id: "demo",
+        scope: "machine" as const,
+        author: null,
+        title: "Outils de cette machine",
+        summary: "Python 3.12 et Node 22 sont installés ici.",
+        details: ["Python 3.12 et Node 22 sont installés ici.", "Pas de LaTeX sur ce poste."],
+        source: "utilisateur",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+  },
+  async rememberContext(args) {
+    return {
+      id: `ctx-${Date.now()}`,
+      project_id: args.projectId,
+      scope: args.scope,
+      author: null,
+      title: args.title,
+      summary: args.detail,
+      details: [args.detail],
+      source: args.source ?? "utilisateur",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  },
+  async setContextScope() {
+    throw new Error("Changer la portée exige l'application Locaryn, pas le navigateur.");
+  },
+  async setContextSummary() {},
+  async removeContextDetail(id) {
+    return {
+      id,
+      project_id: "demo",
+      scope: "machine" as const,
+      author: null,
+      title: "Outils de cette machine",
+      summary: "Python 3.12 et Node 22 sont installés ici.",
+      details: ["Python 3.12 et Node 22 sont installés ici."],
+      source: "utilisateur",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  },
+  async forgetContext() {},
 
   async notificationPrefs() {
     return {
