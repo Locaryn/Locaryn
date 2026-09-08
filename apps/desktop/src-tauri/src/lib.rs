@@ -6406,8 +6406,12 @@ pub fn run() {
             let attention = core.attention.clone();
             app.manage(attention.clone());
             let poignee = app.handle().clone();
+            // Et l'endroit où ranger une fiche que la personne accepte : le
+            // registre pose la question, c'est la réponse qui écrit.
+            let fiches = core.storage.project_context.clone();
             tauri::async_runtime::spawn(async move {
                 attention.brancher(poignee).await;
+                attention.brancher_contexte(fiches).await;
             });
             app.manage(core);
 

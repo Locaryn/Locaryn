@@ -69,6 +69,34 @@ pub async fn execute_tool_call(
     // ne passe donc pas par la porte d'approbation — on ne demande pas la
     // permission de demander. Il est intercepté ici parce que la porte des
     // questions vit dans cette boucle, et nulle part plus bas.
+    // Retenir une fiche passe par la meme porte : la personne est interrogee,
+    // et c'est sa reponse qui ecrit. Le modele ne choisit pas qui la verra.
+    if tool == "remember_project_context" {
+        let sortie = match crate::question::lire_proposition(
+            &args,
+            Some(ctx.project_id.to_string()),
+            Some(ctx.session_id.to_string()),
+        ) {
+            Ok(p) => match question {
+                Some(g) => g.0.propose_context(p).await.pour_le_modele(),
+                None => crate::question::QuestionOutcome::no_one_to_ask().pour_le_modele(),
+            },
+            Err(motif) => format!("ERROR: {motif}"),
+        };
+        if tx
+            .send(StreamEvent::ToolResult {
+                call_id: call_id.to_string(),
+                ok: !sortie.starts_with("ERROR:"),
+                output: sortie.clone(),
+            })
+            .await
+            .is_err()
+        {
+            return None;
+        }
+        return Some(sortie);
+    }
+
     if tool == "ask_user" {
         let sortie = match crate::question::lire_appel(
             &args,

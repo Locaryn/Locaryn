@@ -35,7 +35,9 @@
 //! Rien ici ne suppose du code : la question peut porter sur un format de
 //! rendu, une température de mesure, ou la personne qui doit voir une note.
 
-use locaryn_agent_runtime::question::{QuestionGate, QuestionOutcome, QuestionRequest, Urgency};
+use locaryn_agent_runtime::question::{
+    ContextProposal, QuestionChoice, QuestionGate, QuestionOutcome, QuestionRequest, Urgency,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -111,6 +113,12 @@ struct Etat {
 pub struct Attention {
     etat: Arc<Mutex<Etat>>,
     app: Arc<Mutex<Option<AppHandle>>>,
+    /// Où ranger une fiche que la personne a acceptée.
+    ///
+    /// Posé après la construction du noyau, qui porte les deux. `None` dans
+    /// les tests du registre seul : la question se pose alors sans que rien
+    /// ne s'écrive, ce que la porte dit franchement.
+    contexte: Arc<Mutex<Option<locaryn_storage::project_context::ProjectContextRepo>>>,
 }
 
 impl Default for Attention {
@@ -125,7 +133,16 @@ impl Attention {
         Self {
             etat: Arc::new(Mutex::new(Etat::default())),
             app: Arc::new(Mutex::new(None)),
+            contexte: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Donne au registre l'endroit où ranger une fiche acceptée.
+    pub async fn brancher_contexte(
+        &self,
+        repo: locaryn_storage::project_context::ProjectContextRepo,
+    ) {
+        *self.contexte.lock().await = Some(repo);
     }
 
     /// Donne au registre le moyen de prévenir l'interface.
@@ -273,6 +290,122 @@ impl Attention {
 
 #[async_trait::async_trait]
 impl QuestionGate for Attention {
+    /// Soumet une fiche à la personne, et n'écrit que ce qu'elle a choisi.
+    ///
+    /// Le modèle ne décide pas de la portée. Il ne peut pas : il ne sait pas
+    /// si ce qu'il vient d'apprendre est une décision du projet, une exigence
+    /// de cette personne, ou un détail de cette machine — et se tromper coûte
+    /// dans les deux sens. La question porte donc les portées comme réponses,
+    /// et la réponse est ce qui écrit.
+    ///
+    /// « Ne pas retenir » est une réponse à part entière, et la plus facile à
+    /// cliquer par mégarde : elle n'écrit rien, ce qui est le seul choix sans
+    /// conséquence.
+    async fn propose_context(&self, p: ContextProposal) -> QuestionOutcome {
+        let Some(projet) = p.project_id.clone() else {
+            return QuestionOutcome::Unanswered {
+                reason: "aucun projet ouvert : il n'y a pas de contexte de projet où ranger \
+                         cette fiche, gardez l'information dans votre réponse"
+                    .into(),
+            };
+        };
+        let repo = self.contexte.lock().await.clone();
+        let Some(repo) = repo else {
+            return QuestionOutcome::Unanswered {
+                reason: "le contexte de projet n'est pas disponible ici".into(),
+            };
+        };
+
+        // Les portées que cette installation ne peut pas honorer ne sont pas
+        // proposées : offrir « tout le projet » sans serveur ferait écrire une
+        // fiche que personne ne verrait jamais, sous une étiquette qui
+        // mentirait.
+        let serveur = self
+            .app
+            .lock()
+            .await
+            .is_some()
+            .then_some(())
+            .and(crate::server_mode::server_status().await.ok())
+            .map(|s| s.running)
+            .unwrap_or(false);
+        let mut choix = Vec::new();
+        if serveur {
+            choix.push(
+                QuestionChoice::new("partage", "Tout le projet")
+                    .avec_precision("Une décision du projet, visible de tous."),
+            );
+            choix.push(
+                QuestionChoice::new("compte", "Moi seulement")
+                    .avec_precision("Me suit sur mes appareils, invisible aux autres."),
+            );
+        }
+        choix.push(
+            QuestionChoice::new("machine", "Cet ordinateur")
+                .avec_precision("Ne part jamais d'ici."),
+        );
+        choix
+            .push(QuestionChoice::new("non", "Ne pas retenir").avec_precision("Rien n'est écrit."));
+
+        let reponse = self
+            .ask(QuestionRequest {
+                id: uuid::Uuid::new_v4().to_string(),
+                project_id: p.project_id.clone(),
+                session_id: p.session_id.clone(),
+                urgency: Urgency::Question,
+                title: format!("Retenir « {} » pour ce projet ?", p.title),
+                detail: Some(p.detail.clone()),
+                choices: choix,
+                // Pas de champ libre : les réponses possibles sont exactement
+                // les portées, plus le refus. Un texte libre n'aurait pas de
+                // portée où être rangé.
+                free_text: None,
+            })
+            .await;
+
+        let QuestionOutcome::Answered { choice, .. } = &reponse else {
+            return reponse;
+        };
+        let Some(portee) = choice.as_deref() else {
+            return QuestionOutcome::Unanswered {
+                reason: "la question a été fermée sans choisir : rien n'a été retenu".into(),
+            };
+        };
+        if portee == "non" {
+            return QuestionOutcome::Answered {
+                choice: Some("non".into()),
+                text: Some("l'utilisateur a refusé de retenir cette fiche".into()),
+            };
+        }
+
+        let scope = locaryn_storage::project_context::ContextScope::depuis(portee);
+        let auteur = crate::client_cert::current_session()
+            .ok()
+            .flatten()
+            .map(|s| s.username);
+        match repo
+            .remember(
+                &projet,
+                scope,
+                auteur.as_deref(),
+                &p.title,
+                &p.detail,
+                "assistant",
+            )
+            .await
+        {
+            Ok(_) => QuestionOutcome::Answered {
+                choice: Some(portee.to_string()),
+                text: Some(format!("« {} » est retenu ({portee})", p.title)),
+            },
+            // Une écriture qui échoue ne doit pas se lire comme un succès :
+            // le modèle annoncerait à l'utilisateur une fiche qui n'existe pas.
+            Err(e) => QuestionOutcome::Unanswered {
+                reason: format!("la fiche n'a pas pu être écrite ({e})"),
+            },
+        }
+    }
+
     async fn ask(&self, req: QuestionRequest) -> QuestionOutcome {
         let (tx, rx) = oneshot::channel();
         let item = AttentionItem {
@@ -363,7 +496,6 @@ pub async fn dismiss_attention(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use locaryn_agent_runtime::question::QuestionChoice;
 
     fn question(id: &str, projet: Option<&str>) -> QuestionRequest {
         QuestionRequest {

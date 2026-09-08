@@ -157,7 +157,40 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
             required_permissions: vec![locaryn_shared_types::Permission::Shell],
         },
         question_tool(),
+        context_tool(),
     ]
+}
+
+/// Proposer de retenir quelque chose pour ce projet.
+///
+/// A part des outils de fichiers pour la meme raison que `ask_user` : retenir
+/// ne suppose pas un projet ouvert cote fichiers. La boucle ne l'offre
+/// toutefois qu'avec un projet — sans projet, il n'y a pas de contexte de
+/// projet ou ranger la fiche.
+#[must_use]
+pub fn context_tool() -> ToolSpec {
+    ToolSpec {
+        name: "remember_project_context".into(),
+        description: "Propose recording something the project should keep knowing — a decided format, a constraint that keeps coming back, a requirement, a command that must be run. Use it when you learn something durable that the next conversation would otherwise have to rediscover; do NOT use it for one-off details of the current task, or for anything you were told in passing and are not sure of. You do not decide who sees it: the user is asked whether it belongs to the whole project, to their account, or only to this machine, and their answer is what records it. Write `title` as a short subject and `detail` as one sentence, in the user's language.".into(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Short subject, e.g. \"Format de rendu\", \"Contraintes de mesure\"."
+                },
+                "detail": {
+                    "type": "string",
+                    "description": "What should be known, in one sentence."
+                }
+            },
+            "required": ["title", "detail"]
+        }),
+        // Rien n'est ecrit sans la reponse de la personne : c'est elle qui
+        // decide, et la question n'est pas un acte a approuver.
+        risk: Risk::Low,
+        required_permissions: Vec::new(),
+    }
 }
 
 /// Demander a l'utilisateur, quand on doute.
@@ -655,6 +688,7 @@ pub const NATIVE_TOOLS: &[&str] = &[
     "run_command",
     "generate_speech",
     "ask_user",
+    "remember_project_context",
 ];
 
 /// Vrai quand le socle sait exécuter cet outil sans passer par une extension.
@@ -676,10 +710,12 @@ pub async fn dispatch_tool(
         "generate_speech" => exec_generate_speech(args).await,
         // `ask_user` a besoin de la porte des questions, que seule la boucle
         // d'outils detient : elle l'intercepte avant d'arriver ici.
-        "ask_user" => ToolResult {
+        "ask_user" | "remember_project_context" => ToolResult {
             ok: false,
-            output: "outil « ask_user » indisponible : cette boucle n'a pas de moyen de poser                      une question a l'utilisateur."
-                .into(),
+            output: format!(
+                "outil « {tool_name} » indisponible : cette boucle n'a pas de moyen de \
+                 s'adresser a l'utilisateur."
+            ),
             artifact: None,
         },
         _ => ToolResult {
@@ -943,6 +979,26 @@ mod tests {
             .expect("ask_user doit rester dans les outils integres");
         assert_eq!(dans_la_liste.description, seul.description);
         assert!(super::is_native_tool("ask_user"));
+    }
+
+    /// Retenir quelque chose passe par la meme porte, et se decrit une seule
+    /// fois. Le modele ne decide pas de la portee : la description doit le
+    /// dire, sinon il annoncerait a l'utilisateur une note deja partagee.
+    #[test]
+    fn retenir_est_un_outil_integre_qui_ne_tranche_pas_la_portee() {
+        let spec = super::context_tool();
+        assert_eq!(spec.name, "remember_project_context");
+        assert!(spec.required_permissions.is_empty());
+        assert!(
+            spec.description.contains("You do not decide who sees it"),
+            "le modele doit savoir que la portee ne lui appartient pas"
+        );
+        let dans_la_liste = super::builtin_tools()
+            .into_iter()
+            .find(|t| t.name == "remember_project_context")
+            .expect("l'outil doit rester dans les outils integres");
+        assert_eq!(dans_la_liste.description, spec.description);
+        assert!(super::is_native_tool("remember_project_context"));
     }
 
     use super::*;

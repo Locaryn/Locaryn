@@ -143,6 +143,60 @@ impl QuestionOutcome {
     }
 }
 
+/// Une fiche que le modèle voudrait retenir pour ce projet.
+///
+/// **Il propose ; il n'écrit pas.** Une note visible de toute une équipe est
+/// une décision, et le modèle n'a pas les moyens de savoir si ce qu'il vient
+/// d'apprendre concerne le projet, la personne, ou seulement cette machine.
+/// C'est la question posée à l'écran qui tranche, et c'est la réponse qui
+/// écrit.
+///
+/// Rien ne suppose du code : « le rendu final est en A2 », « les mesures se
+/// font à 20 °C », « le client refuse le violet » se rangent pareil.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextProposal {
+    /// Le projet concerné.
+    pub project_id: Option<String>,
+    pub session_id: Option<String>,
+    /// Le sujet, court : « Format de rendu », « Contraintes de mesure ».
+    pub title: String,
+    /// Ce qu'il faut savoir, en une phrase.
+    pub detail: String,
+}
+
+/// Lit l'appel d'outil `remember_project_context`.
+///
+/// Refuse ce qui n'a ni sujet ni contenu : une fiche vide occuperait le
+/// contexte de tous les tours suivants sans rien apprendre à personne.
+pub fn lire_proposition(
+    args: &serde_json::Value,
+    project_id: Option<String>,
+    session_id: Option<String>,
+) -> Result<ContextProposal, String> {
+    let lire = |cle: &str| {
+        args.get(cle)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    };
+    let title = lire("title");
+    let detail = lire("detail");
+    if title.is_empty() || detail.is_empty() {
+        return Err(
+            "`title` et `detail` sont obligatoires : dites de quoi il s'agit, et ce qu'il faut \
+             en savoir."
+                .to_string(),
+        );
+    }
+    Ok(ContextProposal {
+        project_id,
+        session_id,
+        title,
+        detail,
+    })
+}
+
 /// Le moyen de poser la question. Implémenté par l'hôte.
 #[async_trait::async_trait]
 pub trait QuestionGate: Send + Sync {
@@ -153,6 +207,19 @@ pub trait QuestionGate: Send + Sync {
     /// conversation. Elle peut en revanche attendre aussi longtemps qu'il
     /// faut — à condition que l'attente se voie, et puisse être abandonnée.
     async fn ask(&self, req: QuestionRequest) -> QuestionOutcome;
+
+    /// Soumet une fiche de contexte à la personne, et écrit ce qu'elle a
+    /// choisi.
+    ///
+    /// Par défaut : impossible ici. Un hôte qui n'a pas de contexte de projet
+    /// le dit, plutôt que de laisser croire que la fiche a été retenue.
+    async fn propose_context(&self, _proposition: ContextProposal) -> QuestionOutcome {
+        QuestionOutcome::Unanswered {
+            reason: "cet hôte ne tient pas de contexte de projet : gardez l'information dans \
+                     votre réponse plutôt que de la faire retenir"
+                .to_string(),
+        }
+    }
 }
 
 /// Enveloppe la porte pour qu'elle traverse une structure `Debug`.
@@ -315,6 +382,51 @@ mod tests {
         )
         .await;
         assert!(r.pour_le_modele().contains("partage"));
+    }
+
+    /// Une fiche sans sujet ou sans contenu est refusée : elle occuperait le
+    /// contexte de tous les tours suivants sans rien apprendre.
+    #[test]
+    fn une_fiche_incomplete_est_refusee() {
+        assert!(lire_proposition(&serde_json::json!({"title": "Rendu"}), None, None).is_err());
+        assert!(lire_proposition(&serde_json::json!({"detail": "En A2"}), None, None).is_err());
+        assert!(lire_proposition(
+            &serde_json::json!({"title": " ", "detail": "x"}),
+            None,
+            None
+        )
+        .is_err());
+        let ok = lire_proposition(
+            &serde_json::json!({"title": " Format de rendu ", "detail": " En A2. "}),
+            Some("p1".into()),
+            None,
+        )
+        .expect("une fiche complète passe");
+        assert_eq!(ok.title, "Format de rendu");
+        assert_eq!(ok.detail, "En A2.");
+    }
+
+    /// Sans hôte qui tienne un contexte, la fiche n'est pas retenue — et le
+    /// motif dit au modèle quoi faire de l'information.
+    #[tokio::test]
+    async fn sans_contexte_la_fiche_n_est_pas_retenue() {
+        struct Muette;
+        #[async_trait::async_trait]
+        impl QuestionGate for Muette {
+            async fn ask(&self, _r: QuestionRequest) -> QuestionOutcome {
+                QuestionOutcome::no_one_to_ask()
+            }
+        }
+        let r = Muette
+            .propose_context(ContextProposal {
+                project_id: None,
+                session_id: None,
+                title: "Rendu".into(),
+                detail: "En A2.".into(),
+            })
+            .await;
+        assert!(!r.is_answered());
+        assert!(r.pour_le_modele().contains("votre réponse"));
     }
 
     /// Une question sans énoncé est refusée. L'inventer afficherait à l'écran
