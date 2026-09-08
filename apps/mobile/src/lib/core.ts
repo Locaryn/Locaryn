@@ -399,6 +399,8 @@ export const core = {
   /** Verify a scanned code and apply it. Throws with a phrased message. */
   applyPairingLink: (uri: string) => invoke<PairingResult>("apply_pairing_link", { uri }),
   /** Circuit B step 2: submit the 6-digit code shown under the QR on the host. */
+  /** « J'ai scanné, je suis là » : fait apparaître le code sur l'hôte. */
+  announcePairing: (deviceLabel?: string) => invoke<boolean>("announce_pairing", { deviceLabel }),
   confirmPairing: (pairingCode: string, deviceLabel?: string) =>
     invoke<PairingResult>("confirm_pairing", { pairingCode, deviceLabel }),
   send: (text: string, conversationId: string | null, ephemeral = false) =>
@@ -586,6 +588,7 @@ export const demoCore: typeof core = {
     signed_in: false,
     servers: 1,
   }),
+  announcePairing: async () => true,
   confirmPairing: async () => ({
     server_name: "",
     travelling: false,

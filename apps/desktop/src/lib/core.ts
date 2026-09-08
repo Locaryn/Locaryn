@@ -1452,6 +1452,26 @@ export interface AttentionItem {
   blocking: boolean;
 }
 
+/**
+ * Ce que l'hôte doit montrer d'un appairage en cours.
+ *
+ * `pairing_code` n'arrive qu'une fois `announced` vrai : un code affiché avant
+ * que personne n'essaie reste exposé pour rien, et n'apprend à l'hôte ni qui
+ * arrive ni d'où. Le service ne le donne qu'à cette machine.
+ */
+export interface PairingState {
+  pending: boolean;
+  announced: boolean;
+  /** Le nom que l'appareil se donne. Non vérifiable : une étiquette. */
+  device: string | null;
+  /** L'adresse d'où vient la demande. Elle, on l'a constatée. */
+  ip: string | null;
+  announced_seconds_ago: number | null;
+  pairing_code: string | null;
+  ttl_seconds: number;
+  attempts: number;
+}
+
 export interface CoreApi {
   health(): Promise<Health>;
   bootstrap(): Promise<Bootstrap>;
@@ -1539,6 +1559,10 @@ export interface CoreApi {
   ): Promise<void>;
   /** Ce que le modele actif accepte en entree, et ce qu'il sait faire. */
   modelAbilities(): Promise<ModelAbilities>;
+  /** L'appairage en cours, tel que seule cette machine peut le lire. */
+  pairingState(): Promise<PairingState>;
+  /** Refuse l'appareil qui frappe : son code ne vaudra plus rien. */
+  rejectPairing(): Promise<boolean>;
   /** Ce qui attend une réponse ou un regard, du plus ancien au plus récent. */
   pendingAttention(): Promise<AttentionItem[]>;
   /** Transmet la réponse. Faux quand plus rien n'attendait sous cet id. */
@@ -1617,6 +1641,8 @@ export interface CoreApi {
 
   /** Exchange credentials for a token, and remember it. */
   signIn(serverUrl: string, username: string, password: string): Promise<ServerSession>;
+  /** « Je suis là » : fait apparaître le code sur l'écran de l'hôte. */
+  announcePairing(serverUrl: string, deviceLabel?: string): Promise<boolean>;
   confirmPairing(
     serverUrl: string,
     pairingCode: string,
@@ -1969,6 +1995,8 @@ const tauriCore: CoreApi = {
   },
 
   modelAbilities: () => invoke<ModelAbilities>("model_abilities"),
+  pairingState: () => invoke<PairingState>("pairing_state"),
+  rejectPairing: () => invoke<boolean>("reject_pairing"),
   pendingAttention: () => invoke<AttentionItem[]>("pending_attention"),
   answerAttention: (id, answer) => invoke<boolean>("answer_attention", { id, answer }),
   dismissAttention: (id) => invoke<boolean>("dismiss_attention", { id }),
@@ -2059,6 +2087,8 @@ const tauriCore: CoreApi = {
 
   signIn: (serverUrl, username, password) =>
     invoke<ServerSession>("sign_in", { serverUrl, username, password }),
+  announcePairing: (serverUrl, deviceLabel) =>
+    invoke<boolean>("announce_pairing", { serverUrl, deviceLabel }),
   confirmPairing: (serverUrl, pairingCode, deviceLabel) =>
     invoke<ServerSession>("confirm_pairing", { serverUrl, pairingCode, deviceLabel }),
   currentSession: () => invoke<ServerSession | null>("current_session"),
@@ -3931,6 +3961,32 @@ let demoUserMemory: MemoryEntry[] = [
   ]),
 ];
 
+/** L'etat du serveur de demonstration, modifie par l'interrupteur. */
+let demoServeur: ServerStatus = {
+  running: false,
+  bind: "0.0.0.0",
+  port: 7474,
+  // Un administrateur existe deja dans `listServerUsers` : annoncer zero
+  // compte ici bloquait l'interrupteur du serveur, et rendait toute la section
+  // appairage inatteignable.
+  accounts: 1,
+  url: "",
+  fingerprint: null,
+  blocker: null,
+};
+
+/** L'appairage de demonstration : un telephone qui vient de scanner. */
+let demoPairing: PairingState = {
+  pending: true,
+  announced: true,
+  device: "Pixel de Téano",
+  ip: "192.168.1.37",
+  announced_seconds_ago: 4,
+  pairing_code: "418203",
+  ttl_seconds: 96,
+  attempts: 0,
+};
+
 /**
  * La question de demonstration.
  *
@@ -4119,6 +4175,17 @@ const demoCore: CoreApi = {
     ephemeral: true,
   }),
   listMessages: async (sessionId) => demoMessages.filter((m) => m.session_id === sessionId),
+
+  // Un appareil qui frappe, et le code qui apparait avec lui : sans cela
+  // l'ecran d'appairage ne serait pas inspectable hors de l'application.
+  async pairingState() {
+    return demoPairing;
+  },
+  async rejectPairing() {
+    const avait = demoPairing.pending;
+    demoPairing = { ...demoPairing, pending: false, announced: false, pairing_code: null };
+    return avait;
+  },
 
   // La demo montre une question, pour que la bande soit visible sans modele
   // installe. Y repondre la retire, comme en vrai.
@@ -4471,25 +4538,22 @@ const demoCore: CoreApi = {
     arch: "inconnue",
   }),
 
-  serverStatus: async () => ({
-    running: false,
-    bind: "0.0.0.0",
-    port: 7474,
-    url: "",
-    accounts: 0,
-    fingerprint: null,
-    blocker:
-      "Aucun compte n'existe. Un serveur accessible sans compte serait ouvert à tous : créez d'abord un administrateur.",
-  }),
-  setServerMode: async (enabled) => ({
-    running: enabled,
-    bind: "0.0.0.0",
-    port: 7474,
-    url: enabled ? "https://192.168.1.188:7474" : "",
-    accounts: 1,
-    fingerprint: enabled ? "BD:E9:FA:13:1A:62:B6:93" : null,
-    blocker: null,
-  }),
+  // Avec etat, comme le vrai back-end : sans cela l'interrupteur retombait au
+  // sondage suivant, et toute la section serveur — appairage compris — restait
+  // invisible hors de l'application.
+  serverStatus: async () => demoServeur,
+  setServerMode: async (enabled) => {
+    demoServeur = {
+      running: enabled,
+      bind: "0.0.0.0",
+      port: 7474,
+      url: enabled ? "https://192.168.1.188:7474" : "",
+      accounts: 1,
+      fingerprint: enabled ? "BD:E9:FA:13:1A:62:B6:93" : null,
+      blocker: null,
+    };
+    return demoServeur;
+  },
   restartServer: async () => ({
     running: true,
     bind: "0.0.0.0",
@@ -4502,15 +4566,10 @@ const demoCore: CoreApi = {
   listServerUsers: async () => [
     { id: "usr-admin-1", username: "admin", role: "admin", disabled: false },
   ],
-  createServerUser: async (username, _password, isAdmin = true) => ({
-    running: false,
-    bind: "0.0.0.0",
-    port: 7474,
-    url: "",
-    accounts: 1,
-    fingerprint: null,
-    blocker: null,
-  }),
+  createServerUser: async () => {
+    demoServeur = { ...demoServeur, accounts: demoServeur.accounts + 1, blocker: null };
+    return demoServeur;
+  },
   deleteServerUser: async () => ({
     running: false,
     bind: "0.0.0.0",
@@ -4527,6 +4586,7 @@ const demoCore: CoreApi = {
     username,
     token: "demo",
   }),
+  announcePairing: async () => true,
   confirmPairing: async (serverUrl, _pairingCode) => ({
     server_url: serverUrl,
     username: "desktop",
@@ -4948,7 +5008,12 @@ const demoCore: CoreApi = {
   pairingCode: async (mode) => ({
     mode,
     url: mode === "local" ? "http://192.168.1.20:7474" : "https://exemple.invalide:7474",
-    qr_svg: "",
+    // Un damier plutot qu'un vrai code : il ne mene nulle part, et il suffit
+    // a ce que l'ecran se regarde. Un `qr_svg` vide masquait tout le panneau.
+    qr_svg:
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" width="180" height="180" shape-rendering="crispEdges"><rect width="8" height="8" fill="#fff"/><path fill="#000" d="M0 0h3v3H0zM5 0h3v3H5zM0 5h3v3H0zM4 4h1v1H4zM6 4h1v1H6zM4 6h1v1H4zM6 6h1v1H6zM1 1h1v1H1zM6 1h1v1H6zM1 6h1v1H1z"/></svg>',
+    pairing_code: "",
+    pairing_ttl_seconds: 120,
   }),
   systemPrompt: async () => ({ texte: null, envoye: "" }),
   setSystemPrompt: async (texte) => ({ texte, envoye: texte ?? "" }),

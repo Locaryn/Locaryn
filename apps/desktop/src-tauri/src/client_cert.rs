@@ -351,6 +351,50 @@ pub fn sign_out() -> Result<(), String> {
     Ok(())
 }
 
+/// Circuit B, étape 1bis : « j'ai choisi cet hôte, je suis là ».
+///
+/// Le dire avant de pouvoir confirmer quoi que ce soit : c'est cette annonce
+/// qui fait apparaître le code sur l'écran de l'hôte, avec le nom de ce poste
+/// et l'adresse d'où il vient. Sans elle, le code ne s'affiche jamais.
+///
+/// Rend `false` plutôt qu'une erreur quand l'hôte ne connaît pas la route :
+/// une version antérieure affiche son code d'emblée, et l'écran doit alors
+/// demander le code comme avant.
+#[tauri::command]
+pub async fn announce_pairing(
+    server_url: String,
+    device_label: Option<String>,
+) -> Result<bool, String> {
+    let url = format!("{}/v1/auth/pair/announce", server_url.trim_end_matches('/'));
+    let fingerprint = locaryn_config::provision::load()
+        .ok()
+        .flatten()
+        .and_then(|p| p.certificate_fingerprint);
+    let client = crate::secure_client::build(
+        std::fs::read_to_string(cert_path()).ok().as_deref(),
+        std::fs::read_to_string(ca_path()).ok().as_deref(),
+        fingerprint.as_deref(),
+        std::time::Duration::from_secs(20),
+    )?;
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "device_label": device_label.unwrap_or_else(|| "desktop".into()),
+        }))
+        .send()
+        .await
+        .map_err(|_| "Serveur injoignable. Vérifiez que l'hôte est allumé.".to_string())?;
+    if resp.status() == reqwest::StatusCode::GONE {
+        return Err("Ce QR a expiré. Affichez-en un nouveau sur l'hôte.".into());
+    }
+    if resp.status() == reqwest::StatusCode::CONFLICT {
+        return Err(
+            "Aucun appairage en cours sur cet hôte. Affichez le QR, puis réessayez.".into(),
+        );
+    }
+    Ok(resp.status().is_success())
+}
+
 /// Circuit B, step 2: the person types the 6-digit code shown under the QR
 /// on the host. The server validates it (2 min TTL, single use, 5 attempts)
 /// and answers with a device session token — stored exactly like a sign-in

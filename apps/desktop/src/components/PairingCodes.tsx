@@ -4,6 +4,7 @@ import {
   type InstalledExtension,
   type PairingCode,
   type PairingMode,
+  type PairingState,
   type ServerStatus,
   core,
 } from "../lib/core";
@@ -59,6 +60,16 @@ export function PairingCodes() {
   const precedent = useRef<string>("local");
   /** Un numero de passage : il s'incremente a chaque fabrication demandee. */
   const [passage, setPassage] = useState(0);
+  /**
+   * Qui frappe, et le code qu'il attend.
+   *
+   * Le service ne donne le code qu'une fois un appareil annonce, et qu'a cette
+   * machine. L'ecran suit : tant que personne n'essaie, il n'y a rien a
+   * afficher — un code expose avant que quelqu'un en ait besoin n'apprend a
+   * personne ni qui arrive ni d'ou.
+   */
+  const [appairage, setAppairage] = useState<PairingState | null>(null);
+  const [refus, setRefus] = useState(false);
 
   // Les segments apportes par une extension. Elle en declare le nom, la
   // description et le panneau ; l'application ne fait que les ranger a la
@@ -90,6 +101,35 @@ export function PairingCodes() {
   // Le QR n'apparaît que quand le service a répondu ET que les étapes sont
   // toutes franchies : afficher un code sous une étape en cours mentirait.
   const pret = !busy && step >= steps.length && Boolean(code?.qr_svg);
+
+  // Tant qu'un QR est affiche, on demande qui frappe. Deux secondes : assez
+  // pour que le telephone n'attende pas, assez peu pour ne rien couter quand
+  // l'ecran est ferme — le sondage s'arrete avec lui.
+  useEffect(() => {
+    if (!code?.qr_svg) {
+      setAppairage(null);
+      return;
+    }
+    let annule = false;
+    const lire = () => {
+      core
+        .pairingState()
+        .then((e) => {
+          if (!annule) setAppairage(e);
+        })
+        // Un etat illisible ne doit rien afficher plutot que de promettre a
+        // tort : le code reste cache, et l'appairage attend.
+        .catch(() => {
+          if (!annule) setAppairage(null);
+        });
+    };
+    lire();
+    const t = window.setInterval(lire, 2000);
+    return () => {
+      annule = true;
+      window.clearInterval(t);
+    };
+  }, [code?.qr_svg]);
 
   useEffect(() => {
     let annule = false;
@@ -135,6 +175,9 @@ export function PairingCodes() {
     setBusy(true);
     setError(null);
     setCode(null);
+    // Un nouveau QR efface le refus precedent : sinon l'ecran continuerait
+    // d'annoncer un appareil refuse alors qu'un autre peut se presenter.
+    setRefus(false);
     setPassage((n) => n + 1);
     try {
       setCode(await core.pairingCode("local"));
@@ -260,9 +303,10 @@ export function PairingCodes() {
           </div>
         )}
 
-        {server?.blocker && serverStopped && (
-          <div className="locaryn-pairing-warning">{server.blocker}</div>
-        )}
+        {/* L'obstacle du serveur appartient a la colonne de gauche, qui le dit
+            deja et porte le bouton pour le lever. Le repeter ici affichait la
+            meme phrase deux fois dans le meme ecran, juste sous une consigne
+            qui disait la meme chose autrement. */}
 
         {/* ── Pendant la fabrication : le damier pulse, les étapes s'égrènent ── */}
         {(busy || (code && !pret)) && (
@@ -286,19 +330,82 @@ export function PairingCodes() {
             <div className="locaryn-travel-say">
               <p className="locaryn-travel-title">Scannez avec le téléphone</p>
               <p className="locaryn-travel-sub">
-                Le code porte l'adresse et l'empreinte de cette machine. Après le scan, saisissez-y
-                le code de confirmation ci-dessous.
+                Le code porte l'adresse et l'empreinte de cette machine. Le code de confirmation
+                n'apparaît ici qu'une fois le téléphone arrivé sur ce serveur.
               </p>
-              {code.pairing_code && (
-                <div className="locaryn-pairing-code">
-                  <p className="locaryn-pairing-code-label">Code de confirmation</p>
-                  <p className="locaryn-pairing-code-value">{code.pairing_code}</p>
-                  {(code.pairing_ttl_seconds ?? 0) > 0 && (
-                    <p className="locaryn-pairing-code-hint">
-                      Valable {Math.round((code.pairing_ttl_seconds ?? 0) / 60)} min, à usage
-                      unique.
-                    </p>
+
+              {/* Personne n'a encore scanné : on le dit, plutôt que de laisser
+                  un blanc qui passerait pour une panne. */}
+              {!appairage?.announced && !refus && (
+                <p className="locaryn-pairing-attente">
+                  <span style={{ display: "inline-flex" }} className="locaryn-spin">
+                    <Icon name="refresh" size={13} />
+                  </span>
+                  En attente du scan…
+                </p>
+              )}
+
+              {refus && (
+                <p className="locaryn-pairing-attente">
+                  Appareil refusé. Son code ne vaut plus rien : affichez un nouveau QR pour
+                  recommencer.
+                </p>
+              )}
+
+              {appairage?.announced && !refus && (
+                <div className="locaryn-pairing-frappe">
+                  <div className="locaryn-pairing-frappe-qui">
+                    <Icon name="private" size={15} />
+                    <div>
+                      <p className="locaryn-pairing-frappe-nom">
+                        {appairage.device || "Un appareil"} tente de se connecter
+                      </p>
+                      <p className="locaryn-pairing-frappe-ou">
+                        depuis {appairage.ip ?? "une adresse inconnue"}
+                        {appairage.announced_seconds_ago !== null
+                          ? ` · il y a ${appairage.announced_seconds_ago} s`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Le nom vient de l'appareil et n'est pas verifiable :
+                      l'adresse, elle, est constatee. Le dire evite de prendre
+                      une etiquette pour une identite. */}
+                  <p className="locaryn-pairing-frappe-avis">
+                    Le nom est celui que l'appareil se donne. Si ce n'est pas le vôtre, refusez.
+                  </p>
+
+                  {appairage.pairing_code && (
+                    <div className="locaryn-pairing-code">
+                      <p className="locaryn-pairing-code-label">
+                        Code de confirmation — à saisir sur le téléphone
+                      </p>
+                      <p className="locaryn-pairing-code-value">{appairage.pairing_code}</p>
+                      <p className="locaryn-pairing-code-hint">
+                        {appairage.ttl_seconds > 0
+                          ? `Encore ${appairage.ttl_seconds} s, à usage unique.`
+                          : "Expiré : affichez un nouveau QR."}
+                        {appairage.attempts > 0 ? ` ${appairage.attempts} essai(s) manqué(s).` : ""}
+                      </p>
+                    </div>
                   )}
+
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost locaryn-btn-danger"
+                    onClick={() => {
+                      void core
+                        .rejectPairing()
+                        .then(() => {
+                          setRefus(true);
+                          setAppairage(null);
+                        })
+                        .catch((e) => setError(String(e)));
+                    }}
+                  >
+                    Rejeter cet appareil
+                  </button>
                 </div>
               )}
               <div className="locaryn-pairing-actions">

@@ -259,6 +259,18 @@ export function App() {
       setStatus(nextStatus);
       setProvisioningSuccess(false);
       setPendingProvisioning(null);
+      // « J'ai scanné, je suis là » : c'est cette annonce qui fait apparaître
+      // le code sur l'écran de l'hôte, avec le nom de ce téléphone et
+      // l'adresse d'où il vient. Sans elle, il n'y a rien à recopier.
+      //
+      // Un échec ne bloque pas la suite : un hôte d'une version antérieure ne
+      // connaît pas cette route et affiche son code d'emblée. On le signale,
+      // et on demande le code quand même.
+      try {
+        await api.announcePairing();
+      } catch (e) {
+        setPairError(e instanceof Error ? e.message : String(e));
+      }
       // Circuit B step 2: the host now shows a 6-digit code under its QR.
       setPairCodeNeeded(true);
       await refresh();

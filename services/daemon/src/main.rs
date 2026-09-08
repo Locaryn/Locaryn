@@ -396,6 +396,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/travel/home", get(routes::travel::home))
         // Le code d'appairage : local, port ouvert, ou tunnel.
         .route("/v1/pairing", get(routes::pairing::qr))
+        // L'etat et le refus ne se lisent que depuis cette machine : c'est la
+        // que le code de confirmation s'affiche, et la seule qu'on autorise a
+        // le connaitre.
+        .route("/v1/pairing/state", get(routes::pairing::state))
+        .route("/v1/pairing/reject", post(routes::pairing::reject))
+        .route("/v1/auth/pair/announce", post(routes::pairing::announce))
         .route("/v1/auth/pair/confirm", post(routes::pairing::confirm))
         .route(
             "/v1/mcp/servers",
@@ -632,7 +638,10 @@ async fn main() -> anyhow::Result<()> {
         }
 
         axum_server::bind_rustls(addr, config)
-            .serve(app.into_make_service())
+            // `with_connect_info` : sans elle, aucun gestionnaire ne peut
+            // savoir d'ou vient l'appel — or le code de confirmation ne doit
+            // partir que vers cette machine.
+            .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
             .await?;
 
         travel_state.stop().await;
@@ -653,7 +662,11 @@ async fn main() -> anyhow::Result<()> {
             );
         }
         tracing::info!("locaryn-daemon à l écoute sur http://{addr} (local uniquement)");
-        axum::serve(listener, app).await?;
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await?;
     }
     Ok(())
 }

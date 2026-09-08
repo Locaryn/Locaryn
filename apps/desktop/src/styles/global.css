@@ -5284,6 +5284,71 @@ pre.md-code {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   APPAIRAGE — qui frappe, et le code qui n'apparait qu'alors
+   ═══════════════════════════════════════════════════════════ */
+.locaryn-pairing-attente {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+/* L'appareil qui se presente. Encadre et non fondu dans la colonne : c'est
+   une demande a laquelle on repond, pas une information de plus. */
+.locaryn-pairing-frappe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--warn);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--warn) 5%, transparent);
+}
+.locaryn-pairing-frappe-qui {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.locaryn-pairing-frappe-qui svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--warn);
+}
+.locaryn-pairing-frappe-nom {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.locaryn-pairing-frappe-ou {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+/* Le nom vient de l'appareil : l'avis doit se lire, sans crier. */
+.locaryn-pairing-frappe-avis {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+.locaryn-pairing-frappe .locaryn-btn-ghost {
+  align-self: flex-start;
+  min-height: 40px;
+}
+
+@media (max-width: 700px) {
+  .locaryn-pairing-frappe .locaryn-btn-ghost {
+    align-self: stretch;
+    justify-content: center;
+  }
+}
+
 /* Le repere de fin de lot du marketplace. Il doit se voir sans se disputer
    l'attention avec les cartes : c'est un etat, pas une action. */
 .locaryn-model-suite {

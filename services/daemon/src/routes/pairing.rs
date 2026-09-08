@@ -9,12 +9,33 @@
 
 use crate::DaemonState;
 use axum::{
-    extract::{Query, State},
+    extract::{ConnectInfo, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
+use std::net::SocketAddr;
 use std::sync::Arc;
+
+/// L'appelant est-il sur cette machine ?
+///
+/// C'est la frontiere qui protege le code de confirmation. Le QR ne porte rien
+/// de secret — une adresse et une autorite publique — et se donne a qui le
+/// demande. Le code, lui, est le second facteur : sa raison d'etre est d'etre
+/// *vu sur l'ecran de l'hote*. Le servir a un appelant du reseau le viderait
+/// de son sens, puisque `/v1/auth/pair/confirm` est lui aussi ouvert : qui
+/// pourrait lire le code n'aurait plus qu'a le renvoyer.
+///
+/// `to_canonical` avant `is_loopback` : une adresse IPv4 mappee en IPv6
+/// (`::ffff:127.0.0.1`) n'est pas reconnue comme boucle locale telle quelle, et
+/// c'est sous cette forme qu'arrive une connexion IPv4 sur une ecoute IPv6.
+///
+/// Ne vaut que parce que ce service est joint directement. Derriere un proxy
+/// inverse, le pair serait le proxy, et cette fonction dirait « local » pour
+/// tout le monde : ce deploiement-la devrait couper l'appairage par code.
+fn sur_cette_machine(pair: SocketAddr) -> bool {
+    pair.ip().to_canonical().is_loopback()
+}
 
 /// Un code d'appairage en attente de consommation.
 ///
@@ -25,6 +46,26 @@ pub struct PendingPairing {
     pub code: String,
     pub created_at: std::time::Instant,
     pub attempts: u32,
+    /// L'appareil qui a scanne et joint ce serveur, quand il l'a fait.
+    ///
+    /// Tant que c'est `None`, personne n'essaie : le code n'a donc aucune
+    /// raison d'etre a l'ecran. C'est ce qui permet de ne l'afficher qu'au
+    /// moment ou quelqu'un en a besoin, et de nommer qui.
+    pub annonce: Option<Annonce>,
+}
+
+/// Un appareil qui vient de scanner le QR et qui joint ce serveur.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct Annonce {
+    /// Le nom que l'appareil se donne. Non verifiable : c'est une etiquette
+    /// pour reconnaitre son propre telephone, pas une preuve d'identite.
+    pub device: String,
+    /// L'adresse d'ou vient la demande. Elle, on l'a constatee.
+    pub ip: String,
+    /// Quand l'annonce est arrivee. Sert a dire « il y a 40 s » plutot que
+    /// de laisser croire que le telephone vient de frapper.
+    #[serde(skip)]
+    pub at: std::time::Instant,
 }
 
 /// TTL et plafond d'essais. Six chiffres, deux minutes, cinq essais : le
@@ -63,7 +104,11 @@ pub struct QrQuery {
 }
 
 /// GET /v1/pairing — l'adresse, la configuration, et le code qui la porte.
-pub async fn qr(State(s): State<Arc<DaemonState>>, Query(q): Query<QrQuery>) -> Response {
+pub async fn qr(
+    State(s): State<Arc<DaemonState>>,
+    ConnectInfo(pair): ConnectInfo<SocketAddr>,
+    Query(q): Query<QrQuery>,
+) -> Response {
     let mode = q.mode.as_deref().unwrap_or("local");
 
     let url = match mode {
@@ -171,6 +216,7 @@ pub async fn qr(State(s): State<Arc<DaemonState>>, Query(q): Query<QrQuery>) -> 
             code: code.clone(),
             created_at: std::time::Instant::now(),
             attempts: 0,
+            annonce: None,
         });
     }
 
@@ -179,10 +225,133 @@ pub async fn qr(State(s): State<Arc<DaemonState>>, Query(q): Query<QrQuery>) -> 
         "url": url,
         "provisioning": charge,
         "qr_svg": svg,
-        "pairing_code": code,
+        // Le code ne part qu'a l'hote. Un appelant du reseau recoit le QR,
+        // qui ne contient rien de secret, et rien d'autre : autrement le
+        // second facteur se donnerait a qui sait demander.
+        "pairing_code": if sur_cette_machine(pair) { code } else { String::new() },
         "pairing_ttl_seconds": PAIRING_TTL.as_secs(),
     }))
     .into_response()
+}
+
+/// POST /v1/auth/pair/announce — « j'ai scanne, je suis la ».
+///
+/// Le telephone le dit avant de pouvoir confirmer quoi que ce soit : il n'a
+/// pas encore le code, et c'est justement cette annonce qui le fait
+/// apparaitre a l'ecran de l'hote. L'ordre compte — un code affiche avant que
+/// personne n'essaie reste expose pour rien, et n'apprend a l'hote ni qui
+/// arrive ni d'ou.
+///
+/// Ouvert comme `confirm` : un appareil qui s'appaire n'a pas de jeton.
+/// L'annonce ne donne rien — ni code, ni jeton — elle demande seulement a
+/// etre vue.
+pub async fn announce(
+    State(s): State<Arc<DaemonState>>,
+    ConnectInfo(pair): ConnectInfo<SocketAddr>,
+    Json(body): Json<PairAnnounceBody>,
+) -> Response {
+    let mut pending = s.pairing_pending.lock().expect("verrou pairing");
+    match pending.as_mut() {
+        None => erreur(
+            StatusCode::CONFLICT,
+            "Aucun appairage en cours sur ce serveur. Affichez le QR sur l'hote, puis \
+             rescannez."
+                .into(),
+        ),
+        Some(p) if p.created_at.elapsed() > PAIRING_TTL => {
+            *pending = None;
+            erreur(
+                StatusCode::GONE,
+                "Ce QR a expire (2 minutes). Affichez-en un nouveau sur l'hote.".into(),
+            )
+        }
+        Some(p) => {
+            p.annonce = Some(Annonce {
+                device: label_appareil(&body.device_label),
+                ip: pair.ip().to_canonical().to_string(),
+                at: std::time::Instant::now(),
+            });
+            Json(serde_json::json!({
+                "waiting": true,
+                "server": nom_du_serveur(),
+                "ttl_seconds": PAIRING_TTL
+                    .as_secs()
+                    .saturating_sub(p.created_at.elapsed().as_secs()),
+            }))
+            .into_response()
+        }
+    }
+}
+
+/// GET /v1/pairing/state — ce que l'hote doit montrer, et a qui.
+///
+/// Reserve a cette machine : c'est ici que le code se lit.
+pub async fn state(
+    State(s): State<Arc<DaemonState>>,
+    ConnectInfo(pair): ConnectInfo<SocketAddr>,
+) -> Response {
+    if !sur_cette_machine(pair) {
+        return erreur(
+            StatusCode::FORBIDDEN,
+            "L'etat d'un appairage ne se lit que sur la machine qui l'affiche.".into(),
+        );
+    }
+    let mut pending = s.pairing_pending.lock().expect("verrou pairing");
+    // Un code expire n'est pas un code : on le retire plutot que de laisser
+    // l'ecran promettre une saisie qui echouera.
+    if pending
+        .as_ref()
+        .is_some_and(|p| p.created_at.elapsed() > PAIRING_TTL)
+    {
+        *pending = None;
+    }
+    let corps = match pending.as_ref() {
+        None => serde_json::json!({ "pending": false }),
+        Some(p) => serde_json::json!({
+            "pending": true,
+            "attempts": p.attempts,
+            "ttl_seconds": PAIRING_TTL
+                .as_secs()
+                .saturating_sub(p.created_at.elapsed().as_secs()),
+            "announced": p.annonce.is_some(),
+            // Depuis combien de temps il frappe : « il y a 40 s » se lit
+            // autrement qu'« a l'instant » quand on hesite a accepter.
+            "announced_seconds_ago": p.annonce.as_ref().map(|a| a.at.elapsed().as_secs()),
+            "device": p.annonce.as_ref().map(|a| a.device.clone()),
+            "ip": p.annonce.as_ref().map(|a| a.ip.clone()),
+            // Le code n'apparait qu'une fois quelqu'un annonce : avant, il
+            // n'a personne a servir.
+            "pairing_code": p.annonce.as_ref().map(|_| p.code.clone()),
+        }),
+    };
+    Json(corps).into_response()
+}
+
+/// POST /v1/pairing/reject — « ce n'est pas moi ».
+///
+/// Efface l'appairage en attente. Le `confirm` du telephone echouera alors,
+/// meme s'il a lu le code : c'est le refus, pas un simple masquage.
+pub async fn reject(
+    State(s): State<Arc<DaemonState>>,
+    ConnectInfo(pair): ConnectInfo<SocketAddr>,
+) -> Response {
+    if !sur_cette_machine(pair) {
+        return erreur(
+            StatusCode::FORBIDDEN,
+            "Un appairage ne se refuse que depuis la machine qui l'affiche.".into(),
+        );
+    }
+    let mut pending = s.pairing_pending.lock().expect("verrou pairing");
+    let avait = pending.is_some();
+    *pending = None;
+    Json(serde_json::json!({ "rejected": avait })).into_response()
+}
+
+#[derive(serde::Deserialize)]
+pub struct PairAnnounceBody {
+    /// Le nom que l'appareil se donne, pour que l'hote sache qui frappe.
+    #[serde(default)]
+    pub device_label: Option<String>,
 }
 
 /// POST /v1/auth/pair/confirm — le client qui a scanné le QR renvoie le code
@@ -334,7 +503,33 @@ fn erreur(code: StatusCode, message: String) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{constant_time_eq, normaliser};
+    use super::{constant_time_eq, generer_code, normaliser, sur_cette_machine};
+
+    /// La frontiere qui protege le code de confirmation. Une IPv4 mappee en
+    /// IPv6 est la forme sous laquelle arrive une connexion IPv4 sur une
+    /// ecoute IPv6 : la manquer aurait ferme la porte a l'hote lui-meme.
+    #[test]
+    fn seule_cette_machine_est_locale() {
+        let a = |t: &str| sur_cette_machine(t.parse().expect("adresse"));
+        assert!(a("127.0.0.1:9000"));
+        assert!(a("[::1]:9000"));
+        assert!(a("[::ffff:127.0.0.1]:9000"), "IPv4 mappee en IPv6");
+        assert!(a("127.4.5.6:9000"), "tout 127.0.0.0/8 est la boucle locale");
+        assert!(!a("192.168.1.20:9000"));
+        assert!(!a("[::ffff:192.168.1.20]:9000"));
+        assert!(!a("88.120.4.3:9000"));
+    }
+
+    /// Six chiffres, et tout l'espace atteignable. Un code biaise ou trop
+    /// court affaiblirait le second facteur sans que rien ne le signale.
+    #[test]
+    fn le_code_fait_six_chiffres() {
+        for _ in 0..200 {
+            let c = generer_code();
+            assert_eq!(c.len(), 6, "{c}");
+            assert!(c.chars().all(|d| d.is_ascii_digit()), "{c}");
+        }
+    }
 
     #[test]
     fn la_comparaison_a_temps_constant_est_exacte() {

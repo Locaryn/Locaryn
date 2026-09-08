@@ -37,6 +37,11 @@ fn is_public(path: &str) -> bool {
         // affiché à l'écran de l'hôte, pas un secret stocké. Il doit donc
         // être joignable par un appareil qui n'a pas encore de token.
         || path == "/v1/auth/pair/confirm"
+        // L'annonce ne donne rien — ni code, ni jeton. Elle dit seulement
+        // « j'ai scanne, je suis la », ce qui fait apparaitre le code sur
+        // l'ecran de l'hote. Un appareil qui s'appaire n'a pas encore de
+        // jeton : exiger une authentification ici interdirait l'appairage.
+        || path == "/v1/auth/pair/announce"
         || path == "/"
         || path == "/index.html"
         || path == "/manifest.webmanifest"
@@ -550,7 +555,16 @@ mod tests {
         assert!(is_public("/v1/info"));
         assert!(is_public("/v1/auth/login"));
         assert!(is_public("/v1/pairing"));
+        // L'annonce doit rester ouverte : un appareil qui s'appaire n'a pas
+        // encore de jeton, et c'est elle qui fait apparaitre le code sur
+        // l'ecran de l'hote.
+        assert!(is_public("/v1/auth/pair/announce"));
         for guarded in [
+            // L'etat et le refus, eux, ne sont pas publics : ils portent le
+            // code de confirmation, et se protegent en plus par l'adresse du
+            // pair.
+            "/v1/pairing/state",
+            "/v1/pairing/reject",
             "/v1/projects",
             "/v1/sessions",
             "/v1/auth/me",

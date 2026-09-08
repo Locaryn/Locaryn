@@ -2539,6 +2539,7 @@ pub fn run() {
             save_image,
             generate_audio,
             pairing::apply_pairing_link,
+            pairing::announce_pairing,
             pairing::confirm_pairing,
             server_capabilities,
             list_capabilities,

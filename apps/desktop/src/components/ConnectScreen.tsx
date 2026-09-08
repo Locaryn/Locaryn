@@ -33,6 +33,25 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
       .catch(() => {});
   }, []);
 
+  // Passer sur l'onglet d'appairage, c'est frapper a la porte de l'hote : on
+  // le lui dit, et c'est cette annonce qui fait apparaitre le code sur son
+  // ecran, avec le nom de ce poste et l'adresse d'ou il vient. Sans elle, il
+  // n'y aurait rien a recopier.
+  //
+  // Un echec ne bloque pas : un hote d'une version anterieure ne connait pas
+  // cette route et affiche son code d'emblee. On le signale, et le champ reste
+  // saisissable.
+  useEffect(() => {
+    if (tab !== "pairing") return;
+    let annule = false;
+    core.announcePairing(provisioning.serverUrl).catch((e) => {
+      if (!annule) setNotice(String(e).replace(/^Error:\s*/, ""));
+    });
+    return () => {
+      annule = true;
+    };
+  }, [tab, provisioning.serverUrl]);
+
   async function installCertificate() {
     setError(null);
     setNotice(null);
@@ -208,8 +227,8 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
               onKeyDown={(e) => e.key === "Enter" && void pairByCode()}
             />
             <p className="locaryn-connect-hint" style={{ marginTop: 8 }}>
-              Saisissez le code à 6 chiffres affiché sous le QR de l'hôte. Il expire après 2
-              minutes.
+              L'hôte affiche maintenant un code à 6 chiffres, avec le nom de ce poste. Saisissez-le
+              ici : il expire après 2 minutes.
             </p>
             <button
               type="button"

@@ -86,6 +86,52 @@ pub fn apply_pairing_link(uri: String) -> Result<PairingResult, String> {
     Ok(result)
 }
 
+/// Circuit B, étape 1bis : « j'ai scanné, je suis là ».
+///
+/// Dit à l'hôte qu'un appareil frappe, avant de pouvoir confirmer quoi que ce
+/// soit : c'est cette annonce qui fait apparaître le code sur son écran, avec
+/// le nom du téléphone et l'adresse d'où il vient. Sans elle, le code ne
+/// s'affiche jamais et l'appairage n'aboutit pas.
+///
+/// L'échec n'est pas fatal ici : un hôte d'une version antérieure ne connaît
+/// pas cette route et affiche son code d'emblée. On rend donc `false` plutôt
+/// qu'une erreur, et l'écran demande le code comme avant.
+#[tauri::command]
+pub async fn announce_pairing(device_label: Option<String>) -> Result<bool, String> {
+    let store = servers::load();
+    let active = store
+        .active
+        .clone()
+        .ok_or("Aucun serveur enregistré. Scannez d'abord le QR de l'hôte.")?;
+    let Some(server) = store.get(&active).cloned() else {
+        return Err("Aucun serveur enregistré sur cet appareil.".into());
+    };
+
+    let client = crate::client_for(&server)?;
+    let endpoint = format!(
+        "{}/v1/auth/pair/announce",
+        server.current_url.trim_end_matches('/')
+    );
+    let resp = client
+        .post(&endpoint)
+        .json(&serde_json::json!({
+            "device_label": device_label.unwrap_or_else(|| "téléphone".into()),
+        }))
+        .send()
+        .await
+        .map_err(|_| "Serveur injoignable. Vérifiez que l'hôte est allumé.".to_string())?;
+
+    if resp.status() == reqwest::StatusCode::GONE {
+        return Err("Ce QR a expiré. Affichez-en un nouveau sur l'hôte.".into());
+    }
+    if resp.status() == reqwest::StatusCode::CONFLICT {
+        return Err(
+            "Aucun appairage en cours sur cet hôte. Affichez le QR, puis rescannez.".into(),
+        );
+    }
+    Ok(resp.status().is_success())
+}
+
 /// The device session token delivered by `POST /v1/auth/pair/confirm`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]

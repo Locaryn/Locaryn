@@ -390,6 +390,68 @@ pub async fn pairing_code(mode: String, url: Option<String>) -> Result<PairingCo
     })
 }
 
+/// Ce que l'hôte doit montrer d'un appairage en cours.
+///
+/// Le code n'arrive qu'une fois un appareil annoncé : avant, `pairing_code`
+/// est `None`. C'est voulu — un code affiché avant que personne n'essaie reste
+/// exposé pour rien, et n'apprend à l'hôte ni qui arrive ni d'où.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct PairingState {
+    /// Un QR est affiché et son code n'est pas encore consommé.
+    #[serde(default)]
+    pub pending: bool,
+    /// Un appareil a scanné et joint ce serveur.
+    #[serde(default)]
+    pub announced: bool,
+    /// Le nom que l'appareil se donne. Non vérifiable : une étiquette.
+    #[serde(default)]
+    pub device: Option<String>,
+    /// L'adresse d'où vient la demande. Elle, on l'a constatée.
+    #[serde(default)]
+    pub ip: Option<String>,
+    #[serde(default)]
+    pub announced_seconds_ago: Option<u64>,
+    #[serde(default)]
+    pub pairing_code: Option<String>,
+    #[serde(default)]
+    pub ttl_seconds: u64,
+    #[serde(default)]
+    pub attempts: u32,
+}
+
+/// L'état de l'appairage en cours, tel que seule cette machine peut le lire.
+#[tauri::command]
+pub async fn pairing_state() -> Result<PairingState, String> {
+    let req = daemon("/v1/pairing/state").await?;
+    match req.send().await {
+        Ok(r) if r.status().is_success() => r.json().await.map_err(|e| e.to_string()),
+        // Pas de service, ou refus : rien n'attend. Ce n'est pas une erreur à
+        // afficher — l'écran doit seulement ne rien promettre.
+        Ok(_) | Err(_) => Ok(PairingState::default()),
+    }
+}
+
+/// Refuse l'appareil qui frappe.
+///
+/// Efface l'appairage en attente : le `confirm` du téléphone échouera alors,
+/// même s'il a lu le code. C'est un refus, pas un simple masquage.
+#[tauri::command]
+pub async fn reject_pairing() -> Result<bool, String> {
+    let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
+    let port = cfg.daemon.port;
+    let client = crate::secure_client::build(None, None, None, std::time::Duration::from_secs(30))?;
+    let resp = client
+        .post(format!("https://127.0.0.1:{port}/v1/pairing/reject"))
+        .send()
+        .await
+        .map_err(|_| not_running())?;
+    if !resp.status().is_success() {
+        return Err("Le service a refusé d'annuler cet appairage.".into());
+    }
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(body["rejected"].as_bool().unwrap_or(false))
+}
+
 /// Échapper ce qui doit l'être dans un paramètre d'URL.
 ///
 /// Une adresse contient `:` et `/` ; les laisser passer tels quels casserait
