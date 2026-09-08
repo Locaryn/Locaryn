@@ -174,6 +174,11 @@ impl Attention {
                 etat.items.get(*id).is_some_and(|e| {
                     e.item.title == titre
                         && e.item.project_id == project_id
+                        // La conversation compte dans la clé : la pastille est
+                        // portée par elle, et deux chats libres — tous deux
+                        // sans projet — partageraient sinon une seule alerte,
+                        // donc une seule pastille sur le premier des deux.
+                        && e.item.session_id == session_id
                         && e.item.urgency == "erreur"
                 })
             }) {
@@ -462,6 +467,14 @@ mod tests {
         a.alerter(Some("p2".into()), None, "Le modèle ne répond plus", None)
             .await;
         assert_eq!(a.liste().await.len(), 2);
+
+        // Et deux conversations distinctes aussi, y compris sans projet : la
+        // pastille est portée par la conversation, pas par la panne.
+        a.alerter(None, Some("s1".into()), "Le modèle ne répond plus", None)
+            .await;
+        a.alerter(None, Some("s2".into()), "Le modèle ne répond plus", None)
+            .await;
+        assert_eq!(a.liste().await.len(), 4);
     }
 
     /// Une alerte se ferme, alors que personne n'attend derrière.
