@@ -87,6 +87,83 @@ async fn verifier_portee(core: &Core, scope: ContextScope) -> Result<(), String>
     ))
 }
 
+/// Les fiches, telles qu'elles partent devant le modèle.
+///
+/// Pure : c'est ce qui permet de vérifier la mise en forme sans base ni
+/// serveur, et c'est là que sont les décisions qui se discutent.
+///
+/// Les portées ne sont pas étiquetées dans le texte. Au moment de répondre,
+/// « qui a le droit de le savoir » est déjà tranché : ce qui arrive ici est ce
+/// que cette personne, sur cette machine, a le droit de voir. Les distinguer
+/// n'ajouterait qu'une nuance dont le modèle ne peut rien faire.
+///
+/// `None` quand il n'y a rien à dire — une fiche vide comprise. Un en-tête
+/// seul occuperait le contexte et laisserait croire au modèle qu'un contexte
+/// existe et qu'il est vide, ce qui n'est pas la même chose que pas de
+/// contexte du tout.
+#[must_use]
+pub fn rendre_contexte(fiches: &[ContextEntry]) -> Option<String> {
+    let mut corps = String::new();
+    for f in fiches {
+        let titre = f.title.trim();
+        if titre.is_empty() {
+            continue;
+        }
+        // Les détails s'il y en a, le résumé sinon : c'est tout ce que la
+        // fiche a. Une fiche sans l'un ni l'autre n'apprend rien et se saute.
+        let mut lignes: Vec<&str> = f
+            .details
+            .iter()
+            .map(|d| d.trim())
+            .filter(|d| !d.is_empty())
+            .collect();
+        if lignes.is_empty() {
+            let resume = f.summary.trim();
+            if resume.is_empty() {
+                continue;
+            }
+            lignes.push(resume);
+        }
+        corps.push_str(&format!("\n## {titre}\n"));
+        for l in lignes {
+            corps.push_str(&format!("- {l}\n"));
+        }
+    }
+    if corps.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "# Ce projet\n\nCe que les personnes qui travaillent sur ce projet ont noté. \
+         Tenez-en compte sans le répéter, et n'inventez rien qui n'y soit pas :\n{corps}"
+    ))
+}
+
+/// Le contexte du projet ouvert, prêt à rejoindre le message système.
+///
+/// L'écran promet que Locaryn relit ces fiches avant de répondre. Sans cette
+/// fonction la promesse serait fausse : les fiches existeraient, personne ne
+/// les lirait, et la personne les écrirait pour rien.
+pub async fn contexte_pour_le_modele(core: &Core, project_id: uuid::Uuid) -> Option<String> {
+    let scopes: Vec<ContextScope> = if serveur_present(core).await {
+        vec![
+            ContextScope::Machine,
+            ContextScope::Compte,
+            ContextScope::Partage,
+        ]
+    } else {
+        vec![ContextScope::Machine]
+    };
+    let fiches = core
+        .storage
+        .project_context
+        .list(&project_id.to_string(), &scopes)
+        .await
+        // Un contexte illisible ne doit pas empêcher de répondre : on répond
+        // sans lui plutôt que de faire échouer le tour.
+        .ok()?;
+    rendre_contexte(&fiches)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RememberContextArgs {
@@ -219,4 +296,97 @@ pub async fn forget_context(core: State<'_, Core>, id: String) -> Result<(), Str
         .forget(&id)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fiche(titre: &str, resume: &str, details: &[&str]) -> ContextEntry {
+        ContextEntry {
+            id: "x".into(),
+            project_id: "p".into(),
+            scope: ContextScope::Machine,
+            author: None,
+            title: titre.into(),
+            summary: resume.into(),
+            details: details.iter().map(|d| (*d).to_string()).collect(),
+            source: "utilisateur".into(),
+            created_at: "2026-09-08T00:00:00Z".into(),
+            updated_at: "2026-09-08T00:00:00Z".into(),
+        }
+    }
+
+    /// Sans fiche, pas d'en-tête. Un en-tête seul laisserait croire au modèle
+    /// qu'un contexte existe et qu'il est vide — ce qui n'est pas la même
+    /// chose que pas de contexte du tout.
+    #[test]
+    fn aucune_fiche_ne_pose_rien_devant_le_modele() {
+        assert!(rendre_contexte(&[]).is_none());
+    }
+
+    /// Rien ne suppose du code : le format d'un rendu s'y range comme une
+    /// commande de test.
+    #[test]
+    fn une_fiche_sans_domaine_arrive_telle_quelle() {
+        let t = rendre_contexte(&[fiche(
+            "Format de rendu",
+            "A2",
+            &["Le rendu final est en A2 sur papier grain torchon."],
+        )])
+        .expect("une fiche donne un contexte");
+        assert!(t.contains("## Format de rendu"));
+        assert!(t.contains("- Le rendu final est en A2 sur papier grain torchon."));
+        assert!(
+            t.contains("n'inventez rien"),
+            "le modèle doit savoir quoi faire de ces lignes"
+        );
+    }
+
+    /// Les détails passent devant le résumé : c'est ce qu'on a appris, et le
+    /// résumé n'en est qu'une abréviation.
+    #[test]
+    fn les_details_passent_devant_le_resume() {
+        let t = rendre_contexte(&[fiche(
+            "Mesures",
+            "à 20 °C",
+            &[
+                "Les mesures se font à 20 °C.",
+                "Sinon la dilatation fausse tout.",
+            ],
+        )])
+        .unwrap();
+        assert!(t.contains("- Les mesures se font à 20 °C."));
+        assert!(t.contains("- Sinon la dilatation fausse tout."));
+        assert!(
+            !t.contains("- à 20 °C"),
+            "le résumé ne double pas les détails"
+        );
+    }
+
+    /// Une fiche sans détail garde son résumé : c'est tout ce qu'elle a.
+    #[test]
+    fn une_fiche_sans_detail_garde_son_resume() {
+        let t =
+            rendre_contexte(&[fiche("Relecture", "On me relit avant d'envoyer.", &[])]).unwrap();
+        assert!(t.contains("- On me relit avant d'envoyer."));
+    }
+
+    /// Une fiche qui n'apprend rien se saute, plutôt que de poser un titre nu
+    /// que le modèle prendrait pour une consigne vide.
+    #[test]
+    fn une_fiche_muette_est_sautee() {
+        assert!(rendre_contexte(&[fiche("Vide", "  ", &["  ", ""])]).is_none());
+        let t = rendre_contexte(&[fiche("Vide", "", &[]), fiche("Utile", "Compte tenu.", &[])])
+            .unwrap();
+        assert!(!t.contains("## Vide"));
+        assert!(t.contains("## Utile"));
+    }
+
+    /// Un titre vide ne fait pas un titre. Sans ce filtre, `## ` seul
+    /// apparaissait dans le message système.
+    #[test]
+    fn un_titre_vide_ne_fait_pas_un_titre() {
+        assert!(rendre_contexte(&[fiche("   ", "Quelque chose.", &[])]).is_none());
+    }
 }

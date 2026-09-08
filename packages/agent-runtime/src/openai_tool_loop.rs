@@ -130,6 +130,7 @@ pub async fn run_openai_tool_loop(
         // ce qu'on n'a pas constaté. La machine est là, la commande existe :
         // le projet dit laquelle.
         input.project_path.as_deref(),
+        input.project_context.as_deref(),
     );
     tracing::info!(
         octets = system_prompt.len(),

@@ -1254,6 +1254,9 @@ async fn send_message(
         // C'est le même texte que montre l'écran de réglages : personne ne
         // doit avoir à deviner ce que le modèle sait de lui.
         extra_system: bloc_systeme(&s, session_uuid).await,
+        // Le contexte d'un projet vit dans la base du poste qui l'ouvre. Le
+        // demon sert des clients qui n'en portent pas encore : rien a poser.
+        project_context: None,
         // Ce que les extensions actives apportent : c'est ce qui décide des
         // outils offerts au modèle. Sans l'extension d'images, il n'a aucun
         // moyen d'en générer une, et le dit.

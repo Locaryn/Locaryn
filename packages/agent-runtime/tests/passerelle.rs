@@ -85,6 +85,7 @@ fn entree(model: &str) -> AgentInput {
         history: Vec::new(),
         mcp_state: None,
         extra_system: None,
+        project_context: None,
         system_override: None,
         capabilities: Vec::new(),
         tools: None,

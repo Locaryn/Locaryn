@@ -40,8 +40,15 @@ const DEMANDE: &str = "LOCARYN_TEST_MANIFEST";
 /// LOCARYN_TEST_MANIFEST=1 cargo test -p locaryn-desktop --lib
 /// ```
 ///
-/// La variable ne doit pas être posée pour compiler l'application : elle y
-/// casserait le lien. C'est aussi pourquoi elle n'est pas posée d'office.
+/// La variable ne doit pas être posée pour compiler l'application, ni pour un
+/// `cargo test` qui assemble une cible binaire — `cargo test -p locaryn-desktop`
+/// sans `--lib`, ou `cargo test --workspace` : le lien y échoue sur `CVT1100`
+/// puis `LNK1123`, le binaire ayant déjà son manifeste. C'est pourquoi elle
+/// n'est pas posée d'office, et pourquoi sa présence déclenche un
+/// avertissement à chaque compilation.
+///
+/// L'intégration continue tourne sous Linux, où rien de tout cela n'existe :
+/// elle ne pose pas la variable, et exécute les mêmes tests sans elle.
 fn manifeste_des_tests() {
     println!("cargo::rerun-if-env-changed={DEMANDE}");
     if std::env::var(DEMANDE).is_err() {
@@ -81,6 +88,15 @@ fn manifeste_des_tests() {
         println!("cargo::warning=manifeste des tests non écrit : {e}");
         return;
     }
+    // Bruyant, parce que le piege est reel : `rustc-link-arg` touche toutes
+    // les cibles, y compris la cible de test du *binaire*, qui recoit deja son
+    // manifeste par `resource.lib`. Un `cargo test -p locaryn-desktop` sans
+    // `--lib` echoue alors sur `CVT1100` puis `LNK1123` — mesure. Mieux vaut
+    // l'avertissement a chaque compilation que la surprise au lien.
+    println!(
+        "cargo::warning={DEMANDE} est pose : n'assemblez que la bibliotheque, \
+         `cargo test -p locaryn-desktop --lib`. Toute cible binaire echouera au lien."
+    );
     println!("cargo::rustc-link-arg=/MANIFEST:EMBED");
     println!("cargo::rustc-link-arg=/MANIFESTINPUT:{}", chemin.display());
 }

@@ -2082,6 +2082,14 @@ async fn send_message(
             let rt = core.extensions.read().await;
             (!rt.system_prompt.trim().is_empty()).then(|| rt.system_prompt.clone())
         },
+        // L'écran promet que Locaryn relit les fiches du projet avant de
+        // répondre : c'est ici que la promesse se tient. Les portées que cette
+        // installation ne peut pas honorer sont écartées à la lecture — sans
+        // serveur, une fiche « partagée » n'existe pas.
+        project_context: match project_id {
+            Some(p) => project_context::contexte_pour_le_modele(&core, p).await,
+            None => None,
+        },
         // Ce que les extensions actives apportent, d'après ce que le service
         // en dit : c'est la liste qui décide des outils offerts au modèle.
         capabilities: extensions::active_capabilities(&core).await,

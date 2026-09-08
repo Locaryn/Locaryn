@@ -171,6 +171,11 @@ pub struct ConsigneSysteme {
 }
 
 /// Ce qui est posé devant le modèle aujourd'hui.
+///
+/// **Le socle, pas le tour.** Deux morceaux dépendent du contexte d'un envoi
+/// et ne peuvent donc pas figurer ici : la consigne de vérification, qui nomme
+/// ce que le projet ouvert permet de lancer, et les fiches de contexte de ce
+/// projet. Les inventer pour l'écran mentirait dans l'autre sens.
 #[tauri::command]
 pub async fn consigne_systeme() -> Result<ConsigneSysteme, String> {
     let texte = locaryn_config::load(None)

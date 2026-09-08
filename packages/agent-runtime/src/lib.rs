@@ -59,6 +59,16 @@ pub struct AgentInput {
     /// was before extensions existed.
     #[allow(clippy::doc_markdown)]
     pub extra_system: Option<String>,
+    /// Ce que les personnes qui travaillent sur ce projet ont noté.
+    ///
+    /// Distinct de `extra_system`, qui porte l'apport des extensions et se
+    /// range sous un titre qui le dit. Faire passer le contexte d'un projet
+    /// pour un apport d'extension le rangerait sous « # Extensions » : le
+    /// modèle lirait « le rendu final est en A2 » comme une consigne venue
+    /// d'un greffon, et non comme une décision du projet.
+    ///
+    /// `None` quand il n'y a rien à dire. Le texte porte son propre titre.
+    pub project_context: Option<String>,
     /// La consigne écrite par la personne, qui **remplace** celle de
     /// l'application.
     ///
@@ -148,16 +158,20 @@ pub fn tool_discipline_prompt() -> String {
 /// aucun message système n'est envoyé du tout.
 ///
 /// Cette fonction est publique pour que l'écran des réglages puisse afficher
-/// exactement ce que la boucle enverra. Deviner ce que l'application pose
-/// devant un modèle a coûté plusieurs échanges : une consigne oubliée se
-/// confond avec un modèle qui refuse de lui-même, et les deux se corrigent
-/// à des endroits opposés.
+/// ce que la boucle enverra. Deviner ce que l'application pose devant un
+/// modèle a coûté plusieurs échanges : une consigne oubliée se confond avec un
+/// modèle qui refuse de lui-même, et les deux se corrigent à des endroits
+/// opposés.
+///
+/// Elle rend le socle, non le tour : la consigne de vérification et les fiches
+/// de contexte dépendent du projet ouvert, et arrivent par
+/// [`assemble_system_prompt_pour`].
 pub fn assemble_system_prompt(
     consigne: Option<&str>,
     avec_outils: bool,
     extra: Option<&String>,
 ) -> String {
-    assemble_system_prompt_pour(consigne, avec_outils, extra, None)
+    assemble_system_prompt_pour(consigne, avec_outils, extra, None, None)
 }
 
 /// Le même message, plus ce que le projet ouvert permet de vérifier.
@@ -174,10 +188,17 @@ pub fn assemble_system_prompt_pour(
     avec_outils: bool,
     extra: Option<&String>,
     projet: Option<&std::path::Path>,
+    contexte: Option<&str>,
 ) -> String {
     let mut morceaux: Vec<String> = Vec::new();
     if let Some(texte) = consigne.map(str::trim).filter(|texte| !texte.is_empty()) {
         morceaux.push(texte.to_string());
+    }
+    // Avant la mécanique des outils : ce que le projet a décidé pèse sur toute
+    // la réponse, pas seulement sur les appels d'outils. Et avant l'apport des
+    // extensions, qui vient en dernier avec son propre titre.
+    if let Some(c) = contexte.map(str::trim).filter(|c| !c.is_empty()) {
+        morceaux.push(c.to_string());
     }
     if avec_outils {
         morceaux.push(tool_discipline_prompt());
