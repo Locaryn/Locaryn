@@ -23,6 +23,12 @@ profile="${PROFILE:-release}"
 out="apps/desktop/src-tauri/binaries"
 mkdir -p "$out"
 
+# Ou cargo depose ce qu'il compile. `target/` en dur cassait des qu'on
+# redirigeait la cible — un cache d'integration continue, un arbre de travail
+# detache, une verification en parallele : `cp` ne trouvait rien et le script
+# s'arretait la, apres avoir tout compile pour rien.
+cible="${CARGO_TARGET_DIR:-target}"
+
 flags=()
 subdir="debug"
 if [ "$profile" = "release" ]; then
@@ -46,12 +52,12 @@ if [ "${UNIVERSAL:-0}" = "1" ]; then
     # c'est seulement l'empaquetage qui demande la version universelle. Il faut
     # donc les trois noms, pas seulement le dernier.
     for triple in x86_64-apple-darwin aarch64-apple-darwin; do
-      cp "target/$triple/$subdir/$bin" "$out/$bin-$triple"
+      cp "$cible/$triple/$subdir/$bin" "$out/$bin-$triple"
       chmod +x "$out/$bin-$triple"
     done
     lipo -create \
-      "target/x86_64-apple-darwin/$subdir/$bin" \
-      "target/aarch64-apple-darwin/$subdir/$bin" \
+      "$cible/x86_64-apple-darwin/$subdir/$bin" \
+      "$cible/aarch64-apple-darwin/$subdir/$bin" \
       -output "$out/$bin-universal-apple-darwin"
     chmod +x "$out/$bin-universal-apple-darwin"
   done
@@ -59,7 +65,7 @@ else
   cargo build "${flags[@]}" -p locaryn-daemon -p locaryn-cli
   triple=$(rustc -vV | sed -n 's/^host: //p')
   for bin in locaryn-daemon locaryn; do
-    cp "target/$subdir/$bin$ext" "$out/$bin-$triple$ext"
+    cp "$cible/$subdir/$bin$ext" "$out/$bin-$triple$ext"
   done
 fi
 
