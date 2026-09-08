@@ -8,6 +8,7 @@
 //! reviendrait à maintenir deux politiques de sécurité en parallèle.
 
 use crate::approval::{ApprovalHandle, ApprovalRequest};
+use crate::question::QuestionHandle;
 use crate::tools::{approval_decision, dispatch_tool, ApprovalInput, Risk, ToolContext, ToolSpec};
 use locaryn_events::StreamEvent;
 use locaryn_mcp::McpState;
@@ -21,6 +22,10 @@ pub struct ToolDispatchContext<'a> {
     pub ctx: &'a ToolContext,
     pub mcp: Option<&'a McpState>,
     pub approval: Option<&'a ApprovalHandle>,
+    /// Le moyen de poser une question à l'utilisateur. `None` dans un hôte
+    /// sans interface : `ask_user` répond alors qu'il n'a personne à qui
+    /// demander, au lieu de laisser croire que la question a été posée.
+    pub question: Option<&'a QuestionHandle>,
 }
 
 /// Exécute un appel d'outil du modèle, avec le gating d'approbation, et
@@ -42,6 +47,7 @@ pub async fn execute_tool_call(
         ctx,
         mcp,
         approval,
+        question,
     } = *dispatch;
 
     // L'événement ToolCall part d'abord : c'est lui qui fait apparaître la
@@ -57,6 +63,36 @@ pub async fn execute_tool_call(
         .is_err()
     {
         return None;
+    }
+
+    // Demander n'est pas agir : `ask_user` ne modifie rien, ne lance rien, et
+    // ne passe donc pas par la porte d'approbation — on ne demande pas la
+    // permission de demander. Il est intercepté ici parce que la porte des
+    // questions vit dans cette boucle, et nulle part plus bas.
+    if tool == "ask_user" {
+        let sortie = match crate::question::lire_appel(
+            &args,
+            Some(ctx.project_id.to_string()),
+            Some(ctx.session_id.to_string()),
+        ) {
+            Ok(req) => crate::question::ask(question, req).await.pour_le_modele(),
+            Err(motif) => format!("ERROR: {motif}"),
+        };
+        // Une question posée puis restée sans réponse n'est pas un échec de
+        // l'outil : le modèle doit lire ce qui s'est passé, pas un rouge qui
+        // l'enverrait réessayer.
+        if tx
+            .send(StreamEvent::ToolResult {
+                call_id: call_id.to_string(),
+                ok: !sortie.starts_with("ERROR:"),
+                output: sortie.clone(),
+            })
+            .await
+            .is_err()
+        {
+            return None;
+        }
+        return Some(sortie);
     }
 
     let tool_spec = tools.iter().find(|t| t.name == tool);

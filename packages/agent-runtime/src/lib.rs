@@ -12,8 +12,10 @@ pub mod mcp_tools;
 pub mod openai_compat;
 pub mod openai_tool_loop;
 pub mod profile;
+pub mod question;
 pub mod titling;
 pub mod tools;
+pub mod verification;
 
 pub use exec::execute_tool_call;
 pub use openai_compat::OpenAiCompatAgent;
@@ -82,6 +84,14 @@ pub struct AgentInput {
     /// service qui tourne sans personne devant ne doit pas s'autoriser une
     /// opération que l'on aurait voulu arbitrer.
     pub approval: Option<approval::ApprovalHandle>,
+    /// Comment poser une question à l'utilisateur quand le modèle doute.
+    ///
+    /// Distinct de `approval` : une approbation arbitre un acte et vaut refus
+    /// faute d'interlocuteur, une question lève un doute et reste simplement
+    /// sans réponse. `None` — un hôte sans interface — laisse `ask_user`
+    /// répondre qu'il n'y a personne à qui demander, ce que le modèle sait
+    /// alors dire dans sa réponse au lieu de deviner en silence.
+    pub question: Option<question::QuestionHandle>,
     /// Jeton Bearer envoyé à l'endpoint (noyaux alternatifs : OpenClaw,
     /// Hermes…). `None` = pas d'en-tête d'authentification.
     pub bearer_token: Option<String>,
@@ -147,12 +157,37 @@ pub fn assemble_system_prompt(
     avec_outils: bool,
     extra: Option<&String>,
 ) -> String {
+    assemble_system_prompt_pour(consigne, avec_outils, extra, None)
+}
+
+/// Le même message, plus ce que le projet ouvert permet de vérifier.
+///
+/// Séparé de [`assemble_system_prompt`] pour que l'écran des réglages puisse
+/// montrer le message sans projet, et la boucle l'envoyer avec.
+///
+/// La vérification n'est ajoutée que si la racine du projet la porte
+/// réellement : un `Cargo.toml` donne `cargo check`, un dossier de dessins ne
+/// donne rien. On ne demande jamais de lancer une commande qu'on n'a pas vue —
+/// elle échouerait, et le modèle conclurait que son travail est faux.
+pub fn assemble_system_prompt_pour(
+    consigne: Option<&str>,
+    avec_outils: bool,
+    extra: Option<&String>,
+    projet: Option<&std::path::Path>,
+) -> String {
     let mut morceaux: Vec<String> = Vec::new();
     if let Some(texte) = consigne.map(str::trim).filter(|texte| !texte.is_empty()) {
         morceaux.push(texte.to_string());
     }
     if avec_outils {
         morceaux.push(tool_discipline_prompt());
+        // Sans outils, la consigne serait creuse : il n'y aurait pas de
+        // `run_command` pour lancer quoi que ce soit.
+        if let Some(racine) = projet {
+            if let Some(v) = verification::consigne(racine) {
+                morceaux.push(v);
+            }
+        }
     }
     compose_system_prompt(&morceaux.join("\n\n"), extra)
 }

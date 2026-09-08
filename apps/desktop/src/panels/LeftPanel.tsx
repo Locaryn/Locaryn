@@ -69,6 +69,12 @@ const RAIL_LABELS: Record<string, string> = {
 /** Les destinations que le rail ne montre pas : elles vivent dans les réglages. */
 const RAIL_HIDDEN = new Set(["account"]);
 
+/** Ce que dit la pastille du rail, selon ce qui attend. */
+const PASTILLE_TITRE: Record<"attente" | "erreur", string> = {
+  attente: "Une conversation attend votre réponse",
+  erreur: "Quelque chose est cassé dans une conversation",
+};
+
 /** L'état d'une conversation, l'erreur passant devant l'attente. */
 function etatDe(
   id: string,
@@ -269,6 +275,15 @@ export function LeftPanel({
   // cote, et une regle poussait la nav en haut du rail de l'autre. Le menu
   // changeait donc de tete d'un ecran a l'autre. Une seule source, une seule
   // apparence.
+  // Ce que le rail doit montrer : n'importe quelle conversation en attente ou
+  // cassée suffit, puisque la destination « Chat » les couvre toutes.
+  const etatDuChat: "attente" | "erreur" | null =
+    sessionsEnErreur && sessionsEnErreur.size > 0
+      ? "erreur"
+      : sessionsEnAttente && sessionsEnAttente.size > 0
+        ? "attente"
+        : null;
+
   const navigation =
     onSelectView === undefined ? null : (
       <nav className="locaryn-rail-nav" aria-label="Destinations">
@@ -281,11 +296,22 @@ export function LeftPanel({
               type="button"
               className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}`}
               aria-current={activeView === d.id ? "page" : undefined}
-              title={d.desc}
+              title={d.id === "chat" && etatDuChat ? PASTILLE_TITRE[etatDuChat] : d.desc}
               onClick={() => onSelectView(d.id)}
             >
               <Icon name={d.icon} size={16} />
               {RAIL_LABELS[d.id] ?? d.label}
+              {/* Une conversation en pause ou cassée se voit depuis n'importe
+                  quel écran : c'est justement quand on regarde ailleurs que le
+                  rappel sert. */}
+              {d.id === "chat" && etatDuChat && (
+                <span
+                  className={`locaryn-rail-pastille${
+                    etatDuChat === "erreur" ? " locaryn-rail-pastille-erreur" : ""
+                  }`}
+                  aria-hidden="true"
+                />
+              )}
             </button>
           ))}
       </nav>

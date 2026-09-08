@@ -190,6 +190,7 @@ pub async fn run(cfg: Arc<CoreAgentConfig>, input: AgentInput) -> Result<EventSt
                         ctx: &ctx,
                         mcp: input.mcp_state.as_deref(),
                         approval: input.approval.as_ref(),
+                        question: input.question.as_ref(),
                     },
                 )
                 .await

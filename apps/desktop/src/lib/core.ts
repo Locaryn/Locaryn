@@ -1421,6 +1421,37 @@ export interface ContextAvailability {
   blocker: string | null;
 }
 
+/** Une réponse proposée par le modèle, telle qu'elle s'affiche. */
+export interface AttentionChoice {
+  /** Ce que le modèle relira. */
+  id: string;
+  /** Ce que la personne lit. */
+  label: string;
+  /** Ce que ce choix implique, en une ligne. */
+  hint: string | null;
+}
+
+/**
+ * Ce qui demande l'attention de l'utilisateur sans la lui prendre de force.
+ *
+ * Deux niveaux : `question` (orange) quand le modèle doute et attend, `erreur`
+ * (rouge) quand quelque chose ne marche plus. La différence pratique est
+ * `blocking` : une question a quelqu'un derrière, une alerte n'a qu'à être vue.
+ */
+export interface AttentionItem {
+  id: string;
+  project_id: string | null;
+  session_id: string | null;
+  urgency: "question" | "erreur";
+  title: string;
+  detail: string | null;
+  choices: AttentionChoice[];
+  /** L'invite du champ libre. `null` : pas de champ. */
+  free_text: string | null;
+  asked_at: string;
+  blocking: boolean;
+}
+
 export interface CoreApi {
   health(): Promise<Health>;
   bootstrap(): Promise<Bootstrap>;
@@ -1508,6 +1539,15 @@ export interface CoreApi {
   ): Promise<void>;
   /** Ce que le modele actif accepte en entree, et ce qu'il sait faire. */
   modelAbilities(): Promise<ModelAbilities>;
+  /** Ce qui attend une réponse ou un regard, du plus ancien au plus récent. */
+  pendingAttention(): Promise<AttentionItem[]>;
+  /** Transmet la réponse. Faux quand plus rien n'attendait sous cet id. */
+  answerAttention(
+    id: string,
+    answer: { choice?: string | null; text?: string | null },
+  ): Promise<boolean>;
+  /** Retire sans répondre : l'appelant continue avec ce qu'il sait. */
+  dismissAttention(id: string): Promise<boolean>;
   /** Les portees utilisables ici, et ce qui manque pour les autres. */
   contextAvailability(): Promise<ContextAvailability>;
   listContext(projectId: string): Promise<ContextEntry[]>;
@@ -1929,6 +1969,9 @@ const tauriCore: CoreApi = {
   },
 
   modelAbilities: () => invoke<ModelAbilities>("model_abilities"),
+  pendingAttention: () => invoke<AttentionItem[]>("pending_attention"),
+  answerAttention: (id, answer) => invoke<boolean>("answer_attention", { id, answer }),
+  dismissAttention: (id) => invoke<boolean>("dismiss_attention", { id }),
   contextAvailability: () => invoke<ContextAvailability>("context_availability"),
   listContext: (projectId) => invoke<ContextEntry[]>("list_context", { projectId }),
   rememberContext: (args) => invoke<ContextEntry>("remember_context", { args }),
@@ -3888,6 +3931,35 @@ let demoUserMemory: MemoryEntry[] = [
   ]),
 ];
 
+/**
+ * La question de demonstration.
+ *
+ * Mutable : y repondre doit la faire disparaitre, sinon la bande reviendrait
+ * a chaque rechargement et donnerait l'impression que le bouton ne marche pas.
+ */
+let demoAttention: AttentionItem[] = [
+  {
+    id: "att-demo",
+    project_id: "demo-project",
+    session_id: "demo-session-1",
+    urgency: "question",
+    title: "Qui doit voir que le rendu final est en A2 ?",
+    detail:
+      "Je vais noter ce format dans le contexte du projet. Selon votre choix, il suivra le projet, votre compte, ou restera sur cet ordinateur.",
+    choices: [
+      {
+        id: "partage",
+        label: "Tout le projet",
+        hint: "C'est une décision du projet, pas une préférence.",
+      },
+      { id: "compte", label: "Moi seulement", hint: "Sur tous mes appareils." },
+    ],
+    free_text: "Autre réponse",
+    asked_at: String(Math.floor(Date.now() / 1000)),
+    blocking: true,
+  },
+];
+
 const demoCore: CoreApi = {
   health: async () => cloneHealth(),
   bootstrap: async () => ({
@@ -4044,6 +4116,22 @@ const demoCore: CoreApi = {
     ephemeral: true,
   }),
   listMessages: async (sessionId) => demoMessages.filter((m) => m.session_id === sessionId),
+
+  // La demo montre une question, pour que la bande soit visible sans modele
+  // installe. Y repondre la retire, comme en vrai.
+  async pendingAttention() {
+    return demoAttention;
+  },
+  async answerAttention(id) {
+    const avant = demoAttention.length;
+    demoAttention = demoAttention.filter((a) => a.id !== id);
+    return demoAttention.length < avant;
+  },
+  async dismissAttention(id) {
+    const avant = demoAttention.length;
+    demoAttention = demoAttention.filter((a) => a.id !== id);
+    return demoAttention.length < avant;
+  },
 
   // La demo n'a pas de serveur : seule la portee machine a un sens, et le
   // dire est plus utile que de proposer un partage qui n'irait nulle part.

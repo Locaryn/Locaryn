@@ -156,6 +156,37 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
             risk: Risk::High,
             required_permissions: vec![locaryn_shared_types::Permission::Shell],
         },
+        ToolSpec {
+            name: "ask_user".into(),
+            description: "Ask the user a question when you are genuinely unsure and guessing would waste their time or produce the wrong thing — an ambiguous requirement, two defensible directions, a missing constraint, or who should be able to see something you are about to record. The question appears above their message box without interrupting them: they can answer later, and other work keeps running. Offer 2 to 4 concrete options in `options`; a free-text field is added for you. Do NOT use it for permission to run a tool (that is asked separately), and do not use it for something you can find out yourself.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question, in one sentence, in the user's language."
+                    },
+                    "detail": {
+                        "type": "string",
+                        "description": "What is at stake, if explaining it helps them choose."
+                    },
+                    "options": {
+                        "type": "array",
+                        "description": "The answers you propose. Each is either a string or {label, hint}, where hint says what that choice implies.",
+                        "items": { "type": "string" }
+                    },
+                    "allow_free_text": {
+                        "type": "boolean",
+                        "description": "Leave unset to keep the free-text field. Set false only when an answer outside your options would be meaningless."
+                    }
+                },
+                "required": ["question"]
+            }),
+            // Rien n'est modifie, rien n'est execute : demander ne se fait pas
+            // approuver, sinon on demanderait la permission de demander.
+            risk: Risk::Low,
+            required_permissions: Vec::new(),
+        },
     ]
 }
 
@@ -612,6 +643,7 @@ pub const NATIVE_TOOLS: &[&str] = &[
     "search",
     "run_command",
     "generate_speech",
+    "ask_user",
 ];
 
 /// Vrai quand le socle sait exécuter cet outil sans passer par une extension.
@@ -631,6 +663,14 @@ pub async fn dispatch_tool(
         "search" => exec_search(args, project_root).await,
         "run_command" => exec_run_command(args, project_root).await,
         "generate_speech" => exec_generate_speech(args).await,
+        // `ask_user` a besoin de la porte des questions, que seule la boucle
+        // d'outils detient : elle l'intercepte avant d'arriver ici.
+        "ask_user" => ToolResult {
+            ok: false,
+            output: "outil « ask_user » indisponible : cette boucle n'a pas de moyen de poser                      une question a l'utilisateur."
+                .into(),
+            artifact: None,
+        },
         _ => ToolResult {
             ok: false,
             output: format!("unknown tool: {tool_name}"),

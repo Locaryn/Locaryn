@@ -10,6 +10,7 @@
 
 mod airllm;
 mod approval_gate;
+mod attention;
 mod client_cert;
 mod cloud_providers;
 mod core_engines;
@@ -108,6 +109,11 @@ struct Core {
     /// Wire surface is in place; the agent-side resume lands in V1.1.
     #[allow(dead_code)]
     pending_approvals: Arc<tokio::sync::Mutex<HashMap<String, PendingApproval>>>,
+    /// Ce qui attend l'attention de l'utilisateur : les questions du modèle et
+    /// les alertes de l'application. Une seule pour toute l'application, comme
+    /// la porte d'approbation — une question posée dans un projet doit se voir
+    /// depuis n'importe quel écran.
+    attention: attention::Attention,
     /// La porte d'approbation : une seule pour toute l'application, sinon un
     /// « toujours » ne vaudrait que pour la conversation en cours.
     approval_gate: approval_gate::GateBureau,
@@ -385,6 +391,7 @@ async fn init_core() -> anyhow::Result<Core> {
         storage,
         supervisor,
         mode: cfg.connection.mode,
+        attention: attention::Attention::new(),
         approval_gate: approval_gate::GateBureau::new(data_dir.clone()),
         data_dir,
         http,
@@ -2086,6 +2093,11 @@ async fn send_message(
         approval: Some(locaryn_agent_runtime::approval::ApprovalHandle(Arc::new(
             core.approval_gate.clone(),
         ))),
+        // La question, elle, ne vaut pas refus faute de réponse : le modèle
+        // apprend qu'il n'a pas pu demander et le dit, au lieu de s'arrêter.
+        question: Some(locaryn_agent_runtime::question::QuestionHandle(Arc::new(
+            core.attention.clone(),
+        ))),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
         // Le dialecte natif n'existait que pour Ollama, qui n'honorait
@@ -2104,14 +2116,20 @@ async fn send_message(
                     Ok(stream) => stream,
                     Err(e) => {
                         tracing::warn!(core = %core_id, error = %e, "noyau alternatif injoignable");
-                        no_model_stream(&format!(
-                            "Le noyau de cette conversation ne répond pas ({e}). \
-                             Ouvrez Réglages → Extensions et démarrez-le."
-                        ))
+                        panne_de_modele(
+                            &core,
+                            project_id,
+                            session_id,
+                            &format!(
+                                "Le noyau de cette conversation ne répond pas ({e}). \
+                                 Ouvrez Réglages → Extensions et démarrez-le."
+                            ),
+                        )
+                        .await
                     }
                 }
             }
-            Err(e) => no_model_stream(&e),
+            Err(e) => panne_de_modele(&core, project_id, session_id, &e).await,
         }
     } else {
         match &active_provider {
@@ -2127,7 +2145,7 @@ async fn send_message(
                     Ok(stream) => stream,
                     Err(e) => {
                         tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
-                        no_model_stream(&match &panne_du_moteur {
+                        panne_de_modele(&core, project_id, session_id, &match &panne_du_moteur {
                             Some(cause) => {
                                 format!("Le moteur local n'a pas démarré : {cause}")
                             }
@@ -2136,12 +2154,19 @@ async fn send_message(
                                 model.as_deref().map(|m| format!(" \"{m}\"")).unwrap_or_default()
                             ),
                         })
+                        .await
                     }
                 }
             }
             None => {
                 tracing::warn!("no active provider configured");
-                no_model_stream("Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.")
+                panne_de_modele(
+                    &core,
+                    project_id,
+                    session_id,
+                    "Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.",
+                )
+                .await
             }
         }
     };
@@ -2281,6 +2306,29 @@ fn strip_ui_markers(content: &str) -> String {
 /// alors qu'aucun modèle n'avait tourné — et elle repartait au modèle au tour
 /// suivant, qui lisait le message d'erreur de l'application comme s'il venait
 /// de son interlocuteur.
+/// Le message d'échec **et** la pastille rouge.
+///
+/// Le message dans le fil disparaît de la vue au message suivant ; la panne,
+/// elle, dure. La pastille reste jusqu'à ce que la personne l'ait vue, ce qui
+/// est exactement ce qu'on veut d'« un modèle qui ne tourne plus » : ce n'est
+/// pas un incident de conversation, c'est un état de l'installation.
+async fn panne_de_modele(
+    core: &Core,
+    project_id: Option<uuid::Uuid>,
+    session_id: uuid::Uuid,
+    reason: &str,
+) -> EventStream {
+    core.attention
+        .alerter(
+            project_id.map(|p| p.to_string()),
+            Some(session_id.to_string()),
+            "Aucun modèle n'a répondu",
+            Some(reason.to_string()),
+        )
+        .await;
+    no_model_stream(reason)
+}
+
 fn no_model_stream(reason: &str) -> EventStream {
     use futures::stream;
     // Le conseil suit la cause. L'ancien bloc valait pour tout : il renvoyait
@@ -6344,6 +6392,15 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 mcp_servers::start_automatic(&mcp).await;
             });
+            // Le registre d'attention est aussi géré à part : les commandes le
+            // prennent seul, et une question doit rester joignable sans passer
+            // par tout le noyau. C'est le même Arc, pas une seconde copie.
+            let attention = core.attention.clone();
+            app.manage(attention.clone());
+            let poignee = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                attention.brancher(poignee).await;
+            });
             app.manage(core);
 
             // Keep Locaryn in the notification area when its window is closed.
@@ -6588,6 +6645,9 @@ pub fn run() {
             notifications::get_notification_prefs,
             notifications::set_notification_prefs,
             notifications::set_taskbar_progress,
+            attention::pending_attention,
+            attention::answer_attention,
+            attention::dismiss_attention,
             project_context::context_availability,
             project_context::remember_context,
             project_context::list_context,

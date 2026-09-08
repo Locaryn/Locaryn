@@ -5285,6 +5285,243 @@ pre.md-code {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   LA QUESTION DU MODÈLE — au-dessus du composeur, jamais par-dessus
+   ═══════════════════════════════════════════════════════════ */
+
+/* En flux, dans la colonne du composeur : pas de position: fixed, pas de
+   voile, pas de z-index qui recouvre l'application. La personne doit pouvoir
+   continuer à cliquer partout ailleurs — c'est toute la différence avec une
+   fenêtre modale. */
+.locaryn-attention {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 auto var(--space-2);
+  width: 100%;
+  /* La meme largeur que le composeur : la bande le prolonge vers le haut,
+     elle ne flotte pas a cote. */
+  max-width: var(--measure);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  /* Le liseré porte l'urgence, pas le fond : un bloc entièrement orange au-
+     dessus du champ de saisie attirerait l'œil en permanence, alors que la
+     question peut attendre. */
+  border-left: 2px solid var(--warn);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface);
+  animation: locaryn-attention-entree var(--dur-slow, 240ms) var(--ease) both;
+}
+.locaryn-attention-erreur {
+  border-left-color: var(--danger);
+}
+
+/* L'apparition glisse depuis le bas plutôt que de surgir : la bande pousse le
+   composeur, et un saut sec ferait rater le clic de qui écrivait. */
+@keyframes locaryn-attention-entree {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-attention {
+    animation: none;
+  }
+}
+
+.locaryn-attention-tete {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.locaryn-attention-puce {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+}
+.locaryn-attention-puce.locaryn-puce-erreur {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+.locaryn-attention-titre {
+  flex: 1;
+  margin: 0;
+  padding-top: 2px;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.locaryn-attention-quand {
+  flex: 0 0 auto;
+  padding-top: 4px;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.locaryn-attention-fermer {
+  flex: 0 0 auto;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.locaryn-attention-detail {
+  margin: 0;
+  padding-left: 30px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.locaryn-attention-choix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-left: 30px;
+}
+/* Chaque proposition porte sa conséquence sous son intitulé : c'est ce qui
+   permet de répondre sans relire la question. */
+.locaryn-attention-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-height: 40px;
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.locaryn-attention-option:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.locaryn-attention-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-attention-option-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.locaryn-attention-option-hint {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+
+/* La troisième réponse : celle qui n'était pas proposée. Discrète tant qu'on
+   n'en a pas besoin, pour ne pas concurrencer les propositions. */
+.locaryn-attention-autre {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-start;
+  min-height: 32px;
+  margin-left: 30px;
+  padding: var(--space-2) 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.locaryn-attention-autre:hover {
+  color: var(--text);
+}
+.locaryn-attention-autre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.locaryn-attention-libre {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: 30px;
+}
+.locaryn-attention-libre input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.locaryn-attention-libre input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.locaryn-attention-libre .locaryn-btn-primary {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+/* Sur petit écran, le retrait de 30 px mange la largeur utile : les réponses
+   passent en colonne pleine plutôt que de se tasser. */
+@media (max-width: 700px) {
+  .locaryn-attention-detail,
+  .locaryn-attention-choix,
+  .locaryn-attention-libre {
+    padding-left: 0;
+    margin-left: 0;
+  }
+  .locaryn-attention-autre {
+    margin-left: 0;
+  }
+  .locaryn-attention-choix {
+    flex-direction: column;
+  }
+  .locaryn-attention-option {
+    width: 100%;
+  }
+  .locaryn-attention-libre {
+    flex-direction: column;
+  }
+}
+
+/* La pastille du rail : la même que sur le nom de la conversation, parce que
+   c'est la même information vue de plus loin. */
+.locaryn-rail-link {
+  position: relative;
+}
+.locaryn-rail-pastille {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.locaryn-rail-pastille.locaryn-rail-pastille-erreur {
+  background: var(--danger);
+}
+
+/* ═══════════════════════════════════════════════════════════
    CONTEXTE DE PROJET — les trois portées
    ═══════════════════════════════════════════════════════════ */
 .locaryn-ctx-settings {

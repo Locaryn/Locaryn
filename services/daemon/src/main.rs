@@ -1266,6 +1266,11 @@ async fn send_message(
         // tout appel exigeant un accord est refusé. C'est le comportement
         // voulu pour un service, pas un oubli.
         approval: None,
+        // Et personne à qui poser une question : le démon sert des clients qui
+        // n'ont pas encore de canal pour la remonter. `ask_user` répond donc
+        // qu'il n'a pas d'interlocuteur, ce que le modèle dit dans sa réponse
+        // au lieu de deviner en silence.
+        question: None,
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
         // Le dialecte natif n'existait que pour Ollama : plus aucun moteur

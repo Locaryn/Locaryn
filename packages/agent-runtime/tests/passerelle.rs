@@ -89,6 +89,7 @@ fn entree(model: &str) -> AgentInput {
         capabilities: Vec::new(),
         tools: None,
         approval: None,
+        question: None,
         bearer_token: Some("cle-de-passerelle".into()),
         native_chat_api: false,
     }

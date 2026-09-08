@@ -118,11 +118,14 @@ pub async fn run_openai_tool_loop(
     // que la mécanique des outils exige. Sans consigne et sans outil, aucun
     // message système n'est envoyé du tout : le modèle répond exactement comme
     // lancé hors de l'application.
-    let _ = in_project;
-    let system_prompt = crate::assemble_system_prompt(
+    let system_prompt = crate::assemble_system_prompt_pour(
         input.system_override.as_deref(),
         !all_tools.is_empty(),
         input.extra_system.as_ref(),
+        // Écrire du code puis annoncer « c'est corrigé » sans compiler affirme
+        // ce qu'on n'a pas constaté. La machine est là, la commande existe :
+        // le projet dit laquelle.
+        input.project_path.as_deref(),
     );
     tracing::info!(
         octets = system_prompt.len(),
@@ -250,6 +253,7 @@ pub async fn run_openai_tool_loop(
     let tools_for_dispatch = all_tools.clone();
     let mcp_state_for_dispatch = input.mcp_state.clone();
     let approval = input.approval.clone();
+    let question = input.question.clone();
 
     tokio::spawn(async move {
         let ctx = ToolContext {
@@ -372,6 +376,7 @@ pub async fn run_openai_tool_loop(
                         ctx: &ctx,
                         mcp: mcp_state_for_dispatch.as_deref(),
                         approval: approval.as_ref(),
+                        question: question.as_ref(),
                     },
                 )
                 .await

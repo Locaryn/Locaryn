@@ -1,5 +1,6 @@
 import { Icon, LoProgress, isIconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AttentionStrip } from "../components/AttentionStrip";
 import { ModalShell } from "../components/ModalShell";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
@@ -12,8 +13,10 @@ import { type ToolEntry, ToolRun } from "../components/chat/ToolRun";
 import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
+import { attentionPourVue } from "../lib/attention";
 import { FREE_CHAT_PATH } from "../lib/constants";
 import {
+  type AttentionItem,
   type ConnectionMode,
   type InstalledExtension,
   type ModelAbilities,
@@ -135,6 +138,13 @@ type Props = {
    * en pause depuis dix minutes ne se distingue pas d'une conversation finie —
    * or l'une bloque le travail et l'autre non.
    */
+  /** Les questions du modèle et les alertes, tenues par l'application. */
+  attention?: readonly AttentionItem[];
+  onAttentionAnswer?: (
+    id: string,
+    answer: { choice?: string | null; text?: string | null },
+  ) => void;
+  onAttentionDismiss?: (id: string) => void;
   onEtatChange?: (sessionId: string, etat: "attente" | "erreur" | null) => void;
   extensions?: InstalledExtension[];
 };
@@ -359,6 +369,9 @@ export function ChatPanel({
   onSessionMoved,
   coreName,
   activeCapabilities = [],
+  attention,
+  onAttentionAnswer,
+  onAttentionDismiss,
   onEtatChange,
   extensions = [],
 }: Props) {
@@ -837,6 +850,10 @@ export function ChatPanel({
       vivant = false;
     };
   }, []);
+
+  // Une seule question a la fois au-dessus du composeur : en empiler trois
+  // remplacerait le champ de saisie par un formulaire.
+  const attentionAffichee = attentionPourVue(attention ?? [], sessionId, projectId ?? null);
 
   // L'attente d'une approbation est la seule pause qui bloque le travail : elle
   // remonte donc, pour que la liste des conversations la montre.
@@ -1727,6 +1744,16 @@ export function ChatPanel({
             extensions={extensions}
           />
         </div>
+
+        {/* La question du modèle, au-dessus du composeur elle aussi. Elle
+            passe derrière la demande d'autorisation : un outil arrêté en plein
+            vol attend plus fort qu'un doute. */}
+        <AttentionStrip
+          key={attentionAffichee?.id ?? "aucune"}
+          item={attentionAffichee}
+          onAnswer={(id, reponse) => onAttentionAnswer?.(id, reponse)}
+          onDismiss={(id) => onAttentionDismiss?.(id)}
+        />
 
         {/* La demande d'autorisation vit ici, au-dessus du composeur, et non
             plus en pop-up par-dessus l'application. Rien ne s'exécute sans

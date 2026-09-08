@@ -16,8 +16,10 @@ import { TopBar } from "./components/TopBar";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { ExtensionScreen } from "./components/extensions/ExtensionScreen";
 import { useTheme } from "./hooks/useTheme";
+import { etatDeSession } from "./lib/attention";
 import { FREE_CHAT_PATH } from "./lib/constants";
 import {
+  type AttentionItem,
   type Health,
   type HfModelSelection,
   type InstalledExtension,
@@ -96,6 +98,66 @@ export function App() {
   const [sessionsEnAttente, setSessionsEnAttente] = useState<ReadonlySet<string>>(new Set());
   const [sessionsEnErreur, setSessionsEnErreur] = useState<ReadonlySet<string>>(new Set());
 
+  /**
+   * Les questions du modèle et les alertes de l'application.
+   *
+   * Ici et non dans le chat : une question posée dans un projet doit se voir
+   * depuis n'importe quel écran, et c'est de cette liste que sortent les
+   * pastilles. La garder dans le panneau de conversation la ferait disparaître
+   * dès qu'on ouvre les réglages, alors que le modèle l'attend toujours.
+   */
+  const [attention, setAttention] = useState<readonly AttentionItem[]>([]);
+
+  const rechargerAttention = useCallback(async () => {
+    try {
+      setAttention(await core.pendingAttention());
+    } catch (e) {
+      // Une liste illisible ne doit pas casser l'écran : sans pastille, on
+      // perd un rappel, pas l'application.
+      console.warn("attention illisible:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    void rechargerAttention();
+    // L'événement est le chemin normal ; la relecture au montage rattrape les
+    // questions posées avant que l'écran n'existe.
+    const un = listen("locaryn://attention", () => void rechargerAttention()).catch(() => null);
+    return () => {
+      void un.then((f) => f?.());
+    };
+  }, [rechargerAttention]);
+
+  const repondreAttention = useCallback(
+    async (id: string, reponse: { choice?: string | null; text?: string | null }) => {
+      // On retire tout de suite : attendre l'aller-retour laisserait la bande
+      // affichée sous le clic, et le doute sur ce qui a été envoyé.
+      setAttention((prev) => prev.filter((a) => a.id !== id));
+      try {
+        await core.answerAttention(id, reponse);
+      } catch (e) {
+        console.warn("réponse refusée:", e);
+      } finally {
+        void rechargerAttention();
+      }
+    },
+    [rechargerAttention],
+  );
+
+  const ecarterAttention = useCallback(
+    async (id: string) => {
+      setAttention((prev) => prev.filter((a) => a.id !== id));
+      try {
+        await core.dismissAttention(id);
+      } catch (e) {
+        console.warn("abandon refusé:", e);
+      } finally {
+        void rechargerAttention();
+      }
+    },
+    [rechargerAttention],
+  );
+
   const noterEtatSession = useCallback((id: string, etat: "attente" | "erreur" | null) => {
     const maj = (prev: ReadonlySet<string>, present: boolean) => {
       if (present === prev.has(id)) return prev;
@@ -107,6 +169,15 @@ export function App() {
     setSessionsEnAttente((p) => maj(p, etat === "attente"));
     setSessionsEnErreur((p) => maj(p, etat === "erreur"));
   }, []);
+
+  // Une question ou une panne allume la pastille de sa conversation, même
+  // quand on regarde ailleurs — c'est précisément le cas où elle sert.
+  useEffect(() => {
+    for (const s of sessions) {
+      const etat = etatDeSession(attention, s.id);
+      if (etat) noterEtatSession(s.id, etat);
+    }
+  }, [attention, sessions, noterEtatSession]);
   /**
    * Ce que les extensions actives savent faire.
    *
@@ -1117,6 +1188,9 @@ export function App() {
               : null
           }
           onCreateSessionForPrompt={handleCreateSessionForPrompt}
+          attention={attention}
+          onAttentionAnswer={(id, reponse) => void repondreAttention(id, reponse)}
+          onAttentionDismiss={(id) => void ecarterAttention(id)}
           onEtatChange={noterEtatSession}
           onSessionMoved={(projectId) => {
             if (activeSession) void handleMoveSession(activeSession, projectId);
