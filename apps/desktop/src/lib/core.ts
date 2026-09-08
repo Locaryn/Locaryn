@@ -3991,8 +3991,11 @@ const demoCore: CoreApi = {
   sessionWorkspace: async () => "/tmp/locaryn-demo",
   appendChatMessage: async () => {},
   appendAssistantMessage: async () => {},
-  planTask: async (request) => ({
-    needs_plan: /cr[ée]e|d[ée]veloppe|impl[ée]mente|corrige|refactor/i.test(request),
+  // `force` compte aussi dans la demo : le vrai back-end impose alors un plan,
+  // et un `/workflow` sans effet ici donnerait une fausse impression de bug.
+  planTask: async (request, force) => ({
+    needs_plan:
+      force === true || /cr[ée]e|d[ée]veloppe|impl[ée]mente|corrige|refactor/i.test(request),
     needs_loop: /corrige|fix|marche pas|bug/i.test(request),
     steps: [
       "Analyser le code existant",

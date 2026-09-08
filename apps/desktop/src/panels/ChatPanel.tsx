@@ -1018,29 +1018,37 @@ export function ChatPanel({
       setForceWorkflow(false);
       setLoopCount(null);
       try {
-        const ran = await runWorkflow(sid, text, {
-          onEvent: handleEvent,
-          onStepStart: (i, total, step, attempt) =>
-            setItems((prev) => [
-              ...prev,
-              {
-                id: nextId("log"),
-                kind: "log",
-                text: `\u{1f9e9} \u00c9tape ${i + 1}/${total}${attempt > 1 ? ` (essai ${attempt})` : ""} \u2014 ${step}`,
-              },
-            ]),
-          onDone: (ok, attempts) =>
-            setItems((prev) => [
-              ...prev,
-              {
-                id: nextId("log"),
-                kind: "log",
-                text: ok
-                  ? `\u2705 Plan termin\u00e9${attempts > 1 ? ` (essai ${attempts})` : ""}.`
-                  : `\u26a0\ufe0f Plan non abouti apr\u00e8s ${attempts - 1} essai(s).`,
-              },
-            ]),
-        });
+        const ran = await runWorkflow(
+          sid,
+          text,
+          {
+            onEvent: handleEvent,
+            onStepStart: (i, total, step, attempt) =>
+              setItems((prev) => [
+                ...prev,
+                {
+                  id: nextId("log"),
+                  kind: "log",
+                  text: `\u{1f9e9} \u00c9tape ${i + 1}/${total}${attempt > 1 ? ` (essai ${attempt})` : ""} \u2014 ${step}`,
+                },
+              ]),
+            onDone: (ok, attempts) =>
+              setItems((prev) => [
+                ...prev,
+                {
+                  id: nextId("log"),
+                  kind: "log",
+                  text: ok
+                    ? `\u2705 Plan termin\u00e9${attempts > 1 ? ` (essai ${attempts})` : ""}.`
+                    : `\u26a0\ufe0f Plan non abouti apr\u00e8s ${attempts - 1} essai(s).`,
+                },
+              ]),
+          },
+          // Les modificateurs de la demande arrivent jusqu'ici. Sans eux,
+          // `/workflow` et `/loop` etaient analyses, consommes, puis perdus :
+          // la commande paraissait marcher et ne changeait rien.
+          { force: imposeWorkflow, loops: reprises },
+        );
         if (ran) {
           setStreaming(false);
           setAttente(null);
