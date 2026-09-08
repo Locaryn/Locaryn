@@ -194,6 +194,13 @@ pub async fn qr(
         }
     };
 
+    // La charge passe en ASCII avant d'entrer dans le code. Un QR n'annonce
+    // pas son jeu de caracteres : sans cela, le nom d'une machine francaise
+    // ressortait en cyrillique sur l'ecran du telephone. Le meme texte est
+    // renvoye dans la reponse, pour que le QR et le champ HTTP restent
+    // identiques au caractere pres.
+    let charge = locaryn_travel::qr::ascii_seul(&charge);
+
     let svg = match locaryn_travel::qr::svg(&charge) {
         Ok(svg) => svg,
         Err(e) => {

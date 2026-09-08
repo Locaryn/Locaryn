@@ -10,6 +10,58 @@ use qrcode::{EcLevel, QrCode};
 #[error("Ce lien est trop long pour un QR code ({0} caractères).")]
 pub struct QrError(usize);
 
+/// Le même JSON, sans un seul octet au-delà de l'ASCII.
+///
+/// # Pourquoi c'est nécessaire
+///
+/// Un QR code n'indique pas de lui-même en quel jeu de caractères ses octets
+/// sont écrits. La norme (ISO/IEC 18004) prévoit pour cela un « désignateur
+/// ECI », que la bibliothèque d'encodage n'émet pas : en son absence, le
+/// lecteur doit supposer **ISO/IEC 8859-1**. Nos octets sont de l'UTF-8, donc
+/// tout caractère accentué est relu de travers.
+///
+/// Le résultat n'est pas seulement laid, il est trompeur. Un « é » s'écrit
+/// `C3 A9` en UTF-8 ; relu en ISO-8859-1 il donne `Ã©`, et relu en CP1251 —
+/// ce que font beaucoup de lecteurs de téléphone — il donne `Г©`, où `Г` est
+/// une lettre cyrillique. Un nom de machine français apparaît alors sous le
+/// code comme du russe, sur l'écran de quelqu'un qui n'a jamais rien écrit en
+/// russe. C'est exactement ce qui a été signalé.
+///
+/// La charge du QR porte le nom de la machine, qui vient de `COMPUTERNAME` :
+/// « PC-de-Téano » suffit à déclencher le phénomène.
+///
+/// # Pourquoi cet échappement-là
+///
+/// Plutôt que d'annoncer l'UTF-8 — ce que l'encodeur ne sait pas faire — on
+/// retire le problème : un texte purement ASCII se lit identiquement dans
+/// **tous** les jeux de caractères que le lecteur pourrait supposer. Les
+/// caractères non-ASCII deviennent des séquences `\uXXXX`, que n'importe
+/// quel analyseur JSON restitue à l'identique. La valeur reçue est donc la
+/// même, quel que soit le lecteur.
+///
+/// Réservé à du JSON : la syntaxe JSON est elle-même en ASCII, donc un
+/// caractère non-ASCII ne peut apparaître que dans une chaîne, où
+/// l'échappement est licite. Un lien `locaryn://` n'en a pas besoin — il est
+/// déjà en ASCII par construction, ses parties variables étant en base64.
+#[must_use]
+pub fn ascii_seul(json: &str) -> String {
+    let mut out = String::with_capacity(json.len());
+    for c in json.chars() {
+        if c.is_ascii() {
+            out.push(c);
+        } else {
+            // Hors du plan de base, JSON demande une paire de substitution :
+            // `\u{XXXX}` sur six chiffres n'existe pas dans la grammaire, et
+            // un analyseur strict la refuserait.
+            let mut tampon = [0u16; 2];
+            for unite in c.encode_utf16(&mut tampon) {
+                out.push_str(&format!("\\u{unite:04x}"));
+            }
+        }
+    }
+    out
+}
+
 fn encode(data: &str) -> Result<QrCode, QrError> {
     // Medium correction: enough that a slightly out-of-focus photograph still
     // reads, without inflating the code until the modules are too small.
@@ -190,5 +242,57 @@ mod tests {
         let huge = "x".repeat(5000);
         let err = svg(&huge).unwrap_err();
         assert!(err.to_string().contains("trop long"));
+    }
+}
+
+#[cfg(test)]
+mod tests_ascii {
+    use super::ascii_seul;
+
+    /// De l'ASCII reste tel quel : rien à échapper, et surtout rien à
+    /// réécrire au hasard.
+    #[test]
+    fn l_ascii_ne_bouge_pas() {
+        let brut = r#"{"organisation":"PC-DE-TEANO","serverUrl":"https://192.168.1.20:7474"}"#;
+        assert_eq!(ascii_seul(brut), brut);
+    }
+
+    /// Le cas signalé : un accent devient une séquence que tout analyseur
+    /// JSON relit à l'identique, quel que soit le jeu de caractères que le
+    /// lecteur de QR aura supposé.
+    #[test]
+    fn un_accent_devient_une_sequence_json() {
+        let sortie = ascii_seul(r#"{"organisation":"PC-de-Téano"}"#);
+        assert_eq!(sortie, r#"{"organisation":"PC-de-T\u00e9ano"}"#);
+        assert!(sortie.is_ascii(), "plus un octet au-dela de l'ASCII");
+        // Et la valeur survit à l'aller-retour : c'est tout ce qui compte.
+        let relu: serde_json::Value = serde_json::from_str(&sortie).expect("JSON valide");
+        assert_eq!(relu["organisation"], "PC-de-Téano");
+    }
+
+    /// Hors du plan de base, JSON exige une paire de substitution. Une
+    /// séquence à six chiffres serait refusée par un analyseur strict.
+    #[test]
+    fn hors_du_plan_de_base_on_emet_une_paire() {
+        let sortie = ascii_seul(r#"{"n":"🔒"}"#);
+        assert_eq!(sortie, r#"{"n":"\ud83d\udd12"}"#);
+        let relu: serde_json::Value = serde_json::from_str(&sortie).expect("JSON valide");
+        assert_eq!(relu["n"], "🔒");
+    }
+
+    /// Une charge complète passe l'aller-retour sans rien perdre, y compris
+    /// les caractères qui ne sont pas des lettres.
+    #[test]
+    fn une_charge_complete_survit_a_l_aller_retour() {
+        let charge = serde_json::json!({
+            "organisation": "Atelier Téano — mesures à 20 °C",
+            "note": "Rendu final en A2, papier grain torchon",
+            "serverUrl": "https://192.168.1.20:7474",
+        });
+        let brut = serde_json::to_string(&charge).expect("serialisation");
+        let propre = ascii_seul(&brut);
+        assert!(propre.is_ascii());
+        let relu: serde_json::Value = serde_json::from_str(&propre).expect("JSON valide");
+        assert_eq!(relu, charge);
     }
 }
