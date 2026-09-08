@@ -22,6 +22,7 @@ mod memory;
 mod model_abilities;
 mod model_residency;
 mod notifications;
+mod project_context;
 mod secure_client;
 mod server_mode;
 mod storage_root;
@@ -6587,6 +6588,13 @@ pub fn run() {
             notifications::get_notification_prefs,
             notifications::set_notification_prefs,
             notifications::set_taskbar_progress,
+            project_context::context_availability,
+            project_context::remember_context,
+            project_context::list_context,
+            project_context::set_context_scope,
+            project_context::set_context_summary,
+            project_context::remove_context_detail,
+            project_context::forget_context,
             model_residency::model_residency,
             model_residency::check_model_fit,
             model_residency::llmfit_hardware,

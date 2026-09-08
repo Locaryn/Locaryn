@@ -15,6 +15,7 @@ pub mod figures;
 pub mod figures_import;
 pub mod memory;
 pub mod metrics;
+pub mod project_context;
 pub mod rag;
 pub mod repos;
 pub mod users;

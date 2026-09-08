@@ -2326,6 +2326,9 @@ pub struct Storage {
     pub figures: crate::figures::FigureRepo,
     /// Les documents d'un projet, découpés et rangés pour être retrouvés.
     pub rag: crate::rag::RagRepo,
+    /// Ce qu'il faut savoir pour travailler sur un projet, et qui a le droit
+    /// de le savoir : la machine, le compte, ou tous ses collaborateurs.
+    pub project_context: crate::project_context::ProjectContextRepo,
     #[cfg(feature = "ssh-connector")]
     pub ssh_servers: SshServerRepo,
 }
@@ -2343,6 +2346,7 @@ impl Storage {
             memory: crate::memory::MemoryRepo::new(pool.clone()),
             metrics: crate::metrics::MetricsRepo::new(pool.clone()),
             figures: crate::figures::FigureRepo::new(pool.clone()),
+            project_context: crate::project_context::ProjectContextRepo::new(pool.clone()),
             rag: crate::rag::RagRepo::new(pool.clone()),
             #[cfg(feature = "ssh-connector")]
             ssh_servers: SshServerRepo::new(pool),
