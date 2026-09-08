@@ -1,5 +1,5 @@
 import { Icon, type IconName, LoSwitch, isIconName } from "@locaryn/ui-core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   type HfModelCandidate,
@@ -938,6 +938,86 @@ export function ModelBrowser({
     airllmEnabled,
     fits,
   ]);
+
+  /**
+   * Le catalogue s'affiche par lots, et non d'un seul coup.
+   *
+   * Mesuré : 232 familles rendues ensemble, environ 6 700 nœuds — la fenêtre
+   * se figeait plusieurs secondes à l'ouverture du marketplace, sans pouvoir
+   * fermer le panneau ni annuler. Le rendu était le coût, pas le réseau : le
+   * catalogue était déjà arrivé.
+   *
+   * Un lot suffit à remplir plus d'un écran. Le suivant arrive quand on
+   * approche du bas, et la liste redevient courte dès qu'un filtre change —
+   * sinon revenir à « tout » après avoir déroulé 200 cartes les rendrait
+   * toutes en même temps, et l'on retrouverait le gel.
+   */
+  const LOT = 24;
+  const [lots, setLots] = useState(1);
+  const sentinelle = useRef<HTMLDivElement | null>(null);
+
+  // La signature des filtres, et non leur contenu : deux objets égaux mais
+  // distincts déclencheraient une remise à zéro à chaque rendu.
+  const signatureFiltres = `${query}|${category}|${brand}|${size}|${yearFilter}|${sortBy}|${onlyFinetunable}|${riskFilter}|${onlyRecommended}`;
+  const [filtresVus, setFiltresVus] = useState(signatureFiltres);
+  if (filtresVus !== signatureFiltres) {
+    // Ajusté pendant le rendu plutôt que dans un effet : React reprend
+    // aussitôt, et la liste n'est jamais peinte longue avant de raccourcir.
+    setFiltresVus(signatureFiltres);
+    setLots(1);
+  }
+
+  const visibles = useMemo(() => families.slice(0, lots * LOT), [families, lots]);
+  const resteACharger = visibles.length < families.length;
+
+  /**
+   * Le lot suivant, au défilement.
+   *
+   * Un écouteur de défilement plutôt qu'un `IntersectionObserver` : celui-ci
+   * ne délivrait aucun rappel dans le navigateur intégré des essais — pas même
+   * l'appel initial que la spécification garantit — et un mécanisme
+   * invérifiable n'a rien à faire ici. Le calcul reste à un rectangle par
+   * événement, en écoute passive.
+   *
+   * Le bouton de la bande fait la même chose sans dépendre du défilement : une
+   * molette absente, un pavé tactile, un lecteur d'écran, et le catalogue
+   * reste atteignable.
+   */
+  const plusDeLots = useCallback(() => {
+    setLots((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    const cible = sentinelle.current;
+    if (!cible || !resteACharger) return;
+    // Le conteneur qui défile vraiment, et non un parent au hasard : la vue
+    // du marketplace défile dans son propre cadre, pas dans la fenêtre.
+    let scroller: HTMLElement | null = cible.parentElement;
+    while (scroller) {
+      const style = getComputedStyle(scroller);
+      if (/(auto|scroll)/.test(style.overflowY) && scroller.scrollHeight > scroller.clientHeight) {
+        break;
+      }
+      scroller = scroller.parentElement;
+    }
+    const source: HTMLElement | Window = scroller ?? window;
+
+    const regarder = () => {
+      const haut = cible.getBoundingClientRect().top;
+      // Une longueur d'écran d'avance : le lot suivant est prêt avant qu'on
+      // n'atteigne le bas, donc le défilement ne s'interrompt pas.
+      if (haut < window.innerHeight + 600) plusDeLots();
+    };
+    source.addEventListener("scroll", regarder, { passive: true });
+    // Un premier examen sans attendre : si la bande est déjà dans l'écran —
+    // liste courte, fenêtre haute — le lot suivant part sans qu'on ait à
+    // défiler.
+    regarder();
+    return () => source.removeEventListener("scroll", regarder);
+    // L'écouteur survit aux lots suivants : il n'y a rien à réarmer, chaque
+    // événement de défilement remesure. Une bande restée dans l'écran sans
+    // qu'on défile est le cas du bouton.
+  }, [resteACharger, plusDeLots]);
 
   // Estimation native de toute la liste visible, en un appel.
   //
@@ -2296,7 +2376,7 @@ export function ModelBrowser({
       {/* GRID / BOXES VIEW */}
       {viewMode === "grid" && (
         <div className="locaryn-model-grid">
-          {families.map((f) => {
+          {visibles.map((f) => {
             const isExpanded = Boolean(isFilterActive || expandedCards[f.id]);
             const paramNums = f.variants.map((v) => v.params);
             const minP = Math.min(...paramNums);
@@ -2468,7 +2548,7 @@ export function ModelBrowser({
       {/* ACCORDION LIST VIEW */}
       {viewMode === "list" && (
         <div className="locaryn-model-list">
-          {families.map((f) => {
+          {visibles.map((f) => {
             const open = openId === f.id;
             return (
               <div key={f.id} className="locaryn-model-card">
@@ -2746,6 +2826,20 @@ export function ModelBrowser({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Le repere qui declenche le lot suivant, et qui dit ou l'on en est.
+          Visible plutot que silencieux : une liste qui s'arrete a 24 cartes
+          sans rien dire passerait pour un catalogue tronque. */}
+      {resteACharger && (
+        <div ref={sentinelle} className="locaryn-model-suite">
+          <span>
+            {visibles.length} sur {families.length} modèles affichés
+          </span>
+          <button type="button" className="locaryn-btn-ghost" onClick={plusDeLots}>
+            Afficher les suivants
+          </button>
         </div>
       )}
 
