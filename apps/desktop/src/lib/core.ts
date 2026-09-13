@@ -117,6 +117,17 @@ export interface CloudProvider {
   can_install: boolean;
   /** Le programme est-il déjà présent sur la machine ? */
   installed: boolean;
+  /** Faut-il une clé pour converser ? Faux pour une passerelle qui route
+   *  vers des modèles gratuits dès son installation. */
+  key_required: boolean;
+  /** L'application obtient-elle la clé elle-même au démarrage ? */
+  key_provisioned: boolean;
+  /** Une commande d'arrêt est déclarée dans le manifeste. */
+  can_stop: boolean;
+  /** Le dossier où l'application installe la passerelle. */
+  gateway_dir: string | null;
+  /** Un mot de passe de tableau de bord a été généré — jamais sa valeur. */
+  has_dashboard_password: boolean;
 }
 
 /** L'état d'une passerelle locale. */
@@ -1873,6 +1884,11 @@ export interface CoreApi {
   cloudProviderInstall(provider: string): Promise<string>;
   /** Ouvrir son tableau de bord dans le navigateur du système. */
   cloudProviderOpenDashboard(provider: string): Promise<string>;
+  /** L'arrêter avec la commande déclarée par son manifeste. */
+  cloudProviderStop(provider: string): Promise<CloudProviderStatus>;
+  /** Le mot de passe du tableau de bord généré par l'application. Réservé à
+   *  son écran : la façade des panneaux d'extension ne l'expose pas. */
+  cloudProviderDashboardPassword(provider: string): Promise<string | null>;
 
   /** Ce que la machine a, mesuré : mémoire libre et bandes passantes. */
   llmfitHardware(): Promise<LlmfitHardware>;
@@ -2296,6 +2312,9 @@ const tauriCore: CoreApi = {
   cloudProviderInstall: (provider) => invoke<string>("cloud_provider_install", { provider }),
   cloudProviderOpenDashboard: (provider) =>
     invoke<string>("cloud_provider_open_dashboard", { provider }),
+  cloudProviderStop: (provider) => invoke<CloudProviderStatus>("cloud_provider_stop", { provider }),
+  cloudProviderDashboardPassword: (provider) =>
+    invoke<string | null>("cloud_provider_dashboard_password", { provider }),
   llmfitHardware: () => invoke<LlmfitHardware>("llmfit_hardware"),
   llmfitCatalog: (entries) => invoke<ModelFit[]>("llmfit_catalog", { entries }),
   loadChatModel: (model, force) =>
@@ -2695,21 +2714,26 @@ const demoCloudProviders: CloudProvider[] = [
     label: "OmniRoute",
     extension_id: "demo-omniroute",
     extension_name: "morph-omniroute",
-    api_url: "http://localhost:20128",
-    models_url: "http://localhost:20128/v1/models",
-    keys_url: "http://localhost:20128",
-    docs_url: "https://github.com/pitbaden/omniroute#readme",
-    key_hint: "Clé émise par OmniRoute (page « Endpoints »)",
+    api_url: "http://127.0.0.1:20128",
+    models_url: "http://127.0.0.1:20128/v1/models",
+    keys_url: "http://127.0.0.1:20128/dashboard",
+    docs_url: "https://github.com/diegosouzapw/OmniRoute#readme",
+    key_hint: "Obtenue automatiquement au premier démarrage",
     has_key: false,
     model_count: 0,
     updated_at: null,
     active_model: null,
     is_local: true,
-    dashboard_url: "http://localhost:20128",
-    install_hint: "npm install -g omniroute",
+    dashboard_url: "http://127.0.0.1:20128/dashboard",
+    install_hint: "Locaryn installe OmniRoute lui-même. Il faut Node.js 22 ou 24.",
     can_start: true,
     can_install: true,
     installed: false,
+    key_required: false,
+    key_provisioned: true,
+    can_stop: true,
+    gateway_dir: "D:/Locaryn/gateways/omniroute",
+    has_dashboard_password: false,
   },
 ];
 
@@ -2867,7 +2891,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-image#v3.1.0-beta.1",
+    install_source: "Locaryn/morph-image@v3.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -2880,7 +2904,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (3.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-image#v3.1.0-beta.1",
+        install_source: "Locaryn/morph-image@v3.1.0-beta.1",
       },
       {
         version: "3.0.0",
@@ -2888,7 +2912,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v3.0.0",
-        install_source: "Locaryn/morph-image#v3.0.0",
+        install_source: "Locaryn/morph-image@v3.0.0",
       },
       {
         version: "2.2.0",
@@ -2896,7 +2920,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.2.0",
-        install_source: "Locaryn/morph-image#v2.2.0",
+        install_source: "Locaryn/morph-image@v2.2.0",
       },
       {
         version: "2.1.0",
@@ -2904,7 +2928,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.1.0",
-        install_source: "Locaryn/morph-image#v2.1.0",
+        install_source: "Locaryn/morph-image@v2.1.0",
       },
       {
         version: "2.0.0",
@@ -2912,7 +2936,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-image#v2.0.0",
+        install_source: "Locaryn/morph-image@v2.0.0",
       },
     ],
   },
@@ -2927,7 +2951,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-voice-tts#v2.2.0-beta.1",
+    install_source: "Locaryn/morph-voice-tts@v2.2.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -2940,7 +2964,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.2.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-voice-tts#v2.2.0-beta.1",
+        install_source: "Locaryn/morph-voice-tts@v2.2.0-beta.1",
       },
       {
         version: "2.1.0",
@@ -2948,7 +2972,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.1.0",
-        install_source: "Locaryn/morph-voice-tts#v2.1.0",
+        install_source: "Locaryn/morph-voice-tts@v2.1.0",
       },
       {
         version: "2.0.0",
@@ -2956,7 +2980,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-voice-tts#v2.0.0",
+        install_source: "Locaryn/morph-voice-tts@v2.0.0",
       },
       {
         version: "1.0.0",
@@ -2964,7 +2988,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-voice-tts#v1.0.0",
+        install_source: "Locaryn/morph-voice-tts@v1.0.0",
       },
     ],
   },
@@ -2980,7 +3004,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-dictaphone#v2.2.0-beta.1",
+    install_source: "Locaryn/morph-dictaphone@v2.2.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -2993,7 +3017,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.2.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-dictaphone#v2.2.0-beta.1",
+        install_source: "Locaryn/morph-dictaphone@v2.2.0-beta.1",
       },
       {
         version: "2.1.0",
@@ -3001,7 +3025,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.1.0",
-        install_source: "Locaryn/morph-dictaphone#v2.1.0",
+        install_source: "Locaryn/morph-dictaphone@v2.1.0",
       },
       {
         version: "2.0.0",
@@ -3009,7 +3033,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-dictaphone#v2.0.0",
+        install_source: "Locaryn/morph-dictaphone@v2.0.0",
       },
       {
         version: "1.0.0",
@@ -3017,7 +3041,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-dictaphone#v1.0.0",
+        install_source: "Locaryn/morph-dictaphone@v1.0.0",
       },
     ],
   },
@@ -3032,7 +3056,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-video-gen#v2.1.0-beta.1",
+    install_source: "Locaryn/morph-video-gen@v2.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3045,7 +3069,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-video-gen#v2.1.0-beta.1",
+        install_source: "Locaryn/morph-video-gen@v2.1.0-beta.1",
       },
       {
         version: "2.0.0",
@@ -3053,7 +3077,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-video-gen#v2.0.0",
+        install_source: "Locaryn/morph-video-gen@v2.0.0",
       },
       {
         version: "1.5.0",
@@ -3061,7 +3085,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.5.0",
-        install_source: "Locaryn/morph-video-gen#v1.5.0",
+        install_source: "Locaryn/morph-video-gen@v1.5.0",
       },
       {
         version: "1.0.0",
@@ -3069,7 +3093,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-video-gen#v1.0.0",
+        install_source: "Locaryn/morph-video-gen@v1.0.0",
       },
     ],
   },
@@ -3084,7 +3108,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-3d-gen#v2.1.0-beta.1",
+    install_source: "Locaryn/morph-3d-gen@v2.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3097,7 +3121,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-3d-gen#v2.1.0-beta.1",
+        install_source: "Locaryn/morph-3d-gen@v2.1.0-beta.1",
       },
       {
         version: "2.0.0",
@@ -3105,7 +3129,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-3d-gen#v2.0.0",
+        install_source: "Locaryn/morph-3d-gen@v2.0.0",
       },
       {
         version: "1.5.0",
@@ -3113,7 +3137,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.5.0",
-        install_source: "Locaryn/morph-3d-gen#v1.5.0",
+        install_source: "Locaryn/morph-3d-gen@v1.5.0",
       },
       {
         version: "1.0.0",
@@ -3121,7 +3145,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-3d-gen#v1.0.0",
+        install_source: "Locaryn/morph-3d-gen@v1.0.0",
       },
     ],
   },
@@ -3136,7 +3160,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-music-gen#v2.1.0-beta.1",
+    install_source: "Locaryn/morph-music-gen@v2.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3149,7 +3173,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-music-gen#v2.1.0-beta.1",
+        install_source: "Locaryn/morph-music-gen@v2.1.0-beta.1",
       },
       {
         version: "2.0.0",
@@ -3157,7 +3181,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-music-gen#v2.0.0",
+        install_source: "Locaryn/morph-music-gen@v2.0.0",
       },
       {
         version: "1.5.0",
@@ -3165,7 +3189,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.5.0",
-        install_source: "Locaryn/morph-music-gen#v1.5.0",
+        install_source: "Locaryn/morph-music-gen@v1.5.0",
       },
       {
         version: "1.0.0",
@@ -3173,7 +3197,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-music-gen#v1.0.0",
+        install_source: "Locaryn/morph-music-gen@v1.0.0",
       },
     ],
   },
@@ -3188,7 +3212,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-vision-ocr#v2.1.0-beta.1",
+    install_source: "Locaryn/morph-vision-ocr@v2.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3201,7 +3225,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-vision-ocr#v2.1.0-beta.1",
+        install_source: "Locaryn/morph-vision-ocr@v2.1.0-beta.1",
       },
       {
         version: "2.0.0",
@@ -3209,7 +3233,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-vision-ocr#v2.0.0",
+        install_source: "Locaryn/morph-vision-ocr@v2.0.0",
       },
       {
         version: "1.5.0",
@@ -3217,7 +3241,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.5.0",
-        install_source: "Locaryn/morph-vision-ocr#v1.5.0",
+        install_source: "Locaryn/morph-vision-ocr@v1.5.0",
       },
       {
         version: "1.0.0",
@@ -3225,7 +3249,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-vision-ocr#v1.0.0",
+        install_source: "Locaryn/morph-vision-ocr@v1.0.0",
       },
     ],
   },
@@ -3240,7 +3264,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-figures#v1.1.0-beta.1",
+    install_source: "Locaryn/morph-figures@v1.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3253,7 +3277,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (1.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-figures#v1.1.0-beta.1",
+        install_source: "Locaryn/morph-figures@v1.1.0-beta.1",
       },
       {
         version: "1.0.1",
@@ -3261,7 +3285,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.1",
-        install_source: "Locaryn/morph-figures#v1.0.1",
+        install_source: "Locaryn/morph-figures@v1.0.1",
       },
       {
         version: "1.0.0",
@@ -3269,7 +3293,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-figures#v1.0.0",
+        install_source: "Locaryn/morph-figures@v1.0.0",
       },
     ],
   },
@@ -3284,7 +3308,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-rag-qa#v2.2.0-beta.1",
+    install_source: "Locaryn/morph-rag-qa@v2.2.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3297,7 +3321,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.2.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-rag-qa#v2.2.0-beta.1",
+        install_source: "Locaryn/morph-rag-qa@v2.2.0-beta.1",
       },
       {
         version: "2.1.0",
@@ -3305,7 +3329,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.1.0",
-        install_source: "Locaryn/morph-rag-qa#v2.1.0",
+        install_source: "Locaryn/morph-rag-qa@v2.1.0",
       },
       {
         version: "2.0.0",
@@ -3313,7 +3337,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-rag-qa#v2.0.0",
+        install_source: "Locaryn/morph-rag-qa@v2.0.0",
       },
       {
         version: "1.0.0",
@@ -3321,7 +3345,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-rag-qa#v1.0.0",
+        install_source: "Locaryn/morph-rag-qa@v1.0.0",
       },
     ],
   },
@@ -3336,7 +3360,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-ssh#v2.2.0-beta.1",
+    install_source: "Locaryn/morph-ssh@v2.2.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3349,7 +3373,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.2.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-ssh#v2.2.0-beta.1",
+        install_source: "Locaryn/morph-ssh@v2.2.0-beta.1",
       },
       {
         version: "2.1.0",
@@ -3357,7 +3381,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.1.0",
-        install_source: "Locaryn/morph-ssh#v2.1.0",
+        install_source: "Locaryn/morph-ssh@v2.1.0",
       },
       {
         version: "2.0.0",
@@ -3365,7 +3389,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-ssh#v2.0.0",
+        install_source: "Locaryn/morph-ssh@v2.0.0",
       },
       {
         version: "1.0.0",
@@ -3373,7 +3397,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-ssh#v1.0.0",
+        install_source: "Locaryn/morph-ssh@v1.0.0",
       },
     ],
   },
@@ -3388,7 +3412,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-translation#v2.1.0-beta.1",
+    install_source: "Locaryn/morph-translation@v2.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3401,7 +3425,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-translation#v2.1.0-beta.1",
+        install_source: "Locaryn/morph-translation@v2.1.0-beta.1",
       },
       {
         version: "2.0.0",
@@ -3409,7 +3433,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-translation#v2.0.0",
+        install_source: "Locaryn/morph-translation@v2.0.0",
       },
       {
         version: "1.5.0",
@@ -3417,7 +3441,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.5.0",
-        install_source: "Locaryn/morph-translation#v1.5.0",
+        install_source: "Locaryn/morph-translation@v1.5.0",
       },
       {
         version: "1.0.0",
@@ -3425,7 +3449,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-translation#v1.0.0",
+        install_source: "Locaryn/morph-translation@v1.0.0",
       },
     ],
   },
@@ -3440,7 +3464,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-text-analysis#v2.1.0-beta.1",
+    install_source: "Locaryn/morph-text-analysis@v2.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3453,7 +3477,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-text-analysis#v2.1.0-beta.1",
+        install_source: "Locaryn/morph-text-analysis@v2.1.0-beta.1",
       },
       {
         version: "2.0.0",
@@ -3461,7 +3485,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-text-analysis#v2.0.0",
+        install_source: "Locaryn/morph-text-analysis@v2.0.0",
       },
       {
         version: "1.5.0",
@@ -3469,7 +3493,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.5.0",
-        install_source: "Locaryn/morph-text-analysis#v1.5.0",
+        install_source: "Locaryn/morph-text-analysis@v1.5.0",
       },
       {
         version: "1.0.0",
@@ -3477,7 +3501,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-text-analysis#v1.0.0",
+        install_source: "Locaryn/morph-text-analysis@v1.0.0",
       },
     ],
   },
@@ -3492,7 +3516,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-model-training#v2.1.0-beta.1",
+    install_source: "Locaryn/morph-model-training@v2.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3505,7 +3529,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-model-training#v2.1.0-beta.1",
+        install_source: "Locaryn/morph-model-training@v2.1.0-beta.1",
       },
       {
         version: "2.0.0",
@@ -3513,7 +3537,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-model-training#v2.0.0",
+        install_source: "Locaryn/morph-model-training@v2.0.0",
       },
       {
         version: "1.5.0",
@@ -3521,7 +3545,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.5.0",
-        install_source: "Locaryn/morph-model-training#v1.5.0",
+        install_source: "Locaryn/morph-model-training@v1.5.0",
       },
       {
         version: "1.0.0",
@@ -3529,7 +3553,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-model-training#v1.0.0",
+        install_source: "Locaryn/morph-model-training@v1.0.0",
       },
     ],
   },
@@ -3544,7 +3568,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-travel-tunnel#v2.2.0-beta.1",
+    install_source: "Locaryn/morph-travel-tunnel@v2.2.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3557,7 +3581,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.2.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-travel-tunnel#v2.2.0-beta.1",
+        install_source: "Locaryn/morph-travel-tunnel@v2.2.0-beta.1",
       },
       {
         version: "2.1.0",
@@ -3565,7 +3589,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.1.0",
-        install_source: "Locaryn/morph-travel-tunnel#v2.1.0",
+        install_source: "Locaryn/morph-travel-tunnel@v2.1.0",
       },
       {
         version: "2.0.0",
@@ -3573,7 +3597,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-travel-tunnel#v2.0.0",
+        install_source: "Locaryn/morph-travel-tunnel@v2.0.0",
       },
       {
         version: "1.0.0",
@@ -3581,7 +3605,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-travel-tunnel#v1.0.0",
+        install_source: "Locaryn/morph-travel-tunnel@v1.0.0",
       },
     ],
   },
@@ -3596,7 +3620,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-freetoken#v2.1.0-beta.1",
+    install_source: "Locaryn/morph-freetoken@v2.1.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3609,7 +3633,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.1.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-freetoken#v2.1.0-beta.1",
+        install_source: "Locaryn/morph-freetoken@v2.1.0-beta.1",
       },
       {
         version: "2.0.0",
@@ -3617,7 +3641,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-freetoken#v2.0.0",
+        install_source: "Locaryn/morph-freetoken@v2.0.0",
       },
       {
         version: "1.0.0",
@@ -3625,7 +3649,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-freetoken#v1.0.0",
+        install_source: "Locaryn/morph-freetoken@v1.0.0",
       },
     ],
   },
@@ -3641,7 +3665,7 @@ const demoCatalog: CatalogEntry[] = [
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-omniroute#v1.0.0-beta.1",
+    install_source: "Locaryn/morph-omniroute@v1.0.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3654,7 +3678,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (1.0.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-omniroute#v1.0.0-beta.1",
+        install_source: "Locaryn/morph-omniroute@v1.0.0-beta.1",
       },
       {
         version: "0.9.0",
@@ -3662,7 +3686,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v0.9.0",
-        install_source: "Locaryn/morph-omniroute#v0.9.0",
+        install_source: "Locaryn/morph-omniroute@v0.9.0",
       },
     ],
   },
@@ -5186,6 +5210,7 @@ const demoCore: CoreApi = {
     return demoCloudProviders.map((p) => ({
       ...p,
       has_key: demoCloudState.key.length > 0,
+      has_dashboard_password: demoCloudState.running,
       model_count: demoCloudModels.length,
       updated_at: new Date().toISOString(),
       active_model: demoCloudState.model,
@@ -5215,7 +5240,7 @@ const demoCore: CoreApi = {
         ? `${label} répond sur ${p?.api_url ?? ""}.`
         : demoCloudState.installed
           ? `${label} est installée mais ne répond pas. Démarrez-la depuis ce dossier.`
-          : `${label} n'est pas installée. Locaryn peut le faire : npm install -g omniroute.`,
+          : `${label} n'est pas installée. Locaryn peut l'installer dans ${p?.gateway_dir ?? "son dossier"} — plusieurs centaines de mégaoctets, et quelques minutes.`,
       dashboard_url: p?.dashboard_url ?? null,
     };
   },
@@ -5233,16 +5258,31 @@ const demoCore: CoreApi = {
     if (!demoCloudState.installed) await demoCore.cloudProviderInstall(provider);
     await new Promise((r) => setTimeout(r, 900));
     demoCloudState.running = true;
+    // Comme l'application : la clé est demandée à la passerelle dès qu'elle
+    // répond, sans que l'utilisateur ait à la recopier.
+    if (!demoCloudState.key) demoCloudState.key = "demo-cle-obtenue";
     return demoCore.cloudProviderStatus(provider);
   },
   async cloudProviderOpenDashboard(provider) {
     const p = demoCloudProviders.find((x) => x.id === provider);
     return p?.dashboard_url ?? "";
   },
+  async cloudProviderStop(provider) {
+    await new Promise((r) => setTimeout(r, 600));
+    demoCloudState.running = false;
+    return demoCore.cloudProviderStatus(provider);
+  },
+  async cloudProviderDashboardPassword() {
+    // Un mot de passe n'existe qu'une fois la passerelle démarrée une
+    // première fois : c'est à ce moment que l'application le génère.
+    return demoCloudState.running ? "demo-7c41e09b2fa8" : null;
+  },
   async cloudProviderSelect(provider, model) {
     // Le refus sans clé est réel, pas décoratif : c'est le seul garde-fou qui
-    // évite un appel payant sans authentification.
-    if (!demoCloudState.key)
+    // évite un appel payant sans authentification. Il ne vaut que pour un
+    // fournisseur qui en exige une, comme dans l'application.
+    const exigee = demoCloudProviders.find((x) => x.id === provider)?.key_required ?? true;
+    if (exigee && !demoCloudState.key)
       throw new Error(
         `Aucune clé enregistrée pour ${provider}. Ouvrez son dossier dans « Mes modèles » et collez votre clé avant de choisir un modèle.`,
       );

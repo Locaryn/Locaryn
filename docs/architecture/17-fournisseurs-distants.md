@@ -29,15 +29,24 @@ a un compte.
 "cloud_provider": {
   "id": "omniroute",
   "label": "OmniRoute",
-  "api_url": "http://localhost:20128",
-  "models_url": "http://localhost:20128/v1/models",
-  "keys_url": "http://localhost:20128",
+  "api_url": "http://127.0.0.1:20128",
+  "models_url": "http://127.0.0.1:20128/v1/models",
+  "key_required": false,
   "refresh_hours": 1,
   "local": {
-    "start": ["omniroute"],
-    "health_url": "http://localhost:20128/v1/models",
-    "dashboard_url": "http://localhost:20128",
-    "install_hint": "npm install -g omniroute"
+    "install": { "kind": "npm", "package": "omniroute", "version": "3.8.50", "probe_bin": "omniroute" },
+    "start": ["omniroute", "serve", "--no-open", "--port", "20128"],
+    "stop": ["omniroute", "stop"],
+    "env": { "OMNIROUTE_SERVER_HOST": "127.0.0.1", "DATA_DIR": "{{data_dir}}" },
+    "secrets": ["JWT_SECRET", "API_KEY_SECRET", "INITIAL_PASSWORD"],
+    "dashboard_password": "INITIAL_PASSWORD",
+    "provision_key": {
+      "command": ["omniroute", "api", "api-keys", "post-api-keys", "--body", "{\"name\":\"Locaryn\"}", "--output", "json"],
+      "field": "key"
+    },
+    "start_timeout_seconds": 180,
+    "health_url": "http://127.0.0.1:20128/v1/models",
+    "dashboard_url": "http://127.0.0.1:20128/dashboard"
   }
 }
 ```
@@ -45,6 +54,14 @@ a un compte.
 `api_url` ne porte **pas** `/v1` : la boucle de conversation ajoute
 `/v1/chat/completions` elle-même. Le bloc `local` est absent pour un service
 purement distant — il n'y a alors rien à démarrer.
+
+`127.0.0.1` et non `localhost` : la passerelle n'écoute que la boucle IPv4, et
+`localhost` peut se résoudre d'abord en `::1`.
+
+`key_required` vaut vrai par défaut : un service distant facture, et l'appeler
+sans clé ne mène qu'à un refus. Une passerelle qui route vers des modèles
+gratuits dès son installation le déclare faux — le choix d'un modèle n'est alors
+plus refusé faute de clé, ni par l'application ni par son API.
 
 ---
 
@@ -74,14 +91,57 @@ Un morph qui apporte une passerelle déclare comment l'installer :
 
 ```json
 "local": {
-  "install": { "kind": "npm", "package": "omniroute", "probe_bin": "omniroute" }
+  "install": { "kind": "npm", "package": "omniroute", "version": "3.8.50", "probe_bin": "omniroute" }
 }
 ```
 
-`npm`, `pip`, `docker`, ou une `command` explicite. La version est épinglée par
+`npm`, `pip`, `docker`, ou une `command` explicite.
+
+**Un paquet npm s'installe chez Locaryn**, dans `gateways/<id>` sous le volume
+des données lourdes (`locaryn_config::gateways_dir`), avec `npm install
+--prefix`. Jamais `-g` : OmniRoute pèse 450 Mo, et une installation globale le
+posait sur le disque système, sur le `PATH` de tout le poste, et hors de portée
+de la désinstallation du morph. Désinstaller le morph retire le programme et
+garde `data/` — les fournisseurs connectés y restent pour une réinstallation.
+
+**Sous Windows**, `npm` est `npm.cmd`, que `Command::new("npm")` ne trouve pas :
+l'hôte appelle `npm.cmd`. Et les commandes qui nomment l'exécutable du paquet
+(`omniroute …`) lancent directement son script par `node`, lu dans le `bin` de
+son `package.json` — aucun raccourci `.cmd` à trouver.
+
+**Les marqueurs** `{{gateway_dir}}` et `{{data_dir}}` sont remplacés dans les
+commandes et les valeurs d'environnement. La version est épinglée par
 le manifeste — une chaîne d'approvisionnement sans version installe autre chose
 à chaque fois. Un `kind` inconnu ne produit **aucune** commande : l'utilisateur
 est renvoyé à `install_hint` plutôt qu'à une approximation exécutée en son nom.
+
+## 3 ter. Ce que l'hôte fait à la place de l'utilisateur
+
+**Les secrets.** Les noms listés dans `secrets` reçoivent chacun une valeur
+aléatoire à la première installation, gardée dans le trousseau
+(`locaryn/cloud/<id>/secret/<NOM>`) et passée à chaque démarrage. Le paquet npm
+d'OmniRoute embarque un `.env` au même `JWT_SECRET` pour toutes les
+installations et le mot de passe `CHANGEME` ; les valeurs de l'environnement
+priment sur ce fichier. Si le trousseau refuse, la passerelle ne démarre pas :
+mieux vaut un refus qu'une passerelle aux secrets publics.
+
+**Le mot de passe du tableau de bord** (`dashboard_password`) est montré à
+l'utilisateur sur demande, dans la carte de l'hôte — jamais au panneau du morph.
+
+**La clé.** Une fois la passerelle joignable, si aucune clé n'est enregistrée,
+l'hôte lance `provision_key.command` et lit le champ indiqué dans l'objet JSON
+imprimé. Pour OmniRoute, la ligne de commande locale s'authentifie par un jeton
+dérivé de la machine et crée la clé sans mot de passe. Sans clé, `/v1/models`
+répond 401 alors que la conversation passe.
+
+**L'écoute.** Par défaut OmniRoute ouvre toutes les interfaces sans clé : tout
+le réseau peut dépenser les quotas de l'utilisateur. Le manifeste impose
+`OMNIROUTE_SERVER_HOST=127.0.0.1`.
+
+**L'attente.** `start_timeout_seconds` borne l'attente de la sonde après le
+lancement. Le premier démarrage d'OmniRoute applique 159 migrations, bien
+au-delà d'une minute ; la sortie de la passerelle va dans
+`gateways/<id>/gateway.log`.
 
 **Activer le morph installe la passerelle** : la permission `shell` accordée,
 l'application lance l'installation en tâche de fond, puis démarre la
@@ -110,14 +170,14 @@ Les trois formes de réponse rencontrées se lisent : `{ "data": [...] }`,
 | Endroit | Ce qui apparaît |
 | --- | --- |
 | Mes modèles | un **dossier**, à la place d'une carte de modèle. Il dit si la clé est posée, combien de modèles sont routés, lequel est actif. |
-| La page du dossier | l'écran du morph (slot `models.folder`) — pour OmniRoute, son tableau de bord embarqué. Sans écran déclaré, l'application dessine le sien. |
+| La page du dossier | la carte de la passerelle, tenue par l'application (démarrer, arrêter, mot de passe du tableau de bord), puis l'écran du morph (slot `models.folder`) — pour OmniRoute, ses modèles et sa clé. Sans écran déclaré, l'application dessine le sien. |
 | Sélecteur du chat | le même dossier, sous le champ de saisie. On l'ouvre, on choisit, la conversation part chez ce modèle. |
 
-Le tableau de bord d'une passerelle locale est affiché dans un cadre : la
-politique de sécurité de l'application autorise les cadres de la **boucle
-locale** uniquement (`frame-src 'self' http://localhost:* http://127.0.0.1:*`).
-Un bouton ouvre la même page dans le navigateur du système, avec l'URL du
-manifeste — jamais une adresse venue de l'interface.
+Le tableau de bord d'une passerelle **n'est pas affiché dans un cadre** :
+OmniRoute envoie `X-Frame-Options: DENY` et `frame-ancestors 'none'` sur toutes
+ses pages, et le cadre restait blanc sans rien dire. Un bouton l'ouvre dans le
+navigateur du système, avec l'URL du manifeste — jamais une adresse venue de
+l'interface.
 
 ---
 

@@ -44,7 +44,9 @@ pub mod catalog;
 pub mod gateway;
 
 pub use catalog::{models, parse_models, CachedCatalog, CloudModel};
-pub use gateway::{install, probe, start, CloudProviderStatus};
+pub use gateway::{
+    dashboard_password, gateway_dir, install, probe, start, stop, uninstall, CloudProviderStatus,
+};
 
 /// Ce dont la découverte a besoin, quel que soit l'hôte : l'application de
 /// bureau comme le service.
@@ -122,6 +124,18 @@ pub struct CloudProviderInfo {
     pub can_install: bool,
     /// Le programme est-il déjà présent sur le chemin ?
     pub installed: bool,
+    /// Faut-il une clé pour converser ? Faux pour une passerelle qui route
+    /// vers des modèles gratuits dès son installation.
+    pub key_required: bool,
+    /// L'hôte obtient-il la clé lui-même au démarrage ?
+    pub key_provisioned: bool,
+    /// Une commande d'arrêt est-elle déclarée ?
+    pub can_stop: bool,
+    /// Où l'hôte l'installe, pour le dire à l'écran.
+    pub gateway_dir: Option<String>,
+    /// Un mot de passe de tableau de bord a-t-il été généré ? Jamais le mot
+    /// de passe lui-même : il se demande à part, depuis l'écran de l'hôte.
+    pub has_dashboard_password: bool,
 }
 
 /// Un fournisseur déclaré, avec l'extension qui le porte.
@@ -301,6 +315,14 @@ pub fn key_for_active_provider(
 // Vue d'ensemble
 // ============================================================================
 
+/// Faut-il une clé pour converser avec ce fournisseur ?
+///
+/// Oui par défaut : un service distant facture. Une passerelle locale peut le
+/// déclarer faux dans son manifeste.
+pub fn key_required(p: &DeclaredProvider) -> bool {
+    p.manifest.key_required.unwrap_or(true)
+}
+
 /// Tous les fournisseurs, avec ce qu'on sait déjà d'eux.
 pub async fn list_infos(host: &Host<'_>) -> Vec<CloudProviderInfo> {
     let active = host.storage.providers.active().await.ok().flatten();
@@ -334,7 +356,17 @@ pub async fn list_infos(host: &Host<'_>) -> Vec<CloudProviderInfo> {
                 can_install: local
                     .as_ref()
                     .is_some_and(|l| l.install.as_ref().is_some_and(|i| i.is_runnable())),
-                installed: local.as_ref().map(gateway::is_installed).unwrap_or(true),
+                installed: local
+                    .as_ref()
+                    .map(|l| gateway::is_installed(&gateway::gateway_dir(&p.id), l))
+                    .unwrap_or(true),
+                key_required: key_required(&p),
+                key_provisioned: local.as_ref().is_some_and(|l| l.provision_key.is_some()),
+                can_stop: local.as_ref().is_some_and(|l| !l.stop.is_empty()),
+                gateway_dir: local
+                    .as_ref()
+                    .map(|_| gateway::gateway_dir(&p.id).display().to_string()),
+                has_dashboard_password: gateway::dashboard_password(host, &p).is_some(),
                 label: p.label(),
                 extension_id: p.extension_id.to_string(),
                 extension_name: p.extension_name,
@@ -347,7 +379,7 @@ pub async fn list_infos(host: &Host<'_>) -> Vec<CloudProviderInfo> {
 /// Choisir un modèle : il devient le fournisseur actif de la conversation.
 pub async fn select(host: &Host<'_>, provider_id: &str, model: &str) -> Result<(), String> {
     let p = find(host, provider_id).await?;
-    if stored_key(host, &p.id).is_none() {
+    if key_required(&p) && stored_key(host, &p.id).is_none() {
         return Err(format!(
             "Aucune clé enregistrée pour {}. Collez la vôtre dans son dossier avant de choisir \
              un modèle.",

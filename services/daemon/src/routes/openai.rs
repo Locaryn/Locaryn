@@ -209,7 +209,9 @@ pub async fn chat_completions(
         // Un modèle de passerelle : on parle à la passerelle, avec sa clé.
         Some(p) => {
             let cle = cloud::stored_key(&h, &p.id);
-            if cle.is_none() {
+            // Une passerelle qui converse sans clé (OmniRoute) ne doit pas être
+            // refusée ici : c'est elle qui dira non si elle en exige une.
+            if cle.is_none() && cloud::key_required(&p) {
                 return erreur(
                     StatusCode::UNAUTHORIZED,
                     &format!(
@@ -638,7 +640,9 @@ pub async fn messages(
     let (url, cle, modele_cible) = match cloud::provider_of_model(&h, &modele).await {
         Some(p) => {
             let cle = cloud::stored_key(&h, &p.id);
-            if cle.is_none() {
+            // Une passerelle qui converse sans clé (OmniRoute) ne doit pas être
+            // refusée ici : c'est elle qui dira non si elle en exige une.
+            if cle.is_none() && cloud::key_required(&p) {
                 return erreur_anthropic(
                     StatusCode::UNAUTHORIZED,
                     &format!(

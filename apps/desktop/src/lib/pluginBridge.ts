@@ -58,6 +58,8 @@ export interface LocarynPluginAPI {
     start: (provider: string) => Promise<CloudProviderStatus>;
     /** L'installer avec la commande déclarée par le manifeste. */
     install: (provider: string) => Promise<string>;
+    /** L'arrêter avec la commande déclarée par le manifeste. */
+    stop: (provider: string) => Promise<CloudProviderStatus>;
     /** Ouvrir son tableau de bord dans le navigateur du système. */
     openDashboard: (provider: string) => Promise<string>;
   };
@@ -201,6 +203,7 @@ class PluginBridgeManager {
         status: (provider: string) => core.cloudProviderStatus(provider),
         start: (provider: string) => core.cloudProviderStart(provider),
         install: (provider: string) => core.cloudProviderInstall(provider),
+        stop: (provider: string) => core.cloudProviderStop(provider),
         openDashboard: (provider: string) => core.cloudProviderOpenDashboard(provider),
         select: async (provider: string, model: string) => {
           await core.cloudProviderSelect(provider, model);

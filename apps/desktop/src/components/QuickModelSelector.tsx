@@ -379,7 +379,7 @@ export function QuickModelSelector({
               {cloudBusy && cloudModels.length === 0 && (
                 <div className="locaryn-cloud-empty">Lecture du catalogue…</div>
               )}
-              {!openedProvider.has_key && (
+              {openedProvider.key_required && !openedProvider.has_key && (
                 <div className="locaryn-cloud-notice">
                   Aucune clé enregistrée pour {openedProvider.label}. Ouvrez son dossier dans « Mes
                   modèles » pour la coller — sans elle, le choix sera refusé.

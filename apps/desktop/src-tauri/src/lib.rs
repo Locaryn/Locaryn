@@ -6680,6 +6680,8 @@ pub fn run() {
             cloud_providers::cloud_provider_start,
             cloud_providers::cloud_provider_open_dashboard,
             cloud_providers::cloud_provider_install,
+            cloud_providers::cloud_provider_stop,
+            cloud_providers::cloud_provider_dashboard_password,
             model_residency::llmfit_catalog,
             model_residency::load_chat_model,
             model_residency::eject_chat_model,

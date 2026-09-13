@@ -271,6 +271,42 @@ async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
     assert!(cloud::stored_key(&h, "omniroute").is_none());
 }
 
+/// Une passerelle qui converse sans clé (OmniRoute) ne doit pas être refusée
+/// faute de clé : l'exiger bloquait un chemin qui fonctionnait déjà.
+#[tokio::test]
+async fn une_passerelle_sans_cle_obligatoire_se_choisit_sans_cle() {
+    let m = Machine::nouvelle("sans-cle").await;
+    let paquet = m
+        .storage
+        .extensions
+        .list()
+        .await
+        .unwrap()
+        .remove(0)
+        .manifest_path;
+    let manifeste = MANIFESTE.replace(
+        "\"refresh_hours\": 1,",
+        "\"refresh_hours\": 1,\n    \"key_required\": false,",
+    );
+    std::fs::write(&paquet, manifeste).expect("manifeste réécrit");
+    m.poser_catalogue();
+    let h = m.host();
+
+    let infos = cloud::list_infos(&h).await;
+    assert!(!infos[0].key_required, "le manifeste le déclare");
+    assert!(!infos[0].has_key);
+
+    cloud::select(&h, "omniroute", "anthropic/claude-opus-5")
+        .await
+        .expect("sans clé obligatoire, le choix doit passer");
+    let actif = m.storage.providers.active().await.unwrap().expect("actif");
+    assert_eq!(actif.model.as_deref(), Some("anthropic/claude-opus-5"));
+    assert!(
+        cloud::key_for_active_provider(&h, &actif).is_none(),
+        "aucune clé n'est inventée : la requête part sans en-tête"
+    );
+}
+
 /// Sur un serveur sans trousseau, la clé vient de l'environnement : sans ce
 /// repli, le mode serveur ne pourrait jamais parler à une passerelle.
 #[tokio::test]

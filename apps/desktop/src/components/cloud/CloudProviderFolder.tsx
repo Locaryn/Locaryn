@@ -117,15 +117,26 @@ export function CloudProviderTile({
       <p className="locaryn-cloud-folder-desc">
         {provider.active_model
           ? `Modèle actif : ${provider.active_model}`
-          : provider.has_key
-            ? "Clé enregistrée. Ouvrez pour choisir un modèle."
-            : "Collez votre clé pour utiliser vos modèles payants ici."}
+          : !provider.key_required
+            ? "Aucune clé à coller. Ouvrez pour la démarrer et choisir un modèle."
+            : provider.has_key
+              ? "Clé enregistrée. Ouvrez pour choisir un modèle."
+              : "Collez votre clé pour utiliser vos modèles payants ici."}
       </p>
 
       <div className="locaryn-cloud-folder-tags">
-        <span className={`locaryn-tag${provider.has_key ? " locaryn-tag-installed" : ""}`}>
-          {provider.has_key ? "Clé enregistrée" : "Pas de clé"}
-        </span>
+        {/* « Pas de clé » sur une passerelle qui n'en a pas besoin se lirait
+            comme une panne : l'étiquette ne parle de clé que quand elle
+            compte. */}
+        {(provider.key_required || provider.has_key) && (
+          <span className={`locaryn-tag${provider.has_key ? " locaryn-tag-installed" : ""}`}>
+            {provider.has_key
+              ? provider.key_provisioned
+                ? "Clé obtenue"
+                : "Clé enregistrée"
+              : "Pas de clé"}
+          </span>
+        )}
         {provider.model_count > 0 && (
           <span className="locaryn-tag">{provider.model_count} modèles</span>
         )}
@@ -176,11 +187,17 @@ export function CloudProviderScreen({
       </div>
 
       {contribution ? (
-        <DynamicPluginWidget
-          contribution={contribution}
-          context={{ providerId: provider.id }}
-          className="locaryn-cloud-screen-body"
-        />
+        <>
+          {/* Démarrer, arrêter, le mot de passe du tableau de bord : c'est
+              l'hôte qui les tient, pas le panneau du morph — qui ne doit
+              jamais voir ce mot de passe. */}
+          <CloudGatewayCard provider={provider} onRunning={onChanged} />
+          <DynamicPluginWidget
+            contribution={contribution}
+            context={{ providerId: provider.id }}
+            className="locaryn-cloud-screen-body"
+          />
+        </>
       ) : (
         <CloudProviderDashboard provider={provider} onChanged={onChanged} />
       )}
@@ -206,7 +223,11 @@ export function CloudGatewayCard({
   const [status, setStatus] = useState<CloudProviderStatus | null>(null);
   const [starting, setStarting] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Le mot de passe du tableau de bord, montré sur demande seulement. */
+  const [password, setPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   /* Le rappel change d'identité à chaque rendu du parent. Le mettre dans les
      dépendances de la sonde relançait la sonde à chaque rendu, qui relançait
      le chargement du catalogue, qui redessinait le parent : la liste restait
@@ -244,6 +265,43 @@ export function CloudGatewayCard({
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setStarting(false);
+    }
+  }
+
+  async function stop() {
+    setStopping(true);
+    setError(null);
+    try {
+      announce(await core.cloudProviderStop(provider.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStopping(false);
+    }
+  }
+
+  async function revealPassword() {
+    setError(null);
+    try {
+      const value = await core.cloudProviderDashboardPassword(provider.id);
+      if (!value) {
+        setError("Le mot de passe est généré au premier démarrage de la passerelle.");
+        return;
+      }
+      setPassword(value);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function copyPassword() {
+    if (!password) return;
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -286,7 +344,7 @@ export function CloudGatewayCard({
             onClick={() => void install()}
             disabled={installing || starting}
           >
-            {installing ? "Installation…" : `Installer ${provider.label}`}
+            {installing ? "Installation… (quelques minutes)" : `Installer ${provider.label}`}
           </button>
         )}
         {!running && provider.can_start && (
@@ -297,10 +355,22 @@ export function CloudGatewayCard({
             disabled={starting || installing}
           >
             {starting
-              ? "Démarrage…"
+              ? installed
+                ? "Démarrage… (jusqu'à 2 min la première fois)"
+                : "Installation puis démarrage…"
               : installed
                 ? "Démarrer la passerelle"
                 : "Installer et démarrer"}
+          </button>
+        )}
+        {running && provider.can_stop && (
+          <button
+            type="button"
+            className="locaryn-chip"
+            onClick={() => void stop()}
+            disabled={stopping}
+          >
+            {stopping ? "Arrêt…" : "Arrêter"}
           </button>
         )}
         <button type="button" className="locaryn-chip" onClick={() => void probe()}>
@@ -313,26 +383,50 @@ export function CloudGatewayCard({
             onClick={() => void core.cloudProviderOpenDashboard(provider.id).catch(() => {})}
             title="Ouvrir le tableau de bord dans le navigateur"
           >
-            Ouvrir dans le navigateur
+            Ouvrir le tableau de bord
           </button>
         )}
       </div>
+
+      {provider.gateway_dir && (
+        <p className="locaryn-cloud-help" style={{ marginTop: 8 }}>
+          Installée par Locaryn dans <code>{provider.gateway_dir}</code>, et joignable depuis cette
+          machine seulement.
+        </p>
+      )}
+
+      {/* Le mot de passe du tableau de bord : généré par Locaryn à la
+          première installation, à la place du « CHANGEME » que publie le
+          paquet. Masqué jusqu'à ce qu'on le demande. */}
+      {(provider.has_dashboard_password || running) && provider.dashboard_url && (
+        <div className="locaryn-cloud-key-row" style={{ marginTop: 8 }}>
+          {password ? (
+            <>
+              <code className="locaryn-cloud-password">{password}</code>
+              <button type="button" className="locaryn-chip" onClick={() => void copyPassword()}>
+                {copied ? "Copié" : "Copier"}
+              </button>
+              <button type="button" className="locaryn-chip" onClick={() => setPassword(null)}>
+                Masquer
+              </button>
+            </>
+          ) : (
+            <button type="button" className="locaryn-chip" onClick={() => void revealPassword()}>
+              Mot de passe du tableau de bord
+            </button>
+          )}
+        </div>
+      )}
       {error && (
         <div className="locaryn-cloud-error" style={{ marginTop: 12 }}>
           {error}
         </div>
       )}
 
-      {/* Le tableau de bord lui-même. C'est là que l'utilisateur connecte ses
-          fournisseurs et colle leurs clés : cette page appartient à la
-          passerelle, on ne la réécrit pas, on la montre. */}
-      {running && provider.dashboard_url && (
-        <iframe
-          className="locaryn-cloud-frame"
-          src={provider.dashboard_url}
-          title={`Tableau de bord ${provider.label}`}
-        />
-      )}
+      {/* Pas de cadre intégré : OmniRoute envoie `X-Frame-Options: DENY` et
+          `frame-ancestors 'none'` sur toutes ses pages. Le cadre restait
+          blanc, sans un mot pour dire pourquoi. Le tableau de bord s'ouvre
+          donc dans le navigateur, où il fonctionne. */}
     </div>
   );
 }
@@ -358,6 +452,13 @@ export function CloudProviderDashboard({
   const [query, setQuery] = useState("");
   const [keyInput, setKeyInput] = useState("");
   const [hasKey, setHasKey] = useState(provider.has_key);
+  /* La clé peut arriver sans que cet écran l'ait posée : l'application
+     l'obtient elle-même auprès de la passerelle au démarrage. Sans cette
+     synchronisation, l'étiquette restait « Absente » jusqu'à ce qu'on
+     rouvre le dossier. */
+  useEffect(() => {
+    setHasKey(provider.has_key);
+  }, [provider.has_key]);
   const [activeModel, setActiveModel] = useState<string | null>(provider.active_model);
   const [busy, setBusy] = useState<null | "models" | "key" | "select">(null);
   const [error, setError] = useState<string | null>(null);
@@ -444,20 +545,29 @@ export function CloudProviderDashboard({
     <div className="locaryn-cloud-dashboard">
       {/* Une passerelle locale d'abord : éteinte, le reste de l'écran ne peut
           rien faire. */}
-      <CloudGatewayCard provider={provider} onRunning={() => void loadModels(false)} />
+      <CloudGatewayCard
+        provider={provider}
+        onRunning={() => {
+          onChanged?.();
+          void loadModels(false);
+        }}
+      />
 
       {/* La clé ensuite : sans elle, le choix d'un modèle est refusé. */}
       <div className="locaryn-card locaryn-cloud-key">
         <div className="locaryn-field-head" style={{ marginBottom: 8 }}>
-          <h3 style={{ margin: 0, fontSize: 13 }}>Votre clé {provider.label}</h3>
+          <h3 style={{ margin: 0, fontSize: 13 }}>
+            Votre clé {provider.label}
+            {!provider.key_required && " (facultative)"}
+          </h3>
           <span className={`locaryn-tag${hasKey ? " locaryn-tag-installed" : ""}`}>
             {hasKey ? "Enregistrée" : "Absente"}
           </span>
         </div>
         <p className="locaryn-cloud-help">
-          Elle est gardée dans le trousseau du système et n'en ressort jamais — ni vers cette
-          extension, ni vers un fichier de configuration. Vous payez vos jetons directement chez{" "}
-          {provider.label}.
+          {provider.key_provisioned
+            ? `Locaryn l'obtient lui-même auprès de ${provider.label} au premier démarrage. Vous n'avez à en coller une que pour la remplacer.`
+            : `Elle est gardée dans le trousseau du système et n'en ressort jamais — ni vers cette extension, ni vers un fichier de configuration. Vous payez vos jetons directement chez ${provider.label}.`}
         </p>
         <div className="locaryn-cloud-key-row">
           <input

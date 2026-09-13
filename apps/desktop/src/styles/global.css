@@ -10723,23 +10723,21 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 /* La passerelle locale : son état, puis son tableau de bord tel quel. Le
    cadre est haut parce que ce qu'il montre est une application entière, pas
    une vignette — le réduire obligerait à faire défiler deux fois. */
+/* Le mot de passe du tableau de bord, montré à la demande : lisible et
+   sélectionnable d'un geste, sans ressembler à un champ qu'on pourrait
+   modifier. */
+.locaryn-cloud-password {
+  padding: 6px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
 .locaryn-cloud-gateway {
   padding: var(--space-4);
-}
-
-.locaryn-cloud-frame {
-  width: 100%;
-  height: min(70vh, 720px);
-  margin-top: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  background: var(--bg);
-}
-
-@media (max-width: 640px) {
-  .locaryn-cloud-frame {
-    height: 60vh;
-  }
 }
 
 /* Une contribution d'extension qui n'a pas encore monté son élément : une

@@ -1273,10 +1273,10 @@ pub async fn remove_extension(
     // « Accès refusé », en laissant l'extension à moitié désinstallée.
     stop_plugin_mcp(&core, &record.name).await;
 
-    // Rendre son serveur avant d'effacer ses fichiers : tant qu'il tourne,
-    // Windows garde son exécutable verrouillé, la suppression échoue sur
-    // « Accès refusé » et l'extension reste à moitié désinstallée.
-    stop_plugin_mcp(&core, &record.name).await;
+    // Et la passerelle qu'elle avait installée : plusieurs centaines de
+    // mégaoctets n'ont pas à survivre au morph qui les a posés. Ses données
+    // restent, pour qu'une réinstallation retrouve les fournisseurs connectés.
+    crate::cloud_providers::retirer_passerelle(&core, &record).await;
 
     core.storage
         .extensions

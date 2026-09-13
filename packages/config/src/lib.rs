@@ -334,6 +334,17 @@ fn heavy_data_root() -> PathBuf {
     builtin_data_dir()
 }
 
+/// Où s'installent les passerelles qu'apportent les morphs (OmniRoute…).
+///
+/// Une passerelle Node pèse des centaines de mégaoctets — OmniRoute 3.8 fait
+/// 450 Mo décompressé. Un `npm install -g` la posait dans le dossier global de
+/// npm, donc sur le disque système, hors de portée de la désinstallation du
+/// morph et sur le `PATH` de tout le poste. Elle suit donc les données lourdes,
+/// dans un dossier par passerelle que Locaryn gère seul.
+pub fn gateways_dir() -> PathBuf {
+    heavy_data_root().join("gateways")
+}
+
 /// Scratch space for intermediate files (img2img inputs, decoded uploads,
 /// conversion buffers). Deliberately *not* the OS temp dir: those files reach
 /// hundreds of megabytes and would land on the system drive.

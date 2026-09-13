@@ -3498,6 +3498,7 @@ version = "0.3.76"
 dependencies = [
  "chrono",
  "locaryn-auth",
+ "locaryn-config",
  "locaryn-extensions",
  "locaryn-shared-types",
  "locaryn-storage",

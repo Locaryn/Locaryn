@@ -118,6 +118,65 @@ pub async fn cloud_provider_start(
     cloud::gateway::start(&h, &p).await
 }
 
+/// Arrêter la passerelle avec la commande déclarée par le manifeste.
+#[tauri::command]
+pub async fn cloud_provider_stop(
+    core: State<'_, Core>,
+    provider: String,
+) -> Result<CloudProviderStatus, String> {
+    let h = host(&core);
+    let p = cloud::find(&h, &provider).await?;
+    exiger_shell(&core, &p).await?;
+    cloud::gateway::stop(&h, &p).await
+}
+
+/// Le mot de passe du tableau de bord que Locaryn a généré pour la passerelle.
+///
+/// Rendu à l'écran de l'application seulement : la façade des panneaux
+/// d'extension ne l'expose pas. C'est le mot de passe de l'utilisateur, et le
+/// tableau de bord qu'il ouvre détient ses clés de fournisseurs.
+#[tauri::command]
+pub async fn cloud_provider_dashboard_password(
+    core: State<'_, Core>,
+    provider: String,
+) -> Result<Option<String>, String> {
+    let h = host(&core);
+    let p = cloud::find(&h, &provider).await?;
+    Ok(cloud::gateway::dashboard_password(&h, &p))
+}
+
+/// Retirer la passerelle qu'une extension avait installée.
+///
+/// Lu depuis le manifeste sur disque et non depuis la liste des fournisseurs
+/// actifs : une extension désactivée n'y figure plus, et sa passerelle
+/// resterait alors sur le disque après la désinstallation.
+pub async fn retirer_passerelle(core: &Core, record: &locaryn_storage::repos::ExtensionRecord) {
+    let Some(root) = cloud::plugin_root(&record.manifest_path) else {
+        return;
+    };
+    let Ok(manifest) = locaryn_extensions::manifest::load(&root) else {
+        return;
+    };
+    let Some(cloud_m) = manifest
+        .cloud_provider
+        .clone()
+        .filter(|c| c.local.is_some())
+    else {
+        return;
+    };
+    let p = cloud::DeclaredProvider {
+        id: cloud_m.effective_id(&record.name),
+        manifest: cloud_m,
+        extension_id: record.id,
+        extension_name: record.name.clone(),
+        plugin_root: root,
+    };
+    match cloud::gateway::uninstall(&host(core), &p).await {
+        Ok(()) => tracing::info!(fournisseur = %p.id, "passerelle retirée avec son extension"),
+        Err(e) => tracing::warn!(fournisseur = %p.id, erreur = %e, "passerelle non retirée"),
+    }
+}
+
 /// Installer ou démarrer un programme au nom de l'utilisateur n'est pas
 /// anodin : l'extension doit en avoir reçu la permission.
 async fn exiger_shell(core: &Core, p: &cloud::DeclaredProvider) -> Result<(), String> {

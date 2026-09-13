@@ -134,6 +134,15 @@ pub struct CloudProviderManifest {
         alias = "refreshHours"
     )]
     pub refresh_hours: u32,
+    /// Faut-il une clé pour converser ? Vrai par défaut : un service distant
+    /// facture, et l'appeler sans clé ne mène qu'à un refus.
+    ///
+    /// Une passerelle locale peut le déclarer faux. OmniRoute route vers des
+    /// fournisseurs gratuits dès son premier démarrage, sans aucune clé : exiger
+    /// qu'on en colle une avant de choisir un modèle bloquait un chemin qui
+    /// fonctionnait déjà.
+    #[serde(default, rename = "key_required", alias = "keyRequired")]
+    pub key_required: Option<bool>,
     /// Quand le fournisseur tourne **sur la machine** — une passerelle
     /// auto-hébergée comme OmniRoute — ce bloc dit comment l'installer, la
     /// démarrer, et où se trouve son tableau de bord.
@@ -141,6 +150,23 @@ pub struct CloudProviderManifest {
     /// Absent, le fournisseur est purement distant : il n'y a rien à lancer.
     #[serde(default)]
     pub local: Option<CloudLocalRuntime>,
+}
+
+/// Comment l'hôte obtient lui-même la clé d'une passerelle locale.
+///
+/// Une passerelle qui tourne ici peut souvent émettre une clé depuis sa propre
+/// ligne de commande. Le faire à la place de l'utilisateur lui épargne un
+/// aller-retour — ouvrir le tableau de bord, créer la clé, la recopier — dont
+/// l'oubli laissait le dossier sans modèles.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CloudKeyProvisioning {
+    /// Commande qui imprime un objet JSON, sans shell. Mêmes marqueurs que
+    /// `start` (`{{gateway_dir}}`, `{{data_dir}}`).
+    #[serde(default)]
+    pub command: Vec<String>,
+    /// Champ de l'objet qui porte la clé (`key`).
+    #[serde(default)]
+    pub field: String,
 }
 
 /// La partie d'un fournisseur qui tourne sur la machine de l'utilisateur.
@@ -182,6 +208,41 @@ pub struct CloudLocalRuntime {
     /// morph installe aussi ce dont il a besoin.
     #[serde(default)]
     pub install: Option<CloudLocalInstall>,
+    /// Commande d'arrêt, sans shell. Vide : l'hôte ne sait pas l'arrêter.
+    #[serde(default)]
+    pub stop: Vec<String>,
+    /// Variables d'environnement secrètes que l'hôte génère **une fois par
+    /// installation**, garde dans le trousseau, et passe à chaque démarrage.
+    ///
+    /// Une passerelle publiée avec ses secrets par défaut — OmniRoute 3.8
+    /// embarque un `.env` au même `JWT_SECRET` pour tous et le mot de passe
+    /// `CHANGEME` — est ouverte à qui connaît le paquet. Les valeurs de
+    /// l'environnement priment sur ce fichier.
+    #[serde(default)]
+    pub secrets: Vec<String>,
+    /// Lequel de ces secrets est le mot de passe du tableau de bord. L'hôte le
+    /// montre à l'utilisateur, et à lui seul — jamais au panneau du morph.
+    #[serde(default, rename = "dashboard_password", alias = "dashboardPassword")]
+    pub dashboard_password: Option<String>,
+    /// Obtenir la clé sans que l'utilisateur ait à la créer.
+    #[serde(default, rename = "provision_key", alias = "provisionKey")]
+    pub provision_key: Option<CloudKeyProvisioning>,
+    /// Combien de secondes attendre qu'elle réponde après l'avoir lancée.
+    ///
+    /// Un premier démarrage peut être long : OmniRoute applique 159 migrations
+    /// de base avant d'ouvrir son port, bien au-delà d'une minute. Rendre la
+    /// main trop tôt affichait « ne répond pas » sur une passerelle qui
+    /// démarrait normalement.
+    #[serde(
+        default = "secondes_de_demarrage",
+        rename = "start_timeout_seconds",
+        alias = "startTimeoutSeconds"
+    )]
+    pub start_timeout_seconds: u32,
+}
+
+fn secondes_de_demarrage() -> u32 {
+    30
 }
 
 /// L'installation d'une passerelle locale.
@@ -216,15 +277,20 @@ pub struct CloudLocalInstall {
 impl CloudLocalInstall {
     /// L'hôte sait-il installer, ou faut-il le faire à la main ?
     pub fn is_runnable(&self) -> bool {
-        self.command_line().is_some()
+        self.command_line(Path::new(".")).is_some()
     }
 
     /// La commande à exécuter, déduite du gestionnaire déclaré.
     ///
+    /// `dir` est le dossier que l'hôte réserve à cette passerelle. Un paquet
+    /// npm s'y installe (`--prefix`) plutôt que globalement : `-g` le posait
+    /// dans le dossier de npm, sur le disque système, sur le `PATH` de tout le
+    /// poste, et hors de portée de la désinstallation du morph.
+    ///
     /// Rien n'est deviné : un `kind` inconnu, ou un paquet manquant, ne donne
     /// pas de commande — mieux vaut renvoyer l'utilisateur à `install_hint`
     /// que lancer une commande approximative en son nom.
-    pub fn command_line(&self) -> Option<Vec<String>> {
+    pub fn command_line(&self, dir: &Path) -> Option<Vec<String>> {
         if !self.command.is_empty() {
             return Some(self.command.clone());
         }
@@ -240,7 +306,10 @@ impl CloudLocalInstall {
             "npm" => Some(vec![
                 "npm".into(),
                 "install".into(),
-                "-g".into(),
+                "--prefix".into(),
+                dir.display().to_string(),
+                "--no-audit".into(),
+                "--no-fund".into(),
                 versionne("@"),
             ]),
             "pip" => Some(vec!["pip".into(), "install".into(), versionne("==")]),
@@ -1152,18 +1221,57 @@ mod tests {
             !p.api_url.trim_end_matches('/').ends_with("/v1"),
             "la base ne porte pas /v1 : la boucle de conversation l'ajoute"
         );
-        assert_eq!(p.effective_models_url(), "http://localhost:20128/v1/models");
+        // 127.0.0.1 et non `localhost` : la passerelle n'écoute que sur la
+        // boucle IPv4, et `localhost` peut se résoudre d'abord en `::1`.
+        assert_eq!(p.effective_models_url(), "http://127.0.0.1:20128/v1/models");
+        assert_eq!(
+            p.key_required,
+            Some(false),
+            "OmniRoute converse sans clé : l'exiger bloquait un chemin qui marche"
+        );
 
         let local = p.local.expect("une passerelle locale");
         assert!(!local.start.is_empty(), "de quoi la démarrer");
+        assert!(!local.stop.is_empty(), "de quoi l'arrêter");
         assert!(local.dashboard_url.is_some(), "un tableau de bord à ouvrir");
+        assert!(
+            local.start_timeout_seconds >= 120,
+            "le premier démarrage applique ses migrations pendant plus d'une minute"
+        );
+        // Le paquet npm embarque des secrets identiques pour tous : ils
+        // doivent être remplacés par des valeurs propres à l'installation.
+        for secret in ["JWT_SECRET", "API_KEY_SECRET", "INITIAL_PASSWORD"] {
+            assert!(
+                local.secrets.iter().any(|s| s == secret),
+                "secret {secret} généré"
+            );
+        }
+        assert_eq!(
+            local.dashboard_password.as_deref(),
+            Some("INITIAL_PASSWORD")
+        );
+        // Écouter la boucle locale : par défaut OmniRoute ouvre 0.0.0.0 sans
+        // clé, et tout le réseau dépense les quotas de l'utilisateur.
+        assert_eq!(
+            local.env.get("OMNIROUTE_SERVER_HOST").map(String::as_str),
+            Some("127.0.0.1")
+        );
+        let clef = local.provision_key.expect("la clé est obtenue par l'hôte");
+        assert_eq!(clef.field, "key");
         // Installer le morph doit installer la passerelle : sans commande
         // déclarée, le dossier s'ouvrirait sur une phrase à recopier.
         let install = local.install.expect("de quoi l'installer");
         assert!(install.is_runnable(), "l'hôte doit savoir l'installer");
-        assert_eq!(
-            install.command_line().unwrap(),
-            vec!["npm", "install", "-g", "omniroute"]
+        assert!(
+            install.version.as_deref().is_some_and(|v| !v.is_empty()),
+            "une version épinglée : sans elle, deux machines n'installent pas la même chose"
+        );
+        let cmd = install
+            .command_line(std::path::Path::new("D:/g/omniroute"))
+            .unwrap();
+        assert!(
+            !cmd.iter().any(|a| a == "-g"),
+            "jamais d'installation globale"
         );
 
         // Le dossier dans « Mes modèles » et dans le sélecteur du chat.
