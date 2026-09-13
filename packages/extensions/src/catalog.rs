@@ -271,7 +271,10 @@ impl CatalogClient {
                 "morph-text-analysis" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
                 "morph-model-training" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
                 "morph-freetoken" => ("2.1.0-beta.1", &["2.0.0", "1.0.0"]),
-                "morph-omniroute" => ("1.0.0-beta.1", &["0.9.0"]),
+                // La 1.0.0-beta.1 publiée ne contient ni son écran ni son
+                // README, et aucune 0.9.0 n'a jamais existé : les proposer
+                // installait un dossier vide, ou rien du tout.
+                "morph-omniroute" => ("1.0.0-beta.2", &[]),
                 _ => ("1.0.0-beta.1", &["0.9.0", "0.8.0"]),
             };
 
@@ -289,7 +292,12 @@ impl CatalogClient {
                 } else {
                     format!("Version stable v{latest_ver}")
                 }),
-                install_source: Some(format!("{full_name}#v{latest_ver}")),
+                // `@` et non `#` : dans la grammaire des sources, `#` désigne
+                // un sous-dossier. `owner/repo#v1.0.0` téléchargeait la branche
+                // par défaut puis cherchait un dossier nommé `v1.0.0`, et
+                // l'installation de chaque morph officiel échouait sur
+                // « subdirectory does not exist ».
+                install_source: Some(format!("{full_name}@v{latest_ver}")),
             }];
 
             for sv in stables {
@@ -299,7 +307,7 @@ impl CatalogClient {
                     is_beta: false,
                     released_at: Some("2026-08-27".to_string()),
                     summary: Some(format!("Version de référence stable v{sv}")),
-                    install_source: Some(format!("{full_name}#v{sv}")),
+                    install_source: Some(format!("{full_name}@v{sv}")),
                 });
             }
 
@@ -314,7 +322,7 @@ impl CatalogClient {
                 ecosystem: ExtensionEcosystem::Locaryn,
                 catalog_id: source.id.clone(),
                 catalog_label: source.label.clone(),
-                install_source: format!("{full_name}#v{latest_ver}"),
+                install_source: format!("{full_name}@v{latest_ver}"),
                 keywords: vec![
                     "official".to_string(),
                     "morph".to_string(),
