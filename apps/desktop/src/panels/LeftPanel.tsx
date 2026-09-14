@@ -66,8 +66,15 @@ const RAIL_LABELS: Record<string, string> = {
   settings: "Réglages",
 };
 
-/** Les destinations que le rail ne montre pas : elles vivent dans les réglages. */
-const RAIL_HIDDEN = new Set(["account"]);
+/**
+ * Les destinations que le rail ne montre pas.
+ *
+ * Le compte vit dans les réglages. Le chat, lui, est l'écran de fond : le
+ * marketplace, les modèles, les extensions et les réglages s'ouvrent
+ * par-dessus, et le refermer y ramène. Un bouton « Chat » faisait doublon avec
+ * cette fermeture et prenait la place du marketplace des extensions.
+ */
+const RAIL_HIDDEN = new Set(["account", "chat"]);
 
 /** Ce que dit la pastille du rail, selon ce qui attend. */
 const PASTILLE_TITRE: Record<"attente" | "erreur", string> = {

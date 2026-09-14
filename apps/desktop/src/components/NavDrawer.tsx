@@ -95,6 +95,16 @@ const BASE_NAV_ITEMS: NavItem[] = [
     desc: "Gérer vos modèles locaux, ouvrir le dossier et sélection rapide",
   },
   {
+    // Le marketplace des morphs et des skills. Il avait sa place dans le rail
+    // (`03df1bf`) et l'a perdue quand le rail est passé sur cette liste
+    // (`96b289d`) : l'entrée n'y figurait plus depuis `8cb191e`.
+    id: "extensions",
+    label: "Extensions",
+    icon: "extensions",
+    category: "system",
+    desc: "Marketplace des morphs, skills et extensions",
+  },
+  {
     id: "settings",
     label: "Paramètres & Profil",
     icon: "settings",
