@@ -84,6 +84,18 @@ pub struct PluginManifest {
     /// système et l'ajoute lui-même aux requêtes.
     #[serde(default, rename = "cloud_provider", alias = "cloudProvider")]
     pub cloud_provider: Option<CloudProviderManifest>,
+    /// Vrai : l'extension doit **aussi** tourner sur chaque poste client
+    /// connecté à un serveur qui l'a installée.
+    ///
+    /// Un poste client voit les extensions du serveur, et leurs outils
+    /// tournent sur le serveur. C'est ce qu'on veut presque toujours — sauf
+    /// pour une extension dont le travail est de faire quelque chose *sur ce
+    /// poste* : prêter sa carte graphique, héberger une copie de modèle. Une
+    /// telle extension le déclare ici ; le poste client propose alors de
+    /// l'installer localement (avec ses autorisations, comme toute
+    /// installation), et c'est la copie locale qui répond sur ce poste.
+    #[serde(default, alias = "deviceCompanion")]
+    pub device_companion: bool,
 }
 
 /// Section `cloud_provider` d'un manifeste : un catalogue de modèles distants.
@@ -709,6 +721,8 @@ pub struct UiSlotContribution {
     /// - `engines.runtimes` — moteur d'inférence proposé dans les réglages
     /// - `marketplace.catalogs` — catalogue de modèles apporté par le paquet.
     ///   L'entrée pointe le fichier, typiquement `dist/marketplace.json`.
+    /// - `settings.account` — une sous-section de Réglages → Compte, rendue
+    ///   par l'élément personnalisé de l'entrée (bureau)
     /// - `models.folder` — page pleine ouverte depuis le dossier d'un
     ///   fournisseur distant, dans « Mes modèles » comme dans le sélecteur de
     ///   modèle du chat. L'entrée pointe l'élément personnalisé qui l'affiche ;

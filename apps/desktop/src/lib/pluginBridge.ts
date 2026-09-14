@@ -1,5 +1,11 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { type CloudModel, type CloudProvider, type CloudProviderStatus, core } from "./core";
+import {
+  type CloudModel,
+  type CloudProvider,
+  type CloudProviderStatus,
+  type ConnectionInfo,
+  core,
+} from "./core";
 
 /**
  * Interface d'interaction exposée à tous les scripts et Web Components de plugins.
@@ -34,6 +40,17 @@ export interface LocarynPluginAPI {
   };
   tools: {
     invoke: (toolName: string, input: string | Record<string, unknown>) => Promise<unknown>;
+  };
+  /** Le serveur Locaryn auquel ce poste est connecté.
+   *
+   *  Un panneau qui doit parler à son double sur le serveur passe par ici :
+   *  la demande part avec le compte de la personne, et le serveur sait qui
+   *  demande. Le panneau n'ouvre jamais de connexion lui-même. */
+  server: {
+    /** `client`, `server` ou `local`, et l'adresse du serveur s'il y en a un. */
+    connection: () => Promise<ConnectionInfo>;
+    /** Un outil d'extension exécuté sur le serveur. Sans serveur, localement. */
+    invokeTool: (toolName: string, input: Record<string, unknown>) => Promise<unknown>;
   };
   /** Le catalogue distant qu'apporte cette extension.
    *
@@ -193,6 +210,11 @@ class PluginBridgeManager {
               : input;
           return core.invokeExtensionTool(toolName, args);
         },
+      },
+      server: {
+        connection: () => core.connectionInfo(),
+        invokeTool: (toolName: string, input: Record<string, unknown>) =>
+          core.invokeServerTool(toolName, input),
       },
       providers: {
         list: () => core.cloudProviders(),

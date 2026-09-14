@@ -38,7 +38,9 @@ export function getSlotContributions(
   const results: ResolvedSlotContribution[] = [];
 
   for (const ext of extensions) {
-    if (!ext.enabled || !ext.ui) continue;
+    // Un compagnon d'appareil pas encore installé ici n'a pas ses fichiers sur
+    // ce poste : ses panneaux ne pourraient pas se charger.
+    if (!ext.enabled || !ext.ui || ext.device_install_pending) continue;
 
     // 1. Contributions explicites définies dans `ui.slots`
     if (ext.ui.slots && Array.isArray(ext.ui.slots)) {

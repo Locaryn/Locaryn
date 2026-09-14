@@ -338,10 +338,54 @@ app.ui.dispatchAction("navigate", { view: "models" });
 // Événements entre vos propres composants.
 const off = app.events.on("mon-evenement", (data) => { /* … */ });
 app.events.emit("mon-evenement", { valeur: 1 });
+
+// Le serveur Locaryn auquel ce poste est connecté.
+const conn = await app.server.connection(); // { mode: "client" | "server" | "local", server_url, username }
+// Un outil exécuté sur le serveur, avec le compte de la personne. Sans
+// serveur, l'outil local répond.
+const catalogue = await app.server.invokeTool("mon_outil", { id: 42 });
 ```
 
 Le pont ne donne accès ni au disque, ni au réseau, ni aux processus. Pour cela
 il faut un serveur MCP — du code à vous, hors du navigateur.
+
+### Un poste client, un serveur : qui fait quoi
+
+Un poste connecté à un serveur Locaryn voit **les extensions du serveur**, et
+leurs outils tournent **sur le serveur**. `tools.invoke` part donc là-bas.
+
+Une extension dont le travail se fait sur chaque machine — prêter une carte
+graphique, garder une copie de fichiers — le déclare dans son manifeste :
+
+```json
+"device_companion": true
+```
+
+Le poste client propose alors de l'installer **aussi chez lui**, avec ses
+autorisations. Une fois installée, c'est sa copie locale qui répond sur ce
+poste : ses panneaux, et `tools.invoke`. Pour parler à son double du serveur,
+le panneau appelle `server.invokeTool` — la demande part avec le compte de la
+personne, le serveur sait qui demande, et aucun port n'est ouvert par
+l'extension.
+
+Un réglage qui appartient à la personne plutôt qu'à l'application se range dans
+son compte : le slot `settings.account` ajoute une sous-section à Réglages →
+Compte, dessinée par votre élément.
+
+```json
+{
+  "id": "partage",
+  "slot": "settings.account",
+  "type": "custom-element",
+  "label": "Partage de ressources",
+  "icon": "server",
+  "hint": "Ce que cette machine prête au serveur",
+  "entry": "dist/ui.js",
+  "tag": "mon-partage"
+}
+```
+
+`morph-cluster` fait exactement cela : c'est l'exemple complet à lire.
 
 ---
 

@@ -509,6 +509,13 @@ export interface CoreSkillEntry {
   verified: boolean;
 }
 
+/** Où ce poste se situe : client d'un serveur, serveur, ou seul. */
+export interface ConnectionInfo {
+  mode: "client" | "server" | "local";
+  server_url: string | null;
+  username: string | null;
+}
+
 export interface InstalledExtension {
   id: string;
   name: string;
@@ -538,6 +545,10 @@ export interface InstalledExtension {
   load_errors: string[];
   /** Section `core` du manifeste — présent = cette extension est un noyau. */
   core?: ExtensionCoreInfo | null;
+  /** Doit aussi tourner sur chaque poste client d'un serveur qui l'a installée. */
+  device_companion?: boolean;
+  /** Poste client : compagnon d'appareil du serveur, pas encore installé ici. */
+  device_install_pending?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1794,6 +1805,14 @@ export interface CoreApi {
   invokeMcpTool(name: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
   /** Invoke a tool exposed by any enabled extension through the generic bridge. */
   invokeExtensionTool(tool: string, args: Record<string, unknown>): Promise<string>;
+  /** Le même appel, mais sur le serveur auquel ce poste est connecté, avec le
+   *  compte de la personne. Sans serveur, c'est l'outil local qui répond. */
+  invokeServerTool(tool: string, args: Record<string, unknown>): Promise<string>;
+  /** Ce poste est-il client d'un serveur, serveur lui-même, ou seul ? */
+  connectionInfo(): Promise<ConnectionInfo>;
+  /** Installer une extension sur ce poste même connecté à un serveur : c'est
+   *  ainsi qu'arrive un compagnon d'appareil. */
+  installExtensionOnDevice(source: string): Promise<InstalledExtension>;
 
   /** Save a browser-recorded audio blob for tools that require a local path. */
   writeTestAudio(audioBase64: string, mimeType: string): Promise<string>;
@@ -2217,6 +2236,10 @@ const tauriCore: CoreApi = {
   stopMcpServer: (name) => invoke<void>("stop_mcp_server", { name }),
   invokeMcpTool: (name, tool, args) => invoke<unknown>("invoke_mcp_tool", { name, tool, args }),
   invokeExtensionTool: (tool, args) => invoke<string>("invoke_extension_tool", { tool, args }),
+  invokeServerTool: (tool, args) => invoke<string>("invoke_server_tool", { tool, args }),
+  connectionInfo: () => invoke<ConnectionInfo>("connection_info"),
+  installExtensionOnDevice: (source) =>
+    invoke<InstalledExtension>("install_extension_on_device", { source }),
   writeTestAudio: (audioBase64, mimeType) =>
     invoke<string>("write_test_audio", { audioBase64, mimeType }),
   removeTestAudio: (path) => invoke<void>("remove_test_audio", { path }),
@@ -4161,6 +4184,11 @@ const demoCore: CoreApi = {
       });
     }
     return "{}";
+  },
+  invokeServerTool: async () => "{}",
+  connectionInfo: async () => ({ mode: "local", server_url: null, username: null }),
+  installExtensionOnDevice: async () => {
+    throw new Error("Installer sur cet appareil demande l'application de bureau.");
   },
   moveSession: async () => {},
   suggestProject: async () => ({ project_id: null }),

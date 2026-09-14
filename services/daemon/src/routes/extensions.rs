@@ -300,6 +300,8 @@ fn entry_to_installed(
             .filter(|c| !locaryn_shared_types::capabilities::is_known(c))
             .map(|c| format!("capacité inconnue : {c}"))
             .collect(),
+        device_companion: manifest.as_ref().is_some_and(|m| m.device_companion),
+        device_install_pending: false,
         // Une extension de noyau expose sa section `core` : c'est ce qui
         // fait apparaître la carte « Noyau » dans les réglages.
         core: manifest.as_ref().and_then(|m| m.core.as_ref()).map(|c| {

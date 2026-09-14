@@ -502,6 +502,8 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
                 .unwrap_or_default(),
             permissions,
             load_errors,
+            device_companion: manifest.as_ref().is_some_and(|m| m.device_companion),
+            device_install_pending: false,
             // Une extension de noyau expose sa section `core` : c'est ce qui
             // fait apparaître la carte « Noyau » dans les réglages.
             core: manifest.as_ref().and_then(|m| m.core.as_ref()).map(|c| {
@@ -527,12 +529,127 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
 
 #[tauri::command]
 pub async fn list_extensions(core: State<'_, Core>) -> Result<Vec<InstalledExtension>, String> {
-    if let Some(client) = core.remote_client() {
-        if let Ok(exts) = client.list_extensions().await {
-            return Ok(exts);
-        }
+    installed_view(&core).await
+}
+
+/// Les extensions telles que cet écran doit les voir.
+///
+/// Connecté à un serveur : celles du serveur — sauf les compagnons d'appareil
+/// (`device_companion`), dont le travail se fait sur ce poste. Pour ceux-là,
+/// c'est la copie locale qui répond, avec ses fichiers et ses outils ; s'il
+/// n'y en a pas encore, l'entrée du serveur est marquée
+/// `device_install_pending` pour que l'interface propose de l'installer.
+async fn installed_view(core: &Core) -> Result<Vec<InstalledExtension>, String> {
+    let Some(client) = core.remote_client() else {
+        return build_installed(core).await;
+    };
+    let Ok(du_serveur) = client.list_extensions().await else {
+        return build_installed(core).await;
+    };
+    let locales = build_installed(core).await.unwrap_or_default();
+    Ok(merge_device_companions(du_serveur, &locales))
+}
+
+fn merge_device_companions(
+    du_serveur: Vec<InstalledExtension>,
+    locales: &[InstalledExtension],
+) -> Vec<InstalledExtension> {
+    du_serveur
+        .into_iter()
+        .map(|ext| {
+            if !ext.device_companion {
+                return ext;
+            }
+            match locales.iter().find(|l| l.name == ext.name) {
+                Some(locale) => InstalledExtension {
+                    device_companion: true,
+                    ..locale.clone()
+                },
+                None => InstalledExtension {
+                    device_install_pending: true,
+                    ..ext
+                },
+            }
+        })
+        .collect()
+}
+
+/// Cette extension est-elle installée sur ce poste ? Connecté à un serveur,
+/// seules les extensions du serveur passent par lui : un compagnon d'appareil
+/// installé ici s'active, se règle et se retire ici.
+async fn is_local_extension(core: &Core, id: &str) -> bool {
+    let Ok(uid) = Uuid::parse_str(id) else {
+        return false;
+    };
+    matches!(core.storage.extensions.get(uid).await, Ok(Some(_)))
+}
+
+/// Ce poste est-il connecté à un serveur, ou en est-il un ?
+#[derive(Debug, Clone, Serialize)]
+pub struct ConnectionInfo {
+    /// `client` (connecté à un serveur), `server` (sert d'autres postes) ou
+    /// `local`.
+    pub mode: &'static str,
+    pub server_url: Option<String>,
+    pub username: Option<String>,
+}
+
+/// Ce qu'une extension doit savoir pour choisir où envoyer une demande.
+#[tauri::command]
+pub async fn connection_info() -> Result<ConnectionInfo, String> {
+    if let Some(session) = crate::client_cert::current_session().ok().flatten() {
+        return Ok(ConnectionInfo {
+            mode: "client",
+            server_url: Some(session.server_url),
+            username: Some(session.username),
+        });
     }
-    build_installed(&core).await
+    let serveur = crate::server_mode::server_status().await.ok();
+    Ok(match serveur.filter(|s| s.running) {
+        Some(s) => ConnectionInfo {
+            mode: "server",
+            server_url: Some(s.url),
+            username: None,
+        },
+        None => ConnectionInfo {
+            mode: "local",
+            server_url: None,
+            username: None,
+        },
+    })
+}
+
+/// Appelle un outil d'extension **sur le serveur** auquel ce poste est
+/// connecté, avec le compte de la personne. Sans serveur, l'outil local
+/// répond — le serveur, c'est alors cette machine.
+///
+/// C'est le seul chemin par lequel le panneau d'une extension parle à son
+/// double du serveur : pas de port qu'elle ouvrirait elle-même, et le
+/// serveur sait qui demande.
+#[tauri::command]
+pub async fn invoke_server_tool(
+    core: State<'_, Core>,
+    tool: String,
+    args: serde_json::Value,
+) -> Result<String, String> {
+    if let Some(client) = core.remote_client() {
+        return client
+            .invoke_tool_by_name(&tool, args)
+            .await
+            .map_err(|e| e.to_string());
+    }
+    invoke_extension_tool(core, tool, args).await
+}
+
+/// Installe une extension **sur ce poste**, même connecté à un serveur :
+/// c'est ainsi qu'un compagnon d'appareil arrive ici. Les autorisations se
+/// décident ensuite, comme pour toute installation.
+#[tauri::command]
+pub async fn install_extension_on_device(
+    core: State<'_, Core>,
+    source: String,
+) -> Result<InstalledExtension, String> {
+    install_locally(&core, source, None, None).await
 }
 
 /// GET /v1/capabilities du daemon local — la liste canonique des capacités
@@ -840,6 +957,15 @@ pub async fn install_extension(
             }
         }
     }
+    install_locally(&core, source, scope, workspace).await
+}
+
+async fn install_locally(
+    core: &Core,
+    source: String,
+    scope: Option<String>,
+    workspace: Option<String>,
+) -> Result<InstalledExtension, String> {
     let scope = parse_scope(scope.as_deref());
     let workspace_root = workspace.as_deref().map(Path::new);
 
@@ -895,7 +1021,7 @@ pub async fn install_extension(
     }
 
     // Installed but not enabled: the permission modal decides that next.
-    let all = build_installed(&core).await?;
+    let all = build_installed(core).await?;
     all.into_iter()
         .find(|e| e.id == record.id)
         .ok_or_else(|| "extension introuvable après installation".to_string())
@@ -1152,7 +1278,7 @@ pub async fn set_extension_permissions(
         .await
         .map_err(|e| e.to_string())?;
     reload(&core).await?;
-    build_installed(&core).await
+    installed_view(&core).await
 }
 
 #[tauri::command]
@@ -1162,9 +1288,12 @@ pub async fn set_extension_enabled(
     enabled: bool,
 ) -> Result<Vec<InstalledExtension>, String> {
     if let Some(client) = core.remote_client() {
-        let _ = client.set_extension_enabled(&id, enabled).await;
-        if let Ok(exts) = client.list_extensions().await {
-            return Ok(exts);
+        if !is_local_extension(&core, &id).await {
+            let _ = client.set_extension_enabled(&id, enabled).await;
+            if let Ok(exts) = client.list_extensions().await {
+                let locales = build_installed(&core).await.unwrap_or_default();
+                return Ok(merge_device_companions(exts, &locales));
+            }
         }
     }
     let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
@@ -1177,7 +1306,7 @@ pub async fn set_extension_enabled(
     if enabled {
         preparer_passerelle(&core, uid).await;
     }
-    build_installed(&core).await
+    installed_view(&core).await
 }
 
 /// Poser ce dont l'extension a besoin pour fonctionner, une fois activée.
@@ -1254,9 +1383,12 @@ pub async fn remove_extension(
     workspace: Option<String>,
 ) -> Result<Vec<InstalledExtension>, String> {
     if let Some(client) = core.remote_client() {
-        let _ = client.remove_extension(&id).await;
-        if let Ok(exts) = client.list_extensions().await {
-            return Ok(exts);
+        if !is_local_extension(&core, &id).await {
+            let _ = client.remove_extension(&id).await;
+            if let Ok(exts) = client.list_extensions().await {
+                let locales = build_installed(&core).await.unwrap_or_default();
+                return Ok(merge_device_companions(exts, &locales));
+            }
         }
     }
     let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
@@ -1267,6 +1399,7 @@ pub async fn remove_extension(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "extension introuvable".to_string())?;
+    let workspace = workspace.as_deref();
 
     // Rendre son serveur avant d'effacer ses fichiers : tant qu'il tourne,
     // Windows garde son exécutable verrouillé et la suppression échoue sur
@@ -1285,14 +1418,66 @@ pub async fn remove_extension(
         .map_err(|e| e.to_string())?;
 
     if let Some(root) = plugin_root(&record.manifest_path) {
-        let workspace_root = workspace.as_deref().map(Path::new);
+        let workspace_root = workspace.map(Path::new);
         if !locaryn_extensions::remove_files(&root, record.scope, workspace_root) {
             tracing::warn!(path = %root.display(), "fichiers de l'extension non supprimés");
         }
     }
 
     reload(&core).await?;
-    build_installed(&core).await
+    installed_view(&core).await
+}
+
+#[cfg(test)]
+mod compagnons_tests {
+    use super::*;
+
+    fn extension(name: &str, companion: bool) -> InstalledExtension {
+        serde_json::from_value(serde_json::json!({
+            "id": Uuid::new_v4(),
+            "name": name,
+            "display_name": name,
+            "version": "1.0.0",
+            "api_version": "0.1",
+            "description": null,
+            "author": null,
+            "homepage": null,
+            "kind": "plugin",
+            "scope": "user",
+            "ecosystem": "locaryn",
+            "source": format!("Locaryn/{name}@v1.0.0"),
+            "install_dir": "/serveur",
+            "enabled": true,
+            "components": locaryn_shared_types::ExtensionComponents::default(),
+            "permissions": [],
+            "load_errors": [],
+            "device_companion": companion,
+            "created_at": "2026-09-14T00:00:00Z",
+            "updated_at": "2026-09-14T00:00:00Z"
+        }))
+        .expect("extension d'essai")
+    }
+
+    /// Un compagnon installé ici répond ici ; absent, il est signalé à
+    /// installer ; une extension ordinaire reste celle du serveur.
+    #[test]
+    fn les_compagnons_d_appareil_repondent_depuis_ce_poste() {
+        let serveur = vec![
+            extension("morph-cluster", true),
+            extension("morph-image", false),
+            extension("morph-absent", true),
+        ];
+        let mut locale = extension("morph-cluster", false);
+        locale.install_dir = "/poste".into();
+        let vue = merge_device_companions(serveur, &[locale.clone()]);
+
+        assert_eq!(vue[0].id, locale.id);
+        assert_eq!(vue[0].install_dir, "/poste");
+        assert!(vue[0].device_companion && !vue[0].device_install_pending);
+        assert_eq!(vue[1].install_dir, "/serveur");
+        assert!(!vue[1].device_install_pending);
+        assert!(vue[2].device_install_pending);
+    }
 }
 
 fn parse_scope(s: Option<&str>) -> ExtensionScope {

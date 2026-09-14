@@ -633,6 +633,16 @@ pub struct InstalledExtension {
     /// Section `core` du manifeste, quand l'extension est un noyau.
     #[serde(default)]
     pub core: Option<ExtensionCoreInfo>,
+    /// L'extension doit aussi tourner sur chaque poste client connecté à un
+    /// serveur qui l'a installée (`device_companion` du manifeste).
+    #[serde(default)]
+    pub device_companion: bool,
+    /// Posé par un poste client : cette extension du serveur est un compagnon
+    /// d'appareil qui n'est pas encore installé ici. Ses contributions
+    /// d'interface ne peuvent pas s'afficher — leurs fichiers ne sont pas sur
+    /// ce poste — et l'interface propose de l'installer.
+    #[serde(default)]
+    pub device_install_pending: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

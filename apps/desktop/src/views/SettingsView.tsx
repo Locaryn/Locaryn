@@ -1,9 +1,10 @@
 import { Icon, type IconName, type ThemeMode } from "@locaryn/ui-core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AboutSettings } from "../components/AboutSettings";
 import { CautionSettings } from "../components/CautionSettings";
 import { ConnectionSettings } from "../components/ConnectionSettings";
 import { ConnectorsSettings } from "../components/ConnectorsSettings";
+import { DeviceCompanionCard } from "../components/DeviceCompanionCard";
 import { EngineSettings } from "../components/EngineSettings";
 import { ExtensionsSettings } from "../components/ExtensionsSettings";
 import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
@@ -12,9 +13,20 @@ import { PerformancePanel } from "../components/PerformancePanel";
 import { ServerSettings } from "../components/ServerSettings";
 import { StorageSettings } from "../components/StorageSettings";
 import { TravelSettings } from "../components/TravelSettings";
+import { DynamicPluginWidget } from "../components/extensions/DynamicPluginWidget";
+import {
+  type ResolvedSlotContribution,
+  getSlotContributions,
+} from "../components/extensions/SlotRegistry";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import { ACCENT_PRESETS } from "../hooks/useTheme";
-import { type AppInfo, type Project, type Session, core } from "../lib/core";
+import {
+  type AppInfo,
+  type InstalledExtension,
+  type Project,
+  type Session,
+  core,
+} from "../lib/core";
 import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
 import { type AccountSection, AccountView } from "./AccountView";
@@ -56,6 +68,55 @@ const ACCOUNT_SECTIONS: { id: AccountSection; label: string; desc: string; icon:
   { id: "memory", label: "Mémoire", desc: "Ce que Locaryn retient", icon: "memory" },
   { id: "archives", label: "Archives", desc: "Conversations rangées", icon: "archive" },
 ];
+
+/**
+ * Le point d'extension du compte : une extension y ajoute sa propre
+ * sous-section, qu'elle dessine elle-même. L'application ne connaît ni son nom
+ * ni ce qu'elle règle.
+ */
+const SLOT_COMPTE = "settings.account";
+
+/** Une sous-section du compte : native, ou apportée par une extension. */
+type AccountPane = AccountSection | `ext:${string}`;
+
+type AccountExtra = {
+  key: `ext:${string}`;
+  label: string;
+  desc: string;
+  icon: IconName;
+  /** Prête à s'afficher : l'extension tourne sur ce poste. */
+  contribution?: ResolvedSlotContribution;
+  /** Pas encore installée sur ce poste : l'application propose de le faire. */
+  pending?: InstalledExtension;
+};
+
+/** Les sous-sections apportées par les extensions, prêtes ou à installer. La
+ *  clé suit le nom de l'extension et non son identifiant : installer le
+ *  compagnon sur ce poste change l'identifiant, pas l'écran ouvert. */
+function accountExtras(extensions: InstalledExtension[]): AccountExtra[] {
+  const nameOf = (id: string) => extensions.find((e) => e.id === id)?.name ?? id;
+  const ready: AccountExtra[] = getSlotContributions(extensions, SLOT_COMPTE).map((c) => ({
+    key: `ext:${nameOf(c.extensionId)}:${c.id}`,
+    label: c.label || c.extensionName,
+    desc: c.hint ?? c.extensionName,
+    icon: (c.icon || "extensions") as IconName,
+    contribution: c,
+  }));
+  const pending: AccountExtra[] = extensions
+    .filter((e) => e.enabled && e.device_install_pending)
+    .flatMap((e) =>
+      (e.ui?.slots ?? [])
+        .filter((s) => s.slot === SLOT_COMPTE)
+        .map((s) => ({
+          key: `ext:${e.name}:${s.id}` as const,
+          label: s.label || e.display_name || e.name,
+          desc: "À installer sur cet appareil",
+          icon: (s.icon || "extensions") as IconName,
+          pending: e,
+        })),
+    );
+  return [...ready, ...pending];
+}
 
 /** Les trois réglages de thème, dans l'ordre où ils se lisent. */
 const THEME_MODES: { value: ThemeMode; label: string; icon: IconName }[] = [
@@ -182,7 +243,10 @@ export function SettingsView({
   // d'un menu par l'autre est invisible — on croit que le clic a sauté
   // l'étape et ouvert le contenu directement.
   const [railFrom, setRailFrom] = useState<"deeper" | "back">("deeper");
-  const [accountSection, setAccountSection] = useState<AccountSection>("profile");
+  const [accountSection, setAccountSection] = useState<AccountPane>("profile");
+  const [extensions, setExtensions] = useState<InstalledExtension[]>([]);
+  const extras = useMemo(() => accountExtras(extensions), [extensions]);
+  const extra = extras.find((x) => x.key === accountSection);
   // Fenêtre étroite : le rail et le volet ne tiennent pas côte à côte, alors
   // ils se relaient. Au large, les deux colonnes restent visibles et cet état
   // ne change rien — d'où le pilotage par un attribut, laissé au CSS.
@@ -214,10 +278,37 @@ export function SettingsView({
     return subscribeDeepLink(check);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      core
+        .listExtensions()
+        .then((list) => {
+          if (!cancelled) setExtensions(list);
+        })
+        .catch((e) => {
+          console.warn("[Réglages] extensions illisibles :", e);
+          if (!cancelled) setExtensions([]);
+        });
+    };
+    load();
+    window.addEventListener("locaryn:extensions-changed", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("locaryn:extensions-changed", load);
+    };
+  }, []);
+
+  // La sous-section d'une extension retirée ou désactivée disparaît : on
+  // revient au profil plutôt que de montrer un volet vide.
+  useEffect(() => {
+    if (accountSection.startsWith("ext:") && !extra) setAccountSection("profile");
+  }, [accountSection, extra]);
+
   const current = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
   // Dans le compte, le volet porte le nom de la sous-section : le titre doit
   // dire ce qu'on regarde, pas la famille dont ça vient.
-  const currentAccount = ACCOUNT_SECTIONS.find((a) => a.id === accountSection);
+  const currentAccount = ACCOUNT_SECTIONS.find((a) => a.id === accountSection) ?? extra;
   const currentTitle =
     section === "account" && currentAccount
       ? { icon: currentAccount.icon, label: currentAccount.label }
@@ -278,6 +369,25 @@ export function SettingsView({
                       </span>
                     </button>
                   ))}
+                  {extras.map((x) => (
+                    <button
+                      key={x.key}
+                      type="button"
+                      className={`locaryn-settings-full-item${accountSection === x.key ? " locaryn-active" : ""}`}
+                      onClick={() => {
+                        setAccountSection(x.key);
+                        setPaneOpen(true);
+                      }}
+                    >
+                      <span className="locaryn-settings-full-icon">
+                        <Icon name={x.icon} />
+                      </span>
+                      <span className="locaryn-settings-full-text">
+                        <span className="locaryn-settings-full-label">{x.label}</span>
+                        <span className="locaryn-settings-full-desc">{x.desc}</span>
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </>
             ) : (
@@ -330,10 +440,19 @@ export function SettingsView({
             <Icon name={currentTitle.icon} size={18} /> {currentTitle.label}
           </h3>
 
-          {section === "account" && (
+          {section === "account" && extra?.contribution && (
+            <DynamicPluginWidget
+              contribution={extra.contribution}
+              context={{ surface: SLOT_COMPTE }}
+            />
+          )}
+          {section === "account" && extra?.pending && (
+            <DeviceCompanionCard extension={extra.pending} />
+          )}
+          {section === "account" && !accountSection.startsWith("ext:") && (
             <AccountView
               embedded
-              section={accountSection}
+              section={accountSection as AccountSection}
               onSectionChange={setAccountSection}
               activeCapabilities={activeCapabilities}
               projects={projects}

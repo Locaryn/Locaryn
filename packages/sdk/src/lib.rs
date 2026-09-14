@@ -1026,6 +1026,34 @@ impl LocarynClient {
         }
     }
 
+    /// Appelle un outil d'extension par son seul nom, sur le serveur : c'est
+    /// le serveur qui trouve l'extension active qui le porte. Renvoie le texte
+    /// de la réponse de l'outil.
+    pub async fn invoke_tool_by_name(
+        &self,
+        tool: &str,
+        args: serde_json::Value,
+    ) -> Result<String, SdkError> {
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/tools/{tool}")))
+                    .json(&args),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            let corps: serde_json::Value = resp.json().await?;
+            Ok(corps
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_string())
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
     // ---- Memory -----------------------------------------------------------
 
     pub async fn list_memories(&self) -> Result<serde_json::Value, SdkError> {
