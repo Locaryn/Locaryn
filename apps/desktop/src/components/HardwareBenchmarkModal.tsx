@@ -1,5 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { core } from "../lib/core";
 import { MODEL_CATALOG } from "../lib/modelCatalog";
 
@@ -16,8 +16,42 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
   const [ramGb, setRamGb] = useState<number>(16);
   const [vramGb, setVramGb] = useState<number>(8);
   const [cpuCores, setCpuCores] = useState<number>(8);
-  const [preset, setPreset] = useState<string>("gaming");
+  const [preset, setPreset] = useState<string>("custom");
   const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  /**
+   * Relire la machine, pour de vrai.
+   *
+   * Les valeurs affichées sont celles que la détection renvoie, arrondies au
+   * Go le plus proche — pas remontées au multiple de 4 supérieur, qui faisait
+   * lire 24 Go à une machine de 21, ni remplacées par un profil type.
+   */
+  const scan = useCallback(async () => {
+    setIsScanning(true);
+    setScanError(null);
+    try {
+      const hw = await core.checkHardware();
+      setRamGb(Math.max(1, Math.round(hw.total_ram_gb)));
+      const rawV = Math.round(hw.total_vram_gb);
+      const v = rawV > 128 ? Math.round(rawV / 1024) : rawV;
+      setVramGb(Math.max(0, v));
+      if (hw.cpu_cores) {
+        setCpuCores(hw.cpu_cores);
+      }
+      setPreset("custom");
+    } catch (e) {
+      console.error("[Analyse du PC] détection impossible :", e);
+      setScanError(`Détection impossible : ${String(e).replace(/^Error:\s*/, "")}`);
+    } finally {
+      setIsScanning(false);
+    }
+  }, []);
+
+  // À l'ouverture, la machine réelle — jamais un profil type choisi à sa place.
+  useEffect(() => {
+    if (isOpen) void scan();
+  }, [isOpen, scan]);
 
   if (!isOpen) return null;
 
@@ -39,26 +73,6 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
       setRamGb(64);
       setVramGb(24);
       setCpuCores(16);
-    }
-  }
-
-  async function runScanSimulation() {
-    setIsScanning(true);
-    try {
-      const hw = await core.checkHardware();
-      // Snap to closest sensible values for UI dropdowns
-      setRamGb(Math.max(4, Math.ceil(hw.total_ram_gb / 4) * 4));
-      const rawV = Math.round(hw.total_vram_gb);
-      const v = rawV > 128 ? Math.round(rawV / 1024) : rawV;
-      setVramGb(v <= 0 ? 0 : v);
-      if (hw.cpu_cores) {
-        setCpuCores(hw.cpu_cores);
-      }
-      setPreset("custom");
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsScanning(false);
     }
   }
 
@@ -184,12 +198,17 @@ export function HardwareBenchmarkModal({ isOpen, onClose, onApplyFilter }: Props
               type="button"
               className="locaryn-btn-ghost"
               style={{ fontSize: "12px" }}
-              onClick={runScanSimulation}
+              onClick={() => void scan()}
               disabled={isScanning}
             >
               {isScanning ? "Calcul…" : "Recalculer le diagnostic"}
             </button>
           </div>
+          {scanError && (
+            <p className="locaryn-vp-error" style={{ margin: "0 0 12px" }}>
+              {scanError}
+            </p>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
             {/* RAM Input */}

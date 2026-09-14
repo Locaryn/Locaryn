@@ -191,7 +191,15 @@ fn probe_static() -> StaticProbe {
         .map(|n| n.get() as u32)
         .unwrap_or(4);
     let total_ram_gb = total_ram_gb().unwrap_or(16.0);
-    let gpu = probe_gpu();
+    // Ce profil est gardé pour toute la session : une carte manquée au premier
+    // essai — pilote qui se réveille, `nvidia-smi` lent au démarrage de la
+    // machine — resterait « aucun GPU » jusqu'au prochain lancement. Un second
+    // essai ne coûte qu'une fraction de seconde, et seulement quand le premier
+    // n'a rien trouvé.
+    let gpu = probe_gpu().or_else(|| {
+        std::thread::sleep(Duration::from_millis(700));
+        probe_gpu()
+    });
     let unified = cfg!(target_os = "macos") && gpu.is_some();
     let (measured_bw, measured) = match sample_ram_bandwidth_gbps() {
         Some(bw) => (bw, true),
@@ -250,25 +258,53 @@ fn run(program: &str, args: &[&str]) -> Option<String> {
 
 // ── Mémoire système ────────────────────────────────────────────────────────
 
+/// La mémoire du système, en kibioctets : (totale, disponible).
+///
+/// Lue par `GlobalMemoryStatusEx`, l'appel que Windows fournit pour cela, et
+/// non plus par PowerShell. Lancer PowerShell pouvait échouer — machine
+/// chargée, stratégie d'exécution, démarrage lent — et l'échec retombait en
+/// silence sur une valeur par défaut : une machine de 24 Go s'annonçait à
+/// 16 Go pour toute la session. Un appel système ne lance aucun processus et
+/// ne connaît pas ces pannes-là.
 #[cfg(target_os = "windows")]
 fn os_memory_kb() -> Option<(f64, f64)> {
-    // `wmic` a disparu des Windows 11 récents ; CIM le remplace et répond
-    // partout où PowerShell existe. Les deux valeurs sortent du même appel :
-    // en lancer deux doublerait un coût déjà sensible.
-    let text = run(
-        "powershell",
-        &[
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "$o=Get-CimInstance Win32_OperatingSystem; \
-             \"$($o.TotalVisibleMemorySize) $($o.FreePhysicalMemory)\"",
-        ],
-    )?;
-    let mut parts = text.split_whitespace();
-    let total: f64 = parts.next()?.parse().ok()?;
-    let free: f64 = parts.next()?.parse().ok()?;
-    Some((total, free))
+    #[repr(C)]
+    struct MemoryStatusEx {
+        length: u32,
+        memory_load: u32,
+        total_phys: u64,
+        avail_phys: u64,
+        total_page_file: u64,
+        avail_page_file: u64,
+        total_virtual: u64,
+        avail_virtual: u64,
+        avail_extended_virtual: u64,
+    }
+    extern "system" {
+        fn GlobalMemoryStatusEx(buffer: *mut MemoryStatusEx) -> i32;
+    }
+    let mut status = MemoryStatusEx {
+        length: std::mem::size_of::<MemoryStatusEx>() as u32,
+        memory_load: 0,
+        total_phys: 0,
+        avail_phys: 0,
+        total_page_file: 0,
+        avail_page_file: 0,
+        total_virtual: 0,
+        avail_virtual: 0,
+        avail_extended_virtual: 0,
+    };
+    // SAFETY : la structure est celle que l'API attend, avec sa taille posée
+    // dans `length` comme la documentation l'exige ; l'appel ne fait qu'y
+    // écrire.
+    let ok = unsafe { GlobalMemoryStatusEx(&mut status) };
+    if ok == 0 || status.total_phys == 0 {
+        return None;
+    }
+    Some((
+        status.total_phys as f64 / 1024.0,
+        status.avail_phys as f64 / 1024.0,
+    ))
 }
 
 #[cfg(target_os = "windows")]
@@ -572,6 +608,21 @@ pub fn sample_ram_bandwidth_gbps() -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La mémoire se lit par l'appel système, sans PowerShell : une valeur
+    /// réelle, jamais le repli de 16 Go qu'un processus en échec laissait
+    /// passer. Le chiffre est imprimé pour qu'on puisse le comparer à la
+    /// machine qui fait tourner le test.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn la_memoire_se_lit_par_l_appel_systeme() {
+        let (total_kb, libre_kb) = os_memory_kb().expect("GlobalMemoryStatusEx a échoué");
+        let total_go = total_kb / (1024.0 * 1024.0);
+        let libre_go = libre_kb / (1024.0 * 1024.0);
+        eprintln!("mémoire : {total_go:.1} Go au total, {libre_go:.1} Go disponibles");
+        assert!(total_go > 1.0);
+        assert!(libre_go > 0.0 && libre_go <= total_go);
+    }
 
     /// Le sondage ne doit jamais rendre un profil incohérent, même sur une
     /// machine où toutes les sondes échouent.

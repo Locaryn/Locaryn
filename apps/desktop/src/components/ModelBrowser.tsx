@@ -591,11 +591,16 @@ export function ModelBrowser({
     // Remove stale extension rows synchronously when a plugin is disabled or
     // uninstalled; the replacement catalogue is loaded immediately after.
     setExtensionMarketplace(EMPTY_EXTENSION_MARKETPLACE);
-    void loadExtensionMarketplaces(activeExtensions, core.refreshExtensionAsset).then(
-      (catalogue) => {
+    void loadExtensionMarketplaces(activeExtensions, core.refreshExtensionAsset)
+      .then((catalogue) => {
         if (!cancelled) setExtensionMarketplace(catalogue);
-      },
-    );
+      })
+      .catch((e) => {
+        console.warn("[Marketplace] catalogues des extensions illisibles :", e);
+      })
+      .finally(() => {
+        if (!cancelled) setExtensionsResolved(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -663,6 +668,19 @@ export function ModelBrowser({
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [liveApiModels, setLiveApiModels] = useState<ModelFamily[]>([]);
   const [isFetchingLive, setIsFetchingLive] = useState(false);
+  /**
+   * Ce qui décide de l'ordre des cartes est-il arrivé ?
+   *
+   * Le tri met en tête ce qui tourne sur ce PC : il dépend du catalogue, du
+   * matériel détecté, des catalogues des extensions et des estimations
+   * natives, qui arrivent chacun à leur heure. Afficher la grille dès la
+   * première réponse la faisait se réordonner trois fois sous les yeux —
+   * des modèles apparaissaient, puis disparaissaient au profit d'autres.
+   */
+  const [registryResolved, setRegistryResolved] = useState(false);
+  const [hardwareResolved, setHardwareResolved] = useState(false);
+  const [extensionsResolved, setExtensionsResolved] = useState(false);
+  const [catalogueReady, setCatalogueReady] = useState(false);
 
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [openId, setOpenId] = useState<string | null>(null);
@@ -683,7 +701,10 @@ export function ModelBrowser({
     tag: string;
     heretic: boolean;
     downloads?: ModelDownloadSource[];
+    preferredQuant?: string;
   } | null>(null);
+  /** L'étiquette dont on cherche la variante dans le dépôt, le temps de le lire. */
+  const [resolvingTag, setResolvingTag] = useState<string | null>(null);
   /** Repository inspection is deliberately explicit: a HF repo may contain
    * Q3/Q4/Q8, instruct/base and several sharded checkpoints. */
   const [repoInspection, setRepoInspection] = useState<HfRepoInspection | null>(null);
@@ -735,7 +756,12 @@ export function ModelBrowser({
           setHardwareSpec({ total_ram_gb: hw.total_ram_gb, total_vram_gb: vram });
         }
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.warn("[Marketplace] détection du matériel impossible :", e);
+      })
+      .finally(() => {
+        if (active) setHardwareResolved(true);
+      });
     return () => {
       active = false;
     };
@@ -753,8 +779,12 @@ export function ModelBrowser({
           setIsLoadingRegistry(false);
         }
       })
-      .catch(() => {
+      .catch((e) => {
+        console.warn("[Marketplace] catalogue illisible :", e);
         if (active) setIsLoadingRegistry(false);
+      })
+      .finally(() => {
+        if (active) setRegistryResolved(true);
       });
     return () => {
       active = false;
@@ -1078,6 +1108,31 @@ export function ModelBrowser({
       clearTimeout(timer);
     };
   }, [families]);
+
+  // La grille paraît une fois, déjà dans son ordre. Les estimations ne
+  // dépendent que de la machine : dès qu'une première passe est là, celles
+  // qui suivent ne font qu'ajouter, sans renverser le classement.
+  useEffect(() => {
+    if (catalogueReady) return;
+    const estimations = families.length === 0 || Object.keys(fits).length > 0;
+    if (registryResolved && hardwareResolved && extensionsResolved && estimations) {
+      setCatalogueReady(true);
+    }
+  }, [
+    catalogueReady,
+    registryResolved,
+    hardwareResolved,
+    extensionsResolved,
+    families.length,
+    fits,
+  ]);
+
+  // Une source qui ne répond jamais ne doit pas laisser l'écran vide : passé
+  // ce délai, on montre ce qu'on a.
+  useEffect(() => {
+    const timer = setTimeout(() => setCatalogueReady(true), 8000);
+    return () => clearTimeout(timer);
+  }, []);
 
   function toggleCardExpand(id: string) {
     setExpandedCards((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -1448,18 +1503,42 @@ export function ModelBrowser({
     };
   }
 
+  /**
+   * Installer un modèle.
+   *
+   * `preferredQuant` : la quantification déjà choisie sur la carte ou dans le
+   * panneau de détail. La choisir, c'est avoir répondu à la question que pose
+   * la fenêtre des variantes — la reposer n'a pas de sens. Sans elle, la
+   * fenêtre complète s'ouvre, pour qui veut comparer.
+   */
   function requestInstall(
     tag: string,
     familyName: string,
     heretic: boolean,
     downloads?: ModelDownloadSource[],
+    preferredQuant?: string,
   ) {
     if (classifyModel(`${familyName} ${tag}`).risk !== "safe") {
-      setPendingNsfwInstall({ tag, heretic, downloads });
+      setPendingNsfwInstall({ tag, heretic, downloads, preferredQuant });
       setNsfwGateOpen(true);
       return;
     }
-    void beginModelInstall(tag, familyName, heretic, false, undefined, downloads);
+    void beginModelInstall(
+      tag,
+      familyName,
+      heretic,
+      false,
+      undefined,
+      downloads,
+      false,
+      preferredQuant,
+    );
+  }
+
+  /** Deux écritures d'une même quantification : « Q4_K_M », « q4_k_m ». */
+  function sameQuant(a: string | null | undefined, b: string): boolean {
+    const norm = (q: string) => q.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return Boolean(a) && norm(a as string) === norm(b);
   }
 
   async function beginModelInstall(
@@ -1473,9 +1552,36 @@ export function ModelBrowser({
     // liste. Sans ce drapeau, l'appel repassait par l'inspection, qui rouvrait
     // la même fenêtre : le bouton ne pouvait rien installer.
     skipInspection = false,
+    preferredQuant?: string,
   ) {
     const chosenSelection = selection;
     const repo = !chosenSelection && !skipInspection ? hfRepoSource(tag) : null;
+    if (repo && preferredQuant) {
+      // La variante voulue est cherchée dans le dépôt sans rien ouvrir. Si
+      // elle y est, elle s'installe ; sinon — dépôt qui nomme ses fichiers
+      // autrement, lecture impossible — la fenêtre s'ouvre et dit pourquoi.
+      setResolvingTag(tag);
+      try {
+        const inspection = await core.inspectHuggingFaceRepo(repo, getHfToken());
+        const voulue = inspection.candidates.find((c) => sameQuant(c.quantization, preferredQuant));
+        if (voulue) {
+          setRepoInspection(null);
+          setRepoInstallContext(null);
+          await handleInstallModel(
+            repo,
+            heretic,
+            consent,
+            makeSelection(inspection, voulue),
+            downloads,
+          );
+          return;
+        }
+      } catch (e) {
+        console.warn("[Marketplace] dépôt illisible, ouverture du choix des variantes :", e);
+      } finally {
+        setResolvingTag(null);
+      }
+    }
     if (repo) {
       setRepoInspecting(true);
       setRepoInspectionError(null);
@@ -1568,9 +1674,9 @@ export function ModelBrowser({
   function confirmNsfwInstall() {
     setNsfwGateOpen(false);
     if (pendingNsfwInstall) {
-      const { tag, heretic, downloads } = pendingNsfwInstall;
+      const { tag, heretic, downloads, preferredQuant } = pendingNsfwInstall;
       setPendingNsfwInstall(null);
-      void beginModelInstall(tag, tag, heretic, true, undefined, downloads);
+      void beginModelInstall(tag, tag, heretic, true, undefined, downloads, false, preferredQuant);
     }
   }
 
@@ -2352,29 +2458,29 @@ export function ModelBrowser({
           la liste partielle affichée pendant le chargement se lisait comme un
           catalogue erroné, et « aucun modèle ne correspond » comme un résultat
           définitif. */}
-      {isLoadingRegistry && registryModels.length === 0 && (
+      {!catalogueReady && (
         <div className="locaryn-model-loading" role="status" aria-live="polite">
           <span className="locaryn-spin" style={{ display: "inline-flex" }}>
             <Icon name="refresh" size={18} />
           </span>
           <div>
-            <strong>Actualisation du catalogue…</strong>
+            <strong>Préparation du catalogue…</strong>
             <p>
-              Les modèles disponibles sont relus depuis HuggingFace. Vos modèles déjà installés
-              restent utilisables pendant ce temps.
+              Lecture des modèles disponibles et de ce que votre PC peut faire tourner. Vos modèles
+              déjà installés restent utilisables pendant ce temps.
             </p>
           </div>
         </div>
       )}
 
-      {families.length === 0 && !(isLoadingRegistry && registryModels.length === 0) && (
+      {catalogueReady && families.length === 0 && (
         <div className="locaryn-field-hint" style={{ marginTop: "24px", textAlign: "center" }}>
           Aucun modèle ne correspond à vos filtres.
         </div>
       )}
 
       {/* GRID / BOXES VIEW */}
-      {viewMode === "grid" && (
+      {catalogueReady && viewMode === "grid" && (
         <div className="locaryn-model-grid">
           {visibles.map((f) => {
             const isExpanded = Boolean(isFilterActive || expandedCards[f.id]);
@@ -2546,7 +2652,7 @@ export function ModelBrowser({
       )}
 
       {/* ACCORDION LIST VIEW */}
-      {viewMode === "list" && (
+      {catalogueReady && viewMode === "list" && (
         <div className="locaryn-model-list">
           {visibles.map((f) => {
             const open = openId === f.id;
@@ -2783,17 +2889,21 @@ export function ModelBrowser({
                                 <button
                                   type="button"
                                   className="locaryn-btn-primary locaryn-variant-use"
+                                  disabled={resolvingTag !== null}
                                   onClick={() =>
                                     requestInstall(
                                       targetTag,
                                       f.name,
                                       Boolean(f.uncensored),
                                       v.downloads,
+                                      activeQuant,
                                     )
                                   }
                                   title={`Installer la quantisation ${activeQuant}`}
                                 >
-                                  Installer ({activeQuant})
+                                  {resolvingTag === targetTag
+                                    ? "Préparation…"
+                                    : `Installer (${activeQuant})`}
                                 </button>
                               )}
                             </div>
@@ -3835,17 +3945,21 @@ export function ModelBrowser({
                                 <button
                                   type="button"
                                   className="locaryn-btn-primary locaryn-variant-use"
+                                  disabled={resolvingTag !== null}
                                   onClick={() =>
                                     requestInstall(
                                       targetTag,
                                       f.name,
                                       Boolean(f.uncensored),
                                       v.downloads,
+                                      activeQuant,
                                     )
                                   }
                                   title={`Installer la quantisation ${activeQuant}`}
                                 >
-                                  Installer ({activeQuant})
+                                  {resolvingTag === targetTag
+                                    ? "Préparation…"
+                                    : `Installer (${activeQuant})`}
                                 </button>
                               )}
                             </div>
@@ -3880,6 +3994,28 @@ export function ModelBrowser({
                                 </button>
                               );
                             })}
+                            {/* Le menu complet reste à portée : comparer toutes
+                                les variantes du dépôt, leurs tailles et leurs
+                                fichiers, sans avoir choisi d'avance. */}
+                            {!isInstalled && !isInstalling && hfRepoSource(targetTag) && (
+                              <button
+                                type="button"
+                                className="locaryn-quant-chip"
+                                disabled={resolvingTag !== null}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  requestInstall(
+                                    targetTag,
+                                    f.name,
+                                    Boolean(f.uncensored),
+                                    v.downloads,
+                                  );
+                                }}
+                                title="Voir toutes les variantes du dépôt avant de choisir"
+                              >
+                                Toutes les variantes…
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
