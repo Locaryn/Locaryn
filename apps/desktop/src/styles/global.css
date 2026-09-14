@@ -5754,6 +5754,29 @@ pre.md-code {
   background: var(--bg);
 }
 
+/* Un marketplace en page : il prend la place du chat, a droite du rail, sans
+   voile ni cadre. C'est l'ecran interieur qui defile, pas la page : sa barre
+   de filtres et son chargement par lots mesurent ce conteneur-la. */
+.locaryn-page {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+  animation: lo-fade-in var(--dur-fast) var(--ease-out) both;
+}
+.locaryn-page > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-page {
+    animation: none;
+  }
+}
+
 .locaryn-view-header {
   margin-bottom: var(--space-8);
 }

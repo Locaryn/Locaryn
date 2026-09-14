@@ -1,7 +1,6 @@
 import { Icon, LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { BatchStudio } from "./components/BatchStudio";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
@@ -63,7 +62,7 @@ function clampPanel(panel: PanelKey, value: number): number {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
-/** Le nom de l'ecran ouvert en surcouche, annonce aux lecteurs d'ecran. */
+/** Le nom de l'ecran ouvert en page, annonce aux lecteurs d'ecran. */
 const OVERLAY_LABELS: Record<string, string> = {
   models: "Marketplace",
   installed: "Modèles installés",
@@ -511,6 +510,9 @@ export function App() {
       setSessions([]);
     }
     setActiveSession(session);
+    // Les autres ecrans prennent la place du chat : choisir une conversation
+    // depuis le rail doit la montrer, pas la charger derriere les reglages.
+    setActiveView("chat");
   }
 
   async function handleNewSession(proj: Project) {
@@ -1173,270 +1175,247 @@ export function App() {
           </>
         )}
 
-        {/* Le chat est la couche de fond : il reste monte quel que soit
-            l'ecran ouvert par-dessus. Le demonter et le remonter a chaque
-            aller-retour vers les reglages perdait la position de defilement et
-            relancait le rendu de toute la conversation. */}
-        <ChatPanel
-          sessionId={activeSession?.id ?? null}
-          projectId={activeProject?.id ?? null}
-          connectionMode={health?.mode}
-          coreName={
-            activeSession?.core_id
-              ? (installedCores.find((c) => c.id === activeSession.core_id)?.name ??
-                activeSession.core_id)
-              : null
-          }
-          onCreateSessionForPrompt={handleCreateSessionForPrompt}
-          attention={attention}
-          onAttentionAnswer={(id, reponse) => void repondreAttention(id, reponse)}
-          onAttentionDismiss={(id) => void ecarterAttention(id)}
-          onEtatChange={noterEtatSession}
-          onSessionMoved={(projectId) => {
-            if (activeSession) void handleMoveSession(activeSession, projectId);
-          }}
-          onOpenSettings={() => setActiveView("settings")}
-          ephemeral={activeSession?.ephemeral ?? false}
-          onNewChat={handleNewStandaloneChat}
-          onAddProject={async () => {
-            const path = await pickFolder();
-            if (!path) return;
-            const name =
-              window.prompt(
-                "Nom du projet:",
-                path
-                  .replace(/[\\/]+$/, "")
-                  .split(/[\\/]/)
-                  .pop() ?? "projet",
-              ) ?? "projet";
-            handleAddProject(path, name);
-          }}
-          onOpenMarketplace={() => setActiveView("models")}
-          activeCapabilities={activeCapabilities}
-          extensions={activeExtensions}
-        />
+        {/* Le chat reste monte quel que soit l'ecran ouvert : le demonter et le
+            remonter a chaque aller-retour vers les reglages perdait la position
+            de defilement et relancait le rendu de toute la conversation.
+            `display: contents` le laisse occuper la rangee comme avant ; un
+            autre ecran le masque sans le demonter. */}
+        <div style={{ display: activeView === "chat" ? "contents" : "none" }}>
+          <ChatPanel
+            sessionId={activeSession?.id ?? null}
+            projectId={activeProject?.id ?? null}
+            connectionMode={health?.mode}
+            coreName={
+              activeSession?.core_id
+                ? (installedCores.find((c) => c.id === activeSession.core_id)?.name ??
+                  activeSession.core_id)
+                : null
+            }
+            onCreateSessionForPrompt={handleCreateSessionForPrompt}
+            attention={attention}
+            onAttentionAnswer={(id, reponse) => void repondreAttention(id, reponse)}
+            onAttentionDismiss={(id) => void ecarterAttention(id)}
+            onEtatChange={noterEtatSession}
+            onSessionMoved={(projectId) => {
+              if (activeSession) void handleMoveSession(activeSession, projectId);
+            }}
+            onOpenSettings={() => setActiveView("settings")}
+            ephemeral={activeSession?.ephemeral ?? false}
+            onNewChat={handleNewStandaloneChat}
+            onAddProject={async () => {
+              const path = await pickFolder();
+              if (!path) return;
+              const name =
+                window.prompt(
+                  "Nom du projet:",
+                  path
+                    .replace(/[\\/]+$/, "")
+                    .split(/[\\/]/)
+                    .pop() ?? "projet",
+                ) ?? "projet";
+              handleAddProject(path, name);
+            }}
+            onOpenMarketplace={() => setActiveView("models")}
+            activeCapabilities={activeCapabilities}
+            extensions={activeExtensions}
+          />
+        </div>
 
-        {/* La fenetre de mise a jour vit au-dessus de tout, y compris de la
-          surcouche : elle ne s'affiche que lorsqu'il y a quelque chose a dire,
-          et ce qu'elle dit vaut pour l'application entiere. */}
+        {/* Tout ecran autre que le chat s'affiche en page, a sa place, le rail a
+            gauche : les marketplaces, les reglages, le compte, les studios.
+            Une fenetre posee par-dessus le chat, avec sa marge et son voile,
+            les faisait passer pour un detour — alors qu'on y reste pour
+            comparer, lire, installer, regler. */}
+        {activeView !== "chat" && (
+          <main className="locaryn-page" aria-label={OVERLAY_LABELS[activeView] ?? "Page"}>
+            {activeView === "models" && (
+              <div className="locaryn-view-container">
+                <div className="locaryn-view-header">
+                  {/* Un titre est un nom, pas une parenthèse d'explication : la
+                      provenance et la liste des familles vivent dans le contenu,
+                      qui les montre déjà. */}
+                  <h2>Marketplace</h2>
+                  <p className="locaryn-view-desc">
+                    Le catalogue complet. Chaque famille regroupe ses tailles, et chaque taille ses
+                    quantifications.
+                  </p>
+                </div>
+                <ModelBrowser
+                  onInstall={handleInstallModel}
+                  onCancelInstall={handleCancelDownload}
+                  onDelete={handleDeleteModel}
+                  installed={installedModels}
+                  activeCapabilities={activeCapabilities}
+                  activeExtensions={activeExtensions}
+                  onOpenTraining={() => setActiveView("training")}
+                  onSelectModelForChat={async (tag) => {
+                    try {
+                      const providers = await core.listProviders();
+                      const active = providers.find((p) => p.is_active) ?? providers[0];
+                      if (active) await core.configureProvider(active.endpoint, tag);
+                    } catch (e) {
+                      console.warn("configureProvider failed, navigating anyway:", e);
+                    }
+                    setActiveView("chat");
+                    refreshHealth();
+                  }}
+                  onLaunchAirllm={async (repo) => {
+                    try {
+                      await core.configureAirllmProvider(repo);
+                    } catch (e) {
+                      console.warn("configureAirllmProvider failed, navigating anyway:", e);
+                    }
+                    setActiveView("chat");
+                    refreshHealth();
+                  }}
+                />
+              </div>
+            )}
+
+            {activeView === "extensions" && (
+              <div className="locaryn-view-container">
+                <ExtensionsSettings />
+              </div>
+            )}
+
+            {activeView === "installed" && (
+              <InstalledModelsView
+                installedModels={installedModels}
+                onSelectModelForChat={async (modelTag) => {
+                  try {
+                    const providers = await core.listProviders();
+                    const active = providers.find((p) => p.is_active) ?? providers[0];
+                    if (active) await core.configureProvider(active.endpoint, modelTag);
+                  } catch (e) {
+                    console.warn("configureProvider failed:", e);
+                  }
+                  setActiveView("chat");
+                  refreshHealth();
+                }}
+                onDeleteModel={handleDeleteModel}
+                onOpenMarketplace={() => setActiveView("models")}
+                extensions={activeExtensions}
+              />
+            )}
+
+            {activeView === "batch" && <BatchStudio />}
+
+            {activeView === "figures" && (
+              <FiguresView
+                onOpenSession={(sess) => {
+                  handleSelectSession(sess);
+                  setActiveView("chat");
+                }}
+                onNewWithFigure={async (f) => {
+                  // Une conversation neuve, confiée à la figure : ses consignes
+                  // partent avec le premier message, sans que personne ait à les
+                  // recopier.
+                  try {
+                    const project = freeProject ?? (await core.freeChatProject());
+                    if (!freeProject) setFreeProject(project);
+                    const sess = await core.createSession(project.id);
+                    await core.attachFigure(sess.id, f.id);
+                    setStandaloneSessions((prev) => [sess, ...prev]);
+                    setActiveProject(null);
+                    setActiveSession(sess);
+                    setActiveView("chat");
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
+              />
+            )}
+
+            {activeView === "studio" && (
+              <StudioView
+                installedModels={installedModels}
+                extensions={activeExtensions}
+                onCloseAudioGen={() => setActiveView("chat")}
+              />
+            )}
+
+            {/* Plus dans le menu : on y arrive depuis le catalogue de modèles,
+            sur lequel ce studio agit. */}
+            {activeView === "training" && (
+              <ModelStudioView
+                onOpenMarketplace={() => setActiveView("models")}
+                onOpenSettings={() => setActiveView("settings")}
+              />
+            )}
+
+            {/* Un écran déclaré par une extension : l'application ne connaît pas
+            son nom, elle sait seulement qu'une extension le revendique. */}
+            <ExtensionScreen view={activeView} extensions={activeExtensions} />
+
+            {activeView === "connectors" && (
+              <div className="locaryn-view-container">
+                <ConnectorsSettings />
+              </div>
+            )}
+
+            {activeView === "account" && (
+              <SettingsView
+                theme={theme}
+                projects={projects}
+                sessionsByProject={sessionsByProject}
+                standaloneSessions={standaloneSessions}
+                activeCapabilities={activeCapabilities}
+                initialSection="account"
+                onOpenSession={(session) => {
+                  void handleSelectSession(session);
+                  setActiveView("chat");
+                }}
+                onOpenMarketplace={() => setActiveView("models")}
+                onProjectArchived={(p) => {
+                  setProjects((prev) => prev.filter((x) => x.id !== p.id));
+                  setSessionsByProject((prev) => {
+                    const next = { ...prev };
+                    delete next[p.id];
+                    return next;
+                  });
+                }}
+              />
+            )}
+
+            {activeView === "settings" && (
+              <SettingsView
+                theme={theme}
+                projects={projects}
+                sessionsByProject={sessionsByProject}
+                standaloneSessions={standaloneSessions}
+                activeCapabilities={activeCapabilities}
+                initialSection={settingsInitialSection}
+                onOpenSession={(session) => {
+                  void handleSelectSession(session);
+                  setActiveView("chat");
+                }}
+                onOpenMarketplace={() => setActiveView("models")}
+                onProjectArchived={(p) => {
+                  setProjects((prev) => prev.filter((x) => x.id !== p.id));
+                  setSessionsByProject((prev) => {
+                    const next = { ...prev };
+                    delete next[p.id];
+                    return next;
+                  });
+                  if (activeProject?.id === p.id) {
+                    setActiveProject(null);
+                    setSessions([]);
+                    setActiveSession(null);
+                  }
+                }}
+              />
+            )}
+          </main>
+        )}
+
+        {/* La fenetre de mise a jour vit au-dessus de tout : elle ne s'affiche
+          que lorsqu'il y a quelque chose a dire, et ce qu'elle dit vaut pour
+          l'application entiere. */}
         <UpdateDialog />
 
-        {/* Les ecrans autres que le chat s'ouvrent par-dessus lui, pas a sa
-            place.
-            Les faire cohabiter dans le meme espace obligeait le rail de gauche
-            a changer de contenu selon l'ecran — et donc de tete. En surcouche,
-            le chat et son historique restent montes dessous, le rail ne bouge
-            jamais, et l'ecran ouvert dispose de toute la fenetre.
-            Porte dans `document.body` : `.locaryn-app` porte un transform
-            d'entree, qui ferait d'elle le bloc conteneur de tout
-            `position: fixed` descendant. */}
-        {activeView !== "chat" &&
-          createPortal(
-            <div className="locaryn-overlay">
-              <button
-                type="button"
-                className="locaryn-overlay-scrim"
-                aria-label="Fermer"
-                onClick={() => setActiveView("chat")}
-              />
-              <div
-                className="locaryn-overlay-panel"
-                role="dialog"
-                aria-modal="true"
-                aria-label={OVERLAY_LABELS[activeView] ?? "Panneau"}
-              >
-                <button
-                  type="button"
-                  className="locaryn-overlay-close"
-                  title="Fermer (Échap)"
-                  onClick={() => setActiveView("chat")}
-                >
-                  <Icon name="close" size={18} />
-                </button>
-                {activeView === "models" && (
-                  <div className="locaryn-view-container">
-                    <div className="locaryn-view-header">
-                      {/* Un titre est un nom, pas une parenthèse d'explication : la
-                  provenance et la liste des familles vivent dans le contenu,
-                  qui les montre déjà. */}
-                      <h2>Marketplace</h2>
-                      <p className="locaryn-view-desc">
-                        Le catalogue complet. Chaque famille regroupe ses tailles, et chaque taille
-                        ses quantifications.
-                      </p>
-                    </div>
-                    <ModelBrowser
-                      onInstall={handleInstallModel}
-                      onCancelInstall={handleCancelDownload}
-                      onDelete={handleDeleteModel}
-                      installed={installedModels}
-                      activeCapabilities={activeCapabilities}
-                      activeExtensions={activeExtensions}
-                      onOpenTraining={() => setActiveView("training")}
-                      onSelectModelForChat={async (tag) => {
-                        try {
-                          const providers = await core.listProviders();
-                          const active = providers.find((p) => p.is_active) ?? providers[0];
-                          if (active) await core.configureProvider(active.endpoint, tag);
-                        } catch (e) {
-                          console.warn("configureProvider failed, navigating anyway:", e);
-                        }
-                        setActiveView("chat");
-                        refreshHealth();
-                      }}
-                      onLaunchAirllm={async (repo) => {
-                        try {
-                          await core.configureAirllmProvider(repo);
-                        } catch (e) {
-                          console.warn("configureAirllmProvider failed, navigating anyway:", e);
-                        }
-                        setActiveView("chat");
-                        refreshHealth();
-                      }}
-                    />
-                  </div>
-                )}
-
-                {activeView === "installed" && (
-                  <InstalledModelsView
-                    installedModels={installedModels}
-                    onSelectModelForChat={async (modelTag) => {
-                      try {
-                        const providers = await core.listProviders();
-                        const active = providers.find((p) => p.is_active) ?? providers[0];
-                        if (active) await core.configureProvider(active.endpoint, modelTag);
-                      } catch (e) {
-                        console.warn("configureProvider failed:", e);
-                      }
-                      setActiveView("chat");
-                      refreshHealth();
-                    }}
-                    onDeleteModel={handleDeleteModel}
-                    onOpenMarketplace={() => setActiveView("models")}
-                    extensions={activeExtensions}
-                  />
-                )}
-
-                {activeView === "batch" && <BatchStudio />}
-
-                {activeView === "figures" && (
-                  <FiguresView
-                    onOpenSession={(sess) => {
-                      handleSelectSession(sess);
-                      setActiveView("chat");
-                    }}
-                    onNewWithFigure={async (f) => {
-                      // Une conversation neuve, confiée à la figure : ses consignes
-                      // partent avec le premier message, sans que personne ait à les
-                      // recopier.
-                      try {
-                        const project = freeProject ?? (await core.freeChatProject());
-                        if (!freeProject) setFreeProject(project);
-                        const sess = await core.createSession(project.id);
-                        await core.attachFigure(sess.id, f.id);
-                        setStandaloneSessions((prev) => [sess, ...prev]);
-                        setActiveProject(null);
-                        setActiveSession(sess);
-                        setActiveView("chat");
-                      } catch (e) {
-                        console.error(e);
-                      }
-                    }}
-                  />
-                )}
-
-                {activeView === "studio" && (
-                  <StudioView
-                    installedModels={installedModels}
-                    extensions={activeExtensions}
-                    onCloseAudioGen={() => setActiveView("chat")}
-                  />
-                )}
-
-                {/* Plus dans le menu : on y arrive depuis le catalogue de modèles,
-            sur lequel ce studio agit. */}
-                {activeView === "training" && (
-                  <ModelStudioView
-                    onOpenMarketplace={() => setActiveView("models")}
-                    onOpenSettings={() => setActiveView("settings")}
-                  />
-                )}
-
-                {/* Un écran déclaré par une extension : l'application ne connaît pas
-            son nom, elle sait seulement qu'une extension le revendique. */}
-                <ExtensionScreen view={activeView} extensions={activeExtensions} />
-
-                {activeView === "extensions" && (
-                  <div className="locaryn-view-container">
-                    <ExtensionsSettings />
-                  </div>
-                )}
-
-                {activeView === "connectors" && (
-                  <div className="locaryn-view-container">
-                    <ConnectorsSettings />
-                  </div>
-                )}
-
-                {activeView === "account" && (
-                  <SettingsView
-                    theme={theme}
-                    projects={projects}
-                    sessionsByProject={sessionsByProject}
-                    standaloneSessions={standaloneSessions}
-                    activeCapabilities={activeCapabilities}
-                    initialSection="account"
-                    onOpenSession={(session) => {
-                      void handleSelectSession(session);
-                      setActiveView("chat");
-                    }}
-                    onOpenMarketplace={() => setActiveView("models")}
-                    onProjectArchived={(p) => {
-                      setProjects((prev) => prev.filter((x) => x.id !== p.id));
-                      setSessionsByProject((prev) => {
-                        const next = { ...prev };
-                        delete next[p.id];
-                        return next;
-                      });
-                    }}
-                  />
-                )}
-
-                {activeView === "settings" && (
-                  <SettingsView
-                    theme={theme}
-                    projects={projects}
-                    sessionsByProject={sessionsByProject}
-                    standaloneSessions={standaloneSessions}
-                    activeCapabilities={activeCapabilities}
-                    initialSection={settingsInitialSection}
-                    onOpenSession={(session) => {
-                      void handleSelectSession(session);
-                      setActiveView("chat");
-                    }}
-                    onOpenMarketplace={() => setActiveView("models")}
-                    onProjectArchived={(p) => {
-                      setProjects((prev) => prev.filter((x) => x.id !== p.id));
-                      setSessionsByProject((prev) => {
-                        const next = { ...prev };
-                        delete next[p.id];
-                        return next;
-                      });
-                      if (activeProject?.id === p.id) {
-                        setActiveProject(null);
-                        setSessions([]);
-                        setActiveSession(null);
-                      }
-                    }}
-                  />
-                )}
-              </div>
-            </div>,
-            document.body,
-          )}
-
-        {/* Right side panels for Chat view */}
-        {showModelConfig && (
+        {/* Right side panels for Chat view — ils appartiennent au chat, pas aux
+            pages qui prennent sa place. */}
+        {showModelConfig && activeView === "chat" && (
           <>
             <div
               className="locaryn-resizer locaryn-resizer-v"
@@ -1459,7 +1438,7 @@ export function App() {
           </>
         )}
 
-        {showPreview && (
+        {showPreview && activeView === "chat" && (
           <>
             <div
               className="locaryn-resizer locaryn-resizer-v"
