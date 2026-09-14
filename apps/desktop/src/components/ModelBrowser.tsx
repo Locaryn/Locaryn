@@ -866,7 +866,18 @@ export function ModelBrowser({
     if (yearFilter !== "all" && !years.includes(Number(yearFilter))) setYearFilter("all");
   }, [yearFilter, years]);
 
-  const families = useMemo(() => {
+  /**
+   * La liste filtrée, sans le tri.
+   *
+   * Le tri consulte les estimations de compatibilité (`fits`), et l'effet qui
+   * les calcule part de cette liste. Tant que filtrage et tri vivaient dans un
+   * seul useMemo, chaque estimation reconstruisait le tableau trié, l'effet
+   * repartait, et React coupait sur « Maximum update depth exceeded » dès que
+   * les pastilles se mettaient à jour. Le filtrage ignore `sortBy` et `fits` :
+   * l'effet d'estimation ne se réveille plus que sur un vrai changement de
+   * catalogue ou de filtres.
+   */
+  const filteredFamilies = useMemo(() => {
     const q = query.trim().toLowerCase();
     const bucket = SIZE_BUCKETS.find((b) => b.id === size);
     const catalogSource = capabilityFamilies;
@@ -931,34 +942,13 @@ export function ModelBrowser({
           variants: matchingVariants,
         };
       })
-      .filter((f): f is ModelFamily => f !== null)
-      .sort((a, b) => {
-        if (sortBy === "compat") {
-          // Compatible-first: models that run on this PC float to the top,
-          // then newest within the same compatibility tier. With AirLLM on,
-          // heavy models convert to AirLLM execution and move up.
-          const ra =
-            COMPAT_RANK[familyBestCompat(a.variants, hardwareSpec, airllmEnabled, fits).level];
-          const rb =
-            COMPAT_RANK[familyBestCompat(b.variants, hardwareSpec, airllmEnabled, fits).level];
-          if (ra !== rb) return ra - rb;
-          return b.releaseDate.localeCompare(a.releaseDate);
-        }
-        if (sortBy === "pulls") {
-          return (b.pulls || 0) - (a.pulls || 0);
-        }
-        if (sortBy === "newest") {
-          return b.releaseDate.localeCompare(a.releaseDate);
-        }
-        return a.name.localeCompare(b.name);
-      });
+      .filter((f): f is ModelFamily => f !== null);
   }, [
     query,
     category,
     brand,
     size,
     yearFilter,
-    sortBy,
     onlyFinetunable,
     riskFilter,
     onlyRecommended,
@@ -966,8 +956,30 @@ export function ModelBrowser({
     visibleCategories,
     hardwareSpec,
     airllmEnabled,
-    fits,
   ]);
+
+  const families = useMemo(() => {
+    return [...filteredFamilies].sort((a, b) => {
+      if (sortBy === "compat") {
+        // Compatible-first: models that run on this PC float to the top,
+        // then newest within the same compatibility tier. With AirLLM on,
+        // heavy models convert to AirLLM execution and move up.
+        const ra =
+          COMPAT_RANK[familyBestCompat(a.variants, hardwareSpec, airllmEnabled, fits).level];
+        const rb =
+          COMPAT_RANK[familyBestCompat(b.variants, hardwareSpec, airllmEnabled, fits).level];
+        if (ra !== rb) return ra - rb;
+        return b.releaseDate.localeCompare(a.releaseDate);
+      }
+      if (sortBy === "pulls") {
+        return (b.pulls || 0) - (a.pulls || 0);
+      }
+      if (sortBy === "newest") {
+        return b.releaseDate.localeCompare(a.releaseDate);
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [filteredFamilies, sortBy, hardwareSpec, airllmEnabled, fits]);
 
   /**
    * Le catalogue s'affiche par lots, et non d'un seul coup.
@@ -1059,7 +1071,7 @@ export function ModelBrowser({
   useEffect(() => {
     let active = true;
     const entries = new Map<string, LlmfitCatalogEntry>();
-    for (const family of families) {
+    for (const family of filteredFamilies) {
       for (const variant of family.variants) {
         const quants = variant.quants.length > 0 ? variant.quants : ["q4_K_M"];
         for (const quant of quants) {
@@ -1107,7 +1119,7 @@ export function ModelBrowser({
       active = false;
       clearTimeout(timer);
     };
-  }, [families]);
+  }, [filteredFamilies]);
 
   // La grille paraît une fois, déjà dans son ordre. Les estimations ne
   // dépendent que de la machine : dès qu'une première passe est là, celles
