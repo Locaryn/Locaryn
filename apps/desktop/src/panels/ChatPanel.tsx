@@ -384,6 +384,15 @@ export function ChatPanel({
   const [reasoning, setReasoning] = useState<ReasoningLevel>("auto");
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
+  /**
+   * La conversation est en train d'être créée pour le premier message.
+   *
+   * Le bouton restait « Envoyer » pendant cette attente, et un nouvel appui
+   * relançait la même création : si elle tardait, rien ne bougeait, et le chat
+   * paraissait ne pas répondre du tout.
+   */
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [stopping, setStopping] = useState(false);
   const stopRequestedRef = useRef(false);
   /**
@@ -942,11 +951,43 @@ export function ChatPanel({
     // about to append optimistically for the brand-new session.
     let sid = sessionId;
     if (!sid) {
-      if (!onCreateSessionForPrompt) return;
-      const created = await onCreateSessionForPrompt(
-        text,
-        workspace.kind === "local" ? workspace.id : null,
-      );
+      if (!onCreateSessionForPrompt || creatingRef.current) return;
+      creatingRef.current = true;
+      setCreating(true);
+      let created: Awaited<ReturnType<typeof onCreateSessionForPrompt>> = null;
+      try {
+        // Une création qui ne répond pas ne doit pas laisser l'écran muet : au
+        // bout de ce délai, on dit ce qui se passe au lieu d'attendre en silence.
+        created = await Promise.race([
+          onCreateSessionForPrompt(text, workspace.kind === "local" ? workspace.id : null),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "le service n'a pas répondu en 20 secondes — un modèle est peut-être en cours de chargement",
+                  ),
+                ),
+              20_000,
+            ),
+          ),
+        ]);
+      } catch (e) {
+        const raison = String(e).replace(/^Error:\s*/, "");
+        console.warn("[Chat] création de la conversation impossible :", e);
+        setItems((prev) => [
+          ...prev,
+          {
+            id: nextId("log"),
+            kind: "log",
+            text: `La conversation n'a pas pu être créée, votre message n'est pas parti : ${raison}. Il est resté dans le champ.`,
+          },
+        ]);
+        return;
+      } finally {
+        creatingRef.current = false;
+        setCreating(false);
+      }
       if (!created) return;
       sid = created.id;
       skipLoadRef.current = created.id;
@@ -1435,7 +1476,7 @@ export function ChatPanel({
   const empty = items.length === 0 && !streaming;
   // On the home screen there is no session yet — sending creates one.
   const canCompose = !!sessionId || !!onCreateSessionForPrompt;
-  const canSend = canCompose && (!!input.trim() || attachments.length > 0);
+  const canSend = canCompose && !creating && (!!input.trim() || attachments.length > 0);
 
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -1919,7 +1960,7 @@ export function ChatPanel({
               disabled={!canSend}
               aria-label="Envoyer le message"
             >
-              {streaming ? "File +1 ↵" : "Envoyer ↵"}
+              {creating ? "Création…" : streaming ? "File +1 ↵" : "Envoyer ↵"}
             </button>
           </div>
 
