@@ -333,6 +333,8 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
       - name: Installer le NDK
         run: |
           sdkmanager --install "ndk;26.3.11579264" "platform-tools" "platforms;android-34"
