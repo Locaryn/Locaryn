@@ -811,7 +811,7 @@ impl SessionRepo {
         let id = Uuid::new_v4();
         let now = chrono::Utc::now().to_rfc3339();
         let row = sqlx::query_as::<_, SessionRow>(
-            "INSERT INTO sessions (id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral, core_id) \
+            "INSERT INTO sessions (id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral, core_id, trust_override) \
              VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, ?, ?, NULL) \
              RETURNING id, project_id, title, provider_id, model, created_at, last_message_at, closed_at, archived_at, ephemeral, core_id, trust_override",
         )

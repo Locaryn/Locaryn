@@ -146,6 +146,7 @@ struct SupervisorInner {
     states: Mutex<HashMap<ProviderEngine, EngineState>>,
     storage: Storage,
     http: reqwest::Client,
+    spawn_lock: Mutex<()>,
     /// Moteurs apportés par les extensions installées, par identifiant.
     ///
     /// L'hôte remplit ce registre depuis le registre d'extensions et le
@@ -168,6 +169,7 @@ impl Supervisor {
                 states: Mutex::new(HashMap::new()),
                 storage,
                 http,
+                spawn_lock: Mutex::new(()),
                 extension_engines: Mutex::new(HashMap::new()),
             }),
         }
@@ -257,6 +259,7 @@ impl Supervisor {
     ///
     /// Returns the endpoint URL on success.
     pub async fn ensure_running(&self, engine: &ProviderEngine) -> Result<String, SupervisorError> {
+        let _spawn_guard = self.inner.spawn_lock.lock().await;
         let spec = self.extension_engine_spec(engine).await;
         let endpoint = match &spec {
             Some(s) => s.endpoint(),

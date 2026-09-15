@@ -634,7 +634,7 @@ export function ChatPanel({
       return;
     }
     setFollowups([]);
-    if (skipLoadRef.current === sessionId) {
+    if (creatingRef.current || skipLoadRef.current === sessionId) {
       skipLoadRef.current = null;
       return;
     }
