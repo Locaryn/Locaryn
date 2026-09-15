@@ -1680,6 +1680,9 @@ export interface CoreApi {
   installClientCertificate(source: string, authority?: string): Promise<CertificateStatus>;
   removeClientCertificate(): Promise<CertificateStatus>;
 
+  /** Install a certificate fetched over HTTPS (deep link `locaryn://connect`). */
+  installClientCertificateFromUrl(certUrl: string, caUrl?: string): Promise<CertificateStatus>;
+
   storageInfo(): Promise<StorageInfo>;
   /** Point Locaryn at `newRoot`, optionally relocating the existing data.
    *  Progress arrives on the `storage-migration` event. */
@@ -2134,6 +2137,11 @@ const tauriCore: CoreApi = {
     invoke<CertificateStatus>("install_client_certificate", {
       source,
       authority: authority ?? null,
+    }),
+  installClientCertificateFromUrl: (certUrl, caUrl) =>
+    invoke<CertificateStatus>("install_client_certificate_from_url", {
+      certUrl,
+      caUrl: caUrl ?? null,
     }),
   removeClientCertificate: () => invoke<CertificateStatus>("remove_client_certificate"),
 
@@ -4646,6 +4654,12 @@ const demoCore: CoreApi = {
   }),
   currentSession: async () => null,
   signOut: async () => {},
+  installClientCertificateFromUrl: async () => ({
+    installed: true,
+    issued_to: "demo",
+    path: null,
+    authority_installed: false,
+  }),
 
   clientCertificateStatus: async () => ({
     installed: false,

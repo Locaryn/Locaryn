@@ -17,7 +17,7 @@ import {
   PERMISSION_LABELS,
   core,
 } from "../lib/core";
-import { consumePendingInstall, subscribeDeepLink } from "../lib/deepLink";
+import { consumePendingInstall, getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { pickAnyFile } from "../lib/dialog";
 import { ExtensionConfigPanel } from "./ExtensionConfigPanel";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
@@ -273,14 +273,16 @@ export function ExtensionsSettings() {
   // montage (le panneau peut arriver après le lien) puis à chaque événement.
   useEffect(() => {
     const openFromLink = () => {
-      const intent = consumePendingInstall();
-      if (intent) {
-        setInstallDialog({
-          open: true,
-          kind: "extension",
-          initialSource: intent.source,
-        });
-      }
+      // Un intent `connect` ne nous concerne pas : il reste dans le store
+      // pour la modale de consentement, montée à la racine.
+      const intent = getPendingInstall();
+      if (intent?.action !== "install") return;
+      consumePendingInstall();
+      setInstallDialog({
+        open: true,
+        kind: "extension",
+        initialSource: intent.source,
+      });
     };
     openFromLink();
     return subscribeDeepLink(openFromLink);

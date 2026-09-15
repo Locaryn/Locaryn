@@ -6648,6 +6648,7 @@ pub fn run() {
             client_cert::current_session,
             client_cert::sign_out,
             client_cert::install_client_certificate,
+            client_cert::install_client_certificate_from_url,
             client_cert::remove_client_certificate,
             client_cert::announce_pairing,
             client_cert::confirm_pairing,
