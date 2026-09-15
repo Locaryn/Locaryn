@@ -381,6 +381,11 @@ pub async fn sign_in(
         .map_err(|e| format!("dossier de données : {e}"))?;
     std::fs::write(token_path(), json).map_err(|e| format!("écriture du jeton : {e}"))?;
     restrict(&token_path());
+    // L'historique se souvient de l'hôte pour la prochaine bascule (échec
+    // ignoré : l'historique ne doit jamais empêcher de se connecter). Aucun
+    // mot de passe ici — il ne l'est que sur choix explicite, via
+    // server_history::set_saved_password.
+    let _ = super::server_history::record(&session.server_url, &session.username, false);
     Ok(session)
 }
 
@@ -543,5 +548,10 @@ pub async fn confirm_pairing(
         .map_err(|e| format!("dossier de données : {e}"))?;
     std::fs::write(token_path(), json).map_err(|e| format!("écriture du jeton : {e}"))?;
     restrict(&token_path());
+    // L'historique se souvient de l'hôte pour la prochaine bascule (échec
+    // ignoré : l'historique ne doit jamais empêcher de se connecter). Aucun
+    // mot de passe ici — il ne l'est que sur choix explicite, via
+    // server_history::set_saved_password.
+    let _ = super::server_history::record(&session.server_url, &session.username, false);
     Ok(session)
 }

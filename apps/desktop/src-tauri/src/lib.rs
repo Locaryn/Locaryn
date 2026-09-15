@@ -25,6 +25,7 @@ mod model_residency;
 mod notifications;
 mod project_context;
 mod secure_client;
+mod server_history;
 mod server_mode;
 mod storage_root;
 mod travel_mode;
@@ -6650,6 +6651,10 @@ pub fn run() {
             client_cert::install_client_certificate,
             client_cert::install_client_certificate_from_url,
             client_cert::remove_client_certificate,
+            server_history::list_servers,
+            server_history::forget_server,
+            server_history::get_saved_password,
+            server_history::set_saved_password,
             client_cert::announce_pairing,
             client_cert::confirm_pairing,
             server_mode::server_status,
