@@ -68,13 +68,23 @@
 }
 
 /* ── 1 bis. Progression ondulée indéterminée ────────────────
-   Durée inconnue : au lieu d'une part accomplie qui grandit, une fenêtre
-   d'onde balaie le rail. Appairage, analyse de dossier, indexation RAG —
-   tout ce qui travaille sans savoir combien de temps. Une barre qui
-   prétendrait un pourcentage mentirait. */
+   Durée inconnue : au lieu d'une part accomplie qui grandit, un faisceau
+   lumineux balaie l'onde continue. Les deux tracés (rail et surbrillance)
+   restent parfaitement alignés et synchrones ; seul le masque d'illumination
+   se déplace le long du rail. */
 .lo-progress-sweep .lo-progress-done {
-  width: 38%;
-  left: -38%;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 1) 25%, rgba(0, 0, 0, 1) 75%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 1) 25%, rgba(0, 0, 0, 1) 75%, transparent 100%);
+  -webkit-mask-size: 35% 100%;
+  mask-size: 35% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
   animation: lo-wave-sweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   transition: none;
 }

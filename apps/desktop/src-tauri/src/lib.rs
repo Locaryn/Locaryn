@@ -1851,11 +1851,21 @@ async fn send_message(
     let mut panne_du_moteur: Option<String> = None;
     if let Some(ref p) = active_provider {
         if moteur_supervise(&p.engine) {
-            match core.supervisor.ensure_running(&p.engine).await {
-                Ok(_) => core.supervisor.note_activity(&p.engine).await,
-                Err(e) => {
-                    tracing::warn!(error = %e, "supervisor could not ensure runtime running");
-                    panne_du_moteur = Some(e.to_string());
+            tokio::select! {
+                res = core.supervisor.ensure_running(&p.engine) => {
+                    match res {
+                        Ok(_) => core.supervisor.note_activity(&p.engine).await,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "supervisor could not ensure runtime running");
+                            panne_du_moteur = Some(e.to_string());
+                        }
+                    }
+                }
+                _ = cancel.cancelled() => {
+                    tracing::info!("chargement du modèle annulé par l'utilisateur");
+                    core.supervisor.kill_owned(&p.engine).await;
+                    core.chat_cancels.lock().await.remove(&session_id);
+                    return Ok(());
                 }
             }
         }

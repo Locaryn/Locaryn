@@ -312,13 +312,15 @@
     box-shadow: 0 0 0 7px rgba(var(--accent-rgb), 0);
   }
 }
-/* Le balayage de l'onde indéterminée : la fenêtre traverse le rail. */
+/* Le balayage de l'onde indéterminée : le masque lumineux traverse le rail sans jamais décaler les sinusoïdes. */
 @keyframes lo-wave-sweep {
   0% {
-    left: -38%;
+    -webkit-mask-position: -50% 0;
+    mask-position: -50% 0;
   }
   100% {
-    left: 100%;
+    -webkit-mask-position: 150% 0;
+    mask-position: 150% 0;
   }
 }
 /* Onde courte : le ruban s'efface juste avant de repartir au rail. */

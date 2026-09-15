@@ -79,6 +79,8 @@ pub enum SupervisorError {
     NotRunning(ProviderEngine),
     #[error("le moteur {0:?} n'a pas démarré en {1:?}")]
     StartupTimeout(ProviderEngine, Duration),
+    #[error("le processus du moteur {0:?} s'est arrêté prématurément : {1}")]
+    ProcessExited(ProviderEngine, String),
     #[error("démarrage impossible ({0:?}) : {1}")]
     SpawnFailed(ProviderEngine, String),
     #[error("exécutable introuvable : {0}")]
@@ -389,6 +391,56 @@ impl Supervisor {
                 tracing::info!(%endpoint, moteur = %engine.as_token(), "moteur en marche");
                 return Ok(endpoint);
             }
+
+            // Détecter un arrêt immédiat du processus (ex: modèle corrompu ou arguments invalides)
+            {
+                let mut states = self.inner.states.lock().await;
+                if let Some(state) = states.get_mut(engine) {
+                    if let Some(ref mut child) = state.child {
+                        match child.try_wait() {
+                            Ok(Some(status)) => {
+                                tracing::warn!(?engine, %status, "le processus du moteur s'est arrêté prématurément");
+                                drop(states);
+                                self.kill_owned(engine).await;
+                                let _ = self
+                                    .inner
+                                    .storage
+                                    .providers
+                                    .set_status_by_engine(engine, ProviderStatus::Unhealthy)
+                                    .await;
+
+                                // Tenter d'extraire la cause exacte depuis le fichier journal
+                                let log_detail = if matches!(engine, ProviderEngine::LlamaCpp) {
+                                    let log_path = locaryn_config::default_data_dir().join("llama-server.log");
+                                    std::fs::read_to_string(&log_path)
+                                        .ok()
+                                        .and_then(|content| {
+                                            content
+                                                .lines()
+                                                .rev()
+                                                .find(|l| l.contains("error") || l.contains("failed") || l.contains("ERROR"))
+                                                .map(|l| l.trim().to_string())
+                                        })
+                                } else {
+                                    None
+                                };
+
+                                let msg = match log_detail {
+                                    Some(detail) => format!("{status} ({detail})"),
+                                    None => status.to_string(),
+                                };
+
+                                return Err(SupervisorError::ProcessExited(engine.clone(), msg));
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                tracing::debug!(?engine, error = %e, "impossible de vérifier l'état du processus");
+                            }
+                        }
+                    }
+                }
+            }
+
             if Instant::now() >= deadline {
                 // Clean up the dead child.
                 self.kill_owned(engine).await;
@@ -403,7 +455,7 @@ impl Supervisor {
                     startup_budget,
                 ));
             }
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
     }
 
