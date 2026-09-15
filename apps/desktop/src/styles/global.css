@@ -213,6 +213,9 @@ body.locaryn-resizing .locaryn-resizer::after {
 .locaryn-health-ok {
   background: var(--accent);
 }
+.locaryn-health-warn {
+  background: var(--warn);
+}
 .locaryn-health-off {
   background: var(--text-faint);
 }
