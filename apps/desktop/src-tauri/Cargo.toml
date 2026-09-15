@@ -64,3 +64,4 @@ url = "2"
 base64 = "0.22"
 # Disk capacity reporting for the storage settings (free space per volume).
 sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
+tauri-plugin-single-instance = "2"

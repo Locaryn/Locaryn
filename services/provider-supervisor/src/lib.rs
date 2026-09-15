@@ -713,7 +713,7 @@ impl Supervisor {
 
     /// Kill a spawned child process (owned only). Removes the entry from the
     /// state map.
-    async fn kill_owned(&self, engine: &ProviderEngine) {
+    pub async fn kill_owned(&self, engine: &ProviderEngine) {
         let mut states = self.inner.states.lock().await;
         if let Some(mut state) = states.remove(engine) {
             if state.owned {
