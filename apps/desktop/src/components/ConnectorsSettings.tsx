@@ -1,9 +1,12 @@
 import { Icon, isIconName } from "@locaryn/ui-core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ConnectorType, type McpServerInfo, core } from "../lib/core";
 import { ModalShell } from "./ModalShell";
 
 type ConnectorFilter = "all" | "connection" | "mcp";
+
+/** L'entrée « personnalisé » du service : décrite en phrase, jamais en carte. */
+const MCP_CUSTOM_TYPE = "mcp_custom";
 
 function isMcpType(type: ConnectorType): boolean {
   return type.category === "extension" || type.type_id.startsWith("mcp");
@@ -23,6 +26,8 @@ export function ConnectorsSettings() {
   const [mcpName, setMcpName] = useState("");
   const [mcpType, setMcpType] = useState<"stdio" | "http">("stdio");
   const [mcpCommand, setMcpCommand] = useState("");
+  const [mcpEnv, setMcpEnv] = useState("");
+  const [mcpEnvError, setMcpEnvError] = useState<string | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [mcpBusy, setMcpBusy] = useState<string | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
@@ -46,11 +51,37 @@ export function ConnectorsSettings() {
   async function saveCustomMcp() {
     const name = mcpName.trim();
     const target = mcpCommand.trim();
-    if (!name || !target) return;
+    if (!name || !target || nomErreur) return;
+    // Le JSON est validé ici, avant d'aller chez Rust : le message exact reste
+    // affiché dans la modale, au bon endroit, et rien ne s'enregistre à moitié.
+    let env: Record<string, string> = {};
+    const rawEnv = mcpEnv.trim();
+    if (rawEnv) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawEnv);
+      } catch {
+        setMcpEnvError('JSON invalide — attendu un objet, ex. { "API_KEY": "…" }');
+        return;
+      }
+      const entries = Object.entries(parsed ?? {});
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed) ||
+        !entries.every(([, v]) => typeof v === "string")
+      ) {
+        setMcpEnvError("JSON invalide — attendu un objet dont les valeurs sont des chaînes.");
+        return;
+      }
+      env = Object.fromEntries(entries);
+    }
     setMcpBusy("__add__");
     setMcpError(null);
     try {
-      setMcpServers(await core.addMcpServer({ name, transport: mcpType, target, autoStart: true }));
+      setMcpServers(
+        await core.addMcpServer({ name, transport: mcpType, target, env, autoStart: true }),
+      );
       try {
         await core.startMcpServer(name);
       } catch (e) {
@@ -60,6 +91,7 @@ export function ConnectorsSettings() {
       setMcpFormOpen(false);
       setMcpName("");
       setMcpCommand("");
+      setMcpEnv("");
       setTab("installed");
     } catch (e) {
       setMcpError(String(e));
@@ -97,12 +129,29 @@ export function ConnectorsSettings() {
     }
   }
 
-  const connectorTypes = types.filter((t) => t.category === "connector" || isMcpType(t));
+  // La carte « Serveur MCP Personnalisé » n'a pas sa place dans la grille :
+  // le bouton d'ajout au-dessus ouvre déjà la même modale, et une carte qui
+  // répète ce bouton faisait croire à deux façons d'ajouter. Son texte reste,
+  // en phrase sous le bouton — une explication, pas un second appel à l'action.
+  const customType = useMemo(() => types.find((t) => t.type_id === MCP_CUSTOM_TYPE), [types]);
+  const connectorTypes = types.filter(
+    (t) => t.type_id !== MCP_CUSTOM_TYPE && (t.category === "connector" || isMcpType(t)),
+  );
   const filteredTypes = connectorTypes.filter((t) => {
     if (categoryFilter === "all") return true;
     return categoryFilter === "mcp" ? isMcpType(t) : !isMcpType(t);
   });
   const activeCount = mcpServers.length;
+
+  // Le nom devient un segment des noms d'outils que voit le modèle
+  // (`mcp__<nom>__<outil>`) : la même règle que Rust, dite à la frappe
+  // plutôt qu'à l'enregistrement — un champ vide n'est pas une erreur,
+  // c'est juste un formulaire pas encore rempli.
+  const nomPropre = mcpName.trim();
+  const nomErreur =
+    nomPropre && !/^[A-Za-z0-9_-]+$/.test(nomPropre)
+      ? "Le nom ne peut contenir que des lettres, des chiffres, « - » et « _ »."
+      : null;
 
   return (
     <div className="locaryn-conn-settings">
@@ -186,12 +235,19 @@ export function ConnectorsSettings() {
               className="locaryn-btn-primary"
               onClick={() => {
                 setMcpError(null);
+                setMcpEnvError(null);
                 setMcpFormOpen(true);
               }}
             >
               + Ajouter un serveur MCP personnalisé…
             </button>
           </div>
+
+          {customType && (
+            <p className="locaryn-field-hint" style={{ margin: "-4px 0 16px", maxWidth: "720px" }}>
+              <strong>{customType.display_name}</strong> — {customType.summary}
+            </p>
+          )}
 
           <div className="locaryn-model-grid">
             {filteredTypes.map((t) => {
@@ -221,32 +277,23 @@ export function ConnectorsSettings() {
                     </code>
                   )}
 
-                  <div
-                    style={{
-                      marginTop: "auto",
-                      paddingTop: "12px",
-                      borderTop: "1px solid var(--border)",
-                      display: "flex",
-                      justifyContent: "flex-end",
-                    }}
-                  >
-                    {isMcp ? (
-                      <button
-                        type="button"
-                        className="locaryn-btn-primary"
-                        onClick={() => {
-                          setMcpError(null);
-                          setMcpFormOpen(true);
-                        }}
-                      >
-                        + Configurer un serveur MCP
-                      </button>
-                    ) : (
+                  {/* Une carte MCP n'a plus d'action : l'ajout passe par le
+                      bouton du haut, une seule porte vers la modale. */}
+                  {!isMcp && (
+                    <div
+                      style={{
+                        marginTop: "auto",
+                        paddingTop: "12px",
+                        borderTop: "1px solid var(--border)",
+                        display: "flex",
+                        justifyContent: "flex-end",
+                      }}
+                    >
                       <button type="button" className="locaryn-btn-ghost" disabled>
                         Bientôt disponible
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -277,6 +324,7 @@ export function ConnectorsSettings() {
                   className="locaryn-btn-ghost"
                   onClick={() => {
                     setMcpError(null);
+                    setMcpEnvError(null);
                     setMcpFormOpen(true);
                   }}
                 >
@@ -304,6 +352,13 @@ export function ConnectorsSettings() {
                     </div>
                   </div>
                   <code className="locaryn-connector-cmd">{m.target}</code>
+                  {m.env && Object.keys(m.env).length > 0 && (
+                    <code className="locaryn-connector-cmd" title="Variables d'environnement">
+                      {Object.entries(m.env)
+                        .map(([k, v]) => `${k}=${v}`)
+                        .join("  ")}
+                    </code>
+                  )}
                   <p className="locaryn-box-desc">
                     {m.running
                       ? m.tools.length > 0
@@ -369,10 +424,16 @@ export function ConnectorsSettings() {
               value={mcpName}
               onChange={(e) => setMcpName(e.target.value)}
             />
-            <p className="locaryn-field-hint">
-              Ce nom préfixe les outils vus par le modèle : lettres, chiffres, « - » et « _ »
-              uniquement.
-            </p>
+            {nomErreur ? (
+              <p className="locaryn-field-hint" style={{ color: "var(--danger)" }}>
+                {nomErreur}
+              </p>
+            ) : (
+              <p className="locaryn-field-hint">
+                Ce nom préfixe les outils vus par le modèle : lettres, chiffres, « - » et « _ »
+                uniquement.
+              </p>
+            )}
           </div>
           <div className="locaryn-field">
             <label htmlFor="mcp-transport" className="locaryn-field-label">
@@ -403,6 +464,33 @@ export function ConnectorsSettings() {
               value={mcpCommand}
               onChange={(e) => setMcpCommand(e.target.value)}
             />
+          </div>
+          <div className="locaryn-field">
+            <label htmlFor="mcp-env" className="locaryn-field-label">
+              Variables d'environnement (JSON, optionnel)
+            </label>
+            <textarea
+              id="mcp-env"
+              className="locaryn-input"
+              rows={4}
+              style={{ resize: "vertical", fontFamily: "monospace" }}
+              placeholder={'{ "API_KEY": "votre-clé" }'}
+              value={mcpEnv}
+              onChange={(e) => {
+                setMcpEnv(e.target.value);
+                setMcpEnvError(null);
+              }}
+            />
+            {mcpEnvError ? (
+              <p className="locaryn-field-hint" style={{ color: "var(--danger)" }}>
+                {mcpEnvError}
+              </p>
+            ) : (
+              <p className="locaryn-field-hint">
+                Transmises au processus du serveur — c'est ici qu'une clé d'API se passe, pas dans
+                la commande.
+              </p>
+            )}
           </div>
           <div
             className="locaryn-field-actions"

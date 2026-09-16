@@ -28,6 +28,12 @@ pub struct McpServerInfo {
     pub target: String,
     pub running: bool,
     pub auto_start: bool,
+    /// Environment variables the server runs with. The settings screen shows
+    /// them back: a key typed once must stay checkable, not disappear.
+    /// Tolerant by default: an answer from the daemon that predates this
+    /// field must still deserialize.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
     /// Tools the server announced, once it has been started.
     pub tools: Vec<String>,
 }
@@ -130,6 +136,7 @@ pub async fn list_mcp_servers(core: State<'_, Core>) -> Result<Vec<McpServerInfo
             target: entry_target(&e),
             running: running.contains_key(&name),
             auto_start: e.auto_start,
+            env: e.env,
             tools,
             name,
         });
