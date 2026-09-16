@@ -45,6 +45,13 @@ pub struct SupervisorConfig {
     pub healthcheck_interval: Duration,
     /// Grace period while waiting for a freshly spawned runtime to become
     /// healthy before giving up.
+    ///
+    /// llama-server à froid, GPU pleinement déporté (`-ngl 999`) avec un
+    /// projecteur de vision, compile ses pipelines Vulkan et relit le modèle
+    /// depuis le disque avant de répondre — mesuré à plus de 60 s sur un
+    /// portable, alors que 60 s suffit largement une fois le cache chaud.
+    /// Verifie le 16/09/2026 contre un orphelin gemma-4-E2B + mmproj qui
+    /// avait declenche ce timeout au premier demarrage.
     pub startup_timeout: Duration,
     /// Shut down a spawned runtime after this many seconds with no agent
     /// activity (no `note_activity` calls).
@@ -61,7 +68,7 @@ impl Default for SupervisorConfig {
     fn default() -> Self {
         Self {
             healthcheck_interval: Duration::from_secs(15),
-            startup_timeout: Duration::from_secs(60),
+            startup_timeout: Duration::from_secs(180),
             idle_timeout: Duration::from_secs(30 * 60), // 30 min
             ollama_bin: None,
             airllm_python: None,
