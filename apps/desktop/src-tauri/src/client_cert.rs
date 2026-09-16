@@ -95,39 +95,121 @@ pub fn install_client_certificate(
         return Err(format!("Fichier introuvable : {}", src.display()));
     }
     let pem = std::fs::read_to_string(&src).map_err(|e| format!("lecture : {e}"))?;
+    let ca = authority
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|a| std::fs::read_to_string(a).ok());
+    register_client_certificate(&pem, ca.as_deref())
+}
 
+/// Optional Basic-auth credentials for a certificate download.
+///
+/// Le bundle client est un secret — le daemon ne le sert qu'à qui possède déjà
+/// un compte sur la machine. Un lien `locaryn://connect` porte (ou demande) ces
+/// identifiants : ils servent exactement ici, à télécharger le paquet, et
+/// nulle part ailleurs.
+#[derive(serde::Deserialize, Clone)]
+pub struct DownloadAuth {
+    pub user: String,
+    pub password: String,
+}
+
+/// Register a certificate downloaded from a URL the user has just accepted —
+/// the deep-link flow (`locaryn://connect?cert=…`) and the pairing QR code
+/// both hand the bundle over HTTPS instead of dropping a file on disk.
+///
+/// Same vetting as a file import: only https, and the bundle must carry a
+/// key — a certificate alone cannot authenticate anyone. `auth` est envoyé en
+/// Basic sur les deux téléchargements : le lien qui demande la connexion est
+/// celui qui la prouve déjà.
+#[tauri::command]
+pub async fn install_client_certificate_from_url(
+    cert_url: String,
+    ca_url: Option<String>,
+    auth: Option<DownloadAuth>,
+) -> Result<CertificateStatus, String> {
+    if !cert_url.starts_with("https://") {
+        return Err("Le certificat doit être téléchargé en HTTPS.".into());
+    }
+    let client = reqwest::Client::builder()
+        .user_agent("Locaryn-Desktop")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("client HTTP : {e}"))?;
+    let pem = client
+        .get(cert_url.trim())
+        .basic_auth_if(&auth)
+        .send()
+        .await
+        .map_err(|e| format!("téléchargement du certificat : {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("téléchargement du certificat : {e}"))?
+        .text()
+        .await
+        .map_err(|e| format!("lecture du certificat : {e}"))?;
+    let ca = match ca_url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        None => None,
+        Some(u) if !u.starts_with("https://") => {
+            return Err("Le certificat d'autorité doit être téléchargé en HTTPS.".into());
+        }
+        Some(u) => Some(
+            client
+                .get(u)
+                .basic_auth_if(&auth)
+                .send()
+                .await
+                .map_err(|e| format!("téléchargement de l'autorité : {e}"))?
+                .error_for_status()
+                .map_err(|e| format!("téléchargement de l'autorité : {e}"))?
+                .text()
+                .await
+                .map_err(|e| format!("lecture de l'autorité : {e}"))?,
+        ),
+    };
+    register_client_certificate(&pem, ca.as_deref())
+}
+
+/// Helper local : Basic seulement quand des identifiants ont été fournis —
+/// une autorité servie publiquement ne veut aucun en-tête de plus.
+trait BasicAuthOpt {
+    fn basic_auth_if(self, auth: &Option<DownloadAuth>) -> Self;
+}
+
+impl BasicAuthOpt for reqwest::RequestBuilder {
+    fn basic_auth_if(self, auth: &Option<DownloadAuth>) -> Self {
+        match auth {
+            Some(a) => self.basic_auth(&a.user, Some(&a.password)),
+            None => self,
+        }
+    }
+}
+
+/// The shared vetting-and-storing path: PEM bundle must carry a key, files are
+/// written inside the application's own directory and locked down.
+fn register_client_certificate(pem: &str, ca: Option<&str>) -> Result<CertificateStatus, String> {
     // Reject early and clearly. A certificate without its key cannot
     // authenticate anything, and the two files look alike to a non-specialist.
     if !pem.contains("BEGIN CERTIFICATE") {
         return Err(
-            "Ce fichier ne contient pas de certificat. Utilisez le fichier « .pem » \
-             fourni par votre administrateur."
+            "Ce fichier ne contient pas de certificat. Utilisez le fichier « .pem »              fourni par votre administrateur."
                 .into(),
         );
     }
     if !pem.contains("PRIVATE KEY") {
         return Err(
-            "Ce fichier contient un certificat mais pas sa clé privée : il ne peut pas \
-             servir à vous identifier. Demandez le fichier complet à votre administrateur."
+            "Ce fichier contient un certificat mais pas sa clé privée : il ne peut pas              servir à vous identifier. Demandez le fichier complet à votre administrateur."
                 .into(),
         );
     }
 
     std::fs::create_dir_all(cert_dir()).map_err(|e| format!("création du dossier : {e}"))?;
-    std::fs::write(cert_path(), &pem).map_err(|e| format!("copie : {e}"))?;
+    std::fs::write(cert_path(), pem).map_err(|e| format!("copie : {e}"))?;
     restrict(&cert_path());
 
-    if let Some(auth) = authority
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        let ap = Path::new(auth);
-        if ap.is_file() {
-            let ca = std::fs::read_to_string(ap).map_err(|e| format!("lecture autorité : {e}"))?;
-            if ca.contains("BEGIN CERTIFICATE") {
-                std::fs::write(ca_path(), ca).map_err(|e| format!("copie autorité : {e}"))?;
-            }
+    if let Some(ca) = ca.map(str::trim).filter(|s| !s.is_empty()) {
+        if ca.contains("BEGIN CERTIFICATE") {
+            std::fs::write(ca_path(), ca).map_err(|e| format!("copie autorité : {e}"))?;
         }
     }
 
@@ -142,7 +224,7 @@ pub fn remove_client_certificate() -> Result<CertificateStatus, String> {
     client_certificate_status()
 }
 
-fn restrict(path: &Path) {
+pub(crate) fn restrict(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -331,6 +413,11 @@ pub async fn sign_in(
         .map_err(|e| format!("dossier de données : {e}"))?;
     std::fs::write(token_path(), json).map_err(|e| format!("écriture du jeton : {e}"))?;
     restrict(&token_path());
+    // L'historique se souvient de l'hôte pour la prochaine bascule (échec
+    // ignoré : l'historique ne doit jamais empêcher de se connecter). Aucun
+    // mot de passe ici — il ne l'est que sur choix explicite, via
+    // server_history::set_saved_password.
+    let _ = super::server_history::record(&session.server_url, &session.username, false);
     Ok(session)
 }
 
@@ -493,5 +580,10 @@ pub async fn confirm_pairing(
         .map_err(|e| format!("dossier de données : {e}"))?;
     std::fs::write(token_path(), json).map_err(|e| format!("écriture du jeton : {e}"))?;
     restrict(&token_path());
+    // L'historique se souvient de l'hôte pour la prochaine bascule (échec
+    // ignoré : l'historique ne doit jamais empêcher de se connecter). Aucun
+    // mot de passe ici — il ne l'est que sur choix explicite, via
+    // server_history::set_saved_password.
+    let _ = super::server_history::record(&session.server_url, &session.username, false);
     Ok(session)
 }

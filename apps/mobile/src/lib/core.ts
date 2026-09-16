@@ -210,7 +210,7 @@ export const CATALOGUE: { repo: string; label: string; note: string }[] = [
     note: "Affiner un modèle",
   },
   { repo: "Locaryn/morph-ssh", label: "Machine distante (SSH)", note: "Exécuter ailleurs" },
-  { repo: "Locaryn/morph-travel-tunnel", label: "Mode voyage", note: "Joindre depuis dehors" },
+  { repo: "Locaryn/morph-remote", label: "Accès distant", note: "Joindre depuis dehors" },
 ];
 
 /** Les quatre groupes fixes de l'écran de mémoire. */

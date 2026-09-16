@@ -311,7 +311,7 @@ export function ExtensionInstallDialog({
                         {
                           icon: "cloud",
                           label: "Tunnel Remote",
-                          repo: "Locaryn/morph-travel-tunnel",
+                          repo: "Locaryn/morph-remote",
                         },
                         {
                           icon: "shield",
