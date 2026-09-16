@@ -913,6 +913,8 @@ export interface McpServerInfo {
   target: string;
   running: boolean;
   auto_start: boolean;
+  /** Variables d'environnement du processus — revérifiables après coup. */
+  env: Record<string, string>;
   /** Tools the server announced, once started. */
   tools: string[];
 }
