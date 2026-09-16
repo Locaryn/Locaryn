@@ -254,12 +254,23 @@
    d'une application. Les transitions ne portent que sur transform
    et opacity : le compositeur fait le travail, le téléphone tient.
    ═══════════════════════════════════════════════════════════ */
+/* Pilote un seul offset, sur un ancetre commun aux deux traces (rail et part
+   faite) : une transformation posee independamment sur chaque <svg> tournait
+   sur sa propre horloge, et les deux versions du meme dessin derivaient l'une
+   de l'autre au fil des cycles — la part faite semblait avancer avant le
+   rail. Une seule animation, lue par les deux via cette propriete
+   personnalisee, ne peut pas se desynchroniser d'elle-meme. */
+@property --lo-wave-x {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
 @keyframes lo-wave {
   from {
-    transform: translateX(0);
+    --lo-wave-x: 0px;
   }
   to {
-    transform: translateX(-24px);
+    --lo-wave-x: -24px;
   }
 }
 @keyframes lo-fade-up {
@@ -315,12 +326,12 @@
 /* Le balayage de l'onde indéterminée : le masque lumineux traverse le rail sans jamais décaler les sinusoïdes. */
 @keyframes lo-wave-sweep {
   0% {
-    -webkit-mask-position: -50% 0;
-    mask-position: -50% 0;
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0;
   }
   100% {
-    -webkit-mask-position: 150% 0;
-    mask-position: 150% 0;
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0;
   }
 }
 /* Onde courte : le ruban s'efface juste avant de repartir au rail. */

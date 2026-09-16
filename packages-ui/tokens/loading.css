@@ -28,6 +28,9 @@
      point — moitié absente à 0 %, entièrement disparu à 100 %, c'est-à-dire
      exactement au moment où l'on regarde s'il est arrivé au bout. */
   overflow: visible;
+  /* Un seul défilement pour les deux tracés — voir `--lo-wave-x` dans
+     tokens.css. Sur l'ancêtre commun, pas sur chaque svg séparément. */
+  animation: lo-wave 0.9s linear infinite;
 }
 .lo-progress-rail,
 .lo-progress-done {
@@ -45,7 +48,7 @@
 }
 .lo-progress svg {
   display: block;
-  animation: lo-wave 0.9s linear infinite;
+  transform: translateX(var(--lo-wave-x, 0px));
 }
 .lo-progress-head {
   position: absolute;
@@ -97,7 +100,9 @@
   mask-size: 35% 100%;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  animation: lo-wave-sweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  /* `alternate` : le faisceau va, puis revient — pas de retour instantané au
+     départ, qui se lisait comme une téléportation plutôt qu'un balayage. */
+  animation: lo-wave-sweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
   transition: none;
 }
 /* Pas de poignée : il n'y a pas de frontière entre fait et à faire. */
