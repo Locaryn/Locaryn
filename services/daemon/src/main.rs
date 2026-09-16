@@ -401,6 +401,11 @@ async fn main() -> anyhow::Result<()> {
         // le connaitre.
         .route("/v1/pairing/state", get(routes::pairing::state))
         .route("/v1/pairing/reject", post(routes::pairing::reject))
+        // Les pièces que le lien `locaryn://connect` peut référencer :
+        // l'autorité en clair (le QR la porte déjà), le paquet client sous
+        // Basic auth (un secret — c'est l'appairage lui-même).
+        .route("/v1/pairing/ca", get(routes::pairing::get_ca))
+        .route("/v1/pairing/cert", get(routes::pairing::get_client_cert))
         .route("/v1/auth/pair/announce", post(routes::pairing::announce))
         .route("/v1/auth/pair/confirm", post(routes::pairing::confirm))
         .route(

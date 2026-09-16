@@ -42,6 +42,13 @@ fn is_public(path: &str) -> bool {
         // l'ecran de l'hote. Un appareil qui s'appaire n'a pas encore de
         // jeton : exiger une authentification ici interdirait l'appairage.
         || path == "/v1/auth/pair/announce"
+        // Les téléchargements d'appairage. L'autorité est publique par
+        // construction ; le paquet client, lui, est un secret — mais il
+        // vérifie ses propres identifiants Basic dans son handler, et exiger
+        // un Bearer ici interdirait l'appairage d'un appareil qui n'a pas
+        // encore de jeton. Un 401 reste la réponse à toute Basic incorrecte.
+        || path == "/v1/pairing/ca"
+        || path == "/v1/pairing/cert"
         || path == "/"
         || path == "/index.html"
         || path == "/manifest.webmanifest"

@@ -476,7 +476,64 @@ pub struct PairConfirmBody {
     pub device_label: Option<String>,
 }
 
-/// Le nom affiché sur le téléphone au moment de se connecter.
+/// Une réponse 401 d'un téléchargement protégé — le même corps que `login`.
+fn unauthorized_response(detail: &str) -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        [("WWW-Authenticate", "Basic realm=\"Locaryn pairing\"")],
+        Json(serde_json::json!({ "error": "unauthorized", "detail": detail })),
+    )
+        .into_response()
+}
+
+/// Les deux facteurs du téléchargement protégé, dans l'ordre Basic (RFC 7617).
+/// Le décodeur est celui du dépôt (`locaryn_config`), pas une dépendance de
+/// plus pour dix lignes.
+fn basic_credentials(req: &axum::extract::Request) -> Option<(String, String)> {
+    use axum::http::header::AUTHORIZATION;
+    let raw = req.headers().get(AUTHORIZATION)?.to_str().ok()?;
+    let rest = raw
+        .strip_prefix("Basic ")
+        .or_else(|| raw.strip_prefix("basic "))?;
+    let decoded = locaryn_config::provision::base64_decode(rest.trim())?;
+    let s = String::from_utf8(decoded).ok()?;
+    let (user, pass) = s.split_once(':')?;
+    Some((user.to_string(), pass.to_string()))
+}
+
+/// GET /v1/pairing/ca — l'autorité du déploiement, en clair.
+///
+/// Public, et c'est exactement sa place : le QR d'appairage porte déjà cette
+/// même autorité dans sa charge (`Provisioning.authority_pem`), et une
+/// autorité publique n'authentifie personne par elle-même. Ce qui rend ce GET
+/// défendable, c'est la modale de consentement côté client : personne ne
+/// devient un client reconnu pour avoir lu cette URL.
+///
+/// HTTPS strict : la commande Rust de l'hôte refuse de télécharger autre
+/// chose, donc servir ce corps en clair n'arriverait jamais à destination.
+pub async fn get_ca(State(s): State<Arc<DaemonState>>) -> Response {
+    match locaryn_config::mtls::authority(&s.data_dir) {
+        Ok(authority) => (
+            [
+                ("Content-Type", "application/x-pem-file"),
+                (
+                    "Content-Disposition",
+                    "attachment; filename=\"locaryn-ca.pem\"",
+                ),
+            ],
+            authority.cert_pem,
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "lecture de l'autorité impossible");
+            erreur(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("autorité indisponible ({e})"),
+            )
+        }
+    }
+}
+
 fn nom_du_serveur() -> String {
     hostname().unwrap_or_else(|| "Locaryn".to_string())
 }
@@ -504,6 +561,73 @@ fn erreur(code: StatusCode, message: String) -> Response {
     (
         code,
         Json(serde_json::json!({ "error": { "code": "pairing", "message": message } })),
+    )
+        .into_response()
+}
+
+/// GET /v1/pairing/cert — le paquet certificat client + clé, émis à la volée.
+///
+/// Ce fichier est un secret : avec lui, TLS reconnaît l'appelant comme un
+/// client légitime. Il ne se sert donc pas à qui sait demander — la route
+/// exige des identifiants valides sur ce serveur, en Basic (RFC 7617). C'est
+/// le paramètre `user`/`password` du lien `locaryn://connect` qui les porte :
+/// le lien qui demande la connexion est celui qui prouve le droit de la
+/// télécharger, et la modale de consentement reste le lieu où la personne les
+/// a fournis.
+///
+/// Un utilisateur sans certificat existant en reçoit un neuf, signé par
+/// l'autorité locale — c'est l'appairage. Une Basic correcte a toujours un
+/// temps de réponse identique, qu'on réémette ou qu'on refuse.
+pub async fn get_client_cert(
+    State(s): State<Arc<DaemonState>>,
+    req: axum::extract::Request,
+) -> Response {
+    let Some((username, password)) = basic_credentials(&req) else {
+        return unauthorized_response(
+            "Ce paquet est protégé. Envoyez les identifiants du serveur en \
+             Authorization: Basic — ce sont ceux du lien de connexion.",
+        );
+    };
+
+    // Le même verdict que /v1/auth/login, sans émettre de jeton : le bundle
+    // lui-même devient la preuve d'identité. Le même message pour un mot de
+    // passe faux et un compte inconnu, comme à la connexion — ne pas aider à
+    // énumérer les comptes.
+    match s.users.authenticate(&username, &password).await {
+        Ok(Some(_user)) => {}
+        Ok(None) => {
+            tracing::info!(user = %username, "téléchargement de certificat refusé");
+            return unauthorized_response("Identifiants incorrects.");
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "authentification impossible");
+            return erreur(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "authentification indisponible".into(),
+            );
+        }
+    }
+
+    let credential = match locaryn_config::mtls::issue_client(&s.data_dir, &username, 365) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(error = %e, "émission du certificat client impossible");
+            return erreur(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("émission du certificat impossible ({e})"),
+            );
+        }
+    };
+
+    (
+        [
+            ("Content-Type", "application/x-pem-file"),
+            (
+                "Content-Disposition",
+                "attachment; filename=\"locaryn-client.pem\"",
+            ),
+        ],
+        credential.bundle_pem,
     )
         .into_response()
 }

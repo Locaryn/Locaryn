@@ -44,6 +44,15 @@ export function ConnectIntentModal() {
   const needPassword = connect.password === undefined;
   const ready = (!needUser || user.trim().length > 0) && (!needPassword || password.length > 0);
 
+  // Le bundle client est un secret : le daemon hôte ne le sert qu'à qui
+  // possède déjà un compte. Le lien qui demande la connexion prouve aussi le
+  // droit de la télécharger — les identifiants qu'il porte (ou que la personne
+  // vient de saisir) partent en Basic sur le téléchargement, pas ailleurs.
+  const basicUser = ctx.user?.trim() || user.trim();
+  const basicPassword = connect.password !== undefined ? connect.password : password;
+  const auth =
+    basicUser && basicPassword ? { user: basicUser, password: basicPassword } : undefined;
+
   async function accept() {
     if (!ready) return;
     setBusy(true);
@@ -54,7 +63,7 @@ export function ConnectIntentModal() {
       // connexion qui croit être sûre sans l'être. L'erreur renvoie vers
       // l'installation manuelle, qui reste possible dans les réglages.
       if (ctx.cert) {
-        await core.installClientCertificateFromUrl(ctx.cert, ctx.ca);
+        await core.installClientCertificateFromUrl(ctx.cert, ctx.ca, auth);
       }
       await core.signIn(ctx.server, ctx.user?.trim() || user.trim(), password);
       consumePendingInstall();

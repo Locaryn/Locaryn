@@ -103,16 +103,31 @@ pub fn install_client_certificate(
     register_client_certificate(&pem, ca.as_deref())
 }
 
+/// Optional Basic-auth credentials for a certificate download.
+///
+/// Le bundle client est un secret — le daemon ne le sert qu'à qui possède déjà
+/// un compte sur la machine. Un lien `locaryn://connect` porte (ou demande) ces
+/// identifiants : ils servent exactement ici, à télécharger le paquet, et
+/// nulle part ailleurs.
+#[derive(serde::Deserialize, Clone)]
+pub struct DownloadAuth {
+    pub user: String,
+    pub password: String,
+}
+
 /// Register a certificate downloaded from a URL the user has just accepted —
 /// the deep-link flow (`locaryn://connect?cert=…`) and the pairing QR code
 /// both hand the bundle over HTTPS instead of dropping a file on disk.
 ///
 /// Same vetting as a file import: only https, and the bundle must carry a
-/// key — a certificate alone cannot authenticate anyone.
+/// key — a certificate alone cannot authenticate anyone. `auth` est envoyé en
+/// Basic sur les deux téléchargements : le lien qui demande la connexion est
+/// celui qui la prouve déjà.
 #[tauri::command]
 pub async fn install_client_certificate_from_url(
     cert_url: String,
     ca_url: Option<String>,
+    auth: Option<DownloadAuth>,
 ) -> Result<CertificateStatus, String> {
     if !cert_url.starts_with("https://") {
         return Err("Le certificat doit être téléchargé en HTTPS.".into());
@@ -124,6 +139,7 @@ pub async fn install_client_certificate_from_url(
         .map_err(|e| format!("client HTTP : {e}"))?;
     let pem = client
         .get(cert_url.trim())
+        .basic_auth_if(&auth)
         .send()
         .await
         .map_err(|e| format!("téléchargement du certificat : {e}"))?
@@ -140,6 +156,7 @@ pub async fn install_client_certificate_from_url(
         Some(u) => Some(
             client
                 .get(u)
+                .basic_auth_if(&auth)
                 .send()
                 .await
                 .map_err(|e| format!("téléchargement de l'autorité : {e}"))?
@@ -151,6 +168,21 @@ pub async fn install_client_certificate_from_url(
         ),
     };
     register_client_certificate(&pem, ca.as_deref())
+}
+
+/// Helper local : Basic seulement quand des identifiants ont été fournis —
+/// une autorité servie publiquement ne veut aucun en-tête de plus.
+trait BasicAuthOpt {
+    fn basic_auth_if(self, auth: &Option<DownloadAuth>) -> Self;
+}
+
+impl BasicAuthOpt for reqwest::RequestBuilder {
+    fn basic_auth_if(self, auth: &Option<DownloadAuth>) -> Self {
+        match auth {
+            Some(a) => self.basic_auth(&a.user, Some(&a.password)),
+            None => self,
+        }
+    }
 }
 
 /// The shared vetting-and-storing path: PEM bundle must carry a key, files are
