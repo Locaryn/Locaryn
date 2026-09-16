@@ -17,9 +17,13 @@ use std::path::{Path, PathBuf};
 use crate::SupervisorError;
 
 /// Version épinglée de llama.cpp. Les drapeaux passés au serveur (`--jinja`,
-/// `-ngl`, `--mmproj`…) ont été vérifiés contre cette build ; un binaire
-/// inconnu qui refuse un drapeau est une erreur fatale au démarrage.
-pub const PINNED_LLAMA_BUILD: &str = "b10088";
+/// `-ngl`, `--mmproj`, `-fa`, `-ctk`/`-ctv`, `-cmoe`/`-ncmoe`, `-md`…)
+/// ont été vérifiés contre le `--help` de cette build (b11003, 16/09/2026) :
+/// un binaire inconnu qui refuse un drapeau est une erreur fatale au
+/// démarrage. Changement notable par rapport à b10088 : `--no-mmap` n'existe
+/// plus, remplacé par le mode de chargement `-lm none` — le spawn (lib.rs)
+/// utilise déjà la nouvelle forme.
+pub const PINNED_LLAMA_BUILD: &str = "b11003";
 
 /// Nom du binaire selon la plateforme.
 pub fn llama_server_name() -> &'static str {
@@ -43,9 +47,11 @@ pub fn managed_llama_path() -> PathBuf {
 /// L'archive publiée pour cette plateforme.
 fn release_url() -> Result<&'static str, SupervisorError> {
     if cfg!(target_os = "windows") {
-        Ok("https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-win-vulkan-x64.zip")
+        Ok("https://github.com/ggml-org/llama.cpp/releases/download/b11003/llama-b11003-bin-win-vulkan-x64.zip")
     } else if cfg!(target_os = "linux") {
-        Ok("https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-ubuntu-x64.zip")
+        // Depuis ~b11000 les publications Ubuntu sont des `.tar.gz` (les
+        // `.zip` Ubuntu ne sont plus produits — vérifié par HEAD sur b11003).
+        Ok("https://github.com/ggml-org/llama.cpp/releases/download/b11003/llama-b11003-bin-ubuntu-x64.tar.gz")
     } else {
         // macOS : les builds officielles sont publiées par architecture et
         // changent de nom d'une release à l'autre. Plutôt que de deviner, on
@@ -76,10 +82,20 @@ pub async fn install_llama_runtime(
 
     let dir = managed_llama_dir();
     std::fs::create_dir_all(&dir)?;
-    let archive = dir.join(format!("llama-{PINNED_LLAMA_BUILD}.zip"));
+    // L'extension suit l'asset réel : `.zip` côté Windows, `.tar.gz` côté
+    // Ubuntu depuis b11003.
+    let is_targz = cfg!(target_os = "linux");
+    let archive = dir.join(format!(
+        "llama-{PINNED_LLAMA_BUILD}.{}",
+        if is_targz { "tar.gz" } else { "zip" }
+    ));
 
     download(release_url()?, &archive, progress).await?;
-    extract_zip(&archive, &dir)?;
+    if is_targz {
+        extract_tar_gz(&archive, &dir)?;
+    } else {
+        extract_zip(&archive, &dir)?;
+    }
     let _ = std::fs::remove_file(&archive);
 
     // L'archive de llama.cpp range parfois les binaires dans un sous-dossier
@@ -179,6 +195,48 @@ fn extract_zip(archive: &Path, dir: &Path) -> Result<(), SupervisorError> {
         }
         let mut dst = std::fs::File::create(&out)?;
         std::io::copy(&mut entry, &mut dst)?;
+    }
+    Ok(())
+}
+
+/// Extraire une archive `.tar.gz` (les publications Ubuntu de llama.cpp
+/// depuis b11003). Mêmes règles que `extract_zip` : on écrase à plat dans
+/// `dir`, le promoteur de binaires (`find_file` + `promote_siblings`) gère
+/// les sous-dossiers éventuels. Sous Unix, les permissions du tar (dont le
+/// bit exécutable) sont conservées.
+fn extract_tar_gz(archive: &Path, dir: &Path) -> Result<(), SupervisorError> {
+    let file = std::fs::File::open(archive)?;
+    let gz = flate2::read::GzDecoder::new(file);
+    let mut tar = tar::Archive::new(gz);
+    tar.set_preserve_permissions(true);
+    for entry in tar
+        .entries()
+        .map_err(|e| SupervisorError::BinaryNotFound(format!("archive illisible : {e}")))?
+    {
+        let mut entry = entry
+            .map_err(|e| SupervisorError::BinaryNotFound(format!("entrée illisible : {e}")))?;
+        // Même garde-fou que `enclosed_name` côté zip : une entrée qui
+        // sortirait du dossier cible est ignorée, pas réécrite.
+        let Some(rel) = entry
+            .path()
+            .ok()
+            .and_then(|p| p.file_name().map(std::path::PathBuf::from))
+        else {
+            continue;
+        };
+        if entry.header().entry_type().is_dir() {
+            continue;
+        }
+        let out = dir.join(rel);
+        let mut dst = std::fs::File::create(&out)?;
+        std::io::copy(&mut entry, &mut dst)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(mode) = entry.header().mode() {
+                let _ = std::fs::set_permissions(&out, std::fs::Permissions::from_mode(mode));
+            }
+        }
     }
     Ok(())
 }

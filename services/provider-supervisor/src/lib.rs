@@ -411,16 +411,19 @@ impl Supervisor {
 
                                 // Tenter d'extraire la cause exacte depuis le fichier journal
                                 let log_detail = if matches!(engine, ProviderEngine::LlamaCpp) {
-                                    let log_path = locaryn_config::default_data_dir().join("llama-server.log");
-                                    std::fs::read_to_string(&log_path)
-                                        .ok()
-                                        .and_then(|content| {
-                                            content
-                                                .lines()
-                                                .rev()
-                                                .find(|l| l.contains("error") || l.contains("failed") || l.contains("ERROR"))
-                                                .map(|l| l.trim().to_string())
-                                        })
+                                    let log_path =
+                                        locaryn_config::default_data_dir().join("llama-server.log");
+                                    std::fs::read_to_string(&log_path).ok().and_then(|content| {
+                                        content
+                                            .lines()
+                                            .rev()
+                                            .find(|l| {
+                                                l.contains("error")
+                                                    || l.contains("failed")
+                                                    || l.contains("ERROR")
+                                            })
+                                            .map(|l| l.trim().to_string())
+                                    })
                                 } else {
                                     None
                                 };
@@ -913,15 +916,18 @@ pub fn llama_server_path() -> Option<PathBuf> {
     which("llama-server")
 }
 
-/// La version de llama.cpp que l'application connaît.
-pub const LLAMA_BUILD: &str = "b10088";
+/// La version de llama.cpp que l'application connaît — le pin unique du
+/// runtime géré (l'écran de réglages l'affiche, l'installateur le télécharge).
+pub const LLAMA_BUILD: &str = "b11003";
 
 /// L'archive à récupérer pour cette plateforme, s'il en existe une.
 fn llama_release_url() -> Option<&'static str> {
     if cfg!(target_os = "windows") {
-        Some("https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-win-vulkan-x64.zip")
+        Some("https://github.com/ggml-org/llama.cpp/releases/download/b11003/llama-b11003-bin-win-vulkan-x64.zip")
     } else if cfg!(target_os = "linux") {
-        Some("https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-ubuntu-x64.zip")
+        // Les `.zip` Ubuntu ne sont plus produits : `.tar.gz` depuis b11003
+        // (vérifié par HEAD sur les assets de la release).
+        Some("https://github.com/ggml-org/llama.cpp/releases/download/b11003/llama-b11003-bin-ubuntu-x64.tar.gz")
     } else {
         None
     }
@@ -1126,7 +1132,8 @@ async fn spawn_llama_server(
         "spawning llama-server"
     );
 
-    // Flags verified against current llama.cpp (b10088): unknown flags are a
+    // Flags verified against llama.cpp b11003 (`--help` capturé le
+    // 16/09/2026): unknown flags are a
     // FATAL error for llama-server, so only pass documented ones.
     let mut cmd = Command::new(&bin);
     cmd.arg("--host")
@@ -1201,7 +1208,7 @@ async fn spawn_llama_server(
     // MoE expert offload to CPU: run very large Mixture-of-Experts models on a
     // modest GPU by keeping expert weights in system RAM while attention stays on
     // the GPU. -1 = all experts on CPU (-cmoe); N>0 = experts of the first N
-    // layers (-ncmoe N). Verified present in b10088.
+    // layers (-ncmoe N). Verified present in b11003.
     match inference_cfg["n_cpu_moe"].as_i64().unwrap_or(0) {
         0 => {}
         n if n < 0 => {
@@ -1253,9 +1260,13 @@ async fn spawn_llama_server(
     let batch = inference_cfg["batch_size"].as_u64().unwrap_or(512);
     cmd.arg("-b").arg(batch.to_string());
 
-    // mmap.
+    // mmap : « --no-mmap » n'existe plus depuis ~b11000 (l'option mmap est
+    // devenue à valeurs) — la forme actuelle est le mode de chargement
+    // `-lm none` (« auto | none | mmap | mlock | mmap+mlock », vérifié sur le
+    // --help de b11003). C'est le seul drapeau du spawn qui a changé de forme
+    // entre b10088 et b11003.
     if !inference_cfg["use_mmap"].as_bool().unwrap_or(true) {
-        cmd.arg("--no-mmap");
+        cmd.arg("-lm").arg("none");
     }
 
     // Parallel slots.

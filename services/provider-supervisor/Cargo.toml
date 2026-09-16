@@ -33,5 +33,8 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 zip = "8.6.0"
+# Les publications Ubuntu de llama.cpp (>= b11003) sont des .tar.gz.
+flate2 = "1"
+tar = "0.4"
 futures.workspace = true
 tokio-util.workspace = true

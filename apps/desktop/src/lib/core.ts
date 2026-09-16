@@ -5157,7 +5157,7 @@ const demoCore: CoreApi = {
   async runtimeCapabilities() {
     return {
       runtime_installed: true,
-      runtime_version: "b10088",
+      runtime_version: "b11003",
       chat: true,
       vision: false,
       embeddings: true,
@@ -5209,9 +5209,9 @@ const demoCore: CoreApi = {
   async llamaRuntimeStatus() {
     return {
       installed: true,
-      version: "b10088",
+      version: "b11003",
       up_to_date: true,
-      pinned: "b10088",
+      pinned: "b11003",
       path: "C:/Users/you/.locaryn/data/bin/llama",
     };
   },
@@ -5222,9 +5222,9 @@ const demoCore: CoreApi = {
     }
     return {
       installed: true,
-      version: "b10088",
+      version: "b11003",
       up_to_date: true,
-      pinned: "b10088",
+      pinned: "b11003",
       path: "C:/Users/you/.locaryn/data/bin/llama",
     };
   },
