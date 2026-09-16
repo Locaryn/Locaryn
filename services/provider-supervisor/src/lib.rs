@@ -674,7 +674,7 @@ impl Supervisor {
                         tracing::info!(
                             ?engine,
                             idle_secs = idle.as_secs(),
-                            "runtime idle â€” shutting down"
+                            "runtime idle — shutting down"
                         );
                         to_shutdown.push(engine.clone());
                     }
