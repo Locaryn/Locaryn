@@ -247,7 +247,7 @@ impl CatalogClient {
 
             let display_name = match name {
                 // Le dépôt garde son slug historique ; le nom produit est Remote.
-                "morph-travel-tunnel" => "Remote".to_string(),
+                "morph-remote" => "Remote".to_string(),
                 _ => name.replace("morph-", "").replace('-', " "),
             };
             // Versions réelles d'abord : les releases GitHub du dépôt sont la
@@ -1016,7 +1016,7 @@ fn versions_from_known_table(
         // segments d'appairage : offrir la precedente installerait un
         // morph qui ne contribue nulle part dans cette version de
         // l'application.
-        "morph-travel-tunnel" => ("3.1.0", &["3.0.0", "2.1.0"]),
+        "morph-remote" => ("3.1.0", &["3.0.0", "2.1.0"]),
         "morph-3d-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
         "morph-video-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
         "morph-music-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
