@@ -49,6 +49,7 @@ locaryn-rules-runtime = { workspace = true }
 axum = { workspace = true }
 axum-server = { workspace = true }
 rcgen = { workspace = true }
+time = { workspace = true }
 rustls = { workspace = true }
 igd-next = { workspace = true }
 tokio = { workspace = true }
