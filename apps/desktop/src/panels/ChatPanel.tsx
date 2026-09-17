@@ -82,7 +82,7 @@ type ChatItem =
 type Attachment = {
   id: string;
   name: string;
-  kind: "image" | "text";
+  kind: "image" | "text" | "other";
   /** Image seulement : la miniature et le corps envoye au modele. */
   dataUrl?: string;
   base64?: string;
@@ -303,9 +303,10 @@ type Lecture = { ok: true; piece: Attachment } | { ok: false; nom: string; raiso
  *
  * Tout se joint : c'est la lecture qui constate ce qu'on peut en faire. Une
  * image part telle quelle vers un modele qui sait la voir ; un fichier qui
- * porte du texte devient un document ; un binaire est refuse **en le disant**,
- * parce qu'en donner les octets a un modele de texte ne produirait que du
- * charabia dont personne ne saurait d'ou il vient.
+ * porte du texte devient un document ; un binaire (PDF, archive…) s'attache
+ * quand meme, sous l'etiquette « Autre » — donner ses octets a un modele de
+ * texte ne produirait que du charabia, mais l'utilisateur doit pouvoir
+ * joindre n'importe quel fichier sans etre bloque par son extension.
  */
 async function readFile(file: File, vision: boolean): Promise<Lecture> {
   if (estImage(file)) {
@@ -336,10 +337,12 @@ async function readFile(file: File, vision: boolean): Promise<Lecture> {
 
   const octets = await file.arrayBuffer();
   if (!porteDuTexte(octets)) {
+    // Le modele ne peut rien lire dans un binaire, mais refuser le joint
+    // empechait de simplement l'attacher a la conversation (a montrer, a
+    // deplacer plus tard) pour la seule raison qu'il n'est pas du texte.
     return {
-      ok: false,
-      nom: file.name,
-      raison: "ce fichier ne contient pas de texte lisible (PDF, archive, binaire…)",
+      ok: true,
+      piece: { id: nextId("att"), kind: "other", name: file.name },
     };
   }
 
@@ -1840,16 +1843,27 @@ export function ChatPanel({
                   ) : (
                     // Un document n'a pas de miniature : il se nomme. Sans quoi
                     // la bande restait vide et rien ne disait qu'un fichier
-                    // partait avec le message.
+                    // partait avec le message. Un fichier « autre » (zip,
+                    // PDF…) se nomme pareil, mais porte une étiquette : le
+                    // modèle ne le lira pas, autant le dire tout de suite.
                     <span className="locaryn-attach-doc" title={a.name}>
-                      <Icon name="notebook" size={14} />
+                      <Icon name={a.kind === "text" ? "notebook" : "archive"} size={14} />
                       <span className="locaryn-attach-doc-name">{a.name}</span>
+                      {a.kind === "other" && (
+                        <span className="locaryn-attach-doc-type">Autre</span>
+                      )}
                     </span>
                   )}
                   <button
                     type="button"
                     className="locaryn-attach-remove"
-                    aria-label={a.kind === "image" ? "Retirer l'image" : "Retirer le document"}
+                    aria-label={
+                      a.kind === "image"
+                        ? "Retirer l'image"
+                        : a.kind === "text"
+                          ? "Retirer le document"
+                          : "Retirer le fichier"
+                    }
                     onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
                   >
                     <Icon name="close" size={13} />

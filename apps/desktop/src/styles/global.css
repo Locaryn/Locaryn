@@ -3086,6 +3086,20 @@ dialog:where([open]) {
   white-space: nowrap;
   font-size: 12px;
 }
+/* Un fichier que le modele ne peut pas lire (zip, PDF, binaire...) s'attache
+   quand meme : cette etiquette dit tout de suite qu'il ne sera pas lu, sans
+   avoir a deviner depuis son extension. */
+.locaryn-attach-doc-type {
+  flex-shrink: 0;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 .locaryn-attach-remove {
   position: absolute;
