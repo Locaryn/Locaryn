@@ -363,6 +363,17 @@ body.locaryn-resizing .locaryn-resizer::after {
   flex-direction: column;
   gap: var(--space-3);
 }
+/* Bascule conversations / projets en tête de rail : compacte, icônes seules. */
+.locaryn-history-switch {
+  width: 100%;
+  margin: var(--space-2) 0;
+}
+.locaryn-segment-icon {
+  flex: 1;
+  min-height: 32px;
+  padding: 0;
+  justify-content: center;
+}
 .locaryn-history-group {
   min-width: 0;
 }

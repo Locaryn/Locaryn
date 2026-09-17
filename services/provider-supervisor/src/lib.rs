@@ -304,8 +304,12 @@ impl Supervisor {
                 self.kill_owned(engine).await;
                 #[cfg(windows)]
                 {
+                    // CREATE_NO_WINDOW : sans ce drapeau, chaque redémarrage
+                    // faisait clignoter une console taskkill par-dessus
+                    // l'application — visible et sans rapport avec elle.
                     let _ = tokio::process::Command::new("taskkill")
                         .args(["/F", "/IM", "llama-server.exe"])
+                        .creation_flags(0x0800_0000)
                         .output()
                         .await;
                 }
@@ -708,6 +712,7 @@ impl Supervisor {
         {
             let _ = tokio::process::Command::new("taskkill")
                 .args(["/F", "/IM", "llama-server.exe"])
+                .creation_flags(0x0800_0000)
                 .output()
                 .await;
         }
