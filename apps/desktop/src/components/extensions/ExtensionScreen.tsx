@@ -1,4 +1,5 @@
 import type { InstalledExtension } from "../../lib/core";
+import { NAVIGABLE_VIEWS } from "../NavDrawer";
 import { DynamicPluginWidget } from "./DynamicPluginWidget";
 import { getSlotContributions } from "./SlotRegistry";
 
@@ -10,8 +11,15 @@ import { getSlotContributions } from "./SlotRegistry";
  * l'afficher. C'est ce qui permet à un studio entier — l'entraînement, par
  * exemple — de quitter la navigation native sans rien perdre.
  *
- * Rend `null` quand aucune extension active ne revendique cette vue : c'est à
- * l'appelant de décider quoi montrer à la place.
+ * Rend `null` quand aucune extension active ne revendique cette vue, et aussi
+ * quand la vue est un identifiant natif (`chat`, `studio`, `models`, …) :
+ * plusieurs morphs déclarent encore un `nav_items` avec l'id `studio`,
+ * séquelle d'un contournement pour un bogue de gate côté hôte désormais
+ * corrigé (Locaryn/Locaryn#13). Sans ce garde-fou, ce même id fait toujours
+ * matcher `getSlotContributions` ici, et l'écran natif (`StudioView`) se
+ * retrouvait affiché côte à côte avec ce doublon — Locaryn/Locaryn#7. Un
+ * identifiant réservé par l'hôte ne peut plus jamais être repris par une
+ * extension, quel que soit ce qu'elle déclare.
  */
 export function ExtensionScreen({
   view,
@@ -20,6 +28,7 @@ export function ExtensionScreen({
   view: string;
   extensions: InstalledExtension[];
 }) {
+  if (NAVIGABLE_VIEWS.includes(view)) return null;
   const contribution = getSlotContributions(extensions, "nav.drawer").find((c) => c.id === view);
   if (!contribution) return null;
 
@@ -36,7 +45,9 @@ export function ExtensionScreen({
   );
 }
 
-/** Vrai si une extension active revendique cette vue. */
+/** Vrai si une extension active revendique cette vue — jamais pour un
+ *  identifiant réservé par l'hôte, voir le garde-fou plus haut. */
 export function isExtensionScreen(view: string, extensions: InstalledExtension[]): boolean {
+  if (NAVIGABLE_VIEWS.includes(view)) return false;
   return getSlotContributions(extensions, "nav.drawer").some((c) => c.id === view);
 }
