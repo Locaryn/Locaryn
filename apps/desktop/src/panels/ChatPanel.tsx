@@ -1849,9 +1849,7 @@ export function ChatPanel({
                     <span className="locaryn-attach-doc" title={a.name}>
                       <Icon name={a.kind === "text" ? "notebook" : "archive"} size={14} />
                       <span className="locaryn-attach-doc-name">{a.name}</span>
-                      {a.kind === "other" && (
-                        <span className="locaryn-attach-doc-type">Autre</span>
-                      )}
+                      {a.kind === "other" && <span className="locaryn-attach-doc-type">Autre</span>}
                     </span>
                   )}
                   <button

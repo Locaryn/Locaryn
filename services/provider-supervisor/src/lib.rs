@@ -1161,7 +1161,8 @@ async fn spawn_llama_server(
     // ligne par ligne d'un terminal. Le journal reste alors vide et
     // l'application n'a plus rien à montrer qu'un chargement qui ne finit
     // jamais. Sonder le port nous-mêmes donne un message net et immédiat.
-    ensure_port_free(8080).map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e))?;
+    ensure_port_free(8080)
+        .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e))?;
 
     tracing::info!(
         bin = %bin.display(),
