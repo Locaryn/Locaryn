@@ -749,21 +749,12 @@ export function App() {
     selection?: HfModelSelection,
     downloads?: ModelDownloadSource[],
   ) {
-    const p = await core.listProviders();
-    const active = p.find((pr) => pr.is_active) ?? p[0];
-    // Sans fournisseur, le clic ne faisait rien et ne disait rien : l'utilisateur
-    // relançait le téléchargement en croyant avoir mal cliqué. Le dire coûte une
-    // ligne, et indique quoi faire.
-    if (!active) {
-      const id = taskCenter.add({ type: "download", label: `Téléchargement : ${tag}` });
-      taskCenter.fail(
-        id,
-        "Aucun moteur n'est configuré : ouvrez Réglages → Moteur avant d'installer un modèle.",
-      );
-      return;
-    }
-
-    setDownloadProgress({ tag, progress: 0, status: "Démarrage du téléchargement..." });
+    // La tâche existe avant même de savoir si un moteur répond : un échec de
+    // core.listProviders() lui-même se retrouvait hors du try/catch plus bas
+    // et remontait comme une promesse rejetée que ModelBrowser n'attrape
+    // pas non plus (il n'a qu'un `finally`) — le clic ne montrait alors
+    // strictement rien, ni tâche, ni erreur, l'utilisateur recliquant sur
+    // ce qui semblait n'avoir rien fait.
     const shortName = tag.split("/").pop() || tag;
     const taskId = taskCenter.add({
       type: "download",
@@ -772,6 +763,17 @@ export function App() {
     });
 
     try {
+      const p = await core.listProviders();
+      const active = p.find((pr) => pr.is_active) ?? p[0];
+      if (!active) {
+        taskCenter.fail(
+          taskId,
+          "Aucun moteur n'est configuré : ouvrez Réglages → Moteur avant d'installer un modèle.",
+        );
+        return;
+      }
+
+      setDownloadProgress({ tag, progress: 0, status: "Démarrage du téléchargement..." });
       await core.pullModel(
         active.endpoint,
         tag,
