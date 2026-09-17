@@ -27,6 +27,18 @@ export type NavItem = {
   category: NavCategory;
   /** If set, item is only rendered when at least one required capability is present. */
   requiredCapabilities?: string[];
+  /**
+   * If set, item is only rendered when at least one active extension
+   * contributes to this UI slot — used instead of `requiredCapabilities`
+   * when the view itself is a slot aggregator (Studio: any morph can add a
+   * tab there under any capability string it invents, so gating on a fixed
+   * capability whitelist drifts out of sync the moment a new capability
+   * appears — e.g. `ssh-remote-exec`, absent from the old whitelist, left
+   * the nav entry visible but the view itself capability-gated shut,
+   * bouncing back to chat on every click. Checking the slot directly makes
+   * the two consistent by construction).
+   */
+  requiredSlot?: string;
 };
 
 /**
@@ -51,18 +63,12 @@ const BASE_NAV_ITEMS: NavItem[] = [
     icon: "studio",
     category: "workspace",
     desc: "Image, vidéo, audio, musique, 3D et édition multimodale",
-    requiredCapabilities: [
-      "image-gen",
-      "image-editor",
-      "video-gen",
-      "3d-gen",
-      "voice-tts",
-      "music-gen",
-      "vision-ocr",
-      "rag-qa",
-      "translation",
-      "text-analysis",
-    ],
+    // Le Studio est un pur agrégateur de slot (voir StudioView) : ce que
+    // chaque morph y ajoute ne dépend d'aucune capacité fixe côté hôte.
+    // Gater sur une liste de capacités devine ce que les morphs déclareront
+    // et se désynchronise dès qu'un morph invente la sienne — gater sur la
+    // présence réelle d'une contribution au slot ne peut pas driver.
+    requiredSlot: "studio.tabs",
   },
   {
     id: "figures",
@@ -121,25 +127,37 @@ const CATEGORY_TITLES: Record<NavCategory, string> = {
 
 export const NAVIGABLE_VIEWS: string[] = BASE_NAV_ITEMS.map((item) => item.id);
 
-export const CAPABILITY_GATED_VIEWS: Record<string, string[]> = Object.fromEntries(
-  BASE_NAV_ITEMS.filter((i) => i.requiredCapabilities?.length).map((i) => [
-    i.id,
-    i.requiredCapabilities as string[],
-  ]),
-);
+/**
+ * Une vue native gardée (par capacité ou par slot) est-elle actuellement
+ * accessible ? Source unique pour le rail (quelles entrées afficher) et pour
+ * l'hôte (App.tsx : faut-il refermer une vue devenue inaccessible) — les deux
+ * doivent s'accorder, sinon une entrée visible qui rebondit au clic comme
+ * `studio` avec morph-ssh avant ce correctif.
+ */
+export function isNativeViewAccessible(
+  viewId: string,
+  activeCapabilities: string[],
+  extensions: InstalledExtension[],
+): boolean {
+  const item = BASE_NAV_ITEMS.find((i) => i.id === viewId);
+  if (!item) return true; // vue non native (contribuée par un slot nav.drawer) : jamais gardée ici
+  if (item.requiredSlot) return getSlotContributions(extensions, item.requiredSlot).length > 0;
+  if (item.requiredCapabilities?.length) {
+    return item.requiredCapabilities.some((cap) => activeCapabilities.includes(cap));
+  }
+  return true;
+}
 
 /**
- * Les destinations réellement offertes : les natives dont la capacité est
- * présente, puis celles qu'une extension déclare.
+ * Les destinations réellement offertes : les natives dont la capacité (ou le
+ * slot) est présente, puis celles qu'une extension déclare.
  *
  * Vit ici plutôt que dans le rail parce que c'est ici que la liste native est
  * décrite ; le rail l'appelle, il ne la redéclare pas.
  */
 export function visibleNavItems(activeCapabilities: string[], extensions: InstalledExtension[]) {
-  const natives = BASE_NAV_ITEMS.filter(
-    (item) =>
-      !item.requiredCapabilities?.length ||
-      item.requiredCapabilities.some((cap) => activeCapabilities.includes(cap)),
+  const natives = BASE_NAV_ITEMS.filter((item) =>
+    isNativeViewAccessible(item.id, activeCapabilities, extensions),
   );
   const pris = new Set(natives.map((i) => i.id));
   const depuisSlots: NavItem[] = getSlotContributions(extensions, "nav.drawer").flatMap((ni) => {

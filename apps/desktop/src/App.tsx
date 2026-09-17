@@ -7,7 +7,7 @@ import { ConnectorsSettings } from "./components/ConnectorsSettings";
 import { ExtensionsSettings } from "./components/ExtensionsSettings";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
-import { CAPABILITY_GATED_VIEWS, NAVIGABLE_VIEWS, NavDrawer } from "./components/NavDrawer";
+import { isNativeViewAccessible, NAVIGABLE_VIEWS, NavDrawer } from "./components/NavDrawer";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
@@ -357,11 +357,10 @@ export function App() {
   }, [activeView]);
 
   useEffect(() => {
-    const needs = CAPABILITY_GATED_VIEWS[activeView];
-    if (needs && !needs.some((c) => activeCapabilities.includes(c))) {
+    if (!isNativeViewAccessible(activeView, activeCapabilities, activeExtensions)) {
       setActiveView("chat");
     }
-  }, [activeView, activeCapabilities]);
+  }, [activeView, activeCapabilities, activeExtensions]);
 
   // Deep links (`locaryn://install?src=owner/repo`): a link can open the app
   // from a cold start (URL passed as CLI argument — read via `get_current`)
