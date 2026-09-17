@@ -214,6 +214,12 @@ export interface StorageInfo {
    *  SQLite file is how databases get corrupted. */
   db_path: string;
   db_bytes: number;
+  /** Non-fatal cleanup issues from the migration that just finished (an old
+   *  directory a file was still open in, so it could not be deleted) — the
+   *  move itself already succeeded: the root has already switched to a
+   *  verified-complete copy by the time this is populated. Empty outside
+   *  the response to a `setStorageRoot(..., true)` call. */
+  cleanup_warnings: string[];
 }
 
 /** Emitted on the `storage-migration` Tauri event while data is relocated. */
@@ -4706,6 +4712,7 @@ const demoCore: CoreApi = {
     ],
     db_path: "C:/Users/you/.locaryn/data/locaryn.db",
     db_bytes: 4_194_304,
+    cleanup_warnings: [],
     drives: [
       { mount: "C:\\", total_bytes: 511_000_000_000, free_bytes: 1_288_490_188, is_current: true },
       {
@@ -4724,6 +4731,7 @@ const demoCore: CoreApi = {
     drives: [],
     db_path: "C:/Users/you/.locaryn/data/locaryn.db",
     db_bytes: 4_194_304,
+    cleanup_warnings: [],
   }),
   cleanTemp: async () => 8_589_934_592,
 

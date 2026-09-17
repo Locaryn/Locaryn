@@ -8722,6 +8722,10 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   border-radius: 6px;
   font-size: var(--text-sm);
   line-height: 1.5;
+  /* Un avertissement de nettoyage post-migration s'ajoute au message
+     principal séparé par une ligne vide ; sans ça, le \n\n s'effondre en un
+     simple espace et les deux phrases se lisent comme une seule, confuse. */
+  white-space: pre-line;
 }
 .locaryn-store-error {
   color: var(--danger);

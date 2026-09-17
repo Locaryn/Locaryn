@@ -57,6 +57,14 @@ pub struct StorageInfo {
     /// root moves — the UI must not imply otherwise.
     pub db_path: String,
     pub db_bytes: u64,
+    /// Non-fatal issues from the most recent migration's cleanup phase (an
+    /// old directory that could not be deleted, typically because a file in
+    /// it was still open) — empty on every call that is not itself the tail
+    /// end of a `set_storage_root(move_data: true)`. The move itself already
+    /// succeeded by the time this is populated: the pointer has moved to a
+    /// verified-complete copy, this is purely "you can reclaim this later."
+    #[serde(default)]
+    pub cleanup_warnings: Vec<String>,
 }
 
 /// Recursive size of a directory. Unreadable entries are skipped rather than
@@ -198,6 +206,7 @@ pub fn storage_info() -> Result<StorageInfo, String> {
         drives,
         db_bytes: std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0),
         db_path: db_path.to_string_lossy().to_string(),
+        cleanup_warnings: Vec::new(),
     })
 }
 
@@ -252,17 +261,37 @@ fn copy_tree(
     Ok(())
 }
 
-/// Move one directory, preferring an atomic rename when both ends share a
-/// volume. Returns `Ok(false)` when there was nothing to move.
-fn move_dir(
+/// What `copy_or_rename_dir` did, and what (if anything) still needs
+/// deleting once every category in the batch has copied successfully.
+#[derive(Debug)]
+enum MoveOutcome {
+    /// Nothing to move: the source did not exist.
+    Nothing,
+    /// `rename` moved it atomically — there is no separate source left to
+    /// clean up, the OS already made this one step.
+    Renamed,
+    /// Copied to `dst`; `src` is still there, verified byte-for-byte, and
+    /// waiting on the caller to delete it once every other category in the
+    /// same migration has copied cleanly too.
+    Copied { src: PathBuf },
+}
+
+/// Copy (or, same volume, atomically rename) `src` into `dst`. Never deletes
+/// `src` itself for a copy — that is the caller's job, and only once every
+/// category in the batch is confirmed copied. Deleting per-category as soon
+/// as each one finishes is what let a bin-directory failure (llama-server
+/// still holding its DLLs open) leave the models directory already gone from
+/// the old root while the pointer, never reached, still named that same old
+/// root — the very case that left weights stranded in an orphaned folder.
+fn copy_or_rename_dir(
     report: &dyn Fn(MigrationProgress),
     src: &Path,
     dst: &Path,
     moved: &mut u64,
     total: u64,
-) -> Result<bool, String> {
+) -> Result<MoveOutcome, String> {
     if !src.is_dir() || src == dst {
-        return Ok(false);
+        return Ok(MoveOutcome::Nothing);
     }
     if dst.exists()
         && dst
@@ -290,7 +319,7 @@ fn move_dir(
             done: false,
             error: None,
         });
-        return Ok(true);
+        return Ok(MoveOutcome::Renamed);
     }
     // Rename can still fail across mount points or with open handles;
     // fall through to the copy path rather than giving up.
@@ -299,7 +328,6 @@ fn move_dir(
     copy_tree(report, src, dst, moved, total)
         .map_err(|e| format!("copie {}: {e}", src.display()))?;
 
-    // Only delete the source once the copy is provably complete.
     let copied = dir_size(dst);
     if copied < expected {
         return Err(format!(
@@ -309,9 +337,9 @@ fn move_dir(
             expected
         ));
     }
-    std::fs::remove_dir_all(src)
-        .map_err(|e| format!("suppression de l'ancien dossier {}: {e}", src.display()))?;
-    Ok(true)
+    Ok(MoveOutcome::Copied {
+        src: src.to_path_buf(),
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -364,7 +392,7 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
     }
 
     let app2 = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+    let result = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<String>, String> {
         let report = move |p: MigrationProgress| emit(&app2, p);
         // Scratch files are disposable; dropping them avoids copying gigabytes
         // of intermediates that nothing will ever read again.
@@ -385,42 +413,73 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
             error: None,
         });
 
-        // Only closed-file, bulky data moves. The database and the small JSON
-        // settings stay put: they are held open by this very process, and
-        // copying a live SQLite file is how databases get corrupted.
-        move_dir(
+        // Phase 1 — copy every category, deleting nothing yet. A failure here
+        // (a locked bin/ file, a full destination disk, …) leaves the old
+        // root completely untouched and still the active one: nothing has
+        // been deleted and the pointer below is never reached.
+        let mut pending_deletes: Vec<PathBuf> = Vec::new();
+        let mut record = |outcome: MoveOutcome| {
+            if let MoveOutcome::Copied { src } = outcome {
+                pending_deletes.push(src);
+            }
+        };
+
+        record(copy_or_rename_dir(
             &report,
             &old_models,
             &new_root.join("models"),
             &mut moved,
             total,
-        )?;
+        )?);
         // Windows refuses to move a running executable, and llama-server may
         // well be up. Say so instead of surfacing a bare "access denied".
-        move_dir(&report, &old_bin, &new_root.join("bin"), &mut moved, total).map_err(|e| {
-            format!(
-                "{e}\nSi un moteur tourne encore, arrêtez-le (onglet Moteur IA) puis réessayez."
-            )
-        })?;
-        move_dir(
+        record(
+            copy_or_rename_dir(&report, &old_bin, &new_root.join("bin"), &mut moved, total)
+                .map_err(|e| {
+                    format!(
+                        "{e}\nSi un moteur tourne encore, arrêtez-le (onglet Moteur IA) puis réessayez."
+                    )
+                })?,
+        );
+        record(copy_or_rename_dir(
             &report,
             &old_free_chats,
             &new_root.join("free_chats"),
             &mut moved,
             total,
-        )?;
+        )?);
 
-        // Written last: until this succeeds the app still points at data that
-        // is known to be complete.
+        // Phase 2 — every category above is now verified complete at
+        // `new_root`. This is the actual commit point: flip the pointer
+        // before touching a single byte of the old root, so a failure from
+        // here on (phase 3, cleanup) can never strand the app between two
+        // half-known locations the way losing this ordering once did.
         locaryn_config::set_storage_root(Some(&new_root))
             .map_err(|e| format!("enregistrement du réglage: {e}"))?;
-        Ok(())
+
+        // Phase 3 — best-effort cleanup of the now-superseded old
+        // directories. The pointer has already moved to a confirmed-complete
+        // copy, so a deletion failure here (the same locked-file case as
+        // above, hit on the way out instead of the way in) costs the user
+        // some reclaimable disk space, never their data.
+        let mut warnings = Vec::new();
+        for src in pending_deletes {
+            if let Err(e) = std::fs::remove_dir_all(&src) {
+                warnings.push(format!(
+                    "{} n'a pas pu être supprimé ({e}) — les données sont bien copiées et actives \
+                     dans le nouveau dossier, mais cet ancien dossier reste sur le disque ; \
+                     supprimez-le manuellement une fois le moteur arrêté.",
+                    src.display()
+                ));
+            }
+        }
+        Ok(warnings)
     })
     .await
     .map_err(|e| format!("tâche de migration interrompue: {e}"))?;
 
     match result {
-        Ok(()) => {
+        Ok(warnings) => {
             emit(
                 &app,
                 MigrationProgress {
@@ -432,7 +491,10 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
                     error: None,
                 },
             );
-            storage_info()
+            storage_info().map(|mut info| {
+                info.cleanup_warnings = warnings;
+                info
+            })
         }
         Err(e) => {
             emit(
@@ -537,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn move_dir_relocates_every_file_and_clears_the_source() {
+    fn copy_or_rename_dir_relocates_every_file() {
         let base = scratch("move");
         let src = base.join("src");
         let dst = base.join("dst");
@@ -545,10 +607,14 @@ mod tests {
         write(&src.join("nested/vae.safetensors"), &[3u8; 2048]);
 
         let mut moved = 0u64;
-        let ok = move_dir(&silent(), &src, &dst, &mut moved, 6144).unwrap();
+        let outcome = copy_or_rename_dir(&silent(), &src, &dst, &mut moved, 6144).unwrap();
 
-        assert!(ok);
-        assert!(!src.exists(), "source must be gone after a successful move");
+        // Scratch dirs share a volume (both under the OS temp dir), so this
+        // takes the atomic-rename path — which, being a single OS-level
+        // move, is the one case where the source is expected gone
+        // immediately rather than left for a later, explicit deletion.
+        assert!(matches!(outcome, MoveOutcome::Renamed));
+        assert!(!src.exists(), "rename must relocate, not copy, the source");
         assert_eq!(
             std::fs::read(dst.join("model.gguf")).unwrap(),
             vec![7u8; 4096]
@@ -561,14 +627,14 @@ mod tests {
     }
 
     #[test]
-    fn move_dir_refuses_to_overwrite_a_populated_destination() {
+    fn copy_or_rename_dir_refuses_to_overwrite_a_populated_destination() {
         let base = scratch("clobber");
         let src = base.join("src");
         let dst = base.join("dst");
         write(&src.join("new.gguf"), b"new");
         write(&dst.join("precious.gguf"), b"precious");
 
-        let err = move_dir(&silent(), &src, &dst, &mut 0, 0).unwrap_err();
+        let err = copy_or_rename_dir(&silent(), &src, &dst, &mut 0, 0).unwrap_err();
 
         assert!(err.contains("existe déjà"), "unexpected message: {err}");
         // Neither side may be touched when we bail out.
@@ -581,10 +647,50 @@ mod tests {
     }
 
     #[test]
-    fn move_dir_is_a_noop_when_there_is_nothing_to_move() {
+    fn copy_or_rename_dir_is_a_noop_when_there_is_nothing_to_move() {
         let base = scratch("noop");
         let missing = base.join("absent");
-        assert!(!move_dir(&silent(), &missing, &base.join("dst"), &mut 0, 0).unwrap());
+        assert!(matches!(
+            copy_or_rename_dir(&silent(), &missing, &base.join("dst"), &mut 0, 0).unwrap(),
+            MoveOutcome::Nothing
+        ));
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// Locaryn/Locaryn#4: a category refused (destination populated — the
+    /// same shape as a locked bin/ mid-copy in the real path) must not
+    /// disturb a category that already moved. `set_storage_root` relies on
+    /// this `?`-propagates-before-any-deletion property to keep every source
+    /// intact until all three categories are confirmed, so the pointer never
+    /// commits over a partial copy.
+    #[test]
+    fn a_refused_category_leaves_an_already_moved_ones_source_alone() {
+        let base = scratch("deferred-delete");
+        let models_src = base.join("models");
+        write(&models_src.join("weights.gguf"), &[9u8; 512]);
+
+        let mut moved = 0u64;
+        let models_outcome = copy_or_rename_dir(
+            &silent(),
+            &models_src,
+            &base.join("dst/models"),
+            &mut moved,
+            512,
+        )
+        .unwrap();
+        assert!(matches!(models_outcome, MoveOutcome::Renamed));
+
+        let bin_src = base.join("bin");
+        write(&bin_src.join("llama-server.exe"), b"binary");
+        let bin_dst = base.join("dst/bin");
+        write(&bin_dst.join("already-here.dll"), b"stale");
+
+        let err = copy_or_rename_dir(&silent(), &bin_src, &bin_dst, &mut moved, 512).unwrap_err();
+        assert!(err.contains("existe déjà"));
+        assert_eq!(
+            std::fs::read(bin_src.join("llama-server.exe")).unwrap(),
+            b"binary"
+        );
         std::fs::remove_dir_all(&base).ok();
     }
 

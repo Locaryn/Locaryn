@@ -76,9 +76,10 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
       if (!alive.current) return;
       setInfo(next);
       setPendingRoot(null);
+      const warnings = next.cleanup_warnings ?? [];
       setNotice(
         moveData
-          ? "Données déplacées. Le nouveau dossier est actif."
+          ? ["Données déplacées. Le nouveau dossier est actif.", ...warnings].join("\n\n")
           : "Nouveau dossier enregistré. Les anciens fichiers sont restés sur place — les modèles déjà téléchargés n'apparaîtront plus tant qu'ils ne sont pas déplacés.",
       );
       // The engine processes hold paths resolved at startup.

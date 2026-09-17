@@ -7,7 +7,7 @@ import { ConnectorsSettings } from "./components/ConnectorsSettings";
 import { ExtensionsSettings } from "./components/ExtensionsSettings";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
-import { isNativeViewAccessible, NAVIGABLE_VIEWS, NavDrawer } from "./components/NavDrawer";
+import { NAVIGABLE_VIEWS, NavDrawer, isNativeViewAccessible } from "./components/NavDrawer";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
