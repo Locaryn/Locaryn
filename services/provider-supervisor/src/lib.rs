@@ -1059,6 +1059,21 @@ pub fn ollama_options_hint() -> serde_json::Value {
     serde_json::json!({ "endpoint": "/api/chat", "body_key": "options.num_ctx" })
 }
 
+/// Refuse de lancer le moteur si un autre programme tient déjà le port
+/// loopback : `TcpListener::bind` réussit seulement si personne n'écoute
+/// dessus, et se relâche aussitôt (le `Drop` du listener) pour laisser la
+/// place au vrai serveur. Message nommé, plutôt qu'un `bind()` raté côté
+/// llama-server dont la sortie peut ne jamais atteindre le disque.
+fn ensure_port_free(port: u16) -> Result<(), String> {
+    std::net::TcpListener::bind(("127.0.0.1", port))
+        .map(|_| ())
+        .map_err(|e| {
+            format!(
+                "port {port} déjà utilisé par un autre programme sur cette machine ({e}) — fermez-le ou libérez le port avant de relancer le moteur"
+            )
+        })
+}
+
 /// Spawn `ollama serve` as a detached child process.
 ///
 /// We set `OLLAMA_HOST=127.0.0.1:11434` to guarantee loopback binding even
@@ -1136,6 +1151,17 @@ async fn spawn_llama_server(
             ),
         ));
     }
+
+    // Vérifier que le port est libre avant de lancer le moteur. Sans ça, un
+    // autre processus déjà dessus (observé avec `wslrelay.exe`, mais tout
+    // logiciel loopback ferait pareil) fait échouer le `bind()` de
+    // llama-server, qui se ferme aussitôt — souvent avant même d'avoir
+    // vidangé la première ligne de son log, puisque stderr redirigé vers un
+    // fichier passe en tampon plein bloc côté runtime C au lieu du tampon
+    // ligne par ligne d'un terminal. Le journal reste alors vide et
+    // l'application n'a plus rien à montrer qu'un chargement qui ne finit
+    // jamais. Sonder le port nous-mêmes donne un message net et immédiat.
+    ensure_port_free(8080).map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e))?;
 
     tracing::info!(
         bin = %bin.display(),
@@ -1640,5 +1666,26 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Un port loopback déjà pris (observé avec `wslrelay.exe` squattant
+    /// 8080) faisait échouer le `bind()` de llama-server en silence : le
+    /// processus se fermait avant d'écrire quoi que ce soit dans son propre
+    /// journal, et l'application restait bloquée sur « chargement du modèle »
+    /// indéfiniment, sans message. `ensure_port_free` doit détecter ce cas
+    /// avant même de lancer le moteur.
+    #[test]
+    fn refuse_de_lancer_le_moteur_si_le_port_est_deja_pris() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let err = ensure_port_free(port).expect_err("le port est occupé par `listener`");
+        assert!(
+            err.contains(&port.to_string()),
+            "le message doit nommer le port en cause : {err}"
+        );
+
+        drop(listener);
+        ensure_port_free(port).expect("le port est libre une fois le listener relâché");
     }
 }
