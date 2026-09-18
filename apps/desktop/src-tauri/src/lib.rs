@@ -1570,6 +1570,7 @@ async fn generate_session_title(
     });
 
     let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
