@@ -1,29 +1,12 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
-import { type Project, type RagStatus, type TrustLevel, core } from "../lib/core";
+import { type Project, type RagStatus, core } from "../lib/core";
+import { trustInfo } from "../lib/trust";
 
 type Props = {
   projects: Project[];
   /** Called after a project is archived so the caller can refresh its list. */
   onArchived?: (p: Project) => void;
-};
-
-const TRUST_LABELS: Record<TrustLevel, { label: string; hint: string; color: string }> = {
-  trusted: {
-    label: "Confiance",
-    hint: "Les outils peu et moyennement risqués s'exécutent sans confirmation.",
-    color: "var(--accent-300)",
-  },
-  untrusted: {
-    label: "Prudent",
-    hint: "Seuls les outils en lecture s'exécutent sans confirmation.",
-    color: "var(--warn)",
-  },
-  sandbox: {
-    label: "Bac à sable",
-    hint: "Chaque outil demande une confirmation explicite.",
-    color: "var(--danger)",
-  },
 };
 
 /**
@@ -116,11 +99,11 @@ export function ProjectSettings({ projects, onArchived }: Props) {
             <div className="locaryn-conn" style={{ marginTop: 8 }}>
               <span
                 className="locaryn-health-dot"
-                style={{ background: TRUST_LABELS[selected.trust_level].color }}
+                style={{ background: trustInfo(selected.trust_level).color }}
               />
               <span>
-                <strong>{TRUST_LABELS[selected.trust_level].label}</strong> —{" "}
-                {TRUST_LABELS[selected.trust_level].hint}
+                <strong>{trustInfo(selected.trust_level).label}</strong> —{" "}
+                {trustInfo(selected.trust_level).hint}
               </span>
             </div>
             <p className="locaryn-field-hint" style={{ marginTop: 8, fontStyle: "italic" }}>

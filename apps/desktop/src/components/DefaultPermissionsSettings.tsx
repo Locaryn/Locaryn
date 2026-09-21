@@ -1,24 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { type TrustLevel, core } from "../lib/core";
-
-const NIVEAUX: { value: TrustLevel; label: string; desc: string }[] = [
-  {
-    value: "untrusted",
-    label: "Demander avant d'agir",
-    desc: "Lire oui, mais chaque ecriture ou commande passe par une confirmation.",
-  },
-  {
-    value: "trusted",
-    label: "Tout autoriser",
-    desc: "Le modele agit sans demander : fichiers, commandes, le tout.",
-  },
-  {
-    value: "sandbox",
-    label: "Apercu seul",
-    desc: "Rien d'ecrit, rien d'execute : le modele lit et repond.",
-  },
-];
+import { TRUST_LEVELS, trustInfo } from "../lib/trust";
 
 /**
  * Les permissions que portent les nouvelles conversations libres.
@@ -63,7 +46,7 @@ export function DefaultPermissionsSettings() {
         </div>
       </div>
       <div className="locaryn-segmented" role="group" aria-label="Permissions par defaut">
-        {NIVEAUX.map((n) => (
+        {TRUST_LEVELS.map((n) => (
           <button
             key={n.value}
             type="button"
@@ -71,17 +54,13 @@ export function DefaultPermissionsSettings() {
             className={`locaryn-segment${niveau === n.value ? " locaryn-segment-on" : ""}`}
             aria-pressed={niveau === n.value}
             onClick={() => choisir(n.value)}
-            title={n.desc}
+            title={n.hint}
           >
             {n.label}
           </button>
         ))}
       </div>
-      <p className="locaryn-field-hint">
-        {niveau
-          ? NIVEAUX.find((n) => n.value === niveau)?.desc
-          : "Demander avant d'agir : le modele confirmera chaque ecriture ou commande."}
-      </p>
+      <p className="locaryn-field-hint">{trustInfo(niveau ?? "untrusted").hint}</p>
     </section>
   );
 }

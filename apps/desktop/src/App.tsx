@@ -1082,6 +1082,7 @@ export function App() {
           activeCapabilities={activeCapabilities}
           activeExtensions={activeExtensions}
           activeProject={activeProject}
+          activeSession={activeSession}
           onTrustLevelChange={async (level) => {
             if (!activeProject) return;
             try {

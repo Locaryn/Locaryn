@@ -19,7 +19,7 @@ import {
   type ResidencyStatus,
   core,
 } from "../lib/core";
-import { findMetric, formatSpeed } from "./SpeedBadge";
+import { findMetric, formatRate, formatSpeed } from "./SpeedBadge";
 
 /** Le point de l'indicateur : couleur et libellé disent la même chose, pour
  *  que l'information ne repose pas seulement sur la couleur. */
@@ -104,6 +104,16 @@ export function ModelResidency() {
   /* La quantification, le débit et le contexte accompagnent le nom du modèle
      dans la barre d'état : trois chiffres en mono, lus d'un coup d'œil. */
   const [metrics, setMetrics] = useState<ModelMetric[]>([]);
+  /** La vitesse de génération de la dernière réponse, mesurée par le moteur. */
+  const [live, setLive] = useState<number | null>(null);
+  useEffect(() => {
+    const onSpeed = (e: Event) => {
+      const detail = (e as CustomEvent<{ generation: number }>).detail;
+      if (detail && detail.generation > 0) setLive(detail.generation);
+    };
+    window.addEventListener("locaryn:speed", onSpeed);
+    return () => window.removeEventListener("locaryn:speed", onSpeed);
+  }, []);
   const [config, setConfig] = useState<InferenceConfig | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -211,7 +221,11 @@ export function ModelResidency() {
   const facts = loaded
     ? [
         quantization(status?.model),
-        status?.model ? debitMesure(metrics, status.model) : null,
+        live !== null
+          ? `${formatRate(live)} jetons/s`
+          : status?.model
+            ? debitMesure(metrics, status.model)
+            : null,
         config ? `ctx ${contextLabel(config.context_length)}` : null,
       ].filter((f): f is string => Boolean(f))
     : [];

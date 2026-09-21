@@ -28,6 +28,13 @@ type Props = {
   /** Une autre conversation a été déposée sur celle-ci : les réunir. Absent,
    *  la ligne n'accepte pas de dépôt. */
   onMergeInto?: (sourceId: string) => void;
+  /** Le mode sélection est ouvert : la ligne montre sa case et un clic la coche
+   *  au lieu d'ouvrir la conversation. */
+  selecting?: boolean;
+  selected?: boolean;
+  /** Cocher ou décocher. `range` : Maj enfoncée, tout ce qui sépare de la
+   *  dernière case touchée. Un Ctrl+clic ou un Maj+clic ouvre aussi le mode. */
+  onToggleSelect?: (range: boolean) => void;
 };
 
 /**
@@ -51,6 +58,9 @@ export function SessionRow({
   onMove,
   leaving,
   onMergeInto,
+  selecting = false,
+  selected = false,
+  onToggleSelect,
 }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [showSubmenu, setShowSubmenu] = useState(false);
@@ -72,7 +82,7 @@ export function SessionRow({
   }, []);
 
   function startHoldTimer() {
-    if (editing) return;
+    if (editing || selecting) return;
     if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
     holdTimerRef.current = window.setTimeout(() => {
       window.dispatchEvent(
@@ -122,7 +132,7 @@ export function SessionRow({
       className={`locaryn-session-row locaryn-drag-item${leaving ? " locaryn-leaving" : ""}${
         accueille ? " locaryn-session-merge" : ""
       }`}
-      draggable={!editing}
+      draggable={!editing && !selecting}
       onPointerDown={startHoldTimer}
       onPointerUp={clearHoldTimer}
       onPointerCancel={clearHoldTimer}
@@ -177,10 +187,26 @@ export function SessionRow({
       }}
       onContextMenu={(e) => {
         e.preventDefault();
+        if (selecting) return;
         setShowSubmenu(false);
         setMenu({ x: e.clientX, y: e.clientY });
       }}
     >
+      {selecting && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={`Sélectionner « ${label} »`}
+          className={`locaryn-session-check${selected ? " locaryn-session-check-on" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect?.(e.shiftKey);
+          }}
+        >
+          {selected && <Icon name="check" size={12} />}
+        </button>
+      )}
       {editing ? (
         <input
           ref={inputRef}
@@ -199,9 +225,20 @@ export function SessionRow({
       ) : (
         <button
           type="button"
-          className={`locaryn-tree-item${active ? " locaryn-active" : ""}`}
+          className={`locaryn-tree-item${active ? " locaryn-active" : ""}${
+            selected ? " locaryn-session-selected" : ""
+          }`}
           style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          onClick={onSelect}
+          onClick={(e) => {
+            // Un clic ouvre la conversation, sauf en mode sélection ou avec Ctrl,
+            // Cmd ou Maj : alors il la coche.
+            if (onToggleSelect && (selecting || e.ctrlKey || e.metaKey || e.shiftKey)) {
+              e.preventDefault();
+              onToggleSelect(e.shiftKey);
+              return;
+            }
+            onSelect();
+          }}
           onDoubleClick={() => setEditing(true)}
           title={label}
         >

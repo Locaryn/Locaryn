@@ -2294,7 +2294,7 @@ dialog:where([open]) {
 .locaryn-approval-bandeau {
   width: 100%;
   max-width: 100%;
-  max-height: min(52vh, 460px);
+  max-height: min(44vh, 380px);
   margin: 0 0 var(--space-2);
   border-radius: var(--radius-md);
   /* Pas d'ombre portee de pop-up : ce bandeau appartient a la page. */
@@ -2579,7 +2579,7 @@ dialog:where([open]) {
   }
 }
 @media (max-width: 700px) {
-  .locaryn-approval {
+  .locaryn-approval:not(.locaryn-approval-bandeau) {
     width: 100vw;
     height: 100vh;
     max-height: 100vh;
@@ -3099,6 +3099,45 @@ dialog:where([open]) {
   line-height: 1.6;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.locaryn-msg-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.locaryn-msg-file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-2);
+}
+.locaryn-msg-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.locaryn-msg-media {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  width: 100%;
+  max-width: 360px;
+  margin: 0;
+}
+.locaryn-msg-media audio,
+.locaryn-msg-video {
+  width: 100%;
+  max-width: 100%;
+  border-radius: var(--radius-md, 8px);
 }
 
 .locaryn-attach-remove {
@@ -11355,4 +11394,268 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   margin: var(--space-1) 0 0;
   font-size: 0.8rem;
   color: var(--text-dim);
+}
+
+/* ── Sélection multiple de conversations ───────────────────────────────
+   Cases à cocher dans la liste, barre d'actions groupées au-dessus. Les cibles
+   font au moins 40 px de haut : la liste est dense, mais on y clique au doigt
+   aussi. */
+.locaryn-history-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.locaryn-select-toggle {
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  letter-spacing: 0.4px;
+  text-transform: none;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.locaryn-select-toggle:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.locaryn-select-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-select-toggle-on {
+  color: var(--accent-300);
+  border-color: rgba(var(--accent-rgb), 0.4);
+}
+.locaryn-session-check {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 40px;
+  padding: 0;
+  color: #fff;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.locaryn-session-check::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.locaryn-session-check > svg {
+  position: relative;
+}
+.locaryn-session-check-on::before {
+  background: var(--accent-600);
+  border-color: var(--accent-500);
+}
+.locaryn-session-check:focus-visible::before {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-tree-item.locaryn-session-selected {
+  background: var(--accent-fill);
+}
+.locaryn-selection-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 var(--space-1) var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.locaryn-selection-count {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+.locaryn-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.locaryn-selection-btn {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.locaryn-selection-btn:hover:not(:disabled) {
+  border-color: var(--accent-500);
+}
+.locaryn-selection-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.locaryn-selection-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-selection-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.locaryn-selection-btn-danger {
+  color: var(--danger);
+  border-color: rgba(var(--danger-rgb), 0.4);
+}
+.locaryn-selection-move {
+  position: relative;
+}
+.locaryn-selection-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: var(--space-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+.locaryn-selection-menu .locaryn-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+}
+.locaryn-selection-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Demande d'autorisation compacte ────────────────────────────────────
+   Une ligne au-dessus du composeur : le niveau de risque, l'outil, le motif et
+   les deux boutons. Les modifications et la portée se déplient à la demande, si
+   bien qu'on peut relire pourquoi le modèle veut cet outil sans qu'un grand
+   bloc masque la conversation. */
+.locaryn-approval-compact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  overflow-y: auto;
+}
+.locaryn-approval-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.locaryn-approval-summary {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.locaryn-approval-headline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.locaryn-approval-compact .locaryn-approval-banner-title {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.locaryn-approval-compact .locaryn-approval-tool {
+  font-size: var(--text-xs);
+  padding: 1px var(--space-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-approval-compact .locaryn-approval-reason {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.locaryn-approval-compact .locaryn-approval-reason.is-open {
+  -webkit-line-clamp: unset;
+  display: block;
+}
+.locaryn-approval-compact .locaryn-approval-actions {
+  flex: none;
+}
+.locaryn-approval-compact .locaryn-approval-actions button {
+  min-height: 40px;
+}
+.locaryn-approval-compact .locaryn-approval-allow {
+  min-width: 0;
+}
+.locaryn-approval-toggle {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.locaryn-approval-toggle:hover {
+  color: var(--text);
+}
+.locaryn-approval-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-approval-compact .locaryn-approval-body {
+  padding: var(--space-2) 0 0;
+  gap: var(--space-3);
+  overflow: visible;
+}
+.locaryn-approval-compact .locaryn-approval-diff {
+  max-height: 140px;
+}
+
+/* Vitesse mesurée par le moteur, sous une réponse : discrète, elle sert à qui
+   veut comparer deux modèles ou deux réglages, pas à qui lit la réponse. */
+.locaryn-msg-speed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.locaryn-msg-speed svg {
+  flex: none;
+}
+.locaryn-msg-speed-sep {
+  opacity: 0.6;
 }

@@ -38,6 +38,46 @@ struct RoundResult {
     calls: Vec<AssembledCall>,
     tokens_in: u64,
     tokens_out: u64,
+    timings: RoundTimings,
+}
+
+/// Ce que llama-server mesure lui-même dans le dernier cadre d'un flux
+/// (`timings`) : jetons et millisecondes du prompt, puis de la génération.
+#[derive(Debug, Default, Clone, Copy)]
+struct RoundTimings {
+    prompt_n: u64,
+    prompt_ms: f64,
+    predicted_n: u64,
+    predicted_ms: f64,
+}
+
+impl RoundTimings {
+    fn add(&mut self, autre: RoundTimings) {
+        self.prompt_n += autre.prompt_n;
+        self.prompt_ms += autre.prompt_ms;
+        self.predicted_n += autre.predicted_n;
+        self.predicted_ms += autre.predicted_ms;
+    }
+
+    /// L'événement à envoyer, ou `None` si le moteur n'a rien mesuré.
+    fn event(self) -> Option<StreamEvent> {
+        if self.predicted_n == 0 || self.predicted_ms <= 0.0 {
+            return None;
+        }
+        let par_seconde = |n: u64, ms: f64| {
+            if ms > 0.0 {
+                (n as f64 / ms * 1000.0) as f32
+            } else {
+                0.0
+            }
+        };
+        Some(StreamEvent::Timings {
+            prompt_tokens: self.prompt_n,
+            generated_tokens: self.predicted_n,
+            prompt_tokens_per_sec: par_seconde(self.prompt_n, self.prompt_ms),
+            generation_tokens_per_sec: par_seconde(self.predicted_n, self.predicted_ms),
+        })
+    }
 }
 
 /// Run the OpenAI-compat loop. Tools are enabled only when the input carries
@@ -273,6 +313,7 @@ pub async fn run_openai_tool_loop(
 
         let mut tokens_in = 0u64;
         let mut tokens_out = 0u64;
+        let mut timings = RoundTimings::default();
 
         // Consume the first (already-sent) response, then loop.
         let mut pending_resp = Some(first_resp);
@@ -338,6 +379,7 @@ pub async fn run_openai_tool_loop(
             };
             tokens_in += round_result.tokens_in;
             tokens_out += round_result.tokens_out;
+            timings.add(round_result.timings);
 
             if round_result.calls.is_empty() {
                 got_final = true;
@@ -419,6 +461,9 @@ pub async fn run_openai_tool_loop(
                 .await;
         }
 
+        if let Some(evenement) = timings.event() {
+            let _ = tx.send(evenement).await;
+        }
         let _ = tx
             .send(StreamEvent::MessageEnd {
                 message_id: message_id_loop,
@@ -581,6 +626,17 @@ async fn stream_one_round(
                 Ok(v) => v,
                 Err(_) => continue,
             };
+
+            if let Some(t) = val.get("timings") {
+                let nombre = |cle: &str| t.get(cle).and_then(|v| v.as_u64()).unwrap_or(0);
+                let duree = |cle: &str| t.get(cle).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                out.timings = RoundTimings {
+                    prompt_n: nombre("prompt_n"),
+                    prompt_ms: duree("prompt_ms"),
+                    predicted_n: nombre("predicted_n"),
+                    predicted_ms: duree("predicted_ms"),
+                };
+            }
 
             if let Some(usage) = val.get("usage") {
                 if let Some(pi) = usage.get("prompt_tokens").and_then(|v| v.as_u64()) {

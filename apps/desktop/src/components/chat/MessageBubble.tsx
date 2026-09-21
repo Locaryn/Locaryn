@@ -4,7 +4,34 @@ import { core } from "../../lib/core";
 import { pickSaveFile } from "../../lib/dialog";
 import { renderMarkdown } from "../../lib/markdown";
 import { splitReasoning } from "../../lib/reasoning";
+import { formatRate } from "../SpeedBadge";
 import { ReasoningBlock } from "./ReasoningBlock";
+
+/** Un fichier joint à un message, tel qu'il s'affiche dans la bulle. */
+export type MessageAttachment = {
+  kind: "text" | "audio" | "video" | "other";
+  name: string;
+  /** Adresse locale du fichier, pour le lire ici : audio et vidéo seulement.
+   *  Elle ne survit pas au rechargement — le message, lui, ne garde que du texte. */
+  url?: string;
+};
+
+const ATTACHMENT_LABEL: Record<MessageAttachment["kind"], string> = {
+  text: "Document",
+  audio: "Audio",
+  video: "Vidéo",
+  other: "Autre",
+};
+
+/** Ce que le moteur a mesuré pour une réponse. */
+export type MessageSpeed = {
+  /** Jetons écrits. */
+  generated: number;
+  /** Jetons écrits par seconde. */
+  generation: number;
+  /** Jetons de prompt lus par seconde. */
+  prompt: number;
+};
 
 type Props = {
   role: "user" | "assistant";
@@ -18,6 +45,10 @@ type Props = {
   onEdit?: () => void;
   /** Run a code block from the answer (the panel asks for confirmation). */
   onRunCode?: (code: string, lang: string) => void;
+  /** La vitesse mesurée pour cette réponse (assistant seulement). */
+  speed?: MessageSpeed;
+  /** Les fichiers joints qui ne sont pas des images (message de l'utilisateur). */
+  attachments?: MessageAttachment[];
 };
 
 /** Languages we can actually execute on the user's machine. */
@@ -59,6 +90,8 @@ export function MessageBubble({
   canEdit,
   onEdit,
   onRunCode,
+  speed,
+  attachments,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; path?: string } | null>(null);
@@ -265,6 +298,34 @@ export function MessageBubble({
               ))}
             </div>
           )}
+          {attachments && attachments.length > 0 && (
+            <div className="locaryn-msg-files">
+              {attachments.map((a) =>
+                a.kind === "audio" && a.url ? (
+                  <figure key={a.name} className="locaryn-msg-media">
+                    <figcaption className="locaryn-msg-file-name" title={a.name}>
+                      {a.name}
+                    </figcaption>
+                    {/* biome-ignore lint/a11y/useMediaCaption: un fichier envoyé par la personne elle-même : aucune transcription à fournir. */}
+                    <audio controls preload="metadata" src={a.url} />
+                  </figure>
+                ) : a.kind === "video" && a.url ? (
+                  <figure key={a.name} className="locaryn-msg-media">
+                    {/* biome-ignore lint/a11y/useMediaCaption: un fichier envoyé par la personne elle-même : aucune transcription à fournir. */}
+                    <video controls preload="metadata" src={a.url} className="locaryn-msg-video" />
+                    <figcaption className="locaryn-msg-file-name" title={a.name}>
+                      {a.name}
+                    </figcaption>
+                  </figure>
+                ) : (
+                  <span key={a.name} className="locaryn-msg-file" title={a.name}>
+                    <span className="locaryn-msg-file-name">{a.name}</span>
+                    <span className="locaryn-attach-doc-type">{ATTACHMENT_LABEL[a.kind]}</span>
+                  </span>
+                ),
+              )}
+            </div>
+          )}
           {text && <div className="locaryn-msg-text">{text}</div>}
           <div className="locaryn-msg-actions">
             <button type="button" className="locaryn-msg-action" onClick={copy}>
@@ -309,6 +370,19 @@ export function MessageBubble({
               onClick={() => setLightbox({ src, path: imagePaths?.[i] })}
             />
           ))}
+        </div>
+      )}
+      {speed && speed.generation > 0 && (
+        <div
+          className="locaryn-msg-speed"
+          title={`${speed.generated} jetons écrits à ${formatRate(speed.generation)} par seconde ; le prompt a été lu à ${formatRate(speed.prompt)} par seconde. Mesuré par le moteur.`}
+        >
+          <Icon name="speed" size={12} />
+          <span>{formatRate(speed.generation)} t/s</span>
+          <span className="locaryn-msg-speed-sep" aria-hidden="true">
+            ·
+          </span>
+          <span>{speed.generated} jetons</span>
         </div>
       )}
       {imageViewer()}

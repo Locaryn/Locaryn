@@ -1127,6 +1127,14 @@ export type StreamEvent =
     }
   | { type: "log"; level: string; msg: string; source: string }
   | {
+      /** Vitesse mesurée par le moteur, envoyée juste avant `message_end`. */
+      type: "timings";
+      prompt_tokens: number;
+      generated_tokens: number;
+      prompt_tokens_per_sec: number;
+      generation_tokens_per_sec: number;
+    }
+  | {
       type: "message_end";
       message_id: string;
       tokens_in: number;
@@ -4434,6 +4442,13 @@ const demoCore: CoreApi = {
       onEvent({ type: "token", text: word });
       await sleep(18);
     }
+    onEvent({
+      type: "timings",
+      prompt_tokens: 120,
+      generated_tokens: 60,
+      prompt_tokens_per_sec: 412.6,
+      generation_tokens_per_sec: 41.3,
+    });
     onEvent({
       type: "message_end",
       message_id: "demo",

@@ -74,6 +74,19 @@ pub enum StreamEvent {
         msg: String,
         source: String,
     },
+    /// La vitesse mesurée par le moteur pour cette réponse, envoyée juste avant
+    /// `MessageEnd`. Absente quand le moteur ne mesure rien : on ne devine pas
+    /// une vitesse à partir de la durée totale, qui compte aussi l'attente du
+    /// chargement du modèle et des outils.
+    Timings {
+        /// Jetons du prompt réellement traités (le cache de préfixe n'est pas compté).
+        prompt_tokens: u64,
+        generated_tokens: u64,
+        /// Jetons lus par seconde pendant le traitement du prompt.
+        prompt_tokens_per_sec: f32,
+        /// Jetons écrits par seconde pendant la génération.
+        generation_tokens_per_sec: f32,
+    },
     MessageEnd {
         message_id: String,
         tokens_in: u64,
@@ -201,6 +214,7 @@ pub fn sse_event_tag(event: &StreamEvent) -> &'static str {
         StreamEvent::PreviewUpdate { .. } => "preview.update",
         StreamEvent::ProviderChanged { .. } => "provider.changed",
         StreamEvent::Log { .. } => "log",
+        StreamEvent::Timings { .. } => "timings",
         StreamEvent::MessageEnd { .. } => "message.end",
     }
 }

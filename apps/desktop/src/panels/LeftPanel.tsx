@@ -1,5 +1,5 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { visibleNavItems } from "../components/NavDrawer";
 import { SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
@@ -99,6 +99,92 @@ function sessionLabel(s: Session, index: number) {
   return `Chat ${index + 1} — ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+/**
+ * La barre d'actions du mode sélection : combien sont cochées, et quoi en faire.
+ *
+ * Le menu « Ranger dans » est un menu du thème, pas un `<select>` natif : le
+ * menu déroulant du système s'ouvre en blanc sur le thème sombre.
+ */
+function SelectionBar({
+  count,
+  total,
+  projects,
+  moveMenu,
+  onToggleMoveMenu,
+  onSelectAll,
+  onNone,
+  onArchive,
+  onMove,
+}: {
+  count: number;
+  total: number;
+  projects: { id: string; name: string }[];
+  moveMenu: boolean;
+  onToggleMoveMenu: () => void;
+  onSelectAll: (() => void) | undefined;
+  onNone: () => void;
+  onArchive: () => void;
+  onMove: (projectId: string) => void;
+}) {
+  const none = count === 0;
+  return (
+    <div className="locaryn-selection-bar" role="toolbar" aria-label="Actions sur la sélection">
+      <span className="locaryn-selection-count" aria-live="polite">
+        {count === 0 ? "Cochez des conversations" : `${count} sélectionnée${count > 1 ? "s" : ""}`}
+      </span>
+      <div className="locaryn-selection-actions">
+        {onSelectAll && (
+          <button
+            type="button"
+            className="locaryn-selection-btn"
+            onClick={count === total && total > 0 ? onNone : onSelectAll}
+          >
+            {count === total && total > 0 ? "Aucune" : "Toutes"}
+          </button>
+        )}
+        {projects.length > 0 && (
+          <span className="locaryn-selection-move">
+            <button
+              type="button"
+              className="locaryn-selection-btn"
+              disabled={none}
+              aria-haspopup="menu"
+              aria-expanded={moveMenu}
+              onClick={onToggleMoveMenu}
+            >
+              Ranger dans ▾
+            </button>
+            {moveMenu && !none && (
+              <div className="locaryn-selection-menu" role="menu">
+                {projects.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="menuitem"
+                    className="locaryn-ctx-item"
+                    onClick={() => onMove(p.id)}
+                  >
+                    <Icon name="project" size={13} />
+                    <span className="locaryn-selection-menu-label">{p.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
+        )}
+        <button
+          type="button"
+          className="locaryn-selection-btn locaryn-selection-btn-danger"
+          disabled={none}
+          onClick={onArchive}
+        >
+          Archiver
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function LeftPanel({
   projects,
   sessions,
@@ -193,6 +279,83 @@ export function LeftPanel({
       window.removeEventListener("mouseup", onDragEnd);
     };
   }, []);
+
+  /**
+   * La sélection multiple : cocher plusieurs conversations pour les archiver ou
+   * les ranger d'un coup. Les identifiants sont ceux de toutes les listes — une
+   * conversation n'est jamais dans deux à la fois.
+   */
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [moveMenu, setMoveMenu] = useState(false);
+  /** La dernière case touchée, point de départ d'une sélection par Maj+clic. */
+  const anchorRef = useRef<string | null>(null);
+
+  const exitSelection = useCallback(() => {
+    setSelecting(false);
+    setSelected(new Set());
+    setMoveMenu(false);
+    anchorRef.current = null;
+  }, []);
+
+  /** Coche ou décoche `id`, ou tout l'intervalle depuis la dernière case. */
+  function toggleSelect(id: string, order: string[], range: boolean) {
+    setSelecting(true);
+    // Le point de départ se lit ici, pas dans la fonction de mise à jour : elle
+    // s'exécute plus tard, quand l'ancre a déjà été remplacée par `id`, et
+    // l'intervalle se réduirait à la seule case touchée.
+    const anchor = anchorRef.current;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const from = anchor ? order.indexOf(anchor) : -1;
+      const to = order.indexOf(id);
+      if (range && from >= 0 && to >= 0) {
+        const [a, b] = from < to ? [from, to] : [to, from];
+        for (const x of order.slice(a, b + 1)) next.add(x);
+      } else if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+    anchorRef.current = id;
+  }
+
+  useEffect(() => {
+    if (!selecting) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") exitSelection();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [selecting, exitSelection]);
+
+  function selectedSessions(): Session[] {
+    return allKnownSessions.filter((s) => selected.has(s.id));
+  }
+
+  function archiveSelected() {
+    const list = selectedSessions();
+    if (list.length === 0) return;
+    if (
+      list.length > 1 &&
+      !window.confirm(
+        `Archiver ${list.length} conversations ?\n\nElles quittent la liste mais restent dans les archives.`,
+      )
+    ) {
+      return;
+    }
+    for (const s of list) onSessionArchived?.(s);
+    exitSelection();
+  }
+
+  function moveSelected(projectId: string) {
+    for (const s of selectedSessions()) {
+      if (s.project_id !== projectId) onSessionMoved?.(s, projectId);
+    }
+    exitSelection();
+  }
 
   function partirPuis(s: Session, action: () => void) {
     setLeaving(s.id);
@@ -434,9 +597,35 @@ export function LeftPanel({
       {historyMode === "chats" && (
         <>
           {/* ── Conversations : ce qu'on rouvre le plus, donc en premier ── */}
-          <div className="locaryn-history-title">
-            Conversations ({standaloneSessions.filter((s) => !s.ephemeral).length})
+          <div className="locaryn-history-title locaryn-history-title-row">
+            <span>Conversations ({standaloneSessions.filter((s) => !s.ephemeral).length})</span>
+            <button
+              type="button"
+              className={`locaryn-select-toggle${selecting ? " locaryn-select-toggle-on" : ""}`}
+              aria-pressed={selecting}
+              title={selecting ? "Quitter la sélection" : "Sélectionner plusieurs conversations"}
+              onClick={() => (selecting ? exitSelection() : setSelecting(true))}
+            >
+              {selecting ? "Terminer" : "Sélectionner"}
+            </button>
           </div>
+          {selecting && (
+            <SelectionBar
+              count={selected.size}
+              total={standaloneSessions.filter((s) => !s.ephemeral).length}
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              moveMenu={moveMenu}
+              onToggleMoveMenu={() => setMoveMenu((v) => !v)}
+              onSelectAll={() =>
+                setSelected(
+                  new Set(standaloneSessions.filter((s) => !s.ephemeral).map((s) => s.id)),
+                )
+              }
+              onNone={() => setSelected(new Set())}
+              onArchive={archiveSelected}
+              onMove={moveSelected}
+            />
+          )}
 
           <div
             className="locaryn-history-standalone"
@@ -474,6 +663,15 @@ export function LeftPanel({
                       onMergeInto={
                         onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
                       }
+                      selecting={selecting}
+                      selected={selected.has(s.id)}
+                      onToggleSelect={(range) =>
+                        toggleSelect(
+                          s.id,
+                          standaloneSessions.filter((x) => !x.ephemeral).map((x) => x.id),
+                          range,
+                        )
+                      }
                     />
                   ))}
               </ul>
@@ -485,7 +683,31 @@ export function LeftPanel({
       {historyMode === "projects" && (
         <>
           {/* ── Espaces de travail (Projets) ── */}
-          <div className="locaryn-history-title">Espaces de travail</div>
+          <div className="locaryn-history-title locaryn-history-title-row">
+            <span>Espaces de travail</span>
+            <button
+              type="button"
+              className={`locaryn-select-toggle${selecting ? " locaryn-select-toggle-on" : ""}`}
+              aria-pressed={selecting}
+              title={selecting ? "Quitter la sélection" : "Sélectionner plusieurs conversations"}
+              onClick={() => (selecting ? exitSelection() : setSelecting(true))}
+            >
+              {selecting ? "Terminer" : "Sélectionner"}
+            </button>
+          </div>
+          {selecting && (
+            <SelectionBar
+              count={selected.size}
+              total={selected.size}
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              moveMenu={moveMenu}
+              onToggleMoveMenu={() => setMoveMenu((v) => !v)}
+              onSelectAll={undefined}
+              onNone={() => setSelected(new Set())}
+              onArchive={archiveSelected}
+              onMove={moveSelected}
+            />
+          )}
 
           {/* Chaque projet est un groupe avec accès rapide pour démarrer une conversation */}
           <div className="locaryn-history-groups">
@@ -664,6 +886,15 @@ export function LeftPanel({
                                 onSessionsMerged
                                   ? (source) => onSessionsMerged(s, source)
                                   : undefined
+                              }
+                              selecting={selecting}
+                              selected={selected.has(s.id)}
+                              onToggleSelect={(range) =>
+                                toggleSelect(
+                                  s.id,
+                                  projectSessions.map((x) => x.id),
+                                  range,
+                                )
                               }
                             />
                           ))}

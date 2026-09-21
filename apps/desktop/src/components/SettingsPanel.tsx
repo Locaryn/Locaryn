@@ -1,8 +1,16 @@
 import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 import type { UseThemeReturn } from "../hooks/useTheme";
-import { type InstalledExtension, type Project, type TrustLevel, core } from "../lib/core";
+import {
+  type InstalledExtension,
+  type Project,
+  type Session,
+  type TrustLevel,
+  core,
+} from "../lib/core";
+import { TRUST_LEVELS, trustInfo } from "../lib/trust";
 import { PerformancePanel } from "./PerformancePanel";
+import { SessionTrustControl } from "./SessionTrustControl";
 
 type Props = {
   theme: UseThemeReturn;
@@ -12,8 +20,11 @@ type Props = {
   onOpenFullSettings?: () => void;
   activeCapabilities?: string[];
   activeExtensions?: InstalledExtension[];
-  /** Le projet de la conversation en cours — l'onglet Permissions s'applique à lui. */
+  /** Le projet de la conversation en cours, quand il y en a un. */
   activeProject?: Project | null;
+  /** La conversation ouverte : ses permissions se règlent dans l'onglet
+   *  Permissions, avec ou sans projet. */
+  activeSession?: Session | null;
   onTrustLevelChange?: (level: TrustLevel) => void;
   /** Après archivage, pour que l'appelant retire le projet de ses listes. */
   onProjectArchived?: (project: Project) => void;
@@ -21,25 +32,11 @@ type Props = {
 
 type Tab = "performance" | "permissions";
 
-const TRUST_LABELS: Record<TrustLevel, { label: string; hint: string }> = {
-  trusted: {
-    label: "Confiance",
-    hint: "Les outils peu et moyennement risqués s'exécutent sans confirmation.",
-  },
-  untrusted: {
-    label: "Prudent",
-    hint: "Seuls les outils en lecture s'exécutent sans confirmation.",
-  },
-  sandbox: {
-    label: "Bac à sable",
-    hint: "Chaque outil demande une confirmation explicite.",
-  },
-};
-
 export function SettingsPanel({
   theme,
   onOpenFullSettings,
   activeProject,
+  activeSession,
   onTrustLevelChange,
   onProjectArchived,
 }: Props) {
@@ -131,53 +128,64 @@ export function SettingsPanel({
           <div className="locaryn-settings-pane">
             {tab === "performance" && <PerformancePanel />}
 
-            {tab === "permissions" &&
-              (!activeProject ? (
-                <p className="locaryn-field-hint">
-                  Aucun projet n'est ouvert pour cette conversation : les permissions par projet ne
-                  s'appliquent qu'à une conversation liée à un dossier.
-                </p>
-              ) : (
-                <>
-                  <div className="locaryn-field">
-                    <label htmlFor="perm-trust" className="locaryn-field-label">
-                      Niveau de confiance — {activeProject.name}
-                    </label>
-                    <select
-                      id="perm-trust"
-                      className="locaryn-select"
-                      value={activeProject.trust_level}
-                      onChange={(e) => onTrustLevelChange?.(e.target.value as TrustLevel)}
-                    >
-                      {(Object.keys(TRUST_LABELS) as TrustLevel[]).map((level) => (
-                        <option key={level} value={level}>
-                          {TRUST_LABELS[level].label}
-                        </option>
-                      ))}
-                    </select>
+            {tab === "permissions" && (
+              <>
+                <div className="locaryn-field">
+                  <div className="locaryn-field-label">Cette conversation</div>
+                  {activeSession ? (
+                    <SessionTrustControl sessionId={activeSession.id} />
+                  ) : (
                     <p className="locaryn-field-hint">
-                      {TRUST_LABELS[activeProject.trust_level].hint} Définit l'autonomie accordée à
-                      l'agent pour exécuter des commandes et modifier vos fichiers dans ce projet.
+                      Aucune conversation ouverte. Envoyez un premier message : elle est créée, et
+                      ses permissions se règlent ici. Les nouvelles conversations démarrent avec le
+                      réglage de Réglages → Compte.
                     </p>
-                  </div>
+                  )}
+                </div>
 
-                  <div className="locaryn-settings-danger-zone">
-                    <div className="locaryn-field-label">Zone dangereuse</div>
-                    <p className="locaryn-field-hint">
-                      Archiver retire le projet de la liste ; ses conversations restent sur le
-                      disque et rien n'est supprimé.
-                    </p>
-                    <button
-                      type="button"
-                      className="locaryn-btn-ghost locaryn-btn-danger"
-                      disabled={archiving}
-                      onClick={() => void archive()}
-                    >
-                      <Icon name="archive" size={15} /> Archiver « {activeProject.name} »
-                    </button>
-                  </div>
-                </>
-              ))}
+                {activeProject && (
+                  <>
+                    <div className="locaryn-field">
+                      <label htmlFor="perm-trust" className="locaryn-field-label">
+                        Niveau de confiance du projet — {activeProject.name}
+                      </label>
+                      <select
+                        id="perm-trust"
+                        className="locaryn-select"
+                        value={activeProject.trust_level}
+                        onChange={(e) => onTrustLevelChange?.(e.target.value as TrustLevel)}
+                      >
+                        {TRUST_LEVELS.map((n) => (
+                          <option key={n.value} value={n.value}>
+                            {n.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="locaryn-field-hint">
+                        {trustInfo(activeProject.trust_level).hint} C'est le réglage des
+                        conversations de ce projet, sauf exception posée sur l'une d'elles.
+                      </p>
+                    </div>
+
+                    <div className="locaryn-settings-danger-zone">
+                      <div className="locaryn-field-label">Zone dangereuse</div>
+                      <p className="locaryn-field-hint">
+                        Archiver retire le projet de la liste ; ses conversations restent sur le
+                        disque et rien n'est supprimé.
+                      </p>
+                      <button
+                        type="button"
+                        className="locaryn-btn-ghost locaryn-btn-danger"
+                        disabled={archiving}
+                        onClick={() => void archive()}
+                      >
+                        <Icon name="archive" size={15} /> Archiver « {activeProject.name} »
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
       </dialog>

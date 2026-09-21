@@ -5,7 +5,11 @@ import { ModalShell } from "../components/ModalShell";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
-import { MessageBubble } from "../components/chat/MessageBubble";
+import {
+  type MessageAttachment,
+  MessageBubble,
+  type MessageSpeed,
+} from "../components/chat/MessageBubble";
 import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { ToolCard } from "../components/chat/ToolCard";
@@ -53,6 +57,10 @@ type ChatItem =
       text: string;
       images?: string[];
       imagePaths?: Array<string | undefined>;
+      /** Vitesse mesurée par le moteur pour cette réponse, quand il en donne une. */
+      speed?: MessageSpeed;
+      /** Les fichiers joints qui ne sont pas des images (message de l'utilisateur). */
+      attachments?: MessageAttachment[];
     }
   | {
       id: string;
@@ -82,12 +90,14 @@ type ChatItem =
 type Attachment = {
   id: string;
   name: string;
-  kind: "image" | "text" | "other";
+  kind: "image" | "text" | "other" | "audio" | "video";
   /** Image seulement : la miniature et le corps envoye au modele. */
   dataUrl?: string;
   base64?: string;
   /** Texte seulement : le contenu lu. */
   text?: string;
+  /** Audio et vidéo : adresse locale pour les lire dans la conversation. */
+  objectUrl?: string;
 };
 type QueuedMessage = { id: string; text: string; attachments: Attachment[] };
 
@@ -265,6 +275,17 @@ function estImage(file: File): boolean {
   return file.type.startsWith("image/");
 }
 
+/** Audio ou vidéo, d'après le type que le système donne ou, à défaut, l'extension
+ *  (un `.m4a` ou un `.mkv` arrive parfois sans type). */
+function natureMedia(file: File): "audio" | "video" | null {
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type.startsWith("video/")) return "video";
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (["mp3", "wav", "ogg", "oga", "m4a", "flac", "aac", "opus"].includes(ext)) return "audio";
+  if (["mp4", "webm", "mkv", "mov", "avi", "m4v", "ogv"].includes(ext)) return "video";
+  return null;
+}
+
 /**
  * Le fichier porte-t-il du texte ?
  *
@@ -331,6 +352,21 @@ async function readFile(file: File, vision: boolean): Promise<Lecture> {
         dataUrl,
         base64: dataUrl.replace(/^data:[^;]+;base64,/, ""),
         name: file.name,
+      },
+    };
+  }
+
+  // Audio et vidéo se lisent dans la conversation. Le modèle, lui, ne les reçoit
+  // pas : ils partent comme les autres binaires, en simples fichiers joints.
+  const media = natureMedia(file);
+  if (media) {
+    return {
+      ok: true,
+      piece: {
+        id: nextId("att"),
+        kind: media,
+        name: file.name,
+        objectUrl: URL.createObjectURL(file),
       },
     };
   }
@@ -798,6 +834,25 @@ export function ChatPanel({
             ),
           );
         });
+    } else if (ev.type === "timings") {
+      const speed: MessageSpeed = {
+        generated: ev.generated_tokens,
+        generation: ev.generation_tokens_per_sec,
+        prompt: ev.prompt_tokens_per_sec,
+      };
+      // Rattachée à la dernière réponse écrite : c'est celle que ces chiffres
+      // décrivent. Une réponse faite de seuls appels d'outils n'en a pas.
+      setItems((prev) => {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          const it = prev[i];
+          if (it.kind === "msg" && it.role === "assistant") {
+            return prev.map((x, j) => (j === i ? { ...it, speed } : x));
+          }
+        }
+        return prev;
+      });
+      // Le pied de page montre la dernière vitesse mesurée.
+      window.dispatchEvent(new CustomEvent("locaryn:speed", { detail: speed }));
     } else if (ev.type === "log") {
       // Un avis d'erreur est adresse a la personne, pas au journal : il porte
       // l'explication de ce qui vient d'echouer et ce qu'il faut faire. Le
@@ -1051,6 +1106,13 @@ export function ChatPanel({
         role: "user",
         text,
         images: imgs.filter((a) => a.kind === "image" && a.dataUrl).map((a) => a.dataUrl as string),
+        attachments: imgs
+          .filter((a) => a.kind !== "image")
+          .map((a) => ({
+            kind: a.kind as MessageAttachment["kind"],
+            name: a.name,
+            url: a.objectUrl,
+          })),
       },
     ]);
 
@@ -1615,6 +1677,8 @@ export function ChatPanel({
                       text={it.text}
                       images={it.images}
                       imagePaths={it.imagePaths}
+                      speed={it.speed}
+                      attachments={it.attachments}
                       canEdit={i === lastUserIdx && !streaming}
                       onEdit={editLastUserMessage}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}
@@ -1850,6 +1914,8 @@ export function ChatPanel({
                       <Icon name={a.kind === "text" ? "notebook" : "archive"} size={14} />
                       <span className="locaryn-attach-doc-name">{a.name}</span>
                       {a.kind === "other" && <span className="locaryn-attach-doc-type">Autre</span>}
+                      {a.kind === "audio" && <span className="locaryn-attach-doc-type">Audio</span>}
+                      {a.kind === "video" && <span className="locaryn-attach-doc-type">Vidéo</span>}
                     </span>
                   )}
                   <button
@@ -1862,7 +1928,11 @@ export function ChatPanel({
                           ? "Retirer le document"
                           : "Retirer le fichier"
                     }
-                    onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                    onClick={() => {
+                      // Retiré avant l'envoi : plus personne ne lira cette adresse.
+                      if (a.objectUrl) URL.revokeObjectURL(a.objectUrl);
+                      setAttachments((prev) => prev.filter((_, idx) => idx !== i));
+                    }}
                   >
                     <Icon name="close" size={13} />
                   </button>
