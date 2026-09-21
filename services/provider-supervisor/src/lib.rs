@@ -932,122 +932,20 @@ pub fn llama_server_path() -> Option<PathBuf> {
 /// runtime géré (l'écran de réglages l'affiche, l'installateur le télécharge).
 pub const LLAMA_BUILD: &str = "b11003";
 
-/// L'archive à récupérer pour cette plateforme, s'il en existe une.
-fn llama_release_url() -> Option<&'static str> {
-    if cfg!(target_os = "windows") {
-        Some("https://github.com/ggml-org/llama.cpp/releases/download/b11003/llama-b11003-bin-win-vulkan-x64.zip")
-    } else if cfg!(target_os = "linux") {
-        // Les `.zip` Ubuntu ne sont plus produits : `.tar.gz` depuis b11003
-        // (vérifié par HEAD sur les assets de la release).
-        Some("https://github.com/ggml-org/llama.cpp/releases/download/b11003/llama-b11003-bin-ubuntu-x64.tar.gz")
-    } else {
-        None
-    }
-}
-
-/// Sortir l'archive du moteur dans `bin/llama/`, à plat.
-///
-/// Les publications de llama.cpp rangent tantôt les fichiers à la racine,
-/// tantôt sous `build/bin/`. Ce qui compte est que `llama-server` et les
-/// bibliothèques `ggml` finissent côte à côte : sous Windows, l'exécutable ne
-/// démarre pas sans ses DLL dans le même dossier.
-fn extraire_archive_llama(
-    archive: &std::path::Path,
-    dest: &std::path::Path,
-) -> Result<(), SupervisorError> {
-    let fichier = std::fs::File::open(archive)?;
-    let mut zip = zip::ZipArchive::new(fichier).map_err(|e| {
-        SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            format!("archive du moteur illisible : {e}"),
-        )
-    })?;
-    std::fs::create_dir_all(dest)?;
-    for index in 0..zip.len() {
-        let mut entree = zip.by_index(index).map_err(|e| {
-            SupervisorError::SpawnFailed(
-                ProviderEngine::LlamaCpp,
-                format!("archive du moteur illisible : {e}"),
-            )
-        })?;
-        if entree.is_dir() {
-            continue;
-        }
-        // Un nom qui sortirait du dossier de destination est ignoré, pas
-        // réécrit : une archive n'a pas à choisir où elle atterrit.
-        let Some(nom) = entree
-            .enclosed_name()
-            .and_then(|chemin| chemin.file_name().map(|n| n.to_os_string()))
-        else {
-            continue;
-        };
-        let cible = dest.join(&nom);
-        let mut sortie = std::fs::File::create(&cible)?;
-        std::io::copy(&mut entree, &mut sortie)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Some(mode) = entree.unix_mode() {
-                let _ = std::fs::set_permissions(&cible, std::fs::Permissions::from_mode(mode));
-            }
-        }
-    }
-    Ok(())
-}
-
 /// Installer le moteur d'inférence si la machine ne l'a pas encore.
 ///
 /// Un moteur n'est pas un choix laissé à l'utilisateur : sans lui, aucun
 /// modèle ne peut répondre, et lui demander d'aller le chercher dans un écran
 /// de réglages revient à livrer une application qui ne marche pas au premier
 /// lancement. Il arrive donc avec le reste, au moment où il sert.
-pub async fn provision_llama_server(http: &reqwest::Client) -> Result<PathBuf, SupervisorError> {
+pub async fn provision_llama_server(_http: &reqwest::Client) -> Result<PathBuf, SupervisorError> {
     if let Some(existant) = llama_server_path() {
         return Ok(existant);
     }
-    let url = llama_release_url().ok_or_else(|| {
-        SupervisorError::BinaryNotFound(
-            "llama-server — aucune version prête pour ce système ; installez llama.cpp              (`brew install llama.cpp`) et l'application le trouvera sur le chemin"
-                .into(),
-        )
-    })?;
-
-    let bin_root = locaryn_config::bin_dir();
-    let runtime_dir = bin_root.join("llama");
-    std::fs::create_dir_all(&runtime_dir)?;
-    let archive = bin_root.join("llama-runtime.zip");
-
-    tracing::info!(%url, "moteur d'inférence absent — installation");
-    let reponse = http.get(url).send().await.map_err(|e| {
-        SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            format!("téléchargement du moteur impossible : {e}"),
-        )
-    })?;
-    if !reponse.status().is_success() {
-        return Err(SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            format!("téléchargement du moteur : HTTP {}", reponse.status()),
-        ));
-    }
-    let octets = reponse.bytes().await.map_err(|e| {
-        SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            format!("téléchargement du moteur interrompu : {e}"),
-        )
-    })?;
-    std::fs::write(&archive, &octets)?;
-
-    let extraction = extraire_archive_llama(&archive, &runtime_dir);
-    let _ = std::fs::remove_file(&archive);
-    extraction?;
-
-    llama_server_path().ok_or_else(|| {
-        SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            "l'archive du moteur ne contenait pas llama-server".into(),
-        )
-    })
+    // Un seul chemin d'installation : celui du bouton des réglages. Le second,
+    // ici, ne savait extraire que du zip — sous Linux, où llama.cpp publie des
+    // `.tar.gz`, l'installation au premier lancement échouait.
+    runtime_install::install_llama_runtime(None).await
 }
 
 /// Ollama's OpenAI-compatible endpoint ignores `options` silently — the
@@ -1619,55 +1517,6 @@ pub fn find_mmproj_for(model_path: &std::path::Path) -> Option<std::path::PathBu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
-
-    /// « Installer le moteur » téléchargeait l'archive et s'arrêtait là, en
-    /// annonçant une réussite. L'écran disait installé, le chat répondait
-    /// « exécutable introuvable », et le journal conseillé pour comprendre
-    /// n'existait pas — il n'est écrit qu'au premier démarrage du moteur.
-    #[test]
-    fn l_archive_du_moteur_est_mise_a_plat() {
-        let base = std::env::temp_dir().join(format!(
-            "locaryn_runtime_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&base).unwrap();
-        let archive = base.join("llama.zip");
-
-        // Les publications de llama.cpp rangent tantôt à la racine, tantôt
-        // sous `build/bin/` : les deux doivent aboutir au même dossier.
-        let fichier = std::fs::File::create(&archive).unwrap();
-        let mut zip = zip::ZipWriter::new(fichier);
-        let options: zip::write::SimpleFileOptions = Default::default();
-        for chemin in [
-            "llama-server.exe",
-            "ggml-base.dll",
-            "build/bin/ggml-vulkan.dll",
-        ] {
-            zip.start_file(chemin, options).unwrap();
-            zip.write_all(b"binaire").unwrap();
-        }
-        zip.finish().unwrap();
-
-        let dest = base.join("llama");
-        extraire_archive_llama(&archive, &dest).unwrap();
-        for nom in ["llama-server.exe", "ggml-base.dll", "ggml-vulkan.dll"] {
-            assert!(
-                dest.join(nom).is_file(),
-                "{nom} devrait être extrait à plat"
-            );
-        }
-        assert!(
-            !dest.join("build").exists(),
-            "l'arborescence de l'archive ne doit pas être recopiée : sous Windows \
-             l'exécutable ne démarre pas sans ses DLL à côté de lui"
-        );
-
-        let _ = std::fs::remove_dir_all(&base);
-    }
 
     /// Un port loopback déjà pris (observé avec `wslrelay.exe` squattant
     /// 8080) faisait échouer le `bind()` de llama-server en silence : le
