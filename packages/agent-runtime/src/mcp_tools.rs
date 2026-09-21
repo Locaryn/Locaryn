@@ -18,6 +18,17 @@ pub const MCP_PREFIX: &str = "mcp__";
 /// Prefix separator between server name and tool name.
 const SEP: &str = "__";
 
+/// Préfixe des outils réservés à l'interface du morph (ajouter un serveur,
+/// accorder un accès…). Le panneau du morph les appelle directement ; le
+/// modèle ne les voit pas et ne peut pas les appeler : ce qu'ils règlent, c'est
+/// ce que la personne autorise au modèle, pas ce que le modèle décide.
+pub const UI_ONLY_PREFIX: &str = "ui_";
+
+/// Vrai pour un outil que seul le panneau du morph peut appeler.
+pub fn is_ui_only_tool(tool_name: &str) -> bool {
+    tool_name.starts_with(UI_ONLY_PREFIX)
+}
+
 /// Build the prefixed tool name that the LLM sees.
 pub fn mcp_tool_name(server_name: &str, tool_name: &str) -> String {
     format!("{MCP_PREFIX}{server_name}{SEP}{tool_name}")
@@ -87,7 +98,7 @@ pub async fn collect_mcp_tools(state: &McpState) -> Vec<ToolSpec> {
     for (server_name, client) in &snapshot {
         match client.discover().await {
             Ok(caps) => {
-                for t in &caps.tools {
+                for t in caps.tools.iter().filter(|t| !is_ui_only_tool(&t.name)) {
                     let desc = t
                         .description
                         .clone()
@@ -133,6 +144,15 @@ pub async fn dispatch_mcp_tool(
     let (server_name, tool_name, client) = if let Some((server, tool)) =
         resolve_mcp_tool_name(prefixed_or_clean_name, &running_names)
     {
+        if is_ui_only_tool(&tool) {
+            return ToolResult {
+                ok: false,
+                output: format!(
+                    "'{tool}' n'est pas un outil : il appartient à l'interface du morph."
+                ),
+                artifact: None,
+            };
+        }
         let client = {
             let r = state.running.read().await;
             r.get(&server).cloned()
@@ -151,6 +171,15 @@ pub async fn dispatch_mcp_tool(
             let r = state.running.read().await;
             r.clone()
         };
+        if is_ui_only_tool(prefixed_or_clean_name) {
+            return ToolResult {
+                ok: false,
+                output: format!(
+                    "'{prefixed_or_clean_name}' n'est pas un outil : il appartient à l'interface du morph."
+                ),
+                artifact: None,
+            };
+        }
         let mut matched = None;
         for (s_name, c) in snapshot {
             if let Ok(caps) = c.discover().await {
@@ -228,6 +257,12 @@ fn artifact_from_mcp_value(value: &serde_json::Value) -> Option<ToolArtifact> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn les_outils_de_l_interface_sont_reserves() {
+        assert!(super::is_ui_only_tool("ui_set_access"));
+        assert!(!super::is_ui_only_tool("ssh_exec"));
+    }
+
     use super::*;
 
     /// Ce que le serveur MCP de plugin-image renvoie réellement, relevé sur
