@@ -483,6 +483,18 @@ export function ChatPanel({
 
   const streamRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // La visionneuse d'image propose de retoucher : elle prépare la demande ici.
+  useEffect(() => {
+    const surCompose = (ev: Event) => {
+      const texte = (ev as CustomEvent<string>).detail;
+      if (typeof texte !== "string") return;
+      setInput(texte);
+      inputRef.current?.focus();
+    };
+    window.addEventListener("locaryn:compose", surCompose);
+    return () => window.removeEventListener("locaryn:compose", surCompose);
+  }, []);
   const fileRef = useRef<HTMLInputElement>(null);
   /**
    * Ce que le modele charge accepte. Recharge quand le modele change : c'est

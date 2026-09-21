@@ -142,6 +142,18 @@ export function MessageBubble({
     }
   }
 
+  /** Prépare la demande de retouche : le modèle appelle l'outil d'édition avec
+   *  le chemin de cette image, la personne n'a plus qu'à dire quoi changer. */
+  function editImage() {
+    if (!lightbox) return;
+    const path = lightbox.path ?? sourcePathFromAssetUrl(lightbox.src);
+    if (!path) return;
+    window.dispatchEvent(
+      new CustomEvent("locaryn:compose", { detail: `Retouche l'image ${path} : ` }),
+    );
+    setLightbox(null);
+  }
+
   async function copyImage() {
     if (!lightbox) return;
     try {
@@ -181,6 +193,11 @@ export function MessageBubble({
             <button type="button" className="locaryn-image-lightbox-action" onClick={copyImage}>
               Copier l'image
             </button>
+            {(lightbox.path ?? sourcePathFromAssetUrl(lightbox.src)) && (
+              <button type="button" className="locaryn-image-lightbox-action" onClick={editImage}>
+                Retoucher
+              </button>
+            )}
             <button
               type="button"
               className="locaryn-image-lightbox-close"
@@ -306,12 +323,10 @@ export function MessageBubble({
                     <figcaption className="locaryn-msg-file-name" title={a.name}>
                       {a.name}
                     </figcaption>
-                    {/* biome-ignore lint/a11y/useMediaCaption: un fichier envoyé par la personne elle-même : aucune transcription à fournir. */}
                     <audio controls preload="metadata" src={a.url} />
                   </figure>
                 ) : a.kind === "video" && a.url ? (
                   <figure key={a.name} className="locaryn-msg-media">
-                    {/* biome-ignore lint/a11y/useMediaCaption: un fichier envoyé par la personne elle-même : aucune transcription à fournir. */}
                     <video controls preload="metadata" src={a.url} className="locaryn-msg-video" />
                     <figcaption className="locaryn-msg-file-name" title={a.name}>
                       {a.name}
