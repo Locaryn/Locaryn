@@ -1,6 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
-import { useEffect, useState } from "react";
-import { type CertificateStatus, type ServerSession, core } from "../lib/core";
+import { useCallback, useEffect, useState } from "react";
+import { type CertificateStatus, type ServerEntry, type ServerSession, core } from "../lib/core";
 import { pickAnyFile } from "../lib/dialog";
 
 /**
@@ -9,15 +9,32 @@ import { pickAnyFile } from "../lib/dialog";
  * The connection screen already covers signing in, but it is only shown when
  * there is no session — so without this panel there would be no way to sign
  * out, and no way to replace an expired certificate short of reinstalling.
+ *
+ * Le panneau porte aussi la bascule que le scénario nomme « full local ↔
+ * serveur » : passer en 100 % local, c'est déconnecter la session ; revenir à
+ * un serveur, c'est recliquer une entrée de l'historique. Les modèles peuvent
+ * tourner sur cette machine dans les deux cas — la connexion ne décide que de
+ * là où passent les conversations.
  */
 export function ConnectionSettings() {
   const [session, setSession] = useState<ServerSession | null>(null);
   const [cert, setCert] = useState<CertificateStatus | null>(null);
+  const [history, setHistory] = useState<ServerEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  // Case « mémoriser le mot de passe » : décochée par défaut — le secret ne
+  // part au trousseau que sur un choix explicite, et décocher l'efface.
+  const [remember, setRemember] = useState(false);
+
+  const refreshHistory = useCallback(() => {
+    core
+      .listServers()
+      .then(setHistory)
+      .catch(() => setHistory([]));
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -29,11 +46,28 @@ export function ConnectionSettings() {
         setError(String(e));
       }
     })();
-  }, []);
+    refreshHistory();
+  }, [refreshHistory]);
+
+  /** Pré-remplit le formulaire depuis une entrée d'historique, en allant
+   *  chercher le mot de passe mémorisé s'il y en a un — c'est tout leur
+   *  intérêt. Une entrée sans secret laisse le champ vide à compléter. */
+  async function replay(entry: ServerEntry) {
+    setError(null);
+    setServerUrl(entry.server_url);
+    setUsername(entry.username);
+    setRemember(entry.password_saved);
+    try {
+      const saved = await core.getSavedPassword(entry.server_url, entry.username);
+      setPassword(saved ?? "");
+    } catch {
+      setPassword("");
+    }
+  }
 
   async function handleSignIn() {
     setError(null);
-    const cleanUrl = serverUrl.trim();
+    const cleanUrl = serverUrl.trim().replace(/\/+$/, "");
     const cleanUser = username.trim();
     if (!cleanUrl || !cleanUser || !password) {
       setError("Veuillez renseigner l'adresse du serveur, l'identifiant et le mot de passe.");
@@ -42,12 +76,32 @@ export function ConnectionSettings() {
     setBusy(true);
     try {
       await core.signIn(cleanUrl, cleanUser, password);
+      // Le choix explicite avant tout le reste : mémorisé au trousseau, ou
+      // effacé — ne jamais laisser un secret de la fois d'avant traîner.
+      try {
+        await core.setSavedPassword(cleanUrl, cleanUser, remember ? password : null);
+      } catch (e) {
+        // Le trousseau peut refuser (session verrouillée…) : la connexion
+        // reste vraie, on dit juste que le souvenir a échoué.
+        setError(`Connecté, mais le mot de passe n'a pas pu être mémorisé (${String(e)}).`);
+      }
       setPassword("");
+      refreshHistory();
       window.location.reload();
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function forget(entry: ServerEntry) {
+    setError(null);
+    try {
+      await core.forgetServer(entry.server_url, entry.username);
+      refreshHistory();
+    } catch (e) {
+      setError(String(e));
     }
   }
 
@@ -96,7 +150,7 @@ export function ConnectionSettings() {
                 window.location.reload();
               }}
             >
-              Se déconnecter
+              Passer en 100&nbsp;% local
             </button>
           </div>
         </>
@@ -170,6 +224,19 @@ export function ConnectionSettings() {
                 />
               </div>
             </div>
+            <label
+              htmlFor="conn-remember"
+              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem" }}
+            >
+              <input
+                id="conn-remember"
+                type="checkbox"
+                checked={remember}
+                disabled={busy}
+                onChange={(e) => setRemember(e.target.checked)}
+              />
+              Mémoriser le mot de passe (trousseau du système)
+            </label>
             <div style={{ marginTop: 4 }}>
               <button
                 type="button"
@@ -182,6 +249,51 @@ export function ConnectionSettings() {
             </div>
           </div>
         </div>
+      )}
+
+      {history.length > 0 && (
+        <>
+          <div className="locaryn-field-label" style={{ marginTop: 20 }}>
+            Serveurs déjà rencontrés
+          </div>
+          <p className="locaryn-field-hint">
+            Cliquez pour reprendre les coordonnées d'une connexion passée. « Oublier » efface aussi
+            le mot de passe mémorisé, s'il y en avait un.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+            {history.map((entry) => (
+              <div
+                key={`${entry.server_url}#${entry.username}`}
+                className="locaryn-connect-cert"
+                style={{ flexWrap: "wrap" }}
+              >
+                <Icon name="hard-drives" size={15} />
+                <span style={{ minWidth: 0 }}>
+                  <span className="locaryn-kv-mono">{entry.server_url}</span>
+                  <span style={{ opacity: 0.7 }}> — {entry.username}</span>
+                </span>
+                {entry.password_saved && <Icon name="key" size={14} />}
+                <span style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  disabled={busy}
+                  onClick={() => void replay(entry)}
+                >
+                  Reprendre
+                </button>
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  disabled={busy}
+                  onClick={() => void forget(entry)}
+                >
+                  Oublier
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       <div className="locaryn-field-label" style={{ marginTop: 20 }}>

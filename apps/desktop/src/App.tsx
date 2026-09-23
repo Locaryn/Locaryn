@@ -28,7 +28,7 @@ import {
   core,
   coreMode,
 } from "./lib/core";
-import { parseInstallLink, setPendingInstall } from "./lib/deepLink";
+import { parseDeepLink, setPendingInstall } from "./lib/deepLink";
 import { pickFolder } from "./lib/dialog";
 import type { ModelDownloadSource } from "./lib/modelRegistry";
 import { setRunReveal } from "./lib/runPanel";
@@ -362,20 +362,22 @@ export function App() {
     }
   }, [activeView, activeCapabilities, activeExtensions]);
 
-  // Deep links (`locaryn://install?src=owner/repo`): a link can open the app
-  // from a cold start (URL passed as CLI argument — read via `get_current`)
-  // or land while it is already running (forwarded by the plugin as an event,
-  // and re-emitted by Rust as `locaryn://deep-link`). Either way: remember the
-  // intent and open the settings panel; the extensions section picks it up
-  // when it mounts and pre-fills the install dialog.
+  // Deep links (`locaryn://install?src=owner/repo`, `locaryn://connect?…`): a
+  // link can open the app from a cold start (URL passed as CLI argument — read
+  // via `get_current`) or land while it is already running (forwarded by the
+  // plugin as an event, and re-emitted by Rust as `locaryn://deep-link`).
+  // Either way: remember the intent. `install` opens the settings panel so the
+  // extensions section pre-fills its install dialog; `connect` does nothing
+  // else here — ConnectIntentModal, mounted at the root, watches the same
+  // store and asks for consent even with the panel closed.
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 
     const handleUrl = (url: string) => {
-      const intent = parseInstallLink(url);
+      const intent = parseDeepLink(url);
       if (!intent) return;
       setPendingInstall(intent);
-      setActiveView("settings");
+      if (intent.action === "install") setActiveView("settings");
     };
 
     if (coreMode === "tauri") {
