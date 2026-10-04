@@ -8,6 +8,7 @@ authors.workspace = true
 description = "Pont hôte ↔ noyaux alternatifs (OpenClaw, Hermes Agent…) : drivers responses / runs / chat_completions."
 
 [dependencies]
+locaryn-config = { workspace = true }
 locaryn-agent-runtime = { workspace = true }
 locaryn-events = { workspace = true }
 locaryn-extensions = { workspace = true }

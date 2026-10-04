@@ -302,6 +302,8 @@ pub async fn start(
     let program = args.next().ok_or_else(|| "commande vide".to_string())?;
     let mut cmd = Command::new(program);
     cmd.args(args);
+    // Un noyau est un serveur : sa sortie va dans son journal, pas dans une console.
+    locaryn_config::hide_console(&mut cmd);
     for (k, v) in &manifest.lifecycle.env {
         cmd.env(k, interpolate(v, port, &token));
     }
@@ -510,7 +512,10 @@ pub async fn install_skill(
     let program = parts.next().ok_or_else(|| "commande vide".to_string())?;
     let args: Vec<String> = parts.map(|a| a.replace("{{slug}}", slug)).collect();
 
-    let out = Command::new(&program).args(&args).output().map_err(|e| {
+    let mut install = Command::new(&program);
+    install.args(&args);
+    locaryn_config::hide_console(&mut install);
+    let out = install.output().map_err(|e| {
         format!("impossible de lancer « {program} » ({e}) — vérifiez qu'il est dans le PATH")
     })?;
     if !out.status.success() {

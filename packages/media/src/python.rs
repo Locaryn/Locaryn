@@ -15,10 +15,10 @@ pub fn find_python() -> Option<String> {
             return Some(exe.to_string_lossy().to_string());
         }
     }
-    if let Ok(out) = std::process::Command::new("python")
-        .arg("--version")
-        .output()
-    {
+    let mut probe = std::process::Command::new("python");
+    probe.arg("--version");
+    locaryn_config::hide_console(&mut probe);
+    if let Ok(out) = probe.output() {
         if out.status.success() {
             return Some("python".to_string());
         }

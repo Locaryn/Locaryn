@@ -344,14 +344,16 @@ pub async fn start(
         return Err(TunnelError::NoTarget(provider.binary()));
     }
 
-    let mut child =
-        tokio::process::Command::new(locaryn_config::resolve_program(provider.binary()))
-            .args(provider.args(port, target))
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .stdin(Stdio::null())
-            .spawn()
-            .map_err(|e| TunnelError::Spawn(provider.binary(), e.to_string()))?;
+    let mut command =
+        tokio::process::Command::new(locaryn_config::resolve_program(provider.binary()));
+    locaryn_config::hide_console(command.as_std_mut());
+    let mut child = command
+        .args(provider.args(port, target))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .spawn()
+        .map_err(|e| TunnelError::Spawn(provider.binary(), e.to_string()))?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();

@@ -728,6 +728,7 @@ fn extract_zip_stripping_root(bytes: &[u8], dest: &Path) -> Result<(), SourceErr
 fn git_clone(url: &str, git_ref: Option<&str>, dest: &Path) -> Result<(), SourceError> {
     std::fs::create_dir_all(dest)?;
     let mut cmd = std::process::Command::new("git");
+    locaryn_config::hide_console(&mut cmd);
     cmd.arg("clone").arg("--depth").arg("1");
     if let Some(r) = git_ref {
         cmd.arg("--branch").arg(r);

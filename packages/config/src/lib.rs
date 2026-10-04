@@ -718,6 +718,24 @@ fn apply_env(cfg: &mut Config) {
     }
 }
 
+/// Empêcher Windows d'ouvrir une fenêtre de console pour un sous-processus.
+///
+/// Une application graphique qui lance un programme console (`python`, `git`,
+/// `cmd`…) voit Windows lui ouvrir une fenêtre noire, qui clignote ou reste
+/// ouverte. Sondes de version, installations et outils lancés au démarrage en
+/// faisaient apparaître des dizaines. À poser sur toute commande dont la sortie
+/// est lue par le programme plutôt que montrée à la personne. Sans effet hors
+/// de Windows.
+pub fn hide_console(command: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 /// Ce qu'on écrit dans `assistance.micro_model` pour dire « celui déjà chargé ».
 ///
 /// Nommer un petit modèle dédié a un coût que personne n'annonce : le moteur

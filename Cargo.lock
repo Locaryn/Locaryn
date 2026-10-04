@@ -3544,6 +3544,7 @@ dependencies = [
  "axum",
  "futures",
  "locaryn-agent-runtime",
+ "locaryn-config",
  "locaryn-events",
  "locaryn-extensions",
  "locaryn-mcp",

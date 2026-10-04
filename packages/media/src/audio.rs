@@ -461,7 +461,9 @@ report(100, "Qwen3-TTS : terminé")
 /// private).
 async fn run_python_script(python: &str, script: &str, text: &str) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
-    let mut child = tokio::process::Command::new(python)
+    let mut command = tokio::process::Command::new(python);
+    locaryn_config::hide_console(command.as_std_mut());
+    let mut child = command
         .envs(python::python_env())
         .arg("-c")
         .arg(script)
