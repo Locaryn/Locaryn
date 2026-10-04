@@ -28,6 +28,7 @@ mod project_context;
 use locaryn_sdk::secure_client;
 mod server_history;
 mod server_mode;
+mod startup;
 mod storage_root;
 mod travel_mode;
 
@@ -5235,10 +5236,10 @@ pub fn find_python() -> Option<String> {
     .into_iter()
     .flatten()
     {
-        if let Ok(output) = std::process::Command::new(&candidate)
-            .arg("--version")
-            .output()
-        {
+        let mut probe = std::process::Command::new(&candidate);
+        probe.arg("--version");
+        locaryn_config::hide_console(&mut probe);
+        if let Ok(output) = probe.output() {
             if output.status.success() {
                 return Some(candidate);
             }
@@ -5833,7 +5834,7 @@ pub struct AppInfo {
 }
 
 #[tauri::command]
-fn app_info(core: State<'_, Core>) -> Result<AppInfo, String> {
+async fn app_info(core: State<'_, Core>) -> Result<AppInfo, String> {
     Ok(AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         mode: format!("{:?}", core.mode).to_lowercase(),
@@ -5867,7 +5868,7 @@ pub struct RuntimePlan {
 }
 
 #[tauri::command]
-fn plan_model_runtime(_core: State<'_, Core>, model: String) -> Result<RuntimePlan, String> {
+async fn plan_model_runtime(_core: State<'_, Core>, model: String) -> Result<RuntimePlan, String> {
     let models_dir = locaryn_config::models_dir();
     let path = models_dir.join(&model);
     let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
@@ -6298,7 +6299,7 @@ pub struct LlamaRuntimeStatus {
 }
 
 #[tauri::command]
-fn llama_runtime_status(_core: State<'_, Core>) -> Result<LlamaRuntimeStatus, String> {
+async fn llama_runtime_status(_core: State<'_, Core>) -> Result<LlamaRuntimeStatus, String> {
     // La même recherche que le lanceur, pas une autre : cet écran ne regardait
     // que l'ancien dossier plat, et sous un nom de fichier Windows codé en
     // dur. Il annonçait donc « non installé » là où le moteur démarrait très
@@ -6368,11 +6369,12 @@ pub struct ConnectorType {
 }
 
 #[tauri::command]
-fn list_connector_types() -> Result<Vec<ConnectorType>, String> {
+async fn list_connector_types() -> Result<Vec<ConnectorType>, String> {
     Ok(vec![ConnectorType {
         type_id: "mcp_custom".into(),
-        display_name: "Serveur MCP Personnalise".into(),
-        summary: "Ajoutez n'importe quel serveur MCP".into(),
+        display_name: "Connecteur MCP personnalisé".into(),
+        summary: "Ajoutez n'importe quel connecteur MCP : collez son JSON ou saisissez sa commande"
+            .into(),
         icon: "\u{1f6e0}\u{fe0f}".into(),
         category: "extension".into(),
         source: "built-in".into(),
@@ -6391,68 +6393,46 @@ fn list_connector_types() -> Result<Vec<ConnectorType>, String> {
 // ============================================================================
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,locaryn=debug")),
-        )
-        .with_target(true)
-        .init();
+/// Le démarrage lourd, hors du fil principal : ouverture de la base, préparation
+/// des serveurs MCP, zone de notification, extensions. Pendant ce temps l'écran
+/// de lancement reste affiché et la boucle de messages de Windows tourne.
+async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let core = init_core().await?;
+    // Les serveurs stdio héritent du moteur actif avant tout spawn,
+    // y compris ceux des extensions chargées juste après.
+    refresh_mcp_runtime_env(&core).await;
+    // Servers the user marked automatic come up in the background:
+    // one that hangs must not hold the window shut.
+    let mcp = core.mcp.clone();
+    tauri::async_runtime::spawn(async move {
+        mcp_servers::start_automatic(&mcp).await;
+    });
+    // Le registre d'attention est aussi géré à part : les commandes le
+    // prennent seul, et une question doit rester joignable sans passer
+    // par tout le noyau. C'est le même Arc, pas une seconde copie.
+    let attention = core.attention.clone();
+    app.manage(attention.clone());
+    let poignee = app.clone();
+    // Et l'endroit où ranger une fiche que la personne accepte : le
+    // registre pose la question, c'est la réponse qui écrit.
+    let fiches = core.storage.project_context.clone();
+    tauri::async_runtime::spawn(async move {
+        attention.brancher(poignee).await;
+        attention.brancher_contexte(fiches).await;
+    });
+    app.manage(core);
 
-    tracing::info!("Starting Locaryn desktop v{}", env!("CARGO_PKG_VERSION"));
+    // Le cœur est prêt : les commandes de l'interface peuvent répondre.
+    // La fenêtre principale se crée masquée et ne paraît qu'au signal
+    // `app_ready` de l'interface.
+    startup::build_main_window(&app)?;
 
-    tauri::Builder::default()
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // Windows' X is a hide-to-tray action, not a process exit. The
-                // tray's explicit Quit action sets the flag first so its exit
-                // request is allowed through.
-                if !TRAY_QUIT_REQUESTED.load(Ordering::SeqCst) {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
-            }
-        })
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            tracing::info!("second instance launched — focusing main window");
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
-            let core = tauri::async_runtime::block_on(init_core())?;
-            // Les serveurs stdio héritent du moteur actif avant tout spawn,
-            // y compris ceux des extensions chargées juste après.
-            tauri::async_runtime::block_on(refresh_mcp_runtime_env(&core));
-            // Servers the user marked automatic come up in the background:
-            // one that hangs must not hold the window shut.
-            let mcp = core.mcp.clone();
-            tauri::async_runtime::spawn(async move {
-                mcp_servers::start_automatic(&mcp).await;
-            });
-            // Le registre d'attention est aussi géré à part : les commandes le
-            // prennent seul, et une question doit rester joignable sans passer
-            // par tout le noyau. C'est le même Arc, pas une seconde copie.
-            let attention = core.attention.clone();
-            app.manage(attention.clone());
-            let poignee = app.handle().clone();
-            // Et l'endroit où ranger une fiche que la personne accepte : le
-            // registre pose la question, c'est la réponse qui écrit.
-            let fiches = core.storage.project_context.clone();
-            tauri::async_runtime::spawn(async move {
-                attention.brancher(poignee).await;
-                attention.brancher_contexte(fiches).await;
-            });
-            app.manage(core);
-
+    // La zone de notification se crée sur le fil principal : c'est lui
+    // qui pompe les messages de l'icône. Le reste du démarrage tourne ailleurs.
+    let tray_app = app.clone();
+    app.run_on_main_thread(move || {
+        let app = tray_app;
+        let result: Result<(), Box<dyn std::error::Error>> = (|| {
             // Keep Locaryn in the notification area when its window is closed.
             // The daemon is owned by this application and is stopped only by
             // the explicit tray quit action or the final Tauri exit event.
@@ -6462,30 +6442,30 @@ pub fn run() {
                 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
                 let show_item =
-                    MenuItem::with_id(app, "show", "Ouvrir Locaryn", true, None::<&str>)?;
+                    MenuItem::with_id(&app, "show", "Ouvrir Locaryn", true, None::<&str>)?;
                 let status_item = MenuItem::with_id(
-                    app,
+                    &app,
                     "daemon_status",
                     "Service : Détection…",
                     false,
                     None::<&str>,
                 )?;
                 let port_item =
-                    MenuItem::with_id(app, "daemon_port", "Port : 7474", false, None::<&str>)?;
+                    MenuItem::with_id(&app, "daemon_port", "Port : 7474", false, None::<&str>)?;
                 let restart_item = MenuItem::with_id(
-                    app,
+                    &app,
                     "restart_daemon",
                     "Redémarrer le service",
                     true,
                     None::<&str>,
                 )?;
                 let quit_item =
-                    MenuItem::with_id(app, "quit", "Quitter Locaryn", true, None::<&str>)?;
-                let sep1 = PredefinedMenuItem::separator(app)?;
-                let sep2 = PredefinedMenuItem::separator(app)?;
+                    MenuItem::with_id(&app, "quit", "Quitter Locaryn", true, None::<&str>)?;
+                let sep1 = PredefinedMenuItem::separator(&app)?;
+                let sep2 = PredefinedMenuItem::separator(&app)?;
 
                 let menu = Menu::with_items(
-                    app,
+                    &app,
                     &[
                         &show_item,
                         &sep1,
@@ -6578,40 +6558,97 @@ pub fn run() {
                             }
                         }
                     })
-                    .build(app)?;
+                    .build(&app)?;
             }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            tracing::error!(error = %e, "icône de la zone de notification impossible");
+        }
+    })?;
 
-            // Deep links (locaryn://install?src=…). Registering makes the OS
-            // treat this app as the handler for the scheme; the frontend
-            // already subscribes to the plugin's `deep-link://new-url` event
-            // and polls `get_current` on load, so a URL that arrives while the
-            // window is closed still pre-fills the install dialog.
-            #[cfg(desktop)]
-            {
-                use tauri_plugin_deep_link::DeepLinkExt;
-                if let Err(e) = app.deep_link().register("locaryn") {
-                    tracing::warn!(error = %e, "enregistrement du schéma locaryn:// impossible");
+    // Deep links (locaryn://install?src=…). Registering makes the OS
+    // treat this app as the handler for the scheme; the frontend
+    // already subscribes to the plugin's `deep-link://new-url` event
+    // and polls `get_current` on load, so a URL that arrives while the
+    // window is closed still pre-fills the install dialog.
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        if let Err(e) = app.deep_link().register("locaryn") {
+            tracing::warn!(error = %e, "enregistrement du schéma locaryn:// impossible");
+        }
+        // Warm links while the app is already running: forward every
+        // opened URL to the frontend as a custom event.
+        let handle = app.clone();
+        app.deep_link().on_open_url(move |event| {
+            for url in event.urls() {
+                let _ = handle.emit("locaryn://deep-link", url.to_string());
+            }
+        });
+    }
+
+    // Load the enabled extensions and publish their MCP servers. Also
+    // in the background: an extension whose server hangs must not hold
+    // the window shut either.
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let core = handle.state::<Core>();
+        if let Err(e) = extensions::reload(&core).await {
+            tracing::warn!(error = %e, "chargement des extensions échoué");
+        }
+    });
+    Ok(())
+}
+
+pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,locaryn=debug")),
+        )
+        .with_target(true)
+        .init();
+
+    tracing::info!("Starting Locaryn desktop v{}", env!("CARGO_PKG_VERSION"));
+
+    tauri::Builder::default()
+        .on_window_event(|window, event| {
+            // Seule la fenêtre principale se range dans la zone de notification ;
+            // l'écran de lancement, lui, peut se fermer normalement.
+            if window.label() != startup::MAIN_LABEL {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Windows' X is a hide-to-tray action, not a process exit. The
+                // tray's explicit Quit action sets the flag first so its exit
+                // request is allowed through.
+                if !TRAY_QUIT_REQUESTED.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.hide();
                 }
-                // Warm links while the app is already running: forward every
-                // opened URL to the frontend as a custom event.
-                let handle = app.handle().clone();
-                app.deep_link().on_open_url(move |event| {
-                    for url in event.urls() {
-                        let _ = handle.emit("locaryn://deep-link", url.to_string());
-                    }
-                });
             }
-
-            // Load the enabled extensions and publish their MCP servers. Also
-            // in the background: an extension whose server hangs must not hold
-            // the window shut either.
+        })
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tracing::info!("second instance launched — focusing main window");
+            startup::focus_existing(app);
+        }))
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(|app| {
+            // L'écran de lancement d'abord : rien de lourd avant qu'il existe.
+            startup::open_splash(app.handle())?;
             let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                let core = handle.state::<Core>();
-                if let Err(e) = extensions::reload(&core).await {
-                    tracing::warn!(error = %e, "chargement des extensions échoué");
-                }
-            });
+            std::thread::Builder::new()
+                .name("locaryn-boot".into())
+                .spawn(move || {
+                    if let Err(e) = tauri::async_runtime::block_on(boot(handle.clone())) {
+                        startup::fail(&handle, &e.to_string());
+                    }
+                })?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -6814,7 +6851,10 @@ pub fn run() {
             extensions::set_catalog_source_enabled,
             extensions::remove_catalog_source,
             mcp_servers::list_mcp_servers,
+            startup::app_ready,
             mcp_servers::add_mcp_server,
+            mcp_servers::list_mcp_tools,
+            mcp_servers::set_mcp_disabled_tools,
             mcp_servers::preview_mcp_json,
             mcp_servers::import_mcp_json,
             mcp_servers::remove_mcp_server,

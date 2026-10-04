@@ -242,6 +242,24 @@ export function App() {
    * exists yet. A personal installation never sees any of it.
    */
   const [gate, setGate] = useState<"checking" | "connect" | "ready">("checking");
+
+  // La fenêtre principale est créée masquée derrière l'écran de lancement. Dès que
+  // l'interface a un écran à montrer (l'application, ou l'écran de connexion),
+  // on le dit au service, après deux images pour que le premier affichage soit
+  // déjà peint : la fenêtre ne doit jamais paraître vide.
+  useEffect(() => {
+    if (gate === "checking") return;
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        core.appReady().catch((e) => console.warn("app_ready a échoué :", e));
+      });
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [gate]);
   const [provisioning, setProvisioning] = useState<Provisioning | null>(null);
 
   useEffect(() => {

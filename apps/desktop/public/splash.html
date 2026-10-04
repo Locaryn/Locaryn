@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Locaryn</title>
+    <!--
+      Écran de lancement : page statique, sans script ni police externe, pour
+      s'afficher dès que la fenêtre existe. Il reste jusqu'à ce que l'interface
+      principale soit prête (voir `startup.rs`).
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #17191a;
+        --text: #e8ebe9;
+        --dim: #8c9591;
+        --track: #262a2b;
+        --accent: #62a583;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        overflow: hidden;
+        user-select: none;
+        cursor: default;
+      }
+      .frame {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        border: 1px solid #2c3233;
+        padding: 24px;
+      }
+      .logo {
+        width: 76px;
+        height: 76px;
+        border-radius: 17px;
+        animation: rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+      }
+      .name {
+        font-size: 22px;
+        font-weight: 500;
+        letter-spacing: -0.4px;
+        animation: rise 520ms 80ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+      }
+      .bar {
+        position: relative;
+        width: 220px;
+        height: 3px;
+        border-radius: 3px;
+        background: var(--track);
+        overflow: hidden;
+        animation: rise 520ms 160ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+      }
+      .bar::after {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 40%;
+        border-radius: 3px;
+        background: var(--accent);
+        animation: slide 1.25s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+      }
+      .status {
+        font-size: 12px;
+        color: var(--dim);
+        animation: rise 520ms 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+      }
+      @keyframes slide {
+        0% {
+          transform: translateX(-110%);
+        }
+        100% {
+          transform: translateX(260%);
+        }
+      }
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .logo,
+        .name,
+        .bar,
+        .status {
+          animation: none;
+        }
+        /* Sans mouvement, la barre reste pleine à moitié : elle dit « en cours »
+           sans bouger. */
+        .bar::after {
+          animation: none;
+          width: 50%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="frame" role="status" aria-live="polite">
+      <img class="logo" src="/locaryn-logo.png" alt="" width="76" height="76" />
+      <div class="name">Locaryn</div>
+      <div class="bar" aria-hidden="true"></div>
+      <div class="status">Démarrage…</div>
+    </main>
+  </body>
+</html>
