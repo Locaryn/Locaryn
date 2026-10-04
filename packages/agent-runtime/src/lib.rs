@@ -15,6 +15,7 @@ pub mod openai_tool_loop;
 pub mod profile;
 pub mod question;
 pub mod titling;
+pub mod tool_budget;
 pub mod tools;
 pub mod verification;
 

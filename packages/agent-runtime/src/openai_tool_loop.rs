@@ -132,6 +132,38 @@ pub async fn run_openai_tool_loop(
             .collect(),
         _ => all_tools,
     };
+    // Les définitions d'outils doivent tenir dans le contexte du serveur : quelques
+    // connecteurs MCP suffisent à le dépasser, et le serveur refuse alors la
+    // requête en bloc (41 009 jetons pour un contexte de 8 192, mesuré avec
+    // Roblox Studio). On réduit seulement si ça déborde, et on le dit.
+    let mut tools_notice: Option<String> = None;
+    let all_tools = match crate::tool_budget::server_context(client, endpoint).await {
+        Some(ctx) if !all_tools.is_empty() => {
+            let before = all_tools.len();
+            let fit = crate::tool_budget::fit(all_tools, ctx, &input.message);
+            if fit.dropped > 0 || fit.compacted {
+                tracing::warn!(
+                    contexte = ctx,
+                    avant = before,
+                    apres = fit.specs.len(),
+                    retires = fit.dropped,
+                    "outils ajustés au contexte du modèle"
+                );
+                tools_notice = Some(if fit.dropped > 0 {
+                    format!(
+                        "Le contexte du modèle ({ctx} jetons) ne contient pas tous les outils : {} ont été laissés de côté, d'après votre demande. Décochez ceux dont vous n'avez pas besoin dans Réglages → Connecteurs MCP → Configurer, ou augmentez le contexte.",
+                        fit.dropped
+                    )
+                } else {
+                    format!(
+                        "Le contexte du modèle ({ctx} jetons) est serré : les descriptions des outils ont été raccourcies."
+                    )
+                });
+            }
+            fit.specs
+        }
+        _ => all_tools,
+    };
     let tools_json = if all_tools.is_empty() {
         None
     } else {
@@ -288,6 +320,15 @@ pub async fn run_openai_tool_loop(
             task_id,
         })
         .await;
+    if let Some(msg) = tools_notice {
+        let _ = tx
+            .send(StreamEvent::Log {
+                level: locaryn_events::LogLevel::Warn,
+                msg,
+                source: "outils".into(),
+            })
+            .await;
+    }
 
     let input = input.clone();
     let client = client.clone();
