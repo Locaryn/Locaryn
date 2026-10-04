@@ -1552,18 +1552,27 @@ async fn generate_session_title(
         .await
         .map_err(|e| e.to_string())?;
 
+    // « Aucun » est un choix de la personne : on ne nomme rien. Sinon le modèle
+    // des petites tâches est celui déjà chargé, ou celui qu'elle a désigné.
+    let Some(choisi) = locaryn_config::load(None)
+        .ok()
+        .and_then(|c| c.assistance.micro_model)
+    else {
+        return Err("Le nommage automatique est désactivé dans les réglages.".into());
+    };
     let active_provider = core.storage.providers.active().await.ok().flatten();
     let provider = active_provider.ok_or("no active provider")?;
     if moteur_supervise(&provider.engine) {
         let _ = core.supervisor.ensure_running(&provider.engine).await;
     }
+    let model_name = locaryn_config::micro_effectif(&choisi, provider.model.as_deref());
 
     let url = format!(
         "{}/v1/chat/completions",
         provider.endpoint.trim_end_matches('/')
     );
     let body = serde_json::json!({
-        "model": provider.model.clone().unwrap_or_else(|| "default".into()),
+        "model": model_name,
         "messages": [
             {
                 "role": "system",
@@ -1581,9 +1590,14 @@ async fn generate_session_title(
         "chat_template_kwargs": { "enable_thinking": false }
     });
 
+    // Le titre se demande au modèle déjà chargé, en même temps que la première
+    // réponse. Un gros modèle n'a qu'un emplacement : la requête attend son tour,
+    // et 30 secondes ne suffisaient pas à un 27B sur une petite carte, dont
+    // le titre n'arrivait jamais. C'est une tâche de fond, rien n'attend après
+    // elle : mieux vaut un titre tardif que pas de titre.
     let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(300))
         .build()
         .map_err(|e| e.to_string())?;
     let resp = client

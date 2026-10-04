@@ -68,7 +68,7 @@ pub async fn ask_for_title(
             endpoint.trim_end_matches('/')
         ))
         .timeout(Duration::from_secs(30))
-        .json(&corps)
+        .json(&sans_raisonnement(corps))
         .send()
         .await
         .ok()?;
@@ -80,6 +80,23 @@ pub async fn ask_for_title(
         .pointer("/choices/0/message/content")
         .and_then(|c| c.as_str())?;
     nettoyer(brut)
+}
+
+/// Une petite tâche n'a pas à raisonner : le titre tient en cinq mots, et un
+/// modèle « à raisonnement » dépensait ses jetons dans sa réflexion sans arriver
+/// à la réponse (le titre devenait « <think> »). Même réglage que partout
+/// ailleurs dans l'application : budget de raisonnement nul et gabarit sans
+/// réflexion. Un moteur dont le gabarit ignore ce réglage répond comme avant, et
+/// `apres_reflexion` s'abstient plutôt que de prendre du raisonnement pour une
+/// réponse.
+fn sans_raisonnement(mut corps: serde_json::Value) -> serde_json::Value {
+    if let Some(obj) = corps.as_object_mut() {
+        obj.entry("reasoning_budget")
+            .or_insert(serde_json::json!(0));
+        obj.entry("chat_template_kwargs")
+            .or_insert(serde_json::json!({ "enable_thinking": false }));
+    }
+    corps
 }
 
 /// Ce qui suit le bloc de réflexion d'une réponse.
@@ -200,7 +217,7 @@ pub async fn ask_for_project(
             endpoint.trim_end_matches('/')
         ))
         .timeout(Duration::from_secs(30))
-        .json(&corps)
+        .json(&sans_raisonnement(corps))
         .send()
         .await
         .ok()?;
@@ -283,7 +300,7 @@ pub async fn ask_for_merge(
             endpoint.trim_end_matches('/')
         ))
         .timeout(Duration::from_secs(120))
-        .json(&corps)
+        .json(&sans_raisonnement(corps))
         .send()
         .await
         .ok()?;
@@ -320,6 +337,15 @@ mod tests {
             nettoyer("« Réglage du serveur »").unwrap(),
             "Réglage du serveur"
         );
+    }
+
+    #[test]
+    fn les_petites_taches_demandent_un_modele_sans_raisonnement() {
+        let corps = super::sans_raisonnement(serde_json::json!({ "model": "m", "max_tokens": 24 }));
+        assert_eq!(corps["reasoning_budget"], 0);
+        assert_eq!(corps["chat_template_kwargs"]["enable_thinking"], false);
+        // Ce que l'appelant a posé reste intact.
+        assert_eq!(corps["max_tokens"], 24);
     }
 
     #[test]
@@ -434,7 +460,7 @@ pub async fn ask_for_memory(
             endpoint.trim_end_matches('/')
         ))
         .timeout(Duration::from_secs(45))
-        .json(&corps)
+        .json(&sans_raisonnement(corps))
         .send()
         .await
     else {
@@ -569,7 +595,7 @@ pub async fn ask_memory_command(
             endpoint.trim_end_matches('/')
         ))
         .timeout(Duration::from_secs(45))
-        .json(&corps)
+        .json(&sans_raisonnement(corps))
         .send()
         .await
     else {
