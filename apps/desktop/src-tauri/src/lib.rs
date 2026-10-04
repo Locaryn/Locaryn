@@ -15,6 +15,7 @@ mod client_cert;
 mod cloud_providers;
 mod core_engines;
 mod extensions;
+mod free_chat_dir;
 mod hooks;
 mod inference_engines;
 mod local_profile;
@@ -255,6 +256,10 @@ fn is_nsfw_model(name: &str) -> bool {
 }
 
 /// Prune temp folders left behind by deleted free-chat sessions.
+///
+/// Seuls les anciens dossiers nommés par identifiant sont concernés. Un dossier
+/// au nom lisible (`2026-10-04-renard-calme`) contient ce que la personne a fait
+/// produire au modèle : supprimer la conversation ne l'efface pas.
 async fn cleanup_orphan_free_chat_dirs(storage: &Storage) {
     let free_dir = locaryn_config::free_chats_dir();
     let mut entries = match tokio::fs::read_dir(&free_dir).await {
@@ -623,9 +628,15 @@ async fn update_project(
 /// as a free chat and inside a project).
 pub const FREE_CHAT_PROJECT_PATH: &str = "__locaryn_free_chats__";
 
-/// Temp folder created for a single free-chat session.
-fn free_session_dir(_data_dir: &std::path::Path, session_id: Uuid) -> std::path::PathBuf {
-    locaryn_config::free_chats_dir().join(session_id.to_string())
+/// Dossier de travail d'une conversation libre : un nom que la personne
+/// reconnaît (`2026-10-04-renard-calme`), et non un identifiant aléatoire. Les
+/// dossiers d'avant, nommés par identifiant, restent ceux de leur conversation.
+fn free_session_dir(session: &Session) -> std::path::PathBuf {
+    free_chat_dir::resolve(
+        &locaryn_config::free_chats_dir(),
+        session.id,
+        session.created_at,
+    )
 }
 
 /// Get (or create) the hidden project that owns free chats.
@@ -671,8 +682,8 @@ async fn session_workspace(core: State<'_, Core>, session_id: Uuid) -> Result<St
         .await
         .map_err(|e| e.to_string())?;
     if project.path == FREE_CHAT_PROJECT_PATH {
-        let dir = free_session_dir(&core.data_dir, session_id);
-        if let Err(e) = tokio::fs::create_dir_all(&dir).await {
+        let dir = free_session_dir(&session);
+        if let Err(e) = free_chat_dir::ensure(&dir, session.id).await {
             tracing::warn!(error = %e, "failed to create free session dir");
         }
         return Ok(dir.to_string_lossy().to_string());
@@ -1804,8 +1815,8 @@ async fn send_message(
                 // own temporary folder so tools have a real workspace without
                 // exposing a path to the user.
                 let path = if project.path == FREE_CHAT_PROJECT_PATH {
-                    let dir = free_session_dir(&core.data_dir, session_id);
-                    if let Err(e) = tokio::fs::create_dir_all(&dir).await {
+                    let dir = free_session_dir(&session);
+                    if let Err(e) = free_chat_dir::ensure(&dir, session.id).await {
                         tracing::warn!(error = %e, "failed to create free session dir");
                     }
                     dir
@@ -6784,6 +6795,8 @@ pub fn run() {
             extensions::remove_catalog_source,
             mcp_servers::list_mcp_servers,
             mcp_servers::add_mcp_server,
+            mcp_servers::preview_mcp_json,
+            mcp_servers::import_mcp_json,
             mcp_servers::remove_mcp_server,
             mcp_servers::start_mcp_server,
             mcp_servers::stop_mcp_server,

@@ -1,6 +1,7 @@
 import { Icon, isIconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
-import { type ConnectorType, type McpServerInfo, core } from "../lib/core";
+import { type ConnectorType, type ImportMcpResult, type McpServerInfo, core } from "../lib/core";
+import { McpJsonImport } from "./McpJsonImport";
 import { ModalShell } from "./ModalShell";
 
 type ConnectorFilter = "all" | "connection" | "mcp";
@@ -20,6 +21,7 @@ export function ConnectorsSettings() {
 
   // Custom MCP Modal state
   const [mcpFormOpen, setMcpFormOpen] = useState(false);
+  const [mcpMode, setMcpMode] = useState<"json" | "form">("json");
   const [mcpName, setMcpName] = useState("");
   const [mcpType, setMcpType] = useState<"stdio" | "http">("stdio");
   const [mcpCommand, setMcpCommand] = useState("");
@@ -66,6 +68,13 @@ export function ConnectorsSettings() {
     } finally {
       setMcpBusy(null);
     }
+  }
+
+  function onMcpImported(result: ImportMcpResult) {
+    setMcpServers(result.servers);
+    setMcpError(result.errors.length > 0 ? result.errors.join(" ") : null);
+    setMcpFormOpen(false);
+    setTab("installed");
   }
 
   async function toggleMcp(server: McpServerInfo) {
@@ -357,73 +366,104 @@ export function ConnectorsSettings() {
           onClose={() => setMcpFormOpen(false)}
           style={{ maxWidth: 540 }}
         >
-          {mcpError && <div className="locaryn-vp-error">{mcpError}</div>}
-          <div className="locaryn-field">
-            <label htmlFor="mcp-name" className="locaryn-field-label">
-              Nom du serveur MCP
-            </label>
-            <input
-              id="mcp-name"
-              className="locaryn-input"
-              placeholder="graphify"
-              value={mcpName}
-              onChange={(e) => setMcpName(e.target.value)}
-            />
-            <p className="locaryn-field-hint">
-              Ce nom préfixe les outils vus par le modèle : lettres, chiffres, « - » et « _ »
-              uniquement.
-            </p>
-          </div>
-          <div className="locaryn-field">
-            <label htmlFor="mcp-transport" className="locaryn-field-label">
-              Protocole Transport
-            </label>
-            <select
-              id="mcp-transport"
-              className="locaryn-select"
-              value={mcpType}
-              onChange={(e) => setMcpType(e.target.value as "stdio" | "http")}
-            >
-              <option value="stdio">Commande locale (npx, uvx, python…)</option>
-              <option value="http">Adresse HTTP</option>
-            </select>
-          </div>
-          <div className="locaryn-field">
-            <label htmlFor="mcp-target" className="locaryn-field-label">
-              {mcpType === "stdio" ? "Commande à lancer" : "Adresse du serveur"}
-            </label>
-            <input
-              id="mcp-target"
-              className="locaryn-input"
-              placeholder={
-                mcpType === "stdio"
-                  ? "npx -y @modelcontextprotocol/server-filesystem D:/Documents"
-                  : "https://exemple.com/mcp"
-              }
-              value={mcpCommand}
-              onChange={(e) => setMcpCommand(e.target.value)}
-            />
-          </div>
-          <div
-            className="locaryn-field-actions"
-            style={{ marginTop: "16px", display: "flex", gap: "8px", justifyContent: "flex-end" }}
-          >
+          <div className="locaryn-mcp-modes" role="tablist" aria-label="Mode d'ajout">
             <button
               type="button"
-              className="locaryn-btn-ghost"
-              onClick={() => setMcpFormOpen(false)}
+              role="tab"
+              aria-selected={mcpMode === "json"}
+              className={`locaryn-tab-btn${mcpMode === "json" ? " locaryn-active" : ""}`}
+              onClick={() => setMcpMode("json")}
             >
-              Annuler
+              Coller du JSON
             </button>
             <button
               type="button"
-              className="locaryn-btn-primary"
-              disabled={mcpBusy === "__add__"}
-              onClick={saveCustomMcp}
+              role="tab"
+              aria-selected={mcpMode === "form"}
+              className={`locaryn-tab-btn${mcpMode === "form" ? " locaryn-active" : ""}`}
+              onClick={() => setMcpMode("form")}
             >
-              {mcpBusy === "__add__" ? "Démarrage…" : "Enregistrer et démarrer"}
+              Formulaire
             </button>
           </div>
+          {mcpMode === "json" ? (
+            <McpJsonImport onDone={onMcpImported} onCancel={() => setMcpFormOpen(false)} />
+          ) : (
+            <>
+              {mcpError && <div className="locaryn-vp-error">{mcpError}</div>}
+              <div className="locaryn-field">
+                <label htmlFor="mcp-name" className="locaryn-field-label">
+                  Nom du serveur MCP
+                </label>
+                <input
+                  id="mcp-name"
+                  className="locaryn-input"
+                  placeholder="graphify"
+                  value={mcpName}
+                  onChange={(e) => setMcpName(e.target.value)}
+                />
+                <p className="locaryn-field-hint">
+                  Ce nom préfixe les outils vus par le modèle : lettres, chiffres, « - » et « _ »
+                  uniquement.
+                </p>
+              </div>
+              <div className="locaryn-field">
+                <label htmlFor="mcp-transport" className="locaryn-field-label">
+                  Protocole Transport
+                </label>
+                <select
+                  id="mcp-transport"
+                  className="locaryn-select"
+                  value={mcpType}
+                  onChange={(e) => setMcpType(e.target.value as "stdio" | "http")}
+                >
+                  <option value="stdio">Commande locale (npx, uvx, python…)</option>
+                  <option value="http">Adresse HTTP</option>
+                </select>
+              </div>
+              <div className="locaryn-field">
+                <label htmlFor="mcp-target" className="locaryn-field-label">
+                  {mcpType === "stdio" ? "Commande à lancer" : "Adresse du serveur"}
+                </label>
+                <input
+                  id="mcp-target"
+                  className="locaryn-input"
+                  placeholder={
+                    mcpType === "stdio"
+                      ? "npx -y @modelcontextprotocol/server-filesystem D:/Documents"
+                      : "https://exemple.com/mcp"
+                  }
+                  value={mcpCommand}
+                  onChange={(e) => setMcpCommand(e.target.value)}
+                />
+              </div>
+              <div
+                className="locaryn-field-actions"
+                style={{
+                  marginTop: "16px",
+                  display: "flex",
+                  gap: "8px",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  type="button"
+                  className="locaryn-btn-ghost"
+                  onClick={() => setMcpFormOpen(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="locaryn-btn-primary"
+                  disabled={mcpBusy === "__add__"}
+                  onClick={saveCustomMcp}
+                >
+                  {mcpBusy === "__add__" ? "Démarrage…" : "Enregistrer et démarrer"}
+                </button>
+              </div>
+            </>
+          )}
         </ModalShell>
       )}
     </div>

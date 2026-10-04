@@ -574,7 +574,14 @@ export function ChatPanel({
       .listProjects()
       .then((ps) => {
         const p = ps.find((x) => x.id === projectId);
-        if (p) setWorkspace({ kind: "local", id: p.id, label: p.name, path: p.path });
+        if (!p) return;
+        // Le projet caché des conversations libres n'est pas un dossier choisi :
+        // la pastille doit dire « aucun », pas afficher son nom interne.
+        if (p.path === FREE_CHAT_PATH) {
+          setWorkspace({ kind: "none", id: null, label: "Dossier de travail" });
+        } else {
+          setWorkspace({ kind: "local", id: p.id, label: p.name, path: p.path });
+        }
       })
       .catch(() => {});
   }, [projectId]);
@@ -1863,15 +1870,20 @@ export function ChatPanel({
           onMoved={onSessionMoved}
         />
 
-        <div className="locaryn-composer-context">
-          <WorkspacePicker
-            value={workspace}
-            onChange={handleWorkspaceChange}
-            onAddProject={onAddProject}
-            cloudConnected={connectionMode === "remote"}
-            extensions={extensions}
-          />
-        </div>
+        {/* Le dossier de travail se choisit avant le premier message : une
+            fois la conversation commencée, on ne le déplace plus en plein
+            cours. Sans dossier choisi, la pastille s'efface à l'envoi. */}
+        {!(workspace.kind === "none" && items.some((i) => i.kind === "msg")) && (
+          <div className="locaryn-composer-context">
+            <WorkspacePicker
+              value={workspace}
+              onChange={handleWorkspaceChange}
+              onAddProject={onAddProject}
+              cloudConnected={connectionMode === "remote"}
+              extensions={extensions}
+            />
+          </div>
+        )}
 
         {/* La question du modèle, au-dessus du composeur elle aussi. Elle
             passe derrière la demande d'autorisation : un outil arrêté en plein

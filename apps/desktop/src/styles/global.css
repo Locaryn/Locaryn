@@ -3601,6 +3601,80 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
 }
 
 /* MCP server install command shown on a catalog card */
+/* Ajout d'un serveur MCP : onglets, JSON collé, relecture avant approbation. */
+.locaryn-mcp-modes {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.locaryn-mcp-json {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.locaryn-mcp-json-input {
+  min-height: 200px;
+  max-height: 50vh;
+  resize: vertical;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+}
+.locaryn-mcp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.locaryn-mcp-actions button {
+  min-height: 40px;
+}
+.locaryn-mcp-review {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 40vh;
+  overflow: auto;
+}
+.locaryn-mcp-review-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.locaryn-mcp-review-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.locaryn-mcp-exists {
+  font-size: var(--text-xs);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+}
+.locaryn-mcp-start {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  cursor: pointer;
+}
+.locaryn-mcp-start input {
+  width: 18px;
+  height: 18px;
+}
+
 .locaryn-connector-cmd {
   display: block;
   margin-top: 6px;

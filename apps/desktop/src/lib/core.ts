@@ -926,6 +926,25 @@ export interface McpServerInfo {
   tools: string[];
 }
 
+/** Ce qu'un JSON collé enregistrerait, montré avant que rien ne soit écrit. */
+export interface McpJsonPreview {
+  name: string;
+  transport: "stdio" | "http";
+  /** La commande telle qu'elle sera lancée, ou l'adresse. */
+  target: string;
+  /** Noms seulement : les valeurs (clés d'API) ne sont jamais renvoyées. */
+  env_keys: string[];
+  header_keys: string[];
+  /** Un serveur du même nom existe déjà : l'import serait refusé. */
+  exists: boolean;
+}
+
+export interface ImportMcpResult {
+  servers: McpServerInfo[];
+  /** Pourquoi certains serveurs n'ont pas démarré, quand on l'a demandé. */
+  errors: string[];
+}
+
 export interface AddMcpServerArgs {
   name: string;
   transport: "stdio" | "http";
@@ -1814,6 +1833,10 @@ export interface CoreApi {
   /** MCP servers — shared with the daemon through `mcp.json`. */
   listMcpServers(): Promise<McpServerInfo[]>;
   addMcpServer(args: AddMcpServerArgs): Promise<McpServerInfo[]>;
+  /** Relire un bloc `mcpServers` collé, sans rien écrire ni lancer. */
+  previewMcpJson(text: string, name?: string): Promise<McpJsonPreview[]>;
+  /** Enregistrer les serveurs d'un bloc collé ; ils ne démarrent que si `start`. */
+  importMcpJson(text: string, name: string | undefined, start: boolean): Promise<ImportMcpResult>;
   removeMcpServer(name: string): Promise<McpServerInfo[]>;
   /** Start a server and return the tools it announced. */
   startMcpServer(name: string): Promise<string[]>;
@@ -2248,6 +2271,10 @@ const tauriCore: CoreApi = {
         autoStart: args.autoStart ?? false,
       },
     }),
+  previewMcpJson: (text, name) =>
+    invoke<McpJsonPreview[]>("preview_mcp_json", { text, name: name?.trim() || null }),
+  importMcpJson: (text, name, start) =>
+    invoke<ImportMcpResult>("import_mcp_json", { text, name: name?.trim() || null, start }),
   removeMcpServer: (name) => invoke<McpServerInfo[]>("remove_mcp_server", { name }),
   startMcpServer: (name) => invoke<string[]>("start_mcp_server", { name }),
   stopMcpServer: (name) => invoke<void>("stop_mcp_server", { name }),
@@ -5110,6 +5137,23 @@ const demoCore: CoreApi = {
 
   listMcpServers: async () => [],
   addMcpServer: async () => [],
+  // Mode démo (navigateur, sans Tauri) : même forme de réponse que le vrai
+  // service, pour que l'écran de relecture se voie sans application.
+  previewMcpJson: async (text) => {
+    const root = JSON.parse(text) as { mcpServers?: Record<string, Record<string, unknown>> };
+    return Object.entries(root.mcpServers ?? {}).map(([name, e]) => ({
+      name,
+      transport: typeof e.url === "string" ? ("http" as const) : ("stdio" as const),
+      target:
+        typeof e.url === "string"
+          ? e.url
+          : [e.command, ...((e.args as string[] | undefined) ?? [])].join(" "),
+      env_keys: Object.keys((e.env as object | undefined) ?? {}),
+      header_keys: Object.keys((e.headers as object | undefined) ?? {}),
+      exists: false,
+    }));
+  },
+  importMcpJson: async () => ({ servers: [], errors: [] }),
   removeMcpServer: async () => [],
   startMcpServer: async () => [
     "get_conversations",
