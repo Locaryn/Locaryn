@@ -17,7 +17,7 @@ import {
   PERMISSION_LABELS,
   core,
 } from "../lib/core";
-import { consumePendingInstall, subscribeDeepLink } from "../lib/deepLink";
+import { consumePendingInstall, getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { pickAnyFile } from "../lib/dialog";
 import { ExtensionConfigPanel } from "./ExtensionConfigPanel";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
@@ -141,7 +141,10 @@ function versionsOf(entry: CatalogEntry): MorphVersionRelease[] {
     {
       version,
       tag: `v${version}`,
-      is_beta: Boolean(entry.is_beta || version.includes("beta") || entry.ecosystem === "locaryn"),
+      // La maturité vient de la version, pas de l'écosystème : assimiler
+      // tous les morphs officiels à des bêtas rendait le filtre bêta muet et
+      // le point orange vide de sens.
+      is_beta: Boolean(entry.is_beta || version.includes("beta")),
       install_source: entry.install_source,
     },
   ];
@@ -270,14 +273,16 @@ export function ExtensionsSettings() {
   // montage (le panneau peut arriver après le lien) puis à chaque événement.
   useEffect(() => {
     const openFromLink = () => {
-      const intent = consumePendingInstall();
-      if (intent) {
-        setInstallDialog({
-          open: true,
-          kind: "extension",
-          initialSource: intent.source,
-        });
-      }
+      // Un intent `connect` ne nous concerne pas : il reste dans le store
+      // pour la modale de consentement, montée à la racine.
+      const intent = getPendingInstall();
+      if (intent?.action !== "install") return;
+      consumePendingInstall();
+      setInstallDialog({
+        open: true,
+        kind: "extension",
+        initialSource: intent.source,
+      });
     };
     openFromLink();
     return subscribeDeepLink(openFromLink);
@@ -730,9 +735,9 @@ export function ExtensionsSettings() {
     const raw = (snapshot?.entries ?? []).filter((entry) => entry.ecosystem !== "mcp");
     const q = query.trim().toLowerCase();
     return raw.filter((entry) => {
-      const isBeta = Boolean(
-        entry.is_beta || entry.version?.includes("beta") || entry.ecosystem === "locaryn",
-      );
+      // Même sémantique que les cartes : version bêta = pre-release
+      // annoncée par le catalogue ou numéro à suffixe. Rien d'autre.
+      const isBeta = Boolean(entry.is_beta || entry.version?.includes("beta"));
       if (!showBetaMorphs && isBeta) return false;
       if (ecosystem !== "all" && entry.ecosystem !== ecosystem) return false;
       if (!q) return true;
@@ -1496,6 +1501,9 @@ export function ExtensionsSettings() {
                 {entries.map((c: CatalogEntry) => {
                   const compat = COMPAT[c.compat] ?? COMPAT.unsupported;
                   const canInstall = c.compat !== "unsupported" && !!c.install_source;
+                  // Maturité de la version affichée — l'écosystème ne dit
+                  // rien : un morph officiel peut être stable comme bêta.
+                  const beta = Boolean(c.is_beta || c.version?.includes("beta"));
                   return (
                     <div
                       key={c.id}
@@ -1537,6 +1545,16 @@ export function ExtensionsSettings() {
                               {c.display_name}
                             </h3>
                           </div>
+                          {/* Point orange : une pre-release se voit au premier
+                              coup d'œil, le vert « Compatible » qui suit parle
+                              d'installabilité, pas de stabilité. */}
+                          {beta && (
+                            <span
+                              className="locaryn-health-dot locaryn-health-warn"
+                              title="Bêta · non testé"
+                              style={{ flexShrink: 0 }}
+                            />
+                          )}
                           <span
                             className="locaryn-tag"
                             style={{
@@ -1645,9 +1663,7 @@ export function ExtensionsSettings() {
           (() => {
             const c = selectedDetailEntry;
             const compat = COMPAT[c.compat] ?? COMPAT.unsupported;
-            const beta = Boolean(
-              c.is_beta || c.version?.includes("beta") || c.ecosystem === "locaryn",
-            );
+            const beta = Boolean(c.is_beta || c.version?.includes("beta"));
             return (
               <div className="locaryn-drawer-layer">
                 <button
@@ -1691,7 +1707,21 @@ export function ExtensionsSettings() {
                       </div>
                       <div>
                         <span>Maturité</span>
-                        <strong>{beta ? "Bêta · non testé" : "Stable"}</strong>
+                        <strong
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          {beta && (
+                            <span
+                              className="locaryn-health-dot locaryn-health-warn"
+                              title="Bêta · non testé"
+                            />
+                          )}
+                          {beta ? "Bêta · non testé" : "Stable"}
+                        </strong>
                       </div>
                     </div>
 

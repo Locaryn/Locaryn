@@ -112,8 +112,8 @@ const FULL_CATALOGUE: CatalogItem[] = [
     capabilities: ["ssh-terminal"],
   },
   {
-    repo: "Locaryn/morph-travel-tunnel",
-    name: "morph-travel-tunnel",
+    repo: "Locaryn/morph-remote",
+    name: "morph-remote",
     label: "Mode Voyage sécurisé",
     note: "Accès au serveur depuis l'extérieur sans redirection de port",
     ecosystem: "locaryn",

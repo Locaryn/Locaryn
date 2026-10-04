@@ -964,6 +964,16 @@ export interface CertificateStatus {
   authority_installed: boolean;
 }
 
+/** Un serveur déjà rencontré par cette installation (historique de connexion). */
+export interface ServerEntry {
+  server_url: string;
+  username: string;
+  /** Dernière connexion réussie (epoch secondes). */
+  last_used: number;
+  /** Un mot de passe est mémorisé au trousseau pour cette entrée. */
+  password_saved: boolean;
+}
+
 /** A signed-in session against a remote Locaryn server. */
 export interface ServerSession {
   server_url: string;
@@ -1716,6 +1726,22 @@ export interface CoreApi {
   installClientCertificate(source: string, authority?: string): Promise<CertificateStatus>;
   removeClientCertificate(): Promise<CertificateStatus>;
 
+  /** Historique des serveurs déjà rencontrés, du plus récent au plus ancien. */
+  listServers(): Promise<ServerEntry[]>;
+  /** Oublier une entrée d'historique — et le mot de passe mémorisé, s'il y en avait un. */
+  forgetServer(serverUrl: string, username: string): Promise<void>;
+  /** Le mot de passe mémorisé pour cette entrée, s'il y en a un. */
+  getSavedPassword(serverUrl: string, username: string): Promise<string | null>;
+  /** Retient — ou efface — le mot de passe. Le stockage est le trousseau du système. */
+  setSavedPassword(serverUrl: string, username: string, password: string | null): Promise<void>;
+  /** Install a certificate fetched over HTTPS (deep link `locaryn://connect`).
+   *  `auth` porte les identifiants du lien, pour un bundle servi protégé. */
+  installClientCertificateFromUrl(
+    certUrl: string,
+    caUrl?: string,
+    auth?: { user: string; password: string },
+  ): Promise<CertificateStatus>;
+
   storageInfo(): Promise<StorageInfo>;
   /** Point Locaryn at `newRoot`, optionally relocating the existing data.
    *  Progress arrives on the `storage-migration` event. */
@@ -2175,7 +2201,19 @@ const tauriCore: CoreApi = {
       source,
       authority: authority ?? null,
     }),
+  installClientCertificateFromUrl: (certUrl, caUrl, auth) =>
+    invoke<CertificateStatus>("install_client_certificate_from_url", {
+      certUrl,
+      caUrl: caUrl ?? null,
+      auth: auth ?? null,
+    }),
   removeClientCertificate: () => invoke<CertificateStatus>("remove_client_certificate"),
+  listServers: () => invoke<ServerEntry[]>("list_servers"),
+  forgetServer: (serverUrl, username) => invoke<void>("forget_server", { serverUrl, username }),
+  getSavedPassword: (serverUrl, username) =>
+    invoke<string | null>("get_saved_password", { serverUrl, username }),
+  setSavedPassword: (serverUrl, username, password) =>
+    invoke<void>("set_saved_password", { serverUrl, username, password }),
 
   storageInfo: () => invoke<StorageInfo>("storage_info"),
   setStorageRoot: (newRoot, moveData) =>
@@ -3625,17 +3663,17 @@ const demoCatalog: CatalogEntry[] = [
     ],
   },
   {
-    id: "locaryn:morph-travel-tunnel",
-    name: "morph-travel-tunnel",
+    id: "locaryn:morph-remote",
+    name: "morph-remote",
     display_name: "Remote (Travel Mode)",
     description: "Tunnels chiffrés et appairage sécurisé pour contrôler Locaryn à distance.",
     author: "Locaryn Team",
     version: "2.2.0-beta.1",
-    homepage: "https://github.com/Locaryn/morph-travel-tunnel",
+    homepage: "https://github.com/Locaryn/morph-remote",
     ecosystem: "locaryn",
     catalog_id: "locaryn:official",
     catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-travel-tunnel@v2.2.0-beta.1",
+    install_source: "Locaryn/morph-remote@v2.2.0-beta.1",
     keywords: ["official", "morph", "beta"],
     advertised: ["morph officiel", "bêta"],
     compat: "native",
@@ -3648,7 +3686,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: true,
         released_at: "2026-08-29",
         summary: "Version Bêta (2.2.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-travel-tunnel@v2.2.0-beta.1",
+        install_source: "Locaryn/morph-remote@v2.2.0-beta.1",
       },
       {
         version: "2.1.0",
@@ -3656,7 +3694,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.1.0",
-        install_source: "Locaryn/morph-travel-tunnel@v2.1.0",
+        install_source: "Locaryn/morph-remote@v2.1.0",
       },
       {
         version: "2.0.0",
@@ -3664,7 +3702,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v2.0.0",
-        install_source: "Locaryn/morph-travel-tunnel@v2.0.0",
+        install_source: "Locaryn/morph-remote@v2.0.0",
       },
       {
         version: "1.0.0",
@@ -3672,7 +3710,7 @@ const demoCatalog: CatalogEntry[] = [
         is_beta: false,
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
-        install_source: "Locaryn/morph-travel-tunnel@v1.0.0",
+        install_source: "Locaryn/morph-remote@v1.0.0",
       },
     ],
   },
@@ -4697,6 +4735,13 @@ const demoCore: CoreApi = {
   }),
   currentSession: async () => null,
   signOut: async () => {},
+  // Signature étendue : le démo ignore les identifiants comme le vrai.
+  installClientCertificateFromUrl: async (_certUrl, _caUrl, _auth?) => ({
+    installed: true,
+    issued_to: "demo",
+    path: null,
+    authority_installed: false,
+  }),
 
   clientCertificateStatus: async () => ({
     installed: false,
@@ -4716,6 +4761,10 @@ const demoCore: CoreApi = {
     path: null,
     authority_installed: false,
   }),
+  listServers: async () => [],
+  forgetServer: async () => {},
+  getSavedPassword: async () => null,
+  setSavedPassword: async () => {},
 
   storageInfo: async () => ({
     root: "C:/Users/you/.locaryn/data",

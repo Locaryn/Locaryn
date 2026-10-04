@@ -156,7 +156,7 @@ export const CATALOGUE: { repo: string; label: string; note: string }[] = [
     note: "Affiner un modèle",
   },
   { repo: "Locaryn/plugin-ssh", label: "Machine distante (SSH)", note: "Exécuter ailleurs" },
-  { repo: "Locaryn/plugin-travel-tunnel", label: "Mode voyage", note: "Joindre depuis dehors" },
+  { repo: "Locaryn/morph-remote", label: "Accès distant", note: "Joindre depuis dehors" },
 ];
 
 /** Un modèle proposé à l'installation, comme les extensions du catalogue. */
