@@ -82,17 +82,31 @@ pub async fn ask_for_title(
     nettoyer(brut)
 }
 
+/// Ce qui suit le bloc de réflexion d'une réponse.
+///
+/// Un modèle « à raisonnement » qui épuise ses jetons dans sa réflexion laisse
+/// la balise `<think>` ouverte : il n'y a alors aucune réponse, seulement du
+/// raisonnement. Prendre le texte entier faisait d'une conversation un titre
+/// `<think>`, ou de ses hésitations des faits retenus. Dans ce cas on ne rend
+/// rien, et chaque appelant s'abstient.
+fn apres_reflexion(brut: &str) -> &str {
+    if let Some((_, reponse)) = brut.rsplit_once("</think>") {
+        return reponse;
+    }
+    if brut.contains("<think>") {
+        return "";
+    }
+    brut
+}
+
 /// Ce que rend un modèle n'est pas toujours un titre : il arrive qu'il
 /// commente, qu'il cite, ou qu'il raisonne à voix haute. On garde la
 /// substance et on refuse le reste.
 pub fn nettoyer(brut: &str) -> Option<String> {
     // Un modèle « à raisonnement » peut préfixer sa réponse d'un bloc de
     // réflexion ; seul ce qui suit compte.
-    let apres_reflexion = brut.rsplit("</think>").next().unwrap_or(brut);
-    let ligne = apres_reflexion
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())?;
+    let reponse = apres_reflexion(brut);
+    let ligne = reponse.lines().map(str::trim).find(|l| !l.is_empty())?;
     let ligne = ligne
         .trim_start_matches("Titre :")
         .trim_start_matches("Titre:")
@@ -206,11 +220,11 @@ pub async fn ask_for_project(
 /// il propose deux projets. Un seul nombre, dans l'intervalle, et rien qui
 /// ressemble à un refus — sinon on ne propose rien.
 pub fn lire_le_numero(brut: &str, combien: usize) -> Option<usize> {
-    let apres_reflexion = brut.rsplit("</think>").next().unwrap_or(brut).trim();
-    if apres_reflexion.to_uppercase().contains("AUCUN") {
+    let reponse = apres_reflexion(brut).trim();
+    if reponse.to_uppercase().contains("AUCUN") {
         return None;
     }
-    let chiffres: Vec<usize> = apres_reflexion
+    let chiffres: Vec<usize> = reponse
         .split(|c: char| !c.is_ascii_digit())
         .filter(|m| !m.is_empty())
         .filter_map(|m| m.parse().ok())
@@ -280,7 +294,7 @@ pub async fn ask_for_merge(
     let brut = v
         .pointer("/choices/0/message/content")
         .and_then(|c| c.as_str())?;
-    let texte = brut.rsplit("</think>").next().unwrap_or(brut).trim();
+    let texte = apres_reflexion(brut).trim();
     (!texte.is_empty()).then(|| texte.to_string())
 }
 
@@ -306,6 +320,23 @@ mod tests {
             nettoyer("« Réglage du serveur »").unwrap(),
             "Réglage du serveur"
         );
+    }
+
+    #[test]
+    fn une_reflexion_jamais_fermee_ne_donne_ni_titre_ni_fait() {
+        // Le modèle a épuisé ses jetons à réfléchir : il n'y a pas de réponse.
+        assert!(nettoyer(
+            "<think>
+Okay, l'utilisateur demande"
+        )
+        .is_none());
+        assert!(super::lire_faits(
+            "<think>
+- il hésite
+- il compare"
+        )
+        .is_empty());
+        assert_eq!(super::lire_le_numero("<think>Hmm, 1 ou 3", 3), None);
     }
 
     #[test]
@@ -424,9 +455,9 @@ pub async fn ask_for_memory(
 
 /// Transformer la réponse du modèle en faits utilisables.
 pub fn lire_faits(brut: &str) -> Vec<Fait> {
-    let apres_reflexion = brut.rsplit("</think>").next().unwrap_or(brut);
+    let reponse = apres_reflexion(brut);
     let mut out = Vec::new();
-    for ligne in apres_reflexion.lines() {
+    for ligne in reponse.lines() {
         let ligne = ligne.trim().trim_start_matches(['-', '*', '•']).trim();
         if ligne.is_empty() || ligne.eq_ignore_ascii_case("rien") {
             continue;
@@ -575,9 +606,9 @@ impl MemoryAction {
 
 /// Transformer la réponse du modèle en actions.
 pub fn lire_actions(brut: &str) -> Vec<MemoryAction> {
-    let apres_reflexion = brut.rsplit("</think>").next().unwrap_or(brut);
+    let reponse = apres_reflexion(brut);
     let mut out = Vec::new();
-    for ligne in apres_reflexion.lines() {
+    for ligne in reponse.lines() {
         let ligne = ligne.trim().trim_start_matches(['-', '*', '•']).trim();
         if ligne.is_empty() || ligne.eq_ignore_ascii_case("rien") {
             continue;

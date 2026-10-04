@@ -873,7 +873,11 @@ export function App() {
   // Panel Resizing Logic
   function startDrag(panel: string) {
     return (e: React.PointerEvent) => {
+      // Sans ceci le texte de la page se sélectionne pendant le geste, et ni
+      // le curseur ni la poignée n'indiquent qu'on la tient.
+      e.preventDefault();
       isDragging.current = panel;
+      document.body.classList.add("locaryn-resizing");
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     };
   }
@@ -915,6 +919,7 @@ export function App() {
     if (isDragging.current) {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       isDragging.current = null;
+      document.body.classList.remove("locaryn-resizing");
     }
   }
 

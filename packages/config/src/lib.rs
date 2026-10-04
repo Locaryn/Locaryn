@@ -31,16 +31,17 @@ pub struct Config {
 /// Les petits services rendus par un modèle, en marge des conversations.
 ///
 /// Nommer une conversation, ranger, résumer : ce sont des tâches courtes qui
-/// n'ont pas besoin du gros modèle et ne doivent pas lui prendre son tour. Rien
-/// n'est choisi par défaut — tant qu'aucun modèle n'est désigné, ces services
-/// ne tournent pas, et une conversation garde le titre tiré de sa première
-/// phrase.
+/// n'ont pas besoin du gros modèle et ne doivent pas lui prendre son tour. Un
+/// modèle est désigné d'office : le modèle déjà chargé, qui ne coûte aucune
+/// mémoire.
+/// Choisir « Aucun » les désactive, et la conversation garde alors le titre tiré
+/// de sa première phrase.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AssistanceConfig {
-    /// Le modèle des micro-tâches. `None` : aucun, donc rien ne tourne.
+    /// Le modèle des micro-tâches, tel que `load` le rend : `None` = aucune
+    /// ne tourne (choix explicite), [`MICRO_MODEL_ACTIF`] = celui de la
+    /// conversation en cours (défaut), autre texte = ce modèle.
     #[serde(default)]
-    /// Le modèle des micro-tâches. `None` : aucune ne tourne.
-    /// [`MICRO_MODEL_ACTIF`] : celui de la conversation en cours.
     pub micro_model: Option<String>,
     /// La consigne système écrite par la personne, qui remplace celle de
     /// l'application.
@@ -524,10 +525,29 @@ pub fn load(project: Option<&Path>) -> Result<Config, ConfigError> {
         }
     }
 
+    normaliser_micro_model(&mut cfg);
+
     // env overrides (LOCARYN_*)
     apply_env(&mut cfg);
 
     Ok(cfg)
+}
+
+/// Le choix des micro-tâches tel que le lisent tous les appelants.
+///
+/// Dans les fichiers : absent ou `null` = jamais choisi, donc « celui déjà
+/// chargé » ([`MICRO_MODEL_ACTIF`]) ; chaîne vide = « Aucun », choisi
+/// explicitement ; autre texte = ce modèle. Après cette fonction, `None` veut
+/// dire sans ambiguïté « ne rien faire ».
+///
+/// Le défaut est le modèle déjà en mémoire parce qu'il ne coûte rien : un
+/// modèle dédié sort celui de la conversation de la VRAM à chaque titre.
+fn normaliser_micro_model(cfg: &mut Config) {
+    match cfg.assistance.micro_model.as_deref() {
+        None => cfg.assistance.micro_model = Some(MICRO_MODEL_ACTIF.to_string()),
+        Some("") => cfg.assistance.micro_model = None,
+        Some(_) => {}
+    }
 }
 
 /// Parse a file that may be JSON or TOML (we accept both forms for ergonomics;
@@ -566,13 +586,9 @@ fn parse_json_or_toml(raw: &str) -> Result<Config, ConfigError> {
                     cfg.daemon.port = p;
                 }
             }
-            "micro_model" => {
-                cfg.assistance.micro_model = if v.is_empty() {
-                    None
-                } else {
-                    Some(v.to_string())
-                };
-            }
+            // La chaîne vide est le « Aucun » explicite : `load` la traduit en
+            // `None`, alors qu'une clé absente prend le modèle déjà chargé.
+            "micro_model" => cfg.assistance.micro_model = Some(v.to_string()),
             // Ici la chaîne vide a un sens — « aucune consigne » — et ne peut
             // donc pas valoir effacement. C'est `null` qui rétablit celle de
             // l'application.
@@ -744,6 +760,28 @@ mod path_tests {
         // Sans modèle actif, on rend la valeur telle quelle : l'appelant
         // échouera sur un nom inconnu plutôt que sur un choix silencieux.
         assert_eq!(micro_effectif(MICRO_MODEL_ACTIF, None), MICRO_MODEL_ACTIF);
+    }
+
+    /// Jamais choisi = le modèle déjà chargé ; « Aucun » explicite (chaîne vide
+    /// dans le fichier) reste « aucun » ; un nom reste un nom.
+    #[test]
+    fn le_modele_des_petites_taches_par_defaut_est_celui_deja_charge() {
+        let mut jamais = Config::default();
+        normaliser_micro_model(&mut jamais);
+        assert_eq!(
+            jamais.assistance.micro_model.as_deref(),
+            Some(MICRO_MODEL_ACTIF)
+        );
+
+        let mut aucun = Config::default();
+        aucun.assistance.micro_model = Some(String::new());
+        normaliser_micro_model(&mut aucun);
+        assert_eq!(aucun.assistance.micro_model, None);
+
+        let mut nomme = Config::default();
+        nomme.assistance.micro_model = Some("petit.gguf".into());
+        normaliser_micro_model(&mut nomme);
+        assert_eq!(nomme.assistance.micro_model.as_deref(), Some("petit.gguf"));
     }
 
     /// The env override is the one knob testable in-process: `global_dir()`

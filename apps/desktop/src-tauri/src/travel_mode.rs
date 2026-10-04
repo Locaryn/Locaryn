@@ -319,8 +319,13 @@ pub async fn micro_model() -> Result<MicroModel, String> {
 #[tauri::command]
 pub async fn set_micro_model(model: Option<String>) -> Result<MicroModel, String> {
     let choix = model.filter(|m| !m.trim().is_empty());
-    locaryn_config::set_global("assistance", serde_json::json!({ "micro_model": choix }))
-        .map_err(|e| e.to_string())?;
+    // « Aucun » s'écrit en chaîne vide : `null` voudrait dire « jamais choisi »,
+    // donc le modèle déjà chargé.
+    locaryn_config::set_global(
+        "assistance",
+        serde_json::json!({ "micro_model": choix.clone().unwrap_or_default() }),
+    )
+    .map_err(|e| e.to_string())?;
 
     // Si un démon tourne, le notifier sans bloquer en cas d'erreur
     if let Ok(cfg) = locaryn_config::load(None) {

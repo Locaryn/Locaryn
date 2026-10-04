@@ -10,9 +10,9 @@ const MODELE_ACTIF = "@actif";
  *
  * Nommer une conversation à partir de son sujet, ranger, résumer : des travaux
  * de quelques mots, qui n'ont pas besoin du modèle qui tient la conversation et
- * ne doivent pas lui prendre son tour. Un petit modèle suffit, et rien n'est
- * choisi par défaut : tant que personne n'en désigne un, ces services ne
- * tournent pas et une conversation garde le titre tiré de sa première phrase.
+ * ne doivent pas lui prendre son tour. Par défaut c'est le modèle déjà chargé :
+ * il ne coûte aucune mémoire. « Aucun » les désactive, et une conversation garde
+ * alors le titre tiré de sa première phrase.
  */
 export function MicroModelSetting() {
   const [state, setState] = useState<MicroModel | null>(null);
@@ -42,13 +42,13 @@ export function MicroModelSetting() {
     <div className="locaryn-field locaryn-micro-model-setting">
       <div className="locaryn-field-label">Modèle des petites tâches</div>
       <p className="locaryn-field-hint">
-        Il nomme les conversations d'après leur sujet, pour qu'une liste se lise. Sans modèle
-        désigné, rien de tout cela ne tourne, et le titre reste la première phrase.
+        Il nomme les conversations d'après leur sujet, pour qu'une liste se lise. Par défaut, c'est
+        le modèle déjà chargé. Avec « Aucun », le titre reste la première phrase.
       </p>
 
       <select
         className="locaryn-select"
-        value={state?.model ?? ""}
+        value={state?.model ?? (state ? "" : MODELE_ACTIF)}
         disabled={busy || !state}
         onChange={(e) => void choose(e.target.value || null)}
       >

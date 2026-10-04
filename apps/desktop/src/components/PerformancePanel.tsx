@@ -10,8 +10,9 @@ interface ProfileCard {
   label: string;
   tagline: string;
   details: string[];
+  /** Mention fixe, vraie quelle que soit la machine. « Recommandé » n'en est pas
+   *  une : il se calcule d'après la mémoire vidéo (voir `profilConseille`). */
   badge?: string;
-  badgeColor?: string;
 }
 
 const PROFILES: ProfileCard[] = [
@@ -19,18 +20,18 @@ const PROFILES: ProfileCard[] = [
     id: "eco",
     icon: "cloud",
     label: "Économe",
-    tagline: "CPU uniquement, mémoire minimale",
-    details: ["0 couches GPU", "Cache FP16 standard", "Contexte 4K tokens"],
+    tagline: "Processeur seul, mémoire minimale",
+    details: ["0 couche sur le GPU", "Cache FP16 standard", "Contexte 4K"],
   },
   {
     id: "balanced",
     icon: "speed",
     label: "Équilibré",
-    tagline: "Mix GPU/CPU, bon compromis",
+    tagline: "Tout sur le GPU, cache compressé",
     details: [
-      "Toutes les couches GPU",
+      "Toutes les couches sur le GPU",
       "Cache Q8 (÷2 VRAM)",
-      "Contexte 8K tokens",
+      "Contexte 8K",
       "Flash Attention",
     ],
   },
@@ -38,11 +39,11 @@ const PROFILES: ProfileCard[] = [
     id: "performance",
     icon: "speed",
     label: "Performance",
-    tagline: "GPU au maximum, contexte long",
+    tagline: "Contexte plus long, cache Q8",
     details: [
-      "Toutes les couches GPU",
-      "Cache Q8 compressé",
-      "Contexte 16K tokens",
+      "Toutes les couches sur le GPU",
+      "Cache Q8 (÷2 VRAM)",
+      "Contexte 16K",
       "Flash Attention",
     ],
   },
@@ -50,33 +51,45 @@ const PROFILES: ProfileCard[] = [
     id: "turbo",
     icon: "speed",
     label: "Turbo",
-    tagline: "KV Q4 + GPU max + contexte 32K",
+    tagline: "Cache Q4 pour un grand contexte",
     details: [
-      "Toutes les couches GPU",
+      "Toutes les couches sur le GPU",
       "Cache Q4 (÷4 VRAM)",
-      "Contexte 32K tokens",
+      "Contexte 32K",
       "Flash Attention",
       "Batch 1024",
     ],
-    badge: "Recommandé",
-    badgeColor: "var(--accent)",
   },
   {
     id: "longctx",
     icon: "forward",
     label: "Contexte long",
-    tagline: "Cache KV 4-bit — max de contexte à VRAM égale",
+    tagline: "Le plus de contexte pour la VRAM disponible",
     details: [
-      "Toutes les couches GPU",
-      "Cache KV Q4 (÷4 VRAM)",
+      "Toutes les couches sur le GPU",
+      "Cache Q4 (÷4 VRAM)",
       "Contexte étendu",
       "Flash Attention",
-      "llama.cpp géré",
     ],
     badge: "Contexte max",
-    badgeColor: "var(--warn)",
   },
 ];
+
+/** Nom lisible d'un profil, y compris « custom » : la pastille affichait le
+ *  jeton interne (« balanced »). */
+function nomDuProfil(id: string): string {
+  if (id === "custom") return "Personnalisé";
+  return PROFILES.find((p) => p.id === id)?.label ?? id;
+}
+
+/** Le profil qui convient à la mémoire vidéo détectée. Une valeur fixe
+ *  recommandait le même profil à une carte de 4 Go et à une de 24 Go. */
+function profilConseille(vramGo: number): InferenceProfile {
+  if (vramGo <= 0) return "eco";
+  if (vramGo < 8) return "balanced";
+  if (vramGo < 16) return "performance";
+  return "turbo";
+}
 
 const KV_OPTIONS: { value: KvCacheType; label: string; desc: string; color: string }[] = [
   { value: "f16", label: "FP16", desc: "Standard", color: "var(--text-faint)" },
@@ -102,14 +115,30 @@ export function PerformancePanel() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showExpert, setShowExpert] = useState(false);
-  const [expandedProfile, setExpandedProfile] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // La dernière configuration connue, lue hors des mises à jour d'état : les
+  // enregistrer depuis l'intérieur d'un setter les déclenchait deux fois en
+  // mode strict, et sur une valeur qui n'était pas toujours la dernière.
+  const cfgRef = useRef<InferenceConfig | null>(null);
 
   useEffect(() => {
-    core.getInferenceConfig().then(setCfg);
+    core
+      .getInferenceConfig()
+      .then((c) => {
+        cfgRef.current = c;
+        setCfg(c);
+      })
+      .catch((e: unknown) => setLoadError(String(e).replace(/^Error:\s*/, "")));
     core
       .checkHardware()
-      .then((h) => setHw({ vram: h.total_vram_gb, ram: h.total_ram_gb, cores: h.cpu_cores ?? 4 }));
+      .then((h) => setHw({ vram: h.total_vram_gb, ram: h.total_ram_gb, cores: h.cpu_cores ?? 4 }))
+      .catch((e: unknown) => console.warn("matériel illisible", e));
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+    };
   }, []);
 
   const autoSave = useCallback((newCfg: InferenceConfig) => {
@@ -120,48 +149,63 @@ export function PerformancePanel() {
       try {
         await core.setInferenceConfig(newCfg);
         setSaved(true);
-        setTimeout(() => setSaved(false), 2500);
+        if (savedTimer.current) clearTimeout(savedTimer.current);
+        savedTimer.current = setTimeout(() => setSaved(false), 2500);
+      } catch (e) {
+        setLoadError(`Enregistrement impossible : ${String(e).replace(/^Error:\s*/, "")}`);
       } finally {
         setSaving(false);
       }
     }, 600);
   }, []);
 
-  const patch = useCallback(
-    (delta: Partial<InferenceConfig>) => {
-      setCfg((prev) => {
-        if (!prev) return prev;
-        const next = { ...prev, ...delta };
-        // Any manual change → custom profile (unless we just applied a preset)
-        if (!("profile" in delta)) next.profile = "custom";
-        autoSave(next);
-        return next;
-      });
+  const commit = useCallback(
+    (next: InferenceConfig) => {
+      cfgRef.current = next;
+      setCfg(next);
+      setLoadError(null);
+      autoSave(next);
     },
     [autoSave],
+  );
+
+  const patch = useCallback(
+    (delta: Partial<InferenceConfig>) => {
+      const prev = cfgRef.current;
+      if (!prev) return;
+      const next = { ...prev, ...delta };
+      // Tout réglage manuel donne un profil personnalisé.
+      if (!("profile" in delta)) next.profile = "custom";
+      commit(next);
+    },
+    [commit],
   );
 
   const applyProfile = useCallback(
     async (id: InferenceProfile) => {
-      const preset = await core.getProfilePreset(id);
-      // Merge: keep draft_model_path from existing config
-      setCfg((prev) => {
-        const next = { ...preset, draft_model_path: prev?.draft_model_path ?? "" };
-        autoSave(next);
-        return next;
-      });
+      try {
+        const preset = await core.getProfilePreset(id);
+        // On garde le modèle « draft » déjà choisi.
+        commit({ ...preset, draft_model_path: cfgRef.current?.draft_model_path ?? "" });
+      } catch (e) {
+        setLoadError(`Profil indisponible : ${String(e).replace(/^Error:\s*/, "")}`);
+      }
     },
-    [autoSave],
+    [commit],
   );
 
+  if (loadError && !cfg) return <div className="perf-loading">{loadError}</div>;
   if (!cfg) return <div className="perf-loading">Chargement…</div>;
 
-  const gpuPct =
+  const conseille = hw ? profilConseille(hw.vram) : null;
+  /** « Toutes », « Processeur » ou « N couches » : le nombre de couches d'un
+   *  modèle varie (24 à 80), un pourcentage sur une base supposée mentait. */
+  const couchesLabel =
     cfg.gpu_layers === -1
-      ? 100
+      ? "Toutes"
       : cfg.gpu_layers === 0
-        ? 0
-        : Math.min(100, Math.round((cfg.gpu_layers / 80) * 100));
+        ? "Processeur"
+        : `${cfg.gpu_layers} couches`;
 
   return (
     <div className="perf-panel">
@@ -203,47 +247,59 @@ export function PerformancePanel() {
             <Icon name="memory" size={15} />
             <span>{hw.cores} cœurs</span>
           </div>
-          <div className="perf-hw-chip perf-hw-active">
+          <div className="perf-hw-chip perf-hw-active" title="Profil en cours">
             <span className="perf-hw-icon">
               <Icon name="cpu" size={14} />
             </span>
-            <span>{cfg.profile}</span>
+            <span>{nomDuProfil(cfg.profile)}</span>
           </div>
+        </div>
+      )}
+
+      {loadError && (
+        <div className="perf-error" role="alert">
+          <Icon name="warning" size={15} /> {loadError}
         </div>
       )}
 
       {/* ── Profile cards ── */}
       <div className="perf-section-label">Profil de base</div>
-      <div className="perf-profiles">
+      <div className="perf-profiles" role="radiogroup" aria-label="Profil de base">
         {PROFILES.map((p) => {
           const isActive = cfg.profile === p.id;
-          const isExpanded = expandedProfile === p.id;
+          const marque = p.id === conseille ? "Conseillé pour votre carte" : p.badge;
           return (
             <button
               type="button"
               key={p.id}
+              role="radio"
+              aria-checked={isActive}
               className={`perf-card${isActive ? " perf-card-active" : ""}`}
-              onClick={() => {
-                applyProfile(p.id);
-                setExpandedProfile(isExpanded ? null : p.id);
-              }}
+              onClick={() => void applyProfile(p.id)}
             >
-              {p.badge && (
-                <div className="perf-card-badge" style={{ background: p.badgeColor }}>
-                  {p.badge}
-                </div>
-              )}
-              <div className="perf-card-icon">
-                <Icon name={p.icon} size={18} />
+              <div className="perf-card-head">
+                <span className="perf-card-icon">
+                  <Icon name={p.icon} size={18} />
+                </span>
+                {isActive && (
+                  <span className="perf-card-check" aria-hidden="true">
+                    <Icon name="check" size={14} />
+                  </span>
+                )}
               </div>
               <div className="perf-card-label">{p.label}</div>
               <div className="perf-card-tagline">{p.tagline}</div>
-              {(isActive || isExpanded) && (
-                <ul className="perf-card-details">
-                  {p.details.map((d) => (
-                    <li key={d}>{d}</li>
-                  ))}
-                </ul>
+              <ul className="perf-card-details">
+                {p.details.map((d) => (
+                  <li key={d}>{d}</li>
+                ))}
+              </ul>
+              {marque && (
+                <span
+                  className={`perf-card-badge${p.id === conseille ? " perf-card-badge-reco" : ""}`}
+                >
+                  {marque}
+                </span>
               )}
             </button>
           );
@@ -326,9 +382,9 @@ export function PerformancePanel() {
             </div>
             <div className="perf-slider-wrap">
               <div className="perf-slider-labels">
-                <span>CPU</span>
-                <span className="perf-slider-pct">{gpuPct}%</span>
-                <span>GPU max</span>
+                <span>Processeur</span>
+                <span className="perf-slider-pct">{couchesLabel}</span>
+                <span>Tout le GPU</span>
               </div>
               <input
                 type="range"
