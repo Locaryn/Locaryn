@@ -302,7 +302,7 @@ impl CatalogClient {
                 // une 1.0.0-beta.1 qui n'existe pas, et l'installation
                 // échouerait sur un tag introuvable.
                 "morph-desktop" | "morph-browser" => ("0.1.0-beta.4", &[]),
-                "morph-bonsai" => ("0.1.0-beta.1", &[]),
+                "morph-bonsai" => ("0.1.0-beta.2", &[]),
                 _ => ("1.0.0-beta.1", &["0.9.0", "0.8.0"]),
             };
 
