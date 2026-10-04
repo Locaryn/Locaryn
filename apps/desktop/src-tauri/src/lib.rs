@@ -6946,19 +6946,46 @@ mod tests {
     };
     use uuid::Uuid;
 
-    /// Une configuration sans `app.windows` compile, se lance, et n'affiche
-    /// rien — c'est exactement ce qui est arrivé à l'application mobile en
-    /// v0.3.1. Même garde-fou ici, la panne serait identique.
+    /// Une application sans aucune fenêtre compile, se lance, et n'affiche rien —
+    /// c'est exactement ce qui est arrivé à l'application mobile en v0.3.1.
+    ///
+    /// Ici les fenêtres ne sont plus déclarées dans `tauri.conf.json` : l'écran de
+    /// lancement s'ouvre dans `setup` et `startup::build_main_window` crée la
+    /// principale une fois le cœur prêt. Le garde-fou vérifie donc que ce chemin
+    /// existe de bout en bout, et qu'aucune déclaration ne vient le doubler (deux
+    /// fenêtres « main » font échouer le démarrage).
     #[test]
-    fn la_configuration_declare_une_fenetre() {
+    fn l_application_cree_sa_fenetre_principale_au_demarrage() {
         let conf: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
-        let fenetres = conf["app"]["windows"]
+        let declarees = conf["app"]["windows"]
             .as_array()
             .expect("app.windows doit exister");
         assert!(
-            !fenetres.is_empty(),
-            "app.windows est vide : l'application s'ouvrirait sur un écran noir"
+            declarees.is_empty(),
+            "une fenêtre déclarée en plus de celle de startup.rs ferait deux fenêtres « main »"
+        );
+
+        let source = include_str!("lib.rs");
+        assert!(
+            source.contains("startup::open_splash(")
+                && source.contains("startup::build_main_window("),
+            "le démarrage doit ouvrir l'écran de lancement puis créer la fenêtre principale"
+        );
+        assert!(
+            source.contains("startup::app_ready,"),
+            "sans la commande app_ready, la fenêtre principale ne paraîtrait qu'au minuteur de sécurité"
+        );
+
+        // La fenêtre principale doit pouvoir appeler les commandes.
+        let capacite: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json"))
+                .expect("capabilities/default.json");
+        let fenetres = capacite["windows"].as_array().expect("windows");
+        assert!(
+            fenetres.iter().any(|w| w == super::startup::MAIN_LABEL),
+            "la capacité par défaut ne couvre pas la fenêtre « {} »",
+            super::startup::MAIN_LABEL
         );
     }
 
