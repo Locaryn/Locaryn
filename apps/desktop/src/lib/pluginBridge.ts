@@ -41,6 +41,20 @@ export interface LocarynPluginAPI {
   tools: {
     invoke: (toolName: string, input: string | Record<string, unknown>) => Promise<unknown>;
   };
+  /** Alias à plat de `tools.invoke`, pour les panneaux qui appellent
+   *  `api.invokeExtensionTool(...)` directement plutôt que `api.tools.invoke(...)`.
+   *
+   *  Une dizaine de morphs publiés — 3d-gen, model-training, music-gen,
+   *  rag-qa, ssh, text-analysis, translation, video-gen, vision-ocr,
+   *  voice-tts — appellent cette forme, probablement issue d'un même gabarit
+   *  de génération de panneau qui n'a jamais suivi le pont vers sa forme
+   *  imbriquée actuelle. Son absence faisait échouer leur garde d'entrée
+   *  (`if (!api.invokeExtensionTool) throw ...`) avant même toute tentative
+   *  d'appel réel, quel que soit l'outil visé (Locaryn/Locaryn#10). Republier
+   *  ces dix paquets fixerait la cause, mais casserait tout de suite tous les
+   *  bundles déjà installés d'ici là ; cet alias les fait marcher sans
+   *  attendre une nouvelle release de chacun. */
+  invokeExtensionTool: (toolName: string, input: Record<string, unknown>) => Promise<unknown>;
   /** Le serveur Locaryn auquel ce poste est connecté.
    *
    *  Un panneau qui doit parler à son double sur le serveur passe par ici :
@@ -211,6 +225,8 @@ class PluginBridgeManager {
           return core.invokeExtensionTool(toolName, args);
         },
       },
+      invokeExtensionTool: (toolName: string, input: Record<string, unknown>) =>
+        core.invokeExtensionTool(toolName, input),
       server: {
         connection: () => core.connectionInfo(),
         invokeTool: (toolName: string, input: Record<string, unknown>) =>

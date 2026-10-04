@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
-import { type TrustLevel, core } from "../lib/core";
+import { SessionTrustControl } from "../components/SessionTrustControl";
+import { core } from "../lib/core";
 
 export interface ModelParams {
   temperature: number; // 0.0 – 2.0
@@ -68,16 +69,6 @@ type Props = {
   sessionId?: string | null;
 };
 
-const NIVEAUX: { value: TrustLevel; label: string; hint: string }[] = [
-  {
-    value: "untrusted",
-    label: "Demander",
-    hint: "Chaque ecriture ou commande demande une confirmation.",
-  },
-  { value: "trusted", label: "Tout autoriser", hint: "Le modele agit sans demander." },
-  { value: "sandbox", label: "Apercu", hint: "Lecture seule : rien d'ecrit, rien d'execute." },
-];
-
 export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) {
   const [params, setParams] = useState<ModelParams>(DEFAULT_MODEL_PARAMS);
   const [saved, setSaved] = useState(false);
@@ -86,10 +77,6 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
   /** Plafond que le modele actif sait tenir. Ollama le declare via
    *  /api/show, llama.cpp via le GGUF lu au demarrage du moteur. */
   const [ctxCap, setCtxCap] = useState<number | null>(null);
-  /** Les permissions de cette conversation, telles que le modele les recoit. */
-  const [trust, setTrust] = useState<TrustLevel | null>(null);
-  const [trustOverride, setTrustOverride] = useState<TrustLevel | null>(null);
-  const [trustBusy, setTrustBusy] = useState(false);
 
   // Load from active provider config on mount.
   useEffect(() => {
@@ -117,39 +104,6 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
       void cancelled;
     };
   }, []);
-
-  useEffect(() => {
-    setTrust(null);
-    setTrustOverride(null);
-    if (!sessionId) return;
-    let cancelled = false;
-    core
-      .sessionTrust(sessionId)
-      .then((t) => {
-        if (!cancelled) {
-          setTrust(t.effective);
-          setTrustOverride(t.override_value);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
-
-  async function changerTrust(v: TrustLevel | null) {
-    if (!sessionId) return;
-    setTrustBusy(true);
-    try {
-      const suivant = await core.setSessionTrust(sessionId, v);
-      setTrust(suivant);
-      setTrustOverride(v);
-    } catch {
-      // Le reglage reste tel quel.
-    } finally {
-      setTrustBusy(false);
-    }
-  }
 
   const update = useCallback(
     (key: keyof ModelParams, val: number) => {
@@ -265,31 +219,12 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
 
         <div className="lmc-divider" />
 
-        {sessionId && trust && (
+        {sessionId && (
           <div className="lmc-field">
             <div className="lmc-field-head">
               <span className="lmc-label">Permissions de la conversation</span>
             </div>
-            <div className="locaryn-segmented" role="group" aria-label="Permissions">
-              {NIVEAUX.map((n) => (
-                <button
-                  key={n.value}
-                  type="button"
-                  disabled={trustBusy}
-                  className={`locaryn-segment${trust === n.value ? " locaryn-segment-on" : ""}`}
-                  aria-pressed={trust === n.value}
-                  title={n.hint}
-                  onClick={() => changerTrust(n.value)}
-                >
-                  {n.label}
-                </button>
-              ))}
-            </div>
-            <p className="lmc-ctx-cap">
-              {trustOverride
-                ? "Exception posee sur cette conversation ; les autres chats ne bougent pas."
-                : "Heritee du projet qui porte cette conversation."}
-            </p>
+            <SessionTrustControl sessionId={sessionId} />
           </div>
         )}
 

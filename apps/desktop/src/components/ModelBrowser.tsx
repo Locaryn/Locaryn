@@ -1674,6 +1674,13 @@ export function ModelBrowser({
         selection,
         downloads,
       );
+    } catch (e) {
+      // onInstall (App.tsx) reports through son propre centre de tâches et
+      // ne devrait donc jamais rejeter — mais s'il le fait un jour (une
+      // future implémentation, un autre hôte), le clic ne doit pas
+      // redevenir silencieux : c'est exactement ce bogue-ci qui laissait
+      // « Installer » ne rien faire ni rien dire.
+      console.error("Model install failed", e);
     } finally {
       setInstallProgress((prev) => {
         const copy = { ...prev };

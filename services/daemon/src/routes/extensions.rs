@@ -978,15 +978,37 @@ pub async fn set_extension_permission(
 
     if body.granted {
         match s.extensions.grant_permission(&name, perm) {
-            Ok(()) => (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "status": "granted",
-                    "name": name,
-                    "permission": body.permission,
-                })),
-            )
-                .into_response(),
+            Ok(()) => {
+                // `grant_permission` only touches the in-memory registry. Sans
+                // ce qui suit, la permission tenait le temps du processus :
+                // un redémarrage du démon la perdait, et `sync_mcp_servers`
+                // — qui lit `record.granted` **en base**, jamais le registre
+                // — ne voyait jamais un serveur MCP d'extension comme
+                // autorisé à démarrer sur une installation sans bureau
+                // (CLI, mobile, web, mode serveur).
+                if let Some(entry) = s.extensions.get(&name) {
+                    if let Some(rec) = find_record(&s, &name).await {
+                        if let Err(e) = s
+                            .storage
+                            .extensions
+                            .set_granted(rec.id, &entry.permissions.granted)
+                            .await
+                        {
+                            tracing::warn!(name, error = %e, "permission accordée mais non enregistrée en base");
+                        }
+                    }
+                }
+                sync_extension_runtime(&s).await;
+                (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "status": "granted",
+                        "name": name,
+                        "permission": body.permission,
+                    })),
+                )
+                    .into_response()
+            }
             Err(e) => registry_error_response(e).into_response(),
         }
     } else {

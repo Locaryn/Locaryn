@@ -29,6 +29,13 @@ export function SpeedBadge({ metric }: { metric: ModelMetric | undefined }) {
   );
 }
 
+/** Un débit en jetons par seconde, lisible : entier au-dessus de 100, une
+ *  décimale en dessous. « — » quand le moteur n'a rien mesuré. */
+export function formatRate(perSecond: number): string {
+  if (!Number.isFinite(perSecond) || perSecond <= 0) return "—";
+  return perSecond >= 100 ? String(Math.round(perSecond)) : perSecond.toFixed(1);
+}
+
 /** Le chiffre, dans l'unité qui parle pour ce type de modèle. */
 export function formatSpeed(metric: ModelMetric): string | null {
   if (metric.kind === "chat" && metric.avg_tokens_per_second) {
