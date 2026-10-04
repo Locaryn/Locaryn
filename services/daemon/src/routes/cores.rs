@@ -42,16 +42,12 @@ impl CoreHost for DaemonState {
     }
 
     async fn core_manifest(&self, id: Uuid) -> Result<(CoreManifest, PathBuf), String> {
-        let row = self
-            .storage
-            .extensions
-            .get(id)
-            .await
-            .map_err(|e| e.to_string())?
+        let manifest_path = self
+            .manifest_path_of(id)
+            .await?
             .ok_or_else(|| "extension introuvable".to_string())?;
-        let root =
-            locaryn_shared_types::model_source::extension_root(Path::new(&row.manifest_path))
-                .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
+        let root = locaryn_shared_types::model_source::extension_root(Path::new(&manifest_path))
+            .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
         let manifest = locaryn_extensions::manifest::load(&root).map_err(|e| e.to_string())?;
         let core_m = manifest
             .core
@@ -60,7 +56,17 @@ impl CoreHost for DaemonState {
         Ok((core_m, root))
     }
 
+    fn morph_notes(&self) -> Vec<locaryn_core_bridge::morph_memory::MorphNote> {
+        locaryn_core_bridge::morph_memory::notes_from_entries(&self.extensions.list())
+    }
+
     async fn shell_granted(&self, id: Uuid) -> Result<bool, String> {
+        if let Some(e) = self.extensions.list().into_iter().find(|e| e.id == id) {
+            return Ok(e
+                .permissions
+                .granted
+                .contains(&locaryn_shared_types::Permission::Shell));
+        }
         let row = self
             .storage
             .extensions
@@ -71,6 +77,27 @@ impl CoreHost for DaemonState {
         Ok(row
             .granted
             .contains(&locaryn_shared_types::Permission::Shell))
+    }
+}
+
+impl DaemonState {
+    /// Le manifeste d'une extension à partir de son identifiant.
+    ///
+    /// `GET /v1/cores` énumère le registre en mémoire, dont les identifiants
+    /// ne sont pas ceux de la table SQL : chercher ces identifiants en base
+    /// répondait « extension introuvable » pour chaque noyau listé, et aucun
+    /// ne pouvait démarrer. Le registre fait donc foi, la base sert de repli.
+    async fn manifest_path_of(&self, id: Uuid) -> Result<Option<String>, String> {
+        if let Some(e) = self.extensions.list().into_iter().find(|e| e.id == id) {
+            return Ok(Some(e.manifest_path.to_string_lossy().into_owned()));
+        }
+        Ok(self
+            .storage
+            .extensions
+            .get(id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|row| row.manifest_path))
     }
 }
 
@@ -191,21 +218,17 @@ pub async fn agent_for_core(
 
 /// L'extension désignée est-elle un noyau installé ? `Err` = base illisible.
 pub async fn verifier_noyau(s: &DaemonState, id: Uuid) -> Result<bool, String> {
-    match s.storage.extensions.get(id).await {
-        Ok(Some(row)) => {
-            let Some(root) =
-                locaryn_shared_types::model_source::extension_root(Path::new(&row.manifest_path))
-            else {
-                return Ok(false);
-            };
-            match locaryn_extensions::manifest::load(&root) {
-                Ok(m) => Ok(m.core.is_some()),
-                Err(_) => Ok(false),
-            }
-        }
-        Ok(None) => Ok(false),
-        Err(e) => Err(format!("lecture de la base impossible : {e}")),
-    }
+    let path = s
+        .manifest_path_of(id)
+        .await
+        .map_err(|e| format!("lecture de la base impossible : {e}"))?;
+    let Some(root) = path
+        .as_deref()
+        .and_then(|p| locaryn_shared_types::model_source::extension_root(Path::new(p)))
+    else {
+        return Ok(false);
+    };
+    Ok(locaryn_extensions::manifest::load(&root).is_ok_and(|m| m.core.is_some()))
 }
 
 fn mauvaise_requete(message: &str) -> Response {

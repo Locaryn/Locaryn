@@ -4,6 +4,7 @@
 //! interfaces so other crates can compile against them.
 
 pub mod approval;
+pub mod approval_gate;
 pub mod embeddings;
 pub mod exec;
 pub mod reasoning;

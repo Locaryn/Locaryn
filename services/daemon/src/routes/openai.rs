@@ -1066,6 +1066,7 @@ mod api_tests {
             http: reqwest::Client::new(),
             keychain: Arc::new(TrousseauDEssai::default()),
             cores: locaryn_core_bridge::manager::CoreManager::new(),
+            approval_gate: locaryn_agent_runtime::approval_gate::GateBureau::new(data_dir.clone()),
             travel: crate::travel::TravelState::new(),
             port: 0,
             auth_required: false,

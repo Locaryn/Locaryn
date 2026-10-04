@@ -9,7 +9,7 @@
 //! lives in the shell.
 
 mod airllm;
-mod approval_gate;
+use locaryn_agent_runtime::approval_gate;
 mod attention;
 mod client_cert;
 mod cloud_providers;
@@ -24,7 +24,7 @@ mod model_abilities;
 mod model_residency;
 mod notifications;
 mod project_context;
-mod secure_client;
+use locaryn_sdk::secure_client;
 mod server_mode;
 mod storage_root;
 mod travel_mode;
@@ -1586,26 +1586,19 @@ async fn generate_session_title(
     let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     let raw = val["choices"][0]["message"]["content"]
         .as_str()
-        .unwrap_or("")
-        .trim();
-    let title = raw
-        .trim_matches(|c: char| c == '\'' || c == '"' || c == '“' || c == '”')
-        .split('\n')
-        .next()
-        .unwrap_or(raw)
-        .trim();
-
-    if title.is_empty() {
-        return Err("empty title generated".into());
-    }
+        .unwrap_or("");
+    // Le même nettoyage que pour les autres titres : bloc de réflexion (même
+    // jamais fermé), guillemets, phrase trop longue. Un modèle qui raisonnait
+    // jusqu'au bout de ses jetons donnait « <think> » comme titre.
+    let title = locaryn_agent_runtime::titling::nettoyer(raw).ok_or("empty title generated")?;
 
     core.storage
         .sessions
-        .update_title(session_id, title)
+        .update_title(session_id, &title)
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(title.to_string())
+    Ok(title)
 }
 
 #[tauri::command]

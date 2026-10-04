@@ -102,6 +102,42 @@ pub trait CoreHost: Send + Sync {
     async fn core_manifest(&self, id: Uuid) -> Result<(CoreManifest, PathBuf), String>;
     /// La permission `shell` a-t-elle été accordée à cette extension ?
     async fn shell_granted(&self, id: Uuid) -> Result<bool, String>;
+    /// Les morphs actifs, tels que le noyau doit les connaître. Un hôte qui
+    /// n'en tient pas la liste rend le vide : le noyau ne reçoit alors pas de
+    /// skill `locaryn-morphs`, sans que rien d'autre change.
+    fn morph_notes(&self) -> Vec<crate::morph_memory::MorphNote> {
+        Vec::new()
+    }
+}
+
+/// Écrit la skill `locaryn-morphs` dans le dossier de skills du noyau.
+///
+/// Échec sans conséquence pour le noyau lui-même : il tourne, il ne saura
+/// simplement pas ce qui est installé. On le dit dans le journal.
+fn sync_morph_skill(manifest: &CoreManifest, host: &dyn CoreHost) {
+    let Some(dir) = manifest
+        .skills
+        .install_dir
+        .as_deref()
+        .filter(|d| !d.is_empty())
+    else {
+        return;
+    };
+    match crate::morph_memory::write_skill(dir, &host.morph_notes()) {
+        Ok(file) => tracing::info!(fichier = %file.display(), "skill locaryn-morphs à jour"),
+        Err(e) => tracing::warn!(erreur = %e, "skill locaryn-morphs non écrite"),
+    }
+}
+
+/// Réécrit la skill de chaque noyau en marche. À appeler quand l'ensemble des
+/// extensions change : c'est ce qui fait « évoluer » un noyau avec la machine.
+pub async fn refresh_morph_skills(manager: &CoreManager, host: &dyn CoreHost) {
+    let ids: Vec<Uuid> = manager.running.lock().await.keys().copied().collect();
+    for id in ids {
+        if let Ok((manifest, _)) = host.core_manifest(id).await {
+            sync_morph_skill(&manifest, host);
+        }
+    }
 }
 
 fn loopback_only(url: &str) -> Result<(), String> {
@@ -191,7 +227,10 @@ pub async fn status(
     let healthy = match &rc.health {
         Some(h) if !h.url.is_empty() => {
             let url = interpolate(&h.url, manifest.port, &rc.token);
-            let probe = host.http().get(&url).send().await;
+            // Le jeton part avec la sonde : un noyau dont les endpoints exigent
+            // l'authentification répond 401 à une sonde anonyme, et passait
+            // pour mort alors qu'il tournait.
+            let probe = host.http().get(&url).bearer_auth(&rc.token).send().await;
             matches!(probe, Ok(r) if r.status().is_success())
         }
         _ => true, // pas de sonde déclarée : vivant = en marche
@@ -266,7 +305,13 @@ pub async fn start(
     for (k, v) in &manifest.lifecycle.env {
         cmd.env(k, interpolate(v, port, &token));
     }
-    cmd.stdout(Stdio::null()).stderr(Stdio::null());
+    // Un noyau muet ne laissait aucune trace de sa panne : sa sortie va dans
+    // un journal à côté de la base, lisible quand la sonde échoue.
+    let log = std::fs::File::create(host.data_dir().join(format!("core-{id}.log"))).ok();
+    match log.and_then(|f| f.try_clone().ok().map(|g| (f, g))) {
+        Some((out, err)) => cmd.stdout(Stdio::from(out)).stderr(Stdio::from(err)),
+        None => cmd.stdout(Stdio::null()).stderr(Stdio::null()),
+    };
 
     let child = cmd.spawn().map_err(|e| {
         format!(
@@ -304,7 +349,7 @@ pub async fn start(
             .max(200);
         let mut ok = false;
         for _ in 0..retries {
-            if let Ok(r) = http.get(&probe_url).send().await {
+            if let Ok(r) = http.get(&probe_url).bearer_auth(&token).send().await {
                 if r.status().is_success() {
                     ok = true;
                     break;
@@ -328,6 +373,7 @@ pub async fn start(
     }
 
     tracing::info!(id = %id, port, driver = %manifest.driver, "noyau démarré");
+    sync_morph_skill(&manifest, host);
     status(manager, host, id).await
 }
 

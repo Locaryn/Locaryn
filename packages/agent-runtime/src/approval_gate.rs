@@ -1,4 +1,4 @@
-//! La porte d'approbation de l'application de bureau.
+//! La porte d'approbation, commune au bureau et au démon.
 //!
 //! Le runtime demande, cette porte fait apparaître la question à l'écran et
 //! attend la réponse. Trois exigences la façonnent :
@@ -12,7 +12,7 @@
 //!   veut pas dire refuser pour la session : l'utilisateur qui change d'avis
 //!   ne doit pas avoir à redémarrer.
 
-use locaryn_agent_runtime::approval::{ApprovalGate, ApprovalOutcome, ApprovalRequest};
+use crate::approval::{ApprovalGate, ApprovalOutcome, ApprovalRequest};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -228,6 +228,14 @@ impl GateBureau {
 
 #[async_trait::async_trait]
 impl ApprovalGate for GateBureau {
+    async fn already_allowed(&self, req: &ApprovalRequest) -> bool {
+        let etat = self.etat.lock().await;
+        etat.session.contains(&req.tool)
+            || etat
+                .durables
+                .autorise(&req.tool, &req.project_id.to_string())
+    }
+
     async fn request(&self, req: ApprovalRequest) -> ApprovalOutcome {
         // Déjà accordé plus tôt ? On ne redemande pas.
         {
@@ -290,6 +298,35 @@ mod tests {
             is_remote: false,
             project_id: uuid::Uuid::nil(),
         }
+    }
+
+    /// Un accord de session est connu avant la question : le runtime n'annonce
+    /// alors rien, au lieu d'afficher une demande qui se réglerait seule.
+    #[tokio::test]
+    async fn un_accord_de_session_est_visible_avant_la_question() {
+        let gate = GateBureau::pour_test(DELAI_REPONSE);
+        assert!(!gate.already_allowed(&demande("c1", "ssh_exec")).await);
+
+        let g = gate.clone();
+        let attente = tokio::spawn(async move { g.request(demande("c1", "ssh_exec")).await });
+        tokio::task::yield_now().await;
+        while !gate
+            .repondre(
+                "c1",
+                "ssh_exec",
+                Verdict {
+                    autorise: true,
+                    portee: Portee::Session,
+                },
+            )
+            .await
+        {
+            tokio::task::yield_now().await;
+        }
+        assert!(attente.await.unwrap().is_allowed());
+
+        assert!(gate.already_allowed(&demande("c2", "ssh_exec")).await);
+        assert!(!gate.already_allowed(&demande("c3", "write_file")).await);
     }
 
     /// Le cas nominal : la réponse débloque l'appel qui attendait.

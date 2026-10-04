@@ -63,6 +63,16 @@ pub trait ApprovalGate: Send + Sync {
     /// indéfiniment : une fenêtre fermée sans répondre doit finir en refus,
     /// sinon la conversation reste bloquée sans que rien ne l'explique.
     async fn request(&self, req: ApprovalRequest) -> ApprovalOutcome;
+
+    /// Cet appel a-t-il déjà été autorisé (« toujours », « cette session »…) ?
+    ///
+    /// Le runtime le demande avant d'annoncer la question : sans cela, un
+    /// client voyait s'afficher une demande que la porte allait accepter seule
+    /// une milliseconde plus tard, et sa réponse arrivait à une demande qui
+    /// n'existait pas.
+    async fn already_allowed(&self, _req: &ApprovalRequest) -> bool {
+        false
+    }
 }
 
 /// Enveloppe la porte pour qu'elle traverse une structure `Debug`.

@@ -2,6 +2,8 @@
 //! over HTTP/1.1 + SSE. Used by the CLI and the desktop app when acting
 //! in client mode against a remote server (e.g. DGX Spark supercomputer).
 
+pub mod secure_client;
+
 use futures::TryStreamExt as _;
 use locaryn_events::{SseError, StreamEvent};
 use locaryn_shared_types::{
@@ -12,6 +14,10 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Durée maximale d'une réponse en flux (génération comprise).
+/// Démarrage d'un noyau : le temps que sa sonde de santé réponde.
+const CORE_START_TIMEOUT: Duration = Duration::from_secs(180);
+const STREAM_TIMEOUT: Duration = Duration::from_secs(3600);
 
 /// Stored session credentials on disk (`session-token.json`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -302,6 +308,11 @@ impl LocarynClient {
             .add_auth(
                 self.http
                     .post(self.url(&format!("/v1/sessions/{session_id}/messages")))
+                    // Le délai du client couvre la requête *et* la lecture du
+                    // flux : à 30 s, toute réponse un peu longue était coupée,
+                    // et un premier message qui attend le chargement du modèle
+                    // annulait ce chargement.
+                    .timeout(STREAM_TIMEOUT)
                     .json(&body),
             )
             .send()
@@ -310,6 +321,55 @@ impl LocarynClient {
             return Err(Self::decode_error(resp).await);
         }
         Ok(locaryn_events::sse_stream(resp.bytes_stream()).map_err(SdkError::from))
+    }
+
+    /// Pose (ou, avec `None`, efface) l'exception de permissions d'une
+    /// conversation. Rend la permission effective.
+    pub async fn set_session_trust(
+        &self,
+        session_id: &str,
+        trust: Option<locaryn_shared_types::TrustLevel>,
+    ) -> Result<serde_json::Value, SdkError> {
+        let body = serde_json::json!({ "trust": trust });
+        let resp = self
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/sessions/{session_id}/trust")))
+                    .json(&body),
+            )
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.json().await?)
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
+    }
+
+    /// Répond à la demande d'approbation d'un appel d'outil (`tool_approval`).
+    /// `scope` : `once`, `session`, `project` ou `always`.
+    pub async fn answer_approval(
+        &self,
+        call_id: &str,
+        tool: &str,
+        allow: bool,
+        scope: &str,
+    ) -> Result<(), SdkError> {
+        let body = serde_json::json!({
+            "call_id": call_id,
+            "tool": tool,
+            "decision": if allow { "allow" } else { "deny" },
+            "scope": scope,
+        });
+        let resp = self
+            .add_auth(self.http.post(self.url("/v1/approvals")).json(&body))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(Self::decode_error(resp).await)
+        }
     }
 
     pub async fn cancel_session(&self, session_id: &str) -> Result<(), SdkError> {
@@ -722,7 +782,12 @@ impl LocarynClient {
 
     pub async fn reload_extensions(&self) -> Result<serde_json::Value, SdkError> {
         let resp = self
-            .add_auth(self.http.post(self.url("/v1/extensions/reload")))
+            .add_auth(
+                self.http
+                    .post(self.url("/v1/extensions/reload"))
+                    // La route lit un corps JSON, même vide : sans lui, 415.
+                    .json(&serde_json::json!({})),
+            )
             .send()
             .await?;
         if resp.status().is_success() {
@@ -850,7 +915,13 @@ impl LocarynClient {
 
     pub async fn core_start(&self, id: &str) -> Result<serde_json::Value, SdkError> {
         let resp = self
-            .add_auth(self.http.post(self.url(&format!("/v1/cores/{id}/start"))))
+            .add_auth(
+                self.http
+                    .post(self.url(&format!("/v1/cores/{id}/start")))
+                    // Le démon attend la sonde de santé du noyau, jusqu'à une
+                    // minute : le délai par défaut du client coupait avant.
+                    .timeout(CORE_START_TIMEOUT),
+            )
             .send()
             .await?;
         if resp.status().is_success() {

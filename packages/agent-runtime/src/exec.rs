@@ -152,35 +152,42 @@ pub async fn execute_tool_call(
     let verdict = if decision.hard_blocked {
         Some(format!("Tool '{}' was blocked. {}.", tool, decision.reason))
     } else if decision.needs_user_consent {
-        // L'événement part d'abord : c'est lui qui fait apparaître la
-        // fenêtre. L'attente vient ensuite, sinon on demanderait à
-        // quelqu'un qui n'a encore rien vu.
-        let _ = tx
-            .send(StreamEvent::ToolApproval {
-                call_id: call_id.to_string(),
-                tool: tool.to_string(),
-                args: args.clone(),
-                risk: decision.effective_risk,
-                reason: decision.reason.clone(),
-                diff: decision.diff.clone(),
-                is_remote: ctx.remote_target.is_some(),
-            })
-            .await;
+        let request = ApprovalRequest {
+            call_id: call_id.to_string(),
+            tool: tool.to_string(),
+            args: args.clone(),
+            risk: decision.effective_risk,
+            reason: decision.reason.clone(),
+            diff: decision.diff.clone(),
+            is_remote: ctx.remote_target.is_some(),
+            project_id: ctx.project_id,
+        };
+        let already = match approval {
+            Some(handle) => handle.0.already_allowed(&request).await,
+            None => false,
+        };
 
-        let outcome = crate::approval::ask(
-            approval,
-            ApprovalRequest {
-                call_id: call_id.to_string(),
-                tool: tool.to_string(),
-                args: args.clone(),
-                risk: decision.effective_risk,
-                reason: decision.reason.clone(),
-                diff: decision.diff.clone(),
-                is_remote: ctx.remote_target.is_some(),
-                project_id: ctx.project_id,
-            },
-        )
-        .await;
+        let outcome = if already {
+            // Accordé plus tôt : on n'annonce pas une question à laquelle la
+            // porte répond seule.
+            crate::approval::ApprovalOutcome::Allow
+        } else {
+            // L'événement part d'abord : c'est lui qui fait apparaître la
+            // fenêtre. L'attente vient ensuite, sinon on demanderait à
+            // quelqu'un qui n'a encore rien vu.
+            let _ = tx
+                .send(StreamEvent::ToolApproval {
+                    call_id: call_id.to_string(),
+                    tool: tool.to_string(),
+                    args: args.clone(),
+                    risk: decision.effective_risk,
+                    reason: decision.reason.clone(),
+                    diff: decision.diff.clone(),
+                    is_remote: ctx.remote_target.is_some(),
+                })
+                .await;
+            crate::approval::ask(approval, request).await
+        };
 
         match outcome {
             crate::approval::ApprovalOutcome::Allow => None,

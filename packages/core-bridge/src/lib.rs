@@ -20,6 +20,7 @@
 
 pub mod drivers;
 pub mod manager;
+pub mod morph_memory;
 pub mod session;
 
 use locaryn_agent_runtime::{Agent, AgentError, AgentInput, EventStream};

@@ -68,6 +68,10 @@ struct DaemonState {
     /// Noyaux alternatifs (OpenClaw, Hermes…) : superviseur de processus
     /// partagé avec le desktop (D4).
     pub cores: Arc<locaryn_core_bridge::manager::CoreManager>,
+    /// La porte d'approbation : sans elle, un outil qui demande un accord
+    /// (MCP, shell, écriture) était refusé d'office, faute d'interlocuteur —
+    /// le terminal, le mobile et le web ne pouvaient donc rien approuver.
+    pub approval_gate: locaryn_agent_runtime::approval_gate::GateBureau,
     pub travel: Arc<travel::TravelState>,
     /// Port actually being served, so a pairing link names the right one.
     pub port: u16,
@@ -227,6 +231,7 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(DaemonState {
         mode: cfg.connection.mode,
         start_time: chrono::Utc::now(),
+        approval_gate: locaryn_agent_runtime::approval_gate::GateBureau::new(data_dir.clone()),
         data_dir,
         storage,
         supervisor,
@@ -326,6 +331,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/tasks/:id", get(get_task))
         .route("/v1/tasks/:id/cancel", post(cancel_task))
         .route("/v1/tasks/:id/approve", post(approve_task))
+        .route("/v1/approvals", post(answer_approval))
         .route("/v1/artifacts/:id", get(get_artifact))
         .route("/v1/artifacts/:id/raw", get(get_artifact_raw))
         // Extension routes
@@ -691,7 +697,12 @@ async fn seed_default_provider(storage: &Storage) {
         tracing::info!("seeding default local llama-server provider");
         if let Err(e) = storage
             .providers
-            .upsert_local(&ProviderEngine::LlamaCpp, "http://127.0.0.1:8080", None)
+            .upsert_local(
+                &ProviderEngine::LlamaCpp,
+                locaryn_provider_supervisor::default_endpoint(&ProviderEngine::LlamaCpp)
+                    .unwrap_or("http://127.0.0.1:8080"),
+                None,
+            )
             .await
         {
             tracing::warn!(error = %e, "failed to seed default provider");
@@ -1278,10 +1289,12 @@ async fn send_message(
             .flatten()
             .and_then(|f| f.tools)
             .filter(|t| !t.is_empty()),
-        // Le démon tourne sans interface : personne ne peut arbitrer, donc
-        // tout appel exigeant un accord est refusé. C'est le comportement
-        // voulu pour un service, pas un oubli.
-        approval: None,
+        // Le démon n'a pas de fenêtre, mais ses clients en ont une : la
+        // demande part dans le flux (`tool_approval`), la réponse revient par
+        // `POST /v1/approvals`. Faute de réponse dans le délai, c'est un refus.
+        approval: Some(locaryn_agent_runtime::approval::ApprovalHandle::new(
+            s.approval_gate.clone(),
+        )),
         // Et personne à qui poser une question : le démon sert des clients qui
         // n'ont pas encore de canal pour la remonter. `ask_user` répond donc
         // qu'il n'a pas d'interlocuteur, ce que le modèle dit dans sa réponse
@@ -1303,6 +1316,10 @@ async fn send_message(
         match routes::cores::agent_for_core(&s, core_id).await {
             Ok((agent, token)) => {
                 input.bearer_token = token;
+                // Le modèle du moteur Locaryn (un chemin de fichier .gguf) ne
+                // veut rien dire pour un noyau : OpenClaw le refusait en 400
+                // (« Use `openclaw` … »). Le noyau annonce lui-même le sien.
+                input.model = None;
                 match agent.run(input.clone()).await {
                     Ok(stream) => stream,
                     Err(e) => {
@@ -1740,6 +1757,63 @@ struct ApproveBody {
     scope: String,
 }
 
+#[derive(serde::Deserialize)]
+struct AnswerApprovalBody {
+    call_id: String,
+    /// L'outil concerné : la porte s'en sert pour retenir un accord « toujours ».
+    tool: String,
+    /// `allow` ou `deny`.
+    decision: String,
+    /// `once`, `session`, `project` ou `always`.
+    #[serde(default = "default_scope")]
+    scope: String,
+}
+
+/// POST /v1/approvals — répondre à la demande d'un appel d'outil en attente.
+///
+/// C'est ce qui permet à un client sans fenêtre (terminal, mobile, web) de
+/// trancher : la demande lui arrive dans le flux (`tool_approval`), la réponse
+/// revient ici.
+async fn answer_approval(
+    State(s): State<Arc<DaemonState>>,
+    Json(body): Json<AnswerApprovalBody>,
+) -> Response {
+    let autorise = match body.decision.as_str() {
+        "allow" => true,
+        "deny" => false,
+        other => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": { "code": "bad_request", "message": format!("décision inconnue : {other}") }
+                })),
+            )
+                .into_response();
+        }
+    };
+    let verdict = locaryn_agent_runtime::approval_gate::Verdict {
+        autorise,
+        portee: locaryn_agent_runtime::approval_gate::Portee::depuis(&body.scope),
+    };
+    if s.approval_gate
+        .repondre(&body.call_id, &body.tool, verdict)
+        .await
+    {
+        Json(serde_json::json!({ "status": "recorded" })).into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": {
+                    "code": "not_found",
+                    "message": "cette demande n'attend plus de réponse : délai dépassé ou déjà tranchée"
+                }
+            })),
+        )
+            .into_response()
+    }
+}
+
 fn default_scope() -> String {
     "once".to_string()
 }
@@ -2169,9 +2243,12 @@ struct MicroModelBody {
 /// POST /v1/assistance/micro-model — choisir, ou n'en choisir aucun.
 async fn set_micro_model(Json(body): Json<MicroModelBody>) -> Response {
     let choix = body.model.filter(|m| !m.trim().is_empty());
-    if let Err(e) =
-        locaryn_config::set_global("assistance", serde_json::json!({ "micro_model": choix }))
-    {
+    // « Aucun » s'écrit en chaîne vide : `null` voudrait dire « jamais choisi »,
+    // donc le modèle déjà chargé.
+    if let Err(e) = locaryn_config::set_global(
+        "assistance",
+        serde_json::json!({ "micro_model": choix.clone().unwrap_or_default() }),
+    ) {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({

@@ -65,6 +65,17 @@ impl ExtensionRegistry {
         Ok(entry)
     }
 
+    /// Aligne l'identifiant d'une extension sur celui de sa ligne en base.
+    ///
+    /// Le registre en donne un neuf à chaque chargement ; sans cet alignement,
+    /// un identifiant gardé ailleurs (la session confiée à un noyau, par
+    /// exemple) ne désignait plus rien après un redémarrage.
+    pub fn adopt_id(&self, name: &str, id: uuid::Uuid) {
+        if let Some(entry) = self.by_name.write().get_mut(name) {
+            entry.id = id;
+        }
+    }
+
     pub fn get(&self, name: &str) -> Option<ExtensionEntry> {
         self.by_name.read().get(name).cloned()
     }

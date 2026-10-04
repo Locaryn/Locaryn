@@ -25,6 +25,11 @@ struct Cli {
     /// Bearer token (remote server only).
     #[arg(long, env = "LOCARYN_TOKEN")]
     token: Option<String>,
+    /// Certificate fingerprint to expect from an https server (`AB:CD:…`).
+    /// Defaults to the deployment file, or to this machine's own certificate
+    /// when the server is local.
+    #[arg(long, env = "LOCARYN_TLS_FINGERPRINT")]
+    fingerprint: Option<String>,
     /// Without a subcommand, Locaryn opens its agent in the current directory.
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -128,6 +133,12 @@ enum ProjectsCmd {
 #[derive(Subcommand)]
 enum SessionsCmd {
     List,
+    /// Change what the model may do in one conversation.
+    Trust {
+        session: String,
+        /// trusted | untrusted | sandbox | inherit (back to the project's).
+        level: String,
+    },
     New {
         /// Confier la conversation à un noyau alternatif (id d'extension,
         /// tel que `locaryn cores list` l'affiche).
@@ -183,6 +194,18 @@ enum PluginCmd {
         name: String,
     },
     Reload,
+    /// Show what an extension asks for, and what has been granted.
+    Permissions {
+        name: String,
+    },
+    /// Grant permissions to an extension. With none named, grants everything
+    /// it requests. Without this, a server with no desktop app has no way to
+    /// let an extension's MCP server start.
+    Grant {
+        name: String,
+        /// e.g. `mcp network files.read` — see `plugin permissions`.
+        permissions: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -284,7 +307,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         (cfg.connection.local_url.clone(), cli.token)
     };
-    let client = LocarynClient::new(&base_url, token)?;
+    let client = build_client(&base_url, token, cli.fingerprint)?;
 
     // Most commands talk to the daemon, so an unreachable one is the single
     // most likely first-run failure. A raw reqwest chain tells the user nothing
@@ -365,6 +388,15 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Sessions { action } => {
             let project = project_for_cwd(&client).await?;
             match action {
+                SessionsCmd::Trust { session, level } => {
+                    let trust = match level.to_lowercase().as_str() {
+                        "inherit" => None,
+                        other => Some(parse_trust(other)?),
+                    };
+                    let out = client.set_session_trust(&session, trust).await?;
+                    println!("permissions effectives : {}", out["effective"]);
+                    Ok(())
+                }
                 SessionsCmd::List => {
                     let sessions = client.list_sessions(&project.id.to_string()).await?;
                     if sessions.is_empty() {
@@ -552,9 +584,41 @@ async fn main() -> anyhow::Result<()> {
                 println!("{name} : retirée");
                 Ok(())
             }
+            PluginCmd::Permissions { name } => {
+                let v = client.get_extension_permissions(&name).await?;
+                let (requested, granted) = permission_lists(&v);
+                if requested.is_empty() {
+                    println!("{name} ne demande aucune permission.");
+                }
+                for (perm, reason) in requested {
+                    let mark = if granted.contains(&perm) {
+                        "accordée"
+                    } else {
+                        "en attente"
+                    };
+                    println!("{perm:<12} {mark:<11} {reason}");
+                }
+                Ok(())
+            }
+            PluginCmd::Grant { name, permissions } => {
+                let wanted = if permissions.is_empty() {
+                    let v = client.get_extension_permissions(&name).await?;
+                    permission_lists(&v).0.into_iter().map(|(p, _)| p).collect()
+                } else {
+                    permissions
+                };
+                for perm in &wanted {
+                    client.set_extension_permission(&name, perm, true).await?;
+                    println!("{name} : {perm} accordée");
+                }
+                if wanted.is_empty() {
+                    println!("{name} : rien à accorder.");
+                }
+                Ok(())
+            }
             PluginCmd::Reload => {
                 let out = client.reload_extensions().await?;
-                let n = out.as_array().map(|a| a.len()).unwrap_or(0);
+                let n = out["results"].as_array().map(|a| a.len()).unwrap_or(0);
                 println!("{n} extension(s) rechargée(s)");
                 Ok(())
             }
@@ -989,6 +1053,43 @@ async fn converse(
                     }
                     println!("\n  · {tool}");
                 }
+                // Sans ceci, un noyau ou un moteur qui échoue ne laissait qu'une
+                // réponse vide : le message d'erreur existait, la CLI le jetait.
+                locaryn_events::StreamEvent::Log {
+                    level: locaryn_events::LogLevel::Warn | locaryn_events::LogLevel::Error,
+                    msg,
+                    ..
+                } => {
+                    if thinking_shown {
+                        print!("\r\x1b[2K");
+                        thinking_shown = false;
+                    }
+                    eprintln!("\n  ! {msg}");
+                }
+                locaryn_events::StreamEvent::ToolApproval {
+                    call_id,
+                    tool,
+                    args,
+                    reason,
+                    diff,
+                    is_remote,
+                    ..
+                } => {
+                    if thinking_shown {
+                        print!("\r\x1b[2K");
+                        thinking_shown = false;
+                    }
+                    ask_approval(
+                        client,
+                        &call_id,
+                        &tool,
+                        &args,
+                        &reason,
+                        diff.as_deref(),
+                        is_remote,
+                    )
+                    .await?;
+                }
                 locaryn_events::StreamEvent::MessageEnd { .. } => {
                     if thinking_shown {
                         print!("\r\x1b[2K");
@@ -1000,6 +1101,131 @@ async fn converse(
         }
     }
     Ok(())
+}
+
+/// Poser la question d'un appel d'outil à la personne au clavier, et
+/// transmettre sa réponse au serveur. Sans réponse lisible on refuse : un
+/// terminal qui se ferme ne doit rien autoriser.
+async fn ask_approval(
+    client: &LocarynClient,
+    call_id: &str,
+    tool: &str,
+    args: &serde_json::Value,
+    reason: &str,
+    diff: Option<&str>,
+    is_remote: bool,
+) -> anyhow::Result<()> {
+    let remote = if is_remote {
+        " (agit sur une autre machine)"
+    } else {
+        ""
+    };
+    eprintln!("\n  ? {tool} demande votre accord{remote}");
+    let first_line = reason.lines().next().unwrap_or("");
+    if !first_line.is_empty() {
+        eprintln!("    {first_line}");
+    }
+    let shown = serde_json::to_string(args).unwrap_or_default();
+    if shown.chars().count() > 300 {
+        let cut: String = shown.chars().take(300).collect();
+        eprintln!("    arguments : {cut}…");
+    } else if shown != "{}" {
+        eprintln!("    arguments : {shown}");
+    }
+    if let Some(diff) = diff {
+        eprintln!("    aperçu :\n{diff}");
+    }
+    eprint!("    [o] une fois   [s] cette session   [t] toujours   [n] refuser  > ");
+    std::io::Write::flush(&mut std::io::stderr())?;
+    let answer = tokio::task::spawn_blocking(|| {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).map(|_| line)
+    })
+    .await??;
+    let (allow, scope) = match answer.trim().to_lowercase().as_str() {
+        "o" | "oui" | "y" | "yes" => (true, "once"),
+        "s" | "session" => (true, "session"),
+        "t" | "toujours" | "a" | "always" => (true, "always"),
+        _ => (false, "once"),
+    };
+    // Une réponse tardive (délai dépassé, question déjà tranchée) n'est pas une
+    // raison de quitter la conversation : on le dit et on continue.
+    match client.answer_approval(call_id, tool, allow, scope).await {
+        Ok(()) => eprintln!("    {}", if allow { "autorisé" } else { "refusé" }),
+        Err(e) => eprintln!("    réponse non prise en compte : {e}"),
+    }
+    Ok(())
+}
+
+/// Permission names as the API expects them (`files.read`), from the
+/// `{ "permissions": { "requested": [...], "granted": [...] } }` answer, whose
+/// names come back in their Rust form (`FilesRead`).
+fn permission_lists(v: &serde_json::Value) -> (Vec<(String, String)>, Vec<String>) {
+    fn wire(name: &str) -> String {
+        match name {
+            "FilesRead" => "files.read".into(),
+            "FilesWrite" => "files.write".into(),
+            other => other.to_lowercase(),
+        }
+    }
+    let field = |key: &str| {
+        v["permissions"][key]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    };
+    let requested = field("requested")
+        .iter()
+        .filter_map(|r| {
+            Some((
+                wire(r["permission"].as_str()?),
+                r["reason"].as_str().unwrap_or("").to_string(),
+            ))
+        })
+        .collect();
+    let granted = field("granted")
+        .iter()
+        .filter_map(|g| g["permission"].as_str().or_else(|| g.as_str()).map(wire))
+        .collect();
+    (requested, granted)
+}
+
+/// Client for `base_url`. Plain http keeps the default client; https is checked
+/// against a pinned fingerprint, because the certificate a Locaryn server
+/// generates is self-signed and no public authority can vouch for it.
+fn build_client(
+    base_url: &str,
+    token: Option<String>,
+    fingerprint: Option<String>,
+) -> anyhow::Result<LocarynClient> {
+    if !base_url.starts_with("https://") {
+        return Ok(LocarynClient::new(base_url, token)?);
+    }
+    let is_local = ["://127.0.0.1", "://localhost", "://[::1]"]
+        .iter()
+        .any(|h| base_url.contains(h));
+    let fingerprint = fingerprint
+        .or_else(|| {
+            locaryn_config::provision::load()
+                .ok()
+                .flatten()
+                .and_then(|p| p.certificate_fingerprint)
+        })
+        .or_else(|| {
+            if is_local {
+                certificate_fingerprint()
+            } else {
+                None
+            }
+        });
+    let http = locaryn_sdk::secure_client::build(
+        None,
+        None,
+        fingerprint.as_deref(),
+        std::time::Duration::from_secs(30),
+    )
+    .map_err(|e| anyhow::anyhow!(e))?;
+    Ok(LocarynClient::with_client(base_url, token, http)?)
 }
 
 /// Read the certificate this server presents, so clients can pin it.

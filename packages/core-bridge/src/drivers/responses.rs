@@ -391,8 +391,15 @@ async fn all_tools(cfg: &CoreAgentConfig, input: &AgentInput) -> Vec<ToolSpec> {
     if let Some(mcp) = &input.mcp_state {
         tools.extend(locaryn_agent_runtime::mcp_tools::collect_mcp_tools(mcp).await);
     }
+    // Un noyau qui possède déjà un outil du même nom refuse toute la requête
+    // (« client tool name conflict »). Ceux-là sont les siens : on ne les lui
+    // offre pas une seconde fois.
+    tools.retain(|t| !NOMS_RESERVES_AU_NOYAU.contains(&t.name.as_str()));
     tools
 }
+
+/// Outils que les noyaux alternatifs ont en propre.
+const NOMS_RESERVES_AU_NOYAU: &[&str] = &["ask_user"];
 
 fn ctx_for(input: &AgentInput) -> ToolContext {
     ToolContext {

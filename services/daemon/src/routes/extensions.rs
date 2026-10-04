@@ -341,6 +341,7 @@ pub async fn restore_from_storage(state: &DaemonState) {
         let Some(dir) = dir else { continue };
         match state.extensions.install_from_dir(&dir, rec.scope) {
             Ok(entry) => {
+                state.extensions.adopt_id(&entry.name, rec.id);
                 if rec.enabled {
                     let _ = state.extensions.enable(&entry.name);
                 }
@@ -390,6 +391,7 @@ pub async fn restore_from_storage(state: &DaemonState) {
 pub async fn sync_extension_runtime(state: &DaemonState) {
     sync_mcp_servers(state).await;
     sync_extension_engines(state).await;
+    locaryn_core_bridge::manager::refresh_morph_skills(&state.cores, state).await;
 }
 
 /// Donne au superviseur la liste des moteurs apportés par les extensions
@@ -522,8 +524,11 @@ async fn persist(state: &DaemonState, entry: &locaryn_extensions::ExtensionEntry
             .map(|(p, _)| p.clone())
             .collect(),
     };
-    if let Err(e) = state.storage.extensions.upsert(new).await {
-        tracing::warn!(name = %entry.name, error = %e, "extension non enregistrée en base");
+    match state.storage.extensions.upsert(new).await {
+        Ok(rec) => state.extensions.adopt_id(&entry.name, rec.id),
+        Err(e) => {
+            tracing::warn!(name = %entry.name, error = %e, "extension non enregistrée en base");
+        }
     }
 }
 

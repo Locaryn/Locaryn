@@ -790,6 +790,22 @@ pub struct EngineSnapshot {
 // Free functions
 // ============================================================================
 
+/// Port de `llama-server`. 8080 par défaut, mais c'est aussi le port de la
+/// moitié des services qu'on trouve sur un serveur : `LOCARYN_LLAMA_PORT`
+/// permet de s'en écarter sans toucher au reste de la configuration.
+pub fn llama_port() -> u16 {
+    std::env::var("LOCARYN_LLAMA_PORT")
+        .ok()
+        .and_then(|v| v.trim().parse::<u16>().ok())
+        .filter(|p| *p != 0)
+        .unwrap_or(8080)
+}
+
+fn llama_endpoint() -> &'static str {
+    static ENDPOINT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ENDPOINT.get_or_init(|| format!("http://127.0.0.1:{}", llama_port()))
+}
+
 /// Adresse loopback par défaut d'un moteur intégré.
 ///
 /// `None` pour un moteur apporté par une extension : son adresse est celle de
@@ -797,7 +813,7 @@ pub struct EngineSnapshot {
 /// Utilisez [`Supervisor::endpoint_for`] pour couvrir les deux cas.
 pub fn default_endpoint(e: &ProviderEngine) -> Option<&'static str> {
     match e {
-        ProviderEngine::LlamaCpp => Some("http://127.0.0.1:8080"),
+        ProviderEngine::LlamaCpp => Some(llama_endpoint()),
         ProviderEngine::Lmstudio => Some("http://127.0.0.1:1234"),
         ProviderEngine::Vllm => Some("http://127.0.0.1:8000"),
         ProviderEngine::OpenAiCompat => Some("http://127.0.0.1:8000"),
@@ -1059,7 +1075,7 @@ async fn spawn_llama_server(
     // ligne par ligne d'un terminal. Le journal reste alors vide et
     // l'application n'a plus rien à montrer qu'un chargement qui ne finit
     // jamais. Sonder le port nous-mêmes donne un message net et immédiat.
-    ensure_port_free(8080)
+    ensure_port_free(llama_port())
         .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e))?;
 
     tracing::info!(
@@ -1076,11 +1092,23 @@ async fn spawn_llama_server(
     cmd.arg("--host")
         .arg("127.0.0.1")
         .arg("--port")
-        .arg("8080")
+        .arg(llama_port().to_string())
         .arg("-m")
-        .arg(&full_model_path)
-        .arg("--chat-template")
-        .arg("chatml");
+        .arg(&full_model_path);
+
+    // Le gabarit du modèle, quand il en porte un : c'est lui qui place les
+    // outils dans l'invite et qui lit les appels en retour. Forcer `chatml`
+    // à tous les modèles écrasait le format propre de Gemma, Qwen ou Llama, et
+    // un modèle capable d'appeler des outils n'en appelait plus aucun. Le
+    // repli `chatml` ne sert qu'aux fichiers sans gabarit.
+    let declares_template = locaryn_llmfit::read_summary(&full_model_path)
+        .map(|sum| !sum.chat_template.trim().is_empty())
+        .unwrap_or(false);
+    if declares_template {
+        cmd.arg("--jinja");
+    } else {
+        cmd.arg("--chat-template").arg("chatml");
+    }
 
     // Vision: if a matching mmproj file sits next to the model
     // (mmproj-<model>.gguf or a single mmproj-*.gguf in the dir), load it.
@@ -1484,39 +1512,106 @@ async fn spawn_airllm_server(
 pub fn find_mmproj_for(model_path: &std::path::Path) -> Option<std::path::PathBuf> {
     let dir = model_path.parent()?;
     let stem = model_path.file_stem()?.to_string_lossy().to_lowercase();
-    // Base model name without the quant suffix, e.g. "qwen2-vl-2b-instruct".
-    let base = stem
-        .split("-q4")
-        .next()
-        .and_then(|s| s.split("-q5").next())
-        .and_then(|s| s.split("-q6").next())
-        .and_then(|s| s.split("-q8").next())
-        .and_then(|s| s.split("-f16").next())
-        .unwrap_or(&stem)
-        .to_string();
+    let base = stem_sans_quant(&stem);
 
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    let mut autres_modeles = 0usize;
     for entry in std::fs::read_dir(dir).ok()?.flatten() {
         let p = entry.path();
         let Some(name) = p.file_name().map(|n| n.to_string_lossy().to_lowercase()) else {
             continue;
         };
-        if name.starts_with("mmproj-") && name.ends_with(".gguf") {
+        if !name.ends_with(".gguf") {
+            continue;
+        }
+        if name.contains("mmproj") {
             if name.contains(&base) {
                 return Some(p);
             }
             candidates.push(p);
+        } else if p != model_path {
+            autres_modeles += 1;
         }
     }
-    if candidates.len() == 1 {
+    // Un projecteur isole n'est attribuable qu'a un modele seul dans son
+    // dossier : des qu'il y en a plusieurs, le premier mmproj venu appartient
+    // tres probablement a un autre (n_embd different, llama-server refuse de
+    // demarrer et l'application reste sur « chargement du modele »).
+    if candidates.len() == 1 && autres_modeles == 0 {
         return candidates.pop();
     }
     None
 }
 
+/// Nom de modele sans sa quantification : « bonsai-27b-q1_0 » -> « bonsai-27b »,
+/// « qwen2-vl-2b-instruct-q4_k_m » -> « qwen2-vl-2b-instruct ».
+fn stem_sans_quant(stem: &str) -> String {
+    const MARQUES: [&str; 9] = [
+        "-q1", "-q2", "-q3", "-q4", "-q5", "-q6", "-q8", "-f16", "-bf16",
+    ];
+    let coupe = MARQUES
+        .iter()
+        .filter_map(|m| stem.find(m))
+        .min()
+        .unwrap_or(stem.len());
+    stem[..coupe].to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dossier_avec(fichiers: &[&str]) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "locaryn-mmproj-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in fichiers {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        dir
+    }
+
+    /// Reproduit le blocage observe : `Bonsai-27B-mmproj-Q8_0.gguf` ne commence
+    /// pas par `mmproj-`, donc n'etait pas vu, et le mmproj de gemma (seul
+    /// candidat) lui etait attribue : llama-server quittait sur « mismatch
+    /// between text model and mmproj ».
+    #[test]
+    fn le_projecteur_d_un_modele_ne_va_pas_a_un_autre() {
+        let dir = dossier_avec(&[
+            "Bonsai-27B-Q1_0.gguf",
+            "Bonsai-27B-mmproj-Q8_0.gguf",
+            "gemma-4-E2B-it-Q4_0.gguf",
+            "mmproj-gemma-4-E2B-it-Q8_0.gguf",
+        ]);
+        let bonsai = find_mmproj_for(&dir.join("Bonsai-27B-Q1_0.gguf")).unwrap();
+        assert!(bonsai.ends_with("Bonsai-27B-mmproj-Q8_0.gguf"));
+        let gemma = find_mmproj_for(&dir.join("gemma-4-E2B-it-Q4_0.gguf")).unwrap();
+        assert!(gemma.ends_with("mmproj-gemma-4-E2B-it-Q8_0.gguf"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn un_projecteur_etranger_n_est_pas_attribue_quand_le_dossier_a_plusieurs_modeles() {
+        let dir = dossier_avec(&[
+            "qwen2.5-3b-instruct-q4_k_m.gguf",
+            "gemma-4-E2B-it-Q4_0.gguf",
+            "mmproj-gemma-4-E2B-it-Q8_0.gguf",
+        ]);
+        assert!(find_mmproj_for(&dir.join("qwen2.5-3b-instruct-q4_k_m.gguf")).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn un_projecteur_isole_reste_attribue_a_un_modele_seul() {
+        let dir = dossier_avec(&["modele-vl.gguf", "mmproj-autre-nom.gguf"]);
+        assert!(find_mmproj_for(&dir.join("modele-vl.gguf")).is_some());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     /// Un port loopback déjà pris (observé avec `wslrelay.exe` squattant
     /// 8080) faisait échouer le `bind()` de llama-server en silence : le

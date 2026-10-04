@@ -246,10 +246,18 @@ fn extract_tar_gz(archive: &Path, dir: &Path) -> Result<(), SupervisorError> {
         else {
             continue;
         };
-        if entry.header().entry_type().is_dir() {
+        let kind = entry.header().entry_type();
+        if kind.is_dir() {
             continue;
         }
         let out = dir.join(rel);
+        // Les bibliothèques partagées d'Ubuntu sont des liens
+        // (`libggml-base.so` → `.so.0` → `.so.0.24.0`). Les écrire comme des
+        // fichiers vides laissait `llama-server` incapable de démarrer.
+        if kind.is_symlink() || kind.is_hard_link() {
+            link_entry(&entry, &out)?;
+            continue;
+        }
         let mut dst = std::fs::File::create(&out)?;
         std::io::copy(&mut entry, &mut dst)?;
         #[cfg(unix)]
@@ -260,6 +268,39 @@ fn extract_tar_gz(archive: &Path, dir: &Path) -> Result<(), SupervisorError> {
             }
         }
     }
+    Ok(())
+}
+
+/// Recréer un lien de l'archive à côté de sa cible. Les cibles sont toutes
+/// dans le même dossier : seul le nom de fichier est conservé, ce qui écarte
+/// aussi un lien qui pointerait hors du dossier géré.
+#[cfg(unix)]
+fn link_entry<R: std::io::Read>(
+    entry: &tar::Entry<'_, R>,
+    out: &Path,
+) -> Result<(), SupervisorError> {
+    let Some(target) = entry
+        .link_name()
+        .ok()
+        .flatten()
+        .and_then(|t| t.file_name().map(std::path::PathBuf::from))
+    else {
+        return Ok(());
+    };
+    match std::fs::remove_file(out) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    std::os::unix::fs::symlink(target, out)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn link_entry<R: std::io::Read>(
+    _entry: &tar::Entry<'_, R>,
+    _out: &Path,
+) -> Result<(), SupervisorError> {
     Ok(())
 }
 
@@ -352,6 +393,58 @@ mod tests {
         for nom in ["llama-server.exe", "ggml-base.dll", "ggml-vulkan.dll"] {
             assert!(dest.join(nom).is_file(), "{nom} devrait être à la racine");
         }
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Les publications Ubuntu livrent `libggml-base.so` comme lien vers
+    /// `.so.0.24.0` : extrait en fichier vide, le moteur ne démarrait pas.
+    #[cfg(unix)]
+    #[test]
+    fn les_liens_de_l_archive_tar_sont_recrees() {
+        let base = std::env::temp_dir().join(format!(
+            "locaryn_tar_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+        let archive = base.join("llama.tar.gz");
+
+        let gz = flate2::write::GzEncoder::new(
+            std::fs::File::create(&archive).unwrap(),
+            flate2::Compression::fast(),
+        );
+        let mut builder = tar::Builder::new(gz);
+        let contenu = b"vraie bibliotheque";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(contenu.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "llama/libggml-base.so.0.24.0", &contenu[..])
+            .unwrap();
+        for (nom, cible) in [
+            ("llama/libggml-base.so.0", "libggml-base.so.0.24.0"),
+            ("llama/libggml-base.so", "libggml-base.so.0"),
+        ] {
+            let mut lien = tar::Header::new_gnu();
+            lien.set_entry_type(tar::EntryType::Symlink);
+            lien.set_size(0);
+            lien.set_mode(0o777);
+            builder.append_link(&mut lien, nom, cible).unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap();
+
+        let dest = base.join("out");
+        std::fs::create_dir_all(&dest).unwrap();
+        extract_tar_gz(&archive, &dest).unwrap();
+        assert_eq!(
+            std::fs::read(dest.join("libggml-base.so")).unwrap(),
+            contenu,
+            "le lien doit mener à la bibliothèque, pas à un fichier vide"
+        );
 
         let _ = std::fs::remove_dir_all(&base);
     }
