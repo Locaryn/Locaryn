@@ -297,6 +297,12 @@ impl CatalogClient {
                 // README, et aucune 0.9.0 n'a jamais existé : les proposer
                 // installait un dossier vide, ou rien du tout.
                 "morph-omniroute" => ("1.0.0-beta.2", &[]),
+                // Nés en septembre 2026, publiés en bêta et sans version stable
+                // antérieure : la ligne par défaut ci-dessous leur ferait offrir
+                // une 1.0.0-beta.1 qui n'existe pas, et l'installation
+                // échouerait sur un tag introuvable.
+                "morph-desktop" | "morph-browser" => ("0.1.0-beta.4", &[]),
+                "morph-bonsai" => ("0.1.0-beta.1", &[]),
                 _ => ("1.0.0-beta.1", &["0.9.0", "0.8.0"]),
             };
 
