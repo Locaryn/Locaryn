@@ -822,7 +822,8 @@ pub struct SettingsField {
     #[serde(alias = "id")]
     pub key: String,
     pub label: String,
-    /// `boolean`, `string`, `number`, `select`, `model` ou `prompt`.
+    /// `boolean`, `string`, `number`, `select`, `model`, `prompt` ou `action`
+    /// (un bouton qui appelle l'outil `tool` de l'extension).
     ///
     /// Ces mots sont ceux de la documentation. Ils sont ramenés à quatre
     /// rendus au moment de l'affichage : un interrupteur, une liste, un choix
@@ -838,6 +839,9 @@ pub struct SettingsField {
     pub options: Vec<String>,
     #[serde(default)]
     pub default: Option<String>,
+    /// Pour `action` : l'outil de l'extension que le bouton appelle.
+    #[serde(default)]
+    pub tool: Option<String>,
 }
 
 fn champ_par_defaut() -> String {

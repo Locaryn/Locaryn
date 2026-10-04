@@ -1563,6 +1563,7 @@ fn manifest_schema(root: &Path) -> serde_json::Value {
                 "model" => "model",
                 "number" => "number",
                 "prompt" => "prompt",
+                "action" => "action",
                 _ => "string",
             };
             let mut f = serde_json::Map::new();
@@ -1582,6 +1583,9 @@ fn manifest_schema(root: &Path) -> serde_json::Value {
             }
             if let Some(default) = &field.default {
                 f.insert("default".into(), serde_json::Value::String(default.clone()));
+            }
+            if let (Some(tool), "action") = (&field.tool, kind) {
+                f.insert("tool".into(), serde_json::Value::String(tool.clone()));
             }
             // Le groupe du formulaire, c'est la section.
             f.insert(
@@ -2045,6 +2049,26 @@ pub async fn catalog_entry_details(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un champ `action` du manifeste arrive au formulaire avec son outil : le
+    /// panneau de réglages en fait un bouton.
+    #[test]
+    fn an_action_field_reaches_the_form_with_its_tool() {
+        let dir = std::env::temp_dir().join(format!("locaryn-action-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("morph.json"),
+            r#"{"name":"x","version":"1.0.0","apiVersion":"0.1",
+                "ui_contributions":{"settings_sections":[{"id":"c","label":"Console","fields":[
+                  {"key":"console.open","label":"Ouvrir","type":"action","tool":"open_console"}]}]}}"#,
+        )
+        .unwrap();
+        let schema = manifest_schema(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(schema["console.open"]["type"], "action");
+        assert_eq!(schema["console.open"]["tool"], "open_console");
+        assert_eq!(schema["console.open"]["group"], "Console");
+    }
 
     #[test]
     fn an_asset_path_never_escapes_the_extension() {

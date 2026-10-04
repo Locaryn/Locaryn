@@ -638,10 +638,13 @@ export type ExtensionFieldType =
   | "path"
   | "secret"
   | "model"
-  | "prompt";
+  | "prompt"
+  | "action";
 
 export interface ExtensionField {
   type: ExtensionFieldType;
+  /** Pour un champ `action` : l'outil de l'extension que le bouton appelle. */
+  tool?: string;
   title?: string;
   description?: string;
   default?: unknown;

@@ -51,6 +51,11 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
   const [saved, setSaved] = useState(false);
   /** Modèles installés, pour les champs `model`. */
   const [modeles, setModeles] = useState<string[]>([]);
+  /** Champ `action` en cours d'exécution, et la réponse de l'outil par champ. */
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<Record<string, { ok: boolean; text: string }>>(
+    {},
+  );
 
   // Les serveurs MCP déclarés par l'extension : env + auto-start éditables,
   // à côté du formulaire de schéma. La commande/URL et le transport viennent
@@ -149,6 +154,20 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
     }
   }
 
+  /** Un champ `action` : appelle l'outil de l'extension et montre sa réponse. */
+  async function runAction(key: string, field: ExtensionField) {
+    if (!field.tool) return;
+    setActionBusy(key);
+    try {
+      const text = await core.invokeExtensionTool(field.tool, {});
+      setActionResult((prev) => ({ ...prev, [key]: { ok: true, text } }));
+    } catch (e) {
+      setActionResult((prev) => ({ ...prev, [key]: { ok: false, text: String(e) } }));
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
   function set(key: string, value: unknown) {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
@@ -244,6 +263,36 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
     const id = `ext-cfg-${key}`;
 
     switch (field.type) {
+      case "action": {
+        const result = actionResult[key];
+        return (
+          <div className="locaryn-field">
+            <span className="locaryn-field-label">{fieldLabel(key, field)}</span>
+            {field.description && <p className="locaryn-field-hint">{field.description}</p>}
+            <div>
+              <button
+                type="button"
+                className="locaryn-btn-primary"
+                style={{ minHeight: 44 }}
+                disabled={actionBusy === key || !field.tool}
+                onClick={() => void runAction(key, field)}
+              >
+                {actionBusy === key ? "Ouverture…" : fieldLabel(key, field)}
+              </button>
+            </div>
+            {result && (
+              <p
+                className="locaryn-field-hint"
+                role="status"
+                style={result.ok ? undefined : { color: "var(--danger, #d9776e)" }}
+              >
+                {result.text}
+              </p>
+            )}
+          </div>
+        );
+      }
+
       case "boolean":
         return (
           <label
