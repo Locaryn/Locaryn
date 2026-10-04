@@ -17,7 +17,7 @@ function messageOf(e: unknown): string {
 }
 
 /**
- * Ajouter des serveurs MCP en collant le bloc `mcpServers` des instructions d'un
+ * Ajouter des connecteurs MCP en collant le bloc `mcpServers` des instructions d'un
  * serveur.
  *
  * Deux temps, parce qu'un bloc copié depuis une page web contient une commande
@@ -121,7 +121,7 @@ export function McpJsonImport({ onDone, onCancel }: Props) {
       </p>
       <textarea
         className="locaryn-textarea locaryn-mcp-json-input"
-        aria-label="JSON des serveurs MCP"
+        aria-label="JSON des connecteurs MCP"
         placeholder={EXEMPLE}
         value={text}
         spellCheck={false}

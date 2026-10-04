@@ -98,7 +98,9 @@ pub async fn collect_mcp_tools(state: &McpState) -> Vec<ToolSpec> {
     for (server_name, client) in &snapshot {
         match client.discover().await {
             Ok(caps) => {
-                for t in caps.tools.iter().filter(|t| !is_ui_only_tool(&t.name)) {
+                for t in caps.tools.iter().filter(|t| {
+                    !is_ui_only_tool(&t.name) && state.tool_allowed(server_name, &t.name)
+                }) {
                     let desc = t
                         .description
                         .clone()
@@ -199,6 +201,18 @@ pub async fn dispatch_mcp_tool(
         (s_name, t_name, c)
     };
 
+    // Même si le modèle connaît le nom (une conversation commencée avant le
+    // réglage, un appel inventé), un outil décoché ne part pas.
+    if !state.tool_allowed(&server_name, &tool_name) {
+        return ToolResult {
+            ok: false,
+            output: format!(
+                "L'outil « {tool_name} » du connecteur « {server_name} » est désactivé dans les réglages de Locaryn."
+            ),
+            artifact: None,
+        };
+    }
+
     match client.invoke_tool(&tool_name, args).await {
         Ok(val) => {
             // Convert the JSON-RPC result to a display string.
@@ -264,6 +278,96 @@ mod tests {
     }
 
     use super::*;
+    use locaryn_mcp::{
+        McpConfig, McpError, McpServerEntry, ServerCapabilities, ToolDescriptor, Transport,
+    };
+
+    fn outil(nom: &str) -> ToolDescriptor {
+        ToolDescriptor {
+            name: nom.to_string(),
+            description: Some(format!("outil {nom}")),
+            input_schema: serde_json::json!({ "type": "object" }),
+            annotations: None,
+        }
+    }
+
+    /// Un connecteur à deux outils : un qui lit, un qui efface tout.
+    struct Faux;
+
+    #[async_trait::async_trait]
+    impl McpClient for Faux {
+        async fn discover(&self) -> Result<ServerCapabilities, McpError> {
+            Ok(ServerCapabilities {
+                tools: vec![outil("lire"), outil("tout_effacer")],
+                resources: vec![],
+                prompts: vec![],
+            })
+        }
+        async fn invoke_tool(
+            &self,
+            _name: &str,
+            _args: &serde_json::Value,
+        ) -> Result<serde_json::Value, McpError> {
+            Ok(serde_json::json!("fait"))
+        }
+        async fn shutdown(&self) -> Result<(), McpError> {
+            Ok(())
+        }
+    }
+
+    /// L'état avec le connecteur « roblox » démarré et `tout_effacer` interdit.
+    fn etat_avec_un_outil_interdit() -> McpState {
+        let mut cfg = McpConfig::default();
+        cfg.mcp_servers.insert(
+            "roblox".into(),
+            McpServerEntry {
+                command: Some("x".into()),
+                args: vec![],
+                env: Default::default(),
+                url: None,
+                headers: Default::default(),
+                transport: Transport::Stdio,
+                auto_start: false,
+                scope: None,
+                owner: None,
+                disabled_tools: vec!["tout_effacer".into()],
+            },
+        );
+        let client: Arc<dyn McpClient> = Arc::new(Faux);
+        McpState {
+            config: std::sync::Mutex::new(cfg),
+            config_path: std::env::temp_dir().join("locaryn-test-mcp-filtre.json"),
+            running: tokio::sync::RwLock::new(HashMap::from([("roblox".to_string(), client)])),
+            runtime_env: Default::default(),
+        }
+    }
+
+    /// Un outil décoché n'est pas proposé au modèle, sous aucun de ses deux noms.
+    #[tokio::test]
+    async fn un_outil_interdit_n_est_pas_propose_au_modele() {
+        let etat = etat_avec_un_outil_interdit();
+        let noms: Vec<String> = collect_mcp_tools(&etat)
+            .await
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert!(noms.contains(&"mcp__roblox__lire".to_string()), "{noms:?}");
+        assert!(noms.contains(&"lire".to_string()), "{noms:?}");
+        assert!(!noms.iter().any(|n| n.contains("tout_effacer")), "{noms:?}");
+    }
+
+    /// Même si le modèle invente l'appel, il est refusé et rien ne part.
+    #[tokio::test]
+    async fn un_appel_a_un_outil_interdit_est_refuse() {
+        let etat = etat_avec_un_outil_interdit();
+        for nom in ["mcp__roblox__tout_effacer", "tout_effacer"] {
+            let r = dispatch_mcp_tool(&etat, nom, &serde_json::json!({})).await;
+            assert!(!r.ok, "{nom} aurait dû être refusé");
+            assert!(r.output.contains("désactivé"), "{}", r.output);
+        }
+        let ok = dispatch_mcp_tool(&etat, "mcp__roblox__lire", &serde_json::json!({})).await;
+        assert!(ok.ok, "{}", ok.output);
+    }
 
     /// Ce que le serveur MCP de plugin-image renvoie réellement, relevé sur
     /// une génération. Le transport enveloppe l'objet dans une chaîne de texte,

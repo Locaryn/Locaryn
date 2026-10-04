@@ -1384,6 +1384,7 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
                     auto_start: auto,
                     scope: None,
                     owner: None,
+                    disabled_tools: Vec::new(),
                 }
             } else {
                 let mut parts = target.split_whitespace().map(str::to_string);
@@ -1399,6 +1400,7 @@ async fn mcp_cmd(action: McpCmd, client: &LocarynClient) -> anyhow::Result<()> {
                     auto_start: auto,
                     scope: None,
                     owner: None,
+                    disabled_tools: Vec::new(),
                 }
             };
             cfg.mcp_servers.insert(name.clone(), entry);

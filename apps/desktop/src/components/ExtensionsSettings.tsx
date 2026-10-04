@@ -109,7 +109,7 @@ function componentSummary(e: InstalledExtension): string {
   if (c.commands) parts.push(`${c.commands} commande${c.commands > 1 ? "s" : ""}`);
   if (c.skills) parts.push(`${c.skills} skill${c.skills > 1 ? "s" : ""}`);
   if (c.agents) parts.push(`${c.agents} agent${c.agents > 1 ? "s" : ""}`);
-  if (c.mcp_servers) parts.push(`${c.mcp_servers} serveur MCP`);
+  if (c.mcp_servers) parts.push(`${c.mcp_servers} connecteur MCP`);
   if (c.rules) parts.push(`${c.rules} règle${c.rules > 1 ? "s" : ""}`);
   if (c.hooks) parts.push(`${c.hooks} hook${c.hooks > 1 ? "s" : ""}`);
   if (c.lsp_adapters) parts.push(`${c.lsp_adapters} LSP`);

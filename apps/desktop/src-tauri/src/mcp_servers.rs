@@ -36,6 +36,10 @@ pub struct McpServerInfo {
     pub env: HashMap<String, String>,
     /// Tools the server announced, once it has been started.
     pub tools: Vec<String>,
+    /// Outils que la personne a interdits au modèle. Tolérant : une réponse du
+    /// démon d'avant ce champ doit se lire quand même.
+    #[serde(default)]
+    pub disabled_tools: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -206,6 +210,7 @@ fn entry_from_json(name: &str, v: &serde_json::Value) -> Result<McpServerEntry, 
             auto_start: false,
             scope: None,
             owner: None,
+            disabled_tools: Vec::new(),
         }),
         (None, Some(url)) => {
             if !url.starts_with("http://") && !url.starts_with("https://") {
@@ -223,6 +228,7 @@ fn entry_from_json(name: &str, v: &serde_json::Value) -> Result<McpServerEntry, 
                 auto_start: false,
                 scope: None,
                 owner: None,
+                disabled_tools: Vec::new(),
             })
         }
         (None, None) => Err(format!(
@@ -439,6 +445,102 @@ pub async fn import_mcp_json(
     })
 }
 
+/// Un outil d'un connecteur, avec ce que la personne peut en décider.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct McpToolInfo {
+    pub name: String,
+    pub description: Option<String>,
+    /// Faux quand la personne l'a décoché : le modèle ne le voit pas.
+    pub enabled: bool,
+    /// Le serveur dit que l'outil ne modifie rien.
+    pub read_only: bool,
+    /// Le serveur dit que l'outil peut détruire ou écraser quelque chose.
+    pub destructive: bool,
+}
+
+fn tool_hint(t: &locaryn_mcp::ToolDescriptor, key: &str) -> bool {
+    t.annotations
+        .as_ref()
+        .and_then(|a| a.get(key))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+const REMOTE_TOOLS_UNSUPPORTED: &str =
+    "Le choix des outils se règle sur la machine qui héberge le connecteur : il n'est pas disponible depuis une connexion à un serveur distant.";
+
+/// Les outils qu'un connecteur démarré annonce, avec leur état.
+///
+/// Il doit tourner : la liste vient du serveur lui-même, et la deviner serait la
+/// donner fausse. L'écran propose de le démarrer quand il est arrêté.
+#[tauri::command]
+pub async fn list_mcp_tools(
+    core: State<'_, Core>,
+    name: String,
+) -> Result<Vec<McpToolInfo>, String> {
+    if core.remote_client().is_some() {
+        return Err(REMOTE_TOOLS_UNSUPPORTED.into());
+    }
+    let client = core
+        .mcp
+        .running
+        .read()
+        .await
+        .get(&name)
+        .cloned()
+        .ok_or_else(|| {
+            format!("« {name} » n'est pas démarré : démarrez-le pour voir ses outils.")
+        })?;
+    let caps = client
+        .discover()
+        .await
+        .map_err(|e| format!("{name} n'a pas répondu : {e}"))?;
+    let mut tools: Vec<McpToolInfo> = caps
+        .tools
+        .iter()
+        .filter(|t| !locaryn_agent_runtime::mcp_tools::is_ui_only_tool(&t.name))
+        .map(|t| McpToolInfo {
+            enabled: core.mcp.tool_allowed(&name, &t.name),
+            read_only: tool_hint(t, "readOnlyHint"),
+            destructive: tool_hint(t, "destructiveHint"),
+            description: t.description.clone(),
+            name: t.name.clone(),
+        })
+        .collect();
+    tools.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(tools)
+}
+
+/// Remplacer la liste des outils interdits au modèle pour un connecteur.
+///
+/// La liste entière plutôt qu'un outil à la fois : l'écran la détient, et un
+/// « tout désactiver » est un seul geste, pas quarante.
+#[tauri::command]
+pub async fn set_mcp_disabled_tools(
+    core: State<'_, Core>,
+    name: String,
+    disabled: Vec<String>,
+) -> Result<(), String> {
+    if core.remote_client().is_some() {
+        return Err(REMOTE_TOOLS_UNSUPPORTED.into());
+    }
+    {
+        let mut cfg = core.mcp.config.lock().unwrap();
+        let entry = cfg
+            .mcp_servers
+            .get_mut(&name)
+            .ok_or_else(|| format!("« {name} » n'est pas enregistré."))?;
+        let mut list = disabled;
+        list.sort();
+        list.dedup();
+        entry.disabled_tools = list;
+    }
+    core.mcp.save();
+    tracing::info!(server = %name, "outils interdits au modèle mis à jour");
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn list_mcp_servers(core: State<'_, Core>) -> Result<Vec<McpServerInfo>, String> {
     if let Some(client) = core.remote_client() {
@@ -482,6 +584,7 @@ pub async fn list_mcp_servers(core: State<'_, Core>) -> Result<Vec<McpServerInfo
             auto_start: e.auto_start,
             env: e.env,
             tools,
+            disabled_tools: e.disabled_tools.clone(),
             name,
         });
     }
@@ -526,6 +629,7 @@ pub async fn add_mcp_server(
                 auto_start: args.auto_start,
                 scope: None,
                 owner: None,
+                disabled_tools: Vec::new(),
             }
         }
         "http" => {
@@ -542,6 +646,7 @@ pub async fn add_mcp_server(
                 auto_start: args.auto_start,
                 scope: None,
                 owner: None,
+                disabled_tools: Vec::new(),
             }
         }
         other => return Err(format!("Transport inconnu : {other}")),

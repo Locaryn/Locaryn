@@ -139,6 +139,7 @@ pub async fn register_server(
         auto_start: body.auto_start,
         scope: None,
         owner: None,
+        disabled_tools: Vec::new(),
     };
 
     cfg.mcp_servers.insert(body.name.clone(), entry.clone());

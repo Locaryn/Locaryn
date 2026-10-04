@@ -59,6 +59,10 @@ pub struct McpServerEntry {
     /// exists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// Outils que la personne a interdits au modèle : ils ne lui sont pas
+    /// proposés, et un appel qui les viserait quand même est refusé.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled_tools: Vec<String>,
 }
 
 fn default_transport() -> Transport {
@@ -110,6 +114,10 @@ pub struct ToolDescriptor {
     pub name: String,
     pub description: Option<String>,
     pub input_schema: serde_json::Value,
+    /// Indications du serveur (`readOnlyHint`, `destructiveHint`…), telles qu'il
+    /// les envoie. Elles servent à avertir la personne, jamais à décider à sa place.
+    #[serde(default)]
+    pub annotations: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,12 +194,49 @@ struct JsonRpcError {
     message: String,
 }
 
+/// Version annoncée dans `initialize`. Les serveurs classiques (le SDK Rust
+/// `rmcp`, dont se sert Roblox Studio) la reconnaissent et répondent par la leur.
+const INITIALIZE_PROTOCOL_VERSION: &str = "2025-06-18";
+
+/// Version portée par `_meta` quand un serveur « sans session » la réclame.
+const META_PROTOCOL_VERSION: &str = "2026-07-28";
+
+/// Temps laissé à un serveur pour répondre à `initialize`. Un programme qui ne
+/// parle pas MCP ne répond jamais : sans limite, l'ajout restait suspendu.
+const INITIALIZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Ajouter à une requête les métadonnées de protocole que les serveurs sans
+/// session exigent à chaque appel (`io.modelcontextprotocol/protocolVersion` et
+/// `…/clientCapabilities`). Les autres serveurs ignorent `_meta`.
+fn with_client_meta(params: Option<serde_json::Value>) -> Option<serde_json::Value> {
+    let mut obj = match params {
+        Some(serde_json::Value::Object(o)) => o,
+        Some(other) => return Some(other),
+        None => serde_json::Map::new(),
+    };
+    let meta = obj.entry("_meta").or_insert_with(|| serde_json::json!({}));
+    if let Some(m) = meta.as_object_mut() {
+        m.entry("io.modelcontextprotocol/protocolVersion")
+            .or_insert(serde_json::json!(META_PROTOCOL_VERSION));
+        m.entry("io.modelcontextprotocol/clientCapabilities")
+            .or_insert(serde_json::json!({}));
+    }
+    Some(serde_json::Value::Object(obj))
+}
+
+/// Le serveur refuse la requête faute de `_meta` : il faut le lui fournir.
+fn wants_client_meta(err: &McpError) -> bool {
+    matches!(err, McpError::JsonRpc { code: -32602, message } if message.contains("_meta"))
+}
+
 // Stdio transport uses `tokio::process::Command` and reads/writes JSON lines.
 struct StdioTransport {
     stdin: tokio::process::ChildStdin,
     stdout: tokio::io::BufReader<tokio::process::ChildStdout>,
     next_id: std::sync::atomic::AtomicU64,
     child: tokio::process::Child,
+    /// Le serveur a réclamé `_meta` : on le joint désormais à chaque requête.
+    send_meta: bool,
 }
 
 impl StdioTransport {
@@ -242,12 +287,57 @@ impl StdioTransport {
             .take()
             .ok_or_else(|| McpError::Transport("stdout not available".into()))?;
 
-        Ok(Self {
+        let mut transport = Self {
             stdin,
             stdout: tokio::io::BufReader::new(stdout),
             next_id: std::sync::atomic::AtomicU64::new(1),
             child,
-        })
+            send_meta: false,
+        };
+        transport.handshake(command).await?;
+        Ok(transport)
+    }
+
+    /// `initialize`, puis `notifications/initialized` : ce que tout serveur MCP
+    /// classique attend avant sa première requête. Sans cela, Roblox Studio
+    /// répondait « request _meta is missing » à `tools/list` puis s'arrêtait.
+    ///
+    /// Un serveur qui ne connaît pas `initialize` (méthode inconnue) est servi
+    /// comme avant : on continue sans.
+    async fn handshake(&mut self, command: &str) -> Result<(), McpError> {
+        let params = serde_json::json!({
+            "protocolVersion": INITIALIZE_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": { "name": "locaryn", "version": env!("CARGO_PKG_VERSION") },
+        });
+        let reply = tokio::time::timeout(INITIALIZE_TIMEOUT, self.call("initialize", Some(params)))
+            .await
+            .map_err(|_| {
+                McpError::Transport(format!(
+                    "« {command} » n'a pas répondu à initialize en {} s : ce n'est sans doute pas un serveur MCP.",
+                    INITIALIZE_TIMEOUT.as_secs()
+                ))
+            })?;
+        match reply {
+            Ok(_) => self.notify("notifications/initialized").await,
+            Err(McpError::JsonRpc { code: -32601, .. }) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Une notification : un message sans `id`, qui n'attend aucune réponse.
+    async fn notify(&mut self, method: &str) -> Result<(), McpError> {
+        use tokio::io::AsyncWriteExt;
+        let mut line = serde_json::to_string(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+        }))
+        .map_err(|e| McpError::Protocol(format!("serialize: {e}")))?;
+        line.push('\n');
+        self.stdin
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|e| McpError::Transport(format!("write: {e}")))
     }
 
     /// Rendre le processus, et attendre qu'il soit vraiment parti.
@@ -279,9 +369,31 @@ impl StdioTransport {
         method: &str,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, McpError> {
+        let first = self.call_once(method, params.clone()).await;
+        match first {
+            // Un serveur sans session réclame `_meta` à chaque requête : on le
+            // lui donne, et on s'en souvient pour les suivantes.
+            Err(ref e) if wants_client_meta(e) && !self.send_meta => {
+                self.send_meta = true;
+                self.call_once(method, params).await
+            }
+            other => other,
+        }
+    }
+
+    async fn call_once(
+        &mut self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, McpError> {
         let id = self
             .next_id
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let params = if self.send_meta {
+            with_client_meta(params)
+        } else {
+            params
+        };
         let req = JsonRpcRequest {
             jsonrpc: "2.0",
             id,
@@ -299,30 +411,40 @@ impl StdioTransport {
             .await
             .map_err(|e| McpError::Transport(format!("write: {e}")))?;
 
-        // Read response line(s). MCP returns one JSON-RPC response per request.
+        // Une réponse par requête, mais le serveur peut intercaler des
+        // notifications (outils modifiés, journaux) : on lit jusqu'à la réponse
+        // qui porte notre `id`, au lieu de prendre la première ligne venue.
         use tokio::io::AsyncBufReadExt;
-        let mut raw = String::new();
-        self.stdout
-            .read_line(&mut raw)
-            .await
-            .map_err(|e| McpError::Transport(format!("read: {e}")))?;
-
-        if raw.is_empty() {
-            return Err(McpError::Transport("connection closed by server".into()));
+        loop {
+            let mut raw = String::new();
+            self.stdout
+                .read_line(&mut raw)
+                .await
+                .map_err(|e| McpError::Transport(format!("read: {e}")))?;
+            if raw.is_empty() {
+                return Err(McpError::Transport("connection closed by server".into()));
+            }
+            let value: serde_json::Value = match serde_json::from_str(raw.trim()) {
+                Ok(v) => v,
+                // Une ligne qui n'est pas du JSON (un journal écrit sur la
+                // sortie standard) n'est pas la réponse : on la passe.
+                Err(_) => continue,
+            };
+            if value.get("id").and_then(|v| v.as_u64()) != Some(id) {
+                continue;
+            }
+            let resp: JsonRpcResponse = serde_json::from_value(value)
+                .map_err(|e| McpError::Protocol(format!("parse response: {e}")))?;
+            if let Some(err) = resp.error {
+                return Err(McpError::JsonRpc {
+                    code: err.code,
+                    message: err.message,
+                });
+            }
+            return resp
+                .result
+                .ok_or_else(|| McpError::Protocol("no result in response".into()));
         }
-
-        let resp: JsonRpcResponse = serde_json::from_str(&raw)
-            .map_err(|e| McpError::Protocol(format!("parse response: {e}")))?;
-
-        if let Some(err) = resp.error {
-            return Err(McpError::JsonRpc {
-                code: err.code,
-                message: err.message,
-            });
-        }
-
-        resp.result
-            .ok_or_else(|| McpError::Protocol("no result in response".into()))
     }
 }
 
@@ -706,29 +828,29 @@ impl SseClient {
     }
 }
 
+/// Un outil tel que le décrit un `tools/list`.
+fn tool_from_json(t: &serde_json::Value) -> Option<ToolDescriptor> {
+    Some(ToolDescriptor {
+        name: t.get("name")?.as_str()?.to_string(),
+        description: t
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(String::from),
+        input_schema: t
+            .get("inputSchema")
+            .cloned()
+            .or_else(|| t.get("input_schema").cloned())
+            .unwrap_or(serde_json::json!({})),
+        annotations: t.get("annotations").cloned(),
+    })
+}
+
 /// Extract a `ServerCapabilities` from a `tools/list` JSON-RPC result.
 fn parse_tools_from_result(result: &serde_json::Value) -> ServerCapabilities {
     let tools = result
         .get("tools")
         .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|t| {
-                    Some(ToolDescriptor {
-                        name: t.get("name")?.as_str()?.to_string(),
-                        description: t
-                            .get("description")
-                            .and_then(|d| d.as_str())
-                            .map(String::from),
-                        input_schema: t
-                            .get("inputSchema")
-                            .cloned()
-                            .or_else(|| t.get("input_schema").cloned())
-                            .unwrap_or(serde_json::json!({})),
-                    })
-                })
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(tool_from_json).collect())
         .unwrap_or_default();
     ServerCapabilities {
         tools,
@@ -766,24 +888,7 @@ impl McpClient for SseClient {
         let tools: Vec<ToolDescriptor> = result
             .get("tools")
             .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|t| {
-                        Some(ToolDescriptor {
-                            name: t.get("name")?.as_str()?.to_string(),
-                            description: t
-                                .get("description")
-                                .and_then(|d| d.as_str())
-                                .map(String::from),
-                            input_schema: t
-                                .get("inputSchema")
-                                .cloned()
-                                .or_else(|| t.get("input_schema").cloned())
-                                .unwrap_or(serde_json::json!({})),
-                        })
-                    })
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(tool_from_json).collect())
             .unwrap_or_default();
 
         Ok(ServerCapabilities {
@@ -956,24 +1061,7 @@ impl McpClient for StdioClient {
         let tools: Vec<ToolDescriptor> = result
             .get("tools")
             .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|t| {
-                        Some(ToolDescriptor {
-                            name: t.get("name")?.as_str()?.to_string(),
-                            description: t
-                                .get("description")
-                                .and_then(|d| d.as_str())
-                                .map(String::from),
-                            input_schema: t
-                                .get("inputSchema")
-                                .cloned()
-                                .or_else(|| t.get("input_schema").cloned())
-                                .unwrap_or(serde_json::json!({})),
-                        })
-                    })
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(tool_from_json).collect())
             .unwrap_or_default();
 
         Ok(ServerCapabilities {
@@ -1108,24 +1196,7 @@ impl McpClient for LazyStdio {
                 let tools = result
                     .get("tools")
                     .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|t| {
-                                Some(ToolDescriptor {
-                                    name: t.get("name")?.as_str()?.to_string(),
-                                    description: t
-                                        .get("description")
-                                        .and_then(|d| d.as_str())
-                                        .map(String::from),
-                                    input_schema: t
-                                        .get("inputSchema")
-                                        .cloned()
-                                        .or_else(|| t.get("input_schema").cloned())
-                                        .unwrap_or(serde_json::json!({})),
-                                })
-                            })
-                            .collect()
-                    })
+                    .map(|arr| arr.iter().filter_map(tool_from_json).collect())
                     .unwrap_or_default();
                 ServerCapabilities {
                     tools,
@@ -1335,6 +1406,20 @@ impl Default for McpState {
 }
 
 impl McpState {
+    /// Le modèle a-t-il le droit d'appeler cet outil ? Faux si la personne l'a
+    /// décoché. En cas de verrou empoisonné on refuse : une liste d'interdits
+    /// illisible ne doit pas ouvrir ce qu'elle fermait.
+    pub fn tool_allowed(&self, server: &str, tool: &str) -> bool {
+        self.config
+            .lock()
+            .map(|c| {
+                c.mcp_servers
+                    .get(server)
+                    .is_none_or(|e| !e.disabled_tools.iter().any(|d| d == tool))
+            })
+            .unwrap_or(false)
+    }
+
     pub fn new() -> Self {
         let path = config_path(ExtensionScope::Global, None);
         let cfg = McpConfig::load(&path).unwrap_or_default();
@@ -1418,5 +1503,124 @@ mod tests {
         assert_eq!(cfg.mcp_servers.len(), 2);
         assert_eq!(cfg.mcp_servers["narsil"].transport, Transport::Stdio);
         assert_eq!(cfg.mcp_servers["weather"].transport, Transport::Http);
+    }
+}
+
+#[cfg(test)]
+mod stdio_handshake_tests {
+    use super::*;
+
+    /// Un interpréteur Python, s'il y en a un : les faux serveurs ci-dessous en
+    /// ont besoin. Sans lui le test s'abstient plutôt que d'échouer pour une
+    /// raison qui n'est pas le code testé.
+    fn python() -> Option<&'static str> {
+        ["python3", "python"].into_iter().find(|bin| {
+            std::process::Command::new(bin)
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+    }
+
+    /// Serveur « classique » : exige `initialize` avant toute requête, sinon il
+    /// répond comme Roblox Studio (-32602, `_meta`) et s'arrête. Il intercale une
+    /// notification avant sa réponse, comme un serveur qui signale ses outils.
+    const CLASSIC: &str = r#"
+import sys, json
+inited = False
+for line in sys.stdin:
+    msg = json.loads(line)
+    m, i = msg.get("method"), msg.get("id")
+    if m == "initialize":
+        inited = True
+        print(json.dumps({"jsonrpc":"2.0","id":i,"result":{"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"fake","version":"1"}}}), flush=True)
+    elif m == "notifications/initialized":
+        pass
+    elif not inited:
+        print(json.dumps({"jsonrpc":"2.0","id":i,"error":{"code":-32602,"message":"request _meta is missing"}}), flush=True)
+        sys.exit(1)
+    elif m == "tools/list":
+        print(json.dumps({"jsonrpc":"2.0","method":"notifications/tools/list_changed"}), flush=True)
+        print(json.dumps({"jsonrpc":"2.0","id":i,"result":{"tools":[{"name":"ping","description":"d","inputSchema":{"type":"object"}}]}}), flush=True)
+"#;
+
+    /// Serveur « sans session » : pas d'`initialize`, mais `_meta` obligatoire à
+    /// chaque requête.
+    const STATELESS: &str = r#"
+import sys, json
+for line in sys.stdin:
+    msg = json.loads(line)
+    m, i = msg.get("method"), msg.get("id")
+    if m == "initialize":
+        print(json.dumps({"jsonrpc":"2.0","id":i,"error":{"code":-32601,"message":"method not found"}}), flush=True)
+        continue
+    meta = (msg.get("params") or {}).get("_meta") or {}
+    if "io.modelcontextprotocol/protocolVersion" not in meta or "io.modelcontextprotocol/clientCapabilities" not in meta:
+        print(json.dumps({"jsonrpc":"2.0","id":i,"error":{"code":-32602,"message":"request _meta is missing or has malformed required fields"}}), flush=True)
+    elif m == "tools/list":
+        print(json.dumps({"jsonrpc":"2.0","id":i,"result":{"tools":[{"name":"ping","description":"d","inputSchema":{"type":"object"}}]}}), flush=True)
+"#;
+
+    async fn list_tools(script: &str) -> Option<Vec<String>> {
+        let py = python()?;
+        let mut t =
+            StdioTransport::spawn(py, &["-c".to_string(), script.to_string()], &HashMap::new())
+                .await
+                .expect("le faux serveur démarre et accepte le handshake");
+        let result = t.call("tools/list", None).await.expect("tools/list répond");
+        let names = result["tools"]
+            .as_array()
+            .expect("liste d'outils")
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(str::to_string))
+            .collect();
+        let _ = t.shutdown().await;
+        Some(names)
+    }
+
+    #[tokio::test]
+    async fn un_serveur_classique_recoit_initialize_avant_sa_premiere_requete() {
+        if let Some(tools) = list_tools(CLASSIC).await {
+            assert_eq!(tools, ["ping"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn un_serveur_sans_session_recoit_les_metadonnees_de_protocole() {
+        if let Some(tools) = list_tools(STATELESS).await {
+            assert_eq!(tools, ["ping"]);
+        }
+    }
+
+    #[test]
+    fn les_metadonnees_de_protocole_completent_sans_ecraser() {
+        let p = with_client_meta(Some(
+            serde_json::json!({ "name": "x", "_meta": { "autre": 1 } }),
+        ))
+        .unwrap();
+        assert_eq!(p["name"], "x");
+        assert_eq!(p["_meta"]["autre"], 1);
+        assert_eq!(
+            p["_meta"]["io.modelcontextprotocol/protocolVersion"],
+            META_PROTOCOL_VERSION
+        );
+        assert!(p["_meta"]["io.modelcontextprotocol/clientCapabilities"].is_object());
+        // Sans paramètres, l'objet est créé.
+        assert!(with_client_meta(None).unwrap()["_meta"].is_object());
+    }
+
+    #[test]
+    fn seule_l_erreur_de_meta_declenche_le_repli() {
+        let meta = McpError::JsonRpc {
+            code: -32602,
+            message: "request _meta is missing".into(),
+        };
+        let autre = McpError::JsonRpc {
+            code: -32602,
+            message: "argument invalide".into(),
+        };
+        assert!(wants_client_meta(&meta));
+        assert!(!wants_client_meta(&autre));
     }
 }

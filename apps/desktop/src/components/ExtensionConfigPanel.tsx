@@ -596,7 +596,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                 borderBottom: "1px solid var(--border)",
               }}
             >
-              Serveurs MCP
+              Connecteurs MCP
             </h4>
             <p className="locaryn-field-hint" style={{ marginBottom: 12 }}>
               Variables d'environnement et démarrage automatique de chaque serveur déclaré par
@@ -613,7 +613,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
             )}
             {mcpServers.length === 0 ? (
               <p className="locaryn-field-hint">
-                Cette extension ne déclare aucun serveur MCP modifiable.
+                Cette extension ne déclare aucun connecteur MCP modifiable.
               </p>
             ) : (
               mcpServers.map((s) => {
@@ -721,7 +721,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
                   disabled={mcpBusy}
                   onClick={saveMcp}
                 >
-                  {mcpBusy ? "…" : "Enregistrer les serveurs MCP"}
+                  {mcpBusy ? "…" : "Enregistrer les connecteurs MCP"}
                 </button>
               </div>
             )}

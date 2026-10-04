@@ -385,7 +385,7 @@ export function ExtensionInstallDialog({
                   {preview.mcp_servers.length > 0 && (
                     <div style={{ marginTop: 6 }}>
                       <p className="locaryn-field-hint" style={{ margin: "0 0 4px" }}>
-                        Serveurs MCP déclarés ({preview.mcp_servers.length}) :
+                        Connecteurs MCP déclarés ({preview.mcp_servers.length}) :
                       </p>
                       {preview.mcp_servers.map((s) => (
                         <div

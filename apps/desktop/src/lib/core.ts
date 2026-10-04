@@ -926,6 +926,20 @@ export interface McpServerInfo {
   env: Record<string, string>;
   /** Tools the server announced, once started. */
   tools: string[];
+  /** Outils que la personne a interdits au modèle. */
+  disabled_tools?: string[];
+}
+
+/** Un outil d'un connecteur MCP, avec ce que la personne peut en décider. */
+export interface McpToolInfo {
+  name: string;
+  description: string | null;
+  /** Faux quand la personne l'a décoché : le modèle ne le voit pas. */
+  enabled: boolean;
+  /** Le serveur annonce que l'outil ne modifie rien. */
+  read_only: boolean;
+  /** Le serveur annonce que l'outil peut détruire ou écraser quelque chose. */
+  destructive: boolean;
 }
 
 /** Ce qu'un JSON collé enregistrerait, montré avant que rien ne soit écrit. */
@@ -1859,7 +1873,13 @@ export interface CoreApi {
   setMicroModel(model: string | null): Promise<MicroModel>;
 
   /** MCP servers — shared with the daemon through `mcp.json`. */
+  /** L'interface a de quoi s'afficher : la fenêtre principale peut paraître. */
+  appReady(): Promise<void>;
   listMcpServers(): Promise<McpServerInfo[]>;
+  /** Les outils qu'un connecteur démarré annonce, avec leur état. */
+  listMcpTools(name: string): Promise<McpToolInfo[]>;
+  /** Remplacer la liste des outils interdits au modèle pour un connecteur. */
+  setMcpDisabledTools(name: string, disabled: string[]): Promise<void>;
   addMcpServer(args: AddMcpServerArgs): Promise<McpServerInfo[]>;
   /** Relire un bloc `mcpServers` collé, sans rien écrire ni lancer. */
   previewMcpJson(text: string, name?: string): Promise<McpJsonPreview[]>;
@@ -2300,7 +2320,11 @@ const tauriCore: CoreApi = {
   microModel: () => invoke<MicroModel>("micro_model"),
   setMicroModel: (model) => invoke<MicroModel>("set_micro_model", { model }),
 
+  appReady: () => invoke<void>("app_ready"),
   listMcpServers: () => invoke<McpServerInfo[]>("list_mcp_servers"),
+  listMcpTools: (name) => invoke<McpToolInfo[]>("list_mcp_tools", { name }),
+  setMcpDisabledTools: (name, disabled) =>
+    invoke<void>("set_mcp_disabled_tools", { name, disabled }),
   addMcpServer: (args) =>
     invoke<McpServerInfo[]>("add_mcp_server", {
       args: {
@@ -5187,6 +5211,31 @@ const demoCore: CoreApi = {
   setMicroModel: async (model) => ({ model, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
 
   listMcpServers: async () => [],
+  appReady: async () => {},
+  listMcpTools: async () => [
+    {
+      name: "get_script",
+      description: "Lit le code d'un script.",
+      enabled: true,
+      read_only: true,
+      destructive: false,
+    },
+    {
+      name: "run_code",
+      description: "Exécute du code Luau dans Studio.",
+      enabled: true,
+      read_only: false,
+      destructive: false,
+    },
+    {
+      name: "delete_instance",
+      description: "Supprime un objet et ses enfants.",
+      enabled: false,
+      read_only: false,
+      destructive: true,
+    },
+  ],
+  setMcpDisabledTools: async () => {},
   addMcpServer: async () => [],
   // Mode démo (navigateur, sans Tauri) : même forme de réponse que le vrai
   // service, pour que l'écran de relecture se voie sans application.

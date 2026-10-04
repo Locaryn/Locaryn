@@ -2,6 +2,7 @@ import { Icon, isIconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ConnectorType, type ImportMcpResult, type McpServerInfo, core } from "../lib/core";
 import { McpJsonImport } from "./McpJsonImport";
+import { McpToolsDialog } from "./McpToolsDialog";
 import { ModalShell } from "./ModalShell";
 
 type ConnectorFilter = "all" | "connection" | "mcp";
@@ -14,7 +15,7 @@ function isMcpType(type: ConnectorType): boolean {
 }
 
 function connectorCategoryLabel(type: ConnectorType): string {
-  return isMcpType(type) ? "Serveur MCP" : "Connecteur";
+  return isMcpType(type) ? "Connecteur MCP" : "Connecteur";
 }
 
 export function ConnectorsSettings() {
@@ -25,6 +26,8 @@ export function ConnectorsSettings() {
   // Custom MCP Modal state
   const [mcpFormOpen, setMcpFormOpen] = useState(false);
   const [mcpMode, setMcpMode] = useState<"json" | "form">("json");
+  // Le connecteur dont on règle les outils (liste, cases à cocher).
+  const [toolsFor, setToolsFor] = useState<string | null>(null);
   const [mcpName, setMcpName] = useState("");
   const [mcpType, setMcpType] = useState<"stdio" | "http">("stdio");
   const [mcpCommand, setMcpCommand] = useState("");
@@ -138,7 +141,7 @@ export function ConnectorsSettings() {
     }
   }
 
-  // La carte « Serveur MCP Personnalisé » n'a pas sa place dans la grille :
+  // La carte « Connecteur MCP Personnalisé » n'a pas sa place dans la grille :
   // le bouton d'ajout au-dessus ouvre déjà la même modale, et une carte qui
   // répète ce bouton faisait croire à deux façons d'ajouter. Son texte reste,
   // en phrase sous le bouton — une explication, pas un second appel à l'action.
@@ -166,17 +169,17 @@ export function ConnectorsSettings() {
     <div className="locaryn-conn-settings">
       <div className="locaryn-connector-intro">
         <div>
-          <h3>Connecteurs &amp; Serveurs MCP</h3>
+          <h3>Connecteurs MCP</h3>
           <p>
-            Les <strong>Connecteurs &amp; Serveurs MCP</strong> exposent des outils, contextes et
-            accès de données externes (bases de données, fichiers, APIs distantes) directement aux
-            modèles d'IA via le standard Model Context Protocol. Contrairement aux <em>Plugins</em>,
-            ils n'injectent pas d'écrans ou de composants graphiques dans l'application hôte.
+            Les <strong>Connecteurs MCP</strong> exposent des outils, contextes et accès de données
+            externes (bases de données, fichiers, APIs distantes) directement aux modèles d'IA via
+            le standard Model Context Protocol. Contrairement aux <em>Plugins</em>, ils n'injectent
+            pas d'écrans ou de composants graphiques dans l'application hôte.
           </p>
         </div>
         <div className="locaryn-connector-legend" aria-label="Familles de connecteurs">
           <span title="Passerelle technique d'outils pour les modèles de langage">
-            <strong>Serveur MCP</strong> · outils exposés à l'agent
+            <strong>Connecteur MCP</strong> · outils exposés à l'agent
           </span>
           <span title="Accès réseau ou machine sans modification d'UI">
             <strong>Connecteur</strong> · pont de données ou service
@@ -223,7 +226,7 @@ export function ConnectorsSettings() {
               className={`locaryn-filter-btn${categoryFilter === "mcp" ? " locaryn-active" : ""}`}
               onClick={() => setCategoryFilter("mcp")}
             >
-              Serveurs MCP
+              Connecteurs MCP
             </button>
             <button
               type="button"
@@ -248,7 +251,7 @@ export function ConnectorsSettings() {
                 setMcpFormOpen(true);
               }}
             >
-              + Ajouter un serveur MCP personnalisé…
+              + Ajouter un connecteur MCP personnalisé…
             </button>
           </div>
 
@@ -311,14 +314,14 @@ export function ConnectorsSettings() {
       ) : (
         <div>
           <h3 style={{ fontSize: "var(--text-md)", marginBottom: "12px" }}>
-            Serveurs MCP ({mcpServers.length})
+            Connecteurs MCP ({mcpServers.length})
           </h3>
           {activeCount === 0 ? (
             <div className="locaryn-card" style={{ padding: 20, marginBottom: 28 }}>
-              <strong>Aucun serveur MCP configuré</strong>
+              <strong>Aucun connecteur MCP configuré</strong>
               <p className="locaryn-field-hint" style={{ margin: "6px 0 14px" }}>
                 Une carte du catalogue décrit une possibilité ; elle n'est comptée ici qu'après
-                l'enregistrement d'un serveur MCP.
+                l'enregistrement d'un connecteur MCP.
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
@@ -337,7 +340,7 @@ export function ConnectorsSettings() {
                     setMcpFormOpen(true);
                   }}
                 >
-                  Ajouter un serveur MCP
+                  Ajouter un connecteur MCP
                 </button>
               </div>
             </div>
@@ -366,9 +369,9 @@ export function ConnectorsSettings() {
                       className="locaryn-connector-cmd"
                       title="Variables d'environnement : les valeurs restent masquées, ce sont souvent des clés d'API"
                     >
-                      {Object.keys(m.env)
-                        .map((k) => `${k}=••••`)
-                        .join("  ")}
+                      {Object.keys(m.env).length <= 4
+                        ? Object.keys(m.env).join(", ")
+                        : `${Object.keys(m.env).length} variables d'environnement`}
                     </code>
                   )}
                   <p className="locaryn-box-desc">
@@ -396,14 +399,29 @@ export function ConnectorsSettings() {
                     >
                       Retirer
                     </button>
-                    <button
-                      type="button"
-                      className={`locaryn-btn-${m.running ? "ghost" : "primary"}`}
-                      disabled={mcpBusy === m.name}
-                      onClick={() => toggleMcp(m)}
-                    >
-                      {mcpBusy === m.name ? "…" : m.running ? "Arrêter" : "Démarrer"}
-                    </button>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        type="button"
+                        className="locaryn-btn-ghost"
+                        title="Voir les outils que le modèle peut appeler, et en interdire certains"
+                        onClick={() => setToolsFor(m.name)}
+                      >
+                        Configurer
+                        {(m.disabled_tools?.length ?? 0) > 0 && (
+                          <span className="locaryn-mcp-tools-badge">
+                            {m.disabled_tools?.length} off
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className={`locaryn-btn-${m.running ? "ghost" : "primary"}`}
+                        disabled={mcpBusy === m.name}
+                        onClick={() => toggleMcp(m)}
+                      >
+                        {mcpBusy === m.name ? "…" : m.running ? "Arrêter" : "Démarrer"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -417,10 +435,18 @@ export function ConnectorsSettings() {
         </div>
       )}
 
+      {toolsFor && mcpServers.find((s) => s.name === toolsFor) && (
+        <McpToolsDialog
+          server={mcpServers.find((s) => s.name === toolsFor) as McpServerInfo}
+          onClose={() => setToolsFor(null)}
+          onChanged={() => void refresh()}
+        />
+      )}
+
       {/* Custom MCP Modal */}
       {mcpFormOpen && (
         <ModalShell
-          label="Ajouter un serveur MCP"
+          label="Ajouter un connecteur MCP"
           onClose={() => setMcpFormOpen(false)}
           style={{ maxWidth: 540 }}
         >
@@ -451,7 +477,7 @@ export function ConnectorsSettings() {
               {mcpError && <div className="locaryn-vp-error">{mcpError}</div>}
               <div className="locaryn-field">
                 <label htmlFor="mcp-name" className="locaryn-field-label">
-                  Nom du serveur MCP
+                  Nom du connecteur MCP
                 </label>
                 <input
                   id="mcp-name"
