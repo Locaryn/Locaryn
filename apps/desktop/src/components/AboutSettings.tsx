@@ -60,7 +60,10 @@ export function AboutSettings() {
   return (
     <div className="locaryn-about">
       <div className="locaryn-about-hero">
-        <span className="locaryn-logo-dot" />
+        {/* Le logo de l'application, pas le point vert de la barre du haut : cette
+            page est la seule où l'on s'attend à voir la vraie icône. Décorative,
+            le nom est écrit à côté. */}
+        <img className="locaryn-about-logo" src="/locaryn-logo.png" alt="" width={48} height={48} />
         <div>
           <div className="locaryn-about-name">Locaryn</div>
           <div className="locaryn-about-tagline">
