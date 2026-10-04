@@ -1,5 +1,5 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { visibleNavItems } from "../components/NavDrawer";
 import { SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
@@ -99,6 +99,92 @@ function sessionLabel(s: Session, index: number) {
   return `Chat ${index + 1} — ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+/**
+ * La barre d'actions du mode sélection : combien sont cochées, et quoi en faire.
+ *
+ * Le menu « Ranger dans » est un menu du thème, pas un `<select>` natif : le
+ * menu déroulant du système s'ouvre en blanc sur le thème sombre.
+ */
+function SelectionBar({
+  count,
+  total,
+  projects,
+  moveMenu,
+  onToggleMoveMenu,
+  onSelectAll,
+  onNone,
+  onArchive,
+  onMove,
+}: {
+  count: number;
+  total: number;
+  projects: { id: string; name: string }[];
+  moveMenu: boolean;
+  onToggleMoveMenu: () => void;
+  onSelectAll: (() => void) | undefined;
+  onNone: () => void;
+  onArchive: () => void;
+  onMove: (projectId: string) => void;
+}) {
+  const none = count === 0;
+  return (
+    <div className="locaryn-selection-bar" role="toolbar" aria-label="Actions sur la sélection">
+      <span className="locaryn-selection-count" aria-live="polite">
+        {count === 0 ? "Cochez des conversations" : `${count} sélectionnée${count > 1 ? "s" : ""}`}
+      </span>
+      <div className="locaryn-selection-actions">
+        {onSelectAll && (
+          <button
+            type="button"
+            className="locaryn-selection-btn"
+            onClick={count === total && total > 0 ? onNone : onSelectAll}
+          >
+            {count === total && total > 0 ? "Aucune" : "Toutes"}
+          </button>
+        )}
+        {projects.length > 0 && (
+          <span className="locaryn-selection-move">
+            <button
+              type="button"
+              className="locaryn-selection-btn"
+              disabled={none}
+              aria-haspopup="menu"
+              aria-expanded={moveMenu}
+              onClick={onToggleMoveMenu}
+            >
+              Ranger dans ▾
+            </button>
+            {moveMenu && !none && (
+              <div className="locaryn-selection-menu" role="menu">
+                {projects.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="menuitem"
+                    className="locaryn-ctx-item"
+                    onClick={() => onMove(p.id)}
+                  >
+                    <Icon name="project" size={13} />
+                    <span className="locaryn-selection-menu-label">{p.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </span>
+        )}
+        <button
+          type="button"
+          className="locaryn-selection-btn locaryn-selection-btn-danger"
+          disabled={none}
+          onClick={onArchive}
+        >
+          Archiver
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function LeftPanel({
   projects,
   sessions,
@@ -126,6 +212,26 @@ export function LeftPanel({
   installedExtensions = [],
   onNewEphemeralChat,
 }: Props) {
+  /** Conversations en vrac, ou classées par espace de travail — la rail
+   *  montrait toujours les deux empilés, ce qui pousse la liste des projets
+   *  loin en bas dès qu'il y a beaucoup de conversations. Un bascule courte,
+   *  mémorisée d'une session à l'autre. */
+  const [historyMode, setHistoryMode] = useState<"chats" | "projects">(() => {
+    try {
+      return localStorage.getItem("locaryn-history-mode") === "projects" ? "projects" : "chats";
+    } catch {
+      return "chats";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("locaryn-history-mode", historyMode);
+    } catch {
+      // Stockage indisponible (fenêtre privée, quota) : le choix ne survit
+      // simplement pas au redémarrage, rien de plus grave.
+    }
+  }, [historyMode]);
+
   /**
    * La conversation qui s'en va, le temps de l'animation.
    *
@@ -173,6 +279,83 @@ export function LeftPanel({
       window.removeEventListener("mouseup", onDragEnd);
     };
   }, []);
+
+  /**
+   * La sélection multiple : cocher plusieurs conversations pour les archiver ou
+   * les ranger d'un coup. Les identifiants sont ceux de toutes les listes — une
+   * conversation n'est jamais dans deux à la fois.
+   */
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [moveMenu, setMoveMenu] = useState(false);
+  /** La dernière case touchée, point de départ d'une sélection par Maj+clic. */
+  const anchorRef = useRef<string | null>(null);
+
+  const exitSelection = useCallback(() => {
+    setSelecting(false);
+    setSelected(new Set());
+    setMoveMenu(false);
+    anchorRef.current = null;
+  }, []);
+
+  /** Coche ou décoche `id`, ou tout l'intervalle depuis la dernière case. */
+  function toggleSelect(id: string, order: string[], range: boolean) {
+    setSelecting(true);
+    // Le point de départ se lit ici, pas dans la fonction de mise à jour : elle
+    // s'exécute plus tard, quand l'ancre a déjà été remplacée par `id`, et
+    // l'intervalle se réduirait à la seule case touchée.
+    const anchor = anchorRef.current;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const from = anchor ? order.indexOf(anchor) : -1;
+      const to = order.indexOf(id);
+      if (range && from >= 0 && to >= 0) {
+        const [a, b] = from < to ? [from, to] : [to, from];
+        for (const x of order.slice(a, b + 1)) next.add(x);
+      } else if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+    anchorRef.current = id;
+  }
+
+  useEffect(() => {
+    if (!selecting) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") exitSelection();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [selecting, exitSelection]);
+
+  function selectedSessions(): Session[] {
+    return allKnownSessions.filter((s) => selected.has(s.id));
+  }
+
+  function archiveSelected() {
+    const list = selectedSessions();
+    if (list.length === 0) return;
+    if (
+      list.length > 1 &&
+      !window.confirm(
+        `Archiver ${list.length} conversations ?\n\nElles quittent la liste mais restent dans les archives.`,
+      )
+    ) {
+      return;
+    }
+    for (const s of list) onSessionArchived?.(s);
+    exitSelection();
+  }
+
+  function moveSelected(projectId: string) {
+    for (const s of selectedSessions()) {
+      if (s.project_id !== projectId) onSessionMoved?.(s, projectId);
+    }
+    exitSelection();
+  }
 
   function partirPuis(s: Session, action: () => void) {
     setLeaving(s.id);
@@ -383,241 +566,352 @@ export function LeftPanel({
         </button>
       )}
 
-      {/* ── Conversations : ce qu'on rouvre le plus, donc en premier ── */}
-      <div className="locaryn-history-title">
-        Conversations ({standaloneSessions.filter((s) => !s.ephemeral).length})
-      </div>
-
+      {/* ── Bascule : conversations en vrac, ou classées par projet ── */}
       <div
-        className="locaryn-history-standalone"
-        style={{ display: "flex", flexDirection: "column", gap: "2px", marginBottom: "16px" }}
+        className="locaryn-segmented locaryn-history-switch"
+        role="tablist"
+        aria-label="Vue de l'historique"
       >
-        {standaloneSessions.filter((s) => !s.ephemeral).length === 0 ? (
-          <div
-            style={{
-              fontSize: "11px",
-              color: "var(--text-faint)",
-              fontStyle: "italic",
-              padding: "4px 8px",
-            }}
-          >
-            Aucune conversation
-          </div>
-        ) : (
-          <ul className="locaryn-tree" style={{ margin: 0, padding: 0 }}>
-            {standaloneSessions
-              .filter((s) => !s.ephemeral)
-              .map((s, idx) => (
-                <SessionRow
-                  key={s.id}
-                  session={s}
-                  label={sessionLabel(s, idx)}
-                  bullet="chat"
-                  active={activeSession?.id === s.id}
-                  etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
-                  leaving={leaving === s.id}
-                  projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-                  onSelect={() => onSelectSession(s)}
-                  onRename={(t) => onSessionRenamed?.(s, t)}
-                  onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
-                  onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
-                  onMergeInto={
-                    onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
-                  }
-                />
-              ))}
-          </ul>
-        )}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={historyMode === "chats"}
+          className={`locaryn-segment locaryn-segment-icon${historyMode === "chats" ? " locaryn-segment-on" : ""}`}
+          title="Historique des conversations"
+          onClick={() => setHistoryMode("chats")}
+        >
+          <Icon name="chat" size={15} />
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={historyMode === "projects"}
+          className={`locaryn-segment locaryn-segment-icon${historyMode === "projects" ? " locaryn-segment-on" : ""}`}
+          title="Espaces de travail"
+          onClick={() => setHistoryMode("projects")}
+        >
+          <Icon name="project" size={15} />
+        </button>
       </div>
 
-      {/* ── Espaces de travail (Projets) ── */}
-      <div className="locaryn-history-title">Espaces de travail</div>
+      {historyMode === "chats" && (
+        <>
+          {/* ── Conversations : ce qu'on rouvre le plus, donc en premier ── */}
+          <div className="locaryn-history-title locaryn-history-title-row">
+            <span>Conversations ({standaloneSessions.filter((s) => !s.ephemeral).length})</span>
+            <button
+              type="button"
+              className={`locaryn-select-toggle${selecting ? " locaryn-select-toggle-on" : ""}`}
+              aria-pressed={selecting}
+              title={selecting ? "Quitter la sélection" : "Sélectionner plusieurs conversations"}
+              onClick={() => (selecting ? exitSelection() : setSelecting(true))}
+            >
+              {selecting ? "Terminer" : "Sélectionner"}
+            </button>
+          </div>
+          {selecting && (
+            <SelectionBar
+              count={selected.size}
+              total={standaloneSessions.filter((s) => !s.ephemeral).length}
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              moveMenu={moveMenu}
+              onToggleMoveMenu={() => setMoveMenu((v) => !v)}
+              onSelectAll={() =>
+                setSelected(
+                  new Set(standaloneSessions.filter((s) => !s.ephemeral).map((s) => s.id)),
+                )
+              }
+              onNone={() => setSelected(new Set())}
+              onArchive={archiveSelected}
+              onMove={moveSelected}
+            />
+          )}
 
-      {/* Chaque projet est un groupe avec accès rapide pour démarrer une conversation */}
-      <div className="locaryn-history-groups">
-        {projects.map((p) => {
-          const isActive = p.id === activeProject?.id;
-          const projectSessions = (sessionsByProject?.[p.id] ?? (isActive ? sessions : [])).filter(
-            (s) => !s.ephemeral,
-          );
-          return (
-            <section key={p.id} className="locaryn-history-group" style={{ marginBottom: "4px" }}>
-              <div className="locaryn-history-group-head">
-                <button
-                  type="button"
-                  className={`locaryn-history-group-button${isActive ? " locaryn-active" : ""}${
-                    overProject === p.id ? " locaryn-drop-target" : ""
-                  }`}
-                  onClick={() => onSelectProject(p)}
-                  title={p.path}
-                  onDragEnter={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = "move";
-                    setOverProject(p.id);
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = "move";
-                    if (overProject !== p.id) setOverProject(p.id);
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setOverProject((cur) => (cur === p.id ? null : cur));
-                    }
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setOverProject(null);
-                    const id = sessionDeposee(e);
-                    const s = allKnownSessions.find((x) => x.id === id);
-                    if (s && s.project_id !== p.id) partirPuis(s, () => onSessionMoved?.(s, p.id));
-                  }}
+          <div
+            className="locaryn-history-standalone"
+            style={{ display: "flex", flexDirection: "column", gap: "2px", marginBottom: "16px" }}
+          >
+            {standaloneSessions.filter((s) => !s.ephemeral).length === 0 ? (
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-faint)",
+                  fontStyle: "italic",
+                  padding: "4px 8px",
+                }}
+              >
+                Aucune conversation
+              </div>
+            ) : (
+              <ul className="locaryn-tree" style={{ margin: 0, padding: 0 }}>
+                {standaloneSessions
+                  .filter((s) => !s.ephemeral)
+                  .map((s, idx) => (
+                    <SessionRow
+                      key={s.id}
+                      session={s}
+                      label={sessionLabel(s, idx)}
+                      bullet="chat"
+                      active={activeSession?.id === s.id}
+                      etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
+                      leaving={leaving === s.id}
+                      projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                      onSelect={() => onSelectSession(s)}
+                      onRename={(t) => onSessionRenamed?.(s, t)}
+                      onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
+                      onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+                      onMergeInto={
+                        onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
+                      }
+                      selecting={selecting}
+                      selected={selected.has(s.id)}
+                      onToggleSelect={(range) =>
+                        toggleSelect(
+                          s.id,
+                          standaloneSessions.filter((x) => !x.ephemeral).map((x) => x.id),
+                          range,
+                        )
+                      }
+                    />
+                  ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+
+      {historyMode === "projects" && (
+        <>
+          {/* ── Espaces de travail (Projets) ── */}
+          <div className="locaryn-history-title locaryn-history-title-row">
+            <span>Espaces de travail</span>
+            <button
+              type="button"
+              className={`locaryn-select-toggle${selecting ? " locaryn-select-toggle-on" : ""}`}
+              aria-pressed={selecting}
+              title={selecting ? "Quitter la sélection" : "Sélectionner plusieurs conversations"}
+              onClick={() => (selecting ? exitSelection() : setSelecting(true))}
+            >
+              {selecting ? "Terminer" : "Sélectionner"}
+            </button>
+          </div>
+          {selecting && (
+            <SelectionBar
+              count={selected.size}
+              total={selected.size}
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              moveMenu={moveMenu}
+              onToggleMoveMenu={() => setMoveMenu((v) => !v)}
+              onSelectAll={undefined}
+              onNone={() => setSelected(new Set())}
+              onArchive={archiveSelected}
+              onMove={moveSelected}
+            />
+          )}
+
+          {/* Chaque projet est un groupe avec accès rapide pour démarrer une conversation */}
+          <div className="locaryn-history-groups">
+            {projects.map((p) => {
+              const isActive = p.id === activeProject?.id;
+              const projectSessions = (
+                sessionsByProject?.[p.id] ?? (isActive ? sessions : [])
+              ).filter((s) => !s.ephemeral);
+              return (
+                <section
+                  key={p.id}
+                  className="locaryn-history-group"
+                  style={{ marginBottom: "4px" }}
                 >
-                  <Icon name="project" size={14} />
-                  <span className="locaryn-history-group-label">{p.name}</span>
-                  {projectSessions.length > 0 && (
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        padding: "1px 5px",
-                        borderRadius: "8px",
-                        background: "rgba(255,255,255,0.06)",
-                        color: "var(--text-faint)",
-                        marginLeft: "auto",
-                        marginRight: "4px",
+                  <div className="locaryn-history-group-head">
+                    <button
+                      type="button"
+                      className={`locaryn-history-group-button${isActive ? " locaryn-active" : ""}${
+                        overProject === p.id ? " locaryn-drop-target" : ""
+                      }`}
+                      onClick={() => onSelectProject(p)}
+                      title={p.path}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.dataTransfer.dropEffect = "move";
+                        setOverProject(p.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.dataTransfer.dropEffect = "move";
+                        if (overProject !== p.id) setOverProject(p.id);
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setOverProject((cur) => (cur === p.id ? null : cur));
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setOverProject(null);
+                        const id = sessionDeposee(e);
+                        const s = allKnownSessions.find((x) => x.id === id);
+                        if (s && s.project_id !== p.id)
+                          partirPuis(s, () => onSessionMoved?.(s, p.id));
                       }}
                     >
-                      {projectSessions.length}
-                    </span>
-                  )}
-                </button>
-                <div
-                  className="locaryn-proj-menu-wrap"
-                  ref={menuFor === p.id ? menuRef : undefined}
-                >
-                  <button
-                    type="button"
-                    className="locaryn-icon-btn"
-                    style={{ padding: "2px 6px", fontSize: "12px" }}
-                    title={`Actions sur ${p.name}`}
-                    aria-haspopup="menu"
-                    aria-expanded={menuFor === p.id}
-                    onClick={(e) => openMenu(e, p.id)}
-                  >
-                    <Icon name="settings" size={14} />
-                  </button>
-
-                  {menuFor === p.id && (
-                    <div
-                      className="locaryn-proj-menu"
-                      role="menu"
-                      style={{ top: menuPos.top, right: menuPos.right }}
-                    >
-                      <div className="locaryn-proj-menu-head" title={p.path}>
-                        {p.path}
-                      </div>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuFor(null);
-                          onNewSession(p);
-                        }}
-                      >
-                        <Icon name="chat" size={15} /> Nouvelle conversation
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuFor(null);
-                          core.openModelsFolder(p.path).catch(() => {});
-                        }}
-                      >
-                        <Icon name="project" size={15} /> Ouvrir le dossier
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuFor(null);
-                          navigator.clipboard?.writeText(p.path).catch(() => {});
-                        }}
-                      >
-                        <Icon name="check" size={15} /> Copier le chemin
-                      </button>
-                      {onOpenProjectSettings && (
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuFor(null);
-                            onOpenProjectSettings(p);
+                      <Icon name="project" size={14} />
+                      <span className="locaryn-history-group-label">{p.name}</span>
+                      {projectSessions.length > 0 && (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            padding: "1px 5px",
+                            borderRadius: "8px",
+                            background: "rgba(255,255,255,0.06)",
+                            color: "var(--text-faint)",
+                            marginLeft: "auto",
+                            marginRight: "4px",
                           }}
                         >
-                          <Icon name="settings" size={15} /> Paramètres du projet
-                        </button>
+                          {projectSessions.length}
+                        </span>
                       )}
-                      <div className="locaryn-proj-menu-sep" />
+                    </button>
+                    <div
+                      className="locaryn-proj-menu-wrap"
+                      ref={menuFor === p.id ? menuRef : undefined}
+                    >
                       <button
                         type="button"
-                        role="menuitem"
-                        className="danger"
-                        onClick={() => archive(p)}
+                        className="locaryn-icon-btn"
+                        style={{ padding: "2px 6px", fontSize: "12px" }}
+                        title={`Actions sur ${p.name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={menuFor === p.id}
+                        onClick={(e) => openMenu(e, p.id)}
                       >
-                        <Icon name="archive" size={15} /> Archiver le projet
+                        <Icon name="settings" size={14} />
                       </button>
+
+                      {menuFor === p.id && (
+                        <div
+                          className="locaryn-proj-menu"
+                          role="menu"
+                          style={{ top: menuPos.top, right: menuPos.right }}
+                        >
+                          <div className="locaryn-proj-menu-head" title={p.path}>
+                            {p.path}
+                          </div>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuFor(null);
+                              onNewSession(p);
+                            }}
+                          >
+                            <Icon name="chat" size={15} /> Nouvelle conversation
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuFor(null);
+                              core.openModelsFolder(p.path).catch(() => {});
+                            }}
+                          >
+                            <Icon name="project" size={15} /> Ouvrir le dossier
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMenuFor(null);
+                              navigator.clipboard?.writeText(p.path).catch(() => {});
+                            }}
+                          >
+                            <Icon name="check" size={15} /> Copier le chemin
+                          </button>
+                          {onOpenProjectSettings && (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setMenuFor(null);
+                                onOpenProjectSettings(p);
+                              }}
+                            >
+                              <Icon name="settings" size={15} /> Paramètres du projet
+                            </button>
+                          )}
+                          <div className="locaryn-proj-menu-sep" />
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="danger"
+                            onClick={() => archive(p)}
+                          >
+                            <Icon name="archive" size={15} /> Archiver le projet
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {isActive && (
+                    <div style={{ paddingLeft: "12px", marginTop: "2px" }}>
+                      <button
+                        type="button"
+                        className="locaryn-tree-item locaryn-tree-new"
+                        style={{ fontSize: "11px", marginBottom: "3px" }}
+                        onClick={() => onNewSession(p)}
+                      >
+                        + Nouvelle session projet
+                      </button>
+                      {projectSessions.length > 0 && (
+                        <ul className="locaryn-tree" style={{ margin: 0, padding: 0 }}>
+                          {projectSessions.map((s, idx) => (
+                            <SessionRow
+                              key={s.id}
+                              session={s}
+                              label={sessionLabel(s, idx)}
+                              bullet="dot"
+                              active={activeSession?.id === s.id}
+                              etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
+                              leaving={leaving === s.id}
+                              projects={projects.map((proj) => ({ id: proj.id, name: proj.name }))}
+                              onSelect={() => onSelectSession(s)}
+                              onRename={(t) => onSessionRenamed?.(s, t)}
+                              onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
+                              onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
+                              onMergeInto={
+                                onSessionsMerged
+                                  ? (source) => onSessionsMerged(s, source)
+                                  : undefined
+                              }
+                              selecting={selecting}
+                              selected={selected.has(s.id)}
+                              onToggleSelect={(range) =>
+                                toggleSelect(
+                                  s.id,
+                                  projectSessions.map((x) => x.id),
+                                  range,
+                                )
+                              }
+                            />
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   )}
-                </div>
-              </div>
+                </section>
+              );
+            })}
+          </div>
 
-              {isActive && (
-                <div style={{ paddingLeft: "12px", marginTop: "2px" }}>
-                  <button
-                    type="button"
-                    className="locaryn-tree-item locaryn-tree-new"
-                    style={{ fontSize: "11px", marginBottom: "3px" }}
-                    onClick={() => onNewSession(p)}
-                  >
-                    + Nouvelle session projet
-                  </button>
-                  {projectSessions.length > 0 && (
-                    <ul className="locaryn-tree" style={{ margin: 0, padding: 0 }}>
-                      {projectSessions.map((s, idx) => (
-                        <SessionRow
-                          key={s.id}
-                          session={s}
-                          label={sessionLabel(s, idx)}
-                          bullet="dot"
-                          active={activeSession?.id === s.id}
-                          etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
-                          leaving={leaving === s.id}
-                          projects={projects.map((proj) => ({ id: proj.id, name: proj.name }))}
-                          onSelect={() => onSelectSession(s)}
-                          onRename={(t) => onSessionRenamed?.(s, t)}
-                          onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
-                          onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
-                          onMergeInto={
-                            onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
-                          }
-                        />
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
-
-      <button type="button" className="locaryn-add-btn" onClick={promptAddProject}>
-        + Ajouter un projet
-      </button>
+          <button type="button" className="locaryn-add-btn" onClick={promptAddProject}>
+            + Ajouter un projet
+          </button>
+        </>
+      )}
 
       {/* ── Destinations, en pied de rail ──
           Toute la navigation tient ici : il n'y a plus de tiroir par-dessus.

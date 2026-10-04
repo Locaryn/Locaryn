@@ -45,6 +45,13 @@ pub struct SupervisorConfig {
     pub healthcheck_interval: Duration,
     /// Grace period while waiting for a freshly spawned runtime to become
     /// healthy before giving up.
+    ///
+    /// llama-server à froid, GPU pleinement déporté (`-ngl 999`) avec un
+    /// projecteur de vision, compile ses pipelines Vulkan et relit le modèle
+    /// depuis le disque avant de répondre — mesuré à plus de 60 s sur un
+    /// portable, alors que 60 s suffit largement une fois le cache chaud.
+    /// Verifie le 16/09/2026 contre un orphelin gemma-4-E2B + mmproj qui
+    /// avait declenche ce timeout au premier demarrage.
     pub startup_timeout: Duration,
     /// Shut down a spawned runtime after this many seconds with no agent
     /// activity (no `note_activity` calls).
@@ -61,7 +68,7 @@ impl Default for SupervisorConfig {
     fn default() -> Self {
         Self {
             healthcheck_interval: Duration::from_secs(15),
-            startup_timeout: Duration::from_secs(60),
+            startup_timeout: Duration::from_secs(180),
             idle_timeout: Duration::from_secs(30 * 60), // 30 min
             ollama_bin: None,
             airllm_python: None,
@@ -297,8 +304,12 @@ impl Supervisor {
                 self.kill_owned(engine).await;
                 #[cfg(windows)]
                 {
+                    // CREATE_NO_WINDOW : sans ce drapeau, chaque redémarrage
+                    // faisait clignoter une console taskkill par-dessus
+                    // l'application — visible et sans rapport avec elle.
                     let _ = tokio::process::Command::new("taskkill")
                         .args(["/F", "/IM", "llama-server.exe"])
+                        .creation_flags(0x0800_0000)
                         .output()
                         .await;
                 }
@@ -411,16 +422,19 @@ impl Supervisor {
 
                                 // Tenter d'extraire la cause exacte depuis le fichier journal
                                 let log_detail = if matches!(engine, ProviderEngine::LlamaCpp) {
-                                    let log_path = locaryn_config::default_data_dir().join("llama-server.log");
-                                    std::fs::read_to_string(&log_path)
-                                        .ok()
-                                        .and_then(|content| {
-                                            content
-                                                .lines()
-                                                .rev()
-                                                .find(|l| l.contains("error") || l.contains("failed") || l.contains("ERROR"))
-                                                .map(|l| l.trim().to_string())
-                                        })
+                                    let log_path =
+                                        locaryn_config::default_data_dir().join("llama-server.log");
+                                    std::fs::read_to_string(&log_path).ok().and_then(|content| {
+                                        content
+                                            .lines()
+                                            .rev()
+                                            .find(|l| {
+                                                l.contains("error")
+                                                    || l.contains("failed")
+                                                    || l.contains("ERROR")
+                                            })
+                                            .map(|l| l.trim().to_string())
+                                    })
                                 } else {
                                     None
                                 };
@@ -664,7 +678,7 @@ impl Supervisor {
                         tracing::info!(
                             ?engine,
                             idle_secs = idle.as_secs(),
-                            "runtime idle â€” shutting down"
+                            "runtime idle — shutting down"
                         );
                         to_shutdown.push(engine.clone());
                     }
@@ -698,6 +712,7 @@ impl Supervisor {
         {
             let _ = tokio::process::Command::new("taskkill")
                 .args(["/F", "/IM", "llama-server.exe"])
+                .creation_flags(0x0800_0000)
                 .output()
                 .await;
         }
@@ -913,69 +928,9 @@ pub fn llama_server_path() -> Option<PathBuf> {
     which("llama-server")
 }
 
-/// La version de llama.cpp que l'application connaît.
-pub const LLAMA_BUILD: &str = "b10088";
-
-/// L'archive à récupérer pour cette plateforme, s'il en existe une.
-fn llama_release_url() -> Option<&'static str> {
-    if cfg!(target_os = "windows") {
-        Some("https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-win-vulkan-x64.zip")
-    } else if cfg!(target_os = "linux") {
-        Some("https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-ubuntu-x64.zip")
-    } else {
-        None
-    }
-}
-
-/// Sortir l'archive du moteur dans `bin/llama/`, à plat.
-///
-/// Les publications de llama.cpp rangent tantôt les fichiers à la racine,
-/// tantôt sous `build/bin/`. Ce qui compte est que `llama-server` et les
-/// bibliothèques `ggml` finissent côte à côte : sous Windows, l'exécutable ne
-/// démarre pas sans ses DLL dans le même dossier.
-fn extraire_archive_llama(
-    archive: &std::path::Path,
-    dest: &std::path::Path,
-) -> Result<(), SupervisorError> {
-    let fichier = std::fs::File::open(archive)?;
-    let mut zip = zip::ZipArchive::new(fichier).map_err(|e| {
-        SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            format!("archive du moteur illisible : {e}"),
-        )
-    })?;
-    std::fs::create_dir_all(dest)?;
-    for index in 0..zip.len() {
-        let mut entree = zip.by_index(index).map_err(|e| {
-            SupervisorError::SpawnFailed(
-                ProviderEngine::LlamaCpp,
-                format!("archive du moteur illisible : {e}"),
-            )
-        })?;
-        if entree.is_dir() {
-            continue;
-        }
-        // Un nom qui sortirait du dossier de destination est ignoré, pas
-        // réécrit : une archive n'a pas à choisir où elle atterrit.
-        let Some(nom) = entree
-            .enclosed_name()
-            .and_then(|chemin| chemin.file_name().map(|n| n.to_os_string()))
-        else {
-            continue;
-        };
-        let cible = dest.join(&nom);
-        let mut sortie = std::fs::File::create(&cible)?;
-        std::io::copy(&mut entree, &mut sortie)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Some(mode) = entree.unix_mode() {
-                let _ = std::fs::set_permissions(&cible, std::fs::Permissions::from_mode(mode));
-            }
-        }
-    }
-    Ok(())
-}
+/// La version de llama.cpp que l'application connaît — le pin unique du
+/// runtime géré (l'écran de réglages l'affiche, l'installateur le télécharge).
+pub const LLAMA_BUILD: &str = "b11003";
 
 /// Installer le moteur d'inférence si la machine ne l'a pas encore.
 ///
@@ -983,53 +938,14 @@ fn extraire_archive_llama(
 /// modèle ne peut répondre, et lui demander d'aller le chercher dans un écran
 /// de réglages revient à livrer une application qui ne marche pas au premier
 /// lancement. Il arrive donc avec le reste, au moment où il sert.
-pub async fn provision_llama_server(http: &reqwest::Client) -> Result<PathBuf, SupervisorError> {
+pub async fn provision_llama_server(_http: &reqwest::Client) -> Result<PathBuf, SupervisorError> {
     if let Some(existant) = llama_server_path() {
         return Ok(existant);
     }
-    let url = llama_release_url().ok_or_else(|| {
-        SupervisorError::BinaryNotFound(
-            "llama-server — aucune version prête pour ce système ; installez llama.cpp              (`brew install llama.cpp`) et l'application le trouvera sur le chemin"
-                .into(),
-        )
-    })?;
-
-    let bin_root = locaryn_config::bin_dir();
-    let runtime_dir = bin_root.join("llama");
-    std::fs::create_dir_all(&runtime_dir)?;
-    let archive = bin_root.join("llama-runtime.zip");
-
-    tracing::info!(%url, "moteur d'inférence absent — installation");
-    let reponse = http.get(url).send().await.map_err(|e| {
-        SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            format!("téléchargement du moteur impossible : {e}"),
-        )
-    })?;
-    if !reponse.status().is_success() {
-        return Err(SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            format!("téléchargement du moteur : HTTP {}", reponse.status()),
-        ));
-    }
-    let octets = reponse.bytes().await.map_err(|e| {
-        SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            format!("téléchargement du moteur interrompu : {e}"),
-        )
-    })?;
-    std::fs::write(&archive, &octets)?;
-
-    let extraction = extraire_archive_llama(&archive, &runtime_dir);
-    let _ = std::fs::remove_file(&archive);
-    extraction?;
-
-    llama_server_path().ok_or_else(|| {
-        SupervisorError::SpawnFailed(
-            ProviderEngine::LlamaCpp,
-            "l'archive du moteur ne contenait pas llama-server".into(),
-        )
-    })
+    // Un seul chemin d'installation : celui du bouton des réglages. Le second,
+    // ici, ne savait extraire que du zip — sous Linux, où llama.cpp publie des
+    // `.tar.gz`, l'installation au premier lancement échouait.
+    runtime_install::install_llama_runtime(None).await
 }
 
 /// Ollama's OpenAI-compatible endpoint ignores `options` silently — the
@@ -1039,6 +955,21 @@ pub async fn provision_llama_server(http: &reqwest::Client) -> Result<PathBuf, S
 /// it, or the setting is decorative.
 pub fn ollama_options_hint() -> serde_json::Value {
     serde_json::json!({ "endpoint": "/api/chat", "body_key": "options.num_ctx" })
+}
+
+/// Refuse de lancer le moteur si un autre programme tient déjà le port
+/// loopback : `TcpListener::bind` réussit seulement si personne n'écoute
+/// dessus, et se relâche aussitôt (le `Drop` du listener) pour laisser la
+/// place au vrai serveur. Message nommé, plutôt qu'un `bind()` raté côté
+/// llama-server dont la sortie peut ne jamais atteindre le disque.
+fn ensure_port_free(port: u16) -> Result<(), String> {
+    std::net::TcpListener::bind(("127.0.0.1", port))
+        .map(|_| ())
+        .map_err(|e| {
+            format!(
+                "port {port} déjà utilisé par un autre programme sur cette machine ({e}) — fermez-le ou libérez le port avant de relancer le moteur"
+            )
+        })
 }
 
 /// Spawn `ollama serve` as a detached child process.
@@ -1119,6 +1050,18 @@ async fn spawn_llama_server(
         ));
     }
 
+    // Vérifier que le port est libre avant de lancer le moteur. Sans ça, un
+    // autre processus déjà dessus (observé avec `wslrelay.exe`, mais tout
+    // logiciel loopback ferait pareil) fait échouer le `bind()` de
+    // llama-server, qui se ferme aussitôt — souvent avant même d'avoir
+    // vidangé la première ligne de son log, puisque stderr redirigé vers un
+    // fichier passe en tampon plein bloc côté runtime C au lieu du tampon
+    // ligne par ligne d'un terminal. Le journal reste alors vide et
+    // l'application n'a plus rien à montrer qu'un chargement qui ne finit
+    // jamais. Sonder le port nous-mêmes donne un message net et immédiat.
+    ensure_port_free(8080)
+        .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e))?;
+
     tracing::info!(
         bin = %bin.display(),
         model = %full_model_path.display(),
@@ -1126,7 +1069,8 @@ async fn spawn_llama_server(
         "spawning llama-server"
     );
 
-    // Flags verified against current llama.cpp (b10088): unknown flags are a
+    // Flags verified against llama.cpp b11003 (`--help` capturé le
+    // 16/09/2026): unknown flags are a
     // FATAL error for llama-server, so only pass documented ones.
     let mut cmd = Command::new(&bin);
     cmd.arg("--host")
@@ -1201,7 +1145,7 @@ async fn spawn_llama_server(
     // MoE expert offload to CPU: run very large Mixture-of-Experts models on a
     // modest GPU by keeping expert weights in system RAM while attention stays on
     // the GPU. -1 = all experts on CPU (-cmoe); N>0 = experts of the first N
-    // layers (-ncmoe N). Verified present in b10088.
+    // layers (-ncmoe N). Verified present in b11003.
     match inference_cfg["n_cpu_moe"].as_i64().unwrap_or(0) {
         0 => {}
         n if n < 0 => {
@@ -1253,9 +1197,13 @@ async fn spawn_llama_server(
     let batch = inference_cfg["batch_size"].as_u64().unwrap_or(512);
     cmd.arg("-b").arg(batch.to_string());
 
-    // mmap.
+    // mmap : « --no-mmap » n'existe plus depuis ~b11000 (l'option mmap est
+    // devenue à valeurs) — la forme actuelle est le mode de chargement
+    // `-lm none` (« auto | none | mmap | mlock | mmap+mlock », vérifié sur le
+    // --help de b11003). C'est le seul drapeau du spawn qui a changé de forme
+    // entre b10088 et b11003.
     if !inference_cfg["use_mmap"].as_bool().unwrap_or(true) {
-        cmd.arg("--no-mmap");
+        cmd.arg("-lm").arg("none");
     }
 
     // Parallel slots.
@@ -1569,53 +1517,25 @@ pub fn find_mmproj_for(model_path: &std::path::Path) -> Option<std::path::PathBu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
 
-    /// « Installer le moteur » téléchargeait l'archive et s'arrêtait là, en
-    /// annonçant une réussite. L'écran disait installé, le chat répondait
-    /// « exécutable introuvable », et le journal conseillé pour comprendre
-    /// n'existait pas — il n'est écrit qu'au premier démarrage du moteur.
+    /// Un port loopback déjà pris (observé avec `wslrelay.exe` squattant
+    /// 8080) faisait échouer le `bind()` de llama-server en silence : le
+    /// processus se fermait avant d'écrire quoi que ce soit dans son propre
+    /// journal, et l'application restait bloquée sur « chargement du modèle »
+    /// indéfiniment, sans message. `ensure_port_free` doit détecter ce cas
+    /// avant même de lancer le moteur.
     #[test]
-    fn l_archive_du_moteur_est_mise_a_plat() {
-        let base = std::env::temp_dir().join(format!(
-            "locaryn_runtime_{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&base).unwrap();
-        let archive = base.join("llama.zip");
+    fn refuse_de_lancer_le_moteur_si_le_port_est_deja_pris() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
 
-        // Les publications de llama.cpp rangent tantôt à la racine, tantôt
-        // sous `build/bin/` : les deux doivent aboutir au même dossier.
-        let fichier = std::fs::File::create(&archive).unwrap();
-        let mut zip = zip::ZipWriter::new(fichier);
-        let options: zip::write::SimpleFileOptions = Default::default();
-        for chemin in [
-            "llama-server.exe",
-            "ggml-base.dll",
-            "build/bin/ggml-vulkan.dll",
-        ] {
-            zip.start_file(chemin, options).unwrap();
-            zip.write_all(b"binaire").unwrap();
-        }
-        zip.finish().unwrap();
-
-        let dest = base.join("llama");
-        extraire_archive_llama(&archive, &dest).unwrap();
-        for nom in ["llama-server.exe", "ggml-base.dll", "ggml-vulkan.dll"] {
-            assert!(
-                dest.join(nom).is_file(),
-                "{nom} devrait être extrait à plat"
-            );
-        }
+        let err = ensure_port_free(port).expect_err("le port est occupé par `listener`");
         assert!(
-            !dest.join("build").exists(),
-            "l'arborescence de l'archive ne doit pas être recopiée : sous Windows \
-             l'exécutable ne démarre pas sans ses DLL à côté de lui"
+            err.contains(&port.to_string()),
+            "le message doit nommer le port en cause : {err}"
         );
 
-        let _ = std::fs::remove_dir_all(&base);
+        drop(listener);
+        ensure_port_free(port).expect("le port est libre une fois le listener relâché");
     }
 }

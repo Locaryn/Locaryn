@@ -489,13 +489,18 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
             .await;
     }
 
-    // 3. Réinitialiser le modèle actif dans le stockage local
-    let _ = core
-        .storage
-        .providers
-        .upsert_local(&engine, &endpoint, None)
-        .await;
-
+    // Le modèle choisi n'est PAS réinitialisé ici : `model_residency` lit déjà
+    // « chargé » depuis la santé du superviseur (`is_healthy` devient faux dès
+    // l'arrêt ci-dessus), pas depuis ce champ — l'éjection s'y reflète sans y
+    // toucher. Le mettre à `None` avait un effet de bord distinct et cassant :
+    // `ensure_running` n'a alors plus de modèle actif à transmettre, et
+    // `spawn_llama_server` retombe sur le nom littéral `model.gguf`, absent du
+    // disque. Toute conversation qui redémarrait le moteur après une éjection
+    // (manuelle, ou automatique après le délai d'inactivité) échouait donc
+    // aussitôt sur « fichier de poids introuvable — …/model.gguf » — une
+    // nouvelle conversation le fait plus vite, faute d'avoir déjà résolu son
+    // propre modèle par un envoi précédent. Garder le champ laisse un envoi
+    // suivant recharger le même modèle sans qu'on ait à le rechoisir.
     crate::refresh_mcp_runtime_env(&core).await;
     tracing::info!("modèle de chat déchargé à la demande");
     model_residency(core).await

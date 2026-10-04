@@ -180,3 +180,99 @@ async fn un_identifiant_a_barre_oblique_ne_change_pas_la_route() {
         Some("meta-llama/llama-4-maverick:free")
     );
 }
+
+/// Un serveur qui répond ce flux, tel quel : de quoi tester ce que la boucle
+/// tire des cadres finals d'un vrai llama-server, dont `timings`.
+async fn serveur_avec_flux(corps: &'static str) -> String {
+    let app = Router::new().route(
+        "/v1/chat/completions",
+        post(move || async move {
+            axum::response::Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(axum::body::Body::from(corps))
+                .expect("réponse")
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("port libre");
+    let addr = listener.local_addr().expect("adresse");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    format!("http://{addr}")
+}
+
+async fn evenements(base: &str) -> Vec<StreamEvent> {
+    let client = reqwest::Client::new();
+    let mut flux = run_openai_tool_loop(base, &client, &entree("local"))
+        .await
+        .expect("le flux doit s'ouvrir");
+    let mut tous = Vec::new();
+    while let Some(ev) = flux.next().await {
+        tous.push(ev);
+    }
+    tous
+}
+
+/// La vitesse affichée sous une réponse est celle que le moteur a mesurée :
+/// llama-server la donne dans `timings` (jetons et millisecondes du prompt,
+/// puis de la génération). Elle part juste avant la fin du message.
+#[tokio::test]
+async fn la_vitesse_mesuree_par_le_moteur_est_remontee() {
+    let base = serveur_avec_flux(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"salut\"},\"finish_reason\":null}]}\n\n\
+         data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\
+         \"usage\":{\"prompt_tokens\":120,\"completion_tokens\":60},\
+         \"timings\":{\"prompt_n\":120,\"prompt_ms\":300.0,\"predicted_n\":60,\"predicted_ms\":1500.0}}\n\n\
+         data: [DONE]\n\n",
+    )
+    .await;
+
+    let evts = evenements(&base).await;
+    let position = evts
+        .iter()
+        .position(|e| matches!(e, StreamEvent::Timings { .. }))
+        .expect("un événement Timings doit partir");
+    assert!(
+        matches!(evts.get(position + 1), Some(StreamEvent::MessageEnd { .. })),
+        "Timings précède immédiatement MessageEnd : {evts:?}"
+    );
+    let StreamEvent::Timings {
+        prompt_tokens,
+        generated_tokens,
+        prompt_tokens_per_sec,
+        generation_tokens_per_sec,
+    } = &evts[position]
+    else {
+        unreachable!()
+    };
+    assert_eq!((*prompt_tokens, *generated_tokens), (120, 60));
+    // 60 jetons en 1,5 s = 40 par seconde ; 120 en 0,3 s = 400.
+    assert!((generation_tokens_per_sec - 40.0).abs() < 0.01);
+    assert!((prompt_tokens_per_sec - 400.0).abs() < 0.01);
+}
+
+/// Un moteur qui ne mesure rien ne se voit pas attribuer une vitesse : on ne
+/// la déduit pas de la durée totale, qui compte aussi le chargement du modèle
+/// et les outils.
+#[tokio::test]
+async fn sans_mesure_du_moteur_aucune_vitesse_n_est_inventee() {
+    let base = serveur_avec_flux(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"salut\"},\"finish_reason\":null}]}\n\n\
+         data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+         data: [DONE]\n\n",
+    )
+    .await;
+
+    let evts = evenements(&base).await;
+    assert!(
+        !evts
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Timings { .. })),
+        "aucun `timings` reçu : aucun événement de vitesse : {evts:?}"
+    );
+    assert!(evts
+        .iter()
+        .any(|e| matches!(e, StreamEvent::MessageEnd { .. })));
+}
