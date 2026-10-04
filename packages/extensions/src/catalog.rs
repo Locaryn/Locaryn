@@ -235,15 +235,37 @@ impl CatalogClient {
             if !name.starts_with("morph-") {
                 continue;
             }
-            let description = r
-                .get("description")
-                .and_then(|d| d.as_str())
-                .map(str::to_string);
             let full_name = r.get("full_name").and_then(|f| f.as_str()).unwrap_or(name);
             let homepage = r
                 .get("html_url")
                 .and_then(|h| h.as_str())
                 .map(str::to_string);
+
+            // Le tagline GitHub du dépôt reste positif quoi qu'il arrive
+            // ("Official Locaryn extension: …") — ce que morph.json dit de
+            // lui-même, lui, porte le vrai statut : plusieurs morphs
+            // commencent leur description par « NON FONCTIONNEL (squelette
+            // d'API) ». Avant ce correctif, cette mention n'apparaissait
+            // qu'après installation (Locaryn/Locaryn#6) : la carte Découvrir
+            // montrait le tagline, jamais le manifeste. Best-effort — un
+            // manifeste injoignable retombe sur le tagline plutôt que de
+            // faire échouer tout le registre pour un seul dépôt.
+            let manifest_own_description = self
+                .get_json(&format!(
+                    "https://raw.githubusercontent.com/Locaryn/{name}/HEAD/morph.json"
+                ))
+                .await
+                .ok()
+                .and_then(|m| {
+                    m.get("description")
+                        .and_then(|d| d.as_str())
+                        .map(str::to_string)
+                });
+            let description = manifest_own_description.or_else(|| {
+                r.get("description")
+                    .and_then(|d| d.as_str())
+                    .map(str::to_string)
+            });
 
             let display_name = match name {
                 // Le dépôt garde son slug historique ; le nom produit est Remote.
@@ -1061,6 +1083,49 @@ mod tests {
             .expect("a Claude Code plugin");
         println!("sample claude entry: {} -> {}", cc.name, cc.install_source);
         assert!(cc.install_source.starts_with("github:"));
+    }
+
+    /// Locaryn/Locaryn#6 : la carte Découvrir doit porter le statut réel du
+    /// morph (« NON FONCTIONNEL (squelette d'API) »), pas seulement le
+    /// tagline GitHub qui, lui, ne le dit jamais.
+    #[tokio::test]
+    #[ignore = "requires network"]
+    async fn the_locaryn_registry_carries_the_manifests_own_description() {
+        let http = reqwest::Client::builder()
+            .user_agent("locaryn/0.1")
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .unwrap();
+        let cache = std::env::temp_dir().join("locaryn-catalog-manifest-desc-test.json");
+        let _ = std::fs::remove_file(&cache);
+        let client = CatalogClient::with_cache_path(http, cache);
+
+        let source = CatalogSource {
+            id: "locaryn:official".into(),
+            label: "Locaryn Official".into(),
+            ecosystem: ExtensionEcosystem::Locaryn,
+            url: "https://api.github.com/orgs/Locaryn/repos?per_page=100".into(),
+            builtin: true,
+            enabled: true,
+        };
+        let entries = client
+            .fetch_locaryn_registry(&source)
+            .await
+            .expect("le registre officiel doit répondre");
+
+        let gen_3d = entries
+            .iter()
+            .find(|e| e.name == "morph-3d-gen")
+            .expect("morph-3d-gen doit être listé");
+        let description = gen_3d.description.as_deref().unwrap_or_default();
+        assert!(
+            description.starts_with("NON FONCTIONNEL"),
+            "la description devrait porter le statut du manifeste, reçu : {description:?}"
+        );
+        assert_ne!(
+            description, "Official Locaryn extension: 3D Asset Generation",
+            "ne doit plus être le tagline GitHub générique qui ne dit jamais le statut réel"
+        );
     }
 
     #[test]

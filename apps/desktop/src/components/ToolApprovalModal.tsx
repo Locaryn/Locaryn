@@ -67,6 +67,9 @@ export function ToolApprovalModal({
   const [understand, setUnderstand] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [auditNote, setAuditNote] = useState("");
+  /** Les détails (modifications, portée) sont repliés : la demande tient sur
+   *  une ligne au-dessus du composeur, et le motif reste lisible. */
+  const [open, setOpen] = useState(false);
   const allowBtnRef = useRef<HTMLButtonElement>(null);
   const confirmInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -84,6 +87,7 @@ export function ToolApprovalModal({
     setUnderstand(false);
     setConfirmText("");
     setAuditNote("");
+    setOpen(false);
   }, [callId, risk]);
 
   // Le focus ne se vole plus.
@@ -143,16 +147,17 @@ export function ToolApprovalModal({
   }
 
   const scopeOptions: RiskScope[] = ["once", "session", "project", "always"];
+  // Un risque critique exige une confirmation saisie, et un blocage dur montre
+  // pourquoi : dans ces deux cas rien ne se replie.
+  const expanded = open || isCritical || hardBlocked;
 
   return (
     <div
       ref={dialogRef}
-      className={`locaryn-approval locaryn-approval-bandeau locaryn-approval-${approval.risk}${isRemote ? " locaryn-approval-remote" : ""}`}
+      className={`locaryn-approval locaryn-approval-bandeau locaryn-approval-compact locaryn-approval-${approval.risk}${isRemote ? " locaryn-approval-remote" : ""}`}
       // `region` et non `dialog` : ce bandeau ne capture ni le focus ni les
       // clics. Il vit au-dessus du composeur, dans le flux, et l'on peut
-      // continuer à naviguer pendant qu'il attend. Le piège à tabulation est
-      // parti avec le modal : enfermer la tabulation dans un bandeau qu'on a le
-      // droit d'ignorer serait une contradiction.
+      // continuer à naviguer pendant qu'il attend.
       role="region"
       aria-labelledby="locaryn-approval-title"
       onKeyDown={(e) => {
@@ -162,127 +167,19 @@ export function ToolApprovalModal({
         }
       }}
     >
-      <div className={`locaryn-approval-banner locaryn-approval-banner-${approval.risk}`}>
-        <span className="locaryn-approval-pulse" />
-        <div className="locaryn-approval-banner-text">
-          <h2 id="locaryn-approval-title" className="locaryn-approval-banner-title">
-            {RISK_LABEL[approval.risk]}
-          </h2>
-          <div className="locaryn-approval-banner-sub">
-            Demande d'autorisation pour <code>{approval.tool}</code>
+      <div className="locaryn-approval-line">
+        <span className="locaryn-approval-pulse" aria-hidden="true" />
+        <div className="locaryn-approval-summary">
+          <div className="locaryn-approval-headline">
+            <h2 id="locaryn-approval-title" className="locaryn-approval-banner-title">
+              {RISK_LABEL[approval.risk]}
+            </h2>
+            <code className="locaryn-approval-tool">{approval.tool}</code>
           </div>
+          <p className={`locaryn-approval-reason${expanded ? " is-open" : ""}`}>
+            {approval.reason}
+          </p>
         </div>
-        <button
-          type="button"
-          className="locaryn-approval-close"
-          onClick={handleDeny}
-          disabled={isCritical}
-          aria-disabled={isCritical}
-          title={isCritical ? "Les actions critiques exigent un clic explicite" : "Fermer (Échap)"}
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="locaryn-approval-body">
-        <div className="locaryn-approval-row">
-          <span className="locaryn-approval-label">Outil :</span>
-          <code className="locaryn-approval-tool">{approval.tool}</code>
-        </div>
-
-        <div className="locaryn-approval-row">
-          <span className="locaryn-approval-label">Motif :</span>
-          <div className="locaryn-approval-reason">{approval.reason}</div>
-        </div>
-
-        {approval.diff && (
-          <div className="locaryn-approval-row locaryn-approval-row-diff">
-            <span className="locaryn-approval-label">Modifications :</span>
-            <pre className="locaryn-approval-diff">{approval.diff}</pre>
-          </div>
-        )}
-
-        {isCritical && (
-          <div className="locaryn-approval-confirm">
-            <label className="locaryn-approval-checkbox">
-              <input
-                type="checkbox"
-                checked={understand}
-                onChange={(e) => setUnderstand(e.target.checked)}
-              />
-              <span>
-                Je comprends que cette action est irréversible et peut modifier le système
-              </span>
-            </label>
-
-            {targetNeedsTyping && (
-              <div className="locaryn-approval-confirm-input">
-                <label
-                  htmlFor="locaryn-approval-confirm-input"
-                  className="locaryn-approval-confirm-input-label"
-                >
-                  Tapez <code>{confirmTargetLabel}</code> pour confirmer :
-                </label>
-                <input
-                  id="locaryn-approval-confirm-input"
-                  ref={confirmInputRef}
-                  type="text"
-                  value={confirmText}
-                  onChange={(e) => setConfirmText(e.target.value)}
-                  placeholder={confirmTargetLabel}
-                  autoComplete="off"
-                  spellCheck="false"
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="locaryn-approval-row">
-          <span className="locaryn-approval-label">Portée :</span>
-          <div className="locaryn-approval-scopes">
-            {scopeOptions.map((sc) => {
-              const isSelected = scope === sc;
-              const isDefault = sc === minimumAllowedScope(approval.risk);
-              return (
-                <button
-                  key={sc}
-                  type="button"
-                  className={`locaryn-approval-chip${isSelected ? " is-selected" : ""}${
-                    isDefault ? " is-default" : ""
-                  }`}
-                  onClick={() => setScope(sc)}
-                  title={SCOPE_TOOLTIP[sc]}
-                >
-                  <span>{SCOPE_LABEL[sc]}</span>
-                  {isDefault && <span className="locaryn-approval-chip-hint">défaut</span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {isRemote && (
-          <div className="locaryn-approval-row">
-            <label htmlFor="locaryn-approval-audit-note" className="locaryn-approval-label">
-              Note d'audit (optionnel) :
-            </label>
-            <input
-              id="locaryn-approval-audit-note"
-              type="text"
-              className="locaryn-input"
-              value={auditNote}
-              onChange={(e) => setAuditNote(e.target.value)}
-              placeholder="ex. Ticket #1234, maintenance planifiée…"
-            />
-          </div>
-        )}
-      </div>
-
-      <footer className="locaryn-approval-footer">
-        <span className="locaryn-approval-call-id" title={approval.call_id}>
-          call {approval.call_id.slice(0, 8)}
-        </span>
         <div className="locaryn-approval-actions">
           <button type="button" className="locaryn-btn-ghost" onClick={handleDeny}>
             Refuser
@@ -295,17 +192,121 @@ export function ToolApprovalModal({
             disabled={allowDisabled}
             aria-disabled={allowDisabled}
             title={
-              isCritical && !understand
-                ? "Cochez d'abord la case de confirmation"
-                : isCritical && targetNeedsTyping && confirmText.trim() !== confirmTargetLabel
-                  ? `Type "${confirmTargetLabel}" to confirm`
-                  : ""
+              hardBlocked
+                ? "Cette action est bloquée par le niveau de permission de la conversation"
+                : isCritical && !understand
+                  ? "Cochez d'abord la case de confirmation"
+                  : isCritical && targetNeedsTyping && confirmText.trim() !== confirmTargetLabel
+                    ? `Tapez « ${confirmTargetLabel} » pour confirmer`
+                    : ""
             }
           >
-            Autoriser ({SCOPE_LABEL[scope]})
+            {scope === "once" ? "Autoriser" : `Autoriser (${SCOPE_LABEL[scope]})`}
           </button>
         </div>
-      </footer>
+      </div>
+
+      {!isCritical && !hardBlocked && (
+        <button
+          type="button"
+          className="locaryn-approval-toggle"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Masquer les détails" : "Détails et portée"}
+        </button>
+      )}
+
+      {expanded && (
+        <div className="locaryn-approval-body">
+          {approval.diff && (
+            <div className="locaryn-approval-row locaryn-approval-row-diff">
+              <span className="locaryn-approval-label">Modifications</span>
+              <pre className="locaryn-approval-diff">{approval.diff}</pre>
+            </div>
+          )}
+
+          {isCritical && (
+            <div className="locaryn-approval-confirm">
+              <label className="locaryn-approval-checkbox">
+                <input
+                  type="checkbox"
+                  checked={understand}
+                  onChange={(e) => setUnderstand(e.target.checked)}
+                />
+                <span>
+                  Je comprends que cette action est irréversible et peut modifier le système
+                </span>
+              </label>
+
+              {targetNeedsTyping && (
+                <div className="locaryn-approval-confirm-input">
+                  <label
+                    htmlFor="locaryn-approval-confirm-input"
+                    className="locaryn-approval-confirm-input-label"
+                  >
+                    Tapez <code>{confirmTargetLabel}</code> pour confirmer :
+                  </label>
+                  <input
+                    id="locaryn-approval-confirm-input"
+                    ref={confirmInputRef}
+                    type="text"
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                    placeholder={confirmTargetLabel}
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="locaryn-approval-row">
+            <span className="locaryn-approval-label">Portée</span>
+            <div className="locaryn-approval-scopes">
+              {scopeOptions.map((sc) => {
+                const isSelected = scope === sc;
+                const isDefault = sc === minimumAllowedScope(approval.risk);
+                return (
+                  <button
+                    key={sc}
+                    type="button"
+                    className={`locaryn-approval-chip${isSelected ? " is-selected" : ""}${
+                      isDefault ? " is-default" : ""
+                    }`}
+                    onClick={() => setScope(sc)}
+                    title={SCOPE_TOOLTIP[sc]}
+                  >
+                    <span>{SCOPE_LABEL[sc]}</span>
+                    {isDefault && <span className="locaryn-approval-chip-hint">défaut</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {isRemote && (
+            <div className="locaryn-approval-row">
+              <label htmlFor="locaryn-approval-audit-note" className="locaryn-approval-label">
+                Note d'audit (optionnel)
+              </label>
+              <input
+                id="locaryn-approval-audit-note"
+                type="text"
+                className="locaryn-input"
+                value={auditNote}
+                onChange={(e) => setAuditNote(e.target.value)}
+                placeholder="ex. Ticket #1234, maintenance planifiée…"
+              />
+            </div>
+          )}
+
+          <span className="locaryn-approval-call-id" title={approval.call_id}>
+            appel {approval.call_id.slice(0, 8)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

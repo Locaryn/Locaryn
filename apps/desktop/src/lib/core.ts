@@ -214,6 +214,12 @@ export interface StorageInfo {
    *  SQLite file is how databases get corrupted. */
   db_path: string;
   db_bytes: number;
+  /** Non-fatal cleanup issues from the migration that just finished (an old
+   *  directory a file was still open in, so it could not be deleted) — the
+   *  move itself already succeeded: the root has already switched to a
+   *  verified-complete copy by the time this is populated. Empty outside
+   *  the response to a `setStorageRoot(..., true)` call. */
+  cleanup_warnings: string[];
 }
 
 /** Emitted on the `storage-migration` Tauri event while data is relocated. */
@@ -1122,6 +1128,14 @@ export type StreamEvent =
       reason: string;
     }
   | { type: "log"; level: string; msg: string; source: string }
+  | {
+      /** Vitesse mesurée par le moteur, envoyée juste avant `message_end`. */
+      type: "timings";
+      prompt_tokens: number;
+      generated_tokens: number;
+      prompt_tokens_per_sec: number;
+      generation_tokens_per_sec: number;
+    }
   | {
       type: "message_end";
       message_id: string;
@@ -4431,6 +4445,13 @@ const demoCore: CoreApi = {
       await sleep(18);
     }
     onEvent({
+      type: "timings",
+      prompt_tokens: 120,
+      generated_tokens: 60,
+      prompt_tokens_per_sec: 412.6,
+      generation_tokens_per_sec: 41.3,
+    });
+    onEvent({
       type: "message_end",
       message_id: "demo",
       tokens_in: 120,
@@ -4708,6 +4729,7 @@ const demoCore: CoreApi = {
     ],
     db_path: "C:/Users/you/.locaryn/data/locaryn.db",
     db_bytes: 4_194_304,
+    cleanup_warnings: [],
     drives: [
       { mount: "C:\\", total_bytes: 511_000_000_000, free_bytes: 1_288_490_188, is_current: true },
       {
@@ -4726,6 +4748,7 @@ const demoCore: CoreApi = {
     drives: [],
     db_path: "C:/Users/you/.locaryn/data/locaryn.db",
     db_bytes: 4_194_304,
+    cleanup_warnings: [],
   }),
   cleanTemp: async () => 8_589_934_592,
 
@@ -5159,7 +5182,7 @@ const demoCore: CoreApi = {
   async runtimeCapabilities() {
     return {
       runtime_installed: true,
-      runtime_version: "b10088",
+      runtime_version: "b11003",
       chat: true,
       vision: false,
       embeddings: true,
@@ -5211,9 +5234,9 @@ const demoCore: CoreApi = {
   async llamaRuntimeStatus() {
     return {
       installed: true,
-      version: "b10088",
+      version: "b11003",
       up_to_date: true,
-      pinned: "b10088",
+      pinned: "b11003",
       path: "C:/Users/you/.locaryn/data/bin/llama",
     };
   },
@@ -5224,9 +5247,9 @@ const demoCore: CoreApi = {
     }
     return {
       installed: true,
-      version: "b10088",
+      version: "b11003",
       up_to_date: true,
-      pinned: "b10088",
+      pinned: "b11003",
       path: "C:/Users/you/.locaryn/data/bin/llama",
     };
   },

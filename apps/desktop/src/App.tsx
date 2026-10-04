@@ -7,7 +7,7 @@ import { ConnectorsSettings } from "./components/ConnectorsSettings";
 import { ExtensionsSettings } from "./components/ExtensionsSettings";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
-import { CAPABILITY_GATED_VIEWS, NAVIGABLE_VIEWS, NavDrawer } from "./components/NavDrawer";
+import { NAVIGABLE_VIEWS, NavDrawer, isNativeViewAccessible } from "./components/NavDrawer";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
@@ -357,11 +357,10 @@ export function App() {
   }, [activeView]);
 
   useEffect(() => {
-    const needs = CAPABILITY_GATED_VIEWS[activeView];
-    if (needs && !needs.some((c) => activeCapabilities.includes(c))) {
+    if (!isNativeViewAccessible(activeView, activeCapabilities, activeExtensions)) {
       setActiveView("chat");
     }
-  }, [activeView, activeCapabilities]);
+  }, [activeView, activeCapabilities, activeExtensions]);
 
   // Deep links (`locaryn://install?src=owner/repo`): a link can open the app
   // from a cold start (URL passed as CLI argument — read via `get_current`)
@@ -750,21 +749,12 @@ export function App() {
     selection?: HfModelSelection,
     downloads?: ModelDownloadSource[],
   ) {
-    const p = await core.listProviders();
-    const active = p.find((pr) => pr.is_active) ?? p[0];
-    // Sans fournisseur, le clic ne faisait rien et ne disait rien : l'utilisateur
-    // relançait le téléchargement en croyant avoir mal cliqué. Le dire coûte une
-    // ligne, et indique quoi faire.
-    if (!active) {
-      const id = taskCenter.add({ type: "download", label: `Téléchargement : ${tag}` });
-      taskCenter.fail(
-        id,
-        "Aucun moteur n'est configuré : ouvrez Réglages → Moteur avant d'installer un modèle.",
-      );
-      return;
-    }
-
-    setDownloadProgress({ tag, progress: 0, status: "Démarrage du téléchargement..." });
+    // La tâche existe avant même de savoir si un moteur répond : un échec de
+    // core.listProviders() lui-même se retrouvait hors du try/catch plus bas
+    // et remontait comme une promesse rejetée que ModelBrowser n'attrape
+    // pas non plus (il n'a qu'un `finally`) — le clic ne montrait alors
+    // strictement rien, ni tâche, ni erreur, l'utilisateur recliquant sur
+    // ce qui semblait n'avoir rien fait.
     const shortName = tag.split("/").pop() || tag;
     const taskId = taskCenter.add({
       type: "download",
@@ -773,6 +763,17 @@ export function App() {
     });
 
     try {
+      const p = await core.listProviders();
+      const active = p.find((pr) => pr.is_active) ?? p[0];
+      if (!active) {
+        taskCenter.fail(
+          taskId,
+          "Aucun moteur n'est configuré : ouvrez Réglages → Moteur avant d'installer un modèle.",
+        );
+        return;
+      }
+
+      setDownloadProgress({ tag, progress: 0, status: "Démarrage du téléchargement..." });
       await core.pullModel(
         active.endpoint,
         tag,
@@ -1081,6 +1082,7 @@ export function App() {
           activeCapabilities={activeCapabilities}
           activeExtensions={activeExtensions}
           activeProject={activeProject}
+          activeSession={activeSession}
           onTrustLevelChange={async (level) => {
             if (!activeProject) return;
             try {

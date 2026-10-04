@@ -114,7 +114,7 @@ const EN: Record<string, string> = {
   Actions: "Actions",
   Confiance: "Trusted",
   Prudent: "Cautious",
-  "Bac à sable": "Sandbox",
+  "Aperçu seul": "Preview only",
 };
 
 let current: Lang =

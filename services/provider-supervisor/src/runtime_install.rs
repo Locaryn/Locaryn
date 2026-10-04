@@ -17,9 +17,13 @@ use std::path::{Path, PathBuf};
 use crate::SupervisorError;
 
 /// Version épinglée de llama.cpp. Les drapeaux passés au serveur (`--jinja`,
-/// `-ngl`, `--mmproj`…) ont été vérifiés contre cette build ; un binaire
-/// inconnu qui refuse un drapeau est une erreur fatale au démarrage.
-pub const PINNED_LLAMA_BUILD: &str = "b10088";
+/// `-ngl`, `--mmproj`, `-fa`, `-ctk`/`-ctv`, `-cmoe`/`-ncmoe`, `-md`…)
+/// ont été vérifiés contre le `--help` de cette build (b11003, 16/09/2026) :
+/// un binaire inconnu qui refuse un drapeau est une erreur fatale au
+/// démarrage. Changement notable par rapport à b10088 : `--no-mmap` n'existe
+/// plus, remplacé par le mode de chargement `-lm none` — le spawn (lib.rs)
+/// utilise déjà la nouvelle forme.
+pub const PINNED_LLAMA_BUILD: &str = "b11003";
 
 /// Nom du binaire selon la plateforme.
 pub fn llama_server_name() -> &'static str {
@@ -40,22 +44,47 @@ pub fn managed_llama_path() -> PathBuf {
     managed_llama_dir().join(llama_server_name())
 }
 
-/// L'archive publiée pour cette plateforme.
+/// L'archive publiée pour cette plateforme et cette architecture.
+///
+/// Noms vérifiés sur les assets de la release b11003. Windows x64 prend la
+/// build Vulkan (elle sert aussi les cartes AMD et Intel) ; les autres cibles
+/// prennent la build CPU de leur architecture. Une build CUDA gagnait 12 %
+/// en génération seulement sur une RTX 4050, au prix d'un second téléchargement
+/// lié à la version du pilote : elle reste un choix du morph cluster, qui
+/// sait le mesurer.
 fn release_url() -> Result<&'static str, SupervisorError> {
-    if cfg!(target_os = "windows") {
-        Ok("https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-win-vulkan-x64.zip")
+    let arm = cfg!(target_arch = "aarch64");
+    let asset = if cfg!(target_os = "windows") {
+        if arm {
+            "llama-b11003-bin-win-cpu-arm64.zip"
+        } else {
+            "llama-b11003-bin-win-vulkan-x64.zip"
+        }
     } else if cfg!(target_os = "linux") {
-        Ok("https://github.com/ggml-org/llama.cpp/releases/download/b10088/llama-b10088-bin-ubuntu-x64.zip")
+        // Depuis ~b11000 les publications Ubuntu sont des `.tar.gz`.
+        if arm {
+            "llama-b11003-bin-ubuntu-arm64.tar.gz"
+        } else {
+            "llama-b11003-bin-ubuntu-x64.tar.gz"
+        }
+    } else if cfg!(target_os = "macos") {
+        if arm {
+            "llama-b11003-bin-macos-arm64.tar.gz"
+        } else {
+            "llama-b11003-bin-macos-x64.tar.gz"
+        }
     } else {
-        // macOS : les builds officielles sont publiées par architecture et
-        // changent de nom d'une release à l'autre. Plutôt que de deviner, on
-        // dit quoi faire.
-        Err(SupervisorError::BinaryNotFound(
-            "aucune archive llama.cpp épinglée pour cette plateforme — installez \
-             llama-server à la main (brew install llama.cpp) puis relancez"
+        return Err(SupervisorError::BinaryNotFound(
+            "aucune archive llama.cpp épinglée pour cette plateforme — installez              llama-server à la main puis relancez"
                 .into(),
-        ))
-    }
+        ));
+    };
+    Ok(Box::leak(
+        format!(
+            "https://github.com/ggml-org/llama.cpp/releases/download/{PINNED_LLAMA_BUILD}/{asset}"
+        )
+        .into_boxed_str(),
+    ))
 }
 
 /// Avancement du téléchargement, en octets. `total` vaut 0 quand le serveur ne
@@ -76,10 +105,19 @@ pub async fn install_llama_runtime(
 
     let dir = managed_llama_dir();
     std::fs::create_dir_all(&dir)?;
-    let archive = dir.join(format!("llama-{PINNED_LLAMA_BUILD}.zip"));
+    // L'extension suit l'asset réel : `.zip` côté Windows, `.tar.gz` ailleurs.
+    let is_targz = !cfg!(target_os = "windows");
+    let archive = dir.join(format!(
+        "llama-{PINNED_LLAMA_BUILD}.{}",
+        if is_targz { "tar.gz" } else { "zip" }
+    ));
 
     download(release_url()?, &archive, progress).await?;
-    extract_zip(&archive, &dir)?;
+    if is_targz {
+        extract_tar_gz(&archive, &dir)?;
+    } else {
+        extract_zip(&archive, &dir)?;
+    }
     let _ = std::fs::remove_file(&archive);
 
     // L'archive de llama.cpp range parfois les binaires dans un sous-dossier
@@ -183,6 +221,48 @@ fn extract_zip(archive: &Path, dir: &Path) -> Result<(), SupervisorError> {
     Ok(())
 }
 
+/// Extraire une archive `.tar.gz` (les publications Ubuntu de llama.cpp
+/// depuis b11003). Mêmes règles que `extract_zip` : on écrase à plat dans
+/// `dir`, le promoteur de binaires (`find_file` + `promote_siblings`) gère
+/// les sous-dossiers éventuels. Sous Unix, les permissions du tar (dont le
+/// bit exécutable) sont conservées.
+fn extract_tar_gz(archive: &Path, dir: &Path) -> Result<(), SupervisorError> {
+    let file = std::fs::File::open(archive)?;
+    let gz = flate2::read::GzDecoder::new(file);
+    let mut tar = tar::Archive::new(gz);
+    tar.set_preserve_permissions(true);
+    for entry in tar
+        .entries()
+        .map_err(|e| SupervisorError::BinaryNotFound(format!("archive illisible : {e}")))?
+    {
+        let mut entry = entry
+            .map_err(|e| SupervisorError::BinaryNotFound(format!("entrée illisible : {e}")))?;
+        // Même garde-fou que `enclosed_name` côté zip : une entrée qui
+        // sortirait du dossier cible est ignorée, pas réécrite.
+        let Some(rel) = entry
+            .path()
+            .ok()
+            .and_then(|p| p.file_name().map(std::path::PathBuf::from))
+        else {
+            continue;
+        };
+        if entry.header().entry_type().is_dir() {
+            continue;
+        }
+        let out = dir.join(rel);
+        let mut dst = std::fs::File::create(&out)?;
+        std::io::copy(&mut entry, &mut dst)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(mode) = entry.header().mode() {
+                let _ = std::fs::set_permissions(&out, std::fs::Permissions::from_mode(mode));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Cherche un fichier par nom, en descendant au plus `depth` niveaux.
 fn find_file(dir: &Path, name: &str, depth: usize) -> Option<PathBuf> {
     if depth == 0 {
@@ -228,4 +308,58 @@ fn promote_siblings(found: &Path, dir: &Path) -> Result<(), SupervisorError> {
         std::fs::rename(&path, &dest)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write as _;
+
+    /// « Installer le moteur » téléchargeait l'archive et s'arrêtait là, en
+    /// annonçant une réussite. Les binaires doivent finir côte à côte à la
+    /// racine du dossier géré, quel que soit le sous-dossier de l'archive :
+    /// sous Windows l'exécutable ne démarre pas sans ses DLL.
+    #[test]
+    fn l_archive_du_moteur_est_mise_a_plat() {
+        let base = std::env::temp_dir().join(format!(
+            "locaryn_runtime_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+        let archive = base.join("llama.zip");
+
+        let fichier = std::fs::File::create(&archive).unwrap();
+        let mut zip = zip::ZipWriter::new(fichier);
+        let options: zip::write::SimpleFileOptions = Default::default();
+        for chemin in [
+            "build/bin/llama-server.exe",
+            "build/bin/ggml-base.dll",
+            "build/bin/ggml-vulkan.dll",
+        ] {
+            zip.start_file(chemin, options).unwrap();
+            zip.write_all(b"binaire").unwrap();
+        }
+        zip.finish().unwrap();
+
+        let dest = base.join("llama");
+        std::fs::create_dir_all(&dest).unwrap();
+        extract_zip(&archive, &dest).unwrap();
+        let found = find_file(&dest, "llama-server.exe", 4).expect("binaire extrait");
+        promote_siblings(&found, &dest).unwrap();
+        for nom in ["llama-server.exe", "ggml-base.dll", "ggml-vulkan.dll"] {
+            assert!(dest.join(nom).is_file(), "{nom} devrait être à la racine");
+        }
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn l_archive_epinglee_porte_la_version_du_pin() {
+        if let Ok(url) = release_url() {
+            assert!(url.contains(PINNED_LLAMA_BUILD), "{url}");
+        }
+    }
 }

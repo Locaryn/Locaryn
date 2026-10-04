@@ -115,7 +115,7 @@ Locaryn dispose d'une collection d'extensions officielles modulaires prêtes à 
 | **`plugin-vision-ocr`** | Reconnaissance optique de caractères et analyse de documents | Extraction de texte, analyse visuelle |
 | **`plugin-rag-qa`** | Indexation vectorielle, recherche sémantique et RAG local | Indexation de documents, Q&R |
 | **`plugin-ssh`** | Gestionnaire de terminaux et connexions serveurs distants | Navigation SSH, exécution distante |
-| **`plugin-travel-tunnel`** | Tunnels chiffrés pour accès extérieur (Cloudflare, ngrok, devtunnel) | Mode Voyage / Remote |
+| **`plugin-remote`** | Tunnels chiffrés pour accès extérieur (Cloudflare, ngrok, devtunnel) | Mode Voyage / Remote |
 | **`plugin-translation`** | Traduction neuronale multi-langues de haute fidélité | Outils de traduction |
 
 ### 🛠 Écrire la vôtre
