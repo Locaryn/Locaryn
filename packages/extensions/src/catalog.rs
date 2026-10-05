@@ -1057,7 +1057,8 @@ fn versions_from_known_table(
         // ferait offrir une 1.0.0-beta.1 qui n'existe pas.
         "morph-desktop" => ("0.1.0-beta.5", &["0.1.0-beta.4"]),
         "morph-browser" => ("0.1.0-beta.4", &[]),
-        "morph-bonsai" => ("0.1.0-beta.2", &[]),
+        // Anciennement morph-bonsai : le dépôt a été renommé, ses tags suivent.
+        "morph-prismml" => ("0.2.0-beta.1", &["0.1.0-beta.2"]),
         // Un dépôt jamais vu ne reçoit RIEN : pas de `1.0.0-beta.1` ni de
         // « 0.9.0 » inventés — c'était le bug d'origine.
         _ => return Vec::new(),
