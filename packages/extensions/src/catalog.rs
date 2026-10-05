@@ -1055,7 +1055,8 @@ fn versions_from_known_table(
         "morph-cluster" => ("0.2.0", &["0.1.0"]),
         // Publiés en bêta, sans version stable antérieure : la ligne par défaut leur
         // ferait offrir une 1.0.0-beta.1 qui n'existe pas.
-        "morph-desktop" | "morph-browser" => ("0.1.0-beta.4", &[]),
+        "morph-desktop" => ("0.1.0-beta.5", &["0.1.0-beta.4"]),
+        "morph-browser" => ("0.1.0-beta.4", &[]),
         "morph-bonsai" => ("0.1.0-beta.2", &[]),
         // Un dépôt jamais vu ne reçoit RIEN : pas de `1.0.0-beta.1` ni de
         // « 0.9.0 » inventés — c'était le bug d'origine.
