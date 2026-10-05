@@ -23,6 +23,7 @@ mod local_profile;
 mod mcp_servers;
 mod memory;
 mod model_abilities;
+mod model_recommendations;
 mod model_residency;
 mod notifications;
 mod project_context;
@@ -1902,27 +1903,57 @@ async fn send_message(
     // laquelle le moteur est lancé — et non de `p.context_length`, une seconde
     // copie qui divergeait dès qu'on changeait de profil.
     let contexte_configure = InferenceConfig::load(&core.data_dir).context_length;
-    let params = active_provider
+    let reglages = active_provider
         .as_ref()
         .and_then(|p| p.config.clone())
-        .and_then(|cfg| serde_json::from_value::<ModelParams>(cfg).ok())
-        .map(|p| {
-            let mut m = serde_json::Map::new();
-            m.insert("temperature".into(), serde_json::json!(p.temperature));
-            m.insert("top_p".into(), serde_json::json!(p.top_p));
-            m.insert("top_k".into(), serde_json::json!(p.top_k));
-            m.insert("repeat_penalty".into(), serde_json::json!(p.repeat_penalty));
-            if p.max_tokens > 0 {
-                m.insert("max_tokens".into(), serde_json::json!(p.max_tokens));
-            }
-            if p.seed >= 0 {
-                m.insert("seed".into(), serde_json::json!(p.seed));
-            }
-            // `num_ctx` part avec les autres options : les moteurs qui ne
-            // la connaissent pas l'ignorent, sans risque.
-            m.insert("num_ctx".into(), serde_json::json!(contexte_configure));
-            serde_json::Value::Object(m)
-        });
+        .and_then(|cfg| serde_json::from_value::<ModelParams>(cfg).ok());
+    // Les réglages de la personne s'il les a changés ; sinon ceux que les
+    // créateurs du modèle recommandent (catalogue de son morph) ; sinon les
+    // défauts de l'application, qui ne conviennent pas à tous les modèles.
+    let recommande = match (&reglages, &model) {
+        (Some(p), _) if p.echantillonnage_modifie() => None,
+        (_, Some(m)) => model_recommendations::pour_le_modele(core.clone(), m).await,
+        _ => None,
+    };
+    let params = match (reglages, &recommande) {
+        (Some(p), _) => Some(p),
+        (None, Some(_)) => Some(ModelParams::default()),
+        (None, None) => None,
+    }
+    .map(|p| {
+        let mut m = serde_json::Map::new();
+        let r = recommande.clone().unwrap_or_default();
+        m.insert(
+            "temperature".into(),
+            serde_json::json!(r.temperature.unwrap_or(p.temperature)),
+        );
+        m.insert(
+            "top_p".into(),
+            serde_json::json!(r.top_p.unwrap_or(p.top_p)),
+        );
+        m.insert(
+            "top_k".into(),
+            serde_json::json!(r.top_k.unwrap_or(p.top_k)),
+        );
+        m.insert(
+            "repeat_penalty".into(),
+            serde_json::json!(r.repeat_penalty.unwrap_or(p.repeat_penalty)),
+        );
+        m.insert(
+            "min_p".into(),
+            serde_json::json!(r.min_p.unwrap_or(p.min_p)),
+        );
+        if p.max_tokens > 0 {
+            m.insert("max_tokens".into(), serde_json::json!(p.max_tokens));
+        }
+        if p.seed >= 0 {
+            m.insert("seed".into(), serde_json::json!(p.seed));
+        }
+        // `num_ctx` part avec les autres options : les moteurs qui ne
+        // la connaissent pas l'ignorent, sans risque.
+        m.insert("num_ctx".into(), serde_json::json!(contexte_configure));
+        serde_json::Value::Object(m)
+    });
 
     // Structured-output: merge the per-message response_format (json_object /
     // json_schema) into the request params. llama-server honors both.
@@ -5445,6 +5476,28 @@ pub struct ModelParams {
     pub max_tokens: u32,
     pub repeat_penalty: f32,
     pub seed: i64,
+    /// Seuil min-p. Absent des réglages enregistrés avant lui : la valeur de
+    /// llama.cpp, 0,05.
+    #[serde(default = "min_p_par_defaut")]
+    pub min_p: f32,
+}
+
+fn min_p_par_defaut() -> f32 {
+    0.05
+}
+
+impl ModelParams {
+    /// La personne a-t-elle touché à l'échantillonnage ? Sinon, la
+    /// recommandation du modèle peut s'appliquer.
+    fn echantillonnage_modifie(&self) -> bool {
+        let d = Self::default();
+        let differe = |a: f32, b: f32| (a - b).abs() > 1e-4;
+        differe(self.temperature, d.temperature)
+            || differe(self.top_p, d.top_p)
+            || self.top_k != d.top_k
+            || differe(self.repeat_penalty, d.repeat_penalty)
+            || differe(self.min_p, d.min_p)
+    }
 }
 
 impl Default for ModelParams {
@@ -5457,6 +5510,7 @@ impl Default for ModelParams {
             max_tokens: 0,
             repeat_penalty: 1.1,
             seed: -1,
+            min_p: min_p_par_defaut(),
         }
     }
 }
@@ -6793,6 +6847,7 @@ pub fn run() {
             get_provider_model_params,
             get_model_ctx_capacity,
             context_status,
+            model_recommendations::model_recommendation,
             get_inference_config,
             set_inference_config,
             get_profile_preset,

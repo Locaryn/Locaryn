@@ -2,7 +2,7 @@ import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SessionTrustControl } from "../components/SessionTrustControl";
 import { useContextStatus } from "../hooks/useContextStatus";
-import { core } from "../lib/core";
+import { type ModelRecommendation, core } from "../lib/core";
 
 function formatContext(v: number): string {
   return v >= 1024 ? `${Math.round(v / 1024)}k` : `${v}`;
@@ -16,6 +16,7 @@ export interface ModelParams {
   max_tokens: number; // 0 = unlimited
   repeat_penalty: number; // 1.0 – 2.0
   seed: number; // -1 = random
+  min_p: number; // 0.0 – 1.0
 }
 
 export const DEFAULT_MODEL_PARAMS: ModelParams = {
@@ -26,7 +27,37 @@ export const DEFAULT_MODEL_PARAMS: ModelParams = {
   max_tokens: 0,
   repeat_penalty: 1.1,
   seed: -1,
+  min_p: 0.05,
 };
+
+/** Les réglages d'échantillonnage ont-ils quitté les défauts ? Même règle que
+ *  le service (`echantillonnage_modifie`) : sinon, la recommandation du modèle
+ *  s'applique. */
+function echantillonnageModifie(p: ModelParams): boolean {
+  const d = DEFAULT_MODEL_PARAMS;
+  const differe = (a: number, b: number) => Math.abs(a - b) > 1e-4;
+  return (
+    differe(p.temperature, d.temperature) ||
+    differe(p.top_p, d.top_p) ||
+    p.top_k !== d.top_k ||
+    differe(p.repeat_penalty, d.repeat_penalty) ||
+    differe(p.min_p, d.min_p)
+  );
+}
+
+/** Ce qui part vraiment vers le modèle : la recommandation tant que la
+ *  personne n'a rien changé. */
+function effectifs(p: ModelParams, r: ModelRecommendation | null): ModelParams {
+  if (!r || echantillonnageModifie(p)) return p;
+  return {
+    ...p,
+    temperature: r.temperature ?? p.temperature,
+    top_p: r.top_p ?? p.top_p,
+    top_k: r.top_k ?? p.top_k,
+    min_p: r.min_p ?? p.min_p,
+    repeat_penalty: r.repeat_penalty ?? p.repeat_penalty,
+  };
+}
 
 type SliderProps = {
   label: string;
@@ -88,6 +119,9 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
     refresh: refreshContext,
   } = useContextStatus();
   const [contextEdit, setContextEdit] = useState<number | null>(null);
+  const [reco, setReco] = useState<ModelRecommendation | null>(null);
+  const affiches = effectifs(params, reco);
+  const recoAppliquee = reco !== null && !echantillonnageModifie(params);
   const [reloading, setReloading] = useState(false);
   const contextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -102,6 +136,8 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
           const cfg = active.config as Partial<ModelParams>;
           setParams((prev) => ({ ...prev, ...cfg }));
         }
+        const r = await core.modelRecommendation();
+        if (!cancelled) setReco(r);
       } catch {
         // Keep defaults silently.
       }
@@ -115,13 +151,13 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
   const update = useCallback(
     (key: keyof ModelParams, val: number) => {
       setParams((prev) => {
-        const next = { ...prev, [key]: val };
+        const next = { ...effectifs(prev, reco), [key]: val };
         onParamsChange?.(next);
         return next;
       });
       setSaved(false);
     },
-    [onParamsChange],
+    [onParamsChange, reco],
   );
 
   /** Régler la fenêtre : on écrit la configuration d'inférence, et le profil du
@@ -188,6 +224,23 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
     setSaved(false);
   }
 
+  /** Rendre la main à la recommandation : seul l'échantillonnage revient aux
+   *  défauts, la longueur de réponse et la graine restent. */
+  function restoreRecommendation() {
+    const d = DEFAULT_MODEL_PARAMS;
+    const next = {
+      ...params,
+      temperature: d.temperature,
+      top_p: d.top_p,
+      top_k: d.top_k,
+      repeat_penalty: d.repeat_penalty,
+      min_p: d.min_p,
+    };
+    setParams(next);
+    onParamsChange?.(next);
+    setSaved(false);
+  }
+
   return (
     <aside className="lmc-panel">
       <div
@@ -221,10 +274,17 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
       </div>
 
       <div className="lmc-body">
+        {reco && (
+          <RecommendationBanner
+            reco={reco}
+            applied={recoAppliquee}
+            onRestore={restoreRecommendation}
+          />
+        )}
         <Slider
           id="lmc-temperature"
           label="Temperature"
-          value={params.temperature}
+          value={affiches.temperature}
           min={0}
           max={2}
           step={0.01}
@@ -235,7 +295,7 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
         <Slider
           id="lmc-top-p"
           label="Top-P"
-          value={params.top_p}
+          value={affiches.top_p}
           min={0}
           max={1}
           step={0.01}
@@ -246,7 +306,7 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
         <Slider
           id="lmc-top-k"
           label="Top-K"
-          value={params.top_k}
+          value={affiches.top_k}
           min={0}
           max={100}
           step={1}
@@ -256,12 +316,23 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
         <Slider
           id="lmc-repeat-penalty"
           label="Repeat penalty"
-          value={params.repeat_penalty}
+          value={affiches.repeat_penalty}
           min={1}
           max={2}
           step={0.01}
           format={(v) => v.toFixed(2)}
           onChange={(v) => update("repeat_penalty", v)}
+        />
+
+        <Slider
+          id="lmc-min-p"
+          label="Min-P"
+          value={affiches.min_p}
+          min={0}
+          max={1}
+          step={0.01}
+          format={(v) => v.toFixed(2)}
+          onChange={(v) => update("min_p", v)}
         />
 
         <div className="lmc-divider" />
@@ -373,5 +444,45 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
         </button>
       </div>
     </aside>
+  );
+}
+
+function formatReco(r: ModelRecommendation): string {
+  const parts: string[] = [];
+  if (r.temperature != null) parts.push(`température ${r.temperature}`);
+  if (r.top_p != null) parts.push(`top-p ${r.top_p}`);
+  if (r.top_k != null) parts.push(`top-k ${r.top_k}`);
+  if (r.min_p != null) parts.push(`min-p ${r.min_p}`);
+  if (r.repeat_penalty != null)
+    parts.push(
+      r.repeat_penalty <= 1 ? "sans pénalité de répétition" : `pénalité ${r.repeat_penalty}`,
+    );
+  return parts.join(", ");
+}
+
+/** D'où viennent les valeurs affichées : de la recommandation des créateurs du
+ *  modèle, ou des réglages de la personne. */
+function RecommendationBanner({
+  reco,
+  applied,
+  onRestore,
+}: {
+  reco: ModelRecommendation;
+  applied: boolean;
+  onRestore: () => void;
+}) {
+  const source = reco.source || "les créateurs du modèle";
+  return (
+    <div className={`lmc-reco${applied ? " is-applied" : ""}`} role="status">
+      <span>
+        {applied ? `Réglages recommandés par ${source} : ` : `${source} recommande : `}
+        {formatReco(reco)}.
+      </span>
+      {!applied && (
+        <button type="button" className="lmc-reco-btn" onClick={onRestore}>
+          Revenir aux réglages recommandés
+        </button>
+      )}
+    </div>
   );
 }

@@ -4669,6 +4669,44 @@ pre.md-code {
   line-height: 1.5;
   color: var(--text-faint);
 }
+/* D'où viennent les réglages affichés : la recommandation des créateurs du
+   modèle, ou ceux de la personne. */
+.lmc-reco {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.lmc-reco.is-applied {
+  background: var(--accent-fill);
+  border-color: rgba(var(--accent-rgb), 0.35);
+}
+.lmc-reco-btn {
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.lmc-reco-btn:hover {
+  border-color: var(--accent);
+}
+.lmc-reco-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .lmc-ctx-pending {
   display: flex;
   flex-direction: column;

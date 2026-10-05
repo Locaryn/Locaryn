@@ -930,6 +930,18 @@ export interface McpServerInfo {
   disabled_tools?: string[];
 }
 
+/** Les réglages que les créateurs du modèle actif recommandent (catalogue de son morph). */
+export interface ModelRecommendation {
+  temperature: number | null;
+  top_p: number | null;
+  top_k: number | null;
+  min_p: number | null;
+  repeat_penalty: number | null;
+  /** Qui le recommande (« PrismML »). */
+  source: string;
+  source_url: string | null;
+}
+
 /** La fenêtre de contexte, vue de trois côtés. */
 export interface ContextStatus {
   /** Réglée (profil ou réglage manuel) : celle du prochain chargement. */
@@ -1932,6 +1944,7 @@ export interface CoreApi {
   getModelCtxCapacity(): Promise<number | null>;
   /** La fenêtre de contexte : réglée, réellement chargée, et plafond du modèle. */
   contextStatus(): Promise<ContextStatus>;
+  modelRecommendation(): Promise<ModelRecommendation | null>;
   /** Compresser la conversation : vieux tours -> resume modele. Retourne le
    *  nombre de messages retires. */
   compressChatContext(sessionId: string): Promise<number>;
@@ -2375,6 +2388,7 @@ const tauriCore: CoreApi = {
   getProviderModelParams: () => invoke<ModelParams>("get_provider_model_params"),
   getModelCtxCapacity: () => invoke<number | null>("get_model_ctx_capacity"),
   contextStatus: () => invoke<ContextStatus>("context_status"),
+  modelRecommendation: () => invoke<ModelRecommendation | null>("model_recommendation"),
   compressChatContext: (sessionId) => invoke<number>("compress_chat_context", { sessionId }),
   inspectHuggingFaceRepo: (source, hfToken) =>
     invoke<HfRepoInspection>("inspect_huggingface_repo", {
@@ -5320,6 +5334,9 @@ const demoCore: CoreApi = {
 
   async updateProviderModelParams(_params) {
     // Demo: no-op, params not persisted in browser mode.
+  },
+  async modelRecommendation() {
+    return null;
   },
   async contextStatus() {
     return { configured: 8192, running: 8192, cap: 32768 };
