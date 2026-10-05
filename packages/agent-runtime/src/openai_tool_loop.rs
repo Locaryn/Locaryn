@@ -815,7 +815,10 @@ mod tests {
 
     #[test]
     fn la_reflexion_ne_repart_pas_au_modele() {
-        assert_eq!(sans_reflexion("<think>je pèse</think>\n\nRéponse"), "\n\nRéponse");
+        assert_eq!(
+            sans_reflexion("<think>je pèse</think>\n\nRéponse"),
+            "\n\nRéponse"
+        );
         assert_eq!(
             sans_reflexion("a<think>x</think>b<think>y</think>c"),
             "abc",
