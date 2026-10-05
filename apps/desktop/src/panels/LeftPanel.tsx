@@ -1,9 +1,21 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { visibleNavItems } from "../components/NavDrawer";
 import { SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
 import { pickFolder } from "../lib/dialog";
+import {
+  type CibleDepot,
+  SESSION_DRAG_CANCEL,
+  SESSION_DRAG_END,
+  SESSION_DRAG_MOVE,
+  SESSION_DRAG_START,
+  type SessionDragPoint,
+  type SessionDragStart,
+  cibleSous,
+  memeCible,
+} from "../lib/sessionDrag";
 
 type Props = {
   projects: Project[];
@@ -240,45 +252,71 @@ export function LeftPanel({
    * mouvement sans avoir à l'attendre.
    */
   const [leaving, setLeaving] = useState<string | null>(null);
-  /** La corbeille s'allume quand on survole avec une conversation en main. */
-  const [overBin, setOverBin] = useState(false);
-  /** Le projet survolé pendant un glisser, pour montrer où ça va tomber. */
-  const [overProject, setOverProject] = useState<string | null>(null);
-  const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
-  /** Indique si une session est en cours de glisser/maintien pour transformer le bouton du haut. */
-  const [isDraggingSession, setIsDraggingSession] = useState(false);
+  /** La conversation en main, s'il y en a une : le bouton « Nouveau » devient
+   *  alors la corbeille, et sa ligne se referme dans la liste. */
+  const [drag, setDrag] = useState<{ id: string; label: string } | null>(null);
+  /** Ce qui recevrait la conversation si on la lâchait maintenant. */
+  const [target, setTarget] = useState<CibleDepot | null>(null);
+  const targetRef = useRef<CibleDepot | null>(null);
+  /** Le fantôme suit le curseur sans repasser par React à chaque mouvement. */
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingSession = drag !== null;
+  const overBin = target?.kind === "archive";
+  const overProject = target?.kind === "project" ? target.id : null;
+
+  // Les rappels du geste lisent les listes au moment du lâcher, pas celles du
+  // départ : une conversation peut arriver entre-temps.
+  const dropRef = useRef<(id: string, cible: CibleDepot) => void>(() => {});
 
   useEffect(() => {
-    const onDragStart = (e: Event) => {
-      const custom = e as CustomEvent<{ id: string }>;
-      setIsDraggingSession(true);
-      if (custom.detail?.id) {
-        setDraggedSessionId(custom.detail.id);
+    const placer = (x: number, y: number) => {
+      const g = ghostRef.current;
+      if (g) g.style.transform = `translate(${x + 14}px, ${y + 10}px)`;
+    };
+    const viser = (x: number, y: number) => {
+      const cible = cibleSous(x, y);
+      if (!memeCible(cible, targetRef.current)) {
+        targetRef.current = cible;
+        setTarget(cible);
       }
     };
-    const onDragEnd = () => {
-      window.setTimeout(() => {
-        setIsDraggingSession(false);
-        setDraggedSessionId(null);
-        setOverBin(false);
-        setOverProject(null);
-      }, 100);
+    const fin = () => {
+      targetRef.current = null;
+      setTarget(null);
+      setDrag(null);
+    };
+    const onStart = (e: Event) => {
+      const { id, label, x, y } = (e as CustomEvent<SessionDragStart>).detail;
+      setDrag({ id, label });
+      // Le fantôme naît au rendu suivant : on le place dès qu'il existe.
+      requestAnimationFrame(() => placer(x, y));
+    };
+    const onMove = (e: Event) => {
+      const { x, y } = (e as CustomEvent<SessionDragPoint>).detail;
+      placer(x, y);
+      viser(x, y);
+    };
+    const onEnd = (e: Event) => {
+      const { x, y } = (e as CustomEvent<SessionDragPoint>).detail;
+      const cible = cibleSous(x, y);
+      const id = draggedRef.current;
+      fin();
+      if (id && cible) dropRef.current(id, cible);
     };
 
-    window.addEventListener("locaryn:session-drag-start", onDragStart);
-    window.addEventListener("locaryn:session-drag-end", onDragEnd);
-    window.addEventListener("dragend", onDragEnd);
-    window.addEventListener("pointerup", onDragEnd);
-    window.addEventListener("mouseup", onDragEnd);
-
+    window.addEventListener(SESSION_DRAG_START, onStart);
+    window.addEventListener(SESSION_DRAG_MOVE, onMove);
+    window.addEventListener(SESSION_DRAG_END, onEnd);
+    window.addEventListener(SESSION_DRAG_CANCEL, fin);
     return () => {
-      window.removeEventListener("locaryn:session-drag-start", onDragStart);
-      window.removeEventListener("locaryn:session-drag-end", onDragEnd);
-      window.removeEventListener("dragend", onDragEnd);
-      window.removeEventListener("pointerup", onDragEnd);
-      window.removeEventListener("mouseup", onDragEnd);
+      window.removeEventListener(SESSION_DRAG_START, onStart);
+      window.removeEventListener(SESSION_DRAG_MOVE, onMove);
+      window.removeEventListener(SESSION_DRAG_END, onEnd);
+      window.removeEventListener(SESSION_DRAG_CANCEL, fin);
     };
   }, []);
+  const draggedRef = useRef<string | null>(null);
+  draggedRef.current = drag?.id ?? null;
 
   /**
    * La sélection multiple : cocher plusieurs conversations pour les archiver ou
@@ -365,13 +403,20 @@ export function LeftPanel({
     }, 200);
   }
 
-  function sessionDeposee(e: React.DragEvent): string | null {
-    const id =
-      e.dataTransfer.getData("application/locaryn-session") ||
-      e.dataTransfer.getData("text/plain") ||
-      draggedSessionId;
-    return id || null;
-  }
+  /** La conversation `id` a été lâchée sur `cible`. Elle part en s'animant ;
+   *  lâchée ailleurs, elle n'arrive jamais ici et reprend sa place. */
+  dropRef.current = (id, cible) => {
+    const s = allKnownSessions.find((x) => x.id === id);
+    if (!s) return;
+    if (cible.kind === "archive") {
+      partirPuis(s, () => onSessionArchived?.(s));
+    } else if (cible.kind === "project") {
+      if (s.project_id !== cible.id) partirPuis(s, () => onSessionMoved?.(s, cible.id));
+    } else if (cible.id !== s.id && onSessionsMerged) {
+      const dest = allKnownSessions.find((x) => x.id === cible.id);
+      if (dest) partirPuis(s, () => onSessionsMerged(dest, s.id));
+    }
+  };
 
   // Les menus de déplacement doivent voir les conversations de tous les
   // groupes, pas seulement celles du projet actuellement ouvert.
@@ -513,6 +558,7 @@ export function LeftPanel({
       {isDraggingSession ? (
         <div
           className={`locaryn-newchat-full locaryn-bin${overBin ? " locaryn-bin-hot" : ""}`}
+          data-drop="archive"
           style={{
             display: "flex",
             alignItems: "center",
@@ -521,34 +567,7 @@ export function LeftPanel({
             background: overBin ? "rgba(239, 68, 68, 0.25)" : "rgba(239, 68, 68, 0.12)",
             borderColor: overBin ? "var(--danger)" : "rgba(239, 68, 68, 0.4)",
             color: "var(--danger)",
-            cursor: "copy",
             transition: "all 0.15s ease",
-          }}
-          onDragEnter={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.dataTransfer.dropEffect = "move";
-            setOverBin(true);
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.dataTransfer.dropEffect = "move";
-            if (!overBin) setOverBin(true);
-          }}
-          onDragLeave={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-              setOverBin(false);
-            }
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setOverBin(false);
-            setIsDraggingSession(false);
-            const id = sessionDeposee(e);
-            const s = allKnownSessions.find((x) => x.id === id);
-            if (s) partirPuis(s, () => onSessionArchived?.(s));
           }}
         >
           <Icon name="archive" size={15} />
@@ -660,9 +679,9 @@ export function LeftPanel({
                       onRename={(t) => onSessionRenamed?.(s, t)}
                       onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
                       onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
-                      onMergeInto={
-                        onSessionsMerged ? (source) => onSessionsMerged(s, source) : undefined
-                      }
+                      acceptsMerge={Boolean(onSessionsMerged)}
+                      dragging={drag?.id === s.id}
+                      dropHot={target?.kind === "merge" && target.id === s.id}
                       selecting={selecting}
                       selected={selected.has(s.id)}
                       onToggleSelect={(range) =>
@@ -730,32 +749,8 @@ export function LeftPanel({
                       }`}
                       onClick={() => onSelectProject(p)}
                       title={p.path}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.dataTransfer.dropEffect = "move";
-                        setOverProject(p.id);
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.dataTransfer.dropEffect = "move";
-                        if (overProject !== p.id) setOverProject(p.id);
-                      }}
-                      onDragLeave={(e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                          setOverProject((cur) => (cur === p.id ? null : cur));
-                        }
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setOverProject(null);
-                        const id = sessionDeposee(e);
-                        const s = allKnownSessions.find((x) => x.id === id);
-                        if (s && s.project_id !== p.id)
-                          partirPuis(s, () => onSessionMoved?.(s, p.id));
-                      }}
+                      data-drop="project"
+                      data-drop-id={p.id}
                     >
                       <Icon name="project" size={14} />
                       <span className="locaryn-history-group-label">{p.name}</span>
@@ -882,11 +877,9 @@ export function LeftPanel({
                               onRename={(t) => onSessionRenamed?.(s, t)}
                               onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
                               onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
-                              onMergeInto={
-                                onSessionsMerged
-                                  ? (source) => onSessionsMerged(s, source)
-                                  : undefined
-                              }
+                              acceptsMerge={Boolean(onSessionsMerged)}
+                              dragging={drag?.id === s.id}
+                              dropHot={target?.kind === "merge" && target.id === s.id}
                               selecting={selecting}
                               selected={selected.has(s.id)}
                               onToggleSelect={(range) =>
@@ -918,6 +911,21 @@ export function LeftPanel({
           La liste vient de `NavDrawer`, qui décrit les destinations natives et
           y ajoute celles qu'une extension déclare. */}
       {navigation}
+
+      {/* Le fantôme de la conversation en main, sous le curseur. Rendu dans
+          <body> : la barre latérale coupe ce qui dépasse d'elle. */}
+      {drag &&
+        createPortal(
+          <div
+            ref={ghostRef}
+            className={`locaryn-drag-ghost${target ? " locaryn-drag-ghost-hot" : ""}`}
+            aria-hidden="true"
+          >
+            <Icon name={target?.kind === "archive" ? "archive" : "chat"} size={14} />
+            <span className="locaryn-drag-ghost-label">{drag.label}</span>
+          </div>,
+          document.body,
+        )}
     </aside>
   );
 }

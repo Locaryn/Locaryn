@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "../lib/core";
+import { clicApresGlisser, suivreAppui } from "../lib/sessionDrag";
 
 type Props = {
   session: Session;
@@ -25,9 +26,14 @@ type Props = {
   onMove: (projectId: string) => void;
   /** Vrai le temps de l'animation de départ, quand elle quitte la liste. */
   leaving: boolean;
-  /** Une autre conversation a été déposée sur celle-ci : les réunir. Absent,
-   *  la ligne n'accepte pas de dépôt. */
-  onMergeInto?: (sourceId: string) => void;
+  /** Elle est en main : sa place se referme, la liste se resserre, et elle
+   *  revient si on la lâche dans le vide. */
+  dragging?: boolean;
+  /** Une conversation en main la survole, prête à y être versée. */
+  dropHot?: boolean;
+  /** Une autre conversation peut être déposée sur celle-ci pour les réunir
+   *  (le dépôt est traité par la barre latérale). Faux : elle n'en accepte pas. */
+  acceptsMerge?: boolean;
   /** Le mode sélection est ouvert : la ligne montre sa case et un clic la coche
    *  au lieu d'ouvrir la conversation. */
   selecting?: boolean;
@@ -40,8 +46,8 @@ type Props = {
 /**
  * Une conversation dans la barre latérale.
  *
- * Elle se prend et se dépose : dans un projet pour la ranger, sur la corbeille
- * pour l'archiver. Le clic droit ouvre les mêmes choix pour qui préfère un
+ * Elle se prend et se dépose (voir `lib/sessionDrag`) : dans un projet pour la
+ * ranger, sur la corbeille pour l'archiver, sur une autre pour les réunir. Le clic droit ouvre les mêmes choix pour qui préfère un
  * menu, et le renommage se fait sur place — un titre écrit ici est définitif,
  * aucun modèle n'y revient.
  */
@@ -57,46 +63,22 @@ export function SessionRow({
   projects,
   onMove,
   leaving,
-  onMergeInto,
+  dragging = false,
+  dropHot = false,
+  acceptsMerge = false,
   selecting = false,
   selected = false,
   onToggleSelect,
 }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [showSubmenu, setShowSubmenu] = useState(false);
-  /** Une conversation survole celle-ci, prête à y être versée. */
-  const [accueille, setAccueille] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const holdTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
   }, [editing]);
-
-  useEffect(() => {
-    return () => {
-      if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
-    };
-  }, []);
-
-  function startHoldTimer() {
-    if (editing || selecting) return;
-    if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
-    holdTimerRef.current = window.setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("locaryn:session-drag-start", { detail: { id: session.id } }),
-      );
-    }, 280);
-  }
-
-  function clearHoldTimer() {
-    if (holdTimerRef.current) {
-      window.clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = null;
-    }
-  }
 
   // Un menu ouvert se ferme au premier clic ailleurs, ou sur Échap : sinon il
   // reste posé sur l'écran pendant qu'on fait autre chose.
@@ -130,60 +112,16 @@ export function SessionRow({
   return (
     <li
       className={`locaryn-session-row locaryn-drag-item${leaving ? " locaryn-leaving" : ""}${
-        accueille ? " locaryn-session-merge" : ""
-      }`}
-      draggable={!editing && !selecting}
-      onPointerDown={startHoldTimer}
-      onPointerUp={clearHoldTimer}
-      onPointerCancel={clearHoldTimer}
-      onMouseDown={startHoldTimer}
-      onMouseUp={clearHoldTimer}
-      onDragStart={(e) => {
-        clearHoldTimer();
-        e.dataTransfer.setData("application/locaryn-session", session.id);
-        e.dataTransfer.setData("text/plain", session.id);
-        e.dataTransfer.effectAllowed = "move";
-        window.dispatchEvent(
-          new CustomEvent("locaryn:session-drag-start", { detail: { id: session.id } }),
-        );
-      }}
-      onDragEnd={() => {
-        clearHoldTimer();
-        window.dispatchEvent(new CustomEvent("locaryn:session-drag-end"));
-      }}
-      // Déposer une conversation sur une autre les réunit. Le geste dit ce
-      // qu'il fait : on met l'une dans l'autre, littéralement. Une ligne ne
-      // s'accepte pas elle-même, et le survol se voit avant le lâcher —
-      // sinon on découvre la fusion après coup.
-      onDragEnter={(e) => {
-        if (!onMergeInto) return;
-        e.preventDefault();
-        e.stopPropagation();
-        setAccueille(true);
-      }}
-      onDragOver={(e) => {
-        if (!onMergeInto) return;
-        e.preventDefault();
-        e.stopPropagation();
-        e.dataTransfer.dropEffect = "move";
-        if (!accueille) setAccueille(true);
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setAccueille(false);
-        }
-      }}
-      onDrop={(e) => {
-        if (!onMergeInto) return;
-        e.preventDefault();
-        e.stopPropagation();
-        setAccueille(false);
-        const sourceId =
-          e.dataTransfer.getData("application/locaryn-session") ||
-          e.dataTransfer.getData("text/plain");
-        if (sourceId && sourceId !== session.id) {
-          onMergeInto(sourceId);
-        }
+        dragging ? " locaryn-drag-out" : ""
+      }${dropHot ? " locaryn-session-merge" : ""}`}
+      // Déposer une conversation sur une autre les réunit : on met l'une dans
+      // l'autre, littéralement. Le survol se voit avant le lâcher, sinon on
+      // découvre la fusion après coup.
+      data-drop={acceptsMerge && !dragging ? "merge" : undefined}
+      data-drop-id={acceptsMerge && !dragging ? session.id : undefined}
+      onPointerDown={(e) => {
+        if (e.button !== 0 || editing || selecting) return;
+        suivreAppui(e, session.id, label);
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -230,6 +168,8 @@ export function SessionRow({
           }`}
           style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           onClick={(e) => {
+            // Le clic qui termine un glisser n'ouvre rien.
+            if (clicApresGlisser()) return;
             // Un clic ouvre la conversation, sauf en mode sélection ou avec Ctrl,
             // Cmd ou Maj : alors il la coche.
             if (onToggleSelect && (selecting || e.ctrlKey || e.metaKey || e.shiftKey)) {

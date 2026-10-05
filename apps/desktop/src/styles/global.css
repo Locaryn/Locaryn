@@ -10078,19 +10078,66 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
    part, et où.
    --------------------------------------------------------------------------- */
 
+/* Une ligne qu'on prend quitte la liste : sa place se referme et les autres se
+   resserrent. Lâchée dans le vide, elle se rouvre et reprend sa place. */
 .locaryn-drag-item {
-  transition: opacity 180ms ease, transform 180ms ease;
+  max-height: 48px;
+  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), max-height 220ms
+    cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.locaryn-drag-item:active {
-  cursor: grabbing;
-}
+.locaryn-drag-out,
 .locaryn-leaving {
+  max-height: 0;
   opacity: 0;
-  transform: translateX(14px) scale(0.97);
+  overflow: hidden;
   pointer-events: none;
 }
+.locaryn-drag-out {
+  transform: translateX(18px);
+}
+.locaryn-leaving {
+  transform: translateX(14px) scale(0.97);
+}
+:root.locaryn-session-dragging,
+:root.locaryn-session-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+/* Le fantôme : la conversation en main, sous le curseur. */
+.locaryn-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 260px;
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0.94;
+  rotate: -2deg;
+  transition: border-color 120ms ease, rotate 160ms ease;
+}
+.locaryn-drag-ghost-hot {
+  border-color: var(--accent);
+  rotate: 0deg;
+}
+.locaryn-drag-ghost-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 @media (prefers-reduced-motion: reduce) {
-  .locaryn-drag-item {
+  .locaryn-drag-item,
+  .locaryn-drag-ghost {
     transition: none;
   }
 }
