@@ -34,15 +34,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* The notch and the gesture bar. Every full-height screen respects them. */
+/* L'encoche et la barre de gestes sont déjà laissées de côté par l'activité
+   Android (MainActivity : marge native aux dimensions des barres système).
+   Les WebView récentes rapportent pourtant env(safe-area-inset-*) même quand
+   la vue est déjà sous la barre d'état : l'ajouter ici doublait la marge, une
+   bande noire vide de la hauteur de la barre en haut de chaque écran. */
 .lo-screen {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding-top: max(0px, env(safe-area-inset-top, 0px));
-  padding-right: max(0px, env(safe-area-inset-right, 0px));
-  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
-  padding-left: max(0px, env(safe-area-inset-left, 0px));
 }
 
 .lo-pad {
@@ -66,7 +66,7 @@ body {
   bottom: 0;
   z-index: 10;
   padding: var(--space-5);
-  padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom));
+  padding-bottom: var(--space-5);
 }
 
 .lo-center {
@@ -589,7 +589,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   justify-content: flex-end;
   gap: var(--space-4);
   padding: var(--space-6);
-  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom));
+  padding-bottom: var(--space-8);
   background: rgba(0, 0, 0, 0.15);
 }
 .lo-scan-frame {
@@ -745,8 +745,6 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   box-shadow: var(--shadow-2);
   transform: translateX(-100%);
   transition: transform 180ms ease;
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
 }
 .lo-drawer-open {
   transform: translateX(0);
@@ -902,7 +900,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-5);
-  padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+  padding-bottom: var(--space-6);
 }
 
 .lo-cards {
@@ -1004,7 +1002,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   display: flex;
   flex-direction: column;
   padding: var(--space-2) var(--space-3);
-  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  padding-bottom: var(--space-4);
   background: var(--glass-strong);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -1638,7 +1636,7 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  padding-bottom: var(--space-3);
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
