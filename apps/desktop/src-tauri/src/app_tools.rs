@@ -161,6 +161,18 @@ impl HostTools for AppTools {
                 Risk::Medium,
             ),
             spec(
+                "browser_scroll",
+                "Fait défiler la page du navigateur intégré d'un écran (`down`, `up`) ou jusqu'au début ou à la fin (`top`, `bottom`), et rend la position et le texte maintenant visible.",
+                json!({
+                    "type": "object",
+                    "required": ["direction"],
+                    "properties": {
+                        "direction": { "type": "string", "enum": ["down", "up", "top", "bottom"] }
+                    }
+                }),
+                Risk::Low,
+            ),
+            spec(
                 "browser_back",
                 "Revient à la page précédente du navigateur intégré et la rend.",
                 json!({ "type": "object", "properties": {} }),
@@ -192,6 +204,10 @@ impl HostTools for AppTools {
                     resultat(browser::saisir(&self.app, r, texte, valider).await)
                 }
                 _ => erreur("`ref` et `text` sont requis."),
+            },
+            "browser_scroll" => match args.get("direction").and_then(Value::as_str) {
+                Some(d) => resultat(browser::defiler(&self.app, d).await),
+                None => erreur("`direction` manquante : down, up, top ou bottom."),
             },
             "browser_back" => resultat(browser::revenir(&self.app).await),
             autre => erreur(format!("outil de l'application inconnu : {autre}")),

@@ -212,8 +212,12 @@ fn aller(app: &AppHandle, saisie: &str) -> Result<(), String> {
 
 /// Montrer la vue à sa place. Elle est créée au premier appel, sur `url` ou une
 /// page vide.
+///
+/// Toutes ces commandes sont asynchrones : synchrones, Tauri les exécute sur le
+/// fil principal, et `add_child` attend justement ce fil pour créer la vue —
+/// l'application se figeait au premier appel.
 #[tauri::command]
-pub fn browser_show(
+pub async fn browser_show(
     app: AppHandle,
     cadre: Cadre,
     url: Option<String>,
@@ -235,7 +239,7 @@ pub fn browser_show(
 
 /// Cacher la vue : un autre onglet, une autre page, une fenêtre par-dessus.
 #[tauri::command]
-pub fn browser_hide(app: AppHandle) -> Result<(), String> {
+pub async fn browser_hide(app: AppHandle) -> Result<(), String> {
     match vue(&app) {
         Some(v) => v.hide().map_err(|e| e.to_string()),
         None => Ok(()),
@@ -244,7 +248,7 @@ pub fn browser_hide(app: AppHandle) -> Result<(), String> {
 
 /// Suivre la place de l'onglet (redimensionnement du panneau, de la fenêtre).
 #[tauri::command]
-pub fn browser_bounds(app: AppHandle, cadre: Cadre) -> Result<(), String> {
+pub async fn browser_bounds(app: AppHandle, cadre: Cadre) -> Result<(), String> {
     match vue(&app) {
         Some(v) => poser(&v, cadre),
         None => Ok(()),
@@ -252,13 +256,13 @@ pub fn browser_bounds(app: AppHandle, cadre: Cadre) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn browser_navigate(app: AppHandle, url: String) -> Result<(), String> {
+pub async fn browser_navigate(app: AppHandle, url: String) -> Result<(), String> {
     aller(&app, &url)
 }
 
 /// `back`, `forward` ou `reload`.
 #[tauri::command]
-pub fn browser_history(app: AppHandle, action: String) -> Result<(), String> {
+pub async fn browser_history(app: AppHandle, action: String) -> Result<(), String> {
     let Some(v) = vue(&app) else {
         return Ok(());
     };
@@ -271,7 +275,7 @@ pub fn browser_history(app: AppHandle, action: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn browser_state() -> EtatNavigateur {
+pub async fn browser_state() -> EtatNavigateur {
     etat()
 }
 
@@ -457,9 +461,55 @@ pub async fn saisir(
     apres_action(app, avant).await
 }
 
+/// Faire défiler la page : `down`, `up` (un écran), `top` ou `bottom`. Rend la
+/// position et le texte maintenant à l'écran — la lecture complète s'arrête
+/// au début d'une longue page, c'est ce qui manquait pour en voir la fin.
+pub async fn defiler(app: &AppHandle, direction: &str) -> Result<String, String> {
+    let geste = match direction {
+        "down" => "window.scrollBy(0, window.innerHeight * 0.9)",
+        "up" => "window.scrollBy(0, -window.innerHeight * 0.9)",
+        "top" => "window.scrollTo(0, 0)",
+        "bottom" => "window.scrollTo(0, document.documentElement.scrollHeight)",
+        autre => {
+            return Err(format!(
+                "Direction « {autre} » inconnue : down, up, top ou bottom."
+            ))
+        }
+    };
+    let script = format!(
+        r#"(() => {{ try {{
+  {geste};
+  const vus = []; let taille = 0;
+  const marche = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while (marche.nextNode() && taille < 6000) {{
+    const t = marche.currentNode.textContent.trim();
+    const parent = marche.currentNode.parentElement;
+    if (!t || !parent) continue;
+    const r = parent.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > window.innerHeight || r.width === 0) continue;
+    vus.push(t); taille += t.length;
+  }}
+  const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+  return {{ position: Math.round(100 * window.scrollY / max), texte: vus.join(" ").replace(/\s+/g, " ").slice(0, 6000) }};
+}} catch (err) {{ return {{ error: String(err) }}; }} }})()"#
+    );
+    let premier = evaluer(app, &script).await?;
+    let position = premier
+        .get("position")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let texte = premier
+        .get("texte")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    Ok(format!(
+        "Position : {position} % de la page.\n\nÀ l'écran :\n{texte}\n\n(Les numéros d'éléments de la dernière lecture restent valables ; browser_read les renumérote.)"
+    ))
+}
+
 pub async fn revenir(app: &AppHandle) -> Result<String, String> {
     let avant = etat().chargements;
-    browser_history(app.clone(), "back".into())?;
+    browser_history(app.clone(), "back".into()).await?;
     apres_action(app, avant).await
 }
 
