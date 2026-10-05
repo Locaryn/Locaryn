@@ -1,0 +1,571 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Présentation du premier lancement — bureau, téléphone, web.
+
+   Plat, une seule teinte d'accent, bordures fines : la direction du reste de
+   l'interface. Chaque élément animé a pour état de repos son image finale,
+   si bien qu'avec « réduire les animations » la scène reste lisible, figée.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.lo-pres {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  animation: lo-pres-in 320ms var(--ease) both;
+}
+
+.lo-pres-skip {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 14px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.lo-pres-skip:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.lo-pres-skip:focus-visible,
+.lo-pres-btn:focus-visible,
+.lo-pres-dot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.lo-pres-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 40px;
+  align-items: center;
+  width: 100%;
+  max-width: 880px;
+}
+
+.lo-pres-stage {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  animation: lo-pres-stage-in 420ms var(--ease) both;
+}
+
+.lo-pres-text {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: lo-pres-text-in 360ms var(--ease) 60ms both;
+}
+.lo-pres-kicker {
+  color: var(--text-faint);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.lo-pres-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.lo-pres-body {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.lo-pres-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+}
+.lo-pres-dots {
+  display: flex;
+  gap: 6px;
+}
+.lo-pres-dot {
+  width: 16px;
+  height: 6px;
+  padding: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: width 240ms var(--ease), background var(--dur-fast) var(--ease);
+}
+.lo-pres-dot.is-on {
+  width: 28px;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.lo-pres-buttons {
+  display: flex;
+  gap: 8px;
+}
+.lo-pres-btn {
+  min-height: 44px;
+  padding: 0 20px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    transform 80ms var(--ease);
+}
+.lo-pres-btn:active {
+  transform: scale(0.98);
+}
+.lo-pres-btn-primary {
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+.lo-pres-btn-primary:hover {
+  filter: brightness(1.08);
+}
+.lo-pres-btn-ghost {
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+}
+.lo-pres-btn-ghost:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+@media (max-width: 720px) {
+  .lo-pres {
+    align-items: start;
+    padding-top: 64px;
+  }
+  .lo-pres-card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .lo-pres-title {
+    font-size: 22px;
+  }
+}
+
+@keyframes lo-pres-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes lo-pres-stage-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+@keyframes lo-pres-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ── Scènes ──────────────────────────────────────────────────────── */
+
+.lo-scene {
+  width: 84%;
+  height: auto;
+  overflow: visible;
+}
+.lo-scene * {
+  transform-box: fill-box;
+}
+.ls-line {
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.ls-faint {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.ls-fill-soft {
+  fill: var(--surface-2);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.ls-track {
+  fill: var(--surface-2);
+}
+.ls-track-line {
+  stroke: var(--border);
+  stroke-width: 2;
+}
+.ls-tick {
+  fill: var(--surface);
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+}
+.ls-accent {
+  fill: var(--accent);
+  stroke: none;
+}
+.ls-accent-soft {
+  fill: var(--accent-fill);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+.ls-accent-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+path.ls-accent {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* Local : la barre se remplit, puis le point s'allume. */
+.ls-load {
+  transform-origin: left center;
+  animation: ls-load 4.8s var(--ease) infinite;
+}
+.ls-ready {
+  transform-origin: center;
+  animation: ls-ready 4.8s var(--ease) infinite;
+}
+@keyframes ls-load {
+  0% {
+    transform: scaleX(0);
+  }
+  55%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+@keyframes ls-ready {
+  0%,
+  58% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  70%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Conversation : les bulles arrivent, la réflexion se déplie puis se replie. */
+.ls-pop {
+  animation: ls-pop 5.4s var(--ease) infinite;
+}
+.ls-d1 {
+  animation-delay: 0.6s;
+}
+.ls-d2 {
+  animation-delay: 2.2s;
+}
+.ls-fold {
+  transform-origin: top center;
+  animation: ls-fold 5.4s var(--ease) 1s infinite;
+}
+@keyframes ls-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  10%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes ls-fold {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+  12%,
+  40% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  52%,
+  88% {
+    opacity: 1;
+    transform: scaleY(0.3);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Dossier : la conversation s'y range, puis le cadenas. */
+.ls-attach {
+  animation: ls-attach 4.8s var(--ease) infinite;
+}
+.ls-lock {
+  transform-origin: center;
+  animation: ls-lock 4.8s var(--ease) infinite;
+}
+@keyframes ls-attach {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  40%,
+  100% {
+    opacity: 0;
+    transform: translateY(60px) scale(0.7);
+  }
+}
+@keyframes ls-lock {
+  0%,
+  45% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  58%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Permissions : le curseur glisse jusqu'à Autonome, le bandeau d'accord monte. */
+.ls-knob {
+  transform: translateX(120px);
+  animation: ls-knob 5s var(--ease) infinite;
+}
+.ls-banner {
+  animation: ls-banner 5s var(--ease) infinite;
+}
+@keyframes ls-knob {
+  0%,
+  8% {
+    transform: translateX(0);
+  }
+  45%,
+  100% {
+    transform: translateX(120px);
+  }
+}
+@keyframes ls-banner {
+  0%,
+  50% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  62%,
+  90% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Extensions : trois briques viennent se brancher. */
+.ls-snap {
+  animation: ls-snap 4.6s var(--ease) infinite;
+}
+.ls-from-left {
+  --dx: -18px;
+  --dy: 0px;
+}
+.ls-from-right {
+  --dx: 18px;
+  --dy: 0px;
+  animation-delay: 0.3s;
+}
+.ls-from-top {
+  --dx: 0px;
+  --dy: -18px;
+  animation-delay: 0.6s;
+}
+.ls-wire {
+  stroke: var(--accent);
+  stroke-dasharray: 24;
+  animation: ls-wire 4.6s var(--ease) infinite;
+}
+@keyframes ls-snap {
+  0% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy));
+  }
+  25%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes ls-wire {
+  0%,
+  30% {
+    stroke-dashoffset: 24;
+    opacity: 0;
+  }
+  50%,
+  88% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Glisser : la ligne part, les autres se resserrent, la corbeille s'allume. */
+.ls-ghost {
+  opacity: 0;
+  animation: ls-ghost 5s var(--ease) infinite;
+}
+.ls-collapse {
+  animation: ls-collapse 5s var(--ease) infinite;
+}
+.ls-shift {
+  animation: ls-shift 5s var(--ease) infinite;
+}
+.ls-bin {
+  animation: ls-bin 5s var(--ease) infinite;
+}
+@keyframes ls-ghost {
+  0%,
+  8% {
+    opacity: 0;
+    transform: none;
+  }
+  15% {
+    opacity: 1;
+    transform: rotate(-2deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-64px) rotate(-2deg);
+  }
+  60%,
+  100% {
+    opacity: 0;
+    transform: translateY(-64px) scale(0.9);
+  }
+}
+@keyframes ls-collapse {
+  0%,
+  12% {
+    opacity: 1;
+  }
+  20%,
+  92% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes ls-shift {
+  0%,
+  18% {
+    transform: none;
+  }
+  34%,
+  92% {
+    transform: translateY(-24px);
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes ls-bin {
+  0%,
+  38% {
+    stroke: var(--text-faint);
+  }
+  48%,
+  62% {
+    stroke: var(--accent);
+  }
+  75%,
+  100% {
+    stroke: var(--text-faint);
+  }
+}
+
+/* Téléphone : la ligne de lecture balaie, puis la coche se trace. */
+.ls-scan {
+  animation: ls-scan 4.4s var(--ease) infinite;
+}
+.ls-check {
+  stroke-dasharray: 40;
+  animation: ls-check 4.4s var(--ease) infinite;
+}
+@keyframes ls-scan {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(44px);
+  }
+  55%,
+  100% {
+    opacity: 0;
+    transform: translateY(44px);
+  }
+}
+@keyframes ls-check {
+  0%,
+  55% {
+    stroke-dashoffset: 40;
+  }
+  75%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lo-pres,
+  .lo-pres-stage,
+  .lo-pres-text,
+  .lo-scene * {
+    animation: none !important;
+  }
+  .ls-ghost,
+  .ls-collapse {
+    opacity: 1;
+  }
+}

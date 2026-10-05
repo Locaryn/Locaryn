@@ -5,6 +5,7 @@ import { BatchStudio } from "./components/BatchStudio";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
 import { ExtensionsSettings } from "./components/ExtensionsSettings";
+import { FirstRunPresentation } from "./components/FirstRunPresentation";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
 import { NAVIGABLE_VIEWS, NavDrawer, isNativeViewAccessible } from "./components/NavDrawer";
@@ -961,6 +962,7 @@ export function App() {
       onPointerUp={onPointerUp}
       style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}
     >
+      <FirstRunPresentation />
       <TopBar
         onToggleRail={() => setLeftOpen((v) => !v)}
         activeView={activeView}

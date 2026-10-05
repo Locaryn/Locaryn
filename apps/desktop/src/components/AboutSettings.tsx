@@ -8,6 +8,7 @@ import {
   core,
   coreMode,
 } from "../lib/core";
+import { PRESENTATION_REPLAY } from "../lib/presentation";
 import { CAPS } from "./EngineSettings";
 import { demanderVerification } from "./UpdateDialog";
 
@@ -115,6 +116,13 @@ export function AboutSettings() {
             )}
             <button type="button" className="locaryn-btn-ghost" onClick={openReleases}>
               Voir les versions sur GitHub
+            </button>
+            <button
+              type="button"
+              className="locaryn-btn-ghost"
+              onClick={() => window.dispatchEvent(new Event(PRESENTATION_REPLAY))}
+            >
+              Revoir la présentation
             </button>
           </div>
         </div>

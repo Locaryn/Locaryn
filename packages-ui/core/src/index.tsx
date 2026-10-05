@@ -53,3 +53,11 @@ export {
   type LoSkeletonProps,
   type LoSpinnerProps,
 } from "./loading";
+
+// La présentation du premier lancement : une seule mise en scène, des étapes
+// propres à chaque client.
+export {
+  Presentation,
+  type PresentationScene,
+  type PresentationStep,
+} from "./presentation";
