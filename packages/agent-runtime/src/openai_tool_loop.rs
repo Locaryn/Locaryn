@@ -392,10 +392,12 @@ pub async fn run_openai_tool_loop(
                     match resp {
                         r if r.status().is_success() => r,
                         r => {
+                            let status = r.status();
+                            let body = r.text().await.unwrap_or_default();
                             let _ = tx
                                 .send(StreamEvent::Log {
                                     level: LogLevel::Warn,
-                                    msg: format!("model server returned {}", r.status()),
+                                    msg: server_error_message(status.as_u16(), &body),
                                     source: "openai_tool_loop".into(),
                                 })
                                 .await;
@@ -634,6 +636,39 @@ async fn post_json(
     req.json(body).send().await
 }
 
+/// Ce que la personne lit quand le moteur refuse une requête. Le statut seul
+/// (« model server returned 500 ») ne disait rien. Sur un petit modèle local,
+/// la cause la plus courante est une fenêtre de contexte pleine : la réponse
+/// est coupée, souvent au milieu du JSON d'un appel d'outil.
+fn server_error_message(status: u16, body: &str) -> String {
+    let detail = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| {
+            v.pointer("/error/message")
+                .and_then(|m| m.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| body.trim().to_string());
+    let bas = detail.to_lowercase();
+    if bas.contains("context") && (bas.contains("exceed") || bas.contains("size")) {
+        return "La fenêtre de contexte du modèle est pleine. Augmentez-la dans Paramètres du \
+                modèle, ou repartez d'une nouvelle conversation."
+            .into();
+    }
+    if bas.contains("failed to parse tool call arguments") {
+        return "L'appel d'outil du modèle est arrivé incomplet, le plus souvent parce que la \
+                fenêtre de contexte s'est remplie pendant qu'il l'écrivait. Augmentez-la dans \
+                Paramètres du modèle, ou demandez une tâche plus courte."
+            .into();
+    }
+    let detail: String = detail.chars().take(300).collect();
+    if detail.is_empty() {
+        format!("Le moteur a refusé la requête (HTTP {status}).")
+    } else {
+        format!("Le moteur a refusé la requête (HTTP {status}) : {detail}")
+    }
+}
+
 /// Balises du bloc de réflexion que l'interface replie (`reasoning.ts`).
 pub const REFLEXION_DEBUT: &str = "<think>";
 pub const REFLEXION_FIN: &str = "</think>";
@@ -719,6 +754,17 @@ async fn stream_one_round(
                 Ok(v) => v,
                 Err(_) => continue,
             };
+
+            // Une erreur peut arriver dans le flux, après des jetons déjà
+            // montrés : l'ignorer finissait le tour sans réponse ni motif.
+            if val.get("error").is_some() {
+                let code = val
+                    .pointer("/error/code")
+                    .and_then(|c| c.as_u64())
+                    .and_then(|c| u16::try_from(c).ok())
+                    .unwrap_or(500);
+                return Err(server_error_message(code, json_str));
+            }
 
             if let Some(t) = val.get("timings") {
                 let nombre = |cle: &str| t.get(cle).and_then(|v| v.as_u64()).unwrap_or(0);
@@ -826,6 +872,23 @@ mod tests {
         );
         assert_eq!(sans_reflexion("Début<think>coupé net"), "Début");
         assert_eq!(sans_reflexion("rien à retirer"), "rien à retirer");
+    }
+
+    #[test]
+    fn une_erreur_du_moteur_se_lit_en_clair() {
+        let coupe = r#"{"error":{"code":500,"message":"Failed to parse tool call arguments as JSON: parse error at line 1, column 3515"}}"#;
+        assert!(server_error_message(500, coupe).contains("fenêtre de contexte"));
+        let plein =
+            r#"{"error":{"code":400,"message":"the request exceeds the available context size"}}"#;
+        assert!(server_error_message(400, plein).starts_with("La fenêtre de contexte"));
+        assert_eq!(
+            server_error_message(503, r#"{"error":{"message":"Loading model"}}"#),
+            "Le moteur a refusé la requête (HTTP 503) : Loading model"
+        );
+        assert_eq!(
+            server_error_message(502, ""),
+            "Le moteur a refusé la requête (HTTP 502)."
+        );
     }
 
     #[test]
