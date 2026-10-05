@@ -216,10 +216,12 @@ const LANCEURS_DE_PAQUETS: &[&str] = &[
 ];
 
 fn initialize_timeout(command: &str) -> std::time::Duration {
-    let programme = std::path::Path::new(command)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(command)
+    // Découpé à la main : sous Linux et macOS, `Path` ne voit pas dans `\` un
+    // séparateur, et un chemin Windows écrit dans mcp.json passerait entier.
+    let fichier = command.rsplit(['/', '\\']).next().unwrap_or(command);
+    let programme = fichier
+        .rsplit_once('.')
+        .map_or(fichier, |(nom, _)| nom)
         .to_lowercase();
     if LANCEURS_DE_PAQUETS.contains(&programme.as_str()) {
         INITIALIZE_TIMEOUT_LANCEUR
