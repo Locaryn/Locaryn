@@ -141,11 +141,15 @@ pub fn local_address() -> String {
     "127.0.0.1".to_string()
 }
 
+/// L'empreinte du certificat que le service présente vraiment : celui signé
+/// par l'autorité locale (celle que le QR transmet), ou à défaut l'ancien
+/// auto-signé d'une installation qui n'en a pas encore émis.
 fn read_fingerprint() -> Option<String> {
-    let path = locaryn_config::default_data_dir()
-        .join("tls")
-        .join("daemon-cert.pem");
-    let pem = std::fs::read_to_string(path).ok()?;
+    let data = locaryn_config::default_data_dir();
+    let (emis, _) = locaryn_config::mtls::server_cert_paths(&data);
+    let pem = std::fs::read_to_string(emis)
+        .or_else(|_| std::fs::read_to_string(data.join("tls").join("daemon-cert.pem")))
+        .ok()?;
     locaryn_config::provision::certificate_fingerprint(&pem)
 }
 
@@ -225,8 +229,43 @@ pub struct SetServerArgs {
     pub port: Option<u16>,
 }
 
+/// Le choix « servir ce réseau » survit à un redémarrage de l'application.
+///
+/// Le service vit et meurt avec l'application (il est rattaché à elle) : sans
+/// mémoire, il suffisait de la relancer pour que le mode serveur reste coché
+/// dans l'esprit de l'utilisateur mais éteint en vrai, et le téléphone
+/// trouvait porte close.
+const BRANCHE: &str = "server_mode";
+
+fn retenir(enabled: bool) {
+    if let Err(e) = locaryn_config::set_global(BRANCHE, serde_json::json!({ "enabled": enabled })) {
+        tracing::warn!(error = %e, "choix du mode serveur non enregistré");
+    }
+}
+
+/// Au démarrage : rallume le service si l'utilisateur l'avait laissé allumé.
+pub async fn restore_on_boot() {
+    let voulu = locaryn_config::global_value(BRANCHE)
+        .and_then(|v| v.get("enabled").and_then(serde_json::Value::as_bool))
+        .unwrap_or(false);
+    if !voulu {
+        return;
+    }
+    match set_server_mode(SetServerArgs {
+        enabled: true,
+        port: None,
+    })
+    .await
+    {
+        Ok(s) if s.running => tracing::info!(url = %s.url, "mode serveur rétabli"),
+        Ok(s) => tracing::warn!(blocage = ?s.blocker, "mode serveur non rétabli"),
+        Err(e) => tracing::warn!(error = %e, "mode serveur non rétabli"),
+    }
+}
+
 #[tauri::command]
 pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String> {
+    retenir(args.enabled);
     if !args.enabled {
         // The guard is dropped before the await: a std MutexGuard held across
         // one makes the whole future non-Send, which Tauri commands must be.

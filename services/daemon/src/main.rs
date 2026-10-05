@@ -549,26 +549,35 @@ async fn main() -> anyhow::Result<()> {
             cfg.daemon.tls_key.as_deref(),
             &bind,
         )?;
+        // Serve a certificate issued by the local authority — the one the
+        // pairing QR hands to phones — unless the owner supplied their own.
+        // A client that trusts the CA must be able to validate the server:
+        // with the separate self-signed certificate it rejected the handshake,
+        // and the phone reported « le serveur ne répond pas » on every scan,
+        // although the server was listening on the right address.
+        let names = vec![
+            "localhost".to_string(),
+            "127.0.0.1".to_string(),
+            local_ip_string(),
+        ];
         let config = if cfg.daemon.require_client_cert {
             // Every client must present a certificate this server issued. The
             // handshake fails without one, so an unauthorised caller never
             // reaches the application at all — which is what makes forwarding
             // a port to the internet defensible.
             let ca = mtls::authority(&data_dir_for_tls)?;
-            // Serve a certificate issued by the same authority, so a client
-            // that trusts the CA validates the server too — with a self-signed
-            // one it would be rejected despite trusting us.
-            let names = vec![
-                "localhost".to_string(),
-                "127.0.0.1".to_string(),
-                local_ip_string(),
-            ];
             let (srv_cert, srv_key) =
                 locaryn_config::mtls::ensure_server_cert(&data_dir_for_tls, names)?;
             let cfg_rustls =
                 mtls::server_config_requiring_clients(&srv_cert, &srv_key, &ca.cert_pem)?;
             tracing::info!("mTLS actif : un certificat client signé par cette machine est exigé");
             axum_server::tls_rustls::RustlsConfig::from_config(std::sync::Arc::new(cfg_rustls))
+        } else if files.self_signed {
+            let (srv_cert, srv_key) =
+                locaryn_config::mtls::ensure_server_cert(&data_dir_for_tls, names)?;
+            axum_server::tls_rustls::RustlsConfig::from_pem_file(&srv_cert, &srv_key)
+                .await
+                .map_err(|e| anyhow::anyhow!("chargement du certificat TLS : {e}"))?
         } else {
             axum_server::tls_rustls::RustlsConfig::from_pem_file(&files.cert, &files.key)
                 .await
@@ -577,7 +586,7 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(
             "locaryn-daemon à l écoute sur https://{addr} ({})",
             if files.self_signed {
-                "certificat auto-signé"
+                "certificat de l'autorité locale"
             } else {
                 "certificat fourni"
             }

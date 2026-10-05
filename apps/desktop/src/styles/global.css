@@ -2132,24 +2132,29 @@ dialog:where([open]) {
   flex-direction: column;
   gap: var(--space-1);
 }
+/* La valeur passe sous sa clé quand la colonne est étroite : avec une clé
+   longue (« Adresse de connexion (Mobile / Web) »), elle était réduite à rien
+   et une adresse s'écrivait un caractère par ligne. */
 .locaryn-kv {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: var(--space-4);
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border);
 }
 .locaryn-kv-key {
   color: var(--text-dim);
   font-size: var(--text-base);
-  flex: none;
+  flex: 0 1 auto;
 }
 .locaryn-kv-val {
   color: var(--text);
   font-size: var(--text-base);
   text-align: right;
-  word-break: break-all;
-  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  flex: 1 1 16ch;
   min-width: 0;
 }
 .locaryn-kv-mono {

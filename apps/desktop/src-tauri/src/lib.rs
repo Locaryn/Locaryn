@@ -6460,6 +6460,8 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
     tauri::async_runtime::spawn(async move {
         mcp_servers::start_automatic(&mcp).await;
     });
+    // Le mode serveur laissé allumé se rallume, en arrière-plan lui aussi.
+    tauri::async_runtime::spawn(server_mode::restore_on_boot());
     // Le registre d'attention est aussi géré à part : les commandes le
     // prennent seul, et une question doit rester joignable sans passer
     // par tout le noyau. C'est le même Arc, pas une seconde copie.
