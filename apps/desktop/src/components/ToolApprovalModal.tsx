@@ -51,6 +51,22 @@ const SCOPE_TOOLTIP: Record<RiskScope, string> = {
   always: "Partout, sans limite de durée. Engagement fort — à réserver aux outils sûrs.",
 };
 
+/** Les arguments tels qu'ils partiront. Un code Luau ou un script se lit ligne
+ *  à ligne : en JSON, ses retours à la ligne deviendraient des `\n` illisibles.
+ *  Sans cela, on autorisait `execute_luau` sans voir le code. */
+function readableArgs(args: unknown): string | null {
+  if (args === null || args === undefined) return null;
+  if (typeof args !== "object" || Array.isArray(args)) return JSON.stringify(args, null, 2);
+  const entries = Object.entries(args as Record<string, unknown>);
+  if (entries.length === 0) return null;
+  return entries
+    .map(([key, value]) => {
+      if (typeof value !== "string") return `${key} : ${JSON.stringify(value)}`;
+      return value.includes("\n") ? `${key} :\n${value}` : `${key} : ${value}`;
+    })
+    .join("\n");
+}
+
 function minimumAllowedScope(risk: RiskLevel): RiskScope {
   // RiskScope::minimum_for in Rust mirrors this:
   return "once";
@@ -147,6 +163,7 @@ export function ToolApprovalModal({
   }
 
   const scopeOptions: RiskScope[] = ["once", "session", "project", "always"];
+  const args = approval.diff ? null : readableArgs(approval.args);
   // Un risque critique exige une confirmation saisie, et un blocage dur montre
   // pourquoi : dans ces deux cas rien ne se replie.
   const expanded = open || isCritical || hardBlocked;
@@ -223,6 +240,12 @@ export function ToolApprovalModal({
             <div className="locaryn-approval-row locaryn-approval-row-diff">
               <span className="locaryn-approval-label">Modifications</span>
               <pre className="locaryn-approval-diff">{approval.diff}</pre>
+            </div>
+          )}
+          {args && (
+            <div className="locaryn-approval-row locaryn-approval-row-diff">
+              <span className="locaryn-approval-label">Arguments</span>
+              <pre className="locaryn-approval-diff">{args}</pre>
             </div>
           )}
 
