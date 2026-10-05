@@ -576,6 +576,49 @@ body.locaryn-resizing .locaryn-resizer::after {
   flex-direction: column;
   align-items: center;
 }
+/* Revenir au dernier message quand on est remonté lire. Collé au bas du fil,
+   il ne masque rien quand on y est déjà, puisqu'il n'existe pas. */
+.locaryn-jump-bottom {
+  position: sticky;
+  bottom: var(--space-3);
+  margin-top: auto;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  animation: locaryn-jump-in var(--dur-fast) var(--ease);
+  transition: border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.locaryn-jump-bottom:hover {
+  border-color: var(--accent);
+}
+.locaryn-jump-bottom:active {
+  transform: translateY(1px);
+}
+.locaryn-jump-bottom:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@keyframes locaryn-jump-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-jump-bottom {
+    animation: none;
+  }
+}
 .locaryn-chat-column {
   width: 100%;
   max-width: 720px;
@@ -10918,7 +10961,8 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 320px;
+  /* Le code tient toujours dans la fenêtre, sans barre de défilement. */
+  width: min(360px, 100%, calc(100vh - 220px));
   max-width: 100%;
   aspect-ratio: 1;
   padding: var(--space-4);

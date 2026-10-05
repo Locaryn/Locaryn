@@ -1,5 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   type InstalledExtension,
   type PairingCode,
@@ -55,6 +56,15 @@ export function PairingCodes() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [enlarged, setEnlarged] = useState(false);
+  // Échap referme le plein écran, comme toute fenêtre posée par-dessus.
+  useEffect(() => {
+    if (!enlarged) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setEnlarged(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enlarged]);
   /** Le sens du glissement : la carte suit la direction du déplacement. */
   const [sens, setSens] = useState<"a" | "b">("a");
   const precedent = useRef<string>("local");
@@ -330,8 +340,10 @@ export function PairingCodes() {
             <div className="locaryn-travel-say">
               <p className="locaryn-travel-title">Scannez avec le téléphone</p>
               <p className="locaryn-travel-sub">
-                Le code porte l'adresse et l'empreinte de cette machine. Le code de confirmation
-                n'apparaît ici qu'une fois le téléphone arrivé sur ce serveur.
+                Depuis l'application Locaryn du téléphone, bouton « Scanner un QR code » — pas avec
+                l'appareil photo, qui ne sait pas le lire. Le code porte l'adresse et l'empreinte de
+                cette machine ; le code de confirmation n'apparaît ici qu'une fois le téléphone
+                arrivé sur ce serveur.
               </p>
 
               {/* Personne n'a encore scanné : on le dit, plutôt que de laisser
@@ -437,40 +449,47 @@ export function PairingCodes() {
         )}
       </div>
 
-      {enlarged && code?.qr_svg && (
-        <dialog open className="locaryn-qr-overlay" aria-label="Code QR d'appairage">
-          <button
-            type="button"
-            className="locaryn-qr-overlay-veil"
-            aria-label="Fermer"
-            onClick={() => setEnlarged(false)}
-          />
-          <div className="locaryn-qr-overlay-card">
-            <div className="locaryn-qr-overlay-head">
-              <div>
-                <h3>Code QR d'appairage</h3>
-                <span className="locaryn-field-hint">{choisi.label}</span>
-              </div>
-              <button
-                type="button"
-                className="locaryn-icon-btn"
-                onClick={() => setEnlarged(false)}
-                aria-label="Fermer"
-              >
-                <Icon name="close" size={16} />
-              </button>
-            </div>
-            <div
-              className="locaryn-qr-overlay-code"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG local
-              dangerouslySetInnerHTML={{ __html: code.qr_svg }}
+      {/* À la racine du document : rendu dans le panneau des réglages, dont un
+          parent crée son propre repère (transform, filtre), le « plein écran »
+          restait prisonnier de la zone qui défile. */}
+      {enlarged &&
+        code?.qr_svg &&
+        createPortal(
+          <dialog open className="locaryn-qr-overlay" aria-label="Code QR d'appairage">
+            <button
+              type="button"
+              className="locaryn-qr-overlay-veil"
+              aria-label="Fermer"
+              onClick={() => setEnlarged(false)}
             />
-            <p className="locaryn-field-hint">
-              Pointez la caméra du téléphone vers ce code : la connexion se fait seule.
-            </p>
-          </div>
-        </dialog>
-      )}
+            <div className="locaryn-qr-overlay-card">
+              <div className="locaryn-qr-overlay-head">
+                <div>
+                  <h3>Code QR d'appairage</h3>
+                  <span className="locaryn-field-hint">{choisi.label}</span>
+                </div>
+                <button
+                  type="button"
+                  className="locaryn-icon-btn"
+                  onClick={() => setEnlarged(false)}
+                  aria-label="Fermer"
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+              <div
+                className="locaryn-qr-overlay-code"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG local
+                dangerouslySetInnerHTML={{ __html: code.qr_svg }}
+              />
+              <p className="locaryn-field-hint">
+                Sur le téléphone, ouvrez Locaryn et touchez « Scanner un QR code ». L'appareil photo
+                du téléphone seul ne sait pas lire ce code.
+              </p>
+            </div>
+          </dialog>,
+          document.body,
+        )}
 
       {!busy && code && !code.qr_svg && (
         <div className="locaryn-pairing-warning">Le service n'a pas renvoyé d'image QR.</div>

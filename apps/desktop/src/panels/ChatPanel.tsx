@@ -160,6 +160,9 @@ type Props = {
   extensions?: InstalledExtension[];
 };
 
+/** Écart au bas du fil sous lequel on considère qu'on y est encore. */
+const SEUIL_DU_BAS = 32;
+
 const SUGGESTIONS = [
   "Explique la structure de ce projet",
   "Écris des tests unitaires pour la logique principale",
@@ -483,6 +486,10 @@ export function ChatPanel({
   const [loopCount, setLoopCount] = useState<number | null>(null);
 
   const streamRef = useRef<HTMLDivElement>(null);
+  /** Le fil suit-il le dernier message ? Faux dès que la personne remonte lire,
+   *  même pendant que le modèle écrit. */
+  const followRef = useRef(true);
+  const [detached, setDetached] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // La visionneuse d'image propose de retoucher : elle prépare la demande ici.
@@ -736,10 +743,38 @@ export function ChatPanel({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `items` et `streaming` ne sont pas lus, ils datent le rendu — c'est justement leur changement qui doit faire redescendre le fil sur le dernier message.
   useEffect(() => {
-    if (streamRef.current) {
-      streamRef.current.scrollTop = streamRef.current.scrollHeight;
-    }
+    const el = streamRef.current;
+    if (el && followRef.current) el.scrollTop = el.scrollHeight;
   }, [items, streaming]);
+
+  // Une autre conversation s'ouvre sur son dernier message.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `sessionId` n'est pas lu, il signale le changement de conversation.
+  useEffect(() => {
+    followRef.current = true;
+    setDetached(false);
+  }, [sessionId]);
+
+  /** Remonter lire détache le fil ; revenir en bas le rattache. */
+  function onStreamScroll() {
+    const el = streamRef.current;
+    if (!el) return;
+    const enBas = el.scrollHeight - el.scrollTop - el.clientHeight < SEUIL_DU_BAS;
+    followRef.current = enBas;
+    setDetached(!enBas);
+  }
+
+  /** La molette vers le haut détache aussitôt : sans cela, le jeton suivant
+   *  ramenait le fil en bas avant que l'écart ne compte. */
+  function onStreamWheel(e: React.WheelEvent) {
+    if (e.deltaY < 0) followRef.current = false;
+  }
+
+  function backToBottom() {
+    const el = streamRef.current;
+    followRef.current = true;
+    setDetached(false);
+    if (el) el.scrollTop = el.scrollHeight;
+  }
 
   function autoGrow() {
     const el = inputRef.current;
@@ -988,6 +1023,9 @@ export function ChatPanel({
   }
 
   async function send(textOverride?: string, attachOverride?: Attachment[]) {
+    // Envoyer, c'est vouloir lire la réponse : le fil se rattache au bas.
+    followRef.current = true;
+    setDetached(false);
     // Une commande de plugin tapee en entier doit etre resolue, pas envoyee
     // telle quelle. `textOverride` est ce que la resolution renvoie : le test
     // ne s'applique qu'a la saisie directe, sinon la commande se rappellerait.
@@ -1602,7 +1640,8 @@ export function ChatPanel({
   const { status: contextStatus } = useContextStatus();
   const ctxWindow =
     contextStatus?.running ??
-    contextStatus?.configured ??
+    // 0 : profil automatique, la fenêtre n'est connue qu'une fois le moteur lancé.
+    (contextStatus?.configured || null) ??
     ctxSize ??
     appliedCtx ??
     DEFAULT_MODEL_PARAMS.ctx_size;
@@ -1662,7 +1701,12 @@ export function ChatPanel({
         onOpenMarketplace={onOpenMarketplace}
       />
 
-      <div className="locaryn-chat-scroll" ref={streamRef}>
+      <div
+        className="locaryn-chat-scroll"
+        ref={streamRef}
+        onScroll={onStreamScroll}
+        onWheel={onStreamWheel}
+      >
         {empty ? (
           <div className="locaryn-empty">
             <div className="locaryn-empty-title">Assistant IA Locaryn</div>
@@ -1788,6 +1832,12 @@ export function ChatPanel({
               </div>
             )}
           </div>
+        )}
+        {detached && !empty && (
+          <button type="button" className="locaryn-jump-bottom" onClick={backToBottom}>
+            <Icon name="arrow-down" size={15} />
+            {streaming ? "Suivre la réponse" : "Dernier message"}
+          </button>
         )}
       </div>
 
