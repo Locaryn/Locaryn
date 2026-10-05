@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ConnectIntentModal } from "./components/ConnectIntentModal";
+import "./lib/noReload";
 import "./lib/pluginBridge";
 import "./styles/global.css";
 

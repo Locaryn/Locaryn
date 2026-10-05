@@ -5686,7 +5686,7 @@ const demoCore: CoreApi = {
 // Export — pick the implementation based on the runtime
 // ============================================================================
 
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /** "tauri" = real core, "demo" = browser demo data. */
 export const coreMode: "tauri" | "demo" = isTauri ? "tauri" : "demo";
