@@ -942,6 +942,15 @@ async fn exec_write_file(args: &serde_json::Value, project_root: &Path) -> ToolR
     }
 }
 
+/// Une commande sans fenêtre de console. L'application est une appli fenêtrée :
+/// chaque `cmd`, `rg` ou `grep` lancé sans ce drapeau ouvrait une console noire
+/// le temps de son exécution, à chaque appel d'outil du modèle.
+fn quiet_command(program: &str) -> tokio::process::Command {
+    let mut command = std::process::Command::new(program);
+    locaryn_config::hide_console(&mut command);
+    tokio::process::Command::from(command)
+}
+
 async fn exec_search(args: &serde_json::Value, project_root: &Path) -> ToolResult {
     let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -950,7 +959,7 @@ async fn exec_search(args: &serde_json::Value, project_root: &Path) -> ToolResul
     let glob = args.get("glob").and_then(|v| v.as_str());
 
     // Try ripgrep first.
-    let mut cmd = tokio::process::Command::new("rg");
+    let mut cmd = quiet_command("rg");
     cmd.arg("--line-number").arg("--max-count").arg("50");
     if let Some(g) = glob {
         cmd.arg("-g").arg(g);
@@ -975,7 +984,7 @@ async fn exec_search(args: &serde_json::Value, project_root: &Path) -> ToolResul
         }
         Err(_) => {
             // Fallback: grep -rn
-            let mut gcmd = tokio::process::Command::new("grep");
+            let mut gcmd = quiet_command("grep");
             gcmd.arg("-rn")
                 .arg("--max-count=50")
                 .arg(pattern)
@@ -1004,7 +1013,7 @@ async fn exec_run_command(args: &serde_json::Value, project_root: &Path) -> Tool
     let flag = if cfg!(windows) { "/C" } else { "-c" };
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        tokio::process::Command::new(shell)
+        quiet_command(shell)
             .arg(flag)
             .arg(command)
             .current_dir(project_root)

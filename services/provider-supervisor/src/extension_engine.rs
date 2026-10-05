@@ -415,8 +415,12 @@ pub async fn spawn(
     #[cfg(windows)]
     {
         // CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP : pas de console qui
-        // clignote, et un groupe à tuer d'un bloc à l'arrêt.
-        cmd.creation_flags(0x0800_0008);
+        // clignote, et un groupe à tuer d'un bloc à l'arrêt. Surtout pas
+        // DETACHED_PROCESS (0x8, la valeur passée jusqu'ici) : Windows ignore
+        // alors CREATE_NO_WINDOW, le moteur n'a aucune console, et chaque
+        // programme console qu'il lance — llama-server, nvidia-smi — s'en ouvre
+        // une, visible. Avec une console cachée, ses enfants en héritent.
+        cmd.creation_flags(locaryn_config::HIDDEN_PROCESS_GROUP);
     }
 
     // Sans ceci, fermer l'application laissait le processus tourner : plus

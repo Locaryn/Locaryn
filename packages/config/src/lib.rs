@@ -718,6 +718,11 @@ fn apply_env(cfg: &mut Config) {
     }
 }
 
+/// CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, pour un processus de longue
+/// durée qu'on arrête d'un bloc : il reçoit une console cachée, dont ses propres
+/// enfants héritent au lieu d'en ouvrir une visible.
+pub const HIDDEN_PROCESS_GROUP: u32 = 0x0800_0200;
+
 /// Empêcher Windows d'ouvrir une fenêtre de console pour un sous-processus.
 ///
 /// Une application graphique qui lance un programme console (`python`, `git`,

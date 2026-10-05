@@ -1267,7 +1267,8 @@ async fn spawn_llama_server(
 
     #[cfg(windows)]
     {
-        cmd.creation_flags(0x08000008);
+        // Console cachée plutôt que DETACHED_PROCESS : voir extension_engine.
+        cmd.creation_flags(locaryn_config::HIDDEN_PROCESS_GROUP);
     }
 
     // Sans ceci, fermer l'application laissait llama-server tourner : le
@@ -1489,7 +1490,7 @@ async fn spawn_airllm_server(
 
     #[cfg(windows)]
     {
-        cmd.creation_flags(0x08000008);
+        cmd.creation_flags(locaryn_config::HIDDEN_PROCESS_GROUP);
     }
 
     // Même raison que pour llama-server : sans ceci, un AirLLM resté en
