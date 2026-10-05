@@ -20,7 +20,15 @@ use locaryn_events::{LogLevel, StreamEvent};
 use locaryn_shared_types::TrustLevel;
 use std::time::Instant;
 
-const MAX_TOOL_ROUNDS: u32 = 10;
+/// Dix tours ne suffisaient pas à une tâche menée par étapes : construire six
+/// éléments, plus lire l'état et vérifier, en prend déjà huit.
+const MAX_TOOL_ROUNDS: u32 = 20;
+
+/// Rappel envoyé quand un tour n'a produit que de la réflexion. Mécanique des
+/// outils seulement : il ne dit pas au modèle quoi faire de la tâche.
+const RELANCE_REFLEXION_SEULE: &str = "Ta réponse ne contenait que ta réflexion : aucun outil \
+n'a été appelé et aucune réponse n'a été donnée. Un appel écrit dans la réflexion n'est pas \
+exécuté. Appelle l'outil maintenant si tu voulais le faire, sinon donne ta réponse.";
 
 /// A fully assembled tool call, reconstructed from streamed fragments.
 #[derive(Debug, Clone)]
@@ -35,6 +43,8 @@ struct AssembledCall {
 #[derive(Debug, Default)]
 struct RoundResult {
     content: String,
+    /// Le modèle a réfléchi pendant ce tour (`reasoning_content`).
+    reasoned: bool,
     calls: Vec<AssembledCall>,
     tokens_in: u64,
     tokens_out: u64,
@@ -140,7 +150,18 @@ pub async fn run_openai_tool_loop(
     let all_tools = match crate::tool_budget::server_context(client, endpoint).await {
         Some(ctx) if !all_tools.is_empty() => {
             let before = all_tools.len();
-            let fit = crate::tool_budget::fit(all_tools, ctx, &input.message);
+            // Toute la conversation départage les outils, pas le seul dernier
+            // message : « continue » ne nomme rien, et l'outil dont la tâche
+            // dépendait disparaissait au tour suivant (le modèle essayait
+            // alors de l'appeler dans un shell).
+            let demande: String = input
+                .history
+                .iter()
+                .map(|turn| turn.content.as_str())
+                .chain(std::iter::once(input.message.as_str()))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let fit = crate::tool_budget::fit(all_tools, ctx, &demande);
             if fit.dropped > 0 || fit.compacted {
                 tracing::warn!(
                     contexte = ctx,
@@ -359,6 +380,7 @@ pub async fn run_openai_tool_loop(
         // Consume the first (already-sent) response, then loop.
         let mut pending_resp = Some(first_resp);
         let mut got_final = false;
+        let mut relance_faite = false;
 
         for round in 0..MAX_TOOL_ROUNDS {
             let resp = match pending_resp.take() {
@@ -425,9 +447,28 @@ pub async fn run_openai_tool_loop(
             timings.add(round_result.timings);
 
             if round_result.calls.is_empty() {
+                // Un tour fait de réflexion seule, sans appel ni réponse : le
+                // modèle a écrit son appel d'outil dans sa réflexion (Bonsai y
+                // pose des balises `<parameter>`), où le serveur ne le lit pas.
+                // La tâche s'arrêtait là, muette. Une relance, jamais deux de
+                // suite : un modèle qui recommence n'est pas relancé en boucle.
+                if !relance_faite
+                    && round_result.reasoned
+                    && round_result.content.trim().is_empty()
+                    && round + 1 < MAX_TOOL_ROUNDS
+                {
+                    relance_faite = true;
+                    messages.as_array_mut().unwrap().push(serde_json::json!({
+                        "role": "user",
+                        "content": RELANCE_REFLEXION_SEULE,
+                    }));
+                    continue;
+                }
                 got_final = true;
                 break;
             }
+
+            relance_faite = false;
 
             // Echo the assistant tool-call message back into the transcript.
             let tc_json: Vec<serde_json::Value> = round_result
@@ -800,6 +841,7 @@ async fn stream_one_round(
                     format!("{REFLEXION_DEBUT}{pensee}")
                 };
                 reflexion_ouverte = true;
+                out.reasoned = true;
                 send_token(tx, texte).await?;
             }
 
