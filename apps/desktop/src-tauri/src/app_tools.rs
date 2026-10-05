@@ -9,7 +9,7 @@
 //! Les descriptions ne disent que la mécanique des outils (voir la règle
 //! « aucun caractère injecté ») : quand s'en servir reste l'affaire du modèle.
 
-use crate::{extensions, mcp_servers, Core};
+use crate::{browser, extensions, mcp_servers, Core};
 use locaryn_agent_runtime::host_tools::HostTools;
 use locaryn_agent_runtime::tools::{Risk, ToolResult, ToolSpec};
 use serde_json::{json, Value};
@@ -45,6 +45,20 @@ fn ok(output: String) -> ToolResult {
         output,
         artifact: None,
     }
+}
+
+fn resultat(r: Result<String, String>) -> ToolResult {
+    match r {
+        Ok(texte) => ok(texte),
+        Err(e) => erreur(e),
+    }
+}
+
+/// Le numéro d'élément, qu'un modèle envoie parfois en texte (« 12 »).
+fn reference(args: &Value) -> Option<u64> {
+    let v = args.get("ref")?;
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
 }
 
 fn erreur(output: impl Into<String>) -> ToolResult {
@@ -104,6 +118,54 @@ impl HostTools for AppTools {
                 }),
                 Risk::High,
             ),
+            spec(
+                "browser_open",
+                "Ouvre une adresse (ou une recherche) dans le navigateur intégré de Locaryn, visible par la personne dans l'espace de travail, attend la page et la rend : titre, adresse, texte visible, et les éléments sur lesquels agir, numérotés.",
+                json!({
+                    "type": "object",
+                    "required": ["url"],
+                    "properties": {
+                        "url": { "type": "string", "description": "Adresse (https://…, exemple.fr) ou texte à chercher." }
+                    }
+                }),
+                Risk::Medium,
+            ),
+            spec(
+                "browser_read",
+                "Relit la page ouverte dans le navigateur intégré : titre, adresse, texte visible, éléments numérotés. Les numéros changent à chaque lecture.",
+                json!({ "type": "object", "properties": {} }),
+                Risk::Low,
+            ),
+            spec(
+                "browser_click",
+                "Clique sur l'élément numéro `ref` de la dernière lecture de la page, attend ce qu'il déclenche et rend la page.",
+                json!({
+                    "type": "object",
+                    "required": ["ref"],
+                    "properties": { "ref": { "type": "integer", "description": "Numéro de l'élément dans la dernière lecture." } }
+                }),
+                Risk::Medium,
+            ),
+            spec(
+                "browser_type",
+                "Remplit le champ numéro `ref` de la dernière lecture avec `text` ; `submit` envoie ensuite le formulaire (comme Entrée). Rend la page.",
+                json!({
+                    "type": "object",
+                    "required": ["ref", "text"],
+                    "properties": {
+                        "ref": { "type": "integer" },
+                        "text": { "type": "string" },
+                        "submit": { "type": "boolean", "description": "Envoyer après la saisie (défaut : non)." }
+                    }
+                }),
+                Risk::Medium,
+            ),
+            spec(
+                "browser_back",
+                "Revient à la page précédente du navigateur intégré et la rend.",
+                json!({ "type": "object", "properties": {} }),
+                Risk::Low,
+            ),
         ]
     }
 
@@ -115,6 +177,23 @@ impl HostTools for AppTools {
             "app_list_extensions" => list_extensions(core).await,
             "app_search_extensions" => search_extensions(core, args).await,
             "app_install_extension" => install_extension(core, args).await,
+            "browser_open" => match args.get("url").and_then(Value::as_str) {
+                Some(url) => resultat(browser::ouvrir(&self.app, url).await),
+                None => erreur("`url` manquant."),
+            },
+            "browser_read" => resultat(browser::lire(&self.app, 12_000).await),
+            "browser_click" => match reference(args) {
+                Some(r) => resultat(browser::cliquer(&self.app, r).await),
+                None => erreur("`ref` manquant : le numéro d'un élément de la dernière lecture."),
+            },
+            "browser_type" => match (reference(args), args.get("text").and_then(Value::as_str)) {
+                (Some(r), Some(texte)) => {
+                    let valider = args.get("submit").and_then(Value::as_bool).unwrap_or(false);
+                    resultat(browser::saisir(&self.app, r, texte, valider).await)
+                }
+                _ => erreur("`ref` et `text` sont requis."),
+            },
+            "browser_back" => resultat(browser::revenir(&self.app).await),
             autre => erreur(format!("outil de l'application inconnu : {autre}")),
         }
     }

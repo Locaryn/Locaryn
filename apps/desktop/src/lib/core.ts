@@ -930,6 +930,53 @@ export interface McpServerInfo {
   disabled_tools?: string[];
 }
 
+/** La page du navigateur intégré. */
+export interface BrowserState {
+  url: string;
+  title: string;
+  loading: boolean;
+}
+
+/** Où poser la page, en pixels de la fenêtre. */
+export interface BrowserFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Une entrée du dossier de la conversation. */
+export interface WorkspaceEntry {
+  nom: string;
+  /** Relatif au dossier de la conversation, avec des `/`. */
+  chemin: string;
+  dossier: boolean;
+  taille: number;
+}
+
+export interface WorkspaceFile {
+  chemin: string;
+  /** `null` pour un fichier binaire. */
+  contenu: string | null;
+  taille: number;
+  tronque: boolean;
+}
+
+export interface WorkspaceChange {
+  chemin: string;
+  /** Le code de `git status` : « M », « A », « D », « R », « ?? »… */
+  etat: string;
+  ajouts: number | null;
+  retraits: number | null;
+}
+
+export interface WorkspaceChanges {
+  racine: string;
+  depot: boolean;
+  branche: string | null;
+  fichiers: WorkspaceChange[];
+}
+
 /** Les réglages que les créateurs du modèle actif recommandent (catalogue de son morph). */
 export interface ModelRecommendation {
   temperature: number | null;
@@ -1602,6 +1649,18 @@ export interface CoreApi {
   freeChatProject(): Promise<Project>;
   /** Workspace directory for a session (project path, or temp folder for free chats). */
   sessionWorkspace(sessionId: string): Promise<string>;
+  /** Le navigateur intégré : montrer à sa place, cacher, suivre la place. */
+  browserShow(frame: BrowserFrame, url?: string): Promise<BrowserState>;
+  browserHide(): Promise<void>;
+  browserBounds(frame: BrowserFrame): Promise<void>;
+  browserNavigate(url: string): Promise<void>;
+  browserHistory(action: "back" | "forward" | "reload"): Promise<void>;
+  browserState(): Promise<BrowserState>;
+  /** Le dossier de la conversation, en lecture. */
+  workspaceList(sessionId: string, dossier: string): Promise<WorkspaceEntry[]>;
+  workspaceRead(sessionId: string, chemin: string): Promise<WorkspaceFile>;
+  workspaceChanges(sessionId: string): Promise<WorkspaceChanges>;
+  workspaceDiff(sessionId: string, chemin: string): Promise<string>;
   /** A plan the model produced for a substantial request. */
   /**
    * Decoupe une demande en plan.
@@ -2091,6 +2150,18 @@ const tauriCore: CoreApi = {
   archiveProject: (id) => invoke<void>("archive_project", { id }),
   freeChatProject: () => invoke<Project>("free_chat_project"),
   sessionWorkspace: (sessionId) => invoke<string>("session_workspace", { sessionId }),
+  browserShow: (cadre, url) => invoke<BrowserState>("browser_show", { cadre, url: url ?? null }),
+  browserHide: () => invoke("browser_hide"),
+  browserBounds: (cadre) => invoke("browser_bounds", { cadre }),
+  browserNavigate: (url) => invoke("browser_navigate", { url }),
+  browserHistory: (action) => invoke("browser_history", { action }),
+  browserState: () => invoke<BrowserState>("browser_state"),
+  workspaceList: (sessionId, dossier) =>
+    invoke<WorkspaceEntry[]>("workspace_list", { sessionId, dossier }),
+  workspaceRead: (sessionId, chemin) =>
+    invoke<WorkspaceFile>("workspace_read", { sessionId, chemin }),
+  workspaceChanges: (sessionId) => invoke<WorkspaceChanges>("workspace_changes", { sessionId }),
+  workspaceDiff: (sessionId, chemin) => invoke<string>("workspace_diff", { sessionId, chemin }),
   suggestFollowups: (answer, question) =>
     invoke<string[]>("suggest_followups", { answer, question }),
   planTask: (request, force) => invoke<TaskPlan>("plan_task", { request, force: force ?? null }),
@@ -4238,6 +4309,60 @@ const demoCore: CoreApi = {
     name: "Conversations libres",
   }),
   sessionWorkspace: async () => "/tmp/locaryn-demo",
+  // Le navigateur est une vue native : il n'existe que dans l'application.
+  async browserShow() {
+    return { url: "", title: "", loading: false };
+  },
+  async browserHide() {},
+  async browserBounds() {},
+  async browserNavigate() {
+    throw new Error("Le navigateur intégré s'ouvre dans l'application de bureau.");
+  },
+  async browserHistory() {},
+  async browserState() {
+    return { url: "", title: "", loading: false };
+  },
+  async workspaceList(_sessionId, dossier) {
+    if (dossier === "src") {
+      return [
+        { nom: "main.ts", chemin: "src/main.ts", dossier: false, taille: 1840 },
+        { nom: "ui.ts", chemin: "src/ui.ts", dossier: false, taille: 920 },
+      ];
+    }
+    return [
+      { nom: "src", chemin: "src", dossier: true, taille: 0 },
+      { nom: "README.md", chemin: "README.md", dossier: false, taille: 412 },
+      { nom: "package.json", chemin: "package.json", dossier: false, taille: 286 },
+    ];
+  },
+  async workspaceRead(_sessionId, chemin) {
+    const contenu = `# ${chemin}
+
+Contenu de démonstration.
+`;
+    return { chemin, contenu, taille: contenu.length, tronque: false };
+  },
+  async workspaceChanges() {
+    return {
+      racine: "/tmp/locaryn-demo",
+      depot: true,
+      branche: "main",
+      fichiers: [
+        { chemin: "src/main.ts", etat: "M", ajouts: 12, retraits: 3 },
+        { chemin: "notes.md", etat: "??", ajouts: null, retraits: null },
+      ],
+    };
+  },
+  async workspaceDiff(_sessionId, chemin) {
+    return `--- a/${chemin}
++++ b/${chemin}
+@@ -1,3 +1,4 @@
+ import { ui } from "./ui";
+-const titre = "Bonjour";
++const titre = "Bonjour, Locaryn";
++ui.montrer(titre);
+`;
+  },
   appendChatMessage: async () => {},
   appendAssistantMessage: async () => {},
   // `force` compte aussi dans la demo : le vrai back-end impose alors un plan,

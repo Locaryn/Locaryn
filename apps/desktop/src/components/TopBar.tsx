@@ -159,12 +159,12 @@ export function TopBar({
               </svg>
             </button>
 
-            {/* Preview / Artifacts icon */}
+            {/* L'espace de travail : navigateur, fichiers, terminaux, aperçu */}
             <button
               type="button"
               className={`locaryn-icon-btn locaryn-topbar-action${showPreview ? " locaryn-icon-btn-active" : ""}`}
-              title="Aperçu des Artefacts"
-              aria-label="Ouvrir l'aperçu des artefacts"
+              title="Espace de travail"
+              aria-label="Ouvrir l'espace de travail : navigateur, fichiers, terminal, modifications"
               aria-pressed={showPreview}
               onClick={onTogglePreview}
             >

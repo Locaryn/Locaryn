@@ -34,11 +34,11 @@ import { pickFolder } from "./lib/dialog";
 import type { ModelDownloadSource } from "./lib/modelRegistry";
 import { setRunReveal } from "./lib/runPanel";
 import { taskCenter } from "./lib/taskCenter";
+import { KINDS, type WorkspaceKind, openTab, setWorkspaceOpen, toggleTab } from "./lib/workspace";
 import { BottomPanel } from "./panels/BottomPanel";
 import { ChatPanel } from "./panels/ChatPanel";
 import { LeftPanel } from "./panels/LeftPanel";
-import { ModelConfigPanel } from "./panels/ModelConfigPanel";
-import { RunPanel } from "./panels/RunPanel";
+import { WorkspacePanel, useWorkspace } from "./panels/WorkspacePanel";
 import { AccountView } from "./views/AccountView";
 import { FiguresView } from "./views/FiguresView";
 import { InstalledModelsView } from "./views/InstalledModelsView";
@@ -54,7 +54,8 @@ type PanelKey = "leftW" | "rightW" | "bottomH";
  *  panneau sans moyen de le rattraper ; sans maximum, elle écrase le chat. */
 const PANEL_LIMITS: Record<PanelKey, { min: number; max: number }> = {
   leftW: { min: 160, max: 500 },
-  rightW: { min: 240, max: 640 },
+  // Large : le navigateur intégré y affiche de vraies pages.
+  rightW: { min: 280, max: 1100 },
   bottomH: { min: 120, max: 520 },
 };
 
@@ -213,7 +214,10 @@ export function App() {
 
   // Toggleable panels & drawers
   const [leftOpen, setLeftOpen] = useState(true);
-  const [showModelConfig, setShowModelConfig] = useState(false);
+  // Le panneau de droite : l'espace de travail et ses onglets (navigateur,
+  // fichiers, terminaux, modifications, aperçu, modèle).
+  const workspace = useWorkspace();
+  const ongletActif = workspace.tabs.find((t) => t.id === workspace.active);
   /** Fenetre de contexte appliquee au moteur (panneau Parametres du Modele).
    *  La jauge du chat la lit : elle doit raconter ce que le moteur a. */
   const [appliedCtx, setAppliedCtx] = useState<number | null>(null);
@@ -223,12 +227,24 @@ export function App() {
       .then((p) => setAppliedCtx(p.ctx_size))
       .catch(() => {});
   }, []);
-  const [showPreview, setShowPreview] = useState(false);
   // A run opens the pane that displays it, so output is never produced into a
   // panel the user cannot see.
   useEffect(() => {
-    setRunReveal(() => setShowPreview(true));
+    setRunReveal(() => openTab("preview"));
     return () => setRunReveal(null);
+  }, []);
+  // Le modèle ouvre le navigateur : la personne doit voir ce qu'il y fait.
+  useEffect(() => {
+    const un = listen<{ tab?: string }>("locaryn://workspace-open", (ev) => {
+      const tab = ev.payload?.tab;
+      if (tab && tab in KINDS) openTab(tab as WorkspaceKind);
+    }).catch((e: unknown) => {
+      console.warn("ouverture de l'espace de travail non écoutée :", e);
+      return null;
+    });
+    return () => {
+      void un.then((f) => f?.());
+    };
   }, []);
   const [showBottom, setShowBottom] = useState(false);
   /** Chat governance dialog (the shield button in the top bar). */
@@ -973,20 +989,12 @@ export function App() {
           activeSession?.ephemeral ? "Conversation éphémère" : (activeSession?.title ?? null)
         }
         provider={health?.active_provider ?? null}
-        showPreview={showPreview}
+        showPreview={workspace.open && ongletActif?.kind !== "model"}
         showBottom={showBottom}
-        showModelConfig={showModelConfig}
-        onTogglePreview={() => {
-          // Les deux panneaux se docquent au même endroit : afficher l'un
-          // referme forcément l'autre plutôt que de les empiler côte à côte.
-          setShowPreview((v) => !v);
-          setShowModelConfig(false);
-        }}
+        showModelConfig={workspace.open && ongletActif?.kind === "model"}
+        onTogglePreview={() => setWorkspaceOpen(!workspace.open)}
         onToggleBottom={() => setShowBottom(!showBottom)}
-        onToggleModelConfig={() => {
-          setShowModelConfig((v) => !v);
-          setShowPreview(false);
-        }}
+        onToggleModelConfig={() => toggleTab("model")}
         onChatSettingsClick={() => theme.setSettingsOpen(true)}
         onNewEphemeralChat={
           activeSession?.ephemeral ? handleNewStandaloneChat : handleNewEphemeralChat
@@ -1444,7 +1452,7 @@ export function App() {
 
         {/* Right side panels for Chat view — ils appartiennent au chat, pas aux
             pages qui prennent sa place. */}
-        {showModelConfig && activeView === "chat" && (
+        {workspace.open && activeView === "chat" && (
           <>
             <div
               className="locaryn-resizer locaryn-resizer-v"
@@ -1452,37 +1460,17 @@ export function App() {
               onKeyDown={nudgePanel("rightW")}
               role="separator"
               aria-orientation="vertical"
-              aria-label="Largeur du panneau de droite"
+              aria-label="Largeur de l'espace de travail"
               aria-valuenow={rightW}
               aria-valuemin={PANEL_LIMITS.rightW.min}
               aria-valuemax={PANEL_LIMITS.rightW.max}
               tabIndex={0}
             />
-            <div style={{ width: rightW, flex: "none", display: "flex", minWidth: 0 }}>
-              <ModelConfigPanel
+            <div className="locaryn-right-dock" style={{ width: rightW }}>
+              <WorkspacePanel
                 sessionId={activeSession?.id ?? null}
-                onClose={() => setShowModelConfig(false)}
+                projectPath={activeProject?.path ?? null}
               />
-            </div>
-          </>
-        )}
-
-        {showPreview && activeView === "chat" && (
-          <>
-            <div
-              className="locaryn-resizer locaryn-resizer-v"
-              onPointerDown={startDrag("rightW")}
-              onKeyDown={nudgePanel("rightW")}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Largeur du panneau d'aperçu"
-              aria-valuenow={rightW}
-              aria-valuemin={PANEL_LIMITS.rightW.min}
-              aria-valuemax={PANEL_LIMITS.rightW.max}
-              tabIndex={0}
-            />
-            <div style={{ width: rightW, flex: "none", display: "flex", minWidth: 0 }}>
-              <RunPanel />
             </div>
           </>
         )}

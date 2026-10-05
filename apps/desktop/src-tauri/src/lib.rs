@@ -10,6 +10,7 @@
 
 mod airllm;
 mod app_tools;
+mod browser;
 use locaryn_agent_runtime::approval_gate;
 mod attention;
 mod client_cert;
@@ -27,6 +28,7 @@ mod model_recommendations;
 mod model_residency;
 mod notifications;
 mod project_context;
+mod workspace;
 use locaryn_sdk::secure_client;
 mod server_history;
 mod server_mode;
@@ -6869,6 +6871,16 @@ pub fn run() {
             get_model_ctx_capacity,
             context_status,
             model_recommendations::model_recommendation,
+            browser::browser_show,
+            browser::browser_hide,
+            browser::browser_bounds,
+            browser::browser_navigate,
+            browser::browser_history,
+            browser::browser_state,
+            workspace::workspace_list,
+            workspace::workspace_read,
+            workspace::workspace_changes,
+            workspace::workspace_diff,
             get_inference_config,
             set_inference_config,
             get_profile_preset,
