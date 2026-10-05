@@ -128,8 +128,16 @@ pub async fn run_openai_tool_loop(
     // Outils intégrés + ceux apportés par les extensions actives + ceux des
     // serveurs MCP. Tous passent par la même liste, donc par la même
     // demande d'accord.
+    // Les outils de l'application elle-même valent dans un projet comme dans
+    // une conversation libre : ajouter un connecteur n'a pas besoin de dossier.
+    let host_specs = input
+        .host_tools
+        .as_ref()
+        .map(|h| h.0.specs())
+        .unwrap_or_default();
     let all_tools: Vec<_> = tools
         .into_iter()
+        .chain(host_specs)
         .chain(extension_tools)
         .chain(mcp_tools.clone())
         .collect();
@@ -361,6 +369,7 @@ pub async fn run_openai_tool_loop(
     let mcp_state_for_dispatch = input.mcp_state.clone();
     let approval = input.approval.clone();
     let question = input.question.clone();
+    let host_tools = input.host_tools.clone();
 
     tokio::spawn(async move {
         let ctx = ToolContext {
@@ -508,6 +517,7 @@ pub async fn run_openai_tool_loop(
                         mcp: mcp_state_for_dispatch.as_deref(),
                         approval: approval.as_ref(),
                         question: question.as_ref(),
+                        host: host_tools.as_ref(),
                     },
                 )
                 .await

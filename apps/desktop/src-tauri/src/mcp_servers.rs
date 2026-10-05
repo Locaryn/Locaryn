@@ -137,7 +137,10 @@ pub struct McpServerPreview {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ImportMcpResult {
+    /// Tous les connecteurs, pour rafraîchir l'écran d'un coup.
     pub servers: Vec<McpServerInfo>,
+    /// Les noms de ceux que cet import vient d'ajouter.
+    pub imported: Vec<String>,
     pub errors: Vec<String>,
 }
 
@@ -441,6 +444,7 @@ pub async fn import_mcp_json(
     }
     Ok(ImportMcpResult {
         servers: list_mcp_servers(core).await?,
+        imported: parsed.into_iter().map(|(n, _)| n).collect(),
         errors,
     })
 }

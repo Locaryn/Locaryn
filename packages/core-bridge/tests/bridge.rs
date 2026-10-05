@@ -84,6 +84,7 @@ fn input(session: uuid::Uuid, message: &str) -> AgentInput {
         approval: Some(ApprovalHandle::new(YesGate)),
         // Aucune question dans ces tests : le pont relaie, il ne demande pas.
         question: None,
+        host_tools: None,
         bearer_token: None,
         native_chat_api: false,
     }

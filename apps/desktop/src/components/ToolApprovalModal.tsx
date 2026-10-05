@@ -132,6 +132,12 @@ export function ToolApprovalModal({
   if (!approval) return null;
 
   const isCritical = approval.risk === "critical";
+  // Une installation porte le motif que lui donne la table d'approbation
+  // (`approval_decision`) : l'annoncer « Modifie le projet » trompait sur ce
+  // qui allait arriver.
+  const titre = approval.reason.startsWith("Installation")
+    ? "Installation"
+    : RISK_LABEL[approval.risk];
   const isRemote = approval.is_remote;
   const targetNeedsTyping = isCritical && confirmTargetLabel;
   const confirmOk =
@@ -189,7 +195,7 @@ export function ToolApprovalModal({
         <div className="locaryn-approval-summary">
           <div className="locaryn-approval-headline">
             <h2 id="locaryn-approval-title" className="locaryn-approval-banner-title">
-              {RISK_LABEL[approval.risk]}
+              {titre}
             </h2>
             <code className="locaryn-approval-tool">{approval.tool}</code>
           </div>

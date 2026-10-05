@@ -9,6 +9,7 @@
 //! lives in the shell.
 
 mod airllm;
+mod app_tools;
 use locaryn_agent_runtime::approval_gate;
 mod attention;
 mod client_cert;
@@ -1723,6 +1724,7 @@ pub struct JointDocumentIn {
 // l'API IPC et casserait tous les appelants.
 #[allow(clippy::too_many_arguments)]
 async fn send_message(
+    app: tauri::AppHandle,
     core: State<'_, Core>,
     session_id: Uuid,
     content: String,
@@ -2141,6 +2143,11 @@ async fn send_message(
         question: Some(locaryn_agent_runtime::question::QuestionHandle(Arc::new(
             core.attention.clone(),
         ))),
+        // Connecteurs, morphs, skills : le modèle agit sur l'application par
+        // les mêmes commandes que l'écran des réglages.
+        host_tools: Some(locaryn_agent_runtime::host_tools::HostToolsHandle::new(
+            app_tools::AppTools::new(app.clone()),
+        )),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
         // Le dialecte natif n'existait que pour Ollama, qui n'honorait

@@ -191,6 +191,7 @@ pub async fn run(cfg: Arc<CoreAgentConfig>, input: AgentInput) -> Result<EventSt
                         mcp: input.mcp_state.as_deref(),
                         approval: input.approval.as_ref(),
                         question: input.question.as_ref(),
+                        host: input.host_tools.as_ref(),
                     },
                 )
                 .await
@@ -390,6 +391,9 @@ async fn all_tools(cfg: &CoreAgentConfig, input: &AgentInput) -> Vec<ToolSpec> {
     let mut tools = locaryn_agent_runtime::tools::builtin_tools();
     if let Some(mcp) = &input.mcp_state {
         tools.extend(locaryn_agent_runtime::mcp_tools::collect_mcp_tools(mcp).await);
+    }
+    if let Some(h) = &input.host_tools {
+        tools.extend(h.0.specs());
     }
     // Un noyau qui possède déjà un outil du même nom refuse toute la requête
     // (« client tool name conflict »). Ceux-là sont les siens : on ne les lui

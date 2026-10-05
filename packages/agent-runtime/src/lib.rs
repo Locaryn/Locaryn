@@ -7,6 +7,7 @@ pub mod approval;
 pub mod approval_gate;
 pub mod embeddings;
 pub mod exec;
+pub mod host_tools;
 pub mod reasoning;
 
 pub mod mcp_tools;
@@ -104,6 +105,9 @@ pub struct AgentInput {
     /// répondre qu'il n'y a personne à qui demander, ce que le modèle sait
     /// alors dire dans sa réponse au lieu de deviner en silence.
     pub question: Option<question::QuestionHandle>,
+    /// Les outils par lesquels le modèle agit sur l'application elle-même
+    /// (connecteurs, morphs, skills). `None` : un hôte qui ne les prête pas.
+    pub host_tools: Option<host_tools::HostToolsHandle>,
     /// Jeton Bearer envoyé à l'endpoint (noyaux alternatifs : OpenClaw,
     /// Hermes…). `None` = pas d'en-tête d'authentification.
     pub bearer_token: Option<String>,

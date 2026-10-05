@@ -967,6 +967,8 @@ export interface McpJsonPreview {
 
 export interface ImportMcpResult {
   servers: McpServerInfo[];
+  /** Les noms des connecteurs que cet import vient d'ajouter. */
+  imported: string[];
   /** Pourquoi certains serveurs n'ont pas démarré, quand on l'a demandé. */
   errors: string[];
 }
@@ -5266,7 +5268,7 @@ const demoCore: CoreApi = {
       exists: false,
     }));
   },
-  importMcpJson: async () => ({ servers: [], errors: [] }),
+  importMcpJson: async () => ({ servers: [], imported: [], errors: [] }),
   removeMcpServer: async () => [],
   startMcpServer: async () => [
     "get_conversations",

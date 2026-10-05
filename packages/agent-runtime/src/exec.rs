@@ -8,6 +8,7 @@
 //! reviendrait à maintenir deux politiques de sécurité en parallèle.
 
 use crate::approval::{ApprovalHandle, ApprovalRequest};
+use crate::host_tools::HostToolsHandle;
 use crate::question::QuestionHandle;
 use crate::tools::{approval_decision, dispatch_tool, ApprovalInput, Risk, ToolContext, ToolSpec};
 use locaryn_events::StreamEvent;
@@ -26,6 +27,8 @@ pub struct ToolDispatchContext<'a> {
     /// sans interface : `ask_user` répond alors qu'il n'a personne à qui
     /// demander, au lieu de laisser croire que la question a été posée.
     pub question: Option<&'a QuestionHandle>,
+    /// Les outils de l'application elle-même (connecteurs, morphs, skills).
+    pub host: Option<&'a HostToolsHandle>,
 }
 
 /// Exécute un appel d'outil du modèle, avec le gating d'approbation, et
@@ -48,6 +51,7 @@ pub async fn execute_tool_call(
         mcp,
         approval,
         question,
+        host,
     } = *dispatch;
 
     // L'événement ToolCall part d'abord : c'est lui qui fait apparaître la
@@ -215,7 +219,9 @@ pub async fn execute_tool_call(
     } else {
         // Un nom court appartient à une extension dès lors que le socle ne
         // le sert pas lui-même : c'est sous ce nom-là que le modèle appelle.
-        let result = if tool.starts_with(crate::mcp_tools::MCP_PREFIX)
+        let result = if let Some(h) = host.filter(|h| h.serves(tool)) {
+            h.0.call(tool, &args).await
+        } else if tool.starts_with(crate::mcp_tools::MCP_PREFIX)
             || !crate::tools::is_native_tool(tool)
         {
             match mcp {

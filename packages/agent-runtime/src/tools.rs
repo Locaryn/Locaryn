@@ -496,11 +496,7 @@ pub fn approval_decision(input: &ApprovalInput<'_>) -> ApprovalDecision {
 }
 
 /// Outils de l'application qui y ajoutent quelque chose de durable.
-pub const OUTILS_D_INSTALLATION: &[&str] = &[
-    "app_install_morph",
-    "app_add_connector",
-    "app_install_skill",
-];
+pub const OUTILS_D_INSTALLATION: &[&str] = &["app_install_extension", "app_add_connector"];
 
 /// Ce que l'on tape pour installer un logiciel, ou lancer un script venu du
 /// web sans le garder. Repérage par mots : un modèle qui veut installer passe
@@ -759,7 +755,7 @@ mod approval_tests {
         assert!(!demande_avec(&shell, lister, TrustLevel::Autonomous));
         assert!(!demande_avec(&shell, installer, TrustLevel::Unrestricted));
 
-        let morph = spec("app_install_morph", Risk::High);
+        let morph = spec("app_install_extension", Risk::High);
         assert!(demande_avec(
             &morph,
             serde_json::json!({}),
