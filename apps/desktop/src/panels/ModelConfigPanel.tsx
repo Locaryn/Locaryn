@@ -5,6 +5,7 @@ import { useContextStatus } from "../hooks/useContextStatus";
 import { type ModelRecommendation, core } from "../lib/core";
 
 function formatContext(v: number): string {
+  if (v === 0) return "Auto";
   return v >= 1024 ? `${Math.round(v / 1024)}k` : `${v}`;
 }
 
@@ -355,7 +356,7 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
             contextEdit ?? contextStatus?.configured ?? params.ctx_size,
             contextStatus?.cap ?? 131072,
           )}
-          min={2048}
+          min={0}
           max={contextStatus?.cap ?? 131072}
           step={1024}
           format={formatContext}
@@ -366,6 +367,9 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
             ? `Chargée dans le moteur : ${formatContext(contextStatus.running)}. `
             : "Aucun modèle chargé : ce réglage servira au prochain chargement. "}
           {contextStatus?.cap ? `Plafond du modèle : ${formatContext(contextStatus.cap)}. ` : ""}
+          {contextStatus?.configured === 0
+            ? "Tout à gauche, Auto : le moteur prend la mémoire vidéo que le modèle laisse libre. "
+            : ""}
           Ce réglage ne change pas le profil du moteur d'inférence.
         </p>
         {contextPending && contextStatus?.running != null && (

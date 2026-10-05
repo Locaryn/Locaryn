@@ -1326,6 +1326,8 @@ export interface LlmfitCatalogEntry {
   quant?: string;
   /** Taille annoncée du téléchargement, en Go. Prime sur la taille déduite. */
   size_gb?: number;
+  /** Forme de l'attention publiée par le catalogue. */
+  attention?: import("./modelRegistry").AttentionShape;
 }
 
 export interface ResidencyStatus {
@@ -1341,7 +1343,14 @@ export interface ResidencyStatus {
 }
 
 export type KvCacheType = "f16" | "q8_0" | "q4_0";
-export type InferenceProfile = "eco" | "balanced" | "performance" | "turbo" | "longctx" | "custom";
+export type InferenceProfile =
+  | "auto"
+  | "eco"
+  | "balanced"
+  | "performance"
+  | "turbo"
+  | "longctx"
+  | "custom";
 
 export interface InferenceConfig {
   /** Named preset base */
@@ -5610,6 +5619,22 @@ const demoCore: CoreApi = {
   },
   async getProfilePreset(profile): Promise<InferenceConfig> {
     const presets: Record<string, InferenceConfig> = {
+      auto: {
+        profile: "auto",
+        gpu_layers: -1,
+        kv_cache_type: "q8_0",
+        context_length: 0,
+        flash_attention: true,
+        cpu_threads: 0,
+        batch_size: 512,
+        use_turboquant: false,
+        draft_model_path: "",
+        use_mmap: true,
+        parallel_slots: 1,
+        n_cpu_moe: 0,
+        rpc_servers: "",
+        lora_adapters: [],
+      },
       eco: {
         profile: "eco",
         gpu_layers: 0,

@@ -101,7 +101,12 @@ impl CautionSetting {
 fn run_options(core: &Core, level: CautionLevel) -> llmfit::RunOptions {
     let config = crate::InferenceConfig::load(&core.data_dir);
     llmfit::RunOptions {
-        context: config.context_length,
+        // Profil automatique (0) : le moteur réduit le contexte jusqu'à son
+        // minimum avant de déporter une couche, c'est donc lui qui compte.
+        context: match config.context_length {
+            0 => locaryn_provider_supervisor::AUTO_FIT_MIN_CTX,
+            n => n,
+        },
         kv_type: match config.kv_cache_type.as_str() {
             "f16" => llmfit::KvType::F16,
             "q4_0" => llmfit::KvType::Q4_0,
@@ -203,10 +208,45 @@ impl ModelFit {
 }
 
 /// Ce que donnerait le chargement de ce modèle, sans rien charger.
-fn evaluate(core: &Core, model: &str, level: CautionLevel) -> ModelFit {
+fn evaluate(
+    core: &Core,
+    model: &str,
+    level: CautionLevel,
+    hardware: &llmfit::HardwareProfile,
+) -> ModelFit {
     let path = locaryn_config::models_dir().join(model);
     let options = run_options(core, level);
-    ModelFit::from_report(llmfit::for_file(&path, &options), level)
+    ModelFit::from_report(llmfit::for_file_on(&path, &options, hardware), level)
+}
+
+/// La machine telle qu'un nouveau chargement la trouvera : la mémoire vidéo
+/// que notre moteur occupe compte comme libre, puisqu'il la rend en changeant
+/// de modèle. Sans cela, en profil automatique (qui remplit la carte de
+/// contexte), plus aucun modèle ne paraissait tenir.
+async fn machine_pour_charger(core: &Core) -> llmfit::HardwareProfile {
+    let machine = llmfit::profile();
+    let en_marche = core
+        .supervisor
+        .residency(&ProviderEngine::LlamaCpp)
+        .await
+        .is_some_and(|(_, _, tourne)| tourne);
+    if !en_marche {
+        return machine;
+    }
+    let avant = std::fs::read_to_string(
+        core.data_dir
+            .join(locaryn_provider_supervisor::VRAM_AVANT_MOTEUR),
+    )
+    .ok()
+    .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+    .and_then(|v| v.get("free_vram_gb").and_then(serde_json::Value::as_f64));
+    match avant {
+        Some(libre_avant) => {
+            let rendue = libre_avant - machine.free_vram_gb;
+            machine.with_reclaimed_vram(rendue)
+        }
+        None => machine,
+    }
 }
 
 // ============================================================================
@@ -327,8 +367,14 @@ async fn moteur_pour(core: &Core, model: &str) -> Result<(ProviderEngine, String
 
 /// Ce que donnerait le chargement de ce modèle, sans rien charger.
 #[tauri::command]
-pub fn check_model_fit(core: State<'_, Core>, model: String) -> ModelFit {
-    evaluate(&core, &model, CautionSetting::load(&core.data_dir).level)
+pub async fn check_model_fit(core: State<'_, Core>, model: String) -> Result<ModelFit, String> {
+    let machine = machine_pour_charger(&core).await;
+    Ok(evaluate(
+        &core,
+        &model,
+        CautionSetting::load(&core.data_dir).level,
+        &machine,
+    ))
 }
 
 /// Ce que la machine a, mesuré.
@@ -354,6 +400,17 @@ pub struct CatalogEntry {
     /// Taille annoncée du téléchargement, en gigaoctets. Quand le catalogue la
     /// publie, elle prime sur la taille déduite des paramètres.
     pub size_gb: Option<f64>,
+    /// La forme de l'attention, quand le catalogue la publie.
+    #[serde(default)]
+    pub attention: Option<AttentionShape>,
+}
+
+/// Couches qui gardent un cache, têtes clés-valeurs, dimension d'une tête.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AttentionShape {
+    pub layers: u32,
+    pub kv_heads: u32,
+    pub head_dim: u32,
 }
 
 /// Estimer d'un coup toutes les fiches visibles dans la liste des modèles.
@@ -362,11 +419,14 @@ pub struct CatalogEntry {
 /// résultat identique : le profil matériel est lu une fois, et le reste n'est
 /// que de l'arithmétique. Les fiches reviennent dans l'ordre reçu.
 #[tauri::command]
-pub fn llmfit_catalog(core: State<'_, Core>, entries: Vec<CatalogEntry>) -> Vec<ModelFit> {
+pub async fn llmfit_catalog(
+    core: State<'_, Core>,
+    entries: Vec<CatalogEntry>,
+) -> Result<Vec<ModelFit>, String> {
     let level = CautionSetting::load(&core.data_dir).level;
     let options = run_options(&core, level);
-    let hardware = llmfit::profile();
-    entries
+    let hardware = machine_pour_charger(&core).await;
+    Ok(entries
         .into_iter()
         .map(|entry| {
             let quant = entry
@@ -378,9 +438,12 @@ pub fn llmfit_catalog(core: State<'_, Core>, entries: Vec<CatalogEntry>) -> Vec<
             if let Some(size_gb) = entry.size_gb.filter(|g| *g > 0.0) {
                 spec = spec.with_weights_bytes((size_gb * 1024.0 * 1024.0 * 1024.0) as u64);
             }
+            if let Some(a) = &entry.attention {
+                spec = spec.with_attention(a.layers, a.kv_heads, a.head_dim);
+            }
             ModelFit::from_report(llmfit::estimate(&spec, &hardware, &options), level)
         })
-        .collect()
+        .collect())
 }
 
 /// Charger un modèle et l'épingler en mémoire.
@@ -395,7 +458,8 @@ pub async fn load_chat_model(
     force: Option<bool>,
 ) -> Result<ResidencyStatus, String> {
     let level = CautionSetting::load(&core.data_dir).level;
-    let fit = evaluate(&core, &model, level);
+    let machine = machine_pour_charger(&core).await;
+    let fit = evaluate(&core, &model, level, &machine);
     if fit.verdict == FitVerdict::Refuse && !force.unwrap_or(false) {
         return Err(fit.message);
     }

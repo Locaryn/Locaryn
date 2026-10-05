@@ -17,78 +17,51 @@ interface ProfileCard {
 
 const PROFILES: ProfileCard[] = [
   {
+    id: "auto",
+    icon: "speed",
+    label: "Automatique",
+    tagline: "Le modèle entier sur la carte, le reste en contexte",
+    details: [
+      "Toutes les couches sur le GPU quand elles tiennent",
+      "Contexte = mémoire vidéo restante (8K au moins)",
+      "Cache Q8 (÷2 VRAM, sans perte visible)",
+      "Flash Attention",
+    ],
+  },
+  {
     id: "eco",
     icon: "cloud",
     label: "Économe",
-    tagline: "Processeur seul, mémoire minimale",
-    details: ["0 couche sur le GPU", "Cache FP16 standard", "Contexte 4K"],
-  },
-  {
-    id: "balanced",
-    icon: "speed",
-    label: "Équilibré",
-    tagline: "Tout sur le GPU, cache compressé",
-    details: [
-      "Toutes les couches sur le GPU",
-      "Cache Q8 (÷2 VRAM)",
-      "Contexte 8K",
-      "Flash Attention",
-    ],
-  },
-  {
-    id: "performance",
-    icon: "speed",
-    label: "Performance",
-    tagline: "Contexte plus long, cache Q8",
-    details: [
-      "Toutes les couches sur le GPU",
-      "Cache Q8 (÷2 VRAM)",
-      "Contexte 16K",
-      "Flash Attention",
-    ],
-  },
-  {
-    id: "turbo",
-    icon: "speed",
-    label: "Turbo",
-    tagline: "Cache Q4 pour un grand contexte",
-    details: [
-      "Toutes les couches sur le GPU",
-      "Cache Q4 (÷4 VRAM)",
-      "Contexte 32K",
-      "Flash Attention",
-      "Batch 1024",
-    ],
-  },
-  {
-    id: "longctx",
-    icon: "forward",
-    label: "Contexte long",
-    tagline: "Le plus de contexte pour la VRAM disponible",
-    details: [
-      "Toutes les couches sur le GPU",
-      "Cache Q4 (÷4 VRAM)",
-      "Contexte étendu",
-      "Flash Attention",
-    ],
-    badge: "Contexte max",
+    tagline: "Processeur seul, la carte reste libre",
+    details: ["0 couche sur le GPU", "Cache FP16 standard", "Contexte 4K", "Bien plus lent"],
   },
 ];
+
+/** Les profils d'avant, toujours lisibles dans une configuration enregistrée. */
+const ANCIENS_PROFILS: Record<string, string> = {
+  balanced: "Équilibré",
+  performance: "Performance",
+  turbo: "Turbo",
+  longctx: "Contexte long",
+};
 
 /** Nom lisible d'un profil, y compris « custom » : la pastille affichait le
  *  jeton interne (« balanced »). */
 function nomDuProfil(id: string): string {
   if (id === "custom") return "Personnalisé";
-  return PROFILES.find((p) => p.id === id)?.label ?? id;
+  return PROFILES.find((p) => p.id === id)?.label ?? ANCIENS_PROFILS[id] ?? id;
 }
 
-/** Le profil qui convient à la mémoire vidéo détectée. Une valeur fixe
- *  recommandait le même profil à une carte de 4 Go et à une de 24 Go. */
+/** Le profil qui convient à la machine : sans carte graphique, le processeur ;
+ *  avec, l'automatique, qui s'adapte à sa mémoire. */
 function profilConseille(vramGo: number): InferenceProfile {
-  if (vramGo <= 0) return "eco";
-  if (vramGo < 8) return "balanced";
-  if (vramGo < 16) return "performance";
-  return "turbo";
+  return vramGo <= 0 ? "eco" : "auto";
+}
+
+/** « Auto » quand le moteur choisit la fenêtre, sinon « 16K ». */
+function contexteLisible(n: number): string {
+  if (n === 0) return "Auto";
+  return n >= 1024 ? `${Math.round(n / 1024)}K` : `${n}`;
 }
 
 const KV_OPTIONS: { value: KvCacheType; label: string; desc: string; color: string }[] = [
@@ -98,6 +71,7 @@ const KV_OPTIONS: { value: KvCacheType; label: string; desc: string; color: stri
 ];
 
 const CTX_PRESETS = [
+  { label: "Auto", value: 0 },
   { label: "2K", value: 2048 },
   { label: "4K", value: 4096 },
   { label: "8K", value: 8192 },
@@ -309,9 +283,11 @@ export function PerformancePanel() {
       </div>
 
       {/* ── Custom profile notice ── */}
-      {cfg.profile === "custom" && (
+      {(cfg.profile === "custom" || cfg.profile in ANCIENS_PROFILS) && (
         <div className="perf-custom-notice">
-          Profil personnalisé — les réglages ci-dessous s'appliquent directement
+          {cfg.profile === "custom"
+            ? "Profil personnalisé — les réglages ci-dessous s'appliquent directement"
+            : `Ancien profil « ${nomDuProfil(cfg.profile)} » — choisissez Automatique pour laisser le moteur ajuster le contexte à votre carte`}
         </div>
       )}
 
@@ -323,11 +299,7 @@ export function PerformancePanel() {
       >
         <span>{showExpert ? "▼" : "▶"} Réglages avancés</span>
         <span className="perf-expert-summary">
-          KV {cfg.kv_cache_type.toUpperCase()} ·{" "}
-          {cfg.context_length >= 1024
-            ? `${Math.round(cfg.context_length / 1024)}K`
-            : cfg.context_length}{" "}
-          ctx ·{" "}
+          KV {cfg.kv_cache_type.toUpperCase()} · {contexteLisible(cfg.context_length)} ctx ·{" "}
           {cfg.gpu_layers === -1
             ? "GPU max"
             : cfg.gpu_layers === 0
@@ -345,8 +317,10 @@ export function PerformancePanel() {
                 <Icon name="archive" size={15} /> Compression KV Cache
               </div>
               <div className="perf-row-hint">
-                Compresse la mémoire de conversation. Q4 = compression réelle max (÷4 VRAM) sous
-                llama.cpp
+                La mémoire de la conversation, en VRAM. Q8 la divise par deux sans perte visible :
+                deux fois plus de contexte sur la même carte. Q4 la divise par quatre, avec un peu
+                de précision en moins sur les longs échanges. La vitesse d'écriture ne change
+                presque pas.
               </div>
             </div>
             <div className="perf-kv-btns">
@@ -423,7 +397,9 @@ export function PerformancePanel() {
             <div className="perf-row-left">
               <div className="perf-row-label">Fenêtre de contexte</div>
               <div className="perf-row-hint">
-                Mémoire de la conversation. Plus grand = plus de VRAM
+                Ce que le modèle garde en tête : messages, fichiers lus, outils. Auto = toute la
+                mémoire vidéo laissée libre par le modèle. Plus grand = plus de VRAM ; si elle
+                manque, des couches passent sur le processeur et tout ralentit.
               </div>
             </div>
             <div className="perf-ctx-btns">
@@ -454,7 +430,10 @@ export function PerformancePanel() {
                 <div className="perf-row-label">
                   <Icon name="speed" size={15} /> Flash Attention
                 </div>
-                <div className="perf-row-hint">-30% VRAM, +vitesse attention</div>
+                <div className="perf-row-hint">
+                  Calcule l'attention par blocs : moins de mémoire, plus rapide sur les longs
+                  contextes. Nécessaire pour compresser le cache. À laisser activé.
+                </div>
               </div>
             </div>
             <div className="perf-toggle-item">
@@ -515,7 +494,9 @@ export function PerformancePanel() {
                 <Icon name="models" size={15} /> Taille de Batch
               </div>
               <div className="perf-row-hint">
-                Tokens traités en parallèle. Plus grand = plus rapide mais +VRAM
+                Jetons lus d'un coup quand le modèle lit votre message, l'historique et les outils.
+                Plus grand = lecture plus rapide des longues demandes, un peu plus de VRAM. Ne
+                change pas la vitesse à laquelle il écrit.
               </div>
             </div>
             <div className="perf-ctx-btns">
@@ -675,11 +656,7 @@ export function PerformancePanel() {
         <div className="perf-summary-sep" />
         <div className="perf-summary-item">
           <span className="perf-summary-label">Contexte</span>
-          <span className="perf-summary-val">
-            {cfg.context_length >= 1024
-              ? `${Math.round(cfg.context_length / 1024)}K`
-              : cfg.context_length}
-          </span>
+          <span className="perf-summary-val">{contexteLisible(cfg.context_length)}</span>
         </div>
         <div className="perf-summary-sep" />
         <div className="perf-summary-item">

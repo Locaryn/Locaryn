@@ -47,7 +47,11 @@ export function useContextStatus(): {
     };
   }, [refresh]);
 
+  // 0 = automatique : le moteur choisit, il n'y a rien en attente.
   const pending =
-    status !== null && status.running !== null && status.running !== status.configured;
+    status !== null &&
+    status.configured > 0 &&
+    status.running !== null &&
+    status.running !== status.configured;
   return { status, pending, refresh };
 }

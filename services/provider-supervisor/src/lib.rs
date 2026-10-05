@@ -988,6 +988,21 @@ fn ensure_port_free(port: u16) -> Result<(), String> {
         })
 }
 
+/// Fichier (dans le dossier de données) où le lanceur note la mémoire vidéo
+/// libre juste avant de charger llama-server.
+pub const VRAM_AVANT_MOTEUR: &str = "llama_vram_before.json";
+
+/// Contexte minimal que `--fit` peut choisir en profil automatique. En dessous,
+/// les outils d'un connecteur ne tiennent plus avec la conversation : mieux
+/// vaut déporter une couche que d'offrir 4 096 jetons.
+pub const AUTO_FIT_MIN_CTX: u32 = 8192;
+
+/// Le profil automatique : toutes les couches demandées et aucun contexte fixé.
+/// llama.cpp choisit alors les deux d'après la mémoire libre.
+pub fn is_auto_fit(gpu_layers: i64, context_length: u64) -> bool {
+    gpu_layers == -1 && context_length == 0
+}
+
 /// Spawn `ollama serve` as a detached child process.
 ///
 /// We set `OLLAMA_HOST=127.0.0.1:11434` to guarantee loopback binding even
@@ -1008,10 +1023,10 @@ async fn spawn_llama_server(
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_else(|| {
             serde_json::json!({
-                "profile": "balanced",
+                "profile": "auto",
                 "gpu_layers": -1,
                 "kv_cache_type": "q8_0",
-                "context_length": 8192,
+                "context_length": 0,
                 "flash_attention": true,
                 "cpu_threads": 0,
                 "batch_size": 512,
@@ -1078,10 +1093,22 @@ async fn spawn_llama_server(
     ensure_port_free(llama_port())
         .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e))?;
 
+    // La mémoire vidéo libre juste avant de charger : ce que le moteur prendra
+    // se lit ensuite par différence. Windows ne dit pas ce qu'occupe un
+    // processus (`nvidia-smi` répond « N/A »), et l'estimation des autres
+    // modèles doit savoir ce que ce moteur rendra en se déchargeant.
+    let libre_avant = locaryn_llmfit::profile().free_vram_gb;
+    if let Err(e) = std::fs::write(
+        data_dir.join(VRAM_AVANT_MOTEUR),
+        format!("{{\"free_vram_gb\":{libre_avant}}}"),
+    ) {
+        tracing::warn!(erreur = %e, "mémoire vidéo d'avant chargement non enregistrée");
+    }
+
     tracing::info!(
         bin = %bin.display(),
         model = %full_model_path.display(),
-        profile = %inference_cfg["profile"].as_str().unwrap_or("balanced"),
+        profile = %inference_cfg["profile"].as_str().unwrap_or("auto"),
         "spawning llama-server"
     );
 
@@ -1119,12 +1146,26 @@ async fn spawn_llama_server(
         cmd.arg("--mmproj").arg(mmproj);
     }
 
-    // GPU layers: -1 = all.
+    // Profil automatique (contexte 0, toutes les couches) : ni `-ngl` ni `-c`.
+    // llama.cpp les ajuste alors lui-même à la mémoire libre (`--fit`, actif
+    // par défaut) : il garde toutes les couches sur la carte, raccourcit le
+    // contexte jusqu'à ce qu'il tienne, et ne déporte des couches vers le
+    // processeur que sous `--fit-ctx`. La mémoire vidéo restante devient du
+    // contexte. Mesuré avec llama-fit-params (b11003) : le contexte descend
+    // d'abord à son minimum, les couches ne partent qu'ensuite.
     let gpu_layers = inference_cfg["gpu_layers"].as_i64().unwrap_or(-1);
-    if gpu_layers == -1 {
-        cmd.arg("-ngl").arg("999");
-    } else {
-        cmd.arg("-ngl").arg(gpu_layers.to_string());
+    let ctx = inference_cfg["context_length"].as_u64().unwrap_or(8192);
+    let auto = is_auto_fit(gpu_layers, ctx);
+    if ctx == 0 {
+        cmd.arg("--fit-ctx").arg(AUTO_FIT_MIN_CTX.to_string());
+    }
+    // En automatique, `--fit` place les couches.
+    if !auto {
+        let couches = match gpu_layers {
+            -1 => "999".to_string(),
+            n => n.to_string(),
+        };
+        cmd.arg("-ngl").arg(couches);
     }
 
     // KV cache quantization: the real flags are -ctk/-ctv (NOT --kv-cache-type,
@@ -1142,9 +1183,11 @@ async fn spawn_llama_server(
         cmd.arg("-ctk").arg(kv_type).arg("-ctv").arg(kv_type);
     }
 
-    // Context length.
-    let ctx = inference_cfg["context_length"].as_u64().unwrap_or(8192);
-    cmd.arg("-c").arg(ctx.to_string());
+    // Context length. 0 : llama.cpp l'ajuste à la mémoire libre, y compris
+    // quand le nombre de couches est imposé.
+    if ctx > 0 {
+        cmd.arg("-c").arg(ctx.to_string());
+    }
 
     // Suggest to the UI the largest context this model was trained for: a
     // slider that proposes 128k to a 32k model invites a request the engine
@@ -1563,6 +1606,14 @@ fn stem_sans_quant(stem: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seul_le_profil_automatique_laisse_llama_cpp_ajuster() {
+        assert!(is_auto_fit(-1, 0));
+        // Un contexte choisi ou un nombre de couches imposé : on les passe tels quels.
+        assert!(!is_auto_fit(-1, 16384));
+        assert!(!is_auto_fit(20, 0));
+    }
 
     fn dossier_avec(fichiers: &[&str]) -> std::path::PathBuf {
         use std::sync::atomic::{AtomicUsize, Ordering};

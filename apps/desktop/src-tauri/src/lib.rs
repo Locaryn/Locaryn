@@ -995,11 +995,13 @@ async fn compact_history(
     budget_tokens: usize,
 ) -> Vec<locaryn_agent_runtime::ChatTurn> {
     let total: usize = turns.iter().map(|t| approx_tokens(&t.content)).sum();
-    if total <= budget_tokens || turns.len() < 6 {
+    // Une conversation courte peut déborder aussi : deux longues réponses
+    // suffisent. On garde alors le dernier échange et on résume le reste.
+    if total <= budget_tokens || turns.len() < 3 {
         return turns;
     }
     // Keep the last few exchanges verbatim; summarise everything before them.
-    let keep = 4.min(turns.len());
+    let keep = if turns.len() >= 6 { 4 } else { 2 };
     let split = turns.len() - keep;
     let (old, recent) = turns.split_at(split);
 
@@ -1950,8 +1952,11 @@ async fn send_message(
             m.insert("seed".into(), serde_json::json!(p.seed));
         }
         // `num_ctx` part avec les autres options : les moteurs qui ne
-        // la connaissent pas l'ignorent, sans risque.
-        m.insert("num_ctx".into(), serde_json::json!(contexte_configure));
+        // la connaissent pas l'ignorent, sans risque. En automatique (0),
+        // aucune fenêtre n'est imposée.
+        if contexte_configure > 0 {
+            m.insert("num_ctx".into(), serde_json::json!(contexte_configure));
+        }
         serde_json::Value::Object(m)
     });
 
@@ -2014,12 +2019,20 @@ async fn send_message(
 
         if !turns.is_empty() {
             let cfg = InferenceConfig::load(&core.data_dir);
-            // Leave room for the new message, the answer and the system prompt.
-            let budget = (cfg.context_length as usize * 60) / 100;
             let endpoint = active_provider
                 .as_ref()
                 .map(|p| p.endpoint.clone())
                 .unwrap_or_else(|| "http://127.0.0.1:8080".into());
+            // En automatique, aucune fenêtre n'est réglée : c'est celle que le
+            // moteur a choisie qui compte.
+            let fenetre = match cfg.context_length {
+                0 => locaryn_agent_runtime::tool_budget::server_context(&core.http, &endpoint)
+                    .await
+                    .unwrap_or(locaryn_provider_supervisor::AUTO_FIT_MIN_CTX as usize),
+                n => n as usize,
+            };
+            // Leave room for the new message, the answer and the system prompt.
+            let budget = (fenetre * 60) / 100;
             let m = model.clone().unwrap_or_else(|| "default".into());
             turns = compact_history(&core, &endpoint, &m, turns, budget).await;
         }
@@ -5358,13 +5371,16 @@ pub struct InferenceConfig {
     pub lora_adapters: Vec<String>,
 }
 
+/// `context_length` à 0 avec toutes les couches demandées : le profil
+/// automatique. llama.cpp garde le modèle sur la carte et donne au contexte la
+/// mémoire vidéo qui reste (voir `locaryn_provider_supervisor::is_auto_fit`).
 impl Default for InferenceConfig {
     fn default() -> Self {
         Self {
-            profile: "balanced".into(),
+            profile: "auto".into(),
             gpu_layers: -1,
             kv_cache_type: "q8_0".into(),
-            context_length: 8192,
+            context_length: 0,
             flash_attention: true,
             cpu_threads: 0,
             batch_size: 512,
@@ -5429,6 +5445,7 @@ fn set_inference_config(
 #[tauri::command]
 fn get_profile_preset(profile: String) -> InferenceConfig {
     match profile.as_str() {
+        "auto" => InferenceConfig::default(),
         "eco" => InferenceConfig {
             profile: "eco".into(),
             gpu_layers: 0,
@@ -5438,7 +5455,11 @@ fn get_profile_preset(profile: String) -> InferenceConfig {
             batch_size: 256,
             ..Default::default()
         },
-        "balanced" => InferenceConfig::default(),
+        "balanced" => InferenceConfig {
+            profile: "balanced".into(),
+            context_length: 8192,
+            ..Default::default()
+        },
         "performance" => InferenceConfig {
             profile: "performance".into(),
             context_length: 16384,
