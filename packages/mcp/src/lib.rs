@@ -205,6 +205,29 @@ const META_PROTOCOL_VERSION: &str = "2026-07-28";
 /// parle pas MCP ne répond jamais : sans limite, l'ajout restait suspendu.
 const INITIALIZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// Le même délai pour un lanceur de paquets. `uvx`, `npx` & co. téléchargent et
+/// préparent le serveur à leur premier lancement : `uvx mcp-server-fetch`
+/// dépassait les 20 s la première fois et démarrait ensuite sans peine. Ce sont
+/// justement les commandes que donnent les documentations des logiciels.
+const INITIALIZE_TIMEOUT_LANCEUR: std::time::Duration = std::time::Duration::from_secs(180);
+
+const LANCEURS_DE_PAQUETS: &[&str] = &[
+    "uvx", "uv", "npx", "pnpx", "pnpm", "bunx", "bun", "yarn", "pipx", "deno", "docker",
+];
+
+fn initialize_timeout(command: &str) -> std::time::Duration {
+    let programme = std::path::Path::new(command)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(command)
+        .to_lowercase();
+    if LANCEURS_DE_PAQUETS.contains(&programme.as_str()) {
+        INITIALIZE_TIMEOUT_LANCEUR
+    } else {
+        INITIALIZE_TIMEOUT
+    }
+}
+
 /// Ajouter à une requête les métadonnées de protocole que les serveurs sans
 /// session exigent à chaque appel (`io.modelcontextprotocol/protocolVersion` et
 /// `…/clientCapabilities`). Les autres serveurs ignorent `_meta`.
@@ -310,12 +333,13 @@ impl StdioTransport {
             "capabilities": {},
             "clientInfo": { "name": "locaryn", "version": env!("CARGO_PKG_VERSION") },
         });
-        let reply = tokio::time::timeout(INITIALIZE_TIMEOUT, self.call("initialize", Some(params)))
+        let delai = initialize_timeout(command);
+        let reply = tokio::time::timeout(delai, self.call("initialize", Some(params)))
             .await
             .map_err(|_| {
                 McpError::Transport(format!(
                     "« {command} » n'a pas répondu à initialize en {} s : ce n'est sans doute pas un serveur MCP.",
-                    INITIALIZE_TIMEOUT.as_secs()
+                    delai.as_secs()
                 ))
             })?;
         match reply {
@@ -1503,6 +1527,16 @@ mod tests {
         assert_eq!(cfg.mcp_servers.len(), 2);
         assert_eq!(cfg.mcp_servers["narsil"].transport, Transport::Stdio);
         assert_eq!(cfg.mcp_servers["weather"].transport, Transport::Http);
+    }
+
+    #[test]
+    fn un_lanceur_de_paquets_a_le_temps_de_preparer_son_serveur() {
+        assert_eq!(initialize_timeout("uvx"), INITIALIZE_TIMEOUT_LANCEUR);
+        assert_eq!(
+            initialize_timeout(r"C:\Program Files\nodejs\npx.cmd"),
+            INITIALIZE_TIMEOUT_LANCEUR
+        );
+        assert_eq!(initialize_timeout("narsil-mcp"), INITIALIZE_TIMEOUT);
     }
 }
 
