@@ -17,8 +17,8 @@ import { type ToolEntry, ToolRun } from "../components/chat/ToolRun";
 import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
-import { attentionPourVue } from "../lib/attention";
 import { useContextStatus } from "../hooks/useContextStatus";
+import { attentionPourVue } from "../lib/attention";
 import { FREE_CHAT_PATH } from "../lib/constants";
 import {
   type AttentionItem,

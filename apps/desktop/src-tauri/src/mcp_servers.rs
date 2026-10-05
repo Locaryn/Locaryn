@@ -722,8 +722,29 @@ pub async fn start_mcp_server(core: State<'_, Core>, name: String) -> Result<Vec
 
     let tools: Vec<String> = caps.tools.into_iter().map(|t| t.name).collect();
     core.mcp.running.write().await.insert(name.clone(), client);
+    remember_auto_start(&core.mcp, &name, true);
     tracing::info!(server = %name, tools = tools.len(), "serveur MCP démarré");
     Ok(tools)
+}
+
+/// Démarrer ou arrêter un connecteur, c'est dire s'il doit tourner : le choix
+/// vaut aussi pour les lancements suivants. Sans cela, un connecteur démarré à
+/// la main disparaissait au redémarrage de l'application, et le modèle
+/// répondait qu'il n'avait aucun de ses outils.
+fn remember_auto_start(state: &McpState, name: &str, value: bool) {
+    let changed = {
+        let mut cfg = state.config.lock().unwrap();
+        match cfg.mcp_servers.get_mut(name) {
+            Some(entry) if entry.auto_start != value => {
+                entry.auto_start = value;
+                true
+            }
+            _ => false,
+        }
+    };
+    if changed {
+        state.save();
+    }
 }
 
 #[tauri::command]
@@ -732,6 +753,7 @@ pub async fn stop_mcp_server(core: State<'_, Core>, name: String) -> Result<(), 
         let _ = client.stop_mcp(&name).await;
         return Ok(());
     }
+    remember_auto_start(&core.mcp, &name, false);
     if let Some(client) = core.mcp.running.write().await.remove(&name) {
         client.shutdown().await.map_err(|e| e.to_string())?;
     }
