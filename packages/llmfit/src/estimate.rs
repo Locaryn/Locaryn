@@ -160,6 +160,9 @@ pub struct ModelSpec {
     /// Embeddings, sortie, normes : ce qui n'appartient à aucun bloc.
     pub non_layer_bytes: u64,
     pub n_layer: u32,
+    /// Couches qui gardent un cache clés-valeurs : toutes, sauf sur les
+    /// modèles hybrides, où la plupart sont linéaires.
+    pub kv_layers: u32,
     pub n_embd: u32,
     pub n_head_kv: u32,
     pub head_dim: u32,
@@ -182,6 +185,7 @@ impl ModelSpec {
             layer_bytes: summary.layer_bytes,
             non_layer_bytes: summary.non_layer_bytes,
             n_layer: summary.n_layer.max(1),
+            kv_layers: summary.kv_layers().max(1),
             n_embd: summary.n_embd,
             n_head_kv: summary.n_head_kv,
             head_dim: summary.head_dim(),
@@ -217,6 +221,7 @@ impl ModelSpec {
             layer_bytes,
             non_layer_bytes,
             n_layer: shape.n_layer,
+            kv_layers: shape.n_layer,
             n_embd: shape.n_embd,
             n_head_kv: shape.n_head_kv,
             head_dim: shape.head_dim,
@@ -233,6 +238,19 @@ impl ModelSpec {
     /// la vraie taille est disponible, elle prime — et la répartition par
     /// couche suit dans la même proportion, sinon les couches placées sur le
     /// GPU ne correspondraient plus au total.
+    /// La forme de l'attention, quand le catalogue la connaît : couches qui
+    /// gardent un cache, têtes clés-valeurs, dimension d'une tête. Une forme
+    /// devinée d'après le nombre de paramètres surestime d'un facteur quatre le
+    /// cache d'un modèle hybride.
+    pub fn with_attention(mut self, kv_layers: u32, n_head_kv: u32, head_dim: u32) -> Self {
+        if kv_layers > 0 && n_head_kv > 0 && head_dim > 0 {
+            self.kv_layers = kv_layers;
+            self.n_head_kv = n_head_kv;
+            self.head_dim = head_dim;
+        }
+        self
+    }
+
     pub fn with_weights_bytes(mut self, bytes: u64) -> Self {
         if bytes == 0 {
             return self;
@@ -401,7 +419,7 @@ pub struct FitReport {
 fn kv_cache_bytes(spec: &ModelSpec, context: u32, kv_type: KvType) -> u64 {
     let per_element = kv_type.bytes_per_element();
     let elements = 2.0
-        * spec.n_layer as f64
+        * spec.kv_layers.max(1) as f64
         * context as f64
         * spec.n_head_kv.max(1) as f64
         * spec.head_dim.max(1) as f64;
@@ -891,6 +909,33 @@ mod tests {
             ram_bandwidth_measured: true,
             unified_memory: false,
         }
+    }
+
+    #[test]
+    fn un_modele_hybride_n_a_de_cache_que_sur_ses_couches_d_attention() {
+        let options = RunOptions {
+            context: 8192,
+            ..Default::default()
+        };
+        let devine = modele(27.0);
+        // Bonsai 27B / Qwen 3.6 : 16 couches d'attention sur 64.
+        let declare = modele(27.0).with_attention(16, 4, 256);
+        let kv = |s: &ModelSpec| kv_cache_bytes(s, options.context, options.kv_type);
+        assert!(
+            kv(&declare) * 3 < kv(&devine),
+            "le cache deviné était bien trop gros"
+        );
+        // Une forme incomplète ne remplace rien.
+        assert_eq!(kv(&modele(27.0).with_attention(0, 4, 256)), kv(&devine));
+    }
+
+    #[test]
+    fn la_memoire_rendue_par_le_moteur_compte_comme_libre() {
+        let mut m = machine(6.0, 16.0);
+        m.free_vram_gb = 1.0;
+        assert!((m.clone().with_reclaimed_vram(4.0).free_vram_gb - 5.0).abs() < 1e-9);
+        // Jamais plus que la carte.
+        assert!((m.with_reclaimed_vram(40.0).free_vram_gb - 6.0).abs() < 1e-9);
     }
 
     fn modele(params_b: f64) -> ModelSpec {

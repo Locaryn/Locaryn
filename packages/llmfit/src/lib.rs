@@ -35,7 +35,13 @@ use std::path::Path;
 /// PyTorch — n'expose pas ses dimensions aussi simplement : on retombe alors
 /// sur la taille du fichier, en le disant.
 pub fn for_file(path: &Path, options: &RunOptions) -> FitReport {
-    let hardware = profile();
+    for_file_on(path, options, &profile())
+}
+
+/// Comme [`for_file`], sur un profil matériel déjà lu (par exemple corrigé de
+/// la mémoire que le moteur en marche rendra en se déchargeant).
+pub fn for_file_on(path: &Path, options: &RunOptions, hardware: &HardwareProfile) -> FitReport {
+    let hardware = hardware.clone();
     let name = path
         .file_name()
         .and_then(|n| n.to_str())

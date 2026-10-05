@@ -18,6 +18,7 @@ import {
   loadExtensionMarketplaces,
 } from "../lib/extensionMarketplace";
 import {
+  type AttentionShape,
   MODEL_CATEGORIES,
   type ModelCategory,
   type ModelCategoryDefinition,
@@ -333,8 +334,14 @@ function sameFits(a: Record<string, ModelFit>, b: Record<string, ModelFit>): boo
  * À paramètres, quantification et taille égaux, la réponse est la même : deux
  * cents lignes de catalogue ne demandent qu'une poignée de calculs distincts.
  */
-function fitKey(params: number, quant: string, storageGb: number): string {
-  return `${params}|${quant}|${storageGb}`;
+function fitKey(
+  params: number,
+  quant: string,
+  storageGb: number,
+  attention?: AttentionShape,
+): string {
+  const forme = attention ? `|${attention.layers}x${attention.kv_heads}x${attention.head_dim}` : "";
+  return `${params}|${quant}|${storageGb}${forme}`;
 }
 
 /**
@@ -388,7 +395,12 @@ function compatFromFit(fit: ModelFit, airllm: boolean): Compat {
 }
 
 function familyBestCompat(
-  variants: { storageGb: number; params?: number; quants?: string[] }[],
+  variants: {
+    storageGb: number;
+    params?: number;
+    quants?: string[];
+    attention?: AttentionShape;
+  }[],
   hw: HwSpec | null,
   airllm = false,
   fits?: Record<string, ModelFit>,
@@ -398,7 +410,7 @@ function familyBestCompat(
   const quant = best.quants?.[0];
   const fit =
     fits && best.params !== undefined && quant
-      ? fits[fitKey(best.params, quant, best.storageGb)]
+      ? fits[fitKey(best.params, quant, best.storageGb, best.attention)]
       : undefined;
   return variantCompat(best.storageGb, hw, airllm, fit);
 }
@@ -1076,13 +1088,14 @@ export function ModelBrowser({
         const quants = variant.quants.length > 0 ? variant.quants : ["q4_K_M"];
         for (const quant of quants) {
           const storageGb = getQuantStorageGb(variant.storageGb, quant);
-          const key = fitKey(variant.params, quant, storageGb);
+          const key = fitKey(variant.params, quant, storageGb, variant.attention);
           if (!entries.has(key)) {
             entries.set(key, {
               id: key,
               parameters_b: variant.params,
               quant,
               size_gb: storageGb,
+              attention: variant.attention,
             });
           }
         }
@@ -2759,7 +2772,8 @@ export function ModelBrowser({
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
-                      const fitV = fits[fitKey(v.params, activeQuant, targetStorageGb)];
+                      const fitV =
+                        fits[fitKey(v.params, activeQuant, targetStorageGb, v.attention)];
                       const compatV = variantCompat(
                         targetStorageGb,
                         hardwareSpec,
@@ -3808,7 +3822,8 @@ export function ModelBrowser({
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
                       const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
-                      const fitV = fits[fitKey(v.params, activeQuant, targetStorageGb)];
+                      const fitV =
+                        fits[fitKey(v.params, activeQuant, targetStorageGb, v.attention)];
                       const compatV = variantCompat(
                         targetStorageGb,
                         hardwareSpec,

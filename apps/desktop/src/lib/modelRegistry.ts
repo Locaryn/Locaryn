@@ -18,6 +18,18 @@ export interface ModelVariant {
   instruct?: boolean;
   /** Additional files declared by the extension that owns this catalogue entry. */
   downloads?: ModelDownloadSource[];
+  /** La forme de l'attention, quand le catalogue la publie : sans elle,
+   *  l'estimation devine le cache d'après le nombre de paramètres. */
+  attention?: AttentionShape;
+}
+
+/** Couches qui gardent un cache clés-valeurs, têtes clés-valeurs, dimension
+ *  d'une tête. Un modèle hybride (Qwen 3.5, 3.6) n'a qu'une couche d'attention
+ *  pleine sur quatre : deviné, son cache paraît quatre fois plus gros. */
+export interface AttentionShape {
+  layers: number;
+  kv_heads: number;
+  head_dim: number;
 }
 
 /** One companion file in an extension-owned model installation plan. */

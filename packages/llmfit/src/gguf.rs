@@ -210,6 +210,10 @@ pub struct GgufSummary {
     pub train_context: u32,
     pub expert_count: u32,
     pub expert_used_count: u32,
+    /// Modèles hybrides (Qwen 3.5, 3.6) : une couche d'attention pleine toutes
+    /// les N, les autres sont linéaires et ne gardent pas de cache par jeton.
+    /// 0 : toutes les couches en ont un.
+    pub full_attention_interval: u32,
     /// Nombre de paramètres, calculé depuis les dimensions des tenseurs.
     pub parameters: u64,
     /// Octets des poids, calculés depuis les tenseurs (≠ taille du fichier,
@@ -232,6 +236,14 @@ pub struct GgufSummary {
 }
 
 impl GgufSummary {
+    /// Couches qui gardent un cache clés-valeurs.
+    pub fn kv_layers(&self) -> u32 {
+        match self.full_attention_interval {
+            0 | 1 => self.n_layer,
+            n => self.n_layer.div_ceil(n),
+        }
+    }
+
     /// Dimension d'une tête de clé, avec le repli habituel quand le fichier ne
     /// la déclare pas.
     pub fn head_dim(&self) -> u32 {
@@ -482,6 +494,7 @@ pub fn read_summary(path: &Path) -> Result<GgufSummary, GgufError> {
         train_context: arch_u32(&meta, &architecture, "context_length"),
         expert_count: arch_u32(&meta, &architecture, "expert_count"),
         expert_used_count: arch_u32(&meta, &architecture, "expert_used_count"),
+        full_attention_interval: arch_u32(&meta, &architecture, "full_attention_interval"),
         n_vocab: arch_u32(&meta, &architecture, "vocab_size"),
         chat_template: meta
             .get("tokenizer.chat_template")

@@ -63,6 +63,16 @@ pub struct HardwareProfile {
 
 impl HardwareProfile {
     /// Mémoire réellement utilisable par le GPU, réserve déduite.
+    /// Le même profil, avec `gb` de mémoire vidéo rendue : celle que le moteur
+    /// de l'application occupe et libérera en changeant de modèle. Sans elle,
+    /// tout modèle paraît trop gros tant qu'un autre est chargé.
+    pub fn with_reclaimed_vram(mut self, gb: f64) -> Self {
+        if gb > 0.0 {
+            self.free_vram_gb = (self.free_vram_gb + gb).min(self.total_vram_gb);
+        }
+        self
+    }
+
     pub fn usable_vram_gb(&self, reserve_gb: f64) -> f64 {
         (self.free_vram_gb - reserve_gb).max(0.0)
     }

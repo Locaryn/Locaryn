@@ -1,5 +1,6 @@
 import type { InstalledExtension } from "./core";
 import type {
+  AttentionShape,
   ModelCategoryDefinition,
   ModelDownloadSource,
   ModelFamily,
@@ -64,6 +65,19 @@ function downloads(value: unknown): ModelDownloadSource[] {
   });
 }
 
+/** `{ layers, kvHeads, headDim }` du catalogue, entiers positifs. */
+function attention(value: unknown): AttentionShape | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const layers = number(raw.layers);
+  const kvHeads = number(raw.kvHeads);
+  const headDim = number(raw.headDim);
+  if (!layers || !kvHeads || !headDim || layers < 1 || kvHeads < 1 || headDim < 1) {
+    return undefined;
+  }
+  return { layers, kv_heads: kvHeads, head_dim: headDim };
+}
+
 function variant(value: unknown): ModelVariant | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
@@ -82,6 +96,7 @@ function variant(value: unknown): ModelVariant | null {
     quants: strings(raw.quants),
     instruct: raw.instruct === true || undefined,
     downloads: downloads(raw.downloads),
+    attention: attention(raw.attention),
   };
 }
 
@@ -155,7 +170,11 @@ export function parseExtensionMarketplace(
         const releaseYear = number(model.releaseYear);
         const capabilities = strings(model.capabilities);
         const variants = Array.isArray(model.variants)
-          ? model.variants.map(variant).filter((item): item is ModelVariant => item != null)
+          ? model.variants
+              .map(variant)
+              .filter((item): item is ModelVariant => item != null)
+              // La forme déclarée au niveau du modèle vaut pour ses variantes.
+              .map((item) => ({ ...item, attention: item.attention ?? attention(model.attention) }))
           : [];
         if (
           !id ||
