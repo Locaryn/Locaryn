@@ -1,14 +1,14 @@
 import type { TrustLevel } from "./core";
 
 /**
- * Les trois niveaux de permission, décrits une seule fois.
+ * Les niveaux de permission, décrits une seule fois.
  *
  * Ce qu'ils font réellement est fixé par la table d'approbation de la boucle
- * d'outils (`approval_decision`) : seuls les outils en lecture, sans risque,
- * s'exécutent sans confirmation — et seulement en « Confiance ». Une écriture
- * ou une commande demande toujours, quel que soit le niveau. Les libellés
- * disent cela : deux écrans affirmaient qu'un niveau « agit sans demander »,
- * ce que rien dans le code ne permet.
+ * d'outils (`approval_decision`). Chaque libellé doit dire exactement cela : un
+ * menu qui promet « Auto-approbation des modifications de code » alors que le
+ * code redemande à chaque écriture est pire qu'un menu absent. Le risque d'un
+ * outil MCP vient de ce que son serveur en annonce (lecture seule → faible,
+ * destructif → élevé, sinon moyen).
  */
 export const TRUST_LEVELS: {
   value: TrustLevel;
@@ -25,8 +25,14 @@ export const TRUST_LEVELS: {
   {
     value: "trusted",
     label: "Confiance",
-    hint: "Les lectures s'exécutent sans confirmation. Écrire un fichier ou lancer une commande demande toujours.",
+    hint: "Les lectures et les outils annoncés en lecture seule s'exécutent sans confirmation. Écrire un fichier, appeler un autre outil ou lancer une commande demande toujours.",
     color: "var(--accent-300)",
+  },
+  {
+    value: "autonomous",
+    label: "Autonome",
+    hint: "Lit, écrit dans le projet et appelle les outils qui ne détruisent rien sans demander. Les commandes, les outils annoncés comme destructifs et les machines distantes demandent toujours.",
+    color: "var(--accent)",
   },
   {
     value: "sandbox",

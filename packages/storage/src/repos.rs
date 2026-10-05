@@ -362,6 +362,7 @@ impl FromToken for TrustLevel {
     fn from_token(s: &str) -> Self {
         match s {
             "trusted" => TrustLevel::Trusted,
+            "autonomous" => TrustLevel::Autonomous,
             "sandbox" => TrustLevel::Sandbox,
             _ => TrustLevel::Untrusted,
         }
@@ -639,6 +640,7 @@ impl ProjectRepo {
         let now = chrono::Utc::now().to_rfc3339();
         let trust_token = match trust {
             TrustLevel::Trusted => "trusted",
+            TrustLevel::Autonomous => "autonomous",
             TrustLevel::Untrusted => "untrusted",
             TrustLevel::Sandbox => "sandbox",
         };
@@ -720,6 +722,7 @@ impl ProjectRepo {
         if let Some(t) = trust {
             let token = match t {
                 TrustLevel::Trusted => "trusted",
+                TrustLevel::Autonomous => "autonomous",
                 TrustLevel::Untrusted => "untrusted",
                 TrustLevel::Sandbox => "sandbox",
             };
@@ -974,6 +977,7 @@ impl SessionRepo {
     ) -> Result<(), StorageError> {
         let jeton = trust.map(|t| match t {
             TrustLevel::Trusted => "trusted",
+            TrustLevel::Autonomous => "autonomous",
             TrustLevel::Untrusted => "untrusted",
             TrustLevel::Sandbox => "sandbox",
         });

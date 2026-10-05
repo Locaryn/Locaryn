@@ -120,8 +120,17 @@ fn one_name_per_tool(specs: Vec<ToolSpec>) -> (Vec<ToolSpec>, HashMap<String, St
     (kept, server_of)
 }
 
+/// Longueur maximale de la description d'un argument obligatoire.
+const REQUIRED_ARGUMENT_DESCRIPTION: usize = 220;
+
 /// Raccourcir une description à sa première phrase.
 fn short_description(text: &str) -> String {
+    short_text(text, SHORT_DESCRIPTION)
+}
+
+/// Les `max` premiers caractères du premier paragraphe, coupés à la fin d'une
+/// phrase quand il y en a une assez loin.
+fn short_text(text: &str, max: usize) -> String {
     let first = text
         .split(['\n', '\r'])
         .map(str::trim)
@@ -133,15 +142,19 @@ fn short_description(text: &str) -> String {
         .find(|&i| i >= 20)
         .unwrap_or(first.len());
     let cut = first[..sentence_end].trim();
-    if cut.chars().count() <= SHORT_DESCRIPTION {
+    if cut.chars().count() <= max {
         return cut.to_string();
     }
-    let truncated: String = cut.chars().take(SHORT_DESCRIPTION - 1).collect();
+    let truncated: String = cut.chars().take(max - 1).collect();
     format!("{}…", truncated.trim_end())
 }
 
 /// Retirer d'un schéma la prose (`description`, `title`, `examples`) : le modèle
 /// garde les noms, les types, les valeurs permises et ce qui est obligatoire.
+///
+/// Les arguments **obligatoires** gardent une description courte : c'est elle qui
+/// dit comment les remplir (Roblox Studio : « datamodel_type … This is a required
+/// argument »), et un modèle qui les remplit mal échoue à tous les appels.
 ///
 /// `in_properties` : l'objet courant est la table `properties`, dont les clés sont
 /// des noms d'arguments — un argument peut s'appeler « description » et ne doit
@@ -149,6 +162,15 @@ fn short_description(text: &str) -> String {
 fn strip_schema_prose(value: &mut serde_json::Value, in_properties: bool) {
     match value {
         serde_json::Value::Object(map) => {
+            let required: HashSet<String> = map
+                .get("required")
+                .and_then(|r| r.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
             if !in_properties {
                 map.remove("description");
                 map.remove("title");
@@ -156,7 +178,12 @@ fn strip_schema_prose(value: &mut serde_json::Value, in_properties: bool) {
                 map.remove("$schema");
             }
             for (key, child) in map.iter_mut() {
-                strip_schema_prose(child, !in_properties && key == "properties");
+                let is_properties = !in_properties && key == "properties";
+                if is_properties {
+                    strip_properties(child, &required);
+                } else {
+                    strip_schema_prose(child, false);
+                }
             }
         }
         serde_json::Value::Array(items) => {
@@ -165,6 +192,28 @@ fn strip_schema_prose(value: &mut serde_json::Value, in_properties: bool) {
             }
         }
         _ => {}
+    }
+}
+
+/// La table `properties` d'un schéma : chaque argument est allégé, et les
+/// obligatoires gardent leur description raccourcie.
+fn strip_properties(properties: &mut serde_json::Value, required: &HashSet<String>) {
+    let Some(map) = properties.as_object_mut() else {
+        return;
+    };
+    for (name, schema) in map.iter_mut() {
+        let kept = if required.contains(name) {
+            schema
+                .get("description")
+                .and_then(|d| d.as_str())
+                .map(|d| short_text(d, REQUIRED_ARGUMENT_DESCRIPTION))
+        } else {
+            None
+        };
+        strip_schema_prose(schema, false);
+        if let (Some(text), Some(obj)) = (kept, schema.as_object_mut()) {
+            obj.insert("description".into(), serde_json::Value::String(text));
+        }
     }
 }
 
@@ -442,10 +491,33 @@ mod tests {
         ));
         let props = &c.input_schema["properties"];
         assert!(props.get("description").is_some(), "{props}");
-        assert!(props["path"].get("description").is_none());
+        // `path` est obligatoire : sa description reste, raccourcie. L'argument
+        // facultatif qui s'appelle « description » existe toujours, sans prose.
+        assert!(props["path"].get("description").is_some());
+        assert!(props["description"].get("description").is_none());
         assert!(c.input_schema.get("description").is_none());
         assert_eq!(c.description, "Lit le contenu du fichier demandé.");
         assert_eq!(c.input_schema["required"][0], "path");
+    }
+
+    #[test]
+    fn un_argument_obligatoire_garde_sa_description_courte() {
+        let mut schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "datamodel_type": { "type": "string", "enum": ["Edit"], "description": "Le datamodel visé. C'est un argument obligatoire. Plus de détails inutiles ici." },
+                "note": { "type": "string", "description": "Facultatif, avec beaucoup de prose." }
+            },
+            "required": ["datamodel_type"]
+        });
+        strip_schema_prose(&mut schema, false);
+        let props = &schema["properties"];
+        assert_eq!(
+            props["datamodel_type"]["description"],
+            "Le datamodel visé. C'est un argument obligatoire."
+        );
+        assert_eq!(props["datamodel_type"]["enum"][0], "Edit");
+        assert!(props["note"].get("description").is_none());
     }
 
     #[test]

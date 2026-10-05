@@ -403,6 +403,29 @@ pub fn approval_decision(input: &ApprovalInput<'_>) -> ApprovalDecision {
         };
     }
 
+    // Niveau « autonome » : la personne a choisi de ne plus être interrogée pour
+    // ce qui lit, écrit dans le projet ou appelle un outil qui ne détruit rien.
+    // Les commandes (risque élevé), les outils qui se disent destructifs et tout
+    // ce qui vise une machine distante redemandent quand même.
+    if input.ctx.trust == TrustLevel::Autonomous
+        && !is_remote
+        && declared.tier() <= Risk::Medium.tier()
+    {
+        return ApprovalDecision {
+            call_id: String::new(),
+            tool: spec.name.clone(),
+            effective_risk: declared,
+            declared_risk: declared,
+            escalated_to_critical: false,
+            needs_user_consent: false,
+            reason: "Niveau autonome : lecture, écriture et outils non destructifs.".into(),
+            diff: None,
+            min_scope: RiskScope::Once,
+            hard_blocked: false,
+            debug_trace: "Autonomous + local + risk<=Medium → silent".into(),
+        };
+    }
+
     // The ONLY other auto-approved case is: Low risk + no remote + Trusted.
     // Everything else requires the modal. This is intentionally strict;
     // better to ask one extra time than ship a silent execution.
@@ -547,6 +570,82 @@ mod approval_tests {
             session_id: uuid::Uuid::nil(),
             remote_target: remote,
         }
+    }
+
+    /// Un outil MCP tel que `collect_mcp_tools` le déclare : la permission `Mcp`
+    /// l'écarte de la règle « sans permission, rien à arbitrer ».
+    fn outil_mcp(risk: Risk) -> ToolSpec {
+        ToolSpec {
+            required_permissions: vec![Permission::Mcp],
+            ..spec("outil_mcp", risk)
+        }
+    }
+
+    fn demande(spec: &ToolSpec, trust: TrustLevel, remote: Option<RemoteTarget>) -> bool {
+        let ctx = ctx_with(trust, remote);
+        approval_decision(&ApprovalInput {
+            spec,
+            args: &serde_json::Value::Null,
+            ctx: &ctx,
+            agent_reason: None,
+        })
+        .needs_user_consent
+    }
+
+    /// La matrice que l'écran des permissions annonce, niveau par niveau.
+    #[test]
+    fn la_matrice_des_niveaux_correspond_a_leurs_libelles() {
+        let lecture = outil_mcp(Risk::Low);
+        let ecriture = outil_mcp(Risk::Medium);
+        let commande = outil_mcp(Risk::High);
+
+        // Prudent : tout demande, même une lecture annoncée « lecture seule ».
+        for s in [&lecture, &ecriture, &commande] {
+            assert!(demande(s, TrustLevel::Untrusted, None));
+        }
+        // Confiance : les lectures passent, le reste demande.
+        assert!(!demande(&lecture, TrustLevel::Trusted, None));
+        assert!(demande(&ecriture, TrustLevel::Trusted, None));
+        assert!(demande(&commande, TrustLevel::Trusted, None));
+        // Autonome : lectures et outils non destructifs passent ; une commande ou un
+        // outil annoncé destructif (risque élevé) demande toujours.
+        assert!(!demande(&lecture, TrustLevel::Autonomous, None));
+        assert!(!demande(&ecriture, TrustLevel::Autonomous, None));
+        assert!(demande(&commande, TrustLevel::Autonomous, None));
+        assert!(demande(
+            &outil_mcp(Risk::Critical),
+            TrustLevel::Autonomous,
+            None
+        ));
+    }
+
+    /// Même « Autonome » ne dispense jamais d'un accord pour une machine distante.
+    #[test]
+    fn le_niveau_autonome_ne_touche_pas_aux_machines_distantes() {
+        let cible = RemoteTarget {
+            kind: "ssh".into(),
+            label: "serveur".into(),
+            capabilities: None,
+        };
+        assert!(demande(
+            &outil_mcp(Risk::Low),
+            TrustLevel::Autonomous,
+            Some(cible)
+        ));
+    }
+
+    /// Un projet « Aperçu seul » refuse tout ce qui écrit, même si le serveur MCP
+    /// jure que son outil est inoffensif.
+    #[test]
+    fn l_apercu_seul_refuse_un_outil_non_lecture_seule() {
+        let ctx = ctx_with(TrustLevel::Sandbox, None);
+        let d = approval_decision(&ApprovalInput {
+            spec: &outil_mcp(Risk::Medium),
+            args: &serde_json::Value::Null,
+            ctx: &ctx,
+            agent_reason: None,
+        });
+        assert!(d.hard_blocked);
     }
 
     #[test]

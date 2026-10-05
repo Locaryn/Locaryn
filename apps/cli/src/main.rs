@@ -1708,9 +1708,10 @@ async fn users_cmd(action: UsersCmd) -> anyhow::Result<()> {
 fn parse_trust(s: &str) -> anyhow::Result<locaryn_shared_types::TrustLevel> {
     Ok(match s.to_lowercase().as_str() {
         "trusted" => locaryn_shared_types::TrustLevel::Trusted,
+        "autonomous" => locaryn_shared_types::TrustLevel::Autonomous,
         "untrusted" => locaryn_shared_types::TrustLevel::Untrusted,
         "sandbox" => locaryn_shared_types::TrustLevel::Sandbox,
-        _ => anyhow::bail!("invalid trust: {s} (use trusted|untrusted|sandbox)"),
+        _ => anyhow::bail!("invalid trust: {s} (use trusted|autonomous|untrusted|sandbox)"),
     })
 }
 

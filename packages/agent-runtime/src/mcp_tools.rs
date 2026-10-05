@@ -105,20 +105,21 @@ pub async fn collect_mcp_tools(state: &McpState) -> Vec<ToolSpec> {
                         .description
                         .clone()
                         .unwrap_or_else(|| format!("MCP tool from server '{server_name}'"));
+                    let risk = risk_from_annotations(t);
                     specs.push(ToolSpec {
                         name: mcp_tool_name(server_name, &t.name),
                         description: desc.clone(),
                         input_schema: t.input_schema.clone(),
-                        risk: crate::tools::Risk::Medium,
-                        required_permissions: Vec::new(),
+                        risk,
+                        required_permissions: vec![locaryn_shared_types::Permission::Mcp],
                     });
                     if clean_names.insert(t.name.clone()) {
                         specs.push(ToolSpec {
                             name: t.name.clone(),
                             description: desc,
                             input_schema: t.input_schema.clone(),
-                            risk: crate::tools::Risk::Medium,
-                            required_permissions: Vec::new(),
+                            risk,
+                            required_permissions: vec![locaryn_shared_types::Permission::Mcp],
                         });
                     }
                 }
@@ -214,6 +215,19 @@ pub async fn dispatch_mcp_tool(
     }
 
     match client.invoke_tool(&tool_name, args).await {
+        // Un outil qui échoue répond souvent par un résultat JSON-RPC *réussi*
+        // portant `isError: true` et son message dans `content` (Roblox Studio :
+        // « datamodel_type is required »). Le traiter comme un succès affichait
+        // une case verte, et le modèle annonçait « c'est fait » sur un appel
+        // qui n'avait rien fait.
+        Ok(val) if tool_reported_error(&val) => ToolResult {
+            ok: false,
+            output: format!(
+                "L'outil « {tool_name} » a répondu par une erreur : {}",
+                tool_error_text(&val)
+            ),
+            artifact: None,
+        },
         Ok(val) => {
             // Convert the JSON-RPC result to a display string.
             let output = serde_json::to_string_pretty(&val).unwrap_or_else(|_| val.to_string());
@@ -232,6 +246,54 @@ pub async fn dispatch_mcp_tool(
             output: format!("MCP tool '{tool_name}' on '{server_name}' failed: {e}"),
             artifact: None,
         },
+    }
+}
+
+/// Le niveau de risque d'un outil MCP, d'après ce que son serveur en annonce.
+///
+/// `destructiveHint` → élevé (il demande toujours) ; `readOnlyHint` sans accès au
+/// monde extérieur → faible ; le reste → moyen, ce qu'était tout outil MCP. Ce
+/// sont des indications du serveur, pas des garanties : le niveau « Prudent » les
+/// ignore et demande pour tout (voir `approval_decision`), seuls « Confiance » et
+/// « Autonome » s'en servent pour alléger.
+pub fn risk_from_annotations(tool: &locaryn_mcp::ToolDescriptor) -> crate::tools::Risk {
+    let hint = |key: &str| {
+        tool.annotations
+            .as_ref()
+            .and_then(|a| a.get(key))
+            .and_then(|v| v.as_bool())
+    };
+    if hint("destructiveHint") == Some(true) {
+        crate::tools::Risk::High
+    } else if hint("readOnlyHint") == Some(true) && hint("openWorldHint") != Some(true) {
+        crate::tools::Risk::Low
+    } else {
+        crate::tools::Risk::Medium
+    }
+}
+
+/// Le serveur dit-il que l'appel a échoué (`isError: true`) ?
+fn tool_reported_error(result: &serde_json::Value) -> bool {
+    result.get("isError").and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// Le texte d'un résultat MCP : les éléments `text` de `content`, mis bout à
+/// bout, ou à défaut le JSON entier.
+fn tool_error_text(result: &serde_json::Value) -> String {
+    let text: Vec<&str> = result
+        .get("content")
+        .and_then(|c| c.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|i| i.get("text").and_then(|t| t.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if text.is_empty() {
+        result.to_string()
+    } else {
+        text.join("\n")
     }
 }
 
@@ -354,6 +416,79 @@ mod tests {
         assert!(noms.contains(&"mcp__roblox__lire".to_string()), "{noms:?}");
         assert!(noms.contains(&"lire".to_string()), "{noms:?}");
         assert!(!noms.iter().any(|n| n.contains("tout_effacer")), "{noms:?}");
+    }
+
+    /// Le risque d'un outil MCP suit ce que son serveur annonce.
+    #[test]
+    fn le_risque_d_un_outil_mcp_suit_ses_annotations() {
+        let avec = |annotations: serde_json::Value| ToolDescriptor {
+            annotations: Some(annotations),
+            ..outil("t")
+        };
+        use crate::tools::Risk;
+        assert_eq!(risk_from_annotations(&outil("t")), Risk::Medium);
+        assert_eq!(
+            risk_from_annotations(&avec(serde_json::json!({ "readOnlyHint": true }))),
+            Risk::Low
+        );
+        assert_eq!(
+            risk_from_annotations(&avec(serde_json::json!({ "destructiveHint": true }))),
+            Risk::High
+        );
+        // Une lecture qui sort sur Internet n'est plus anodine.
+        assert_eq!(
+            risk_from_annotations(&avec(
+                serde_json::json!({ "readOnlyHint": true, "openWorldHint": true })
+            )),
+            Risk::Medium
+        );
+        // Destructif l'emporte sur tout le reste.
+        assert_eq!(
+            risk_from_annotations(&avec(
+                serde_json::json!({ "readOnlyHint": true, "destructiveHint": true })
+            )),
+            Risk::High
+        );
+    }
+
+    /// Un résultat `isError: true` est un échec, avec le message du serveur : le
+    /// modèle ne doit pas lire « fait » là où l'outil a refusé la demande.
+    #[tokio::test]
+    async fn un_resultat_iserror_est_un_echec_avec_le_message_du_serveur() {
+        struct Refuse;
+        #[async_trait::async_trait]
+        impl McpClient for Refuse {
+            async fn discover(&self) -> Result<ServerCapabilities, McpError> {
+                Ok(ServerCapabilities {
+                    tools: vec![outil("executer")],
+                    resources: vec![],
+                    prompts: vec![],
+                })
+            }
+            async fn invoke_tool(
+                &self,
+                _name: &str,
+                _args: &serde_json::Value,
+            ) -> Result<serde_json::Value, McpError> {
+                Ok(serde_json::json!({
+                    "content": [{ "type": "text", "text": "datamodel_type is required" }],
+                    "isError": true
+                }))
+            }
+            async fn shutdown(&self) -> Result<(), McpError> {
+                Ok(())
+            }
+        }
+        let etat = etat_avec_un_outil_interdit();
+        let client: Arc<dyn McpClient> = Arc::new(Refuse);
+        etat.running.write().await.insert("roblox".into(), client);
+        let r = dispatch_mcp_tool(&etat, "mcp__roblox__executer", &serde_json::json!({})).await;
+        assert!(!r.ok, "{}", r.output);
+        assert!(
+            r.output.contains("datamodel_type is required"),
+            "{}",
+            r.output
+        );
     }
 
     /// Même si le modèle invente l'appel, il est refusé et rien ne part.

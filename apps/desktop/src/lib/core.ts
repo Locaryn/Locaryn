@@ -7,7 +7,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
-export type TrustLevel = "trusted" | "untrusted" | "sandbox";
+export type TrustLevel = "trusted" | "autonomous" | "untrusted" | "sandbox";
 export type ConnectionMode = "auto" | "remote" | "local";
 export type MessageRole = "user" | "assistant" | "tool" | "system";
 
@@ -928,6 +928,16 @@ export interface McpServerInfo {
   tools: string[];
   /** Outils que la personne a interdits au modèle. */
   disabled_tools?: string[];
+}
+
+/** La fenêtre de contexte, vue de trois côtés. */
+export interface ContextStatus {
+  /** Réglée (profil ou réglage manuel) : celle du prochain chargement. */
+  configured: number;
+  /** Celle du moteur en marche, lue chez lui ; `null` si rien ne tourne. */
+  running: number | null;
+  /** Le plafond du modèle chargé, quand il est connu. */
+  cap: number | null;
 }
 
 /** Un outil d'un connecteur MCP, avec ce que la personne peut en décider. */
@@ -1918,6 +1928,8 @@ export interface CoreApi {
    *  (Ollama /api/show, GGUF du modele charge). `null` : inconnue — l'UI
    *  garde son maximum generique. */
   getModelCtxCapacity(): Promise<number | null>;
+  /** La fenêtre de contexte : réglée, réellement chargée, et plafond du modèle. */
+  contextStatus(): Promise<ContextStatus>;
   /** Compresser la conversation : vieux tours -> resume modele. Retourne le
    *  nombre de messages retires. */
   compressChatContext(sessionId: string): Promise<number>;
@@ -2360,6 +2372,7 @@ const tauriCore: CoreApi = {
   updateProviderModelParams: (params) => invoke("update_provider_model_params", { params }),
   getProviderModelParams: () => invoke<ModelParams>("get_provider_model_params"),
   getModelCtxCapacity: () => invoke<number | null>("get_model_ctx_capacity"),
+  contextStatus: () => invoke<ContextStatus>("context_status"),
   compressChatContext: (sessionId) => invoke<number>("compress_chat_context", { sessionId }),
   inspectHuggingFaceRepo: (source, hfToken) =>
     invoke<HfRepoInspection>("inspect_huggingface_repo", {
@@ -5305,6 +5318,9 @@ const demoCore: CoreApi = {
 
   async updateProviderModelParams(_params) {
     // Demo: no-op, params not persisted in browser mode.
+  },
+  async contextStatus() {
+    return { configured: 8192, running: 8192, cap: 32768 };
   },
   async getModelCtxCapacity() {
     return null;

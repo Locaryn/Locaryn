@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 import type { Project, TrustLevel } from "../lib/core";
+import { TRUST_LEVELS, trustInfo } from "../lib/trust";
 import { ModalShell } from "./ModalShell";
 import { ProjectContextSettings } from "./ProjectContextSettings";
 
@@ -87,16 +88,13 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave }: Props
           value={trustLevel}
           onChange={(e) => setTrustLevel(e.target.value as TrustLevel)}
         >
-          <option value="untrusted">
-            Untrusted (Recommandé : Demander confirmation pour chaque écriture)
-          </option>
-          <option value="trusted">
-            Trusted (Auto-approbation des lectures et modifications de code)
-          </option>
-          <option value="sandbox">
-            Sandbox (Lecture seule stricte - aucun terminal ni modification)
-          </option>
+          {TRUST_LEVELS.map((n) => (
+            <option key={n.value} value={n.value}>
+              {n.label}
+            </option>
+          ))}
         </select>
+        <p className="locaryn-field-hint">{trustInfo(trustLevel).hint}</p>
       </div>
 
       {/* 2. Protected & Excluded Files */}

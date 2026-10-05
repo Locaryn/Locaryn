@@ -36,6 +36,10 @@ pub struct Project {
 pub enum TrustLevel {
     /// Full file access; auto-approve reads.
     Trusted,
+    /// Acts without asking for reads, file edits and tools that do not destroy
+    /// anything. Still asks for shell commands, tools that announce they are
+    /// destructive, and anything aimed at a remote machine.
+    Autonomous,
     /// Approve each file access. (Default — safest.)
     #[default]
     Untrusted,
