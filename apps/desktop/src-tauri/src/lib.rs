@@ -2327,7 +2327,7 @@ fn image_marker(path: &str) -> String {
 
 /// Remove UI-only artifact markers before replaying history to a model.
 fn strip_ui_markers(content: &str) -> String {
-    let mut text = content.to_string();
+    let mut text = locaryn_agent_runtime::openai_tool_loop::sans_reflexion(content);
     for marker in ["<!--locaryn-audio:", "<!--locaryn-image:"] {
         while let Some(start) = text.find(marker) {
             let Some(end_rel) = text[start..].find("-->") else {

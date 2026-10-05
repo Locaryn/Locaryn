@@ -634,13 +634,65 @@ async fn post_json(
     req.json(body).send().await
 }
 
+/// Balises du bloc de réflexion que l'interface replie (`reasoning.ts`).
+pub const REFLEXION_DEBUT: &str = "<think>";
+pub const REFLEXION_FIN: &str = "</think>";
+
+/// Une réponse sans ses blocs de réflexion, y compris un bloc resté ouvert
+/// (réponse interrompue). La réflexion se montre à la personne mais ne repart
+/// pas au modèle : rejouée dans l'historique, elle mangeait la fenêtre de
+/// contexte d'un petit modèle en deux ou trois tours.
+pub fn sans_reflexion(texte: &str) -> String {
+    let mut sortie = String::with_capacity(texte.len());
+    let mut reste = texte;
+    while let Some(debut) = reste.find(REFLEXION_DEBUT) {
+        sortie.push_str(&reste[..debut]);
+        let apres = &reste[debut + REFLEXION_DEBUT.len()..];
+        match apres.find(REFLEXION_FIN) {
+            Some(fin) => reste = &apres[fin + REFLEXION_FIN.len()..],
+            None => {
+                reste = "";
+                break;
+            }
+        }
+    }
+    sortie.push_str(reste);
+    sortie
+}
+
+/// Le texte de réflexion d'un fragment, quel que soit le champ où le serveur
+/// le range : `reasoning_content` (llama-server, DeepSeek) ou `reasoning`
+/// (Ollama, OpenRouter).
+fn reasoning_delta(delta: &serde_json::Value) -> Option<&str> {
+    ["reasoning_content", "reasoning"]
+        .into_iter()
+        .find_map(|cle| delta.get(cle).and_then(|v| v.as_str()))
+        .filter(|t| !t.is_empty())
+}
+
+async fn send_token(
+    tx: &tokio::sync::mpsc::Sender<StreamEvent>,
+    text: String,
+) -> Result<(), String> {
+    tx.send(StreamEvent::Token { text })
+        .await
+        .map_err(|_| "client gone".to_string())
+}
+
 /// Consume one streamed response: emit `Token` events live for text deltas,
 /// assemble fragmented tool calls, and pick up `usage` from the final frame.
+///
+/// La réflexion qu'un serveur range à part (`reasoning_content`) part dans un
+/// bloc `<think>` du même flux. Ignorée, elle laissait l'interface sans rien
+/// recevoir pendant des minutes — « Chargement du modèle » affiché alors que
+/// le modèle réfléchissait déjà. Elle ne rejoint pas `out.content` : ce texte
+/// repart au modèle au tour suivant.
 async fn stream_one_round(
     resp: reqwest::Response,
     tx: &tokio::sync::mpsc::Sender<StreamEvent>,
 ) -> Result<RoundResult, String> {
     let mut out = RoundResult::default();
+    let mut reflexion_ouverte = false;
     // index → (id, name, args buffer)
     let mut partial: std::collections::BTreeMap<u64, (String, String, String)> =
         std::collections::BTreeMap::new();
@@ -695,22 +747,32 @@ async fn stream_one_round(
                 .and_then(|c| c.get("delta"));
             let Some(delta) = delta else { continue };
 
-            if let Some(text) = delta.get("content").and_then(|c| c.as_str()) {
-                if !text.is_empty() {
-                    out.content.push_str(text);
-                    if tx
-                        .send(StreamEvent::Token {
-                            text: text.to_string(),
-                        })
-                        .await
-                        .is_err()
-                    {
-                        return Err("client gone".into());
-                    }
-                }
+            if let Some(pensee) = reasoning_delta(delta) {
+                let texte = if reflexion_ouverte {
+                    pensee.to_string()
+                } else {
+                    format!("{REFLEXION_DEBUT}{pensee}")
+                };
+                reflexion_ouverte = true;
+                send_token(tx, texte).await?;
             }
 
-            if let Some(tcs) = delta.get("tool_calls").and_then(|t| t.as_array()) {
+            let text = delta
+                .get("content")
+                .and_then(|c| c.as_str())
+                .filter(|t| !t.is_empty());
+            let tcs = delta.get("tool_calls").and_then(|t| t.as_array());
+            if reflexion_ouverte && (text.is_some() || tcs.is_some()) {
+                reflexion_ouverte = false;
+                send_token(tx, format!("{REFLEXION_FIN}\n\n")).await?;
+            }
+
+            if let Some(text) = text {
+                out.content.push_str(text);
+                send_token(tx, text.to_string()).await?;
+            }
+
+            if let Some(tcs) = tcs {
                 for frag in tcs {
                     let idx = frag.get("index").and_then(|i| i.as_u64()).unwrap_or(0);
                     let entry = partial.entry(idx).or_default();
@@ -729,6 +791,9 @@ async fn stream_one_round(
             }
         }
     }
+    if reflexion_ouverte {
+        send_token(tx, format!("{REFLEXION_FIN}\n\n")).await?;
+    }
 
     for (_, (id, name, args)) in partial {
         out.calls.push(AssembledCall {
@@ -742,4 +807,31 @@ async fn stream_one_round(
         });
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn la_reflexion_ne_repart_pas_au_modele() {
+        assert_eq!(sans_reflexion("<think>je pèse</think>\n\nRéponse"), "\n\nRéponse");
+        assert_eq!(
+            sans_reflexion("a<think>x</think>b<think>y</think>c"),
+            "abc",
+            "chaque bloc, pas seulement le premier"
+        );
+        assert_eq!(sans_reflexion("Début<think>coupé net"), "Début");
+        assert_eq!(sans_reflexion("rien à retirer"), "rien à retirer");
+    }
+
+    #[test]
+    fn la_reflexion_est_lue_dans_les_deux_champs_usuels() {
+        let llama = serde_json::json!({ "reasoning_content": "hmm" });
+        let ollama = serde_json::json!({ "reasoning": "hmm" });
+        let vide = serde_json::json!({ "reasoning_content": "", "content": "x" });
+        assert_eq!(reasoning_delta(&llama), Some("hmm"));
+        assert_eq!(reasoning_delta(&ollama), Some("hmm"));
+        assert_eq!(reasoning_delta(&vide), None);
+    }
 }
