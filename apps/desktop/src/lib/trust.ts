@@ -1,7 +1,8 @@
 import type { TrustLevel } from "./core";
 
 /**
- * Les niveaux de permission, décrits une seule fois.
+ * Les niveaux de permission, décrits une seule fois, du plus fermé au plus
+ * ouvert.
  *
  * Ce qu'ils font réellement est fixé par la table d'approbation de la boucle
  * d'outils (`approval_decision`). Chaque libellé doit dire exactement cela : un
@@ -17,31 +18,37 @@ export const TRUST_LEVELS: {
   color: string;
 }[] = [
   {
+    value: "sandbox",
+    label: "Aperçu seul",
+    hint: "Lecture seule : toute écriture et toute commande sont refusées, sans exception.",
+    color: "var(--text-faint)",
+  },
+  {
     value: "untrusted",
     label: "Prudent",
-    hint: "Chaque accès aux fichiers et chaque commande demande une confirmation. C'est le réglage par défaut.",
+    hint: "Sécurité maximale : chaque accès aux fichiers, chaque commande et chaque outil demande votre accord. C'est le réglage par défaut.",
     color: "var(--warn)",
   },
   {
     value: "trusted",
     label: "Confiance",
-    hint: "Les lectures et les outils annoncés en lecture seule s'exécutent sans confirmation. Écrire un fichier, appeler un autre outil ou lancer une commande demande toujours.",
+    hint: "Les lectures et les outils annoncés en lecture seule passent sans question. Écrire un fichier, lancer une commande ou appeler un autre outil demande toujours.",
     color: "var(--accent-300)",
   },
   {
     value: "autonomous",
     label: "Autonome",
-    hint: "Lit, écrit dans le projet et appelle les outils qui ne détruisent rien sans demander. Les commandes, les outils annoncés comme destructifs et les machines distantes demandent toujours.",
+    hint: "Tout ce qui se passe sur cet ordinateur passe sans question : lectures, écritures, commandes, outils. Deux choses demandent encore : installer quelque chose (un morph, un skill, un connecteur, un logiciel ou un script venu du web, dont rien ne garantit la provenance) et agir sur une autre machine.",
     color: "var(--accent)",
   },
   {
-    value: "sandbox",
-    label: "Aperçu seul",
-    hint: "Lecture seule : toute écriture et toute commande sont refusées.",
+    value: "unrestricted",
+    label: "Tout autoriser",
+    hint: "Aucune question, jamais : installations et machines distantes comprises. Dangereux — le modèle peut tout faire, y compris installer un logiciel inconnu ou effacer des fichiers. À réserver à une machine ou une tâche où une erreur ne coûte rien.",
     color: "var(--danger)",
   },
 ];
 
 export function trustInfo(level: TrustLevel) {
-  return TRUST_LEVELS.find((n) => n.value === level) ?? TRUST_LEVELS[0];
+  return TRUST_LEVELS.find((n) => n.value === level) ?? TRUST_LEVELS[1];
 }

@@ -1,6 +1,7 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type TokenInfo, type TrustLevel, type WebStatus, api } from "../lib/core";
+import { TRUST_LEVELS } from "../lib/trust";
 
 /** Les choix d'expiration d'une clé API, dans l'ordre où on les lit. */
 const EXPIRATIONS: { value: number | null; label: string }[] = [
@@ -439,16 +440,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
             conversations deja ouvertes gardent les leurs.
           </p>
           <div className="lo-segmented" style={{ marginTop: 12 }} role="group">
-            {(
-              [
-                ["untrusted", "Demander avant d'agir"],
-                ["trusted", "Tout autoriser"],
-                ["sandbox", "Apercu seul"],
-              ] as [TrustLevel, string][]
-            ).map(([value, label]) => (
+            {TRUST_LEVELS.map(({ value, label, hint }) => (
               <button
                 key={value}
                 type="button"
+                title={hint}
                 className={defaultTrust === value ? "lo-segment-on" : undefined}
                 onClick={async () => {
                   try {
@@ -462,6 +458,9 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
               </button>
             ))}
           </div>
+          <p className="lo-hint" style={{ marginTop: 8 }}>
+            {TRUST_LEVELS.find((n) => n.value === defaultTrust)?.hint}
+          </p>
         </section>
       )}
 

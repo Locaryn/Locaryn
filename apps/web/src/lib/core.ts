@@ -201,7 +201,7 @@ interface SessionRow {
   title: string | null;
   last_message_at: string | null;
   /** Les permissions propres a la conversation, si la personne les a changees. */
-  trust_override?: "trusted" | "untrusted" | "sandbox" | null;
+  trust_override?: TrustLevel | null;
   archived_at: string | null;
 }
 interface MessageRow {
@@ -335,7 +335,7 @@ export interface SessionTrust {
 }
 
 /** Les permissions, du plus permissif au plus ferme. */
-export type TrustLevel = "trusted" | "untrusted" | "sandbox";
+export type TrustLevel = "trusted" | "autonomous" | "unrestricted" | "untrusted" | "sandbox";
 
 /** Un jeton du serveur : clé API développeur ou session d'appareil. */
 export interface TokenInfo {

@@ -358,11 +358,24 @@ trait FromToken: Sized {
     fn from_token(s: &str) -> Self;
 }
 
+/// Le jeton stocké en base pour un niveau de confiance — le même que celui
+/// de la sérialisation, pour un seul vocabulaire de bout en bout.
+fn trust_token(t: TrustLevel) -> &'static str {
+    match t {
+        TrustLevel::Trusted => "trusted",
+        TrustLevel::Autonomous => "autonomous",
+        TrustLevel::Unrestricted => "unrestricted",
+        TrustLevel::Untrusted => "untrusted",
+        TrustLevel::Sandbox => "sandbox",
+    }
+}
+
 impl FromToken for TrustLevel {
     fn from_token(s: &str) -> Self {
         match s {
             "trusted" => TrustLevel::Trusted,
             "autonomous" => TrustLevel::Autonomous,
+            "unrestricted" => TrustLevel::Unrestricted,
             "sandbox" => TrustLevel::Sandbox,
             _ => TrustLevel::Untrusted,
         }
@@ -638,12 +651,7 @@ impl ProjectRepo {
     ) -> Result<Project, StorageError> {
         let id = Uuid::new_v4();
         let now = chrono::Utc::now().to_rfc3339();
-        let trust_token = match trust {
-            TrustLevel::Trusted => "trusted",
-            TrustLevel::Autonomous => "autonomous",
-            TrustLevel::Untrusted => "untrusted",
-            TrustLevel::Sandbox => "sandbox",
-        };
+        let trust_token = trust_token(trust);
 
         // Archiving is a soft delete, but the UNIQUE index on `path` still
         // covers the archived row — so adding a folder back reported "already
@@ -720,12 +728,7 @@ impl ProjectRepo {
                 .await?;
         }
         if let Some(t) = trust {
-            let token = match t {
-                TrustLevel::Trusted => "trusted",
-                TrustLevel::Autonomous => "autonomous",
-                TrustLevel::Untrusted => "untrusted",
-                TrustLevel::Sandbox => "sandbox",
-            };
+            let token = trust_token(t);
             sqlx::query("UPDATE projects SET trust_level = ?, updated_at = ? WHERE id = ?")
                 .bind(token)
                 .bind(chrono::Utc::now().to_rfc3339())
@@ -975,12 +978,7 @@ impl SessionRepo {
         id: Uuid,
         trust: Option<TrustLevel>,
     ) -> Result<(), StorageError> {
-        let jeton = trust.map(|t| match t {
-            TrustLevel::Trusted => "trusted",
-            TrustLevel::Autonomous => "autonomous",
-            TrustLevel::Untrusted => "untrusted",
-            TrustLevel::Sandbox => "sandbox",
-        });
+        let jeton = trust.map(trust_token);
         let res = sqlx::query("UPDATE sessions SET trust_override = ? WHERE id = ?")
             .bind(jeton)
             .bind(id.to_string())

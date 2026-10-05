@@ -7,7 +7,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
-export type TrustLevel = "trusted" | "autonomous" | "untrusted" | "sandbox";
+export type TrustLevel = "trusted" | "autonomous" | "unrestricted" | "untrusted" | "sandbox";
 export type ConnectionMode = "auto" | "remote" | "local";
 export type MessageRole = "user" | "assistant" | "tool" | "system";
 

@@ -403,14 +403,32 @@ pub fn approval_decision(input: &ApprovalInput<'_>) -> ApprovalDecision {
         };
     }
 
-    // Niveau « autonome » : la personne a choisi de ne plus être interrogée pour
-    // ce qui lit, écrit dans le projet ou appelle un outil qui ne détruit rien.
-    // Les commandes (risque élevé), les outils qui se disent destructifs et tout
-    // ce qui vise une machine distante redemandent quand même.
-    if input.ctx.trust == TrustLevel::Autonomous
-        && !is_remote
-        && declared.tier() <= Risk::Medium.tier()
-    {
+    // Niveau « tout autoriser » : la personne a choisi de ne plus jamais être
+    // interrogée. Rien ne demande, installations et machines distantes
+    // comprises — l'écran des permissions le dit en toutes lettres.
+    if input.ctx.trust == TrustLevel::Unrestricted {
+        return ApprovalDecision {
+            call_id: String::new(),
+            tool: spec.name.clone(),
+            effective_risk: effective,
+            declared_risk: declared,
+            escalated_to_critical: escalated,
+            needs_user_consent: false,
+            reason: "Niveau « tout autoriser » : aucune confirmation.".into(),
+            diff: None,
+            min_scope: RiskScope::Once,
+            hard_blocked: false,
+            debug_trace: "Unrestricted → silent".into(),
+        };
+    }
+
+    // Niveau « autonome » : tout ce qui se passe sur cette machine s'exécute
+    // sans question — lectures, écritures, commandes, outils destructifs. Deux
+    // choses redemandent : installer quelque chose (un morph, un skill, un
+    // connecteur, un logiciel ou un script venu du web, dont rien ne garantit
+    // la provenance) et agir sur une machine distante.
+    let installation = est_une_installation(spec, input.args);
+    if input.ctx.trust == TrustLevel::Autonomous && !is_remote && !installation {
         return ApprovalDecision {
             call_id: String::new(),
             tool: spec.name.clone(),
@@ -418,11 +436,12 @@ pub fn approval_decision(input: &ApprovalInput<'_>) -> ApprovalDecision {
             declared_risk: declared,
             escalated_to_critical: false,
             needs_user_consent: false,
-            reason: "Niveau autonome : lecture, écriture et outils non destructifs.".into(),
+            reason: "Niveau autonome : tout sauf les installations et les machines distantes."
+                .into(),
             diff: None,
             min_scope: RiskScope::Once,
             hard_blocked: false,
-            debug_trace: "Autonomous + local + risk<=Medium → silent".into(),
+            debug_trace: "Autonomous + local + pas d'installation → silent".into(),
         };
     }
 
@@ -453,10 +472,16 @@ pub fn approval_decision(input: &ApprovalInput<'_>) -> ApprovalDecision {
         declared_risk: declared,
         escalated_to_critical: escalated,
         needs_user_consent: true,
-        reason: input
-            .agent_reason
-            .map(|r| r.to_string())
-            .unwrap_or_else(|| default_reason(spec, input.ctx)),
+        reason: if installation && input.ctx.trust == TrustLevel::Autonomous {
+            "Installation : le niveau autonome demande toujours avant d'ajouter un morph, \
+             un skill, un connecteur ou un logiciel venu du web."
+                .to_string()
+        } else {
+            input
+                .agent_reason
+                .map(|r| r.to_string())
+                .unwrap_or_else(|| default_reason(spec, input.ctx))
+        },
         diff: render_diff(spec, input.args, input.ctx),
         // Critical tools still let the user pick the scope; the UI shows
         // chips for Once/Session/Project/Always and Critical defaults to
@@ -468,6 +493,97 @@ pub fn approval_decision(input: &ApprovalInput<'_>) -> ApprovalDecision {
             declared, is_remote, input.ctx.trust, effective, escalated
         ),
     }
+}
+
+/// Outils de l'application qui y ajoutent quelque chose de durable.
+pub const OUTILS_D_INSTALLATION: &[&str] = &[
+    "app_install_morph",
+    "app_add_connector",
+    "app_install_skill",
+];
+
+/// Ce que l'on tape pour installer un logiciel, ou lancer un script venu du
+/// web sans le garder. Repérage par mots : un modèle qui veut installer passe
+/// par l'une de ces formes, et un faux positif ne coûte qu'une question.
+const COMMANDES_D_INSTALLATION: &[&str] = &[
+    "pip install",
+    "pip3 install",
+    "pipx install",
+    "uv pip install",
+    "uv tool install",
+    "uvx ",
+    "npm install",
+    "npm i ",
+    "npm add",
+    "pnpm add",
+    "pnpm install",
+    "pnpm dlx",
+    "yarn add",
+    "bun add",
+    "bunx ",
+    "npx ",
+    "cargo install",
+    "go install",
+    "gem install",
+    "winget install",
+    "choco install",
+    "scoop install",
+    "apt install",
+    "apt-get install",
+    "dnf install",
+    "yum install",
+    "pacman -s",
+    "brew install",
+    "snap install",
+    "flatpak install",
+    "install-module",
+    "install-package",
+    "install-script",
+    "add-appxpackage",
+    "msiexec",
+    "invoke-expression",
+    "| iex",
+    "|iex",
+    "| sh",
+    "|sh",
+    "| bash",
+    "|bash",
+];
+
+/// L'appel installe-t-il quelque chose ? Un outil d'installation de
+/// l'application, ou une commande (argument `command`) qui installe un
+/// logiciel, exécute un script téléchargé, ou rapatrie un exécutable.
+pub fn est_une_installation(spec: &ToolSpec, args: &serde_json::Value) -> bool {
+    let nom = spec.name.rsplit("__").next().unwrap_or(&spec.name);
+    if OUTILS_D_INSTALLATION.contains(&nom) {
+        return true;
+    }
+    let Some(commande) = args.get("command").and_then(|c| c.as_str()) else {
+        return false;
+    };
+    let c = format!("{} ", commande.to_lowercase());
+    if COMMANDES_D_INSTALLATION.iter().any(|m| c.contains(m)) {
+        return true;
+    }
+    let telecharge = [
+        "invoke-webrequest",
+        "iwr ",
+        "curl ",
+        "wget ",
+        "start-bitstransfer",
+    ]
+    .iter()
+    .any(|m| c.contains(m));
+    // L'extension compte en fin de mot seulement : « api.exemple.com » n'est
+    // pas un « .exe ».
+    let executable = c
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, '"' | '\'' | '(' | ')'))
+        .any(|mot| {
+            [".exe", ".msi", ".ps1", ".bat", ".cmd", ".sh"]
+                .iter()
+                .any(|ext| mot.ends_with(ext))
+        });
+    telecharge && executable
 }
 
 /// Human reason per spec, used when the agent didn't supply its own.
@@ -607,19 +723,76 @@ mod approval_tests {
         assert!(!demande(&lecture, TrustLevel::Trusted, None));
         assert!(demande(&ecriture, TrustLevel::Trusted, None));
         assert!(demande(&commande, TrustLevel::Trusted, None));
-        // Autonome : lectures et outils non destructifs passent ; une commande ou un
-        // outil annoncé destructif (risque élevé) demande toujours.
-        assert!(!demande(&lecture, TrustLevel::Autonomous, None));
-        assert!(!demande(&ecriture, TrustLevel::Autonomous, None));
-        assert!(demande(&commande, TrustLevel::Autonomous, None));
-        assert!(demande(
-            &outil_mcp(Risk::Critical),
-            TrustLevel::Autonomous,
-            None
+        // Autonome : tout ce qui reste sur cette machine passe, commandes et
+        // outils destructifs compris.
+        for s in [&lecture, &ecriture, &commande, &outil_mcp(Risk::Critical)] {
+            assert!(!demande(s, TrustLevel::Autonomous, None));
+        }
+        // Tout autoriser : rien ne demande.
+        for s in [&lecture, &ecriture, &commande, &outil_mcp(Risk::Critical)] {
+            assert!(!demande(s, TrustLevel::Unrestricted, None));
+        }
+    }
+
+    fn demande_avec(spec: &ToolSpec, args: serde_json::Value, trust: TrustLevel) -> bool {
+        let ctx = ctx_with(trust, None);
+        approval_decision(&ApprovalInput {
+            spec,
+            args: &args,
+            ctx: &ctx,
+            agent_reason: None,
+        })
+        .needs_user_consent
+    }
+
+    /// Autonome demande avant toute installation ; Tout autoriser, jamais.
+    #[test]
+    fn le_niveau_autonome_demande_avant_d_installer() {
+        let shell = spec("run_command", Risk::High);
+        let installer = serde_json::json!({ "command": "pip install requests" });
+        let lister = serde_json::json!({ "command": "dir /b" });
+        assert!(demande_avec(
+            &shell,
+            installer.clone(),
+            TrustLevel::Autonomous
+        ));
+        assert!(!demande_avec(&shell, lister, TrustLevel::Autonomous));
+        assert!(!demande_avec(&shell, installer, TrustLevel::Unrestricted));
+
+        let morph = spec("app_install_morph", Risk::High);
+        assert!(demande_avec(
+            &morph,
+            serde_json::json!({}),
+            TrustLevel::Autonomous
+        ));
+        assert!(!demande_avec(
+            &morph,
+            serde_json::json!({}),
+            TrustLevel::Unrestricted
         ));
     }
 
-    /// Même « Autonome » ne dispense jamais d'un accord pour une machine distante.
+    #[test]
+    fn une_installation_se_reconnait_sous_ses_formes_usuelles() {
+        let shell = spec("run_command", Risk::High);
+        let est = |c: &str| est_une_installation(&shell, &serde_json::json!({ "command": c }));
+        assert!(est("npm install -g typescript"));
+        assert!(est("irm https://get.exemple.sh | iex"));
+        assert!(est("curl -fsSL https://exemple.sh/install.sh | sh"));
+        assert!(est(
+            "Invoke-WebRequest https://exemple.com/outil.exe -OutFile o.exe"
+        ));
+        assert!(est("winget install Git.Git"));
+        assert!(!est("git status"));
+        assert!(!est("cargo build --release"));
+        assert!(!est("curl https://api.exemple.com/donnees.json"));
+        // Un outil d'un connecteur garde son préfixe : le nom court compte.
+        let prefixe = spec("locaryn__app_add_connector", Risk::Medium);
+        assert!(est_une_installation(&prefixe, &serde_json::json!({})));
+    }
+
+    /// « Autonome » ne dispense jamais d'un accord pour une machine distante ;
+    /// « Tout autoriser », si.
     #[test]
     fn le_niveau_autonome_ne_touche_pas_aux_machines_distantes() {
         let cible = RemoteTarget {
@@ -630,6 +803,11 @@ mod approval_tests {
         assert!(demande(
             &outil_mcp(Risk::Low),
             TrustLevel::Autonomous,
+            Some(cible.clone())
+        ));
+        assert!(!demande(
+            &outil_mcp(Risk::Low),
+            TrustLevel::Unrestricted,
             Some(cible)
         ));
     }

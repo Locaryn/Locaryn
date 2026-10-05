@@ -1709,9 +1709,12 @@ fn parse_trust(s: &str) -> anyhow::Result<locaryn_shared_types::TrustLevel> {
     Ok(match s.to_lowercase().as_str() {
         "trusted" => locaryn_shared_types::TrustLevel::Trusted,
         "autonomous" => locaryn_shared_types::TrustLevel::Autonomous,
+        "unrestricted" => locaryn_shared_types::TrustLevel::Unrestricted,
         "untrusted" => locaryn_shared_types::TrustLevel::Untrusted,
         "sandbox" => locaryn_shared_types::TrustLevel::Sandbox,
-        _ => anyhow::bail!("invalid trust: {s} (use trusted|autonomous|untrusted|sandbox)"),
+        _ => anyhow::bail!(
+            "invalid trust: {s} (use trusted|autonomous|unrestricted|untrusted|sandbox)"
+        ),
     })
 }
 
