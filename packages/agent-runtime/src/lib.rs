@@ -5,6 +5,7 @@
 
 pub mod approval;
 pub mod approval_gate;
+pub mod context_window;
 pub mod embeddings;
 pub mod exec;
 pub mod host_tools;

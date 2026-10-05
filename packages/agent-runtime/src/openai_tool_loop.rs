@@ -155,7 +155,8 @@ pub async fn run_openai_tool_loop(
     // requête en bloc (41 009 jetons pour un contexte de 8 192, mesuré avec
     // Roblox Studio). On réduit seulement si ça déborde, et on le dit.
     let mut tools_notice: Option<String> = None;
-    let all_tools = match crate::tool_budget::server_context(client, endpoint).await {
+    let contexte_serveur = crate::tool_budget::server_context(client, endpoint).await;
+    let all_tools = match contexte_serveur {
         Some(ctx) if !all_tools.is_empty() => {
             let before = all_tools.len();
             // Toute la conversation départage les outils, pas le seul dernier
@@ -314,6 +315,24 @@ pub async fn run_openai_tool_loop(
         }
     };
 
+    // Ce que la conversation peut occuper une fois les outils posés. Inconnu
+    // quand le serveur ne dit pas sa fenêtre : rien n'est alors retiré.
+    let budget_conversation = contexte_serveur.map(|ctx| {
+        let outils: usize = all_tools
+            .iter()
+            .map(crate::tool_budget::estimate_tokens)
+            .sum();
+        crate::context_window::budget(ctx, outils)
+    });
+    let mut annonce_contexte: Option<String> = None;
+    if let Some(b) = budget_conversation {
+        let fait = crate::context_window::fit(&mut messages, b);
+        if !fait.rien() {
+            tracing::warn!(budget = b, ?fait, "conversation ajustée à la fenêtre");
+            annonce_contexte = Some(fait.annonce());
+        }
+    }
+
     // First round runs BEFORE we return the stream so connection errors are
     // reported synchronously (the caller falls back to a helpful message).
     let bearer = input.bearer_token.clone();
@@ -325,12 +344,42 @@ pub async fn run_openai_tool_loop(
     } else {
         (chat_url.clone(), openai_body)
     };
-    let first_resp = post_json(client, &first_url, &first_payload, bearer.as_deref())
+    let mut first_resp = post_json(client, &first_url, &first_payload, bearer.as_deref())
         .await
         .map_err(|e| {
             tracing::warn!(error = %e, "openai-compat connection failed");
             AgentError::ProviderUnavailable
         })?;
+    // Fenêtre pleine malgré l'estimation : on resserre et on renvoie une fois,
+    // plutôt que d'annoncer un moteur indisponible.
+    if let (false, Some(b)) = (first_resp.status().is_success(), budget_conversation) {
+        let status = first_resp.status();
+        let body_text = first_resp.text().await.unwrap_or_default();
+        if !fenetre_pleine(&body_text) {
+            tracing::warn!(%status, body = %body_text, "openai-compat returned non-2xx");
+            return Err(AgentError::ProviderUnavailable);
+        }
+        let fait = crate::context_window::fit(&mut messages, b * 6 / 10);
+        tracing::warn!(
+            ?fait,
+            "fenêtre pleine au premier envoi : conversation resserrée"
+        );
+        if !fait.rien() {
+            annonce_contexte = Some(fait.annonce());
+        }
+        let (openai_body, native_body) = make_body(&messages, &tools_json);
+        let payload = if native_ollama {
+            native_body
+        } else {
+            openai_body
+        };
+        first_resp = post_json(client, &first_url, &payload, bearer.as_deref())
+            .await
+            .map_err(|e| {
+                tracing::warn!(error = %e, "openai-compat connection failed");
+                AgentError::ProviderUnavailable
+            })?;
+    }
     if !first_resp.status().is_success() {
         let status = first_resp.status();
         let body_text = first_resp.text().await.unwrap_or_default();
@@ -349,6 +398,15 @@ pub async fn run_openai_tool_loop(
             task_id,
         })
         .await;
+    if let Some(msg) = annonce_contexte {
+        let _ = tx
+            .send(StreamEvent::Log {
+                level: locaryn_events::LogLevel::Warn,
+                msg,
+                source: "contexte".into(),
+            })
+            .await;
+    }
     if let Some(msg) = tools_notice {
         let _ = tx
             .send(StreamEvent::Log {
@@ -390,11 +448,28 @@ pub async fn run_openai_tool_loop(
         let mut pending_resp = Some(first_resp);
         let mut got_final = false;
         let mut relance_faite = false;
+        // Une seule nouvelle tentative par tour après un refus pour fenêtre
+        // pleine : l'estimation a pu être trop optimiste.
+        let mut serre = false;
 
         for round in 0..MAX_TOOL_ROUNDS {
             let resp = match pending_resp.take() {
-                Some(r) => r,
-                None => {
+                Some(r) => Some(r),
+                None => loop {
+                    if let Some(b) = budget_conversation {
+                        // Après un refus, on vise plus bas que l'estimation.
+                        let cible = if serre { b * 6 / 10 } else { b };
+                        let fait = crate::context_window::fit(&mut messages, cible);
+                        if !fait.rien() {
+                            let _ = tx
+                                .send(StreamEvent::Log {
+                                    level: LogLevel::Warn,
+                                    msg: fait.annonce(),
+                                    source: "contexte".into(),
+                                })
+                                .await;
+                        }
+                    }
                     let (openai_body, native_body) = make_body(&messages, &tools_json);
                     let (url, body) = if native_ollama_loop {
                         (native_url_loop.clone(), native_body)
@@ -412,7 +487,7 @@ pub async fn run_openai_tool_loop(
                                     source: "openai_tool_loop".into(),
                                 })
                                 .await;
-                            break;
+                            break None;
                         }
                     };
                     let resp = if native_ollama_loop {
@@ -421,10 +496,17 @@ pub async fn run_openai_tool_loop(
                         resp
                     };
                     match resp {
-                        r if r.status().is_success() => r,
+                        r if r.status().is_success() => {
+                            serre = false;
+                            break Some(r);
+                        }
                         r => {
                             let status = r.status();
                             let body = r.text().await.unwrap_or_default();
+                            if !serre && budget_conversation.is_some() && fenetre_pleine(&body) {
+                                serre = true;
+                                continue;
+                            }
                             let _ = tx
                                 .send(StreamEvent::Log {
                                     level: LogLevel::Warn,
@@ -432,10 +514,13 @@ pub async fn run_openai_tool_loop(
                                     source: "openai_tool_loop".into(),
                                 })
                                 .await;
-                            break;
+                            break None;
                         }
                     }
-                }
+                },
+            };
+            let Some(resp) = resp else {
+                break;
             };
 
             let round_result = match stream_one_round(resp, &tx).await {
@@ -691,6 +776,12 @@ async fn post_json(
 /// (« model server returned 500 ») ne disait rien. Sur un petit modèle local,
 /// la cause la plus courante est une fenêtre de contexte pleine : la réponse
 /// est coupée, souvent au milieu du JSON d'un appel d'outil.
+/// Le moteur refuse-t-il la requête parce qu'elle dépasse sa fenêtre ?
+fn fenetre_pleine(texte: &str) -> bool {
+    let bas = texte.to_lowercase();
+    bas.contains("context") && (bas.contains("exceed") || bas.contains("size"))
+}
+
 fn server_error_message(status: u16, body: &str) -> String {
     let detail = serde_json::from_str::<serde_json::Value>(body)
         .ok()
@@ -700,13 +791,15 @@ fn server_error_message(status: u16, body: &str) -> String {
                 .map(str::to_string)
         })
         .unwrap_or_else(|| body.trim().to_string());
-    let bas = detail.to_lowercase();
-    if bas.contains("context") && (bas.contains("exceed") || bas.contains("size")) {
+    if fenetre_pleine(&detail) {
         return "La fenêtre de contexte du modèle est pleine. Augmentez-la dans Paramètres du \
                 modèle, ou repartez d'une nouvelle conversation."
             .into();
     }
-    if bas.contains("failed to parse tool call arguments") {
+    if detail
+        .to_lowercase()
+        .contains("failed to parse tool call arguments")
+    {
         return "L'appel d'outil du modèle est arrivé incomplet, le plus souvent parce que la \
                 fenêtre de contexte s'est remplie pendant qu'il l'écrivait. Augmentez-la dans \
                 Paramètres du modèle, ou demandez une tâche plus courte."
