@@ -4657,6 +4657,24 @@ pre.md-code {
   border-radius: 2px;
 }
 
+.lmc-ctx-cap {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.lmc-ctx-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  background: var(--accent-fill);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: var(--radius-sm);
+}
 .lmc-divider {
   height: 1px;
   background: var(--border);

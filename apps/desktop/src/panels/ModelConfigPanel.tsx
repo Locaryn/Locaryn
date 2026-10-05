@@ -1,7 +1,12 @@
 import { Icon } from "@locaryn/ui-core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SessionTrustControl } from "../components/SessionTrustControl";
+import { useContextStatus } from "../hooks/useContextStatus";
 import { core } from "../lib/core";
+
+function formatContext(v: number): string {
+  return v >= 1024 ? `${Math.round(v / 1024)}k` : `${v}`;
+}
 
 export interface ModelParams {
   temperature: number; // 0.0 – 2.0
@@ -74,9 +79,17 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Plafond que le modele actif sait tenir. Ollama le declare via
-   *  /api/show, llama.cpp via le GGUF lu au demarrage du moteur. */
-  const [ctxCap, setCtxCap] = useState<number | null>(null);
+  // La fenêtre de contexte a une seule source (voir `useContextStatus`) : celle de
+  // la configuration d'inférence, la même que le profil du moteur et la jauge du
+  // chat. Le panneau gardait sa propre copie, qui divergeait.
+  const {
+    status: contextStatus,
+    pending: contextPending,
+    refresh: refreshContext,
+  } = useContextStatus();
+  const [contextEdit, setContextEdit] = useState<number | null>(null);
+  const [reloading, setReloading] = useState(false);
+  const contextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load from active provider config on mount.
   useEffect(() => {
@@ -85,15 +98,9 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
       try {
         const providers = await core.listProviders();
         const active = providers.find((p) => p.is_active) ?? providers[0];
-        if (active?.config) {
+        if (active?.config && !cancelled) {
           const cfg = active.config as Partial<ModelParams>;
           setParams((prev) => ({ ...prev, ...cfg }));
-        }
-        try {
-          const cap = await core.getModelCtxCapacity();
-          if (!cancelled && cap) setCtxCap(cap);
-        } catch {
-          // Pas de plafond connu : le curseur garde son maximum generique.
         }
       } catch {
         // Keep defaults silently.
@@ -117,11 +124,51 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
     [onParamsChange],
   );
 
+  /** Régler la fenêtre : on écrit la configuration d'inférence, et le profil du
+   *  moteur reste ce qu'il est — seule la fenêtre change. */
+  function changeContext(value: number) {
+    setContextEdit(value);
+    if (contextTimer.current) clearTimeout(contextTimer.current);
+    contextTimer.current = setTimeout(async () => {
+      try {
+        const cfg = await core.getInferenceConfig();
+        await core.setInferenceConfig({ ...cfg, context_length: value });
+        window.dispatchEvent(new Event("locaryn:inference-config-changed"));
+        await refreshContext();
+      } catch (e) {
+        setError(String(e).replace(/^Error:\s*/, ""));
+      } finally {
+        setContextEdit(null);
+      }
+    }, 500);
+  }
+
+  /** Décharger le modèle : llama-server se relance au prochain message, avec la
+   *  fenêtre réglée. Le contexte est dimensionné au chargement, pas à la volée. */
+  async function reloadModel() {
+    setReloading(true);
+    setError(null);
+    try {
+      await core.ejectChatModel();
+      window.dispatchEvent(new Event("locaryn:model-ejected"));
+      await refreshContext();
+    } catch (e) {
+      setError(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setReloading(false);
+    }
+  }
+
   async function save() {
     setSaving(true);
     setError(null);
     try {
-      await core.updateProviderModelParams(params);
+      // La fenêtre est enregistrée à part (ci-dessus) : on renvoie celle de la
+      // configuration pour ne pas la réécrire avec une ancienne valeur.
+      await core.updateProviderModelParams({
+        ...params,
+        ctx_size: contextStatus?.configured ?? params.ctx_size,
+      });
       // La jauge du chat suit la fenetre nouvellement appliquee, sans
       // attendre une reouverture de conversation.
       window.dispatchEvent(new CustomEvent("locaryn:model-params-applied", { detail: { params } }));
@@ -232,18 +279,39 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
 
         <Slider
           id="lmc-ctx-size"
-          label="Context window"
-          value={Math.min(params.ctx_size, ctxCap ?? params.ctx_size)}
-          min={512}
-          max={ctxCap ?? 131072}
-          step={512}
-          format={(v) => (v >= 1024 ? `${(v / 1024).toFixed(0)}k` : `${v}`)}
-          onChange={(v) => update("ctx_size", v)}
+          label="Fenêtre de contexte"
+          value={Math.min(
+            contextEdit ?? contextStatus?.configured ?? params.ctx_size,
+            contextStatus?.cap ?? 131072,
+          )}
+          min={2048}
+          max={contextStatus?.cap ?? 131072}
+          step={1024}
+          format={formatContext}
+          onChange={changeContext}
         />
-        {ctxCap && (
-          <p className="lmc-ctx-cap">
-            Plafond du modele actif : {(ctxCap / 1024).toFixed(0)}k tokens.
-          </p>
+        <p className="lmc-ctx-cap">
+          {contextStatus?.running
+            ? `Chargée dans le moteur : ${formatContext(contextStatus.running)}. `
+            : "Aucun modèle chargé : ce réglage servira au prochain chargement. "}
+          {contextStatus?.cap ? `Plafond du modèle : ${formatContext(contextStatus.cap)}. ` : ""}
+          Ce réglage ne change pas le profil du moteur d'inférence.
+        </p>
+        {contextPending && contextStatus?.running != null && (
+          <div className="lmc-ctx-pending" role="status">
+            <span>
+              Le moteur tourne avec {formatContext(contextStatus.running)} ;{" "}
+              {formatContext(contextStatus.configured)} s'appliquera au prochain chargement.
+            </span>
+            <button
+              type="button"
+              className="lmc-save-btn"
+              disabled={reloading}
+              onClick={() => void reloadModel()}
+            >
+              {reloading ? "Déchargement…" : "Recharger le modèle maintenant"}
+            </button>
+          </div>
         )}
 
         <Slider

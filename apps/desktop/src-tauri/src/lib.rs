@@ -1896,6 +1896,10 @@ async fn send_message(
 
     // Sampling params saved from the Model Config panel (provider.config) are
     // translated to OpenAI request fields and merged into every round.
+    // La fenêtre de contexte vient de la configuration d'inférence — celle avec
+    // laquelle le moteur est lancé — et non de `p.context_length`, une seconde
+    // copie qui divergeait dès qu'on changeait de profil.
+    let contexte_configure = InferenceConfig::load(&core.data_dir).context_length;
     let params = active_provider
         .as_ref()
         .and_then(|p| p.config.clone())
@@ -1914,7 +1918,7 @@ async fn send_message(
             }
             // `num_ctx` part avec les autres options : les moteurs qui ne
             // la connaissent pas l'ignorent, sans risque.
-            m.insert("num_ctx".into(), serde_json::json!(p.context_length));
+            m.insert("num_ctx".into(), serde_json::json!(contexte_configure));
             serde_json::Value::Object(m)
         });
 
@@ -5538,6 +5542,55 @@ async fn update_provider_model_params(
     Ok(())
 }
 
+/// Où en est la fenêtre de contexte : ce qu'on a réglé, ce que le moteur a
+/// vraiment chargé, et ce que le modèle sait tenir.
+///
+/// Trois endroits affichaient chacun « leur » valeur (le panneau du modèle, le
+/// profil du moteur d'inférence, la jauge du chat), sans rien en commun : une
+/// valeur par défaut, une copie du fournisseur, la configuration. Il n'y en a
+/// plus qu'une, `configured`, et `running` dit si le moteur l'a déjà reçue.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+struct ContextStatus {
+    /// La fenêtre réglée (profil ou réglage manuel) : celle du prochain chargement.
+    configured: u32,
+    /// Celle du moteur en marche, lue chez lui. `None` : rien ne tourne, ou le
+    /// moteur ne la dit pas.
+    running: Option<u32>,
+    /// Le plafond du modèle chargé, quand le lanceur l'a lu.
+    cap: Option<u32>,
+}
+
+#[tauri::command]
+async fn context_status(core: State<'_, Core>) -> Result<ContextStatus, String> {
+    let configured = InferenceConfig::load(&core.data_dir).context_length;
+    let endpoint = core
+        .storage
+        .providers
+        .active()
+        .await
+        .ok()
+        .flatten()
+        .map(|p| p.endpoint);
+    let running = match endpoint {
+        Some(url) => locaryn_agent_runtime::tool_budget::server_context(&core.http, &url)
+            .await
+            .map(|n| n.min(u32::MAX as usize) as u32),
+        None => None,
+    };
+    let cap = std::fs::read_to_string(core.data_dir.join("model_ctx_capacity.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("max_ctx").and_then(|m| m.as_u64()))
+        .map(|n| n.min(u32::MAX as u64) as u32)
+        .map(|n| n.max(4096));
+    Ok(ContextStatus {
+        configured,
+        running,
+        cap,
+    })
+}
+
 /// Fenetre de contexte maximale que le moteur courant peut offrir, pour
 /// borner le curseur du panneau : proposer 128k a un modele entraîne pour
 /// 32k, c'est inviter une demande que le moteur va reduire en silence.
@@ -6730,6 +6783,7 @@ pub fn run() {
             update_provider_model_params,
             get_provider_model_params,
             get_model_ctx_capacity,
+            context_status,
             get_inference_config,
             set_inference_config,
             get_profile_preset,

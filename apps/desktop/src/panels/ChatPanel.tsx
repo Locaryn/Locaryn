@@ -18,6 +18,7 @@ import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import { attentionPourVue } from "../lib/attention";
+import { useContextStatus } from "../hooks/useContextStatus";
 import { FREE_CHAT_PATH } from "../lib/constants";
 import {
   type AttentionItem,
@@ -1595,7 +1596,16 @@ export function ChatPanel({
   // panneau de reglages annonce (Appliquer), sinon la valeur par defaut. La
   // jauge doit raconter ce que le moteur a, pas ce qu'un menu laisse croire.
   const [appliedCtx, setAppliedCtx] = useState<number | null>(null);
-  const ctxWindow = ctxSize ?? appliedCtx ?? DEFAULT_MODEL_PARAMS.ctx_size;
+  // La jauge dit ce que le moteur a vraiment chargé ; à défaut ce qui est réglé
+  // pour le prochain chargement. Les valeurs par défaut ne servent que si rien
+  // ne répond (mode démo, service injoignable).
+  const { status: contextStatus } = useContextStatus();
+  const ctxWindow =
+    contextStatus?.running ??
+    contextStatus?.configured ??
+    ctxSize ??
+    appliedCtx ??
+    DEFAULT_MODEL_PARAMS.ctx_size;
   // Reduire sous ce qui est deja utilise : la conversation ne tiendrait plus.
   // On ne bloque pas — on propose de compresser, c'est l'utilisateur qui decide.
   const [compressProposal, setCompressProposal] = useState<{

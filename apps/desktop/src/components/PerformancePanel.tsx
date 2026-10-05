@@ -148,6 +148,8 @@ export function PerformancePanel() {
       setSaving(true);
       try {
         await core.setInferenceConfig(newCfg);
+        // Le panneau du modèle et la jauge du chat relisent la fenêtre réglée.
+        window.dispatchEvent(new Event("locaryn:inference-config-changed"));
         setSaved(true);
         if (savedTimer.current) clearTimeout(savedTimer.current);
         savedTimer.current = setTimeout(() => setSaved(false), 2500);
