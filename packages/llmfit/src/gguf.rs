@@ -317,8 +317,21 @@ impl<R: Read + Seek> Reader<R> {
     fn f64(&mut self) -> Result<f64, GgufError> {
         Ok(f64::from_bits(self.u64()?))
     }
+    /// Avancer de `n` octets. Un petit saut se fait en lisant : `seek` sur un
+    /// `BufReader` jette son tampon, et l'en-tête d'un modèle compte quelque
+    /// 300 000 chaînes de vocabulaire à sauter — autant de recharges de 1 Mio,
+    /// soit 80 s par lecture pour Bonsai 27B, payées avant chaque démarrage du
+    /// moteur. Un grand saut garde `seek`, qui ne lit rien.
     fn skip(&mut self, n: u64) -> Result<(), GgufError> {
-        self.inner.seek(SeekFrom::Current(n as i64))?;
+        const SAUT_PAR_LECTURE: u64 = 64 * 1024;
+        if n <= SAUT_PAR_LECTURE {
+            let lus = std::io::copy(&mut (&mut self.inner).take(n), &mut std::io::sink())?;
+            if lus < n {
+                return Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof).into());
+            }
+        } else {
+            self.inner.seek(SeekFrom::Current(n as i64))?;
+        }
         Ok(())
     }
     /// Chaîne préfixée par sa longueur. Les chaînes du vocabulaire peuvent se

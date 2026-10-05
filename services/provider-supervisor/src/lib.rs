@@ -1101,9 +1101,11 @@ async fn spawn_llama_server(
     // à tous les modèles écrasait le format propre de Gemma, Qwen ou Llama, et
     // un modèle capable d'appeler des outils n'en appelait plus aucun. Le
     // repli `chatml` ne sert qu'aux fichiers sans gabarit.
-    let declares_template = locaryn_llmfit::read_summary(&full_model_path)
-        .map(|sum| !sum.chat_template.trim().is_empty())
-        .unwrap_or(false);
+    // L'en-tête est lu une fois : il sert aussi au plafond de contexte, plus bas.
+    let summary = locaryn_llmfit::read_summary(&full_model_path).ok();
+    let declares_template = summary
+        .as_ref()
+        .is_some_and(|sum| !sum.chat_template.trim().is_empty());
     if declares_template {
         cmd.arg("--jinja");
     } else {
@@ -1147,7 +1149,7 @@ async fn spawn_llama_server(
     // Suggest to the UI the largest context this model was trained for: a
     // slider that proposes 128k to a 32k model invites a request the engine
     // must quietly clamp. Best effort — the file may not declare it.
-    if let Ok(sum) = locaryn_llmfit::read_summary(&full_model_path) {
+    if let Some(sum) = &summary {
         if sum.train_context > 0 {
             let cap = (sum.train_context as f64 * 1.5).round() as u64;
             let _ = std::fs::write(
