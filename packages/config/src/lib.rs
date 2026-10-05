@@ -639,6 +639,12 @@ fn merge(into: &mut Config, other: Config) {
     if other.assistance.system_prompt.is_some() {
         into.assistance.system_prompt = other.assistance.system_prompt;
     }
+    // Oubliée ici, la permission par défaut était écrite puis perdue à chaque
+    // lecture : toutes les conversations libres démarraient en « Prudent »,
+    // quel que soit le choix fait dans Réglages.
+    if other.assistance.default_trust != TrustLevel::default() {
+        into.assistance.default_trust = other.assistance.default_trust;
+    }
     into.assistance.debrided_models = other.assistance.debrided_models;
 }
 
@@ -1018,6 +1024,16 @@ mod program_tests {
         let json = r#"{ "assistance": { "debrided_models": [] } }"#;
         let cfg: Config = serde_json::from_str(json).expect("parse failed");
         assert!(cfg.assistance.debrided_models.is_empty());
+    }
+
+    #[test]
+    fn la_permission_par_defaut_survit_a_la_fusion() {
+        let lu: Config =
+            serde_json::from_str(r#"{ "assistance": { "default_trust": "autonomous" } }"#)
+                .expect("parse failed");
+        let mut cfg = Config::default();
+        merge(&mut cfg, lu);
+        assert_eq!(cfg.assistance.default_trust, TrustLevel::Autonomous);
     }
 
     #[test]
