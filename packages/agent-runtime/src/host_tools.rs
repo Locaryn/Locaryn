@@ -97,6 +97,7 @@ mod tests {
                 approval: None,
                 question: None,
                 host: Some(&hote),
+                trust: None,
             },
         )
         .await

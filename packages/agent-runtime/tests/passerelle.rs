@@ -92,6 +92,7 @@ fn entree(model: &str) -> AgentInput {
         approval: None,
         question: None,
         host_tools: None,
+        trust_source: None,
         bearer_token: Some("cle-de-passerelle".into()),
         native_chat_api: false,
     }

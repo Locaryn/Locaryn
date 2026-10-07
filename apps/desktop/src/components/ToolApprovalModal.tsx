@@ -12,6 +12,9 @@ type Props = {
   onResolve: (decision: ToolApprovalDecision) => void;
   /** Esc / backdrop / X click — semantically = Deny. Ignored for Critical. */
   onCancel?: () => void;
+  /** Passer la conversation en « Autonome » : la demande en cours se clôt
+   *  d'elle-même, et les suivantes ne s'affichent plus (sauf installations). */
+  onRaiseTrust?: () => void;
   /** Visible label shown in the type-to-confirm prompt for Critical. */
   confirmTargetLabel?: string;
   /**
@@ -76,6 +79,7 @@ export function ToolApprovalModal({
   approval,
   onResolve,
   onCancel,
+  onRaiseTrust,
   confirmTargetLabel,
   hardBlocked = false,
 }: Props) {
@@ -230,14 +234,26 @@ export function ToolApprovalModal({
       </div>
 
       {!isCritical && !hardBlocked && (
-        <button
-          type="button"
-          className="locaryn-approval-toggle"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? "Masquer les détails" : "Détails et portée"}
-        </button>
+        <div className="locaryn-approval-links">
+          <button
+            type="button"
+            className="locaryn-approval-toggle"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? "Masquer les détails" : "Détails et portée"}
+          </button>
+          {onRaiseTrust && (
+            <button
+              type="button"
+              className="locaryn-approval-toggle"
+              title="Le modèle n'aura plus à demander dans cette conversation, sauf pour installer quelque chose. La tâche continue sans interruption."
+              onClick={onRaiseTrust}
+            >
+              Passer cette conversation en Autonome
+            </button>
+          )}
+        </div>
       )}
 
       {expanded && (

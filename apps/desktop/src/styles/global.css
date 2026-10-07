@@ -12085,6 +12085,12 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-approval-compact .locaryn-approval-allow {
   min-width: 0;
 }
+/* Les liens sous la demande : détails, et relever la permission. */
+.locaryn-approval-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
 .locaryn-approval-toggle {
   align-self: flex-start;
   min-height: 32px;

@@ -19,6 +19,7 @@ pub mod question;
 pub mod titling;
 pub mod tool_budget;
 pub mod tools;
+pub mod trust_source;
 pub mod verification;
 
 pub use exec::execute_tool_call;
@@ -109,6 +110,10 @@ pub struct AgentInput {
     /// Les outils par lesquels le modèle agit sur l'application elle-même
     /// (connecteurs, morphs, skills). `None` : un hôte qui ne les prête pas.
     pub host_tools: Option<host_tools::HostToolsHandle>,
+    /// Où relire la permission de la conversation avant chaque appel d'outil :
+    /// la changer pendant une tâche s'applique sans l'interrompre. Absente, la
+    /// permission reçue à l'envoi vaut pour toute la tâche.
+    pub trust_source: Option<trust_source::TrustSourceHandle>,
     /// Jeton Bearer envoyé à l'endpoint (noyaux alternatifs : OpenClaw,
     /// Hermes…). `None` = pas d'en-tête d'authentification.
     pub bearer_token: Option<String>,

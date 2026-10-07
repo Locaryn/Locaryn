@@ -73,6 +73,13 @@ pub trait ApprovalGate: Send + Sync {
     async fn already_allowed(&self, _req: &ApprovalRequest) -> bool {
         false
     }
+
+    /// Clore une demande encore à l'écran sans réponse de l'utilisateur :
+    /// la permission de la conversation a changé et suffit désormais (ou
+    /// interdit l'appel). Rend faux quand plus rien n'attendait.
+    async fn resolve(&self, _call_id: &str, _allow: bool) -> bool {
+        false
+    }
 }
 
 /// Enveloppe la porte pour qu'elle traverse une structure `Debug`.

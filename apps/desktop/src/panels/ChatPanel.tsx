@@ -4,6 +4,7 @@ import { AttentionStrip } from "../components/AttentionStrip";
 import { ModalShell } from "../components/ModalShell";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
+import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import {
   type MessageAttachment,
@@ -813,6 +814,9 @@ export function ChatPanel({
         },
       ]);
     } else if (ev.type === "tool_result") {
+      // Une demande close sans réponse (permission relevée en cours de tâche,
+      // délai dépassé) ne doit pas rester affichée au-dessus du composeur.
+      setApproval((a) => (a && a.call_id === ev.call_id ? null : a));
       setItems((prev) =>
         prev.map((it) => {
           if (it.kind === "tool" && it.callId === ev.call_id) {
@@ -1962,6 +1966,15 @@ export function ChatPanel({
             attend. */}
         <ToolApprovalModal
           approval={approval}
+          onRaiseTrust={
+            sessionId
+              ? () =>
+                  void core
+                    .setSessionTrust(sessionId, "autonomous")
+                    .then(() => window.dispatchEvent(new Event(SESSION_TRUST_CHANGED)))
+                    .catch((e: unknown) => console.warn("permission non relevée :", e))
+              : undefined
+          }
           onResolve={(decision) => void resolveApproval(decision)}
           onCancel={() => {
             if (!approval) return;

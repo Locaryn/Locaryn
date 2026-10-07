@@ -192,6 +192,7 @@ pub async fn run(cfg: Arc<CoreAgentConfig>, input: AgentInput) -> Result<EventSt
                         approval: input.approval.as_ref(),
                         question: input.question.as_ref(),
                         host: input.host_tools.as_ref(),
+                        trust: input.trust_source.as_ref(),
                     },
                 )
                 .await

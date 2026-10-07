@@ -11,6 +11,9 @@ import { TRUST_LEVELS, trustInfo } from "../lib/trust";
  * Le même contrôle sert à la fenêtre « Paramètres du chat » et au panneau du
  * modèle, pour qu'un chat sans projet se règle aussi facilement qu'un autre.
  */
+/** Émis quand la permission d'une conversation change ailleurs qu'ici. */
+export const SESSION_TRUST_CHANGED = "locaryn:session-trust-changed";
+
 export function SessionTrustControl({ sessionId }: { sessionId: string }) {
   const [effective, setEffective] = useState<TrustLevel | null>(null);
   const [override, setOverride] = useState<TrustLevel | null>(null);
@@ -22,18 +25,24 @@ export function SessionTrustControl({ sessionId }: { sessionId: string }) {
     setOverride(null);
     setError(null);
     let cancelled = false;
-    core
-      .sessionTrust(sessionId)
-      .then((t) => {
-        if (cancelled) return;
-        setEffective(t.effective);
-        setOverride(t.override_value);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(`Permissions illisibles : ${String(e).replace(/^Error:\s*/, "")}`);
-      });
+    const relire = () =>
+      core
+        .sessionTrust(sessionId)
+        .then((t) => {
+          if (cancelled) return;
+          setEffective(t.effective);
+          setOverride(t.override_value);
+        })
+        .catch((e) => {
+          if (!cancelled)
+            setError(`Permissions illisibles : ${String(e).replace(/^Error:\s*/, "")}`);
+        });
+    void relire();
+    // La bande d'autorisation peut relever la permission elle aussi.
+    window.addEventListener(SESSION_TRUST_CHANGED, relire);
     return () => {
       cancelled = true;
+      window.removeEventListener(SESSION_TRUST_CHANGED, relire);
     };
   }, [sessionId]);
 

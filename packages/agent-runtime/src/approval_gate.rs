@@ -236,6 +236,20 @@ impl ApprovalGate for GateBureau {
                 .autorise(&req.tool, &req.project_id.to_string())
     }
 
+    async fn resolve(&self, call_id: &str, allow: bool) -> bool {
+        // Pour cet appel seulement : c'est la permission de la conversation
+        // qui a changé, pas une décision sur l'outil.
+        self.repondre(
+            call_id,
+            "",
+            Verdict {
+                autorise: allow,
+                portee: Portee::UneFois,
+            },
+        )
+        .await
+    }
+
     async fn request(&self, req: ApprovalRequest) -> ApprovalOutcome {
         // Déjà accordé plus tôt ? On ne redemande pas.
         {

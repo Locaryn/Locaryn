@@ -29,6 +29,8 @@ pub struct ToolDispatchContext<'a> {
     pub question: Option<&'a QuestionHandle>,
     /// Les outils de l'application elle-même (connecteurs, morphs, skills).
     pub host: Option<&'a HostToolsHandle>,
+    /// Où relire la permission pendant qu'une demande attend une réponse.
+    pub trust: Option<&'a crate::trust_source::TrustSourceHandle>,
 }
 
 /// Exécute un appel d'outil du modèle, avec le gating d'approbation, et
@@ -52,6 +54,7 @@ pub async fn execute_tool_call(
         approval,
         question,
         host,
+        trust: dispatch_trust,
     } = *dispatch;
 
     // L'événement ToolCall part d'abord : c'est lui qui fait apparaître la
@@ -190,7 +193,15 @@ pub async fn execute_tool_call(
                     is_remote: ctx.remote_target.is_some(),
                 })
                 .await;
-            crate::approval::ask(approval, request).await
+            match (dispatch_trust, tool_spec) {
+                (Some(source), Some(spec)) => {
+                    attendre_ou_suivre_la_permission(
+                        approval, request, source, spec, &args, ctx, call_id,
+                    )
+                    .await
+                }
+                _ => crate::approval::ask(approval, request).await,
+            }
         };
 
         match outcome {
@@ -273,4 +284,149 @@ pub async fn execute_tool_call(
     };
 
     Some(result_content)
+}
+
+/// Attendre la réponse de l'utilisateur en suivant la permission de la
+/// conversation. Si elle change pendant l'attente au point que l'appel n'a
+/// plus besoin d'accord (ou devient interdit), la demande se clôt d'elle-même :
+/// passer en « Autonome » ne laisse plus une question à l'écran, ni le modèle
+/// arrêté devant.
+async fn attendre_ou_suivre_la_permission(
+    approval: Option<&ApprovalHandle>,
+    request: ApprovalRequest,
+    source: &crate::trust_source::TrustSourceHandle,
+    spec: &ToolSpec,
+    args: &serde_json::Value,
+    ctx: &ToolContext,
+    call_id: &str,
+) -> crate::approval::ApprovalOutcome {
+    use crate::approval::ApprovalOutcome;
+    let attente = crate::approval::ask(approval, request);
+    tokio::pin!(attente);
+    let mut battement = tokio::time::interval(std::time::Duration::from_secs(1));
+    battement.tick().await;
+    let mut connue = ctx.trust;
+    loop {
+        tokio::select! {
+            issue = &mut attente => return issue,
+            _ = battement.tick() => {
+                let maintenant = source.refresh(connue).await;
+                if maintenant == connue {
+                    continue;
+                }
+                connue = maintenant;
+                let mut nouveau = ctx.clone();
+                nouveau.trust = maintenant;
+                let decision = approval_decision(&ApprovalInput {
+                    spec,
+                    args,
+                    ctx: &nouveau,
+                    agent_reason: None,
+                });
+                let issue = if decision.hard_blocked {
+                    ApprovalOutcome::Deny {
+                        reason: format!("la permission de la conversation l'interdit désormais ({})", decision.reason),
+                    }
+                } else if !decision.needs_user_consent {
+                    ApprovalOutcome::Allow
+                } else {
+                    continue;
+                };
+                tracing::info!(tool = %spec.name, trust = ?maintenant, "demande close par un changement de permission");
+                if let Some(h) = approval {
+                    h.0.resolve(call_id, matches!(issue, ApprovalOutcome::Allow)).await;
+                }
+                return issue;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::approval::{ApprovalGate, ApprovalOutcome};
+    use crate::trust_source::{TrustSource, TrustSourceHandle};
+    use locaryn_shared_types::TrustLevel;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    /// Une porte où personne ne répond, qui note qu'on l'a close.
+    struct PorteMuette(AtomicBool);
+
+    #[async_trait::async_trait]
+    impl ApprovalGate for PorteMuette {
+        async fn request(&self, _req: ApprovalRequest) -> ApprovalOutcome {
+            std::future::pending().await
+        }
+        async fn resolve(&self, _call_id: &str, allow: bool) -> bool {
+            self.0.store(allow, Ordering::SeqCst);
+            true
+        }
+    }
+
+    struct Reglage(Mutex<TrustLevel>);
+
+    #[async_trait::async_trait]
+    impl TrustSource for Reglage {
+        async fn current(&self) -> Option<TrustLevel> {
+            Some(*self.0.lock().unwrap())
+        }
+    }
+
+    #[tokio::test]
+    async fn relever_la_permission_pendant_l_attente_laisse_passer_l_appel() {
+        let porte = Arc::new(PorteMuette(AtomicBool::new(false)));
+        let approval = ApprovalHandle(porte.clone());
+        let reglage = Arc::new(Reglage(Mutex::new(TrustLevel::Untrusted)));
+        let source = TrustSourceHandle(reglage.clone());
+        let spec = ToolSpec {
+            name: "write_file".into(),
+            description: "écrit".into(),
+            input_schema: serde_json::json!({}),
+            risk: crate::tools::Risk::Medium,
+            required_permissions: Vec::new(),
+        };
+        let ctx = ToolContext {
+            trust: TrustLevel::Untrusted,
+            ..Default::default()
+        };
+        let request = ApprovalRequest {
+            call_id: "c1".into(),
+            tool: "write_file".into(),
+            args: serde_json::json!({}),
+            risk: crate::tools::Risk::Medium,
+            reason: "test".into(),
+            diff: None,
+            is_remote: false,
+            project_id: uuid::Uuid::nil(),
+        };
+        let changer = {
+            let reglage = reglage.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                *reglage.0.lock().unwrap() = TrustLevel::Unrestricted;
+            })
+        };
+        let issue = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            attendre_ou_suivre_la_permission(
+                Some(&approval),
+                request,
+                &source,
+                &spec,
+                &serde_json::json!({}),
+                &ctx,
+                "c1",
+            ),
+        )
+        .await
+        .expect("la demande aurait dû se clore seule");
+        changer.await.unwrap();
+        assert_eq!(issue, ApprovalOutcome::Allow);
+        assert!(
+            porte.0.load(Ordering::SeqCst),
+            "la demande à l'écran est close"
+        );
+    }
 }

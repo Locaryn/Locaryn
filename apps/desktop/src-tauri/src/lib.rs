@@ -28,6 +28,7 @@ mod model_recommendations;
 mod model_residency;
 mod notifications;
 mod project_context;
+mod trust_source;
 mod workspace;
 use locaryn_sdk::secure_client;
 mod server_history;
@@ -2193,6 +2194,11 @@ async fn send_message(
         // les mêmes commandes que l'écran des réglages.
         host_tools: Some(locaryn_agent_runtime::host_tools::HostToolsHandle::new(
             app_tools::AppTools::new(app.clone()),
+        )),
+        // Les permissions changées pendant la tâche s'appliquent à l'outil
+        // suivant, sans interrompre le modèle.
+        trust_source: Some(locaryn_agent_runtime::trust_source::TrustSourceHandle::new(
+            trust_source::SessionTrustSource::new(app.clone(), session_id),
         )),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,

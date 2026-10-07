@@ -85,6 +85,7 @@ fn input(session: uuid::Uuid, message: &str) -> AgentInput {
         // Aucune question dans ces tests : le pont relaie, il ne demande pas.
         question: None,
         host_tools: None,
+        trust_source: None,
         bearer_token: None,
         native_chat_api: false,
     }

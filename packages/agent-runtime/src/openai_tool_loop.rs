@@ -430,7 +430,7 @@ pub async fn run_openai_tool_loop(
     let host_tools = input.host_tools.clone();
 
     tokio::spawn(async move {
-        let ctx = ToolContext {
+        let mut ctx = ToolContext {
             project_id: input.project_id.unwrap_or_default(),
             project_path: input.project_path.clone().unwrap_or_default(),
             trust,
@@ -588,6 +588,15 @@ pub async fn run_openai_tool_loop(
             // implémentation de la politique d'approbation, où que l'appel
             // vienne.
             for call in &round_result.calls {
+                // La permission a pu changer pendant que le modèle écrivait :
+                // c'est celle de maintenant qui décide, pas celle de l'envoi.
+                if let Some(source) = &input.trust_source {
+                    let maintenant = source.refresh(ctx.trust).await;
+                    if maintenant != ctx.trust {
+                        tracing::info!(avant = ?ctx.trust, apres = ?maintenant, "permission changée en cours de tâche");
+                        ctx.trust = maintenant;
+                    }
+                }
                 let args: serde_json::Value =
                     serde_json::from_str(&call.arguments_raw).unwrap_or(serde_json::json!({}));
 
@@ -603,6 +612,7 @@ pub async fn run_openai_tool_loop(
                         approval: approval.as_ref(),
                         question: question.as_ref(),
                         host: host_tools.as_ref(),
+                        trust: input.trust_source.as_ref(),
                     },
                 )
                 .await
