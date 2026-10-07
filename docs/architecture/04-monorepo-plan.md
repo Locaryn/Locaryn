@@ -160,7 +160,7 @@ locaryn/
 | `sdk` | Client HTTP/SSE du daemon et du remote-server. utilisé par CLI et (option) desktop. Réessaie, fallback, healthcheck. |
 | `auth` | Token management, keychain, login/refresh/logout, Argon2id hash côté serveur, audit. |
 | `config` | Chargement/merge config par scope (global/user/workspace), `~/.locaryn/config.toml`, `.locaryn/config.toml`, env vars. |
-| `storage` | SQLite via sqlx, migrations, repositories (projects, sessions, messages, tasks, artifacts, extensions...). Abstraction pour future compat PostgreSQL. |
+| `storage` | SQLite via sqlx, migrations, repositories (projects, sessions, messages, tasks, artifacts, morphs...). Abstraction pour future compat PostgreSQL. |
 | `events` | Types d'événements (TokenStream, TaskUpdate, LogLine, PreviewUpdate, ProviderChanged, ExtensionEvent...) + bus local + sérialisation SSE. |
 | `preview` | Modèle d'artefact, génération HTML sandboxed, CSP, export Python→HTML/PNG hooks. |
 | `extensions` | Registry, loader par scope, manifest validation, permissions, hot-reload, import Claude Code/Cursor/Continue/Cline. |
@@ -187,13 +187,13 @@ locaryn/
 | App | Responsabilité |
 | --- | --- |
 | `cli` | Thin client: parse args (clap), parle au daemon via `locaryn-sdk`, affiche tokens/logs, `--no-daemon` embarque le core. |
-| `desktop` | Tauri v2 shell: embarque core in-process, UI React/TS (4 panneaux), Monaco, xterm, preview, gestion extensions/MCP/rules dans l'UI. |
+| `desktop` | Tauri v2 shell: embarque core in-process, UI React/TS (4 panneaux), Monaco, xterm, preview, gestion morphs/MCP/rules dans l'UI. |
 
 ### `services/`
 
 | Service | Responsabilité |
 | --- | --- | 
-| `daemon` | Daemon local loopback :7474, HTTP/SSE, gère sessions/projets/persistence, charge extensions, parle au provider-supervisor. |
+| `daemon` | Daemon local loopback :7474, HTTP/SSE, gère sessions/projets/persistence, charge morphs, parle au provider-supervisor. |
 | `remote-server` | Gateway sécurisée :7473, TLS, auth, sessions, audit, healthchecks, streaming, providers côté serveur. Module enterprise (BSL) pour collaboration/DGX/gate. |
 | `provider-supervisor` | Auto-start/supervise Ollama/llama-server/LM Studio/vLLM sur loopback, healthchecks, idle shutdown. Sidecar du daemon ou binaire standalone. |
 
@@ -203,7 +203,7 @@ locaryn/
 - Workspace version unifié `0.1.0` en MVP; chaque crate peut diverger à partir de `1.0.0`.
 - `locaryn-*` crates internes: version workspace jusqu'à 1.0, puis versionnage indépendant.
 - Changelog par release (`CHANGELOG.md` racine).
-- **Manifest plugin versioning**: `morph.json` a `apiVersion` (Locaryn extension API) + `version` (version du plugin). Locaryn refuse les plugins dont `apiVersion` n'est pas supportée.
+- **Manifest plugin versioning**: `morph.json` a `apiVersion` (Locaryn morph API) + `version` (version du plugin). Locaryn refuse les plugins dont `apiVersion` n'est pas supportée.
 
 ## CI/CD
 

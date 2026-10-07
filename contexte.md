@@ -87,7 +87,7 @@ Les trois interfaces partagent le même cœur métier, le même historique, les 
 - Skills / bundles
 - Agents spécialisés
 - Adaptateurs LSP
-- Registre local d'extensions
+- Registre local de morphs
 
 ### 2.10 Remote server sécurisé
 
@@ -239,7 +239,7 @@ Les trois interfaces partagent le même cœur métier, le même historique, les 
 - Gating des outils selon le niveau
 - Avertissements avant exécution de commandes (V1.1)
 
-### 6.4 Gestion des extensions
+### 6.4 Gestion des morphs
 
 - UI d'installation / activation / désactivation
 - Scope : global / utilisateur / workspace
@@ -344,7 +344,7 @@ locaryn/
 ### V2
 
 - mTLS / VPN privé
-- Marketplace d'extensions
+- Marketplace de morphs
 - Agents spécialisés avancés
 - Collaboration multi-utilisateur
 

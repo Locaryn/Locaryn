@@ -1,6 +1,6 @@
 # Locaryn Store + SSH Connector — Implementation Plan
 
-> Produced by a multi-agent design pass (explore → design panel → synthesis). This is the reference for building the extensions/connectors Store and the SSH server connector.
+> Produced by a multi-agent design pass (explore → design panel → synthesis). This is the reference for building the morphs/connectors Store and the SSH server connector.
 
 ## 1. Recommended architecture
 

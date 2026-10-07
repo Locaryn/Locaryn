@@ -20,7 +20,7 @@ et l'enregistrement du schéma côté Rust
 
 | Lien | Porté par | Effet dans l'application |
 | --- | --- | --- |
-| `locaryn://install?src=…` | catalogues, pages web | ouvre Réglages → Extensions et pré-remplit la fenêtre d'installation |
+| `locaryn://install?src=…` | catalogues, pages web | ouvre Réglages → Morphs et pré-remplit la fenêtre d'installation |
 | `locaryn://connect?…` | le `.exe` du morph Remote, le QR du téléphone | pop-up de consentement, puis connexion au serveur (certificats installés d'abord) |
 
 Le schéma est déclaré dans `tauri.conf.json` (`plugins.deep-link`) et

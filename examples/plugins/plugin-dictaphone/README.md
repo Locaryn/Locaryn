@@ -1,6 +1,6 @@
 # Plugin Dictaphone — Locaryn
 
-Extension de dictée vocale et de transcription audio en temps réel pour le champ de saisie de Locaryn.
+Morph de dictée vocale et de transcription audio en temps réel pour le champ de saisie de Locaryn.
 
 ## Fonctionnement
 

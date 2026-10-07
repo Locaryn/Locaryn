@@ -75,7 +75,7 @@ cargo run -p locaryn-provider-supervisor -- status
 - MCP runtime réel (rmcp wiring) — `locaryn-mcp` squelette.
 - Persistence réelle (sqlx migrations appliquées) — `locaryn-storage` interface.
 - Remote-server TLS/auth réels — `locaryn-auth` interface.
-- Hot-reload extensions — `locaryn-extensions` registry skeleton.
+- Hot-reload morphs — `locaryn-extensions` registry skeleton.
 - Preview live wiring — UI panel mock.
 
 Le squelette est **structurellement complet et buildable**, prêt à être rempli

@@ -15,7 +15,7 @@
 
 [✨ Points Forts](#-pourquoi-locaryn--points-forts-et-avantages-clés) •
 [🏛 Architecture](#-architecture-unifiée) •
-[🧩 Extensions & Noyau](#-écosystème-dextensions--plugins-qui-modifient-le-noyau) •
+[🧩 Morphs & Noyau](#-écosystème-de-morphs--plugins-officiels) •
 [🧠 Modèles & Oblitération](#-studio-de-modèles-entraînement--oblitération-repe) •
 [🚀 Démarrage Rapide](#-démarrage-rapide) •
 [📥 Téléchargements](#-téléchargements--releases)
@@ -43,7 +43,7 @@ Contrairement aux solutions cloisonnées ou dépendantes du cloud propriétaire,
 
 ### 2. 🧩 Extensibilité Totale du Noyau (Core Extensibility)
 - Les plugins dans Locaryn ne sont pas de simples gadgets : ils ont la capacité de **modifier le comportement même du noyau (core runtime)**, d'enregistrer des serveurs MCP natifs, d'intercepter les événements du système (hooks) et d'injecter des **vues et menus complets dans l'interface graphique** (ex: *Figures Académiques*, *Studio de Création*, *Fine-tuning & Oblitération*).
-- **Compatibilité Universelle Cross-Écosystème** : Locaryn exécute et adapte nativement les extensions et skills provenant de **Locaryn**, **Claude Code**, **Gemini CLI**, **OpenCode** et du **Model Context Protocol (MCP)**. Un simple lien GitHub (`github:owner/repo`) installe n'importe quel plugin ou skill en un clic.
+- **Compatibilité Universelle Cross-Écosystème** : Locaryn exécute ses propres morphs et adapte nativement les extensions et skills provenant de **Claude Code**, **Gemini CLI**, **OpenCode** et du **Model Context Protocol (MCP)**. Un simple lien GitHub (`github:owner/repo`) installe n'importe quel plugin ou skill en un clic.
 
 ### 3. 🧠 Du Débutant au Chercheur / Power-User
 - **Pour tous les utilisateurs** : Une interface moderne, épurée et réactive avec auto-détection des modèles locaux (GGUF, Ollama, vLLM, LM Studio) et des clés API (Claude, OpenAI, Gemini, DeepSeek, Mistral, OpenRouter).
@@ -99,9 +99,9 @@ Contrairement aux solutions cloisonnées ou dépendantes du cloud propriétaire,
 
 ---
 
-## 🧩 Écosystème d'Extensions & Plugins Officiels
+## 🧩 Écosystème de Morphs & Plugins Officiels
 
-Locaryn dispose d'une collection d'extensions officielles modulaires prêtes à l'emploi :
+Locaryn dispose d'une collection de morphs officiels modulaires prêts à l'emploi :
 
 | Plugin | Description | Capacités injectées |
 | :--- | :--- | :--- |
@@ -120,7 +120,7 @@ Locaryn dispose d'une collection d'extensions officielles modulaires prêtes à 
 
 ### 🛠 Écrire la vôtre
 
-Une extension est un **produit distinct** : votre dépôt, votre rythme, votre nom.
+Un morph est un **produit distinct** : votre dépôt, votre rythme, votre nom.
 Rien ne se soumet nulle part — vous publiez, l'utilisateur colle l'adresse.
 
 Le guide complet est dans **[`docs/writing-an-extension.md`](docs/writing-an-extension.md)** :

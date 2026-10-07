@@ -40,7 +40,7 @@ Le monorepo est bootstrappé et compile vert (`cargo check`, `cargo clippy -D wa
 | Service | État | Ce qui existe | Ce qui manque |
 |---------|------|---------------|---------------|
 | `daemon` | **Partiel** | axum serveur loopback :7474, routes : `/health`, `/v1/projects` (GET/POST), `/v1/sessions/:id` (GET), `/v1/sessions/:id/messages` (POST → SSE via StubAgent), `/v1/providers` (GET), `DaemonState` (mode, start_time). | **Storage wiring** (repos retournent stubs), **agent réel** (StubAgent → OllamaAgent), provider supervisor integration, extensions/MCP/hooks/skills/commands endpoints, audit, file serving pour preview. |
-| `remote-server` | **Squelette** | axum serveur, routes : `/health`, `/v1/auth/login` (stub token), `/v1/*` (401 sans token). Args : bind addr, TLS cert/key. | **TLS (rustls)**, **auth réel** (Argon2id + token issuance + verify), sessions/permissions, providers côté serveur, audit logs, rate limiting, streaming, extensions côté serveur. |
+| `remote-server` | **Squelette** | axum serveur, routes : `/health`, `/v1/auth/login` (stub token), `/v1/*` (401 sans token). Args : bind addr, TLS cert/key. | **TLS (rustls)**, **auth réel** (Argon2id + token issuance + verify), sessions/permissions, providers côté serveur, audit logs, rate limiting, streaming, morphs côté serveur. |
 | `provider-supervisor` | **Partiel** | CLI clap (status/health/start), `parse_engine()`, `default_endpoint()` (Ollama/LlamaCpp/Lmstudio/Vllm), `healthcheck()` (HTTP GET /v1/models + fallback /api/version Ollama), `print_status()`. | **Spawn réel** (tokio::process), idle shutdown, healthcheck loop, integration avec daemon, auto-start Ollama. |
 
 ### Apps
@@ -123,7 +123,7 @@ Un utilisateur solo peut installer Locaryn, ouvrir un projet, chatter avec un ag
 | **S4** ✅ | Boucle tool-use + approval : implémenter la boucle agent avec dispatch des tools (`read_file`, `write_file`, `run_command`, `search`, `list_dir`). Approval gating (run_command et write_file demandent consentement). Provider-supervisor réel : spawn `ollama serve` via tokio::process, healthcheck loop, auto-start. | `agent-runtime`, `provider-supervisor`, `daemon` | Tool approval fonctionne (run_command demande approval). `locaryn provider start ollama` lance Ollama. Auto-start si Ollama absent. |
 | **S5** ✅ | Desktop agent wiring : cœur in-process (même SQLite que daemon/CLI), Tauri commands `bootstrap`/`send_message`/CRUD projets-sessions-messages, streaming via `tauri::ipc::Channel`, ChatPanel réel (tokens + tool cards + historique), LeftPanel réel (projets/sessions), terminal line-based via `run_terminal` (PTY xterm.js reporté en V1). | `desktop` (Tauri + React), `agent-runtime` | Desktop chat produit des tokens réels. Terminal exécute des commandes. Desktop et CLI partagent la même session SQLite (test : créer session en CLI, la voir dans le desktop). |
 | **S6** | Preview panel réel : iframe sandboxed + CSP, `event: artifact` → render HTML/markdown. `locaryn-preview` `render_markdown()` réel (marked + sanitize). Monaco mini pour code blocks. File serving depuis le daemon (`/preview/:id`). | `preview`, `desktop`, `daemon` | Preview d'un artefact HTML sandboxed fonctionne. Markdown rendu correctement. Code blocks éditables dans Monaco. |
-| **S7** | Extensions + MCP + plugin-sdk : install plugin via `morph.json`, registry DB-backed, permissions prompt, `.locaryn/mcp.json` loading, 1 MCP server stdio de démo. Hot-reload via fs watcher. | `extensions`, `mcp`, `plugin-sdk`, `daemon` | 1 plugin installable via `locaryn plugin install ./examples/plugins/my-plugin`. 1 MCP server stdio chargeable via `.locaryn/mcp.json`. Hot-reload détecte un changement de `morph.json`. |
+| **S7** | Morphs + MCP + plugin-sdk : install plugin via `morph.json`, registry DB-backed, permissions prompt, `.locaryn/mcp.json` loading, 1 MCP server stdio de démo. Hot-reload via fs watcher. | `extensions`, `mcp`, `plugin-sdk`, `daemon` | 1 plugin installable via `locaryn plugin install ./examples/plugins/my-plugin`. 1 MCP server stdio chargeable via `.locaryn/mcp.json`. Hot-reload détecte un changement de `morph.json`. |
 | **S8** | Commands + skills + hooks : slash commands exécution réelle (dispatch vers agent avec prompt injecté), skills auto-trigger (matching par mots-clés), hooks (PreToolUse/PostToolUse/Stop) exécution async avec timeout. | `command-runtime`, `skill-runtime`, `hook-runtime`, `agent-runtime` | `/refactor` slash command s'exécute. Skill auto-trigger suggère un skill quand l'utilisateur demande une migration DB. Hook PreToolUse bloque un run_command non approuvé. |
 | **S9** | Rules + subagents + import : `LOCARYN.md` + rules agrégées dans system prompt (hot-reload), agent profiles + subagents (spawn agent spécialisé), `locaryn import claude-code` et `locaryn import cursor` (conversion réelle des bundles). | `rules-runtime`, `agent-runtime`, `extensions` | Rules `LOCARYN.md` apparaissent dans le system prompt. Subagent spécialisé s'exécute pour une tâche de refactor. `locaryn import claude-code ./examples` importe un bundle (morph.json + hooks + skills convertis). |
 | **Buffer** | Polish, tests unitaires + intégration, packaging (MSI/DMG/AppImage), CI build matrix, release `v0.1.0`. | Tous | Tests verts. Packaging génère des binaires pour Win11 x64, macOS arm64, Linux x64. |
@@ -155,11 +155,11 @@ Un utilisateur solo peut installer Locaryn, ouvrir un projet, chatter avec un ag
 | Auth réel | Argon2id hash des passwords, token issuance (JWT ou opaque), token verification middleware, rotation de tokens. | `auth`, `remote-server` |
 | Sessions/permissions | Sessions utilisateur persistées, permissions par projet, RBAC minimal (admin/user). | `remote-server`, `storage` |
 | Providers côté serveur | Configuration des providers distants côté serveur (OpenAI-compatible, vLLM, etc.). Le serveur agit comme gateway sécurisée. | `remote-server`, `agent-runtime` |
-| Audit logs | `audit_logs` table remplie pour chaque action sensible (login, tool execution, provider switch, extension install). | `storage`, `remote-server` |
+| Audit logs | `audit_logs` table remplie pour chaque action sensible (login, tool execution, provider switch, morph install). | `storage`, `remote-server` |
 | Rate limiting | Rate limiting minimal par IP et par token (tower middleware). | `remote-server` |
 | Streaming | SSE streaming des réponses agent à travers le remote-server (proxy transparent). | `remote-server`, `events` |
 | Healthchecks | `/health` + `/v1/providers/:id/health` pour vérifier les providers côté serveur. | `remote-server` |
-| Extensions côté serveur | Inventaire et activation des extensions côté serveur lorsque permis par les permissions. | `remote-server`, `extensions` |
+| Morphs côté serveur | Inventaire et activation des morphs côté serveur lorsque permis par les permissions. | `remote-server`, `extensions` |
 | Packaging | Binaire natif + systemd service + conteneur Docker. Compatible Windows et Linux. | `remote-server` |
 
 ### 2.2 Mode auto + fallback
@@ -195,7 +195,7 @@ CI release : tags → build matrix → GitHub Releases + SHA256 + cosign (signin
 ### 2.5 Documentation
 
 - Guide utilisateur (desktop + CLI).
-- Guide extension author (morph.json, hooks, skills, commands, agents, MCP, rules, LSP).
+- Guide morph author (morph.json, hooks, skills, commands, agents, MCP, rules, LSP).
 - Guide déploiement remote-server (TLS, auth, systemd, Docker, reverse proxy).
 - Guide contribution (architecture, conventions, CI).
 
@@ -206,10 +206,10 @@ CI release : tags → build matrix → GitHub Releases + SHA256 + cosign (signin
 | Item | Description | Crates |
 |------|-------------|--------|
 | **mTLS** | Certificat client pour le remote-server. Support Tailscale/Headscale pour déploiements homelab/entreprise. | `auth`, `remote-server` |
-| **Rate limiting avancé** | Par utilisateur, par endpoint, par extension. Sliding window. | `remote-server` |
+| **Rate limiting avancé** | Par utilisateur, par endpoint, par morph. Sliding window. | `remote-server` |
 | **IP allowlist** | Liste blanche d'IPs côté remote-server. | `remote-server` |
 | **WASM plugins** | `wasmtime` sandbox pour exécuter du code plugin natif en sécurité. Proc macro `#[locaryn_plugin]`. | `plugin-sdk`, `extensions` |
-| **Marketplace local** | Index d'extensions installables depuis une URL ou un repo git. `locaryn plugin install <url>`. | `extensions` |
+| **Marketplace local** | Index de morphs installables depuis une URL ou un repo git. `locaryn plugin install <url>`. | `extensions` |
 | **Python viz** | Export graphiques Python → plotly HTML / matplotlib PNG dans le panel preview. | `preview` |
 | **Audit log UI** | Visualisation des audit logs dans le desktop (admin). Filtres par action, utilisateur, date. | `desktop`, `storage` |
 | **Token rotation** | Rotation automatique des tokens (30 jours), révocation, liste de tokens actifs. | `auth` |
@@ -224,7 +224,7 @@ CI release : tags → build matrix → GitHub Releases + SHA256 + cosign (signin
 |------|-------------|--------|
 | **Enterprise module complet** | Contexte partagé pré-indexé pour gros projets (vector index + chunk store). Orchestration DGX Spark. RBAC complet. SSO OIDC/SAML. | `remote-server/enterprise` |
 | **PostgreSQL optionnel** | Abstraction `locaryn-storage` pour supporter PostgreSQL en plus de SQLite (remote-server uniquement). | `storage` |
-| **Marketplace distant** | Catalogue d'extensions signées (cosign), notation, reviews, install en un clic. | `extensions` |
+| **Marketplace distant** | Catalogue de morphs signés (cosign), notation, reviews, install en un clic. | `extensions` |
 | **Realtime collaboration** | Partage de session live entre utilisateurs (CRDT ou OT). Presence cursors. | `events`, `remote-server` |
 | **Mobile** | Tauri v2 mobile — iOS/Android client léger (chat + preview, pas d'éditeur). | `apps/desktop` (mobile) |
 | **Multilingue UI** | i18n du desktop (français, anglais, espagnol, allemand minimum). | `desktop` |
@@ -307,7 +307,7 @@ Les migrations sont déjà définies (`migrations/0001_init.sql` + `migrations/0
 | `auth_tokens` | Tokens d'authentification | **Serveur uniquement** | N/A |
 | `audit_logs` | Logs d'audit | **Serveur uniquement** (local en V1.1) | Non (sensible) |
 
-### Tables extensions (déjà créées, à peupler)
+### Tables morphs (déjà créées, à peupler)
 
 | Table | Contenu | Scope |
 |-------|---------|-------|
@@ -343,17 +343,17 @@ Les migrations sont déjà définies (`migrations/0001_init.sql` + `migrations/0
 | Panneau bas (terminal/logs) | xterm.js + PTY via Tauri command | Tabs (terminal/logs/extensions/provider), logs filtrables |
 | Panneau droit (preview/artefacts) | iframe sandboxed HTML, markdown rendu | Python PNG/plotly, multi-artefact tabs |
 | TopBar | Logo, projet, provider badge, settings ⚙ | Mode switcher (remote/local/auto), provider selector |
-| Settings panel | Accent color, glass blur, tint, mesh toggle, speed | Provider config, extensions management, permissions, audit logs |
+| Settings panel | Accent color, glass blur, tint, mesh toggle, speed | Provider config, morphs management, permissions, audit logs |
 | États loading/error/offline | Skeleton loaders, error toasts, offline banner | Idem + retry automatique |
 | Signalétique remote/local | Provider badge color + texte | Banner + indicateur de latence |
-| Extensions UI | N/A (MVP = CLI only) | Install/activate/désactivate, permissions prompt, MCP servers list |
+| Morphs UI | N/A (MVP = CLI only) | Install/activate/désactivate, permissions prompt, MCP servers list |
 | Rules UI | N/A | Éditeur `LOCARYN.md`, preview du system prompt |
 
 ### CLI
 
 | Commande | MVP | V1 |
 |----------|-----|-----|
-| `locaryn status` | Mode, provider, daemon, projets | + extensions actives, MCP servers, health |
+| `locaryn status` | Mode, provider, daemon, projets | + morphs actifs, MCP servers, health |
 | `locaryn chat` | Streaming via daemon, slash commands | + subagents, skills auto-trigger |
 | `locaryn projects add/list` | CRUD via daemon | + import, export |
 | `locaryn sessions new/list` | Via daemon | + reprise, fork |
@@ -398,7 +398,7 @@ Les migrations sont déjà définies (`migrations/0001_init.sql` + `migrations/0
 | Binaires | `locaryn-*` | `locaryn` (CLI), `locaryn-daemon`, `locaryn-remote-server`, `locaryn-supervisor` |
 | Crates | `locaryn-*` | `locaryn-shared-types`, `locaryn-agent-runtime` |
 | Packages UI | `@locaryn/ui-*` | `@locaryn/ui-core`, `@locaryn/ui-chat` |
-| Extension scopes | `Global` / `User` / `Organisation` (V1) / `Workspace` / `Session` (V1.1) | `.locaryn/` (workspace), `~/.locaryn/` (user), `LOCARYN.md` (project) |
+| Morph scopes | `Global` / `User` / `Organisation` (V1) / `Workspace` / `Session` (V1.1) | `.locaryn/` (workspace), `~/.locaryn/` (user), `LOCARYN.md` (project) |
 | Config files | `.locaryn/` | `.locaryn/mcp.json`, `.locaryn/config.toml`, `LOCARYN.md` |
 | Plugin manifest | `morph.json` | `examples/plugins/my-plugin/morph.json` |
 | MCP config | `mcp.json` | `.locaryn/mcp.json` |

@@ -1,7 +1,7 @@
 # 14 — Noyaux alternatifs (OpenClaw, Hermes Agent…)
 
 > Proposition d'intégration : installer un **noyau tiers** depuis Réglages →
-> Extensions, l'utiliser par session, **sans jamais remplacer le noyau
+> Morphs, l'utiliser par session, **sans jamais remplacer le noyau
 > Locaryn**. Locaryn reste l'hôte : mêmes API, même stockage, même UI, mêmes
 > permissions. Les conversations normales continuent à côté, inchangées.
 
@@ -9,7 +9,7 @@
 
 ## 1. Ce que l'on veut
 
-Un utilisateur doit pouvoir, depuis **Réglages → Extensions**, installer un
+Un utilisateur doit pouvoir, depuis **Réglages → Morphs**, installer un
 **noyau alternatif** — OpenClaw, Hermes Agent, puis d'autres — qui :
 
 - change le **comportement** de l'agent (sa boucle, sa mémoire, ses skills,
@@ -32,8 +32,8 @@ Ce que Locaryn a déjà, et qui sert de socle :
 
 | Brique | État | Rôle pour les noyaux |
 | --- | --- | --- |
-| `morph.json` + registry d'extensions | Fonctionnel | Le manifeste peut accueillir une section `core` ; install/enable/remove déjà en place |
-| Écran Réglages → Extensions | Fonctionnel (desktop + mobile) | Point d'entrée demandé : installer le noyau, le configurer, le démarrer |
+| `morph.json` + registry de morphs | Fonctionnel | Le manifeste peut accueillir une section `core` ; install/enable/remove déjà en place |
+| Écran Réglages → Morphs | Fonctionnel (desktop + mobile) | Point d'entrée demandé : installer le noyau, le configurer, le démarrer |
 | Trait `Agent` (`agent-runtime`) | Fonctionnel | `OllamaAgent`, `OpenAiCompatAgent`, `StubAgent`. **Un noyau externe peut s'y brancher comme n'importe quel agent** |
 | `OpenAiCompatAgent` | Fonctionnel | Locaryn parle **déjà** le format OpenAI (chat/completions, SSE) |
 | Gating d'approbation | Fonctionnel | `run_command`, `write_file`, outils MCP passent par l'approbation |
@@ -94,9 +94,9 @@ Locaryn fait déjà pour Ollama/llama-server via le provider-supervisor.
 
 ## 4. Architecture proposée
 
-### 4.1 Le concept : un « noyau » est une extension avec un driver
+### 4.1 Le concept : un « noyau » est un morph avec un driver
 
-Une extension de noyau = un `morph.json` enrichi d'une section `core` :
+Un morph de noyau = un `morph.json` enrichi d'une section `core` :
 
 ```json
 {
@@ -153,7 +153,7 @@ Champs clés :
 
 - `driver` : `responses` (OpenClaw), `runs` (Hermes), `chat_completions`
   (générique OpenAI-compatible) — l'implémentation de pont vit dans Locaryn,
-  l'extension est **déclarative**.
+  le morph est **déclarative**.
 - `install` : d'où vient le binaire/paquet (`binary`, `pip`, `npm`, `existing`
   = l'utilisateur l'a déjà). Locaryn télécharge, vérifie la somme, installe.
 - `lifecycle` : comment le démarrer, healthcheck, arrêt.
@@ -219,9 +219,9 @@ joindre un noyau.
 - Le CLI : `locaryn sessions new --core openclaw` ; les sessions à noyau sont
   lisibles depuis le desktop, le mobile et le CLI (parité existante).
 
-### 4.5 Skills : le catalogue voyage avec l'extension
+### 4.5 Skills : le catalogue voyage avec le morph
 
-L'extension de noyau embarque (ou sait interroger) un **index de skills** :
+Le morph de noyau embarque (ou sait interroger) un **index de skills** :
 
 - OpenClaw : registre ClawHub — onglet « Skills » dans la carte du noyau :
   chercher, installer (`openclaw skills install @owner/<slug>` ou écriture
@@ -230,7 +230,7 @@ L'extension de noyau embarque (ou sait interroger) un **index de skills** :
 - Format commun : `SKILL.md` en frontmatter YAML — la **même convention que
   Locaryn** (document 09). Un skill natif au noyau reste natif (il s'exécute
   dans le contexte du noyau, avec sa mémoire) ; un skill au format Locaryn
-  pur peut aussi être installé comme extension Locaryn classique.
+  pur peut aussi être installé comme morph Locaryn classique.
 
 Le principe : **les skills des écosystèmes s'installent depuis Locaryn, mais
 tournent dans leur écosystème** — pas de conversion perdue, pas de double
@@ -253,7 +253,7 @@ maintien.
 - **Jeton généré par Locaryn** à l'install (CSPRNG), injecté dans la config du
   noyau ; les permissions du manifeste (`network`, `shell`, `env`) passent par
   la fenêtre de permissions existante.
-- **Avertissement renforcé à l'activation** : une extension `core` fait
+- **Avertissement renforcé à l'activation** : un morph `core` fait
   tourner un programme tiers avec les droits de l'utilisateur et un accès
   réseau. La fenêtre de permissions affiche un niveau « élevé » explicite.
 - **Données sortantes** : les messages d'une session à noyau transitent par le
@@ -266,14 +266,14 @@ maintien.
   kill du groupe de processus à l'arrêt).
 - Les appels d'outils en attente relaient par l'approbation du noyau, relayée
   dans l'UI Locaryn (Hermes) ; un noyau n'a pas accès aux données d'autres
-  extensions ni aux sessions natives ; la désinstallation arrête le processus
+  morphs ni aux sessions natives ; la désinstallation arrête le processus
   et retire les fichiers.
 
 ---
 
 ## 5. Parcours utilisateur
 
-1. **Réglages → Extensions → Découvrir** : deux entrées distinctes —
+1. **Réglages → Morphs → Découvrir** : deux entrées distinctes —
    « Noyau OpenClaw » et « Noyau Hermes » — servies par la source de catalogue
    officielle `Locaryn/locaryn-cores` (chacune pointe son sous-chemin
    `#cores/openclaw`, `#cores/hermes` ; la racine du dépôt n'est pas un
@@ -302,13 +302,13 @@ maintien.
 3. Migration `0012_core_id.sql` ; sélection d'agent par `session.core_id`
    (daemon + desktop), **sans fallback silencieux** : noyau choisi mais
    indisponible = message clair + bouton « démarrer le noyau ».
-4. UI : carte « Noyau » dans Réglages → Extensions (statut, démarrer/arrêter,
+4. UI : carte « Noyau » dans Réglages → Morphs (statut, démarrer/arrêter,
    réglages, avertissement de niveau élevé, mention du fournisseur du noyau),
    choix du noyau à la création de session, badge dans le chat, onglet
    Skills. Mobile : même écran (les `settings_sections` existent déjà).
 5. CLI : `locaryn sessions new --core`, `locaryn cores list/start/stop`.
 6. `CoreManager` instancié **dans le daemon aussi** (le daemon n'a pas de
-   runtime d'extensions aujourd'hui) : il lit les manifestes `core` sur
+   runtime de morphs aujourd'hui) : il lit les manifestes `core` sur
    disque, supervise les processus, et sert les sessions CLI. Le desktop
    garde l'installation ; le daemon devient le superviseur des processus.
 7. Source de catalogue « Officiel Locaryn » : `locaryn-cores/catalog.json`
@@ -318,7 +318,7 @@ maintien.
    parlant les dialectes `responses`/`runs`, pour la CI du pont sans réseau ;
    tests d'intégration `#[ignore]` contre les vrais noyaux.
 
-### Phase B — Dépôt d'extension `Locaryn/locaryn-cores` (nouveau repo)
+### Phase B — Dépôt de morph `Locaryn/locaryn-cores` (nouveau repo)
 
 Contenu actuel (déjà initialisé, commit `16724b6`) :
 
@@ -355,7 +355,7 @@ installables, et la vitrine des skills.
 
 - Le noyau Locaryn reste le défaut et le seul pour les sessions sans `core_id`.
 - Les API (daemon `/v1/*`, SSE), le stockage SQLite, la preview, le terminal,
-  MCP, les extensions classiques : inchangés.
+  MCP, les morphs classiques : inchangés.
 - La parité desktop/CLI/mobile est conservée (le pont est dans le cœur Rust,
   pas dans l'UI).
 
