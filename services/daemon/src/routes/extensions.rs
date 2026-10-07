@@ -658,20 +658,37 @@ pub async fn install_extension(
     }
 }
 
-/// Ramener `owner/repo` à ce qu'il désigne vraiment.
+/// Un dépôt GitHub et, éventuellement, la version demandée.
+#[derive(Debug, PartialEq)]
+struct Depot {
+    owner: String,
+    repo: String,
+    /// Tag ou branche : `v2.3.0` dans `Locaryn/morph-ssh@v2.3.0`.
+    version: Option<String>,
+}
+
+/// Ramener une source à ce qu'elle désigne vraiment.
 ///
 /// On accepte ce qu'une personne écrit : `Locaryn/locaryn-image`,
-/// l'adresse complète du dépôt, ou la forme `github:owner/repo`. Tout le
-/// reste est refusé — une source arbitraire téléchargée et exécutée par le
-/// service serait une porte d'entrée, pas une commodité.
-fn parse_repo(source: &str) -> Result<(String, String), String> {
+/// l'adresse complète du dépôt, ou la forme `github:owner/repo`, suivis d'une
+/// version : `@v2.3.0` (la forme que produit le catalogue) ou `#v2.3.0` (celle
+/// des manifestes). Le service refusait toute version : chaque installation
+/// lancée depuis le catalogue — téléphone, web, CLI, et l'ordinateur connecté
+/// à un serveur — échouait sur « Nom de dépôt inattendu ». Tout le reste est
+/// refusé — une source arbitraire téléchargée et exécutée par le service
+/// serait une porte d'entrée, pas une commodité.
+fn parse_repo(source: &str) -> Result<Depot, String> {
     let s = source
         .trim()
         .trim_end_matches('/')
         .trim_start_matches("github:")
         .trim_start_matches("https://github.com/")
-        .trim_start_matches("http://github.com/")
-        .trim_end_matches(".git");
+        .trim_start_matches("http://github.com/");
+    let (s, version) = match s.rsplit_once('@').or_else(|| s.rsplit_once('#')) {
+        Some((depot, v)) => (depot, Some(v)),
+        None => (s, None),
+    };
+    let s = s.trim_end_matches(".git");
     let mut parts = s.split('/');
     let (Some(owner), Some(repo), None) = (parts.next(), parts.next(), parts.next()) else {
         return Err(format!(
@@ -683,10 +700,14 @@ fn parse_repo(source: &str) -> Result<(String, String), String> {
             && x.chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
     };
-    if !valide(owner) || !valide(repo) {
+    if !valide(owner) || !valide(repo) || version.is_some_and(|v| !valide(v)) {
         return Err(format!("Nom de dépôt inattendu : « {source} »."));
     }
-    Ok((owner.to_string(), repo.to_string()))
+    Ok(Depot {
+        owner: owner.to_string(),
+        repo: repo.to_string(),
+        version: version.map(str::to_string),
+    })
 }
 
 /// Trouver, dans une archive dépliée, le dossier qui porte le manifeste.
@@ -729,7 +750,11 @@ fn find_manifest_dir(root: &std::path::Path) -> Option<std::path::PathBuf> {
 async fn fetch_from_catalogue(source: &str) -> Result<std::path::PathBuf, String> {
     // `parse_repo` reste le garde-barrière : le service ne télécharge que ce
     // qui ressemble à `owner/repo`, jamais une adresse quelconque.
-    let (owner, repo) = parse_repo(source)?;
+    let Depot {
+        owner,
+        repo,
+        version,
+    } = parse_repo(source)?;
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
@@ -742,7 +767,11 @@ async fn fetch_from_catalogue(source: &str) -> Result<std::path::PathBuf, String
         .join(format!("{owner}-{repo}"));
     let _ = std::fs::remove_dir_all(&cible);
 
-    let spec = format!("github:{owner}/{repo}");
+    // `@` : dans la grammaire partagée, `#` désigne un sous-dossier.
+    let spec = match &version {
+        Some(v) => format!("github:{owner}/{repo}@{v}"),
+        None => format!("github:{owner}/{repo}"),
+    };
     let source = locaryn_extensions::source::parse(&spec).map_err(|e| e.to_string())?;
     let dir = locaryn_extensions::source::fetch(&client, &source, &cible)
         .await
@@ -1076,7 +1105,7 @@ pub async fn reload_extensions(
 
 #[cfg(test)]
 mod catalogue_tests {
-    use super::parse_repo;
+    use super::{parse_repo, Depot};
 
     #[test]
     fn les_formes_courantes_donnent_le_meme_depot() {
@@ -1089,10 +1118,39 @@ mod catalogue_tests {
         ] {
             assert_eq!(
                 parse_repo(source).unwrap(),
-                ("Locaryn".to_string(), "locaryn-image".to_string()),
+                Depot {
+                    owner: "Locaryn".to_string(),
+                    repo: "locaryn-image".to_string(),
+                    version: None,
+                },
                 "source : {source}"
             );
         }
+    }
+
+    #[test]
+    fn la_version_du_catalogue_est_acceptee() {
+        for source in [
+            "Locaryn/morph-ssh@v2.3.0",
+            "github:Locaryn/morph-ssh@v2.3.0",
+            "Locaryn/morph-ssh#v2.3.0",
+        ] {
+            let d = parse_repo(source).unwrap();
+            assert_eq!(
+                (d.repo.as_str(), d.version.as_deref()),
+                ("morph-ssh", Some("v2.3.0"))
+            );
+        }
+        assert_eq!(
+            parse_repo("Locaryn/morph-desktop@v0.1.0-beta.5")
+                .unwrap()
+                .version
+                .as_deref(),
+            Some("v0.1.0-beta.5")
+        );
+        // Une version qui n'en est pas une ne passe pas.
+        assert!(parse_repo("Locaryn/morph-ssh@v1;rm -rf").is_err());
+        assert!(parse_repo("Locaryn/morph-ssh@").is_err());
     }
 
     #[test]

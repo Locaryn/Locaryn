@@ -358,13 +358,38 @@ impl CatalogClient {
         let url = format!(
             "https://api.github.com/repos/{full_name}/releases?per_page={MORPH_RELEASES_PER_REPO}"
         );
-        let v = self.get_json(&url).await.ok()?;
-        let arr = v.as_array()?;
-        Some(
-            arr.iter()
-                .filter_map(|r| release_from_json(r, full_name))
-                .collect(),
-        )
+        match self.get_json(&url).await {
+            Ok(v) => {
+                let arr = v.as_array()?;
+                Some(
+                    arr.iter()
+                        .filter_map(|r| release_from_json(r, full_name))
+                        .collect(),
+                )
+            }
+            // L'API sans jeton plafonne à 60 requêtes par heure et par adresse,
+            // et ce catalogue en demande une par morph : derrière une même box,
+            // quelques rafraîchissements suffisent. Le flux Atom des releases
+            // est public et hors quota ; sans lui, on retombait sur la table
+            // écrite dans le code, en retard sur les vraies versions.
+            Err(e) => {
+                tracing::warn!(depot = %full_name, erreur = %e, "API GitHub refusée, lecture du flux des releases");
+                let url = format!("https://github.com/{full_name}/releases.atom");
+                let resp = self
+                    .http
+                    .get(&url)
+                    .header("User-Agent", "Locaryn-Extension-Catalog/1.0")
+                    .send()
+                    .await
+                    .ok()?;
+                if !resp.status().is_success() {
+                    return None;
+                }
+                let xml = resp.text().await.ok()?;
+                let found = releases_from_atom(&xml, full_name);
+                (!found.is_empty()).then_some(found)
+            }
+        }
     }
 
     /// `Locaryn/locaryn-cores/catalog.json` — l'index des extensions de noyaux
@@ -980,6 +1005,37 @@ const MORPH_RELEASES_PER_REPO: usize = 10;
 /// stable reste verte. Le tag `v0.2.0` devient la version `0.2.0` et la
 /// source d'installation `owner/repo@v0.2.0` (grammaire des sources : `@`
 /// épingle un tag, `#` désigne un sous-dossier).
+/// Les releases d'un flux Atom GitHub (`…/releases.atom`), plus récentes
+/// d'abord. Le flux ne dit pas « pre-release » : une version à suffixe
+/// (`-beta.1`) en est une, comme partout ailleurs dans ce catalogue.
+fn releases_from_atom(
+    xml: &str,
+    full_name: &str,
+) -> Vec<locaryn_shared_types::MorphVersionRelease> {
+    let marque = format!("https://github.com/{full_name}/releases/tag/");
+    xml.split("<entry>")
+        .skip(1)
+        .filter_map(|entree| {
+            let debut = entree.find(&marque)? + marque.len();
+            let tag = &entree[debut..];
+            let tag = &tag[..tag.find('"')?];
+            let publie = entree
+                .split_once("<updated>")
+                .and_then(|(_, r)| r.split_once("</updated>"))
+                .map(|(d, _)| d.trim().to_string());
+            release_from_json(
+                &serde_json::json!({
+                    "tag_name": tag,
+                    "prerelease": tag.contains('-'),
+                    "published_at": publie,
+                }),
+                full_name,
+            )
+        })
+        .take(MORPH_RELEASES_PER_REPO)
+        .collect()
+}
+
 fn release_from_json(
     r: &serde_json::Value,
     full_name: &str,
@@ -1146,6 +1202,17 @@ mod tests {
     #[test]
     fn unknown_morph_gets_no_invented_version() {
         // morph-cluster est désormais dans la table, avec ses VRAIES versions.
+        let atom = r#"<feed><entry><updated>2026-09-21T15:38:20Z</updated>
+            <link rel="alternate" type="text/html" href="https://github.com/Locaryn/morph-ssh/releases/tag/v2.3.0"/></entry>
+            <entry><link rel="alternate" href="https://github.com/Locaryn/morph-ssh/releases/tag/v2.2.0-beta.1"/></entry></feed>"#;
+        let depuis_flux = releases_from_atom(atom, "Locaryn/morph-ssh");
+        assert_eq!(depuis_flux.len(), 2);
+        assert_eq!(depuis_flux[0].version, "2.3.0");
+        assert!(!depuis_flux[0].is_beta && depuis_flux[1].is_beta);
+        assert_eq!(
+            depuis_flux[0].install_source.as_deref(),
+            Some("Locaryn/morph-ssh@v2.3.0")
+        );
         let v = versions_from_known_table("morph-cluster", "Locaryn/morph-cluster");
         assert_eq!(v[0].version, "0.2.0");
         assert_eq!(v[0].tag.as_deref(), Some("v0.2.0"));

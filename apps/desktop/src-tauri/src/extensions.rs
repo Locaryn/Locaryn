@@ -944,18 +944,27 @@ pub async fn install_extension(
     scope: Option<String>,
     workspace: Option<String>,
 ) -> Result<InstalledExtension, String> {
+    // Connecté à un serveur, c'est sur lui que l'extension doit s'installer :
+    // c'est lui qui fait tourner les conversations. Un refus du serveur
+    // retombait en silence sur une installation sur ce poste, que le serveur
+    // ne voyait jamais — l'extension « ne s'installait pas ».
     if let Some(client) = core.remote_client() {
         let sc = scope.as_deref().unwrap_or("global");
-        if let Ok(val) = client.install_extension(&source, sc).await {
-            if let Ok(installed) = serde_json::from_value::<InstalledExtension>(val) {
-                return Ok(installed);
-            }
-            if let Ok(exts) = client.list_extensions().await {
-                if let Some(last) = exts.last() {
-                    return Ok(last.clone());
-                }
-            }
+        let val = client
+            .install_extension(&source, sc)
+            .await
+            .map_err(|e| format!("Le serveur n'a pas pu installer l'extension : {e}"))?;
+        if let Ok(installed) = serde_json::from_value::<InstalledExtension>(val) {
+            return Ok(installed);
         }
+        let exts = client
+            .list_extensions()
+            .await
+            .map_err(|e| format!("Extension installée sur le serveur, liste illisible : {e}"))?;
+        return exts
+            .last()
+            .cloned()
+            .ok_or_else(|| "Le serveur n'a renvoyé aucune extension installée.".to_string());
     }
     install_locally(&core, source, scope, workspace).await
 }

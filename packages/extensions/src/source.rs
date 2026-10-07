@@ -449,21 +449,36 @@ async fn download_github_release_bundle(
 ) -> Option<Vec<u8>> {
     // A ref that looks like a version pins the release; anything else (a
     // branch, a commit) has no release of its own and reads as "latest".
-    let endpoint = match git_ref {
-        Some(r) if r.starts_with('v') && r[1..].starts_with(|c: char| c.is_ascii_digit()) => {
-            format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{r}")
-        }
-        _ => format!("https://api.github.com/repos/{owner}/{repo}/releases/latest"),
+    let tag = git_ref.filter(|r| is_version_tag(r));
+    let endpoint = match tag {
+        Some(r) => format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{r}"),
+        None => format!("https://api.github.com/repos/{owner}/{repo}/releases/latest"),
     };
 
     let resp = github_get(http, &endpoint)
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-        .ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
+        .ok();
+    let resp = match resp {
+        Some(r) if r.status().is_success() => r,
+        autre => {
+            // L'API sans jeton plafonne à 60 requêtes par heure et par adresse,
+            // et un rafraîchissement du catalogue en consomme une vingtaine :
+            // plusieurs postes derrière la même box l'épuisent vite. Elle
+            // répond alors 403, et chaque morph s'installait depuis ses
+            // sources, sans son binaire. Le paquet d'une version connue a une
+            // adresse publique qui ne passe pas par l'API.
+            if let Some(r) = &autre {
+                tracing::warn!(
+                    statut = %r.status(),
+                    depot = %format!("{owner}/{repo}"),
+                    "API GitHub indisponible pour la release, téléchargement direct"
+                );
+            }
+            return download_release_asset_directly(http, owner, repo, tag?).await;
+        }
+    };
     let body = resp.json::<serde_json::Value>().await.ok()?;
     let assets: Vec<(String, String)> = body
         .get("assets")?
@@ -487,6 +502,56 @@ async fn download_github_release_bundle(
         return None;
     }
     resp.bytes().await.ok().map(|b| b.to_vec())
+}
+
+/// `v1.2.0`, `v0.1.0-beta.5` : un tag de version, qui désigne une release.
+fn is_version_tag(r: &str) -> bool {
+    r.strip_prefix('v')
+        .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+}
+
+/// Les noms que les workflows de release donnent aux paquets :
+/// `<dépôt>-<tag>-<os>-<arch>.zip`.
+fn predicted_asset_names(repo: &str, tag: &str) -> Vec<String> {
+    let arch = if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else {
+        "x86_64"
+    };
+    let os = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+    vec![
+        format!("{repo}-{tag}-{os}-{arch}.zip"),
+        format!("{repo}-{tag}-{os}.zip"),
+    ]
+}
+
+/// Télécharger le paquet d'une release par son adresse publique
+/// (`github.com/…/releases/download/…`), sans passer par l'API et son quota.
+async fn download_release_asset_directly(
+    http: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+    tag: &str,
+) -> Option<Vec<u8>> {
+    for name in predicted_asset_names(repo, tag) {
+        let url = format!("https://github.com/{owner}/{repo}/releases/download/{tag}/{name}");
+        let Ok(resp) = github_get(http, &url).send().await else {
+            continue;
+        };
+        if resp.status().is_success() {
+            if let Ok(bytes) = resp.bytes().await {
+                tracing::info!(paquet = %name, "paquet de release téléchargé directement");
+                return Some(bytes.to_vec());
+            }
+        }
+    }
+    None
 }
 
 /// GitHub's codeload endpoint serves a zip of any ref without authentication.
@@ -977,6 +1042,16 @@ mod tests {
     #[test]
     fn release_asset_falls_back_to_a_platform_neutral_bundle() {
         let assets = vec![asset("plugin-figures-v1.0.0.zip")];
+        // Les noms prédits pointent bien sur le paquet de cette plateforme.
+        let predits = predicted_asset_names("morph-ssh", "v2.3.0");
+        assert!(choose_release_asset(
+            &predits
+                .iter()
+                .map(|n| (n.clone(), format!("https://example.test/{n}")))
+                .collect::<Vec<_>>()
+        )
+        .is_some());
+        assert!(is_version_tag("v0.1.0-beta.5") && !is_version_tag("main") && !is_version_tag("v"));
         assert_eq!(
             choose_release_asset(&assets).as_deref(),
             Some("https://example.test/plugin-figures-v1.0.0.zip")
