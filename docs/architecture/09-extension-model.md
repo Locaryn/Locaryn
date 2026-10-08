@@ -1,6 +1,6 @@
-# 09 — Extension Model
+# 09 — Morph Model
 
-Système d'extensions **first-class**. Un plugin Locaryn est un bundle auto-contained pouvant contenir: skills, commands/slash commands, hooks, agents, MCP servers, rules, LSP adapters. Manifest `morph.json`, permissions déclarées, scoping, hot-reload.
+Système de morphs **first-class**. Un plugin Locaryn est un bundle auto-contained pouvant contenir: skills, commands/slash commands, hooks, agents, MCP servers, rules, LSP adapters. Manifest `morph.json`, permissions déclarées, scoping, hot-reload.
 
 ## Structure d'un plugin Locaryn
 
@@ -75,7 +75,7 @@ my-plugin/
 | Champ | Rôle |
 | --- | --- |
 | `schema` | URL du schema JSON de validation (versionné) |
-| `apiVersion` | Version de l'extension API Locaryn supportée |
+| `apiVersion` | Version du morph API Locaryn supportée |
 | `name`, `version`, `description`, `author`, `license` | Métadonnées |
 | `minLocarynVersion` | Version Locaryn minimum requise |
 | `permissions` | Permissions demandées (voir §Permissions) |
@@ -153,7 +153,7 @@ Déclarées dans `morph.json.permissions`. Approuvées à l'install (modal deskt
 | `files.write` | Écrire fichiers workspace | refusé (requireApproval) |
 | `network` | fetch / MCP HTTP | refusé |
 | `mcp` | Enregistrer/activer MCP servers | refusé |
-| `extensions` | Gérer autres extensions | refusé |
+| `extensions` | Gérer autres morphs | refusé |
 | `preview` | Ouvrir artefacts en preview | accordé |
 | `lsp` | Enregistrer LSP | refusé |
 | `env` | Lire vars d'env (liste explicite) | refusé |

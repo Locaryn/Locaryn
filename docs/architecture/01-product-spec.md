@@ -10,7 +10,7 @@
 | **Power user / tinkerer** | Self-hosts everything, homelab, multiple machines | Desktop + CLI, remote-server on homelab box, Tailscale/Headscale | mTLS/VPN, multiple projects, own LLM endpoints, audit logs, scripting |
 | **Small team (3–15)** | Startup or R&D squad sharing one codebase | Desktop + CLI, one shared remote-server | Shared sessions/context, per-project rules, shared MCP/plugin bundle, SSO-ish |
 | **Enterprise team on DGX Spark** | 20+ engineers, large repos, NVIDIA DGX Spark cluster | Desktop + CLI, enterprise remote-server module | Cross-team context/file sharing optimized for huge codebases, governance, DGX orchestration, RBAC, audit, mTLS |
-| **Plugin/extension author** | Builds MCP servers, skills, agents, hooks | plugin-sdk, CLI for testing | Stable SDK, manifest schema, sandbox, hot-reload, scope model |
+| **Plugin/morph author** | Builds MCP servers, skills, agents, hooks | plugin-sdk, CLI for testing | Stable SDK, manifest schema, sandbox, hot-reload, scope model |
 | **Platform/SRE** | Operates the remote-server for an org | remote-server binary, container, systemd service | TLS, healthchecks, rotation, rate limiting, logs, backups |
 
 ## User stories (representative)
@@ -30,9 +30,9 @@
 - US-08: As an enterprise engineer, I work on a 2M-LOC monorepo; the enterprise remote-server shares pre-indexed project context across the team so the agent is productive for everyone on day one.
 - US-09: As an enterprise lead, I enforce workspace rules and a curated MCP/plugin bundle at the org scope; team members cannot override security-critical rules.
 
-### Extension author
-- US-10: As an extension author, I publish a plugin bundle containing a skill, a slash command, and an MCP server, scoped to `user`, with a manifest declaring permissions; Locaryn prompts the user to approve on install.
-- US-11: As an extension author, I import a Claude-Code-style bundle (`.claude/agents/*.md`, `commands/*.md`, `skills/*/SKILL.md`) into Locaryn's format via a one-shot converter.
+### Morph author
+- US-10: As a morph author, I publish a plugin bundle containing a skill, a slash command, and an MCP server, scoped to `user`, with a manifest declaring permissions; Locaryn prompts the user to approve on install.
+- US-11: As a morph author, I import a Claude-Code-style bundle (`.claude/agents/*.md`, `commands/*.md`, `skills/*/SKILL.md`) into Locaryn's format via a one-shot converter.
 
 ## Parcours principaux
 
@@ -79,10 +79,10 @@
 | FR-08 | Mode dégradé: détection santé remote, bascule propre vers local, démarrage auto du runtime local si besoin. |
 | FR-09 | Gestion multi-projets/workspaces avec politique de confiance par projet. |
 | FR-10 | Journalisation, observabilité locale, gestion d'erreurs, reprise de session. |
-| FR-11 | Système d'extensions: plugins, MCP, slash commands, commands, hooks, skills, agents spécialisés, rules workspace, LSP adapters. |
+| FR-11 | Système de morphs: plugins, MCP, slash commands, commands, hooks, skills, agents spécialisés, rules workspace, LSP adapters. |
 | FR-12 | Chargement par scope: global/user/workspace (et session si nécessaire). |
-| FR-13 | Permissions explicites par extension (shell, files, network, extensions, MCP, preview). |
-| FR-14 | Hot-reload des extensions sans redémarrage complet. |
+| FR-13 | Permissions explicites par morph (shell, files, network, morphs, MCP, preview). |
+| FR-14 | Hot-reload des morphs sans redémarrage complet. |
 | FR-15 | Remote-server sécurisé: TLS, auth, sessions, permissions, audit, healthchecks, streaming, providers configurés côté serveur. |
 | FR-16 | 3 modes connexion client: remote / local / auto. |
 | FR-17 | Signalétique claire du provider actif et du lieu d'exécution (remote vs local). |

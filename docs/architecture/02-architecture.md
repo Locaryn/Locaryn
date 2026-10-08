@@ -56,10 +56,10 @@ Deux architectures étudiées. **A** est recommandée (cf. `03-tech-decisions.md
 
 | Composant | Rôle | Techno |
 | --- | --- | --- |
-| `packages/*` (16 crates) | Cœur métier partagé: types, SDK client, auth, config, storage (SQLite), events, preview, extensions, MCP, plugin-sdk, runtimes (command/hook/skill/agent/rules), LSP adapters | Rust |
+| `packages/*` (16 crates) | Cœur métier partagé: types, SDK client, auth, config, storage (SQLite), events, preview, morphs, MCP, plugin-sdk, runtimes (command/hook/skill/agent/rules), LSP adapters | Rust |
 | `apps/desktop` | Native desktop: embarque le core en in-process (lib) **et** peut parler au daemon standalone. UI React/TS, Monaco, xterm.js, preview iframe sandboxed | Tauri v2 + React/TS |
 | `apps/cli` | CLI légère, thin client: parle au daemon via `locaryn-sdk` (HTTP/SSE), ou en `--no-daemon` embarque le core | Rust + clap |
-| `services/daemon` | Daemon local loopback :7474, HTTP/SSE, gère sessions/projets/persistence, supervise extensions, parle au provider-supervisor | Rust + axum |
+| `services/daemon` | Daemon local loopback :7474, HTTP/SSE, gère sessions/projets/persistence, supervise morphs, parle au provider-supervisor | Rust + axum |
 | `services/remote-server` | Gateway sécurisée: TLS, auth, sessions, audit, healthchecks, streaming, providers configurés côté serveur, module enterprise (BSL) | Rust + axum + rustls |
 | `services/provider-supervisor` | Auto-start/supervise les runtimes locaux sur loopback, healthchecks, idle shutdown | Rust + tokio::process |
 
@@ -68,7 +68,7 @@ Deux architectures étudiées. **A** est recommandée (cf. `03-tech-decisions.md
 1. **Desktop local:** UI → Tauri command → core (in-process) → provider-supervisor → Ollama (loopback) → stream tokens → Tauri channel → UI.
 2. **CLI local:** CLI → `locaryn-sdk` → HTTP/SSE → daemon → core → provider-supervisor → Ollama → SSE → CLI.
 3. **Desktop/CLI remote (auto):** client → healthcheck remote-server → si OK: TLS + token → remote-server → provider distant (ou DGX) → SSE → client. Si KO: fallback daemon local.
-4. **Extensions:** core charge plugin depuis `~/.locaryn/plugins/` ou `.locaryn/plugins/` → valide manifest → enregistre tools/hooks/skills/commands/agents/MCP → permissions prompt → hot-reload via fs watcher.
+4. **Morphs:** core charge plugin depuis `~/.locaryn/plugins/` ou `.locaryn/plugins/` → valide manifest → enregistre tools/hooks/skills/commands/agents/MCP → permissions prompt → hot-reload via fs watcher.
 5. **Preview:** agent émet artifact → core écrit dans workspace artifacts → desktop preview panel charge l'artifact en iframe sandboxed (CSP strict, pas de network sauf permission).
 
 ### Choix techno (résumé — détail en `03`)
@@ -87,7 +87,7 @@ Deux architectures étudiées. **A** est recommandée (cf. `03-tech-decisions.md
 - **Faible latence desktop**: core in-process (pas de réseau pour la UI).
 - **Single binary CLI/daemon**: distribution simple.
 - **Même contrat API** local (daemon) et remote (remote-server): le SDK client est identique, seul l'endpoint change.
-- **Hot-reload extensions** via fs watcher + registry.
+- **Hot-reload morphs** via fs watcher + registry.
 - **ARM64 natif** via Rust cross-compilation + Tauri.
 
 ### Inconvénients

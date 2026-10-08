@@ -67,11 +67,11 @@ plus refusé faute de clé, ni par l'application ni par son API.
 
 ## 3. Ce que l'hôte garde pour lui
 
-Trois choses, et aucune ne peut vivre dans l'extension.
+Trois choses, et aucune ne peut vivre dans le morph.
 
 **La clé** va dans le trousseau du système, sous `locaryn/cloud/<id>`. Le
 panneau du morph peut demander à l'écrire et savoir qu'elle existe ; il ne peut
-pas la relire. Une extension compromise ne rend donc pas la clé de son
+pas la relire. Un morph compromis ne rend donc pas la clé de son
 utilisateur. C'est l'hôte qui l'ajoute aux requêtes, au moment de parler au
 modèle.
 
@@ -229,5 +229,5 @@ conversation ailleurs que là où l'utilisateur l'a envoyée — c'est vérifié
 | `packages/storage` — `fournisseurs_distants_tests` | un seul fournisseur actif, un modèle distant n'est pas refusé comme « non chargeable », changer de modèle ne multiplie pas les lignes |
 | `packages/agent-runtime` — `tests/passerelle.rs` | la route, l'en-tête `Authorization` présent avec clé et **absent** sans, l'identifiant `fournisseur/modèle` intact |
 | `packages/core-bridge` — `un_modele_de_passerelle_traverse_le_noyau_tel_quel` | le noyau reçoit l'identifiant du fournisseur |
-| `packages/cloud-providers` — `tests/decouverte.rs` | le chemin complet : extension installée → fournisseur découvert → modèle résolu par l'API → choix écrit en base, clé comprise |
+| `packages/cloud-providers` — `tests/decouverte.rs` | le chemin complet : morph installé → fournisseur découvert → modèle résolu par l'API → choix écrit en base, clé comprise |
 | `packages/cloud-providers` — `catalog`, `gateway` | lecture du catalogue, fraîcheur, cache non traversant, commandes d'installation déduites et refus des gestionnaires inconnus |

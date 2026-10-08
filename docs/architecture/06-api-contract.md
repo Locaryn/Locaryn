@@ -143,13 +143,13 @@ data: {"message_id":"...","tokens_in":120,"tokens_out":450,"duration_ms":8200}
 | GET | `/v1/enterprise/dgx/spark/status` | Statut cluster DGX Spark |
 | POST | `/v1/enterprise/dgx/spark/schedule` | Planifie un job inference |
 
-## Endpoints extensions (daemon + remote, selon permissions)
+## Endpoints morphs (daemon + remote, selon permissions)
 
 ### Plugins
 
 | Méthode | Path | Rôle | Local/Remote |
 | --- | --- | --- | --- |
-| GET | `/v1/extensions` | Liste extensions installées (tous kinds) | both |
+| GET | `/v1/extensions` | Liste morphs installés (tous kinds) | both |
 | POST | `/v1/extensions/install` | `{source: "path"\|"url", scope: "global"\|"user"\|"workspace"}` | both |
 | POST | `/v1/extensions/{id}/enable` | Active | both |
 | POST | `/v1/extensions/{id}/disable` | Désactive | both |
@@ -250,7 +250,7 @@ data: {"message_id":"...","tokens_in":120,"tokens_out":450,"duration_ms":8200}
 
 ## Permissions / scopes
 
-### Permissions extension (déclarées dans `morph.json`)
+### Permissions morph (déclarées dans `morph.json`)
 
 | Permission | Description |
 | --- | --- |
@@ -258,7 +258,7 @@ data: {"message_id":"...","tokens_in":120,"tokens_out":450,"duration_ms":8200}
 | `files.read` | Lire fichiers workspace |
 | `files.write` | Écrire fichiers workspace |
 | `network` | Accès réseau (fetch, MCP HTTP) |
-| `extensions` | Charger/gérer extensions |
+| `extensions` | Charger/gérer morphs |
 | `mcp` | Activer outils MCP |
 | `preview` | Ouvrir/exécuter artefacts en preview |
 | `lsp` | Enregistrer/adresser LSP |
@@ -269,8 +269,8 @@ data: {"message_id":"...","tokens_in":120,"tokens_out":450,"duration_ms":8200}
 | Rôle | Capacités |
 | --- | --- |
 | `viewer` | Lecture sessions/projects |
-| `developer` | + chat, exec, files, extensions (workspace) |
-| `maintainer` | + extensions (user), providers config |
+| `developer` | + chat, exec, files, morphs (workspace) |
+| `maintainer` | + morphs (user), providers config |
 | `admin` | + users, audit, enterprise module |
 
 ## Audit events (remote-server)
@@ -280,7 +280,7 @@ data: {"message_id":"...","tokens_in":120,"tokens_out":450,"duration_ms":8200}
 | `auth.login`, `auth.logout`, `auth.token.rotated` | auth |
 | `provider.switch`, `provider.local.start`, `provider.local.stop` | providers |
 | `exec.command` | terminal |
-| `extension.install`, `extension.enable`, `extension.disable`, `extension.remove`, `extension.permission.granted` | extensions |
+| `extension.install`, `extension.enable`, `extension.disable`, `extension.remove`, `extension.permission.granted` | morphs |
 | `mcp.server.start`, `mcp.server.stop`, `mcp.tool.invoke` | mcp |
 | `session.create`, `session.message`, `session.artifact` | sessions |
 | `enterprise.context.index`, `enterprise.dgx.schedule` | enterprise |
@@ -301,8 +301,8 @@ data: {"message_id":"...","tokens_in":120,"tokens_out":450,"duration_ms":8200}
 | Artifacts + preview | | | ✅ |
 | Providers list + healthcheck | | | ✅ |
 | Bascule provider (auto/local/remote) | | | ✅ |
-| Extensions (plugins/MCP/commands/hooks/skills/agents/rules/LSP) | | | ✅ |
+| Morphs (plugins/MCP/commands/hooks/skills/agents/rules/LSP) | | | ✅ |
 | Streaming SSE (tokens/logs/tasks/preview) | | | ✅ |
-| Hot-reload extensions | ✅ (fs local) | ✅ (via API) | ✅ |
+| Hot-reload morphs | ✅ (fs local) | ✅ (via API) | ✅ |
 | MCP servers stdio | ✅ (local) | ❌ (sauf HTTP MCP) | ✅ (HTTP MCP) |
 | mTLS / SSO | | ✅ (V1.1/V2) | |

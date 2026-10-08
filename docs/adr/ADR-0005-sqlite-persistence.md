@@ -1,7 +1,7 @@
 # ADR-0005 — SQLite as primary persistence
 
 ## Context
-Locaryn is local-first. The daemon (loopback) and the client need embedded persistence for projects, sessions, messages, tasks, artifacts, providers, runtime state, extensions, MCP servers, commands, hooks, skills, agents, rules, LSP adapters, users, auth tokens, audit logs. The remote-server needs the same schema; enterprises with high load may later need a heavier DB.
+Locaryn is local-first. The daemon (loopback) and the client need embedded persistence for projects, sessions, messages, tasks, artifacts, providers, runtime state, morphs, MCP servers, commands, hooks, skills, agents, rules, LSP adapters, users, auth tokens, audit logs. The remote-server needs the same schema; enterprises with high load may later need a heavier DB.
 
 ## Decision
 - **SQLite (via sqlx, `runtime-tokio-rustls`)** as the primary persistence for daemon, client, and remote-server.

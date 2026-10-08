@@ -1,6 +1,6 @@
-# 15 — Moteurs d'inférence apportés par une extension
+# 15 — Moteurs d'inférence apportés par un morph
 
-> Une extension peut apporter le programme qui **calcule les jetons**. Locaryn
+> Un morph peut apporter le programme qui **calcule les jetons**. Locaryn
 > l'installe, le lance, le sonde et l'arrête comme son runtime intégré, sans
 > qu'une ligne de son code ne nomme ce moteur. Le runtime intégré reste le
 > défaut ; l'utilisateur choisit le moteur actif dans Réglages → Moteur.
@@ -31,7 +31,7 @@ boucle d'outils de Locaryn pour un programme qui ne fait que servir des poids.
 `ext:<id>`. Ce jeton est la forme canonique : c'est lui qui est écrit en base,
 transporté sur le fil SSE et accepté en argument de ligne de commande.
 
-La sérialisation serde suit le jeton, si bien qu'un moteur d'extension reste une
+La sérialisation serde suit le jeton, si bien qu'un moteur de morph reste une
 **chaîne** sur le fil (`"ext:freetoken"`) et non un objet : les clients qui
 lisent `engine` comme une chaîne continuent de fonctionner.
 
@@ -48,14 +48,14 @@ qu'il ne connaît pas : il lit une liste d'arguments, y substitue des chemins qu
 seul l'hôte connaît, lance le processus, attend la sonde, journalise la sortie
 dans `engine-<id>.log`.
 
-L'hôte — bureau ou daemon — remplit le registre depuis les extensions installées
+L'hôte — bureau ou daemon — remplit le registre depuis les morphs installés
 (`set_extension_engines`) au démarrage puis à chaque changement. **Remplacer**
-plutôt qu'ajouter est volontaire : une extension désactivée doit disparaître du
+plutôt qu'ajouter est volontaire : un morph désactivé doit disparaître du
 registre, et son processus est arrêté.
 
 Rien dans ce module ne nomme un moteur. Ce qui est propre à un moteur — un
 passage par WSL2, une conversion de checkpoint, un choix de backend — appartient
-au programme que l'extension livre dans son `bin/`.
+au programme que le morph livre dans son `bin/`.
 
 ### 2.3 L'éligibilité d'un modèle dépend des moteurs installés
 
@@ -82,13 +82,13 @@ moteur reçoit.
 au lieu de supposer llama.cpp. Un modèle que personne ne sait charger renvoie une
 erreur qui dit quoi installer.
 
-### 2.4 Les chemins donnés aux extensions vivent à un seul endroit
+### 2.4 Les chemins donnés aux morphs vivent à un seul endroit
 
-`packages/extensions/src/hostpaths.rs` porte l'assainissement du nom d'extension
+`packages/extensions/src/hostpaths.rs` porte l'assainissement du nom de morph
 et les variables d'environnement génériques. Le bureau et le daemon les
 calculaient chacun de leur côté, avec **deux assainissements différents** : une
-extension dont le nom contient un tiret bas recevait deux dossiers privés selon
-l'hôte qui l'avait lancée. Le serveur MCP et le moteur d'une même extension
+morph dont le nom contient un tiret bas recevait deux dossiers privés selon
+l'hôte qui l'avait lancée. Le serveur MCP et le moteur d'un même morph
 partagent maintenant le même dossier d'état, par construction.
 
 ---
@@ -98,7 +98,7 @@ partagent maintenant le même dossier d'état, par construction.
 - Le runtime intégré reste le défaut, et le seul moteur des installations qui
   n'ajoutent rien.
 - L'agent compatible OpenAI, la boucle d'outils, l'approbation, le streaming, la
-  persistance et les métriques : inchangés. Un moteur d'extension parle le même
+  persistance et les métriques : inchangés. Un moteur de morph parle le même
   dialecte, il passe par le même chemin.
 - Les migrations : aucune. La colonne `providers.engine` est du texte, et
   `ext:<id>` y tient sans schéma nouveau.
@@ -128,18 +128,18 @@ partagent maintenant le même dossier d'état, par construction.
 - **Un seul dialecte** : `openai_compat`. Un moteur qui ne parlerait que
   l'API Anthropic (`/v1/messages`) demanderait un second pilote ; aucun besoin
   réel pour l'instant, les moteurs connus servent les deux.
-- **Mode distant** : les moteurs d'extension sont locaux. En mode distant, c'est
+- **Mode distant** : les moteurs de morph sont locaux. En mode distant, c'est
   le moteur du serveur qui répond ; l'écran ne propose pas d'en installer un.
 - **Plusieurs moteurs actifs à la fois** : un seul fournisseur est actif, comme
   aujourd'hui. Deux moteurs chargés en même temps se disputeraient la VRAM sans
   que rien n'arbitre.
 - **Modèles compagnons** : un moteur qui exigerait un fichier compagnon
   (projecteur, encodeur) le déclare aujourd'hui dans `downloads` de son
-  catalogue, comme les autres extensions ; rien ne le vérifie côté moteur.
+  catalogue, comme les autres morphs ; rien ne le vérifie côté moteur.
 
 ---
 
-## 6. Extension de référence
+## 6. Morph de référence
 
 [`morph-freetoken`](https://github.com/Locaryn/morph-freetoken) met tout cela
 en œuvre : section `engine` complète, lanceur qui passe par WSL2 sous Windows,

@@ -1,6 +1,6 @@
-# Écrire une extension Locaryn
+# Écrire un morph Locaryn
 
-Ce guide s'adresse à qui veut **fabriquer** une extension. Pour le format exact
+Ce guide s'adresse à qui veut **fabriquer** un morph. Pour le format exact
 et ce que Locaryn accepte des autres écosystèmes — Agent Skills, MCP, plugins
 Claude Code — voir [`extensions-interop.md`](extensions-interop.md). Pour la
 mécanique interne — cycle de vie, bac à sable, chargement runtime — voir
@@ -10,12 +10,12 @@ mécanique interne — cycle de vie, bac à sable, chargement runtime — voir
 
 - [Le principe : deux produits, deux dépôts](#le-principe--deux-produits-deux-dépôts)
 - [Comment quelqu'un installe la vôtre](#comment-quelquun-installe-la-vôtre)
-- [L'extension minimale](#lextension-minimale)
-- [Ce qu'une extension peut apporter](#ce-quune-extension-peut-apporter)
+- [Le morph minimal](#le-morph-minimal)
+- [Ce qu'un morph peut apporter](#ce-quun-morph-peut-apporter)
 - [Modeler l'interface](#modeler-linterface--poser-ses-boutons-son-onglet-ses-réglages) — dont [une forme par surface](#une-forme-par-surface) et [hériter du thème](#votre-panneau-hérite-du-thème)
 - [Permissions](#permissions--demandez-peu-expliquez-pourquoi)
 - [Le pont `window.locaryn`](#le-pont--ce-quun-panneau-peut-demander-à-lapplication)
-- [Une extension qui embarque du code](#une-extension-qui-embarque-du-code) — dont [le piège du paquet publié](#le-piège-du-paquet-publié)
+- [Un morph qui embarque du code](#un-morph-qui-embarque-du-code) — dont [le piège du paquet publié](#le-piège-du-paquet-publié)
 - [Apporter ses modèles au catalogue](#apporter-ses-modèles-au-catalogue)
 - [Apporter un moteur d'inférence](#apporter-un-moteur-dinférence)
 - [Publier, versionner, mettre à jour](#publier-versionner-mettre-à-jour)
@@ -25,17 +25,17 @@ mécanique interne — cycle de vie, bac à sable, chargement runtime — voir
 
 ## Le principe : deux produits, deux dépôts
 
-Locaryn est une application d'intelligence artificielle locale. Une extension
+Locaryn est une application d'intelligence artificielle locale. Un morph
 est un produit **distinct**, avec son propre dépôt, son propre rythme de
 publication et son propre auteur.
 
-L'application ne nomme aucune extension en particulier. Pas d'onglet dédié,
+L'application ne nomme aucun morph en particulier. Pas d'onglet dédié,
 pas de commande spécifique, pas de type nommé d'après tel ou tel greffon.
-Cette règle n'est pas cosmétique : dès qu'une application cite une extension
+Cette règle n'est pas cosmétique : dès qu'une application cite un morph
 dans son code, elle en devient responsable — il faut la maintenir, la tester,
 la livrer, et expliquer à ceux qui ne l'utilisent pas pourquoi elle est là.
 
-Concrètement, cela veut dire qu'une extension **ne se soumet nulle part**.
+Concrètement, cela veut dire qu'un morph **ne se soumet nulle part**.
 Vous publiez un dépôt Git ; l'utilisateur colle son adresse. Il n'y a ni
 validation, ni file d'attente, ni magasin central obligatoire.
 
@@ -43,12 +43,12 @@ validation, ni file d'attente, ni magasin central obligatoire.
 
 ## Comment quelqu'un installe la vôtre
 
-1. **Réglages → Extensions → Ajouter**
+1. **Réglages → Morphs → Ajouter**
 2. Il colle l'adresse de votre dépôt.
 3. L'application lit le manifeste **avant** d'installer et affiche ce que
-   l'extension déclare : nom, version, auteur, écosystème, serveurs MCP et
+   le morph déclare : nom, version, auteur, écosystème, serveurs MCP et
    permissions demandées.
-4. Il accepte — ou non. L'extension arrive **désactivée** : les permissions
+4. Il accepte — ou non. Le morph arrive **désactivé** : les permissions
    sont un second geste, délibéré.
 
 Formes d'adresse acceptées :
@@ -63,14 +63,14 @@ Formes d'adresse acceptées :
 
 ---
 
-## L'extension minimale
+## Le morph minimal
 
 Un dépôt, un fichier :
 
 ```json
 {
   "apiVersion": "0.1",
-  "name": "mon-extension",
+  "name": "mon-morph",
   "version": "1.0.0",
   "description": "Ce qu'elle fait, en une phrase",
   "components": {
@@ -97,7 +97,7 @@ et LSP — vit dans [`examples/plugins/my-plugin`](../examples/plugins/my-plugin
 
 ---
 
-## Ce qu'une extension peut apporter
+## Ce qu'un morph peut apporter
 
 | Composant | Dossier | Ce que c'est |
 |---|---|---|
@@ -112,15 +112,15 @@ et LSP — vit dans [`examples/plugins/my-plugin`](../examples/plugins/my-plugin
 | **Catalogue** | un slot `marketplace.catalogs` | Des modèles ajoutés au catalogue de l'application |
 | **Moteur** | une section `engine` du manifeste | Un serveur d'inférence local que l'application installe, démarre et supervise |
 
-Aucun n'est obligatoire. Une extension qui n'apporte qu'une commande est une
-extension parfaitement valable.
+Aucun n'est obligatoire. Un morph qui n'apporte qu'une commande est une
+morph parfaitement valable.
 
 ---
 
 ## Modeler l'interface : poser ses boutons, son onglet, ses réglages
 
-Une extension peut décrire ce qu'elle veut voir apparaître à l'écran, sans
-qu'aucune ligne de l'application soit écrite pour elle. C'est la seule chose
+Un morph peut décrire ce qu'il veut voir apparaître à l'écran, sans
+qu'aucune ligne de l'application soit écrite pour lui. C'est la seule chose
 que Locaryn ajoute aux formats d'ailleurs — les outils en ligne de commande
 ne savent pas dire « mets un bouton ici ».
 
@@ -163,20 +163,20 @@ ne savent pas dire « mets un bouton ici ».
 Deux comportements pour un bouton de composeur, pas plus : `insert` écrit
 `value` dans le champ, `tool` appelle l'outil nommé avec ce que le champ
 contient et met la réponse à la place. L'outil est cherché parmi les serveurs
-MCP de toutes les extensions actives — le manifeste nomme un outil, pas un
+MCP de tous les morphs actifs — le manifeste nomme un outil, pas un
 serveur.
 
 Les champs de réglage ont six types, dessinés à l'identique des deux côtés :
 `boolean` (interrupteur), `select` (liste, à partir de `options`), `model`
 (liste des modèles installés), `string` (texte), `number` (nombre), `prompt`
 (zone multiligne). Les valeurs sont rangées par le serveur, dans le dossier
-de l'extension : un réglage choisi sur l'ordinateur vaut sur le téléphone.
+du morph : un réglage choisi sur l'ordinateur vaut sur le téléphone.
 
 `icon` est un nom du jeu partagé `@locaryn/ui-core` — jamais une image. Un
 nom inconnu tombe sur une icône de secours, donc vérifiez le vôtre dans la
 liste `ICON_NAMES`.
 
-Une extension ne recouvre jamais une entrée native : le menu et les onglets
+Un morph ne recouvre jamais une entrée native : le menu et les onglets
 de l'application restent le socle, vos contributions s'ajoutent à côté. Le
 détail du format et son état de mise en œuvre exact sont dans
 [`extensions-interop.md`](extensions-interop.md#52-contributions-dinterface).
@@ -303,19 +303,19 @@ pouvez justifier ce que vous demandez, et une justification vague coûte des
 installations.
 
 Ce qui n'est pas demandé n'est pas accessible. Une permission peut être
-retirée après coup sans désinstaller l'extension.
+retirée après coup sans désinstaller le morph.
 
 ---
 
 ## Le pont : ce qu'un panneau peut demander à l'application
 
-Un script d'extension reçoit `window.locaryn`. C'est toute la surface : rien
+Un script de morph reçoit `window.locaryn`. C'est toute la surface : rien
 d'autre de l'application n'est accessible depuis un panneau.
 
 ```js
 const app = window.locaryn;
 
-// Appeler un outil — le vôtre ou celui d'une autre extension active. L'hôte le
+// Appeler un outil — le vôtre ou celui d'un autre morph actif. L'hôte le
 // cherche parmi tous les serveurs MCP démarrés : vous nommez un outil, pas un
 // serveur.
 const res = await app.tools.invoke("generate_image", { prompt: "a red fox" });
@@ -351,10 +351,10 @@ il faut un serveur MCP — du code à vous, hors du navigateur.
 
 ### Un poste client, un serveur : qui fait quoi
 
-Un poste connecté à un serveur Locaryn voit **les extensions du serveur**, et
+Un poste connecté à un serveur Locaryn voit **les morphs du serveur**, et
 leurs outils tournent **sur le serveur**. `tools.invoke` part donc là-bas.
 
-Une extension dont le travail se fait sur chaque machine — prêter une carte
+Un morph dont le travail se fait sur chaque machine — prêter une carte
 graphique, garder une copie de fichiers — le déclare dans son manifeste :
 
 ```json
@@ -366,7 +366,7 @@ autorisations. Une fois installée, c'est sa copie locale qui répond sur ce
 poste : ses panneaux, et `tools.invoke`. Pour parler à son double du serveur,
 le panneau appelle `server.invokeTool` — la demande part avec le compte de la
 personne, le serveur sait qui demande, et aucun port n'est ouvert par
-l'extension.
+le morph.
 
 Un réglage qui appartient à la personne plutôt qu'à l'application se range dans
 son compte : le slot `settings.account` ajoute une sous-section à Réglages →
@@ -389,9 +389,9 @@ Compte, dessinée par votre élément.
 
 ---
 
-## Une extension qui embarque du code
+## Un morph qui embarque du code
 
-Une commande ou une règle sont des fichiers texte. Dès que votre extension doit
+Une commande ou une règle sont des fichiers texte. Dès que votre morph doit
 lire un disque, lancer un moteur ou télécharger quelque chose, il lui faut un
 **serveur MCP** : un programme à vous que l'application démarre et interroge.
 
@@ -414,7 +414,7 @@ ne sait pas ce que vous en ferez :
 
 | Variable | Ce qu'elle désigne |
 |---|---|
-| `LOCARYN_MORPH_ROOT` | le dossier de votre extension, tel qu'installé |
+| `LOCARYN_MORPH_ROOT` | le dossier de votre morph, tel qu'installé |
 | `LOCARYN_PLUGIN_BIN_DIR` | son sous-dossier `bin/` |
 | `LOCARYN_EXTENSION_DATA_DIR` | un dossier privé, à vous seul |
 | `LOCARYN_EXTENSION_MODELS_DIR` | vos poids, dans ce dossier privé |
@@ -423,14 +423,14 @@ ne sait pas ce que vous en ferez :
 | `LOCARYN_DATA_DIR` | la racine de stockage choisie par l'utilisateur |
 | `LOCARYN_MODEL_PREFERENCES_FILE` | les préférences de modèles du compte, telles quelles |
 
-Lisez `LOCARYN_MODELS_DIR`. Sans lui, votre extension ne voit que son dossier
+Lisez `LOCARYN_MODELS_DIR`. Sans lui, votre morph ne voit que son dossier
 privé — vide au premier lancement — et annonce qu'aucun modèle n'est installé
 alors que l'utilisateur a déjà tout téléchargé.
 
 ### Le piège du paquet publié
 
 **`bin/` est presque toujours dans votre `.gitignore`.** L'archive des sources
-d'un dépôt GitHub ne contient donc pas votre binaire, et une extension installée
+d'un dépôt GitHub ne contient donc pas votre binaire, et un morph installé
 depuis les sources s'active, s'affiche, et ne fait rien.
 
 L'application cherche pour cette raison **d'abord un paquet de release**, et ne
@@ -438,9 +438,9 @@ retombe sur les sources qu'à défaut. Votre CI doit donc compiler par plateform
 et publier une archive nommée avec l'OS et l'architecture :
 
 ```
-mon-extension-v1.2.0-windows-x86_64.zip
-mon-extension-v1.2.0-linux-x86_64.zip
-mon-extension-v1.2.0-macos-aarch64.zip
+mon-morph-v1.2.0-windows-x86_64.zip
+mon-morph-v1.2.0-linux-x86_64.zip
+mon-morph-v1.2.0-macos-aarch64.zip
 ```
 
 L'archive contient ce qui tourne chez l'utilisateur, sans vos sources :
@@ -473,7 +473,7 @@ catalogue de l'application, avec les autres.
 // dist/marketplace.json
 {
   "schemaVersion": 1,
-  "refreshUrl": "https://raw.githubusercontent.com/vous/extension/main/dist/marketplace.json",
+  "refreshUrl": "https://raw.githubusercontent.com/vous/morph/main/dist/marketplace.json",
   "owns": ["mon-prefixe", "autre-motif"],
   "categories": [
     {
@@ -526,9 +526,9 @@ Ce qu'il faut retenir :
 - **`owns`** revendique les poids **déjà** présents sur le disque : des
   fragments de nom, en minuscules. C'est ce qui fait apparaître dans « Mes
   modèles installés » ce que l'utilisateur avait téléchargé avant votre
-  extension, en disant qui s'en sert.
+  morph, en disant qui s'en sert.
 - **`requires`** ne montre votre filtre que si la capacité correspondante est
-  active : votre catégorie disparaît proprement quand votre extension est
+  active : votre catégorie disparaît proprement quand votre morph est
   désactivée.
 - **Vérifiez chaque adresse** avant de publier. Un dépôt privé ou sous licence à
   accepter répond 401, et l'installation échoue chez l'utilisateur, pas chez
@@ -610,7 +610,7 @@ Ce qu'il faut retenir :
   `{{endpoint}}`, `{{models_url}}`, `{{plugin_root}}`, `{{plugin_bin_dir}}`,
   `{{extension_data_dir}}`, `{{extension_models_dir}}`, `{{models_dir}}`,
   `{{data_dir}}`, `{{hf_cache_dir}}`, `{{temp_dir}}`. Le processus reçoit en
-  plus les mêmes variables d'environnement qu'un serveur MCP de votre extension
+  plus les mêmes variables d'environnement qu'un serveur MCP de votre morph
   — donc le **même** dossier privé.
 - **Livrez un lanceur, pas une ligne de commande savante.** Tout ce qui est
   propre à votre moteur — un passage par WSL2, une traduction de chemins, un
@@ -635,8 +635,8 @@ Ce qu'il faut retenir :
 Le moteur porte le jeton `ext:<id>` partout où l'application nomme un moteur :
 en base, sur le fil SSE, et dans `locaryn providers use ext:mon-moteur`.
 
-Une extension **désactivée** n'apporte plus son moteur, et son processus est
-arrêté : c'est ce que l'utilisateur attend quand il éteint une extension.
+Un morph **désactivé** n'apporte plus son moteur, et son processus est
+arrêté : c'est ce que l'utilisateur attend quand il éteint un morph.
 
 ---
 
@@ -646,7 +646,7 @@ arrêté : c'est ce que l'utilisateur attend quand il éteint une extension.
 2. Posez un tag `vX.Y.Z` ; votre CI construit et publie les archives.
 3. L'application compare la version installée à celle de votre branche
    principale et propose la mise à jour.
-4. Une mise à jour **conserve** l'identité de l'extension, son état actif et les
+4. Une mise à jour **conserve** l'identité du morph, son état actif et les
    permissions déjà accordées. Une permission que votre manifeste cesse de
    demander est retirée ; une nouvelle est soumise à l'utilisateur.
 
@@ -654,12 +654,12 @@ arrêté : c'est ce que l'utilisateur attend quand il éteint une extension.
 
 ## Quand ça ne marche pas
 
-Trois causes couvrent l'essentiel des extensions « installées mais inertes » :
+Trois causes couvrent l'essentiel des morphs « installés mais inertes » :
 
 | Symptôme | Cause probable | Vérification |
 |---|---|---|
-| Panneau vide, aucun outil | permission `mcp` jamais accordée | Réglages → Extensions : la fiche nomme la permission manquante |
-| Serveur qui ne démarre pas | `bin/` absent du paquet installé | ouvrez le dossier de l'extension et cherchez votre binaire |
+| Panneau vide, aucun outil | permission `mcp` jamais accordée | Réglages → Morphs : la fiche nomme la permission manquante |
+| Serveur qui ne démarre pas | `bin/` absent du paquet installé | ouvrez le dossier du morph et cherchez votre binaire |
 | Modèles introuvables | vous ne lisez que votre dossier privé | lisez aussi `LOCARYN_MODELS_DIR` |
 
 L'appel d'outil qui échoue nomme la cause : l'application ne répond pas
@@ -667,7 +667,7 @@ L'appel d'outil qui échoue nomme la cause : l'application ne répond pas
 
 ---
 
-## Une extension complète, à lire
+## Un morph complet, à lire
 
 [`plugin-image`](https://github.com/Locaryn/plugin-image) met tout cela
 en œuvre : un serveur MCP compilé et publié par plateforme, un panneau de Studio
@@ -677,7 +677,7 @@ l'exemple de référence quand ce guide reste abstrait.
 
 ---
 
-## Vous avez déjà une extension ailleurs ? Elle marche sans doute
+## Vous avez déjà un morph ailleurs ? Il marche sans doute
 
 Locaryn lit les manifestes des écosystèmes existants **sans conversion** :
 
@@ -699,10 +699,10 @@ propre à Locaryn — est dans
 
 ## Pendant le développement
 
-Installez depuis un chemin local (`./mon-extension`) plutôt que de pousser à
+Installez depuis un chemin local (`./mon-morph`) plutôt que de pousser à
 chaque essai. L'aperçu du manifeste s'affiche de la même façon, ce qui permet
 de vérifier ce que verront vos utilisateurs avant de publier quoi que ce soit.
 
-Épinglez une version (`github:vous/extension@v1.0.0`) dès que d'autres
+Épinglez une version (`github:vous/morph@v1.0.0`) dès que d'autres
 personnes s'en servent : sans cela, chacun installe l'état de votre branche
 principale au moment où il clique, ce qui rend tout rapport de bug ambigu.

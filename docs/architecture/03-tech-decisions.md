@@ -63,7 +63,7 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 
 ## D5 — Stockage: SQLite (+ filesystem workspace)
 
-**Décision: SQLite (sqlx) pour métadonnées/sessions/historique/extensions; filesystem structuré pour workspaces et artefacts.**
+**Décision: SQLite (sqlx) pour métadonnées/sessions/historique/morphs; filesystem structuré pour workspaces et artefacts.**
 
 - Local-first, zero-config, embarqué dans le daemon et le client.
 - Migrations versionnées (`migrations/`).
@@ -115,7 +115,7 @@ Go aurait été excellent pour un service réseau isolé, mais **dupliquerait la
 - Remote-server: `0.0.0.0:7473` + TLS + auth + rate limit. Recommandé derrière reverse proxy (Caddy/Traefik) ou Tailscale/Headscale pour homelab.
 - Provider-supervisor + moteurs locaux: `127.0.0.1` only (11434/8080/1234/8000 selon le runtime).
 
-## D11 — Plugins/Extensions
+## D11 — Plugins/Morphs
 
 **Décision: système first-class, manifest `morph.json`, 4 scopes, permissions, hot-reload.** Détail en `09-extension-model.md`.
 

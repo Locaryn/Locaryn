@@ -1,9 +1,9 @@
-# Extensions : le format, et ce qu'on accepte des autres
+# Morphs : le format, et ce qu'on accepte des autres
 
-Ce document dit **exactement** ce qu'une extension Locaryn peut contenir, et
+Ce document dit **exactement** ce qu'un morph Locaryn peut contenir, et
 quels formats venus d'ailleurs sont acceptés tels quels.
 
-Pour fabriquer une extension, lire d'abord
+Pour fabriquer un morph, lire d'abord
 [`writing-an-extension.md`](writing-an-extension.md). Pour la mécanique interne,
 [`architecture/09-extension-model.md`](architecture/09-extension-model.md).
 
@@ -20,15 +20,15 @@ qui se complètent :
 | **MCP** (`.mcp.json`) | des outils : des serveurs que le modèle appelle | à peu près tout le monde |
 | **Plugin Claude Code** (`.claude-plugin/plugin.json`) | un emballage : plusieurs skills, agents, commandes, hooks et serveurs MCP dans un dépôt | Claude Code |
 
-Locaryn lit les trois. Une extension écrite pour Claude Code s'installe ici
-sans modification, et une extension écrite ici reste lisible ailleurs tant
-qu'elle s'en tient à la partie commune.
+Locaryn lit les trois. Un morph écrit pour Claude Code s'installe ici
+sans modification, et un morph écrit ici reste lisible ailleurs tant
+qu'il s'en tient à la partie commune.
 
 Ce que Locaryn ajoute — et c'est le seul ajout — est une **couche
-d'interface** : une extension peut décrire ce qu'elle veut voir apparaître à
+d'interface** : un morph peut décrire ce qu'il veut voir apparaître à
 l'écran, et l'utilisateur peut la modeler. Aucun des trois standards ne couvre
 cela, parce qu'ils viennent d'outils en ligne de commande. Cet ajout est
-facultatif : une extension qui l'ignore fonctionne quand même.
+facultatif : un morph qui l'ignore fonctionne quand même.
 
 ---
 
@@ -78,8 +78,8 @@ scripts et les références ne se chargent qu'à l'exécution.
 Locaryn cherche les compétences dans, par ordre :
 
 ```
-<extension>/skills/<nom>/SKILL.md
-<extension>/SKILL.md          # l'extension est elle-même une compétence
+<morph>/skills/<nom>/SKILL.md
+<morph>/SKILL.md              # le morph est lui-même une compétence
 ```
 
 **Les champs hors standard sont acceptés et ignorés**, jamais une erreur : une
@@ -91,7 +91,7 @@ cause d'un champ qu'on ne sait pas lire.
 ## 3. MCP — les outils
 
 Un serveur MCP se déclare dans `.mcp.json` (ou `mcp.json`) à la racine de
-l'extension, au format commun :
+le morph, au format commun :
 
 ```json
 {
@@ -113,15 +113,15 @@ réseau ou au disque doit le demander.
 
 ## 4. Plugin Claude Code — l'emballage
 
-Un dépôt contenant `.claude-plugin/plugin.json` est reconnu comme extension.
+Un dépôt contenant `.claude-plugin/plugin.json` est reconnu comme morph.
 Seul `name` est obligatoire ; le reste indique où trouver les composants.
 
 | Champ | Défaut | Ce que Locaryn en fait |
 | --- | --- | --- |
-| `name` | — | identifiant de l'extension |
+| `name` | — | identifiant du morph |
 | `displayName` | `name` | nom affiché |
 | `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords` | — | métadonnées, reprises telles quelles |
-| `defaultEnabled` | `true` | l'extension démarre active ou non |
+| `defaultEnabled` | `true` | le morph démarre actif ou non |
 | `skills` | `skills/` | compétences (§ 2). **S'ajoute** au dossier par défaut |
 | `commands` | `commands/` | fichiers `.md` plats, exposés comme commandes |
 | `agents` | `agents/` | sous-agents, en Markdown avec en-tête |
@@ -145,7 +145,7 @@ existent, le manifeste Locaryn l'emporte pour ce qui lui est propre, et
 ## 5. La couche d'interface — ce que Locaryn ajoute
 
 Les trois standards viennent d'outils en ligne de commande : aucun ne sait dire
-« mets un bouton ici ». Locaryn n'est pas un terminal, et une extension qui
+« mets un bouton ici ». Locaryn n'est pas un terminal, et un morph qui
 apporte la génération d'images n'a rien à faire si personne ne peut la voir.
 
 ### 5.1 Capacités
@@ -157,7 +157,7 @@ apporte la génération d'images n'a rien à faire si personne ne peut la voir.
 ```
 
 Une capacité est un mot que l'interface comprend. Elle décide de la présence
-d'un écran : le Studio n'existe que si une extension installée sait générer
+d'un écran : le Studio n'existe que si un morph installé sait générer
 quelque chose ; la retirer retire l'écran, sur l'ordinateur **et** sur le
 téléphone.
 
@@ -218,9 +218,9 @@ d'appeler un outil qui échouera.
 
 « à faire » n'est pas une promesse : c'est l'état du code au moment où ce
 document est écrit. Le téléphone affiche ses propres destinations fixes
-(Studio, Figures, Extensions, Modèles, Réglages) ; il lira les `nav_items`
+(Studio, Figures, Morphs, Modèles, Réglages) ; il lira les `nav_items`
 et `studio_tabs` quand son menu et son Studio seront pilotés par les
-extensions, comme l'est déjà celui de l'ordinateur.
+morphs, comme l'est déjà celui de l'ordinateur.
 
 ### 5.2 bis  Ce que fait un bouton de composeur
 
@@ -231,22 +231,22 @@ Deux comportements, pas plus :
 | `insert` | écrit `value` dans le champ de saisie | le texte à insérer |
 | `tool` | appelle l'outil nommé avec ce que le champ contient, et met la réponse à la place | le nom de l'outil |
 
-L'outil est cherché parmi les serveurs MCP démarrés de toutes les extensions
+L'outil est cherché parmi les serveurs MCP démarrés de tous les morphs
 actives : le manifeste nomme un outil, pas un serveur — celui qui écrit
-l'extension sait ce qu'elle expose, pas sous quel nom son serveur tournera
+le morph sait ce qu'il expose, pas sous quel nom son serveur tournera
 chez les autres.
 
 Il n'y a pas de troisième comportement, et il n'y en aura pas : faire tourner
-du code d'extension dans l'interface reviendrait à lui donner l'écran entier.
+du code de morph dans l'interface reviendrait à lui donner l'écran entier.
 
 `icon` est un nom du jeu partagé (`@locaryn/ui-core`), jamais une image
-fournie par l'extension : le jeu est dessiné d'une seule main, et une icône
+fournie par le morph : le jeu est dessiné d'une seule main, et une icône
 importée jurerait. Les noms disponibles sont la liste `ICON_NAMES` exportée
 par `@locaryn/ui-core` (source : `packages-ui/core/src/icons.tsx`), et un nom
 inconnu tombe sur une icône de secours — jamais sur un rendu vide.
 
-**Une extension ne recouvre jamais une entrée native.** Le menu et les
-onglets partent du socle de l'application ; ce qu'une extension déclare
+**Un morph ne recouvre jamais une entrée native.** Le menu et les
+onglets partent du socle de l'application ; ce qu'un morph déclare
 s'ajoute à côté, et un `id` déjà pris par le socle n'est pas doublé — la
 première occurrence gagne. Le masquage individuel d'une contribution par
 l'utilisateur (le promettre était trop tôt) est prévu, pas encore en place :
@@ -269,13 +269,13 @@ lecture. Les anciens mots `toggle`, `choice` et `text` restent acceptés et
 sont ramenés à `boolean`, `select` et `string`.
 
 Le champ `model` est la seule exception au rendu : il liste les modèles
-installés sur le serveur, parce qu'une extension ne peut pas remplir cette
+installés sur le serveur, parce qu'un morph ne peut pas remplir cette
 liste elle-même.
 
-Les valeurs sont rangées **par le serveur**, dans le dossier de l'extension
+Les valeurs sont rangées **par le serveur**, dans le dossier du morph
 (`.data/config.json`), jamais par le client : un réglage choisi sur
-l'ordinateur vaut sur le téléphone, et retirer l'extension emporte ses
-réglages avec elle.
+l'ordinateur vaut sur le téléphone, et retirer le morph emporte ses
+réglages avec lui.
 
 `key` s'écrit aussi `id`, `title` s'écrit aussi `label`, `kind` s'écrit aussi
 `type` : les deux orthographes sont lues.
@@ -284,7 +284,7 @@ réglages avec elle.
 
 ## 6. Permissions
 
-Une extension demande ce dont elle a besoin, et rien n'est accordé
+Un morph demande ce dont il a besoin, et rien n'est accordé
 implicitement :
 
 ```json
@@ -312,7 +312,7 @@ marche, pas ce qu'on voudrait.
 | Élément | État |
 | --- | --- |
 | Manifeste Locaryn `morph.json` (nom, version, capacités) | **fait** |
-| `ui_contributions.nav_items` et `studio_tabs` | **fait sur l'ordinateur** (menu et onglets construits depuis les extensions actives, socle natif préservé) ; téléphone **à faire** |
+| `ui_contributions.nav_items` et `studio_tabs` | **fait sur l'ordinateur** (menu et onglets construits depuis les morphs actifs, socle natif préservé) ; téléphone **à faire** |
 | Installation depuis un dépôt du catalogue (`propriétaire/dépôt`) | **fait** |
 | Installation depuis un dossier local | **fait** |
 | Activation, désactivation, retrait, persistance | **fait** |
@@ -323,19 +323,19 @@ marche, pas ce qu'on voudrait.
 | `agents/`, `commands/`, `hooks/` d'un plugin Claude Code | **à faire** |
 | `composer_actions` (`insert` et `tool`) | **fait**, ordinateur et téléphone |
 | `settings_sections` (`boolean`, `select`, `model`, `string`, `number`, `prompt`) | **fait**, ordinateur et téléphone — mécanisme unique |
-| Section `engine` : moteur d'inférence apporté par une extension | **fait** : installation, lancement, sonde, arrêt, journal, formats de poids servis, jeton `ext:<id>` (voir [`writing-an-extension.md`](writing-an-extension.md#apporter-un-moteur-dinférence) et [doc 15](architecture/15-inference-engines.md)) |
-| Section `core` : noyau d'agent apporté par une extension | **fait** pour les dialectes `responses`, `runs`, `chat_completions` (voir [doc 14](architecture/14-alternate-cores.md)) |
+| Section `engine` : moteur d'inférence apporté par un morph | **fait** : installation, lancement, sonde, arrêt, journal, formats de poids servis, jeton `ext:<id>` (voir [`writing-an-extension.md`](writing-an-extension.md#apporter-un-moteur-dinférence) et [doc 15](architecture/15-inference-engines.md)) |
+| Section `core` : noyau d'agent apporté par un morph | **fait** pour les dialectes `responses`, `runs`, `chat_completions` (voir [doc 14](architecture/14-alternate-cores.md)) |
 | Masquage d'une contribution par l'utilisateur | **à faire** |
 
 ---
 
 ## 8. Publier
 
-Une extension est un dépôt Git. Rien à soumettre, aucune file d'attente :
+Un morph est un dépôt Git. Rien à soumettre, aucune file d'attente :
 
 1. Publiez le dépôt.
-2. L'utilisateur colle `propriétaire/dépôt` dans Réglages → Extensions, ou
-   choisit l'extension dans le catalogue si elle y figure.
+2. L'utilisateur colle `propriétaire/dépôt` dans Réglages → Morphs, ou
+   choisit le morph dans le catalogue s'il y figure.
 
 Le service télécharge l'archive, vérifie qu'elle contient un manifeste, et
 refuse tout ce qui ne ressemble pas à un dépôt : c'est du code qu'il exécute.

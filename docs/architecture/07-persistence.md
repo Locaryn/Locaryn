@@ -141,7 +141,7 @@ CREATE INDEX idx_audit_event ON audit_logs(event, created_at);
 CREATE INDEX idx_audit_user ON audit_logs(user_id, created_at);
 ```
 
-### 0002_extensions.sql — système d'extensions
+### 0002_extensions.sql — système de morphs
 
 ```sql
 -- ===== Extensions (unified registry) =====
@@ -305,8 +305,8 @@ CREATE TABLE lsp_adapters (
 | Providers config | ✅ | ✅ (config remote providers server-side) | **API keys / tokens** (stockés en keychain, jamais en clair en DB; le `config` JSON ne contient qu'une référence `keychain:provider/1`) |
 | Auth tokens | ❌ (loopback daemon n'a pas d'auth) | ✅ (hash Argon2id server-side) | **Token plaintext** (jamais stocké server-side, seulement hash) |
 | Audit logs | optionnel (local debug) | ✅ (remote-server persistant) | — |
-| Extensions, mcp_servers, commands, hooks, skills, agents, rules, lsp | ✅ | ✅ (un bundle peut être shared via remote) | **Variables d'env des MCP servers** (peuvent contenir des secrets; masquées dans l'API sauf admin) |
-| Extension permissions | ✅ | ✅ | — |
+| Morphs, mcp_servers, commands, hooks, skills, agents, rules, lsp | ✅ | ✅ (un bundle peut être shared via remote) | **Variables d'env des MCP servers** (peuvent contenir des secrets; masquées dans l'API sauf admin) |
+| Morph permissions | ✅ | ✅ | — |
 | Users, roles | ❌ (local daemon: user `local`) | ✅ (remote) | **Password hashes** (Argon2id, jamais retournés par l'API) |
 | Runtime state (pid/port moteur local) | ✅ | ❌ (local only) | — |
 | Workspace file contents | ✅ (filesystem) | ✅ (enterprise collab: index, pas raw) | **Fichiers hors workspace trusté** (jamais lus sans permission) |
