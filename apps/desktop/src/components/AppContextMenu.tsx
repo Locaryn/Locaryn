@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { attachTerminalText } from "../lib/attachText";
 import { core, isTauri } from "../lib/core";
 import { openTab } from "../lib/workspace";
 
@@ -82,6 +83,9 @@ function actionsPour(cible: HTMLElement): Action[] {
   }
 
   const actions: Action[] = [];
+  if (selection && cible.closest(".locaryn-term-scroll")) {
+    actions.push({ label: "Joindre au message", run: () => attachTerminalText(selection) });
+  }
   if (selection) {
     actions.push({ label: "Copier", run: () => copier(selection) });
     if (isTauri) {

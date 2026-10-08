@@ -19,6 +19,7 @@ import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import { useContextStatus } from "../hooks/useContextStatus";
+import { ATTACH_TEXT_EVENT, type AttachedText } from "../lib/attachText";
 import { attentionPourVue } from "../lib/attention";
 import { FREE_CHAT_PATH } from "../lib/constants";
 import {
@@ -522,6 +523,22 @@ export function ChatPanel({
     };
     window.addEventListener("locaryn:compose", surCompose);
     return () => window.removeEventListener("locaryn:compose", surCompose);
+  }, []);
+
+  // Une sélection du terminal jointe au message : une pièce jointe texte,
+  // comme un fichier, à côté de laquelle on écrit son commentaire.
+  useEffect(() => {
+    const surJoindre = (ev: Event) => {
+      const d = (ev as CustomEvent<AttachedText>).detail;
+      if (!d?.text) return;
+      setAttachments((prev) => [
+        ...prev,
+        { id: nextId("att"), kind: "text", name: d.name, text: d.text },
+      ]);
+      inputRef.current?.focus();
+    };
+    window.addEventListener(ATTACH_TEXT_EVENT, surJoindre);
+    return () => window.removeEventListener(ATTACH_TEXT_EVENT, surJoindre);
   }, []);
   const fileRef = useRef<HTMLInputElement>(null);
   /**
