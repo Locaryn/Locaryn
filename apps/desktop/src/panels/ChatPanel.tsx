@@ -174,6 +174,10 @@ type MentionItem = {
   icon: "plugs-connected" | "extensions";
 };
 
+/** Durée de l'appui sur la jauge qui déclenche la compression. Assez longue
+ *  pour qu'un clic distrait ne compresse rien. */
+const APPUI_COMPRESSION_MS = 1200;
+
 const SUGGESTIONS = [
   "Explique la structure de ce projet",
   "Écris des tests unitaires pour la logique principale",
@@ -1316,22 +1320,56 @@ export function ChatPanel({
     }
   }
 
+  /** Appui long sur la jauge : compresser à la main avant une longue tâche.
+   *  `holding` pendant l'appui, `ctxBulle` dit ce qui se passe. */
+  const [holding, setHolding] = useState(false);
+  const [ctxBulle, setCtxBulle] = useState<string | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bulleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function direBulle(texte: string, duree = 2600) {
+    setCtxBulle(texte);
+    if (bulleTimer.current) clearTimeout(bulleTimer.current);
+    bulleTimer.current = setTimeout(() => setCtxBulle(null), duree);
+  }
+
+  function commencerAppui() {
+    if (!sessionId || compressing || holding) return;
+    setHolding(true);
+    holdTimer.current = setTimeout(async () => {
+      holdTimer.current = null;
+      setHolding(false);
+      setCtxBulle("Compression en cours…");
+      const ok = await compressConversation();
+      direBulle(ok ? "Contexte compressé" : "Rien à compresser pour l'instant");
+    }, APPUI_COMPRESSION_MS);
+  }
+
+  function annulerAppui() {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    setHolding(false);
+  }
+
   /** Compression proposee quand la fenetre appliquee passe sous ce que la
    *  conversation a deja consomme. Les vieux tours partent dans un resume
    *  produit par le modele lui-meme — le meme travail que la compaction
    *  automatique, ici declenche a la main. */
-  async function compressConversation() {
-    if (!sessionId || compressing) return;
+  async function compressConversation(): Promise<boolean> {
+    if (!sessionId || compressing) return false;
     setCompressing(true);
     try {
-      await core.compressChatContext(sessionId);
+      const retires = await core.compressChatContext(sessionId);
       const fresh = await core.listMessages(sessionId);
       setItems(fresh.flatMap(storedMessageItems));
       setCompressProposal(null);
-    } catch {
+      return retires > 0;
+    } catch (e) {
       // Le resume a echoue : la proposition reste, l'utilisateur peut
       // retenter. Rien n'a ete efface — la commande ne supprime qu'apres un
       // resume reussi.
+      console.warn("compression impossible :", e);
+      return false;
     } finally {
       setCompressing(false);
     }
@@ -2344,22 +2382,55 @@ export function ChatPanel({
               </button>
             )}
 
-            {/* Context gauge */}
-            <div
-              className="locaryn-ctx-gauge-wrap"
-              title={`~${ctxFmt(usedTokens)} / ${ctxFmt(ctxWindow)} tokens utilisés`}
-            >
-              <div
-                className={`locaryn-ctx-gauge-bar locaryn-ctx-gauge-${ctxWarnLevel}`}
-                style={{ width: `${ctxPct * 100}%` }}
-              />
-              <span className="locaryn-ctx-gauge-label">
-                <span className={`locaryn-ctx-gauge-used locaryn-ctx-gauge-text-${ctxWarnLevel}`}>
-                  ~{ctxFmt(usedTokens)}
-                </span>
-                <span className="locaryn-ctx-gauge-sep">/</span>
-                <span className="locaryn-ctx-gauge-total">{ctxFmt(ctxWindow)} ctx</span>
+            {/* Context gauge — maintenir pour compresser la conversation */}
+            <div className="locaryn-ctx-gauge-zone">
+              <span
+                className={`locaryn-ctx-bulle${ctxBulle || holding ? " is-visible" : ""}`}
+                role="status"
+              >
+                {holding
+                  ? "Continuez… le contexte se compresse au bout"
+                  : (ctxBulle ?? "Maintenir pour compresser le contexte")}
               </span>
+              <div
+                className={`locaryn-ctx-gauge-wrap${holding ? " is-holding" : ""}${compressing ? " is-compressing" : ""}`}
+                title={`~${ctxFmt(usedTokens)} / ${ctxFmt(ctxWindow)} tokens utilisés — maintenir pour compresser`}
+                role="button"
+                tabIndex={sessionId ? 0 : -1}
+                aria-label={`Contexte : ~${ctxFmt(usedTokens)} sur ${ctxFmt(ctxWindow)} jetons. Maintenir pour compresser la conversation.`}
+                aria-busy={compressing}
+                style={{ "--ctx-pct": ctxPct } as React.CSSProperties}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  commencerAppui();
+                }}
+                onPointerUp={annulerAppui}
+                onPointerCancel={annulerAppui}
+                onLostPointerCapture={annulerAppui}
+                onKeyDown={(e) => {
+                  if ((e.key === " " || e.key === "Enter") && !e.repeat) {
+                    e.preventDefault();
+                    commencerAppui();
+                  }
+                }}
+                onKeyUp={(e) => {
+                  if (e.key === " " || e.key === "Enter") annulerAppui();
+                }}
+              >
+                <div
+                  className={`locaryn-ctx-gauge-bar locaryn-ctx-gauge-${ctxWarnLevel}`}
+                  style={{ width: `${ctxPct * 100}%` }}
+                />
+                <div className="locaryn-ctx-gauge-hold" aria-hidden="true" />
+                <span className="locaryn-ctx-gauge-label">
+                  <span className={`locaryn-ctx-gauge-used locaryn-ctx-gauge-text-${ctxWarnLevel}`}>
+                    ~{ctxFmt(usedTokens)}
+                  </span>
+                  <span className="locaryn-ctx-gauge-sep">/</span>
+                  <span className="locaryn-ctx-gauge-total">{ctxFmt(ctxWindow)} ctx</span>
+                </span>
+              </div>
             </div>
           </div>
         </div>

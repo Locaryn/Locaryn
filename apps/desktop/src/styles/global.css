@@ -12762,3 +12762,85 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
     flex-direction: column;
   }
 }
+
+/* Jauge de contexte : appui long = compression manuelle. Au repos, rien ne
+   change ; la bulle n'apparaît qu'au survol, au focus ou pendant l'appui. */
+.locaryn-ctx-gauge-zone {
+  position: relative;
+}
+.locaryn-ctx-gauge-wrap[role="button"] {
+  cursor: pointer;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.locaryn-ctx-gauge-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.locaryn-ctx-bulle {
+  position: absolute;
+  right: var(--space-2);
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease-out);
+}
+.locaryn-ctx-gauge-zone:hover .locaryn-ctx-bulle,
+.locaryn-ctx-gauge-zone:focus-within .locaryn-ctx-bulle,
+.locaryn-ctx-bulle.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* Pendant l'appui : la jauge se vide vers la gauche et un trait de
+   progression montre combien il reste à tenir. */
+.locaryn-ctx-gauge-hold {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0;
+  background: var(--accent);
+  pointer-events: none;
+}
+.locaryn-ctx-gauge-wrap.is-holding .locaryn-ctx-gauge-hold {
+  animation: locaryn-ctx-hold 1200ms linear forwards;
+}
+.locaryn-ctx-gauge-wrap.is-holding .locaryn-ctx-gauge-bar {
+  animation: locaryn-ctx-squeeze 1200ms var(--ease-out) forwards;
+}
+.locaryn-ctx-gauge-wrap.is-compressing .locaryn-ctx-gauge-bar {
+  animation: locaryn-ctx-pulse 900ms ease-in-out infinite;
+}
+@keyframes locaryn-ctx-hold {
+  to {
+    width: 100%;
+  }
+}
+@keyframes locaryn-ctx-squeeze {
+  to {
+    width: calc(var(--ctx-pct) * 25%);
+    opacity: 0.35;
+  }
+}
+@keyframes locaryn-ctx-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-ctx-gauge-wrap.is-holding .locaryn-ctx-gauge-bar,
+  .locaryn-ctx-gauge-wrap.is-compressing .locaryn-ctx-gauge-bar {
+    animation: none;
+  }
+}
