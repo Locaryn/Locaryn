@@ -410,13 +410,101 @@ async fn apres_action(app: &AppHandle, avant: u64) -> Result<String, String> {
     lire(app, 8_000).await
 }
 
+/// Le curseur de l'IA, posé dans la page une fois pour toutes : une flèche
+/// aux couleurs de l'application et une étiquette « IA ». Il glisse jusqu'à
+/// l'élément visé, s'enfonce puis grossit au clic avec une onde, et s'efface
+/// après quelques secondes sans action. Il ne capte aucun clic de la personne.
+const CURSEUR_JS: &str = r##"(() => { try {
+  if (window.__locarynCurseur) return;
+  const style = document.createElement("style");
+  style.textContent = `
+    #locaryn-curseur { position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none;
+      transform: translate(-100px, -100px); transition: transform 450ms cubic-bezier(.22,1,.36,1), opacity 300ms ease;
+      opacity: 0; will-change: transform; }
+    #locaryn-curseur.visible { opacity: 1; }
+    #locaryn-curseur svg { display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,.35));
+      transform-origin: 3px 3px; transition: transform 160ms ease; }
+    #locaryn-curseur.clic svg { transform: scale(.82); }
+    #locaryn-curseur.relache svg { transform: scale(1.18); }
+    #locaryn-curseur .etiquette { position: absolute; left: 20px; top: 18px; padding: 1px 6px; border-radius: 999px;
+      font: 600 10px/16px system-ui, sans-serif; color: #fff; background: #4f7d63; letter-spacing: .02em; }
+    .locaryn-onde { position: fixed; z-index: 2147483646; pointer-events: none; width: 14px; height: 14px;
+      margin: -7px 0 0 -7px; border-radius: 50%; border: 2px solid #4f7d63; background: rgba(79,125,99,.25);
+      animation: locaryn-onde 520ms ease-out forwards; }
+    @keyframes locaryn-onde { to { transform: scale(4.2); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { #locaryn-curseur { transition: opacity 200ms ease; } .locaryn-onde { animation-duration: 1ms; } }`;
+  document.documentElement.appendChild(style);
+  const c = document.createElement("div");
+  c.id = "locaryn-curseur";
+  // Nœuds créés un à un : `innerHTML` est refusé par les pages sous Trusted Types.
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", "22"); svg.setAttribute("height", "22"); svg.setAttribute("viewBox", "0 0 24 24");
+  const fleche = document.createElementNS(ns, "path");
+  fleche.setAttribute("d", "M3 2.5 20 11l-7.2 1.8L9 20z");
+  fleche.setAttribute("fill", "#4f7d63"); fleche.setAttribute("stroke", "#fff");
+  fleche.setAttribute("stroke-width", "1.6"); fleche.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(fleche);
+  const etiquette = document.createElement("span");
+  etiquette.className = "etiquette"; etiquette.textContent = "IA";
+  c.appendChild(svg); c.appendChild(etiquette);
+  document.documentElement.appendChild(c);
+  let veille = null;
+  const reveiller = () => {
+    c.classList.add("visible");
+    clearTimeout(veille);
+    veille = setTimeout(() => c.classList.remove("visible"), 4000);
+  };
+  window.__locarynCurseur = {
+    vers(x, y) { reveiller(); c.style.transform = `translate(${x - 3}px, ${y - 3}px)`; },
+    clic(x, y) {
+      reveiller();
+      c.classList.add("clic");
+      setTimeout(() => { c.classList.remove("clic"); c.classList.add("relache"); }, 120);
+      setTimeout(() => c.classList.remove("relache"), 320);
+      const o = document.createElement("div");
+      o.className = "locaryn-onde";
+      o.style.left = `${x}px`; o.style.top = `${y}px`;
+      document.documentElement.appendChild(o);
+      setTimeout(() => o.remove(), 600);
+    },
+  };
+} catch (_) { /* le curseur est un plus : son échec ne doit jamais bloquer l'action */ } })();"##;
+
+/// Délai laissé au curseur pour glisser jusqu'à sa cible.
+const GLISSEMENT_CURSEUR: Duration = Duration::from_millis(480);
+
+/// Amener le curseur de l'IA sur l'élément `reference`, la page défilée pour
+/// qu'il soit visible.
+async fn viser(app: &AppHandle, reference: u64) -> Result<(), String> {
+    let script = format!(
+        r#"{CURSEUR_JS}
+(() => {{ try {{
+  const e = document.querySelector('[data-locaryn-ref="{reference}"]');
+  if (!e) return {{ error: "Élément {reference} introuvable : relisez la page (browser_read), les numéros changent à chaque lecture." }};
+  e.scrollIntoView({{ block: "center" }});
+  const r = e.getBoundingClientRect();
+  window.__locarynCurseur?.vers(r.left + Math.min(r.width / 2, 48), r.top + r.height / 2);
+  return {{ ok: true }};
+}} catch (err) {{ return {{ error: String(err) }}; }} }})()"#
+    );
+    evaluer(app, &script).await?;
+    tokio::time::sleep(GLISSEMENT_CURSEUR).await;
+    Ok(())
+}
+
+/// L'onde et l'enfoncement du curseur à l'endroit de l'élément.
+const ONDE_JS: &str = r#"if (window.__locarynCurseur) { const r = e.getBoundingClientRect();
+  window.__locarynCurseur.clic(r.left + Math.min(r.width / 2, 48), r.top + r.height / 2); }"#;
+
 pub async fn cliquer(app: &AppHandle, reference: u64) -> Result<String, String> {
     let avant = etat().chargements;
+    viser(app, reference).await?;
     let script = format!(
         r#"(() => {{ try {{
   const e = document.querySelector('[data-locaryn-ref="{reference}"]');
   if (!e) return {{ error: "Élément {reference} introuvable : relisez la page (browser_read), les numéros changent à chaque lecture." }};
-  e.scrollIntoView({{ block: "center" }}); if (e.focus) e.focus(); e.click();
+  e.scrollIntoView({{ block: "center" }}); {ONDE_JS} if (e.focus) e.focus(); e.click();
   return {{ ok: true }};
 }} catch (err) {{ return {{ error: String(err) }}; }} }})()"#
     );
@@ -431,13 +519,14 @@ pub async fn saisir(
     valider: bool,
 ) -> Result<String, String> {
     let avant = etat().chargements;
+    viser(app, reference).await?;
     let texte_js = serde_json::to_string(texte).map_err(|e| e.to_string())?;
     let script = format!(
         r#"(() => {{ try {{
   const e = document.querySelector('[data-locaryn-ref="{reference}"]');
   if (!e) return {{ error: "Élément {reference} introuvable : relisez la page (browser_read), les numéros changent à chaque lecture." }};
   const texte = {texte_js};
-  e.scrollIntoView({{ block: "center" }}); if (e.focus) e.focus();
+  e.scrollIntoView({{ block: "center" }}); {ONDE_JS} if (e.focus) e.focus();
   if (e.isContentEditable) {{
     e.textContent = texte; e.dispatchEvent(new InputEvent("input", {{ bubbles: true }}));
   }} else {{
