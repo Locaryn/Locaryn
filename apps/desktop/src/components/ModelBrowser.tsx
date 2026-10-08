@@ -1958,83 +1958,31 @@ export function ModelBrowser({
               <span>Ajouter</span>
             </button>
             {addMenuOpen && (
-              <div
-                ref={addMenuRef}
-                style={{
-                  position: "absolute",
-                  top: "calc(100% + 4px)",
-                  right: 0,
-                  minWidth: "250px",
-                  background: "var(--panel, #161816)",
-                  border: "1px solid var(--border-strong)",
-                  borderRadius: "var(--radius-sm)",
-                  boxShadow: "0 10px 28px rgba(0,0,0,0.6)",
-                  padding: "4px",
-                  zIndex: 300,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "2px",
-                }}
-              >
+              // Le style des menus de l'application : `var(--panel, #161816)`
+              // n'existait dans aucun thème et retombait sur un gris sombre,
+              // illisible en mode clair.
+              <div ref={addMenuRef} className="locaryn-ctx locaryn-add-menu" role="menu">
                 <button
                   type="button"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    width: "100%",
-                    padding: "8px 10px",
-                    background: "none",
-                    border: "none",
-                    borderRadius: "var(--radius-xs)",
-                    color: "var(--text)",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background =
-                      "var(--surface-hover, rgba(255,255,255,0.06))";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "none";
-                  }}
+                  role="menuitem"
+                  className="locaryn-ctx-item locaryn-add-menu-item"
                   onClick={() => {
                     setAddMenuOpen(false);
                     setCustomDownloadModalOpen(true);
                   }}
                 >
                   <Icon name="download" size={15} />
-                  <div>
-                    <div>Ajouter depuis un dépôt</div>
-                    <div style={{ fontSize: "10px", color: "var(--text-faint)" }}>
+                  <span>
+                    <span className="locaryn-add-menu-label">Ajouter depuis un dépôt</span>
+                    <span className="locaryn-add-menu-hint">
                       HuggingFace, Ollama ou lien direct .gguf
-                    </div>
-                  </div>
+                    </span>
+                  </span>
                 </button>
                 <button
                   type="button"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    width: "100%",
-                    padding: "8px 10px",
-                    background: "none",
-                    border: "none",
-                    borderRadius: "var(--radius-xs)",
-                    color: "var(--text)",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background =
-                      "var(--surface-hover, rgba(255,255,255,0.06))";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "none";
-                  }}
+                  role="menuitem"
+                  className="locaryn-ctx-item locaryn-add-menu-item"
                   onClick={() => {
                     setAddMenuOpen(false);
                     handleFetchLiveApiModels();
@@ -2042,14 +1990,14 @@ export function ModelBrowser({
                   disabled={isFetchingLive}
                 >
                   <Icon name="refresh" size={15} />
-                  <div>
-                    <div>
+                  <span>
+                    <span className="locaryn-add-menu-label">
                       {isFetchingLive ? "Recherche en cours…" : "Chercher sur HuggingFace Hub"}
-                    </div>
-                    <div style={{ fontSize: "10px", color: "var(--text-faint)" }}>
+                    </span>
+                    <span className="locaryn-add-menu-hint">
                       Découvrir les derniers modèles en direct
-                    </div>
-                  </div>
+                    </span>
+                  </span>
                 </button>
               </div>
             )}

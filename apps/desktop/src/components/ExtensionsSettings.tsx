@@ -478,6 +478,22 @@ export function ExtensionsSettings() {
     return () => clearTimeout(t);
   }, [tab, loadCatalog]);
 
+  // Sur un poste neuf, aucun catalogue n'est en cache : la liste restait vide
+  // tant qu'on ne pensait pas à « Actualiser », et l'on croyait les morphs
+  // impossibles à installer. On lit les catalogues d'office à la première
+  // ouverture, puis une fois par jour.
+  const autoRefreshDone = useRef(false);
+  useEffect(() => {
+    if (tab !== "browse" || autoRefreshDone.current || refreshing || snapshot === null) return;
+    const age = snapshot.fetched_at
+      ? Date.now() - Date.parse(snapshot.fetched_at)
+      : Number.POSITIVE_INFINITY;
+    if (age > 24 * 3600_000) {
+      autoRefreshDone.current = true;
+      void refreshCatalog();
+    }
+  }, [tab, snapshot, refreshing]);
+
   async function refreshCatalog() {
     setRefreshing(true);
     setError(null);

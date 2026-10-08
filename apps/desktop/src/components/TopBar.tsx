@@ -25,12 +25,6 @@ type Props = {
   isEphemeral?: boolean;
 };
 
-const MODE_LABEL: Record<ConnectionMode, string> = {
-  auto: "Auto",
-  remote: "Remote",
-  local: "Local",
-};
-
 const VIEW_TITLES: Record<string, string> = {
   models: "Marketplace",
   installed: "Mes Modèles Installés",
@@ -117,20 +111,21 @@ export function TopBar({
             </button>
           )}
 
-          <span
-            className="locaryn-provider-badge"
-            title={provider?.model ?? provider?.endpoint ?? "no model"}
-          >
+          {/* « Auto · modèle » répétait le modèle déjà affiché sous le champ de
+              saisie, avec un mot interne (« Auto ») qui ne disait rien. Le
+              badge ne sert plus qu'à rappeler qu'on travaille sur un serveur. */}
+          {mode === "remote" && (
             <span
-              className={`locaryn-health-dot ${provider ? "locaryn-health-ok" : "locaryn-health-off"}`}
-              aria-hidden="true"
-            />
-            <span className="locaryn-provider-label">
-              {provider
-                ? `${MODE_LABEL[mode]}${provider.model ? ` · ${provider.model}` : ""}`
-                : "no model"}
+              className="locaryn-provider-badge"
+              title={provider?.endpoint ?? "Serveur distant"}
+            >
+              <span
+                className={`locaryn-health-dot ${provider ? "locaryn-health-ok" : "locaryn-health-off"}`}
+                aria-hidden="true"
+              />
+              <span className="locaryn-provider-label">Serveur distant</span>
             </span>
-          </span>
+          )}
 
           <div className="locaryn-topbar-toggles">
             {/* Slot pour les actions ajoutées par les extensions en haut à droite */}

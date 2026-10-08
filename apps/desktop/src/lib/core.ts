@@ -2256,8 +2256,11 @@ const tauriCore: CoreApi = {
 
   listProviders: () => invoke<Provider[]>("list_providers"),
   setActiveProvider: (id) => invoke<Provider>("set_active_provider", { id }),
-  configureProvider: (endpoint, model) =>
-    invoke<Provider>("configure_provider", { endpoint, model }),
+  configureProvider: async (endpoint, model) => {
+    const provider = await invoke<Provider>("configure_provider", { endpoint, model });
+    annoncerModeleActif();
+    return provider;
+  },
 
   // ── AirLLM (low-VRAM inference engine) ────────────────────────────────
   airllmStatus: () =>
@@ -2502,7 +2505,10 @@ const tauriCore: CoreApi = {
     });
   },
   cancelPullModel: (model) => invoke("cancel_pull_model", { model: model ?? null }),
-  deleteModel: (endpoint, model) => invoke("delete_model_cmd", { endpoint, model }),
+  deleteModel: async (endpoint, model) => {
+    await invoke("delete_model_cmd", { endpoint, model });
+    annoncerModeleActif();
+  },
   runtimeCapabilities: () => invoke<RuntimeCapabilities>("runtime_capabilities"),
   listLoraAdapters: () => invoke<LoraAdapter[]>("list_lora_adapters"),
   setLoraAdapters: (scales) => invoke<void>("set_lora_adapters", { scales }),
@@ -5856,6 +5862,15 @@ Contenu de démonstration.
 // ============================================================================
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** Émis quand le modèle actif a pu changer (choix, suppression) : le sélecteur
+ *  sous le champ de saisie relit. Il ne lisait qu'à l'ouverture du chat, et
+ *  restait sur un modèle qu'on venait de supprimer. */
+export const ACTIVE_MODEL_CHANGED = "locaryn:active-model-changed";
+
+function annoncerModeleActif() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(ACTIVE_MODEL_CHANGED));
+}
 
 /** "tauri" = real core, "demo" = browser demo data. */
 export const coreMode: "tauri" | "demo" = isTauri ? "tauri" : "demo";

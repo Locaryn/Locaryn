@@ -493,7 +493,7 @@ export const SEED_CATALOG: ModelFamily[] = [
         params: 2,
         tag: "gemma4:e2b",
         quants: QUANTS_SMALL,
-        storageGb: 1.6,
+        storageGb: 4.6,
         instruct: true,
       },
       {
@@ -501,7 +501,7 @@ export const SEED_CATALOG: ModelFamily[] = [
         params: 4,
         tag: "gemma4:e4b",
         quants: QUANTS_SMALL,
-        storageGb: 2.8,
+        storageGb: 6.6,
         instruct: true,
       },
       {
@@ -570,6 +570,198 @@ export const SEED_CATALOG: ModelFamily[] = [
     ],
   },
   // Qwen
+  {
+    id: "qwen3.8",
+    name: "Qwen3.8",
+    brand: "Alibaba / Qwen",
+    description:
+      "Génération d'août 2026 : agentique, appels d'outils, vision (images), contexte de 262 144 jetons. GGUF llama.cpp (unsloth) ; le projecteur d'images est proposé à part.",
+    license: "Apache-2.0",
+    contextWindow: "262k",
+    releaseDate: "2026-08",
+    releaseYear: 2026,
+    vision: true,
+    code: true,
+    reasoning: true,
+    instruct: true,
+    finetunable: true,
+    source: "seed",
+    variants: [
+      {
+        size: "27B",
+        params: 27,
+        tag: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 16.5,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.8-27B-UD-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.93 Go)",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "qwen3.6",
+    name: "Qwen3.6",
+    brand: "Alibaba / Qwen",
+    description:
+      "Génération d'avril 2026 : agentique, appels d'outils fiables, vision (images), contexte de 262 144 jetons. Architecture hybride (une couche d'attention pleine sur quatre) : le cache de contexte reste petit.",
+    license: "Apache-2.0",
+    contextWindow: "262k",
+    releaseDate: "2026-04",
+    releaseYear: 2026,
+    vision: true,
+    code: true,
+    reasoning: true,
+    instruct: true,
+    finetunable: true,
+    source: "seed",
+    variants: [
+      {
+        size: "27B",
+        params: 27,
+        tag: "https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/main/Qwen3.6-27B-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 16.8,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.6-27B-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.93 Go)",
+          },
+        ],
+      },
+      {
+        size: "35B MoE (A3B)",
+        params: 35,
+        tag: "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 22.1,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.6-35B-A3B-UD-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.9 Go)",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "qwen3.5",
+    name: "Qwen3.5",
+    brand: "Alibaba / Qwen",
+    description:
+      "Génération de février 2026, multimodale (texte et images), contexte de 262 144 jetons, appels d'outils. Le 9B tient entièrement dans une carte de 6 Go en IQ4.",
+    license: "Apache-2.0",
+    contextWindow: "262k",
+    releaseDate: "2026-02",
+    releaseYear: 2026,
+    vision: true,
+    code: true,
+    reasoning: true,
+    instruct: true,
+    finetunable: true,
+    source: "seed",
+    variants: [
+      {
+        size: "0.8B",
+        params: 0.8,
+        tag: "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 0.5,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.5-0.8B-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.2 Go)",
+          },
+        ],
+      },
+      {
+        size: "2B",
+        params: 2,
+        tag: "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 1.3,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.5-2B-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.67 Go)",
+          },
+        ],
+      },
+      {
+        size: "4B",
+        params: 4,
+        tag: "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 2.7,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.5-4B-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.67 Go)",
+          },
+        ],
+      },
+      {
+        size: "9B",
+        params: 9,
+        tag: "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 5.7,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.5-9B-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.92 Go)",
+          },
+        ],
+      },
+      {
+        size: "27B",
+        params: 27,
+        tag: "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 16.7,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.5-27B-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.93 Go)",
+          },
+        ],
+      },
+      {
+        size: "35B MoE (A3B)",
+        params: 35,
+        tag: "https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF/resolve/main/Qwen3.5-35B-A3B-Q4_K_M.gguf",
+        quants: ["q4_K_M"],
+        storageGb: 22.0,
+        instruct: true,
+        downloads: [
+          {
+            url: "https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF/resolve/main/mmproj-F16.gguf",
+            file: "Qwen3.5-35B-A3B-mmproj-F16.gguf",
+            label: "Projecteur d'images (facultatif, 0.9 Go)",
+          },
+        ],
+      },
+    ],
+  },
   {
     id: "qwen3",
     name: "Qwen3",

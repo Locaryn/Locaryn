@@ -1,6 +1,7 @@
 import { Icon, LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AppContextMenu } from "./components/AppContextMenu";
 import { BatchStudio } from "./components/BatchStudio";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
@@ -1449,6 +1450,8 @@ export function App() {
           que lorsqu'il y a quelque chose a dire, et ce qu'elle dit vaut pour
           l'application entiere. */}
         <UpdateDialog />
+        {/* Le clic droit de l'application, à la place du menu du navigateur. */}
+        <AppContextMenu />
 
         {/* Right side panels for Chat view — ils appartiennent au chat, pas aux
             pages qui prennent sa place. */}

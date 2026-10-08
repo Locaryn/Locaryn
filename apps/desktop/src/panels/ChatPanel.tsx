@@ -22,6 +22,7 @@ import { useContextStatus } from "../hooks/useContextStatus";
 import { attentionPourVue } from "../lib/attention";
 import { FREE_CHAT_PATH } from "../lib/constants";
 import {
+  ACTIVE_MODEL_CHANGED,
   type AttentionItem,
   type ConnectionMode,
   type InstalledExtension,
@@ -537,6 +538,12 @@ export function ChatPanel({
       }
 
       let targetModel = active?.model ?? "";
+      // Plus aucun modèle installé : ne pas continuer d'afficher celui qu'on
+      // vient de supprimer.
+      if (!(active?.kind === "remote") && list.length === 0 && targetModel) {
+        targetModel = "";
+        if (active) void core.configureProvider(active.endpoint, null);
+      }
       // Un modèle distant n'est jamais dans la liste des fichiers installés :
       // le « corriger » vers le premier modèle local annulerait le choix que
       // l'utilisateur vient de faire dans le dossier du fournisseur.
@@ -570,7 +577,11 @@ export function ChatPanel({
   useEffect(() => {
     const onCloudSelected = () => void refreshActiveModel();
     window.addEventListener("locaryn:cloud-model-selected", onCloudSelected);
-    return () => window.removeEventListener("locaryn:cloud-model-selected", onCloudSelected);
+    window.addEventListener(ACTIVE_MODEL_CHANGED, onCloudSelected);
+    return () => {
+      window.removeEventListener("locaryn:cloud-model-selected", onCloudSelected);
+      window.removeEventListener(ACTIVE_MODEL_CHANGED, onCloudSelected);
+    };
   }, [refreshActiveModel]);
 
   // A chat inside a project works in that folder — reflect it in the picker.
