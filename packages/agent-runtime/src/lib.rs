@@ -114,6 +114,10 @@ pub struct AgentInput {
     /// la changer pendant une tâche s'applique sans l'interrompre. Absente, la
     /// permission reçue à l'envoi vaut pour toute la tâche.
     pub trust_source: Option<trust_source::TrustSourceHandle>,
+    /// Alléger les outils offerts dès qu'ils pèsent dans la fenêtre (réglage
+    /// « Alléger les outils », pour les petits modèles). Faux par défaut :
+    /// le modèle reçoit tous les outils de ses connecteurs.
+    pub trim_tools: bool,
     /// Jeton Bearer envoyé à l'endpoint (noyaux alternatifs : OpenClaw,
     /// Hermes…). `None` = pas d'en-tête d'authentification.
     pub bearer_token: Option<String>,

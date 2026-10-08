@@ -64,6 +64,12 @@ pub struct AssistanceConfig {
     /// demande avant d'écrire ou d'exécuter.
     #[serde(default)]
     pub default_trust: TrustLevel,
+    /// Alléger les outils offerts au modèle quand ils pèsent dans sa fenêtre
+    /// (descriptions raccourcies, outils sans rapport avec la demande
+    /// retirés). Désactivé par défaut : le modèle reçoit tous les outils de
+    /// ses connecteurs et sait ce qu'il a à disposition.
+    #[serde(default)]
+    pub trim_tools: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -642,6 +648,9 @@ fn merge(into: &mut Config, other: Config) {
     // Oubliée ici, la permission par défaut était écrite puis perdue à chaque
     // lecture : toutes les conversations libres démarraient en « Prudent »,
     // quel que soit le choix fait dans Réglages.
+    if other.assistance.trim_tools {
+        into.assistance.trim_tools = true;
+    }
     if other.assistance.default_trust != TrustLevel::default() {
         into.assistance.default_trust = other.assistance.default_trust;
     }

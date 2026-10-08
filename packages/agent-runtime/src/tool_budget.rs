@@ -39,6 +39,9 @@ pub struct Fit {
     pub dropped: usize,
     /// Descriptions raccourcies.
     pub compacted: bool,
+    /// Allégement imposé alors que la personne l'a désactivé : les outils
+    /// seuls dépassaient ce que la fenêtre peut porter.
+    pub forced: bool,
 }
 
 /// Jetons estimés d'un outil tel qu'il part dans la requête.
@@ -249,6 +252,37 @@ fn relevance(request: &HashSet<String>, spec: &ToolSpec, server: Option<&str>) -
     score + request.intersection(&words(&spec.description)).count()
 }
 
+/// Part de la fenêtre au-delà de laquelle les outils sont allégés même quand
+/// la personne a désactivé l'allègement : au-dessus, il ne reste plus la place
+/// d'une question et d'une réponse.
+const FORCED_SHARE: f64 = 0.8;
+
+/// Choisir les outils offerts au modèle selon le réglage de la personne.
+///
+/// `alleger` faux (le défaut) : tous les outils partent — un seul nom par
+/// outil MCP, ce qui ne retire rien — tant qu'ils laissent la place de
+/// converser ; au-delà de [`FORCED_SHARE`], l'allègement s'impose et le dit.
+/// `alleger` vrai : l'allègement s'applique dès [`CONTEXT_SHARE`] (petits
+/// modèles, petits contextes).
+pub fn fit_selon(specs: Vec<ToolSpec>, ctx: usize, request: &str, alleger: bool) -> Fit {
+    if alleger {
+        return fit(specs, ctx, request);
+    }
+    let (specs, _) = one_name_per_tool(specs);
+    if total_tokens(&specs) <= (ctx as f64 * FORCED_SHARE) as usize {
+        return Fit {
+            specs,
+            dropped: 0,
+            compacted: false,
+            forced: false,
+        };
+    }
+    Fit {
+        forced: true,
+        ..fit(specs, ctx, request)
+    }
+}
+
 /// Faire tenir `specs` dans `ctx` jetons de contexte. `request` est la demande de
 /// la personne : elle départage les outils quand il faut en retirer.
 pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
@@ -258,6 +292,7 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
             specs,
             dropped: 0,
             compacted: false,
+            forced: false,
         };
     }
 
@@ -268,6 +303,7 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
             specs,
             dropped: 0,
             compacted: false,
+            forced: false,
         };
     }
 
@@ -288,6 +324,7 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
             specs,
             dropped: 0,
             compacted: true,
+            forced: false,
         };
     }
 
@@ -320,6 +357,7 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
         specs: kept,
         dropped,
         compacted: true,
+        forced: false,
     }
 }
 
@@ -438,6 +476,26 @@ mod tests {
             .count();
         let studio = r.specs.iter().filter(|s| s.name.contains("studio")).count();
         assert!(cluster > studio, "cluster={cluster} studio={studio}");
+    }
+
+    #[test]
+    fn sans_allegement_tous_les_outils_partent_tant_qu_ils_laissent_la_place() {
+        // 8 192 jetons : l'allègement retirerait des outils, le réglage par
+        // défaut les garde tous tant qu'ils restent sous 80 % de la fenêtre.
+        let outils = beaucoup_d_outils();
+        let tous = outils.len();
+        let leger = fit_selon(outils.clone(), 8192, "x", true);
+        assert!(leger.dropped > 0 || leger.compacted);
+        let large = fit_selon(outils.clone(), 200_000, "x", false);
+        assert_eq!(large.dropped, 0);
+        assert!(!large.compacted && !large.forced);
+        assert!(
+            large.specs.len() <= tous,
+            "seuls les doublons de noms partent"
+        );
+        // Des outils plus gros que la fenêtre : l'allègement s'impose et le dit.
+        let force = fit_selon(outils, 1024, "x", false);
+        assert!(force.forced);
     }
 
     #[test]

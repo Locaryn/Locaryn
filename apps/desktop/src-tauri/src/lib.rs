@@ -2197,6 +2197,10 @@ async fn send_message(
         )),
         // Les permissions changées pendant la tâche s'appliquent à l'outil
         // suivant, sans interrompre le modèle.
+        // Le réglage « Alléger les outils » (désactivé par défaut).
+        trim_tools: locaryn_config::load(None)
+            .map(|c| c.assistance.trim_tools)
+            .unwrap_or(false),
         trust_source: Some(locaryn_agent_runtime::trust_source::TrustSourceHandle::new(
             trust_source::SessionTrustSource::new(app.clone(), session_id),
         )),
@@ -7008,6 +7012,8 @@ pub fn run() {
             extensions::set_catalog_source_enabled,
             extensions::remove_catalog_source,
             mcp_servers::list_mcp_servers,
+            mcp_servers::outils_alleges,
+            mcp_servers::definir_outils_alleges,
             startup::app_ready,
             mcp_servers::add_mcp_server,
             mcp_servers::list_mcp_tools,

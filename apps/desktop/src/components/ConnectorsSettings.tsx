@@ -36,6 +36,23 @@ export function ConnectorsSettings() {
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [mcpBusy, setMcpBusy] = useState<string | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
+  // « Alléger les outils » : désactivé par défaut, le modèle voit tous ses
+  // connecteurs. Utile seulement aux petits modèles et petits contextes.
+  const [alleger, setAlleger] = useState<boolean | null>(null);
+  useEffect(() => {
+    core
+      .outilsAlleges()
+      .then(setAlleger)
+      .catch((e: unknown) => console.warn("réglage des outils illisible :", e));
+  }, []);
+  async function basculerAllegement() {
+    if (alleger === null) return;
+    try {
+      setAlleger(await core.definirOutilsAlleges(!alleger));
+    } catch (e) {
+      setMcpError(String(e).replace(/^Error:\s*/, ""));
+    }
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -185,6 +202,30 @@ export function ConnectorsSettings() {
             <strong>Connecteur</strong> · pont de données ou service
           </span>
         </div>
+      </div>
+      <div className="locaryn-conn-budget">
+        <div className="locaryn-conn-budget-text">
+          <strong>Alléger les outils quand le contexte est petit</strong>
+          <p>
+            Désactivé : le modèle reçoit tous les outils des connecteurs actifs et sait ce qu'il a à
+            disposition. Activé : quand les outils pèsent trop dans sa fenêtre, leurs descriptions
+            sont raccourcies et ceux sans rapport avec la demande sont laissés de côté — utile aux
+            petits modèles. Dans tous les cas, des outils plus gros que la fenêtre elle-même sont
+            allégés, et l'application le dit. Pour retirer un outil précis, utilisez « Configurer »
+            sur son connecteur.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={alleger === true}
+          aria-label="Alléger les outils quand le contexte est petit"
+          className={`locaryn-switch${alleger ? " locaryn-switch-on" : ""}`}
+          disabled={alleger === null}
+          onClick={() => void basculerAllegement()}
+        >
+          <span className="locaryn-switch-knob" aria-hidden="true" />
+        </button>
       </div>
       <div
         className="locaryn-store-tabs"

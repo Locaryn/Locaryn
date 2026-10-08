@@ -170,7 +170,7 @@ pub async fn run_openai_tool_loop(
                 .chain(std::iter::once(input.message.as_str()))
                 .collect::<Vec<_>>()
                 .join("\n");
-            let fit = crate::tool_budget::fit(all_tools, ctx, &demande);
+            let fit = crate::tool_budget::fit_selon(all_tools, ctx, &demande, input.trim_tools);
             if fit.dropped > 0 || fit.compacted {
                 tracing::warn!(
                     contexte = ctx,
@@ -179,7 +179,12 @@ pub async fn run_openai_tool_loop(
                     retires = fit.dropped,
                     "outils ajustés au contexte du modèle"
                 );
-                tools_notice = Some(if fit.dropped > 0 {
+                tools_notice = Some(if fit.forced {
+                    format!(
+                        "Les outils des connecteurs dépassent ce que la fenêtre du modèle ({ctx} jetons) peut porter : {} ont été laissés de côté, d'après votre demande. Augmentez le contexte (profil Automatique), ou décochez des outils dans Réglages → Connecteurs MCP.",
+                        fit.dropped
+                    )
+                } else if fit.dropped > 0 {
                     format!(
                         "Le contexte du modèle ({ctx} jetons) ne contient pas tous les outils : {} ont été laissés de côté, d'après votre demande. Décochez ceux dont vous n'avez pas besoin dans Réglages → Connecteurs MCP → Configurer, ou augmentez le contexte.",
                         fit.dropped

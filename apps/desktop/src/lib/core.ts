@@ -1649,6 +1649,10 @@ export interface CoreApi {
   freeChatProject(): Promise<Project>;
   /** Workspace directory for a session (project path, or temp folder for free chats). */
   sessionWorkspace(sessionId: string): Promise<string>;
+  /** « Alléger les outils » : faux par défaut, tous les outils des
+   *  connecteurs partent au modèle. */
+  outilsAlleges(): Promise<boolean>;
+  definirOutilsAlleges(actif: boolean): Promise<boolean>;
   /** Le navigateur intégré : montrer à sa place, cacher, suivre la place. */
   browserShow(frame: BrowserFrame, url?: string): Promise<BrowserState>;
   browserHide(): Promise<void>;
@@ -2150,6 +2154,8 @@ const tauriCore: CoreApi = {
   archiveProject: (id) => invoke<void>("archive_project", { id }),
   freeChatProject: () => invoke<Project>("free_chat_project"),
   sessionWorkspace: (sessionId) => invoke<string>("session_workspace", { sessionId }),
+  outilsAlleges: () => invoke<boolean>("outils_alleges"),
+  definirOutilsAlleges: (actif) => invoke<boolean>("definir_outils_alleges", { actif }),
   browserShow: (cadre, url) => invoke<BrowserState>("browser_show", { cadre, url: url ?? null }),
   browserHide: () => invoke("browser_hide"),
   browserBounds: (cadre) => invoke("browser_bounds", { cadre }),
@@ -2600,6 +2606,7 @@ let demoImageDefaults: ImageDefaults = {
   negative_prompt: "",
   variants: 1,
 };
+let demoOutilsAlleges = false;
 let demoModelPreferences: ModelPreferences = { tts_model: null, image_model: null };
 let demoLocalProfile: LocalProfile = { display_name: "", avatar_path: null };
 
@@ -4315,6 +4322,13 @@ const demoCore: CoreApi = {
     name: "Conversations libres",
   }),
   sessionWorkspace: async () => "/tmp/locaryn-demo",
+  async outilsAlleges() {
+    return demoOutilsAlleges;
+  },
+  async definirOutilsAlleges(actif) {
+    demoOutilsAlleges = actif;
+    return actif;
+  },
   // Le navigateur est une vue native : il n'existe que dans l'application.
   async browserShow() {
     return { url: "", title: "", loading: false };

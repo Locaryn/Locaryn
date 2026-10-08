@@ -545,6 +545,22 @@ pub async fn set_mcp_disabled_tools(
     Ok(())
 }
 
+/// Le réglage « Alléger les outils » : désactivé par défaut, le modèle reçoit
+/// tous les outils des connecteurs actifs.
+#[tauri::command]
+pub async fn outils_alleges() -> Result<bool, String> {
+    Ok(locaryn_config::load(None)
+        .map(|c| c.assistance.trim_tools)
+        .unwrap_or(false))
+}
+
+#[tauri::command]
+pub async fn definir_outils_alleges(actif: bool) -> Result<bool, String> {
+    locaryn_config::set_global("assistance", serde_json::json!({ "trim_tools": actif }))
+        .map_err(|e| e.to_string())?;
+    Ok(actif)
+}
+
 #[tauri::command]
 pub async fn list_mcp_servers(core: State<'_, Core>) -> Result<Vec<McpServerInfo>, String> {
     if let Some(client) = core.remote_client() {

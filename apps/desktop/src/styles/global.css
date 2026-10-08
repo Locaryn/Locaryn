@@ -12693,3 +12693,68 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: var(--text-xs);
   color: var(--text-faint);
 }
+
+/* Réglage « Alléger les outils » de l'écran Connecteurs. */
+.locaryn-conn-budget {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.locaryn-conn-budget-text p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-dim);
+  max-width: 72ch;
+}
+/* Interrupteur : 44 px de cible, état lisible sans couleur (position). */
+.locaryn-switch {
+  flex: none;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  margin-top: 2px;
+  padding: 0;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.locaryn-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--text);
+  border-radius: 50%;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.locaryn-switch-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.locaryn-switch-on .locaryn-switch-knob {
+  transform: translateX(18px);
+  background: var(--on-accent, #fff);
+}
+.locaryn-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+@media (max-width: 640px) {
+  .locaryn-conn-budget {
+    flex-direction: column;
+  }
+}
