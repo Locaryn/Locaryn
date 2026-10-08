@@ -23,6 +23,7 @@ mod inference_engines;
 mod local_profile;
 mod mcp_servers;
 mod memory;
+mod mentions;
 mod model_abilities;
 mod model_recommendations;
 mod model_residency;
@@ -2065,6 +2066,12 @@ async fn send_message(
             None => avec_documents,
         },
         None => avec_documents,
+    };
+    // `@Roblox_Studio …` : les outils désignés par la personne, rendus
+    // explicites pour le modèle (le message enregistré reste tel quel).
+    let agent_message = match mentions::precisions(core.clone(), &content).await {
+        Some(p) => format!("{agent_message}{p}"),
+        None => agent_message,
     };
 
     // Une figure peut restreindre les outils du modèle à ceux qu'elle nomme.

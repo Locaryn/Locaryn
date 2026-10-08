@@ -26,6 +26,7 @@ import {
   type AttentionItem,
   type ConnectionMode,
   type InstalledExtension,
+  type McpServerInfo,
   type ModelAbilities,
   type ReasoningLevel,
   type Session,
@@ -164,6 +165,14 @@ type Props = {
 
 /** Écart au bas du fil sous lequel on considère qu'on y est encore. */
 const SEUIL_DU_BAS = 32;
+
+/** Ce qu'on peut désigner avec « @ ». */
+type MentionItem = {
+  name: string;
+  label: string;
+  hint: string;
+  icon: "plugs-connected" | "extensions";
+};
 
 const SUGGESTIONS = [
   "Explique la structure de ce projet",
@@ -475,6 +484,11 @@ export function ChatPanel({
   // installer ou desactiver une extension change la palette sans redemarrage.
   const [extCommands, setExtCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  /** « @ » : connecteurs MCP et extensions actives qu'on peut désigner au
+   *  modèle pour cette demande. */
+  const [mention, setMention] = useState<{ query: string; items: MentionItem[] } | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const connecteursRef = useRef<McpServerInfo[] | null>(null);
   /** Set by /plan: the next message is executed as a step-by-step plan. */
   const [planNext, setPlanNext] = useState(false);
   /**
@@ -1518,7 +1532,74 @@ export function ChatPanel({
     }
   }
 
+  /** Le « @mot » en cours de frappe à la fin du texte, s'il y en a un. */
+  async function suivreMention(texte: string) {
+    const m = /(?:^|\s)@([\w.-]*)$/.exec(texte);
+    if (!m) {
+      setMention(null);
+      return;
+    }
+    if (connecteursRef.current === null) {
+      try {
+        connecteursRef.current = await core.listMcpServers();
+      } catch (e) {
+        console.warn("connecteurs illisibles :", e);
+        connecteursRef.current = [];
+      }
+    }
+    const q = m[1].toLowerCase();
+    const candidats: MentionItem[] = [
+      ...connecteursRef.current.map((c) => ({
+        name: c.name,
+        label: c.name,
+        hint: c.running
+          ? `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`
+          : "Connecteur MCP · arrêté",
+        icon: "plugs-connected" as const,
+      })),
+      ...extensions
+        .filter((x) => x.enabled)
+        .map((x) => ({
+          name: x.name,
+          label: x.display_name || x.name,
+          hint: "Extension",
+          icon: "extensions" as const,
+        })),
+    ];
+    const items = candidats
+      .filter((c) => !q || c.name.toLowerCase().includes(q) || c.label.toLowerCase().includes(q))
+      .slice(0, 8);
+    setMention(items.length ? { query: m[1], items } : null);
+    setMentionIndex(0);
+  }
+
+  /** Remplacer le « @mot » tapé par la mention choisie. */
+  function choisirMention(item: MentionItem) {
+    setInput((t) => t.replace(/@([\w.-]*)$/, `@${item.name} `));
+    setMention(null);
+    inputRef.current?.focus();
+  }
+
   function handleComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // La liste des mentions prend les flèches, Entrée, Tab et Échap.
+    if (mention && mention.items.length > 0) {
+      const n = mention.items.length;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        choisirMention(mention.items[Math.min(mentionIndex, n - 1)]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMention(null);
+        return;
+      }
+    }
     // Slash palette takes over the arrows / Enter / Escape while it is open.
     if (slash && slash.items.length > 0) {
       const n = slash.items.length;
@@ -1877,6 +1958,41 @@ export function ChatPanel({
           </div>
         )}
 
+        {/* « @ » : désigner un connecteur ou une extension au modèle */}
+        {mention && mention.items.length > 0 && (
+          <div
+            className="locaryn-slash"
+            role="listbox"
+            aria-label="Connecteurs et extensions"
+            tabIndex={-1}
+          >
+            <div className="locaryn-slash-head">
+              Désigner les outils à utiliser pour cette demande
+            </div>
+            {mention.items.map((m, i) => (
+              <button
+                key={`${m.icon}-${m.name}`}
+                type="button"
+                role="option"
+                aria-selected={i === mentionIndex}
+                className={`locaryn-slash-item${i === mentionIndex ? " locaryn-active" : ""}`}
+                onMouseEnter={() => setMentionIndex(i)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => choisirMention(m)}
+              >
+                <span className="locaryn-slash-icon">
+                  <Icon name={m.icon} size={15} />
+                </span>
+                <span className="locaryn-slash-text">
+                  <span className="locaryn-slash-label">{m.label}</span>
+                  <span className="locaryn-slash-hint">{m.hint}</span>
+                </span>
+                <code className="locaryn-slash-cmd">@{m.name}</code>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Slash-command palette (type "/" in the composer) */}
         {slash && slash.items.length > 0 && (
           // Une palette de commandes n'a pas d'équivalent HTML natif : `select`
@@ -2069,6 +2185,7 @@ export function ChatPanel({
               autoGrow();
               setSlash(matchSlashInput(e.target.value, extCommands, activeCapabilities));
               setSlashIndex(0);
+              void suivreMention(e.target.value);
             }}
             onKeyDown={handleComposerKeyDown}
           />

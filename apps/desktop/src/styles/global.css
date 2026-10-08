@@ -4189,10 +4189,14 @@ pre.md-code {
 }
 
 /* Slash-command palette above the composer */
+/* Compacte : une ligne de description ne mérite pas toute la largeur du
+   champ de saisie. */
 .locaryn-slash {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  width: min(440px, 100%);
+  align-self: flex-start;
   max-height: 280px;
   overflow-y: auto;
   margin-bottom: 8px;

@@ -5393,7 +5393,19 @@ Contenu de démonstration.
   microModel: async () => ({ model: null, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
   setMicroModel: async (model) => ({ model, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
 
-  listMcpServers: async () => [],
+  // Un connecteur d'exemple : de quoi voir les écrans et la mention « @ ».
+  listMcpServers: async () => [
+    {
+      name: "Roblox_Studio",
+      transport: "stdio",
+      target: "rbx-studio-mcp --stdio",
+      running: true,
+      auto_start: true,
+      env: {},
+      tools: ["list_roblox_studios", "run_code", "insert_model", "get_studio_state"],
+      disabled_tools: [],
+    },
+  ],
   appReady: async () => {},
   listMcpTools: async () => [
     {
