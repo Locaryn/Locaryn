@@ -156,21 +156,27 @@ pub async fn run_openai_tool_loop(
     // Roblox Studio). On réduit seulement si ça déborde, et on le dit.
     let mut tools_notice: Option<String> = None;
     let contexte_serveur = crate::tool_budget::server_context(client, endpoint).await;
-    let all_tools = match contexte_serveur {
+    // Toute la conversation départage les outils, pas le seul dernier
+    // message : « continue » ne nomme rien, et l'outil dont la tâche
+    // dépendait disparaissait au tour suivant (le modèle essayait alors de
+    // l'appeler dans un shell).
+    let demande: String = input
+        .history
+        .iter()
+        .map(|turn| turn.content.as_str())
+        .chain(std::iter::once(input.message.as_str()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    // Gardée pour recaler l'allègement si le moteur refuse la requête.
+    let outils_complets = all_tools.clone();
+    let mut all_tools = match contexte_serveur {
         Some(ctx) if !all_tools.is_empty() => {
             let before = all_tools.len();
-            // Toute la conversation départage les outils, pas le seul dernier
-            // message : « continue » ne nomme rien, et l'outil dont la tâche
-            // dépendait disparaissait au tour suivant (le modèle essayait
-            // alors de l'appeler dans un shell).
-            let demande: String = input
-                .history
-                .iter()
-                .map(|turn| turn.content.as_str())
-                .chain(std::iter::once(input.message.as_str()))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let fit = crate::tool_budget::fit_selon(all_tools, ctx, &demande, input.trim_tools);
+            // L'échelle mesurée sur un refus précédent : l'estimation en octets
+            // sous-évalue ce que le gabarit du modèle fait des outils.
+            let ctx_estime = (ctx as f64 / echelle_connue()) as usize;
+            let fit =
+                crate::tool_budget::fit_selon(all_tools, ctx_estime, &demande, input.trim_tools);
             if fit.dropped > 0 || fit.compacted {
                 tracing::warn!(
                     contexte = ctx,
@@ -199,7 +205,7 @@ pub async fn run_openai_tool_loop(
         }
         _ => all_tools,
     };
-    let tools_json = if all_tools.is_empty() {
+    let mut tools_json = if all_tools.is_empty() {
         None
     } else {
         Some(ollama_tools_json(&all_tools))
@@ -327,7 +333,7 @@ pub async fn run_openai_tool_loop(
             .iter()
             .map(crate::tool_budget::estimate_tokens)
             .sum();
-        crate::context_window::budget(ctx, outils)
+        crate::context_window::budget((ctx as f64 / echelle_connue()) as usize, outils)
     });
     let mut annonce_contexte: Option<String> = None;
     if let Some(b) = budget_conversation {
@@ -364,13 +370,68 @@ pub async fn run_openai_tool_loop(
             tracing::warn!(%status, body = %body_text, "openai-compat returned non-2xx");
             return Err(AgentError::ProviderUnavailable);
         }
-        let fait = crate::context_window::fit(&mut messages, b * 6 / 10);
-        tracing::warn!(
-            ?fait,
-            "fenêtre pleine au premier envoi : conversation resserrée"
-        );
-        if !fait.rien() {
-            annonce_contexte = Some(fait.annonce());
+        // Le moteur dit la taille réelle de la requête. L'estimation (octets
+        // de JSON) la sous-évalue quand le gabarit du modèle enrobe chaque
+        // outil : 92 outils comptés sous 80 % d'une fenêtre de 8 192 en
+        // faisaient 22 558. On recale l'échelle sur ce chiffre, on allège les
+        // outils à ce qui tient vraiment, puis la conversation.
+        let reelle = jetons_annonces(&body_text);
+        match (reelle, contexte_serveur) {
+            (Some(reelle), Some(ctx)) if !outils_complets.is_empty() => {
+                let estimee: usize = all_tools
+                    .iter()
+                    .map(crate::tool_budget::estimate_tokens)
+                    .sum::<usize>()
+                    + crate::context_window::estimate_tokens(&messages);
+                // Estimation brute (octets) contre taille réelle : le rapport
+                // est l'échelle, retenue pour les messages suivants.
+                let echelle = (reelle as f64 / estimee.max(1) as f64).max(1.0);
+                retenir_echelle(echelle);
+                let ctx_recale = (ctx as f64 / echelle) as usize;
+                let refit = crate::tool_budget::fit(outils_complets.clone(), ctx_recale, &demande);
+                let outils: usize = refit
+                    .specs
+                    .iter()
+                    .map(crate::tool_budget::estimate_tokens)
+                    .sum();
+                let fait = crate::context_window::fit(
+                    &mut messages,
+                    crate::context_window::budget(ctx_recale, outils),
+                );
+                tracing::warn!(
+                    reelle,
+                    estimee,
+                    echelle,
+                    outils_avant = all_tools.len(),
+                    outils_apres = refit.specs.len(),
+                    ?fait,
+                    "fenêtre pleine au premier envoi : outils allégés selon la taille réelle"
+                );
+                tools_notice = Some(format!(
+                    "La requête dépassait la fenêtre du modèle ({reelle} jetons pour {ctx}) : {} outil(s) sur {} ont été gardés, d'après votre demande. Pour tout garder, augmentez le contexte (profil Automatique sur une plus grande carte) ou décochez des outils dans Réglages → Connecteurs MCP.",
+                    refit.specs.len(),
+                    outils_complets.len()
+                ));
+                if !fait.rien() {
+                    annonce_contexte = Some(fait.annonce());
+                }
+                all_tools = refit.specs;
+                tools_json = if all_tools.is_empty() {
+                    None
+                } else {
+                    Some(ollama_tools_json(&all_tools))
+                };
+            }
+            _ => {
+                let fait = crate::context_window::fit(&mut messages, b * 6 / 10);
+                tracing::warn!(
+                    ?fait,
+                    "fenêtre pleine au premier envoi : conversation resserrée"
+                );
+                if !fait.rien() {
+                    annonce_contexte = Some(fait.annonce());
+                }
+            }
         }
         let (openai_body, native_body) = make_body(&messages, &tools_json);
         let payload = if native_ollama {
@@ -456,6 +517,7 @@ pub async fn run_openai_tool_loop(
         // Une seule nouvelle tentative par tour après un refus pour fenêtre
         // pleine : l'estimation a pu être trop optimiste.
         let mut serre = false;
+        let mut contexte_annonce = false;
 
         for round in 0..MAX_TOOL_ROUNDS {
             let resp = match pending_resp.take() {
@@ -465,7 +527,10 @@ pub async fn run_openai_tool_loop(
                         // Après un refus, on vise plus bas que l'estimation.
                         let cible = if serre { b * 6 / 10 } else { b };
                         let fait = crate::context_window::fit(&mut messages, cible);
-                        if !fait.rien() {
+                        // Une seule annonce par message : la répéter à chaque
+                        // tour noyait la conversation sous le même avis.
+                        if !fait.rien() && !contexte_annonce {
+                            contexte_annonce = true;
                             let _ = tx
                                 .send(StreamEvent::Log {
                                     level: LogLevel::Warn,
@@ -791,6 +856,36 @@ async fn post_json(
 /// (« model server returned 500 ») ne disait rien. Sur un petit modèle local,
 /// la cause la plus courante est une fenêtre de contexte pleine : la réponse
 /// est coupée, souvent au milieu du JSON d'un appel d'outil.
+/// Rapport entre jetons réels et jetons estimés, mesuré au dernier refus
+/// « fenêtre pleine » (1,0 tant qu'aucun refus). Il évite de payer un refus à
+/// chaque message : les suivants partent déjà allégés.
+static ECHELLE_CONNUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn echelle_connue() -> f64 {
+    let bits = ECHELLE_CONNUE.load(std::sync::atomic::Ordering::Relaxed);
+    if bits == 0 {
+        1.0
+    } else {
+        f64::from_bits(bits).clamp(1.0, 8.0)
+    }
+}
+
+fn retenir_echelle(echelle: f64) {
+    ECHELLE_CONNUE.store(
+        echelle.clamp(1.0, 8.0).to_bits(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+/// La taille réelle d'une requête refusée, telle que llama-server l'annonce :
+/// « request (22558 tokens) exceeds the available context size ».
+fn jetons_annonces(texte: &str) -> Option<usize> {
+    let debut = texte.find("request (")? + "request (".len();
+    let reste = &texte[debut..];
+    let fin = reste.find(" tokens)")?;
+    reste[..fin].trim().parse().ok()
+}
+
 /// Le moteur refuse-t-il la requête parce qu'elle dépasse sa fenêtre ?
 fn fenetre_pleine(texte: &str) -> bool {
     let bas = texte.to_lowercase();
@@ -1038,6 +1133,13 @@ mod tests {
     fn une_erreur_du_moteur_se_lit_en_clair() {
         let coupe = r#"{"error":{"code":500,"message":"Failed to parse tool call arguments as JSON: parse error at line 1, column 3515"}}"#;
         assert!(server_error_message(500, coupe).contains("fenêtre de contexte"));
+        assert_eq!(
+            jetons_annonces(
+                r#"{"error":{"code":400,"message":"request (22558 tokens) exceeds the available context size (8192 tokens), try increasing it"}}"#
+            ),
+            Some(22558)
+        );
+        assert_eq!(jetons_annonces("autre erreur"), None);
         let plein =
             r#"{"error":{"code":400,"message":"the request exceeds the available context size"}}"#;
         assert!(server_error_message(400, plein).starts_with("La fenêtre de contexte"));

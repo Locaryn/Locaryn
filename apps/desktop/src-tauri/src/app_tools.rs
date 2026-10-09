@@ -193,7 +193,7 @@ impl HostTools for AppTools {
                 Some(url) => resultat(browser::ouvrir(&self.app, url).await),
                 None => erreur("`url` manquant."),
             },
-            "browser_read" => resultat(browser::lire(&self.app, 12_000).await),
+            "browser_read" => resultat(browser::lire(&self.app, 6_000).await),
             "browser_click" => match reference(args) {
                 Some(r) => resultat(browser::cliquer(&self.app, r).await),
                 None => erreur("`ref` manquant : le numéro d'un élément de la dernière lecture."),

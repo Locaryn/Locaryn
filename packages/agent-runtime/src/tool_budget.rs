@@ -268,10 +268,14 @@ pub fn fit_selon(specs: Vec<ToolSpec>, ctx: usize, request: &str, alleger: bool)
     if alleger {
         return fit(specs, ctx, request);
     }
-    let (specs, _) = one_name_per_tool(specs);
-    if total_tokens(&specs) <= (ctx as f64 * FORCED_SHARE) as usize {
+    // `fit` reçoit la liste d'origine : c'est en voyant les doublons préfixés
+    // (`mcp__serveur__outil`) qu'il sait quels noms courts viennent d'un
+    // connecteur. Dédoublonnée d'avance, chaque outil de connecteur passait
+    // pour un outil intégré, et rien ne pouvait être allégé.
+    let (dedoublonnes, _) = one_name_per_tool(specs.clone());
+    if total_tokens(&dedoublonnes) <= (ctx as f64 * FORCED_SHARE) as usize {
         return Fit {
-            specs,
+            specs: dedoublonnes,
             dropped: 0,
             compacted: false,
             forced: false,
@@ -496,6 +500,15 @@ mod tests {
         // Des outils plus gros que la fenêtre : l'allègement s'impose et le dit.
         let force = fit_selon(outils, 1024, "x", false);
         assert!(force.forced);
+    }
+
+    #[test]
+    fn l_allegement_impose_retire_bien_des_outils_de_connecteur() {
+        // Outils de connecteur offerts sous deux noms, comme en vrai : le
+        // repli imposé doit pouvoir en retirer.
+        let r = fit_selon(beaucoup_d_outils(), 2048, "x", false);
+        assert!(r.forced);
+        assert!(r.dropped > 0, "des outils de connecteur doivent partir");
     }
 
     #[test]

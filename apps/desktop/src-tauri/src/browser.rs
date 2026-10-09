@@ -346,7 +346,7 @@ const SCRIPT_LECTURE: &str = r#"(() => { try {
 /// La page, mise en texte pour le modèle.
 pub async fn lire(app: &AppHandle, max_texte: usize) -> Result<String, String> {
     let script = SCRIPT_LECTURE
-        .replace("MAX_ELEMENTS", "150")
+        .replace("MAX_ELEMENTS", "80")
         .replace("MAX_TEXTE", &max_texte.to_string());
     let page = evaluer(app, &script).await?;
     let s = |k: &str| {
@@ -398,7 +398,9 @@ pub async fn ouvrir(app: &AppHandle, saisie: &str) -> Result<String, String> {
     let avant = etat().chargements;
     aller(app, saisie)?;
     attendre_chargement(avant, ATTENTE_CHARGEMENT).await;
-    lire(app, 12_000).await
+    // Une page lue en entier remplissait une fenêtre de 8 192 jetons en deux
+    // lectures : le modèle perdait ses observations et tournait en rond.
+    lire(app, 5_000).await
 }
 
 /// Après une action : si elle a lancé un chargement, l'attendre, puis relire.
@@ -407,7 +409,7 @@ async fn apres_action(app: &AppHandle, avant: u64) -> Result<String, String> {
     if etat().loading || etat().chargements > avant {
         attendre_chargement(avant, ATTENTE_CHARGEMENT).await;
     }
-    lire(app, 8_000).await
+    lire(app, 3_000).await
 }
 
 /// Le curseur de l'IA, posé dans la page une fois pour toutes : une flèche
