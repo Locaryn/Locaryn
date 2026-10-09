@@ -1084,9 +1084,12 @@ fn versions_from_known_table(
     full_name: &str,
 ) -> Vec<locaryn_shared_types::MorphVersionRelease> {
     let (latest_ver, stables): (&str, &[&str]) = match name {
-        "morph-image" => ("3.1.0-beta.1", &["3.0.0", "2.2.0", "2.1.0", "2.0.0"]),
-        "morph-voice-tts" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
-        "morph-dictaphone" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
+        "morph-image" => (
+            "3.2.0-beta.1",
+            &["3.1.0-beta.1", "3.0.0", "2.2.0", "2.1.0", "2.0.0"],
+        ),
+        "morph-voice-tts" => ("2.4.0-beta.1", &["2.3.0", "2.1.0", "2.0.0", "1.0.0"]),
+        "morph-dictaphone" => ("2.3.0-beta.1", &["2.2.0-beta.1", "2.1.0", "2.0.0", "1.0.0"]),
         "morph-rag-qa" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
         "morph-ssh" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
         // Les seules entrees de cette table verifiees contre les
