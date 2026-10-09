@@ -98,6 +98,7 @@ mod tests {
                 question: None,
                 host: Some(&hote),
                 trust: None,
+                gpu: None,
             },
         )
         .await

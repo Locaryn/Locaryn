@@ -536,6 +536,48 @@ Ce qu'il faut retenir :
 
 ---
 
+## Un outil qui charge son propre modèle sur la carte
+
+Une extension qui fait tourner **son propre modèle** — diffusion, synthèse vocale,
+transcription — partage la carte graphique avec le modèle de conversation, déjà chargé. Sur
+une carte de 6 Go, les deux ne tiennent pas ensemble. Déclarez ces outils :
+
+```json
+"gpu": {
+  "tools": {
+    "generate_image": { "produces": "image" },
+    "transcribe_audio": {}
+  }
+}
+```
+
+Pour chacun de ces outils, Locaryn :
+
+1. vérifie les arguments contre le schéma de l'outil, **strictement** (une clé mal
+   orthographiée est refusée avec le nom le plus proche) ;
+2. appelle l'outil **à blanc**, avec `"__locaryn_preflight": true` ajouté aux arguments.
+   Votre serveur vérifie tout ce qui peut faire échouer l'appel — modèle installé, moteur
+   présent, fichiers source lisibles — **sans rien charger**, et répond :
+
+   ```json
+   { "ready": true, "vram_gb": 2.1, "summary": "SD 1.5, 512×512, 20 étapes",
+     "media": { "kind": "image", "count": 2, "width": 512, "height": 512 } }
+   ```
+
+   ou `{ "ready": false, "problem": "aucun modèle installé" }`. Un refus revient au modèle de
+   conversation tel quel : il corrige son appel tout de suite, rien n'a été déchargé ;
+3. si la VRAM libre ne couvre pas `vram_gb`, met le modèle de conversation de côté ;
+4. fait le vrai appel — votre outil doit **rendre sa mémoire en finissant** (un processus par
+   appel qui se termine est le plus simple) ;
+5. recharge le modèle de conversation avant la requête suivante.
+
+`media` réserve la place du résultat dans le fil, avec une animation, avant que les fichiers
+n'arrivent par l'enveloppe `artifacts`. Un argument `save_to` relatif est résolu par
+l'application contre le projet ouvert : vous recevez un chemin absolu.
+
+N'y déclarez pas un outil qui passe par le modèle de conversation lui-même (traduction,
+description d'image) : le décharger le rendrait injoignable.
+
 ## Apporter un moteur d'inférence
 
 Le runtime intégré charge du GGUF avec llama.cpp. Un autre moteur — un serveur

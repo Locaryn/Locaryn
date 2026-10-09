@@ -12,6 +12,7 @@ import {
   MessageBubble,
   type MessageSpeed,
 } from "../components/chat/MessageBubble";
+import type { MediaForge } from "../components/chat/MessageBubble";
 import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { ToolCard } from "../components/chat/ToolCard";
@@ -70,6 +71,10 @@ type ChatItem =
       attachments?: MessageAttachment[];
       /** Remis par « Envoyer maintenant » et lu par le modèle pendant sa tâche. */
       luEnCours?: boolean;
+      /** Un média en cours de création : sa place réservée. */
+      forge?: MediaForge;
+      /** Ses images viennent d'être créées ici : elles apparaissent animées. */
+      forged?: boolean;
     }
   | {
       id: string;
@@ -123,6 +128,24 @@ type QueuedMessage = {
   attachments: Attachment[];
   remis?: boolean;
 };
+
+/**
+ * Clore les tuiles d'un appel (`callId`), ou toutes celles encore ouvertes
+ * (`null`). Les images arrivées restent ; une place vide disparaît, sauf
+ * échec : elle dit alors pourquoi rien n'est venu.
+ */
+function terminerForge(items: ChatItem[], callId: string | null, echec: string | null): ChatItem[] {
+  return items.flatMap((it) => {
+    if (it.kind !== "msg" || !it.forge || it.forge.failed) return [it];
+    if (callId !== null && it.forge.callId !== callId) return [it];
+    const recues = it.images?.length ?? 0;
+    if (recues > 0) return [{ ...it, forge: undefined }];
+    if (echec && it.forge.kind !== "audio") {
+      return [{ ...it, forge: { ...it.forge, failed: echec } }];
+    }
+    return [];
+  });
+}
 
 /** Identités locales pour les clés React. Rien de ce qui s'affiche dans le fil
  *  n'a d'identifiant propre avant d'être écrit en base — jetons diffusés,
@@ -936,6 +959,10 @@ export function ChatPanel({
       // Une demande close sans réponse (permission relevée en cours de tâche,
       // délai dépassé) ne doit pas rester affichée au-dessus du composeur.
       setApproval((a) => (a && a.call_id === ev.call_id ? null : a));
+      // Le média attendu est arrivé, ou ne viendra pas.
+      setItems((prev) =>
+        terminerForge(prev, ev.call_id, ev.ok ? null : "La génération n'a pas abouti."),
+      );
       setItems((prev) =>
         prev.map((it) => {
           if (it.kind === "tool" && it.callId === ev.call_id) {
@@ -969,21 +996,84 @@ export function ChatPanel({
         `L'outil « ${ev.tool} » ne s'exécutera pas sans votre réponse.`,
         "approvals",
       );
-    } else if (ev.type === "artifact" && ev.kind === "image_png") {
-      // Image generation is owned by an MCP extension. The host only renders
-      // the generic artifact it receives; it does not know how it was made.
+    } else if (ev.type === "media_pending") {
+      // La place du média, avant le média : on voit où il va apparaître, et
+      // qu'il se fabrique.
+      const forge: MediaForge = {
+        callId: ev.call_id,
+        kind: ev.kind,
+        total: Math.max(1, ev.count),
+        width: ev.width,
+        height: ev.height,
+        etape: null,
+        failed: null,
+      };
       setItems((prev) => [
         ...prev,
         {
-          id: nextId("image"),
+          id: nextId("forge"),
           kind: "msg",
           role: "assistant",
           text: "",
-          images: [toMediaUrl(ev.path)],
-          imagePaths: [ev.path],
+          images: [],
+          imagePaths: [],
+          forge,
+          forged: true,
         },
       ]);
+    } else if (ev.type === "task_update") {
+      setItems((prev) =>
+        prev.map((it) =>
+          it.kind === "msg" && it.forge?.callId === ev.task_id
+            ? { ...it, forge: { ...it.forge, etape: ev.status } }
+            : it,
+        ),
+      );
+    } else if (ev.type === "artifact" && ev.kind === "image_png") {
+      // Image generation is owned by an MCP extension. The host only renders
+      // the generic artifact it receives; it does not know how it was made.
+      setItems((prev) => {
+        // Une tuile l'attend : l'image prend sa place.
+        for (let i = prev.length - 1; i >= 0; i--) {
+          const it = prev[i];
+          if (
+            it.kind === "msg" &&
+            it.forge &&
+            it.forge.kind === "image" &&
+            (it.images?.length ?? 0) < it.forge.total
+          ) {
+            const suivant = [...prev];
+            suivant[i] = {
+              ...it,
+              images: [...(it.images ?? []), toMediaUrl(ev.path)],
+              imagePaths: [...(it.imagePaths ?? []), ev.path],
+            };
+            return suivant;
+          }
+        }
+        return [
+          ...prev,
+          {
+            id: nextId("image"),
+            kind: "msg",
+            role: "assistant",
+            text: "",
+            images: [toMediaUrl(ev.path)],
+            imagePaths: [ev.path],
+          },
+        ];
+      });
     } else if (ev.type === "artifact" && ev.kind === "audio_wav") {
+      // La note vocale remplace la place qui l'attendait.
+      setItems((prev) => {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          const it = prev[i];
+          if (it.kind === "msg" && it.forge?.kind === "audio") {
+            return prev.filter((_, j) => j !== i);
+          }
+        }
+        return prev;
+      });
       const audioId = nextId("audio");
       setItems((prev) => [
         ...prev,
@@ -1374,6 +1464,7 @@ export function ChatPanel({
     } finally {
       setStreaming(false);
       setAttente(null);
+      setItems((prev) => terminerForge(prev, null, "Interrompu avant la fin."));
 
       // Update the duration estimator so it can learn how fast each model
       // produces answers on this machine.
@@ -2027,6 +2118,8 @@ export function ChatPanel({
                       imagePaths={it.imagePaths}
                       speed={it.speed}
                       attachments={it.attachments}
+                      forge={it.forge}
+                      forged={it.forged}
                       canEdit={i === lastUserIdx && !streaming}
                       onEdit={editLastUserMessage}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}

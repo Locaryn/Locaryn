@@ -94,6 +94,7 @@ fn entree(model: &str) -> AgentInput {
         host_tools: None,
         trust_source: None,
         mailbox: None,
+        gpu: None,
         trim_tools: false,
         bearer_token: Some("cle-de-passerelle".into()),
         native_chat_api: false,

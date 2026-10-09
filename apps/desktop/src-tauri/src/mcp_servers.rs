@@ -785,6 +785,7 @@ pub async fn stop_mcp_server(core: State<'_, Core>, name: String) -> Result<(), 
 /// endpoint and not a second mock implementation.
 #[tauri::command]
 pub async fn invoke_mcp_tool(
+    app: tauri::AppHandle,
     core: State<'_, Core>,
     name: String,
     tool: String,
@@ -811,10 +812,23 @@ pub async fn invoke_mcp_tool(
         client
     };
 
-    client
-        .invoke_tool(&tool, &args)
-        .await
-        .map_err(|e| format!("outil {tool} sur {name} : {e}"))
+    let appel = async {
+        client
+            .invoke_tool(&tool, &args)
+            .await
+            .map_err(|e| format!("outil {tool} sur {name} : {e}"))
+    };
+    // Le Studio d'une extension d'image passe par le même arbitre que la
+    // conversation : le modèle de conversation laisse la carte le temps du
+    // rendu. L'outil est désigné par son nom complet, sans ambiguïté.
+    let complet = locaryn_agent_runtime::mcp_tools::mcp_tool_name(&name, &tool);
+    match crate::gpu_arbiter::invoquer_arbitre(&app, &complet, &args, appel).await {
+        Some(resultat) => resultat,
+        None => client
+            .invoke_tool(&tool, &args)
+            .await
+            .map_err(|e| format!("outil {tool} sur {name} : {e}")),
+    }
 }
 
 /// Combien de temps on laisse à un serveur pour répondre au signal de fin.

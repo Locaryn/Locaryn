@@ -18,6 +18,7 @@ mod cloud_providers;
 mod core_engines;
 mod extensions;
 mod free_chat_dir;
+mod gpu_arbiter;
 mod hooks;
 mod inference_engines;
 mod local_profile;
@@ -2215,6 +2216,11 @@ async fn send_message(
         // « Envoyer maintenant » : relevé entre deux étapes de la tâche.
         mailbox: Some(locaryn_agent_runtime::mailbox::MailboxHandle::new(
             mailbox::SessionMailbox::new(app.clone(), session_id),
+        )),
+        // Les morphs qui chargent leur propre modèle (image, voix, dictée)
+        // passent par l'arbitre de la carte.
+        gpu: Some(locaryn_agent_runtime::gpu::GpuArbiterHandle::new(
+            gpu_arbiter::DesktopGpuArbiter::new(app.clone()),
         )),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,

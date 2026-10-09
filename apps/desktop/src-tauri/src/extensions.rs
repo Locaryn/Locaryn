@@ -49,6 +49,10 @@ pub struct ExtensionRuntime {
     /// MCP server names this runtime registered. A reload retracts exactly
     /// these, so a disabled plugin's servers do not linger.
     pub mcp_names: Vec<String>,
+    /// Par serveur MCP (`<plugin>__<serveur>`) : ses outils qui chargent leur
+    /// propre modèle sur la carte (section `gpu` du manifeste).
+    pub gpu_tools:
+        HashMap<String, std::collections::BTreeMap<String, locaryn_extensions::manifest::GpuTool>>,
 }
 
 impl ExtensionRuntime {
@@ -131,6 +135,7 @@ pub async fn reload(core: &Core) -> Result<(), String> {
     };
 
     let mut desired: HashMap<String, McpServerEntry> = HashMap::new();
+    let mut gpu_tools = HashMap::new();
     for row in rows.iter().filter(|r| r.enabled) {
         let Some(p) = next.loaded.get(&row.id) else {
             continue;
@@ -164,6 +169,9 @@ pub async fn reload(core: &Core) -> Result<(), String> {
                 entry.env.insert("LOCARYN_PYTHON".to_string(), python);
             }
             entry.owner = Some(row.name.clone());
+            if !p.manifest.gpu.tools.is_empty() {
+                gpu_tools.insert(scoped.clone(), p.manifest.gpu.tools.clone());
+            }
             desired.insert(scoped, entry);
         }
     }
@@ -187,6 +195,7 @@ pub async fn reload(core: &Core) -> Result<(), String> {
             let _ = client.shutdown().await;
         }
     }
+    next.gpu_tools = gpu_tools;
     next.mcp_names = desired.keys().cloned().collect();
     next.mcp_names.sort();
 

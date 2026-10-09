@@ -5,9 +5,11 @@
 
 pub mod approval;
 pub mod approval_gate;
+pub mod arg_schema;
 pub mod context_window;
 pub mod embeddings;
 pub mod exec;
+pub mod gpu;
 pub mod host_tools;
 pub mod mailbox;
 pub mod reasoning;
@@ -119,6 +121,10 @@ pub struct AgentInput {
     /// maintenant »), relevés entre deux étapes. Absente : ils attendent la
     /// fin de la réponse.
     pub mailbox: Option<mailbox::MailboxHandle>,
+    /// L'arbitre de la carte graphique : les outils de morph qui chargent leur
+    /// propre modèle y passent (vérification, déchargement du modèle de
+    /// conversation, rechargement). Absent : ils partent tels quels.
+    pub gpu: Option<gpu::GpuArbiterHandle>,
     /// Alléger les outils offerts dès qu'ils pèsent dans la fenêtre (réglage
     /// « Alléger les outils », pour les petits modèles). Faux par défaut :
     /// le modèle reçoit tous les outils de ses connecteurs.

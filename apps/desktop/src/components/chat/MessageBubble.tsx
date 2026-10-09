@@ -33,6 +33,19 @@ export type MessageSpeed = {
   prompt: number;
 };
 
+/** Un média en cours de fabrication : sa place, ses proportions, l'étape. */
+export type MediaForge = {
+  callId: string;
+  /** `image`, `audio`, `video`. */
+  kind: string;
+  total: number;
+  width: number | null;
+  height: number | null;
+  etape: string | null;
+  /** Le rendu n'a pas abouti : ce qu'on en dit à la place des tuiles. */
+  failed: string | null;
+};
+
 type Props = {
   role: "user" | "assistant";
   text: string;
@@ -49,6 +62,11 @@ type Props = {
   speed?: MessageSpeed;
   /** Les fichiers joints qui ne sont pas des images (message de l'utilisateur). */
   attachments?: MessageAttachment[];
+  /** Un média en cours de création (assistant) : tuiles animées à sa place. */
+  forge?: MediaForge;
+  /** Les images de ce message viennent d'être créées : elles apparaissent
+   *  avec une animation au lieu de surgir. */
+  forged?: boolean;
 };
 
 /** Languages we can actually execute on the user's machine. */
@@ -92,6 +110,8 @@ export function MessageBubble({
   onRunCode,
   speed,
   attachments,
+  forge,
+  forged,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [lightbox, setLightbox] = useState<{ src: string; path?: string } | null>(null);
@@ -374,19 +394,55 @@ export function MessageBubble({
         // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown échappe tout le HTML source avant d'injecter ses propres balises (modèle de sûreté en tête de lib/markdown.ts). Rien de ce que produit le modèle n'atteint le DOM sous forme de balise.
         dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
       />
-      {images && images.length > 0 && (
-        <div className="locaryn-msg-images">
-          {images.map((src, i) => (
+      {((images && images.length > 0) || (forge && forge.kind !== "audio")) && (
+        <div
+          className={`locaryn-msg-images${forged ? " locaryn-msg-images--generated" : ""}`}
+          data-count={forge ? forge.total : images?.length}
+        >
+          {images?.map((src, i) => (
             <img
               key={src}
               src={src}
               alt="génération"
-              className="locaryn-msg-image locaryn-msg-image-clickable"
+              className={`locaryn-msg-image locaryn-msg-image-clickable${forged ? " locaryn-msg-image-pop" : ""}`}
+              style={
+                forge?.width && forge.height
+                  ? { aspectRatio: `${forge.width} / ${forge.height}` }
+                  : undefined
+              }
               onClick={() => setLightbox({ src, path: imagePaths?.[i] })}
             />
           ))}
+          {forge &&
+            !forge.failed &&
+            Array.from({ length: Math.max(0, forge.total - (images?.length ?? 0)) }, (_, i) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: une tuile n'a pas d'autre identité que sa place, et elle disparaît quand son image arrive.
+                key={`forge-${i}`}
+                className="locaryn-forge"
+                role="img"
+                aria-label="Image en cours de création"
+                style={{ aspectRatio: `${forge.width ?? 1} / ${forge.height ?? 1}` }}
+              >
+                <span className="locaryn-forge-dots" />
+                <span className="locaryn-forge-glow" />
+              </div>
+            ))}
         </div>
       )}
+      {forge?.kind === "audio" && !forge.failed && (
+        <div className="locaryn-forge-audio" role="img" aria-label="Voix en cours de synthèse">
+          {[0, 1, 2, 3, 4, 5, 6].map((b) => (
+            <span key={b} style={{ animationDelay: `${b * 110}ms` }} />
+          ))}
+        </div>
+      )}
+      {forge &&
+        (forge.failed ? (
+          <div className="locaryn-forge-caption is-failed">{forge.failed}</div>
+        ) : (
+          forge.etape && <div className="locaryn-forge-caption">{forge.etape}</div>
+        ))}
       {speed && speed.generation > 0 && (
         <div
           className="locaryn-msg-speed"

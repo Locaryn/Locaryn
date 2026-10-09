@@ -304,16 +304,38 @@ fn tool_error_text(result: &serde_json::Value) -> String {
 /// transport layer independent from image/audio/video plugins while still
 /// allowing every client to render the produced file.
 fn artifact_from_mcp_value(value: &serde_json::Value) -> Option<ToolArtifact> {
+    artifacts_from_mcp_value(value).into_iter().next()
+}
+
+/// Tous les fichiers qu'un outil MCP déclare, dans l'ordre. `generate_image`
+/// avec `variants: 4` en rend quatre : ne lire que le premier montrait une
+/// image et laissait les trois autres sur le disque.
+pub fn artifacts_from_mcp_value(value: &serde_json::Value) -> Vec<ToolArtifact> {
     let payload = value
         .as_str()
         .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
         .unwrap_or_else(|| value.clone());
-    let candidate = payload
-        .get("artifacts")
-        .and_then(|items| items.as_array())
-        .and_then(|items| items.first())
-        .or_else(|| payload.get("artifact"));
-    let object = candidate?.as_object()?;
+    let candidats: Vec<&serde_json::Value> =
+        match payload.get("artifacts").and_then(|i| i.as_array()) {
+            Some(items) => items.iter().collect(),
+            None => payload.get("artifact").into_iter().collect(),
+        };
+    candidats
+        .into_iter()
+        .filter_map(artifact_from_object)
+        .collect()
+}
+
+/// Les fichiers déclarés dans la sortie texte d'un appel MCP (le JSON que
+/// `dispatch_mcp_tool` rend au modèle).
+pub fn artifacts_in_output(output: &str) -> Vec<ToolArtifact> {
+    serde_json::from_str::<serde_json::Value>(output)
+        .map(|v| artifacts_from_mcp_value(&v))
+        .unwrap_or_default()
+}
+
+fn artifact_from_object(candidate: &serde_json::Value) -> Option<ToolArtifact> {
+    let object = candidate.as_object()?;
     let kind = object.get("kind")?.as_str()?;
     let path = object.get("path")?.as_str()?;
     let kind = match kind {
@@ -333,6 +355,17 @@ fn artifact_from_mcp_value(value: &serde_json::Value) -> Option<ToolArtifact> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn toutes_les_variantes_d_un_rendu_sont_declarees() {
+        let sortie = serde_json::to_string_pretty(&serde_json::Value::String(
+            r#"{"paths":["a.png","b.png"],"artifacts":[{"kind":"image_png","path":"a.png"},{"kind":"image_png","path":"b.png"}]}"#.into(),
+        ))
+        .unwrap();
+        let arts = super::artifacts_in_output(&sortie);
+        assert_eq!(arts.len(), 2);
+        assert_eq!(arts[1].path, "b.png");
+    }
+
     #[test]
     fn les_outils_de_l_interface_sont_reserves() {
         assert!(super::is_ui_only_tool("ui_set_access"));

@@ -87,6 +87,17 @@ pub enum StreamEvent {
         /// Jetons écrits par seconde pendant la génération.
         generation_tokens_per_sec: f32,
     },
+    /// Un outil va produire un média (image, audio, vidéo) : l'interface
+    /// réserve sa place et montre qu'il se fabrique, avant que le fichier
+    /// n'arrive par `Artifact`.
+    MediaPending {
+        call_id: String,
+        /// `image`, `audio`, `video`.
+        kind: String,
+        count: u32,
+        width: Option<u32>,
+        height: Option<u32>,
+    },
     MessageEnd {
         message_id: String,
         tokens_in: u64,
@@ -215,6 +226,7 @@ pub fn sse_event_tag(event: &StreamEvent) -> &'static str {
         StreamEvent::ProviderChanged { .. } => "provider.changed",
         StreamEvent::Log { .. } => "log",
         StreamEvent::Timings { .. } => "timings",
+        StreamEvent::MediaPending { .. } => "media.pending",
         StreamEvent::MessageEnd { .. } => "message.end",
     }
 }

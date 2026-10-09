@@ -536,6 +536,26 @@ pub async fn run_openai_tool_loop(
             let resp = match pending_resp.take() {
                 Some(r) => Some(r),
                 None => loop {
+                    // Un morph a pu décharger le modèle de conversation pour
+                    // travailler : il revient avant qu'on lui parle.
+                    if let Some(arbitre) = &input.gpu {
+                        if let Err(e) = arbitre
+                            .0
+                            .restore(&crate::gpu::Annonce::dans_le_journal(&tx))
+                            .await
+                        {
+                            let _ = tx
+                                .send(StreamEvent::Log {
+                                    level: LogLevel::Warn,
+                                    msg: format!(
+                                        "Le modèle de conversation n'a pas pu être rechargé : {e}"
+                                    ),
+                                    source: "gpu".into(),
+                                })
+                                .await;
+                            break None;
+                        }
+                    }
                     let budget_tour = contexte_serveur.map(|c| {
                         crate::context_window::budget((c as f64 / echelle) as usize, outils_estimes)
                     });
@@ -741,6 +761,7 @@ pub async fn run_openai_tool_loop(
                         question: question.as_ref(),
                         host: host_tools.as_ref(),
                         trust: input.trust_source.as_ref(),
+                        gpu: input.gpu.as_ref(),
                     },
                 )
                 .await
@@ -774,6 +795,18 @@ pub async fn run_openai_tool_loop(
                         source: "openai_tool_loop".into(),
                     })
                     .await;
+            }
+        }
+
+        // La tâche s'arrête sur un outil qui avait libéré la carte : le modèle
+        // de conversation revient quand même, prêt pour le message suivant.
+        if let Some(arbitre) = &input.gpu {
+            if let Err(e) = arbitre
+                .0
+                .restore(&crate::gpu::Annonce::dans_le_journal(&tx))
+                .await
+            {
+                tracing::warn!(error = %e, "modèle de conversation non rechargé en fin de tâche");
             }
         }
 

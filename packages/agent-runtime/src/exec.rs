@@ -31,6 +31,8 @@ pub struct ToolDispatchContext<'a> {
     pub host: Option<&'a HostToolsHandle>,
     /// Où relire la permission pendant qu'une demande attend une réponse.
     pub trust: Option<&'a crate::trust_source::TrustSourceHandle>,
+    /// L'arbitre de la carte pour les outils qui chargent leur propre modèle.
+    pub gpu: Option<&'a crate::gpu::GpuArbiterHandle>,
 }
 
 /// Exécute un appel d'outil du modèle, avec le gating d'approbation, et
@@ -55,6 +57,7 @@ pub async fn execute_tool_call(
         question,
         host,
         trust: dispatch_trust,
+        gpu,
     } = *dispatch;
 
     // L'événement ToolCall part d'abord : c'est lui qui fait apparaître la
@@ -230,13 +233,67 @@ pub async fn execute_tool_call(
     } else {
         // Un nom court appartient à une extension dès lors que le socle ne
         // le sert pas lui-même : c'est sous ce nom-là que le modèle appelle.
+        let mut par_mcp = false;
+        // Un outil qui charge son propre modèle passe d'abord par l'arbitre :
+        // l'appel est vérifié en entier tant que le modèle de conversation est
+        // là pour se corriger, puis la carte est libérée s'il le faut.
+        let mut args = args;
+        if let Some(arbitre) = gpu.filter(|_| mcp.is_some()) {
+            if arbitre.0.claims(tool).await.is_some() {
+                let annonce = crate::gpu::Annonce::pour_l_outil(tx, call_id);
+                match arbitre
+                    .0
+                    .prepare(tool, &args, &ctx.project_path, &annonce)
+                    .await
+                {
+                    Ok(prete) => {
+                        if let Some(m) = prete.media {
+                            if tx
+                                .send(StreamEvent::MediaPending {
+                                    call_id: call_id.to_string(),
+                                    kind: m.kind,
+                                    count: m.count,
+                                    width: m.width,
+                                    height: m.height,
+                                })
+                                .await
+                                .is_err()
+                            {
+                                return None;
+                            }
+                        }
+                        args = prete.args;
+                    }
+                    Err(motif) => {
+                        let sortie = format!(
+                            "ERROR: appel non envoyé, rien n'a été chargé : {motif}. Corrigez l'appel et relancez-le."
+                        );
+                        if tx
+                            .send(StreamEvent::ToolResult {
+                                call_id: call_id.to_string(),
+                                ok: false,
+                                output: sortie.clone(),
+                            })
+                            .await
+                            .is_err()
+                        {
+                            return None;
+                        }
+                        return Some(sortie);
+                    }
+                }
+            }
+        }
         let result = if let Some(h) = host.filter(|h| h.serves(tool)) {
             h.0.call(tool, &args).await
         } else if tool.starts_with(crate::mcp_tools::MCP_PREFIX)
             || !crate::tools::is_native_tool(tool)
         {
             match mcp {
-                Some(mcp) => crate::mcp_tools::dispatch_mcp_tool(mcp, tool, &args).await,
+                Some(mcp) => {
+                    par_mcp = true;
+                    crate::mcp_tools::dispatch_mcp_tool(mcp, tool, &args).await
+                }
                 None => crate::tools::ToolResult {
                     ok: false,
                     output: format!(
@@ -252,7 +309,15 @@ pub async fn execute_tool_call(
         // événement, une image générée restait un chemin dans une phrase :
         // le fichier existait sur le serveur, et aucun client ne pouvait le
         // montrer.
-        if let Some(art) = &result.artifact {
+        let mut fichiers = if par_mcp && result.ok {
+            crate::mcp_tools::artifacts_in_output(&result.output)
+        } else {
+            Vec::new()
+        };
+        if fichiers.is_empty() {
+            fichiers.extend(result.artifact.clone());
+        }
+        for art in &fichiers {
             if tx
                 .send(StreamEvent::Artifact {
                     artifact_id: uuid::Uuid::new_v4().to_string(),

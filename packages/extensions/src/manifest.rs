@@ -96,6 +96,29 @@ pub struct PluginManifest {
     /// installation), et c'est la copie locale qui répond sur ce poste.
     #[serde(default, alias = "deviceCompanion")]
     pub device_companion: bool,
+    /// Les outils qui chargent **leur propre modèle** sur la carte graphique
+    /// (diffusion, synthèse vocale, transcription). L'hôte les arbitre : il
+    /// vérifie l'appel à blanc (`__locaryn_preflight`), libère la carte du
+    /// modèle de conversation si elle n'a pas la place, puis le recharge.
+    #[serde(default)]
+    pub gpu: GpuManifest,
+}
+
+/// Section `gpu` d'un manifeste.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GpuManifest {
+    /// Par nom d'outil MCP : ce qu'il produit.
+    #[serde(default)]
+    pub tools: std::collections::BTreeMap<String, GpuTool>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GpuTool {
+    /// `image`, `audio`, `video` — l'interface réserve la place du résultat.
+    /// Absent : l'outil charge un modèle mais ne rend pas de média (une
+    /// transcription).
+    #[serde(default)]
+    pub produces: Option<String>,
 }
 
 /// Section `cloud_provider` d'un manifeste : un catalogue de modèles distants.

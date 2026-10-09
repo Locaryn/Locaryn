@@ -1236,6 +1236,15 @@ export type StreamEvent =
   | { type: "tool_result"; call_id: string; ok: boolean; output: string }
   | { type: "artifact"; artifact_id: string; kind: string; path: string }
   | { type: "task_update"; task_id: string; status: string; progress: number }
+  /** Un outil va produire un média : sa place est réservée dans le fil. */
+  | {
+      type: "media_pending";
+      call_id: string;
+      kind: string;
+      count: number;
+      width: number | null;
+      height: number | null;
+    }
   | { type: "preview_update"; artifact_id: string; url: string }
   | {
       type: "provider_changed";
@@ -4676,6 +4685,49 @@ Contenu de démonstration.
           documents.length === 1 ? "" : "s"
         } : ${documents.map((d) => d.name).join(", ")}. Le contenu arrive sous enveloppe, comme donnée à lire.\n\n`,
       });
+    }
+    // Une demande d'image : la place réservée, les étapes, puis l'arrivée —
+    // de quoi régler l'animation sans moteur de diffusion.
+    if (/image|icône|icone|logo|illustration/i.test(content)) {
+      onEvent({
+        type: "tool_call",
+        call_id: "img1",
+        tool: "generate_image",
+        args: { prompt: "a lighthouse at dusk, watercolor", variants: 2 },
+      });
+      onEvent({
+        type: "task_update",
+        task_id: "img1",
+        status:
+          "Libération de la mémoire vidéo : le modèle de conversation se met de côté (2,1 Go demandés, 1,4 Go libres).",
+        progress: 0,
+      });
+      onEvent({
+        type: "media_pending",
+        call_id: "img1",
+        kind: "image",
+        count: 2,
+        width: 512,
+        height: 640,
+      });
+      await sleep(1500);
+      onEvent({
+        type: "task_update",
+        task_id: "img1",
+        status: "Génération en cours — sd15-q4_0.gguf, 512×640, 20 étape(s), 2 images…",
+        progress: 0,
+      });
+      for (const teinte of ["#5fa37e", "#d9b37e"]) {
+        await sleep(1800);
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="640"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${teinte}"/><stop offset="1" stop-color="#1d2022"/></linearGradient></defs><rect width="512" height="640" fill="url(#g)"/><circle cx="256" cy="260" r="70" fill="#f2f1ed" opacity="0.8"/></svg>`;
+        onEvent({
+          type: "artifact",
+          artifact_id: `demo-${teinte}`,
+          kind: "image_png",
+          path: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+        });
+      }
+      onEvent({ type: "tool_result", call_id: "img1", ok: true, output: "2 images" });
     }
     await sleep(350);
     onEvent({

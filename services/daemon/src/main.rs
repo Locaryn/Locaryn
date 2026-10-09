@@ -1317,6 +1317,7 @@ async fn send_message(
         host_tools: None,
         trust_source: None,
         mailbox: None,
+        gpu: None,
         trim_tools: locaryn_config::load(None)
             .map(|c| c.assistance.trim_tools)
             .unwrap_or(false),
