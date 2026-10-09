@@ -2353,11 +2353,13 @@ dialog:where([open]) {
   }
 }
 
-.locaryn-approval-bandeau {
+.locaryn-approval.locaryn-approval-bandeau {
+  /* À la largeur du composeur, comme la file : un bandeau plus étroit, centré
+     au-dessus du champ, paraissait flotter. */
   width: 100%;
-  max-width: 100%;
+  max-width: var(--measure);
   max-height: min(44vh, 380px);
-  margin: 0 0 var(--space-2);
+  margin: 0 auto var(--space-2);
   border-radius: var(--radius-md);
   /* Pas d'ombre portee de pop-up : ce bandeau appartient a la page. */
   box-shadow: none;
@@ -6209,54 +6211,229 @@ pre.md-code {
 /* ═══════════════════════════════════════════════════════════
    MESSAGE QUEUE (COMPOSER)
    ═══════════════════════════════════════════════════════════ */
-.locaryn-queue-container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-2);
-  background: var(--accent-fill);
-  border: 1px dashed rgba(var(--accent-rgb), 0.3);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+/* La file vit au-dessus du composeur, à sa largeur exacte : elle en est le
+   prolongement, pas une bannière de la conversation. */
+.locaryn-queue {
+  max-width: var(--measure);
+  margin: 0 auto var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+  animation: locaryn-queue-in 180ms var(--ease-out);
+}
+@keyframes locaryn-queue-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
-.locaryn-queue-title {
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.locaryn-queue-item {
+.locaryn-queue-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  padding: 4px 8px;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-2) 0 var(--space-3);
   font-size: var(--text-xs);
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+}
+
+.locaryn-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Trois messages visibles, les suivants défilent : la file ne repousse
+     jamais la conversation hors de l'écran. */
+  max-height: min(220px, 32vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.locaryn-queue-list[hidden] {
+  display: none;
+}
+
+.locaryn-queue-fold {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.locaryn-queue-fold:hover {
+  color: var(--text-dim);
+}
+.locaryn-queue-fold:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.locaryn-queue-fold > svg {
+  flex: none;
+  transition: transform 160ms var(--ease-out);
+}
+.locaryn-queue-fold[aria-expanded="false"] > svg {
+  transform: rotate(-90deg);
+}
+/* Réduite, la file montre encore ce qui partira en premier. */
+.locaryn-queue-peek {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.locaryn-queue-item {
+  /* Sans cela, la liste plafonnée écrasait les messages les uns sur les
+     autres au lieu de défiler. */
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background-color 120ms ease;
+}
+.locaryn-queue-item:hover {
+  background: var(--surface-2);
+}
+
+.locaryn-queue-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .locaryn-queue-text {
-  color: var(--text-dim);
+  font-size: var(--text-sm);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.locaryn-queue-remove {
+.locaryn-queue-item--remis .locaryn-queue-text {
+  color: var(--text-dim);
+}
+/* Un message long tient sur une ligne ; un clic le déplie en entier, avec
+   son propre défilement au-delà de quelques lignes. */
+.locaryn-queue-text--toggle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
   background: none;
-  border: none;
-  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
   cursor: pointer;
-  padding: 0 4px;
-  font-size: 12px;
+}
+.locaryn-queue-text--toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.locaryn-queue-item.is-open {
+  align-items: flex-start;
+}
+.locaryn-queue-item.is-open .locaryn-queue-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 7.5em;
+  overflow-y: auto;
+  line-height: 1.5;
 }
 
-.locaryn-queue-remove:hover {
+.locaryn-queue-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--accent);
+}
+.locaryn-queue-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: locaryn-queue-pulse 1.4s ease-in-out infinite;
+}
+@keyframes locaryn-queue-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.locaryn-queue-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 80ms ease;
+}
+.locaryn-queue-btn:hover:not(:disabled) {
+  background: var(--accent-fill);
+  color: var(--accent);
+}
+.locaryn-queue-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.locaryn-queue-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.locaryn-queue-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.locaryn-queue-btn--now {
+  border-color: var(--border);
+}
+.locaryn-queue-btn--icon {
+  width: 32px;
+  justify-content: center;
+  padding: 0;
+}
+.locaryn-queue-btn--icon:hover:not(:disabled) {
+  background: rgba(var(--danger-rgb), 0.08);
   color: var(--danger);
+}
+
+/* Sous un message remis en cours de tâche : la preuve que le modèle l'a lu. */
+.locaryn-msg-lu {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  max-width: var(--measure);
+  margin: 2px auto 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
 }
 
 /* Menu button styling in topbar */
@@ -12037,8 +12214,46 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
   overflow-y: auto;
+  /* La même surface que le composeur juste dessous : un seul ensemble, pas
+     une alerte posée par-dessus. */
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+/* La pastille dit le niveau, sans colorer tout le bandeau. */
+.locaryn-approval-compact .locaryn-approval-pulse {
+  width: 8px;
+  height: 8px;
+  align-self: flex-start;
+  margin-top: 6px;
+  background: var(--accent);
+}
+.locaryn-approval-compact.locaryn-approval-medium .locaryn-approval-pulse,
+.locaryn-approval-compact.locaryn-approval-high .locaryn-approval-pulse {
+  background: var(--warn);
+}
+.locaryn-approval-compact.locaryn-approval-critical .locaryn-approval-pulse {
+  background: var(--danger);
+}
+.locaryn-approval-level {
+  font-size: var(--text-xs);
+  line-height: 18px;
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+}
+.locaryn-approval-high .locaryn-approval-level,
+.locaryn-approval-medium .locaryn-approval-level {
+  color: var(--warn);
+  background: rgba(var(--warn-rgb), 0.12);
+}
+.locaryn-approval-critical .locaryn-approval-level,
+.locaryn-approval-level.is-remote {
+  color: var(--danger);
+  background: rgba(var(--danger-rgb), 0.12);
 }
 .locaryn-approval-line {
   display: flex;
@@ -12066,11 +12281,15 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 .locaryn-approval-compact .locaryn-approval-tool {
   font-size: var(--text-xs);
-  padding: 1px var(--space-2);
+  padding: 0 6px;
+  margin-right: var(--space-2);
   max-width: 100%;
+  vertical-align: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  background: var(--surface-2);
+  border-color: transparent;
 }
 .locaryn-approval-compact .locaryn-approval-reason {
   font-size: var(--text-sm);
@@ -12088,8 +12307,12 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-approval-compact .locaryn-approval-actions {
   flex: none;
 }
+.locaryn-approval-compact .locaryn-approval-actions {
+  display: flex;
+  gap: var(--space-2);
+}
 .locaryn-approval-compact .locaryn-approval-actions button {
-  min-height: 40px;
+  min-height: 36px;
 }
 .locaryn-approval-compact .locaryn-approval-allow {
   min-width: 0;
@@ -12099,6 +12322,8 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
+  /* Alignés sur le texte, pas sur la pastille. */
+  margin-left: calc(8px + var(--space-3) - var(--space-2));
 }
 .locaryn-approval-toggle {
   align-self: flex-start;

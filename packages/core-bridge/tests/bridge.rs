@@ -86,6 +86,7 @@ fn input(session: uuid::Uuid, message: &str) -> AgentInput {
         question: None,
         host_tools: None,
         trust_source: None,
+        mailbox: None,
         trim_tools: false,
         bearer_token: None,
         native_chat_api: false,

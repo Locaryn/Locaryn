@@ -26,11 +26,13 @@ type Props = {
   hardBlocked?: boolean;
 };
 
+/** Le niveau, en étiquette à côté du titre. « Exécute une commande » pour
+ *  tout risque élevé annonçait une commande devant un simple `write_file`. */
 const RISK_LABEL: Record<RiskLevel, string> = {
-  low: "Lecture seule",
-  medium: "Modifie le projet",
-  high: "Exécute une commande",
-  critical: "Distant / Critique",
+  low: "Lecture",
+  medium: "Modification",
+  high: "Risque élevé",
+  critical: "Critique",
 };
 
 const RISK_ICON: Record<RiskLevel, string> = {
@@ -139,9 +141,8 @@ export function ToolApprovalModal({
   // Une installation porte le motif que lui donne la table d'approbation
   // (`approval_decision`) : l'annoncer « Modifie le projet » trompait sur ce
   // qui allait arriver.
-  const titre = approval.reason.startsWith("Installation")
-    ? "Installation"
-    : RISK_LABEL[approval.risk];
+  const installation = approval.reason.startsWith("Installation");
+  const titre = installation ? "Installation à autoriser" : "Autorisation demandée";
   const isRemote = approval.is_remote;
   const targetNeedsTyping = isCritical && confirmTargetLabel;
   const confirmOk =
@@ -201,9 +202,13 @@ export function ToolApprovalModal({
             <h2 id="locaryn-approval-title" className="locaryn-approval-banner-title">
               {titre}
             </h2>
-            <code className="locaryn-approval-tool">{approval.tool}</code>
+            {!installation && (
+              <span className="locaryn-approval-level">{RISK_LABEL[approval.risk]}</span>
+            )}
+            {isRemote && <span className="locaryn-approval-level is-remote">Distant</span>}
           </div>
           <p className={`locaryn-approval-reason${expanded ? " is-open" : ""}`}>
+            <code className="locaryn-approval-tool">{approval.tool}</code>
             {approval.reason}
           </p>
         </div>

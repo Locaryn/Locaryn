@@ -1773,6 +1773,11 @@ export interface CoreApi {
   setTaskbarProgress(status: TaskbarStatus, progress?: number): Promise<void>;
   /** Arrete la generation en cours de la session (sans decharger le modele). */
   stopGeneration(sessionId: string): Promise<void>;
+  /** « Envoyer maintenant » : remet un message au modèle qui travaille ; il
+   *  le lit à sa prochaine étape (événement `chat-mail-read`). */
+  chatMailDeposit(sessionId: string, id: string, text: string): Promise<void>;
+  /** Reprend un message remis et pas encore lu ; `false` s'il l'a été. */
+  chatMailWithdraw(sessionId: string, id: string): Promise<boolean>;
   runTerminal(
     command: string,
     cwd: string | null,
@@ -2253,6 +2258,10 @@ const tauriCore: CoreApi = {
   stopGeneration(sessionId) {
     return invoke<void>("stop_generation", { sessionId });
   },
+
+  chatMailDeposit: (sessionId, id, text) =>
+    invoke<void>("chat_mail_deposit", { sessionId, id, text }),
+  chatMailWithdraw: (sessionId, id) => invoke<boolean>("chat_mail_withdraw", { sessionId, id }),
 
   runTerminal(command, cwd, onOutput) {
     const chan = new Channel<TerminalEvent>();
@@ -4738,6 +4747,14 @@ Contenu de démonstration.
   stopGeneration() {
     demoStreaming.current = false;
     return Promise.resolve();
+  },
+
+  chatMailDeposit() {
+    return Promise.resolve();
+  },
+
+  chatMailWithdraw() {
+    return Promise.resolve(true);
   },
 
   async runTerminal(command, _cwd, onOutput) {

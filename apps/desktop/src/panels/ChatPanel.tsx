@@ -1,4 +1,5 @@
 import { Icon, LoProgress, isIconName } from "@locaryn/ui-core";
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AttentionStrip } from "../components/AttentionStrip";
 import { ModalShell } from "../components/ModalShell";
@@ -35,6 +36,7 @@ import {
   type ToolApprovalDecision,
   type ToolApprovalRequest,
   core,
+  isTauri,
   reasoningPayload,
 } from "../lib/core";
 import { pickSaveFile } from "../lib/dialog";
@@ -66,6 +68,8 @@ type ChatItem =
       speed?: MessageSpeed;
       /** Les fichiers joints qui ne sont pas des images (message de l'utilisateur). */
       attachments?: MessageAttachment[];
+      /** Remis par « Envoyer maintenant » et lu par le modèle pendant sa tâche. */
+      luEnCours?: boolean;
     }
   | {
       id: string;
@@ -104,7 +108,21 @@ type Attachment = {
   /** Audio et vidéo : adresse locale pour les lire dans la conversation. */
   objectUrl?: string;
 };
-type QueuedMessage = { id: string; text: string; attachments: Attachment[] };
+/**
+ * Un message écrit pendant que le modèle travaille.
+ *
+ * Il part tout seul, dans l'ordre, à la fin de la réponse — ou tout de suite
+ * par « Envoyer maintenant », qui le remet au modèle entre deux étapes de sa
+ * tâche (`remis` jusqu'à ce qu'il l'ait lu). Il appartient à sa conversation :
+ * changer de conversation ne l'envoie pas ailleurs.
+ */
+type QueuedMessage = {
+  id: string;
+  sessionId: string | null;
+  text: string;
+  attachments: Attachment[];
+  remis?: boolean;
+};
 
 /** Identités locales pour les clés React. Rien de ce qui s'affiche dans le fil
  *  n'a d'identifiant propre avant d'être écrit en base — jetons diffusés,
@@ -442,6 +460,15 @@ export function ChatPanel({
   const [jsonMode, setJsonMode] = useState<"auto" | "on" | "off">("auto");
   const [reasoning, setReasoning] = useState<ReasoningLevel>("auto");
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
+  /** Après un Stop, la file attend : rien ne repart tant que la personne ne
+   *  l'a pas relancée (en envoyant, ou par « Reprendre »). */
+  const [filePause, setFilePause] = useState(false);
+  /** File réduite à son en-tête : cinq messages en attente ne doivent pas
+   *  repousser la conversation hors de l'écran. */
+  const [fileReduite, setFileReduite] = useState(false);
+  /** Le message de la file affiché en entier (les autres tiennent sur une
+   *  ligne). */
+  const [fileDeplie, setFileDeplie] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   /**
    * La conversation est en train d'être créée pour le premier message.
@@ -549,6 +576,52 @@ export function ChatPanel({
   const [abilities, setAbilities] = useState<ModelAbilities | null>(null);
   const queueRef = useRef<QueuedMessage[]>([]);
   queueRef.current = messageQueue;
+  const sessionRef = useRef<string | null>(sessionId);
+  sessionRef.current = sessionId;
+  const fileVisible = messageQueue.filter((m) => m.sessionId === sessionId);
+
+  // La file se vide d'elle-même, dans l'ordre, dès que le modèle est libre.
+  // Un effet plutôt qu'un appel à la fin de `send` : celui-ci relisait un
+  // `streaming` figé à `true` et ressortait sans rien envoyer — les messages
+  // en file ne partaient jamais.
+  useEffect(() => {
+    if (streaming || stopping || creating || filePause) return;
+    const prochain = messageQueue.find((m) => m.sessionId === sessionId && !m.remis);
+    if (!prochain) return;
+    setMessageQueue((prev) => prev.filter((m) => m.id !== prochain.id));
+    void send(prochain.text, prochain.attachments, true);
+  }, [streaming, stopping, creating, filePause, messageQueue, sessionId]);
+
+  // Le modèle a lu un message remis : il entre dans la conversation, à
+  // l'endroit où le modèle l'a reçu.
+  useEffect(() => {
+    if (!isTauri) return;
+    let fin: (() => void) | null = null;
+    let vivant = true;
+    void listen<{ sessionId: string; ids: string[] }>("chat-mail-read", (ev) => {
+      const { sessionId: sid, ids } = ev.payload;
+      const lus = queueRef.current.filter((m) => ids.includes(m.id));
+      setMessageQueue((prev) => prev.filter((m) => !ids.includes(m.id)));
+      if (sid !== sessionRef.current || lus.length === 0) return;
+      setItems((prev) => [
+        ...prev,
+        ...lus.map((m) => ({
+          id: nextId("msg"),
+          kind: "msg" as const,
+          role: "user" as const,
+          text: m.text,
+          luEnCours: true,
+        })),
+      ]);
+    }).then((un) => {
+      if (vivant) fin = un;
+      else un();
+    });
+    return () => {
+      vivant = false;
+      fin?.();
+    };
+  }, []);
   /** Session we just created from the home screen: skip the DB reload once so
    *  the optimistic first message isn't wiped by an empty fetch. */
   const skipLoadRef = useRef<string | null>(null);
@@ -1072,7 +1145,7 @@ export function ChatPanel({
     if (gardees.length) setAttachments((prev) => [...prev, ...gardees]);
   }
 
-  async function send(textOverride?: string, attachOverride?: Attachment[]) {
+  async function send(textOverride?: string, attachOverride?: Attachment[], depuisFile = false) {
     // Envoyer, c'est vouloir lire la réponse : le fil se rattache au bas.
     followRef.current = true;
     setDetached(false);
@@ -1159,14 +1232,18 @@ export function ChatPanel({
       skipLoadRef.current = created.id;
     }
 
-    if (streaming) {
-      if (stopping) return;
+    // Le modèle travaille, ou des messages attendent déjà : celui-ci prend
+    // sa place derrière eux. Un nouveau message ne double jamais la file —
+    // l'envoyer la relance, dans l'ordre où tout a été écrit.
+    const enAttente = queueRef.current.some((m) => m.sessionId === sid);
+    if (streaming || (!depuisFile && enAttente)) {
+      mettreEnFile(sid, brut, imgs);
       if (!textOverride) {
-        setMessageQueue((prev) => [...prev, { id: nextId("q"), text, attachments: [...imgs] }]);
         setInput("");
         setAttachments([]);
         if (inputRef.current) inputRef.current.style.height = "auto";
       }
+      if (!streaming) setFilePause(false);
       return;
     }
 
@@ -1321,20 +1398,69 @@ export function ChatPanel({
       }
 
       // Un Stop explicite laisse la main a l'utilisateur : la file
-      // attend son prochain envoi au lieu de demarrer toute seule.
+      // attend au lieu de demarrer toute seule. Sinon elle part d'elle-meme
+      // (voir l'effet qui la vide).
       if (stopRequestedRef.current) {
         stopRequestedRef.current = false;
-      } else {
-        const currentQ = queueRef.current;
-        if (currentQ.length > 0) {
-          const nextMsg = currentQ[0];
-          setMessageQueue((prev) => prev.slice(1));
-          setTimeout(() => {
-            send(nextMsg.text, nextMsg.attachments);
-          }, 50);
-        }
+        if (queueRef.current.some((m) => m.sessionId === sid)) setFilePause(true);
+      }
+      void reprendreLesRemis(sid);
+    }
+  }
+
+  function mettreEnFile(sid: string | null, text: string, pieces: Attachment[]) {
+    setMessageQueue((prev) => [
+      ...prev,
+      { id: nextId("q"), sessionId: sid, text, attachments: [...pieces] },
+    ]);
+  }
+
+  /** La réponse est finie et certains messages remis n'ont pas été lus (le
+   *  modèle n'a plus fait d'étape) : ils redeviennent des messages en file,
+   *  qui partent alors normalement. */
+  async function reprendreLesRemis(sid: string | null) {
+    if (!sid) return;
+    const remis = queueRef.current.filter((m) => m.remis && m.sessionId === sid);
+    for (const m of remis) {
+      const repris = await core.chatMailWithdraw(sid, m.id).catch((e) => {
+        console.warn("[Chat] message remis introuvable :", e);
+        return true;
+      });
+      if (repris) {
+        setMessageQueue((prev) => prev.map((q) => (q.id === m.id ? { ...q, remis: false } : q)));
       }
     }
+  }
+
+  /** « Envoyer maintenant ». Pendant une tâche, le message est remis au
+   *  modèle, qui le lit à sa prochaine étape ; sinon il passe en tête de la
+   *  file et part tout de suite. */
+  async function envoyerMaintenant(qm: QueuedMessage) {
+    if (!streaming) {
+      setMessageQueue((prev) => [qm, ...prev.filter((m) => m.id !== qm.id)]);
+      setFilePause(false);
+      return;
+    }
+    if (!qm.sessionId || qm.attachments.length > 0 || !qm.text.trim()) return;
+    setMessageQueue((prev) => prev.map((m) => (m.id === qm.id ? { ...m, remis: true } : m)));
+    try {
+      await core.chatMailDeposit(qm.sessionId, qm.id, qm.text);
+    } catch (e) {
+      console.warn("[Chat] remise impossible :", e);
+      setMessageQueue((prev) => prev.map((m) => (m.id === qm.id ? { ...m, remis: false } : m)));
+    }
+  }
+
+  async function retirerDeLaFile(qm: QueuedMessage) {
+    if (qm.remis && qm.sessionId) {
+      const repris = await core.chatMailWithdraw(qm.sessionId, qm.id).catch((e) => {
+        console.warn("[Chat] reprise impossible :", e);
+        return false;
+      });
+      // Déjà lu : il est dans la conversation, l'événement de lecture le retire.
+      if (!repris) return;
+    }
+    setMessageQueue((prev) => prev.filter((m) => m.id !== qm.id));
   }
 
   /** Appui long sur la jauge : compresser à la main avant une longue tâche.
@@ -1392,16 +1518,14 @@ export function ChatPanel({
     }
   }
 
-  function removeQueuedMessage(index: number) {
-    setMessageQueue((prev) => prev.filter((_, i) => i !== index));
-  }
-
   /** Stop coupe la generation sans decharger le modele : la reponse
    *  partielle est conservee, la file attend, on peut retaper derriere. */
   async function stopGeneration() {
     if (!sessionId || stopping) return;
     setStopping(true);
     stopRequestedRef.current = true;
+    // Arrêté : la file attend, même ce qui allait être lu.
+    if (queueRef.current.some((m) => m.sessionId === sessionId)) setFilePause(true);
     try {
       await core.stopGeneration(sessionId);
     } catch {
@@ -1907,6 +2031,12 @@ export function ChatPanel({
                       onEdit={editLastUserMessage}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}
                     />
+                    {it.luEnCours && (
+                      <div className="locaryn-msg-lu">
+                        <Icon name="check" size={12} />
+                        Lu pendant la tâche
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -1993,26 +2123,6 @@ export function ChatPanel({
       </div>
 
       <div className="locaryn-composer">
-        {/* Message queue visual display */}
-        {messageQueue.length > 0 && (
-          <div className="locaryn-queue-container">
-            <div className="locaryn-queue-title">File d'attente ({messageQueue.length})</div>
-            {messageQueue.map((qm, i) => (
-              <div key={qm.id} className="locaryn-queue-item">
-                <span className="locaryn-queue-text">{qm.text || "(Image seule)"}</span>
-                <button
-                  type="button"
-                  className="locaryn-queue-remove"
-                  onClick={() => removeQueuedMessage(i)}
-                  title="Retirer de la file d'attente"
-                >
-                  <Icon name="close" size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* « @ » : désigner un connecteur ou une extension au modèle */}
         {mention && mention.items.length > 0 && (
           <div
@@ -2170,6 +2280,107 @@ export function ChatPanel({
             });
           }}
         />
+
+        {/* La file, collée au composeur et à sa largeur : ce qui partira
+            ensuite, juste au-dessus de ce qu'on écrit. */}
+        {fileVisible.length > 0 && (
+          <section className="locaryn-queue" aria-label="Messages en attente">
+            <header className="locaryn-queue-head">
+              <button
+                type="button"
+                className="locaryn-queue-fold"
+                aria-expanded={!fileReduite}
+                aria-controls="locaryn-queue-list"
+                onClick={() => setFileReduite((v) => !v)}
+                title={fileReduite ? "Afficher les messages en attente" : "Réduire la file"}
+              >
+                <Icon name="caret-down" size={12} />
+                <span>
+                  {filePause ? "En pause" : streaming ? "Après cette réponse" : "Envoi…"} ·{" "}
+                  {fileVisible.length} message{fileVisible.length > 1 ? "s" : ""}
+                </span>
+                {fileReduite && (
+                  <span className="locaryn-queue-peek">
+                    {fileVisible[0].text || "pièces jointes"}
+                  </span>
+                )}
+              </button>
+              {filePause && !streaming && (
+                <button
+                  type="button"
+                  className="locaryn-queue-btn"
+                  onClick={() => setFilePause(false)}
+                >
+                  Reprendre l'envoi
+                </button>
+              )}
+            </header>
+            <ol className="locaryn-queue-list" id="locaryn-queue-list" hidden={fileReduite}>
+              {fileVisible.map((qm) => {
+                const remettable = qm.attachments.length === 0 && qm.text.trim() !== "";
+                const deplie = fileDeplie === qm.id;
+                const long = qm.text.length > 90 || qm.text.includes("\n");
+                return (
+                  <li
+                    key={qm.id}
+                    className={`locaryn-queue-item${qm.remis ? " locaryn-queue-item--remis" : ""}${deplie ? " is-open" : ""}`}
+                  >
+                    <div className="locaryn-queue-body">
+                      {long ? (
+                        <button
+                          type="button"
+                          className="locaryn-queue-text locaryn-queue-text--toggle"
+                          aria-expanded={deplie}
+                          onClick={() => setFileDeplie(deplie ? null : qm.id)}
+                          title={deplie ? "Replier ce message" : "Lire ce message en entier"}
+                        >
+                          {qm.text}
+                        </button>
+                      ) : (
+                        <span className="locaryn-queue-text">
+                          {qm.text || `${qm.attachments.length} pièce(s) jointe(s)`}
+                        </span>
+                      )}
+                      {qm.remis && (
+                        <span className="locaryn-queue-state">
+                          <span className="locaryn-queue-pulse" aria-hidden="true" />
+                          Remis — lu à la prochaine étape
+                        </span>
+                      )}
+                    </div>
+                    {!qm.remis && (
+                      <button
+                        type="button"
+                        className="locaryn-queue-btn locaryn-queue-btn--now"
+                        disabled={streaming && !remettable}
+                        onClick={() => void envoyerMaintenant(qm)}
+                        title={
+                          streaming && !remettable
+                            ? "Les pièces jointes partent à la fin de la réponse"
+                            : streaming
+                              ? "Le modèle le lira à sa prochaine étape, sans attendre la fin"
+                              : "Envoyer ce message maintenant"
+                        }
+                      >
+                        <Icon name="arrow-right" size={13} />
+                        Envoyer maintenant
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="locaryn-queue-btn locaryn-queue-btn--icon"
+                      onClick={() => void retirerDeLaFile(qm)}
+                      title="Retirer de la file"
+                      aria-label="Retirer de la file"
+                    >
+                      <Icon name="x" size={13} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        )}
 
         <div className="locaryn-composer-card">
           {attachments.length > 0 && (

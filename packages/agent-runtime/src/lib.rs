@@ -9,6 +9,7 @@ pub mod context_window;
 pub mod embeddings;
 pub mod exec;
 pub mod host_tools;
+pub mod mailbox;
 pub mod reasoning;
 
 pub mod mcp_tools;
@@ -114,6 +115,10 @@ pub struct AgentInput {
     /// la changer pendant une tâche s'applique sans l'interrompre. Absente, la
     /// permission reçue à l'envoi vaut pour toute la tâche.
     pub trust_source: Option<trust_source::TrustSourceHandle>,
+    /// Les messages que la personne remet pendant la tâche (« Envoyer
+    /// maintenant »), relevés entre deux étapes. Absente : ils attendent la
+    /// fin de la réponse.
+    pub mailbox: Option<mailbox::MailboxHandle>,
     /// Alléger les outils offerts dès qu'ils pèsent dans la fenêtre (réglage
     /// « Alléger les outils », pour les petits modèles). Faux par défaut :
     /// le modèle reçoit tous les outils de ses connecteurs.

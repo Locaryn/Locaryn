@@ -628,6 +628,22 @@ pub async fn run_openai_tool_loop(
                     }));
                     continue;
                 }
+                // Une correction remise pendant la réponse finale n'attend pas
+                // le message suivant : le modèle la lit et reprend.
+                if round + 1 < MAX_TOOL_ROUNDS {
+                    if let Some(boite) = &input.mailbox {
+                        let mut suite = serde_json::json!([]);
+                        if boite.verser(&mut suite).await > 0 {
+                            let liste = messages.as_array_mut().unwrap();
+                            liste.push(serde_json::json!({
+                                "role": "assistant",
+                                "content": round_result.content,
+                            }));
+                            liste.extend(suite.as_array().cloned().unwrap_or_default());
+                            continue;
+                        }
+                    }
+                }
                 got_final = true;
                 break;
             }
@@ -697,6 +713,15 @@ pub async fn run_openai_tool_loop(
                     "tool_call_id": call.id,
                     "content": result_content,
                 }));
+            }
+
+            // Ce que la personne a remis pendant ces appels arrive maintenant,
+            // avant que le modèle décide de la suite.
+            if let Some(boite) = &input.mailbox {
+                let lus = boite.verser(&mut messages).await;
+                if lus > 0 {
+                    tracing::info!(lus, "message(s) remis en cours de tâche");
+                }
             }
 
             if round + 1 == MAX_TOOL_ROUNDS {

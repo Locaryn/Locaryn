@@ -21,6 +21,7 @@ mod free_chat_dir;
 mod hooks;
 mod inference_engines;
 mod local_profile;
+mod mailbox;
 mod mcp_servers;
 mod memory;
 mod mentions;
@@ -2202,14 +2203,18 @@ async fn send_message(
         host_tools: Some(locaryn_agent_runtime::host_tools::HostToolsHandle::new(
             app_tools::AppTools::new(app.clone()),
         )),
-        // Les permissions changées pendant la tâche s'appliquent à l'outil
-        // suivant, sans interrompre le modèle.
         // Le réglage « Alléger les outils » (désactivé par défaut).
         trim_tools: locaryn_config::load(None)
             .map(|c| c.assistance.trim_tools)
             .unwrap_or(false),
+        // Les permissions changées pendant la tâche s'appliquent à l'outil
+        // suivant, sans interrompre le modèle.
         trust_source: Some(locaryn_agent_runtime::trust_source::TrustSourceHandle::new(
             trust_source::SessionTrustSource::new(app.clone(), session_id),
+        )),
+        // « Envoyer maintenant » : relevé entre deux étapes de la tâche.
+        mailbox: Some(locaryn_agent_runtime::mailbox::MailboxHandle::new(
+            mailbox::SessionMailbox::new(app.clone(), session_id),
         )),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
@@ -2328,6 +2333,7 @@ async fn send_message(
     }
     let stopped = cancel.is_cancelled();
     core.chat_cancels.lock().await.remove(&session_id);
+    tokio::spawn(mcp_servers::signaler_fin_de_reponse(core.mcp.clone()));
 
     // 5. Persist the assistant reply and transparent audio-artifact markers.
     // The frontend turns those markers back into playable notes; history strips
@@ -7019,6 +7025,8 @@ pub fn run() {
             extensions::set_catalog_source_enabled,
             extensions::remove_catalog_source,
             mcp_servers::list_mcp_servers,
+            mailbox::chat_mail_deposit,
+            mailbox::chat_mail_withdraw,
             mcp_servers::outils_alleges,
             mcp_servers::definir_outils_alleges,
             startup::app_ready,

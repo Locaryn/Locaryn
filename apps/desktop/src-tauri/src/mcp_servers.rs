@@ -817,6 +817,53 @@ pub async fn invoke_mcp_tool(
         .map_err(|e| format!("outil {tool} sur {name} : {e}"))
 }
 
+/// Combien de temps on laisse à un serveur pour répondre au signal de fin.
+const FIN_DE_REPONSE_DELAI: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// La réponse est finie — terminée, ou arrêtée par la personne. Chaque
+/// serveur qui expose un outil `*_task_done` (morph-desktop : son overlay)
+/// l'apprend par `end_of_response` : un overlay ne reste plus affiché après un
+/// Stop dans le chat, et un Arrêt d'urgence ne vaut que pour la réponse
+/// arrêtée.
+pub async fn signaler_fin_de_reponse(state: Arc<McpState>) {
+    let clients: Vec<(String, Arc<dyn McpClient>)> = state
+        .running
+        .read()
+        .await
+        .iter()
+        .map(|(n, c)| (n.clone(), c.clone()))
+        .collect();
+    let args = serde_json::json!({ "end_of_response": true });
+    for (serveur, client) in clients {
+        let outils = match tokio::time::timeout(FIN_DE_REPONSE_DELAI, client.discover()).await {
+            Ok(Ok(caps)) => caps.tools,
+            Ok(Err(e)) => {
+                tracing::debug!(%serveur, error = %e, "fin de réponse : outils illisibles");
+                continue;
+            }
+            Err(_) => {
+                tracing::debug!(%serveur, "fin de réponse : serveur trop lent");
+                continue;
+            }
+        };
+        for outil in outils.iter().filter(|t| t.name.ends_with("_task_done")) {
+            match tokio::time::timeout(FIN_DE_REPONSE_DELAI, client.invoke_tool(&outil.name, &args))
+                .await
+            {
+                Ok(Ok(_)) => {
+                    tracing::debug!(%serveur, outil = %outil.name, "fin de réponse signalée")
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(%serveur, outil = %outil.name, error = %e, "fin de réponse refusée")
+                }
+                Err(_) => {
+                    tracing::warn!(%serveur, outil = %outil.name, "fin de réponse sans réponse")
+                }
+            }
+        }
+    }
+}
+
 /// Start every server the user marked as automatic.
 ///
 /// Failures are logged, never fatal: a laptop that cannot reach one server
