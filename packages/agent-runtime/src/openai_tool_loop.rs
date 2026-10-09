@@ -494,6 +494,12 @@ pub async fn run_openai_tool_loop(
     let approval = input.approval.clone();
     let question = input.question.clone();
     let host_tools = input.host_tools.clone();
+    // Les outils ne changent plus pendant la tâche : leur poids estimé non plus.
+    let outils_estimes: usize = all_tools
+        .iter()
+        .map(crate::tool_budget::estimate_tokens)
+        .sum();
+    let estimation_premiere = outils_estimes + crate::context_window::estimate_tokens(&messages);
 
     tokio::spawn(async move {
         let mut ctx = ToolContext {
@@ -518,12 +524,22 @@ pub async fn run_openai_tool_loop(
         // pleine : l'estimation a pu être trop optimiste.
         let mut serre = false;
         let mut contexte_annonce = false;
+        // Jetons réels par jeton estimé, mesurés à chaque tour sur ce que le
+        // moteur annonce. L'estimation (octets / 3) sous-évaluait la requête
+        // d'un modèle à gabarit bavard : à 8 192 de fenêtre, la requête
+        // atteignait 7 900 jetons, la réponse était coupée net au milieu de
+        // la réflexion, puis le moteur refusait la suite.
+        let mut echelle = echelle_connue();
+        let mut estimation_envoyee = estimation_premiere;
 
         for round in 0..MAX_TOOL_ROUNDS {
             let resp = match pending_resp.take() {
                 Some(r) => Some(r),
                 None => loop {
-                    if let Some(b) = budget_conversation {
+                    let budget_tour = contexte_serveur.map(|c| {
+                        crate::context_window::budget((c as f64 / echelle) as usize, outils_estimes)
+                    });
+                    if let Some(b) = budget_tour {
                         // Après un refus, on vise plus bas que l'estimation.
                         let cible = if serre { b * 6 / 10 } else { b };
                         let fait = crate::context_window::fit(&mut messages, cible);
@@ -540,6 +556,8 @@ pub async fn run_openai_tool_loop(
                                 .await;
                         }
                     }
+                    estimation_envoyee =
+                        outils_estimes + crate::context_window::estimate_tokens(&messages);
                     let (openai_body, native_body) = make_body(&messages, &tools_json);
                     let (url, body) = if native_ollama_loop {
                         (native_url_loop.clone(), native_body)
@@ -573,7 +591,21 @@ pub async fn run_openai_tool_loop(
                         r => {
                             let status = r.status();
                             let body = r.text().await.unwrap_or_default();
-                            if !serre && budget_conversation.is_some() && fenetre_pleine(&body) {
+                            if !serre && contexte_serveur.is_some() && fenetre_pleine(&body) {
+                                // La taille réelle annoncée recale l'échelle
+                                // avant de resserrer.
+                                if let Some(reelle) = jetons_annonces(&body) {
+                                    echelle = (reelle as f64 / estimation_envoyee.max(1) as f64)
+                                        .max(echelle)
+                                        .clamp(1.0, 8.0);
+                                    retenir_echelle(echelle);
+                                    tracing::warn!(
+                                        reelle,
+                                        estimation_envoyee,
+                                        echelle,
+                                        "fenêtre pleine en cours de tâche : échelle recalée"
+                                    );
+                                }
                                 serre = true;
                                 continue;
                             }
@@ -606,6 +638,16 @@ pub async fn run_openai_tool_loop(
                     break;
                 }
             };
+            // Le moteur a compté la requête : l'échelle suit la mesure.
+            if round_result.tokens_in > 0 && estimation_envoyee > 0 {
+                let mesuree =
+                    (round_result.tokens_in as f64 / estimation_envoyee as f64).clamp(1.0, 8.0);
+                if (mesuree - echelle).abs() > 0.05 {
+                    tracing::debug!(echelle = mesuree, "échelle des jetons mesurée");
+                    echelle = mesuree;
+                    retenir_echelle(echelle);
+                }
+            }
             tokens_in += round_result.tokens_in;
             tokens_out += round_result.tokens_out;
             timings.add(round_result.timings);
