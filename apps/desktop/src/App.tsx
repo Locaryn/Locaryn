@@ -79,6 +79,18 @@ const OVERLAY_LABELS: Record<string, string> = {
   studio: "Studio",
 };
 
+/** Deux listes de conversations disent-elles la même chose ? (évite de
+ *  re-rendre la barre latérale toutes les 10 s pour rien) */
+function memesSessions(a: Session[], b: Session[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (x, i) =>
+        x.id === b[i].id && x.title === b[i].title && x.last_message_at === b[i].last_message_at,
+    )
+  );
+}
+
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
@@ -449,6 +461,50 @@ export function App() {
       for (const un of unlisteners) un();
     };
   }, []);
+
+  // Le téléphone, le web et les autres postes écrivent dans la même base :
+  // une conversation lancée ailleurs doit apparaître ici sans redémarrer. La
+  // liste n'était lue qu'au démarrage et après nos propres actions.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: relu sur minuterie ; les listes elles-mêmes ne déclenchent pas.
+  useEffect(() => {
+    const relire = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        if (freeProject) {
+          const libres = await core.listSessions(freeProject.id);
+          setStandaloneSessions((prev) => (memesSessions(prev, libres) ? prev : libres));
+        }
+        const groupes = await Promise.all(
+          projects.map(
+            async (p) => [p.id, await core.listSessions(p.id).catch(() => null)] as const,
+          ),
+        );
+        setSessionsByProject((prev) => {
+          let change = false;
+          const suite = { ...prev };
+          for (const [id, liste] of groupes) {
+            if (liste && !memesSessions(prev[id] ?? [], liste)) {
+              suite[id] = liste;
+              change = true;
+            }
+          }
+          return change ? suite : prev;
+        });
+        if (activeProject && activeProject.id !== freeProject?.id) {
+          const active = groupes.find(([id]) => id === activeProject.id)?.[1];
+          if (active) setSessions((prev) => (memesSessions(prev, active) ? prev : active));
+        }
+      } catch (e) {
+        console.warn("liste des conversations non relue :", e);
+      }
+    };
+    const t = window.setInterval(() => void relire(), 10_000);
+    window.addEventListener("focus", relire);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener("focus", relire);
+    };
+  }, [freeProject?.id, projects, activeProject?.id]);
 
   async function bootstrap() {
     try {
