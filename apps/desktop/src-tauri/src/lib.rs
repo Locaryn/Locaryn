@@ -3705,6 +3705,31 @@ fn hf_candidate_variant(path: &str, quantization: Option<&str>) -> String {
     stem.trim_end_matches(['-', '_', '.', '/']).to_string()
 }
 
+/// Ce qu'une réponse refusée de Hugging Face veut dire, en clair. « HTTP 401 »
+/// laissait croire que rien ne s'installait sans jeton, alors que seuls les
+/// dépôts verrouillés en demandent un.
+fn hf_refus(statut: u16, url: &str, avec_jeton: bool) -> String {
+    let depot = url
+        .strip_prefix("https://huggingface.co/")
+        .map(|reste| {
+            let reste = reste.strip_prefix("api/models/").unwrap_or(reste);
+            reste.split('/').take(2).collect::<Vec<_>>().join("/")
+        })
+        .filter(|d| d.contains('/'));
+    match (statut, depot) {
+        (401 | 403, Some(d)) if avec_jeton => format!(
+            "Hugging Face refuse l'accès à {d} avec votre jeton : acceptez la licence du modèle sur https://huggingface.co/{d} (même compte que le jeton), ou vérifiez que le jeton est encore valide."
+        ),
+        (401 | 403, Some(d)) => format!(
+            "{d} est un dépôt verrouillé sur Hugging Face : acceptez sa licence sur https://huggingface.co/{d}, puis ajoutez un jeton dans Réglages → Hugging Face. Les autres modèles s'installent sans jeton."
+        ),
+        (404, Some(d)) => format!(
+            "Fichier introuvable sur Hugging Face ({d}) : il a été renommé ou retiré du dépôt. Adresse demandée : {url}"
+        ),
+        _ => format!("HTTP {statut} pour {url}"),
+    }
+}
+
 async fn fetch_hf_tree(
     http: &reqwest::Client,
     repo: &str,
@@ -3720,7 +3745,11 @@ async fn fetch_hf_tree(
         .await
         .map_err(|e| format!("liste HuggingFace impossible : {e}"))?;
     if !response.status().is_success() {
-        return Err(format!("HuggingFace a répondu HTTP {}.", response.status()));
+        return Err(hf_refus(
+            response.status().as_u16(),
+            &format!("https://huggingface.co/api/models/{repo}"),
+            !hf_token.is_empty(),
+        ));
     }
     let entries: Vec<serde_json::Value> = response
         .json()
@@ -4500,7 +4529,7 @@ async fn do_pull_with_aggregate(
         .map_err(|e| format!("download error: {e}"))?;
 
     if !resp.status().is_success() && resp.status().as_u16() != 206 {
-        return Err(format!("HTTP {} for {url}", resp.status()));
+        return Err(hf_refus(resp.status().as_u16(), url, !hf_token.is_empty()));
     }
 
     // Some servers ignore Range and answer 200 with the complete file. Do not
@@ -7123,6 +7152,25 @@ mod suppression_modele_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn un_refus_de_hugging_face_dit_quoi_faire() {
+        let verrou = super::hf_refus(
+            401,
+            "https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct/resolve/main/x.safetensors",
+            false,
+        );
+        assert!(
+            verrou.contains("meta-llama/Llama-3.3-70B-Instruct"),
+            "{verrou}"
+        );
+        assert!(verrou.contains("jeton"), "{verrou}");
+        let absent = super::hf_refus(404, "https://huggingface.co/api/models/a/b", false);
+        assert!(
+            absent.contains("introuvable") && absent.contains("a/b"),
+            "{absent}"
+        );
+    }
+
     use super::{
         compatible_gguf_repo, hf_candidate_variant, hf_quantization, hf_shard_group,
         is_hf_weight_path, is_safetensors_layout_file, is_text_chat_model, preferred_mmproj,

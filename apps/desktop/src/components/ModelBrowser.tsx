@@ -80,10 +80,10 @@ const AIRLLM_MODELS: Record<string, { repo: string; sizeGb: number }> = {
   "deepseek-r1-70b-gguf": { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
   "deepseek-r1": { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
   deepseek_r1: { repo: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B", sizeGb: 140 },
-  "llama-3.3-70b-airllm": { repo: "meta-llama/Llama-3.3-70B-Instruct", sizeGb: 140 },
-  "llama3.3": { repo: "meta-llama/Llama-3.3-70B-Instruct", sizeGb: 140 },
-  "llama3.1": { repo: "meta-llama/Llama-3.1-70B-Instruct", sizeGb: 140 },
-  llama4: { repo: "meta-llama/Llama-4-Scout-17B-16E-Instruct", sizeGb: 34 },
+  "llama-3.3-70b-airllm": { repo: "unsloth/Llama-3.3-70B-Instruct", sizeGb: 140 },
+  "llama3.3": { repo: "unsloth/Llama-3.3-70B-Instruct", sizeGb: 140 },
+  "llama3.1": { repo: "unsloth/Meta-Llama-3.1-70B-Instruct", sizeGb: 140 },
+  llama4: { repo: "unsloth/Llama-4-Scout-17B-16E-Instruct", sizeGb: 34 },
   "qwen2.5-72b-airllm": { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
   "qwen2.5-72b-gguf": { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
   "qwen2.5": { repo: "Qwen/Qwen2.5-72B-Instruct", sizeGb: 145 },
@@ -92,11 +92,8 @@ const AIRLLM_MODELS: Record<string, { repo: string; sizeGb: number }> = {
   "mistral-nemo-airllm": { repo: "mistralai/Mistral-Nemo-Instruct-2407", sizeGb: 27 },
   "mistral-nemo": { repo: "mistralai/Mistral-Nemo-Instruct-2407", sizeGb: 27 },
   "mixtral-8x7b-airllm": { repo: "mistralai/Mixtral-8x7B-Instruct-v0.1", sizeGb: 90 },
-  "command-r-airllm": { repo: "CohereForAI/c4ai-command-r-v01", sizeGb: 70 },
   "qwen2.5-coder-32b-airllm": { repo: "Qwen/Qwen2.5-Coder-32B-Instruct", sizeGb: 65 },
   mistral: { repo: "mistralai/Mistral-7B-Instruct-v0.3", sizeGb: 30 },
-  "gemini-2-5-flash": { repo: "google/gemini-2.5-flash-distill-gguf", sizeGb: 28 },
-  "gemini-nano": { repo: "google/gemini-nano-2", sizeGb: 16 },
   gemma4: { repo: "google/gemma-4-31b-it", sizeGb: 62 },
 };
 
@@ -3653,7 +3650,7 @@ export function ModelBrowser({
                   id="custom-model-tag-input"
                   className="locaryn-input"
                   style={{ width: "100%", fontSize: "13px" }}
-                  placeholder="ex: gemma4:2b, kimi-k3:8b, mimo:7b, hf.co/user/repo, https://huggingface.co/..."
+                  placeholder="ex: gemma4:e2b, qwen3:8b, hf.co/user/repo, https://huggingface.co/..."
                   value={customTagInput}
                   onChange={(e) => setCustomTagInput(e.target.value)}
                   autoFocus
