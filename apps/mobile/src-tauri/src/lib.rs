@@ -1158,6 +1158,50 @@ async fn compress_context(conversation_id: String) -> Result<u64, String> {
     Ok(corps.get("removed").and_then(|r| r.as_u64()).unwrap_or(0))
 }
 
+/// Les puces « et ensuite ? » sous une réponse, proposées par le modèle du
+/// serveur. Une liste vide si rien ne vient : ce n'est qu'un confort.
+#[tauri::command]
+async fn suggest_followups(
+    answer: String,
+    question: Option<String>,
+) -> Result<Vec<String>, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/suggestions"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "answer": answer, "question": question }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Ok(Vec::new());
+    }
+    Ok(resp.json().await.unwrap_or_default())
+}
+
+/// « Modifier » : le dernier message de la personne et sa suite partent de la
+/// conversation sur le serveur.
+#[tauri::command]
+async fn rewind_last_message(conversation_id: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/sessions/{conversation_id}/rewind"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Le serveur n'a pas pu retirer le message ({}). Mettez-le à jour.",
+            resp.status()
+        ))
+    }
+}
+
 /// Le texte d'un document joint (PDF compris), tiré par le serveur.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TexteDocument {
@@ -2846,6 +2890,8 @@ pub fn run() {
             set_session_trust,
             compress_context,
             extract_document,
+            suggest_followups,
+            rewind_last_message,
             cancel_message,
             deposit_message,
             withdraw_message,

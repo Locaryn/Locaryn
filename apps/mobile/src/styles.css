@@ -362,6 +362,63 @@ body {
 .lo-msg-copy:active {
   color: var(--text-dim);
 }
+.lo-msg-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+.lo-msg-actions .lo-msg-copy {
+  min-height: 36px;
+  padding: 0 var(--space-2);
+}
+.lo-msg-copy:focus-visible,
+.lo-suivante:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Les puces « et ensuite ? » sous la dernière réponse, comme sur le bureau. */
+.lo-suivantes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.lo-suivante {
+  min-height: 40px;
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  animation: lo-suivante-entree 0.24s ease-out both;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.lo-suivante:nth-child(2) {
+  animation-delay: 0.05s;
+}
+.lo-suivante:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.lo-suivante:active {
+  transform: scale(0.97);
+  background: var(--surface-2, var(--surface));
+}
+@keyframes lo-suivante-entree {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-suivante {
+    animation: none;
+  }
+}
 
 /* La confirmation d'une copie ou d'un enregistrement. */
 .lo-notice {

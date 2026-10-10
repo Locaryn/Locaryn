@@ -17,6 +17,7 @@ pub mod gpu_standard;
 pub mod host_tools;
 pub mod mailbox;
 pub mod reasoning;
+pub mod suivantes;
 
 pub mod mcp_tools;
 pub mod openai_compat;

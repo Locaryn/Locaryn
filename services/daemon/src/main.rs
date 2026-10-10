@@ -308,7 +308,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/sessions/:id/cancel", post(cancel_session))
         .route("/v1/sessions/:id/mailbox", post(chat_gpu::deposer))
         .route("/v1/sessions/:id/live", get(live::suivre))
+        .route("/v1/sessions/:id/rewind", post(chat_gpu::revenir))
         .route("/v1/documents/text", post(chat_gpu::texte_document))
+        .route("/v1/suggestions", post(chat_gpu::suggestions))
         .route("/v1/sessions/:id/context", get(chat_gpu::contexte))
         .route("/v1/sessions/:id/compress", post(chat_gpu::compresser))
         .route(

@@ -75,11 +75,22 @@ async function lireFichier(f: File): Promise<PieceJointe> {
   const id = `${f.name}-${f.size}-${f.lastModified}`;
   if (f.type.startsWith("image/")) {
     const url = await lireUrl(f);
-    return { id, nom: f.name, genre: "image", contenu: url.slice(url.indexOf(",") + 1), apercu: url };
+    return {
+      id,
+      nom: f.name,
+      genre: "image",
+      contenu: url.slice(url.indexOf(",") + 1),
+      apercu: url,
+    };
   }
   const octets = new Uint8Array(await f.arrayBuffer());
   if (porteDuTexte(octets)) {
-    return { id, nom: f.name, genre: "texte", contenu: tronquer(new TextDecoder("utf-8").decode(octets)) };
+    return {
+      id,
+      nom: f.name,
+      genre: "texte",
+      contenu: tronquer(new TextDecoder("utf-8").decode(octets)),
+    };
   }
   if (f.size > DOCUMENT_MAX) {
     throw new Error(

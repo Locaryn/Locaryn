@@ -336,3 +336,58 @@ fn refus_document(message: &str) -> Response {
     )
         .into_response()
 }
+
+// ─── Suggestions de relance ──────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct SuggestionsBody {
+    answer: String,
+    #[serde(default)]
+    question: Option<String>,
+}
+
+/// POST /v1/suggestions — les puces « que faire ensuite » sous une réponse,
+/// comme sur le bureau. Une liste vide plutôt qu'une erreur : ce n'est qu'un
+/// confort, rien ne doit s'afficher en rouge s'il manque.
+pub async fn suggestions(
+    axum::extract::State(s): axum::extract::State<Arc<DaemonState>>,
+    Json(body): Json<SuggestionsBody>,
+) -> Response {
+    let Some(provider) = s.storage.providers.active().await.ok().flatten() else {
+        return Json(Vec::<String>::new()).into_response();
+    };
+    let model = provider.model.clone().unwrap_or_else(|| "default".into());
+    match locaryn_agent_runtime::suivantes::proposer(
+        &provider.endpoint,
+        &model,
+        body.question.as_deref(),
+        &body.answer,
+    )
+    .await
+    {
+        Ok(liste) => Json(liste).into_response(),
+        Err(e) => {
+            tracing::debug!(error = %e, "suggestions indisponibles");
+            Json(Vec::<String>::new()).into_response()
+        }
+    }
+}
+
+/// POST /v1/sessions/:id/rewind — « Modifier » le dernier message : il part de
+/// la conversation avec tout ce qui le suit, et son texte revient au client.
+pub async fn revenir(
+    axum::extract::State(s): axum::extract::State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let Ok(sid) = Uuid::parse_str(&id) else {
+        return (axum::http::StatusCode::BAD_REQUEST, "identifiant invalide").into_response();
+    };
+    match s.storage.messages.rewind_last_user(sid).await {
+        Ok(texte) => Json(serde_json::json!({ "content": texte })).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": { "code": "storage_error", "message": e.to_string() } })),
+        )
+            .into_response(),
+    }
+}

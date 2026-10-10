@@ -509,6 +509,12 @@ export const core = {
   /** Résumer les vieux échanges ; rend le nombre de messages retirés. */
   compressContext: (conversationId: string) =>
     invoke<number>("compress_context", { conversationId }),
+  /** Les puces « et ensuite ? » sous une réponse. */
+  suggestFollowups: (answer: string, question?: string) =>
+    invoke<string[]>("suggest_followups", { answer, question: question ?? null }),
+  /** « Modifier » : retire le dernier message et sa suite sur le serveur. */
+  rewindLastMessage: (conversationId: string) =>
+    invoke<void>("rewind_last_message", { conversationId }),
   /** Le texte d'un PDF ou d'un binaire joint, tiré par le serveur. */
   extractDocument: (nom: string, donnees: string) =>
     invoke<TexteDocument>("extract_document", { nom, donnees }),
@@ -786,6 +792,8 @@ export const demoCore: typeof core = {
     await sleep(1200);
     return 8;
   },
+  suggestFollowups: async () => ["Montre un exemple", "Résume en trois points"],
+  rewindLastMessage: async () => {},
   extractDocument: async (nom) => {
     await sleep(600);
     return { texte: `Texte de démonstration tiré de « ${nom} ».`, tronque: false };

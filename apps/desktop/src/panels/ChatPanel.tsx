@@ -1746,12 +1746,24 @@ export function ChatPanel({
     }
   }
 
-  function editLastUserMessage() {
+  /** « Modifier » : le dernier message et sa réponse partent de la
+   *  conversation — en base aussi, sinon il repartait au modèle à côté de sa
+   *  version corrigée — et son texte revient dans le composeur. */
+  async function editLastUserMessage() {
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
       if (it.kind === "msg" && it.role === "user") {
+        if (sessionId) {
+          try {
+            await core.rewindLastMessage(sessionId);
+          } catch (e) {
+            console.warn("message non retiré de la conversation :", e);
+            return;
+          }
+        }
         setInput(it.text);
-        setItems((prev) => prev.filter((_, idx) => idx !== i));
+        setItems((prev) => prev.slice(0, i));
+        setFollowups([]);
         inputRef.current?.focus();
         return;
       }
@@ -2036,7 +2048,7 @@ export function ChatPanel({
     }
     if (e.key === "ArrowUp" && input.trim() === "" && !streaming) {
       e.preventDefault();
-      editLastUserMessage();
+      void editLastUserMessage();
     }
   }
 
@@ -2241,7 +2253,7 @@ export function ChatPanel({
                       forge={it.forge}
                       forged={it.forged}
                       canEdit={i === lastUserIdx && !streaming}
-                      onEdit={editLastUserMessage}
+                      onEdit={() => void editLastUserMessage()}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}
                     />
                     {it.luEnCours && (

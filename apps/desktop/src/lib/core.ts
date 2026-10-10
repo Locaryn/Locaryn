@@ -1699,6 +1699,8 @@ export interface CoreApi {
   suggestFollowups(answer: string, question?: string): Promise<string[]>;
   /** Le texte d'un PDF ou d'un binaire joint (octets en base64). */
   extractDocument(nom: string, donnees: string): Promise<{ texte: string; tronque: boolean }>;
+  /** Retire le dernier message de la personne et sa suite ; rend son texte. */
+  rewindLastMessage(sessionId: string): Promise<string | null>;
   /** Persist a message contributed by an extension without exposing its runtime. */
   appendChatMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<void>;
   /** Legacy convenience for assistant artifacts contributed by extensions. */
@@ -2199,6 +2201,7 @@ const tauriCore: CoreApi = {
   workspaceDiff: (sessionId, chemin) => invoke<string>("workspace_diff", { sessionId, chemin }),
   suggestFollowups: (answer, question) =>
     invoke<string[]>("suggest_followups", { answer, question }),
+  rewindLastMessage: (sessionId) => invoke<string | null>("rewind_last_message", { sessionId }),
   extractDocument: (nom, donnees) =>
     invoke<{ texte: string; tronque: boolean }>("extract_document", { nom, donnees }),
   planTask: (request, force) => invoke<TaskPlan>("plan_task", { request, force: force ?? null }),
@@ -4438,6 +4441,7 @@ Contenu de démonstration.
       "Vérifier que tout fonctionne",
     ],
   }),
+  rewindLastMessage: async () => null,
   extractDocument: async (nom) => ({
     texte: `Texte de démonstration tiré de « ${nom} ».`,
     tronque: false,

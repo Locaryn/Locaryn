@@ -41,6 +41,28 @@ function composer(texte: string, pieces: PieceJointe[]): string {
   return texte + fichiers.join("");
 }
 
+/** Ce que la personne a tapé, sans les fichiers joints que `composer` a collés
+ *  derrière ni les étiquettes 📎 : c'est ce que « Modifier » remet à corriger. */
+function texteSaisi(contenu: string): string {
+  return contenu
+    .split("\n\n--- Fichier joint : ")[0]
+    .split("\n")
+    .filter((l) => !l.startsWith("📎 "))
+    .join("\n")
+    .trim();
+}
+
+/** Un message de la personne tel qu'il s'affiche : son texte, puis le nom de
+ *  chaque fichier joint — pas leur contenu, qui revenait en entier depuis le
+ *  serveur à la réouverture de la conversation. */
+function affichageUtilisateur(contenu: string): string {
+  if (!contenu.includes("\n\n--- Fichier joint : ")) return contenu;
+  const noms = [...contenu.matchAll(/\n\n--- Fichier joint : (.+?) ---\n/g)].map(
+    (m) => `📎 ${m[1]}`,
+  );
+  return [texteSaisi(contenu), ...noms].filter(Boolean).join("\n");
+}
+
 let compteur = 0;
 function nouvelId(prefixe: string): string {
   compteur += 1;
@@ -143,6 +165,8 @@ export function Chat({
   const [outil, setOutil] = useState<string | null>(null);
   /** Le modèle se charge en mémoire sur le serveur (avant tout jeton). */
   const [chargement, setChargement] = useState(false);
+  /** Ce que la personne peut faire ensuite, proposé sous la dernière réponse. */
+  const [suivantes, setSuivantes] = useState<string[]>([]);
   const conversationRef = useRef<string | null>(null);
   const arretRef = useRef(false);
   /** Le numéro de la réponse que ce fil suit : ouvrir une autre conversation
@@ -153,6 +177,7 @@ export function Chat({
   /** Détacher la réponse en cours avant de changer de conversation. */
   function detacher() {
     runRef.current += 1;
+    setSuivantes([]);
     setBusy(false);
     setOutil(null);
     setChargement(false);
@@ -287,6 +312,11 @@ export function Chat({
       setLoadingConversation(false);
     }
   }
+
+  const dernierUtilisateur = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "user") return i;
+    return -1;
+  })();
 
   function startNew() {
     detacher();
@@ -510,6 +540,7 @@ export function Chat({
   /** Envoyer un message et suivre la réponse en direct. */
   async function repondre(text: string, jointes: PieceJointe[] = []) {
     const images = jointes.filter((p) => p.genre === "image");
+    setSuivantes([]);
     setMessages((m) => [
       ...m,
       {
@@ -544,6 +575,17 @@ export function Chat({
         currentId ? null : niveauAvant,
       );
       setNiveauAvant(null);
+      // Les puces « et ensuite ? », comme sur le bureau : un appel discret,
+      // rien ne s'affiche s'il échoue.
+      const fin = sansReflexion(reponse).trim();
+      if (fin && !arretRef.current) {
+        void api
+          .suggestFollowups(fin, text)
+          .then((liste) => {
+            if (runRef.current === run) setSuivantes(liste);
+          })
+          .catch((e) => console.warn("suggestions indisponibles :", e));
+      }
       if (document.hidden && reponse) {
         notifyMessageReceived(status.server_name ?? "Locaryn", sansReflexion(reponse));
       }
@@ -567,6 +609,25 @@ export function Chat({
       if (arretRef.current && fileRef.current.length > 0) setFilePause(true);
       void reprendreLesRemis();
     }
+  }
+
+  /** « Modifier » le dernier message : il part de la conversation avec sa
+   *  réponse (sur le serveur aussi, sinon il repartait au modèle à côté de sa
+   *  version corrigée), et son texte revient dans le champ. */
+  async function modifier(idx: number, contenu: string) {
+    const id = conversationRef.current ?? currentId;
+    if (id) {
+      try {
+        await api.rewindLastMessage(id);
+      } catch (e) {
+        setError(String(e));
+        return;
+      }
+    }
+    setMessages((m) => m.slice(0, idx));
+    setSuivantes([]);
+    setDraft(texteSaisi(contenu));
+    requestAnimationFrame(() => saisieRef.current?.focus());
   }
 
   /** Stop : la réponse s'arrête, la file attend. */
@@ -747,8 +808,10 @@ export function Chat({
             Posez une question. Le modèle tourne sur {status.server_name ?? "votre serveur"}.
           </p>
         )}
-        {messages.map((m) => {
-          const texte = m.role === "assistant" ? sansReflexion(m.content) : m.content;
+        {messages.map((m, idx) => {
+          const texte =
+            m.role === "assistant" ? sansReflexion(m.content) : affichageUtilisateur(m.content);
+          const modifiable = m.role === "user" && !busy && idx === dernierUtilisateur;
           const enCours = m.role === "assistant" && busy && reflechit(m.content);
           return (
             <div
@@ -846,9 +909,20 @@ export function Chat({
                   m.forge.etape && <span className="lo-forge-caption">{m.forge.etape}</span>
                 ))}
               {texte.trim() !== "" && (
-                <button type="button" className="lo-msg-copy" onClick={() => void copy(texte)}>
-                  Copier
-                </button>
+                <div className="lo-msg-actions">
+                  {modifiable && (
+                    <button
+                      type="button"
+                      className="lo-msg-copy"
+                      onClick={() => void modifier(idx, m.content)}
+                    >
+                      Modifier
+                    </button>
+                  )}
+                  <button type="button" className="lo-msg-copy" onClick={() => void copy(texte)}>
+                    Copier
+                  </button>
+                </div>
               )}
             </div>
           );
@@ -870,6 +944,20 @@ export function Chat({
             <span className="lo-spinner" aria-hidden />
             Utilise {outil}…
           </p>
+        )}
+        {!busy && suivantes.length > 0 && (
+          <div className="lo-suivantes" aria-label="Suggestions">
+            {suivantes.map((sugg) => (
+              <button
+                key={sugg}
+                type="button"
+                className="lo-suivante"
+                onClick={() => void repondre(sugg)}
+              >
+                {sugg}
+              </button>
+            ))}
+          </div>
         )}
         {error && <p className="lo-error">{error}</p>}
         <div ref={endRef} />

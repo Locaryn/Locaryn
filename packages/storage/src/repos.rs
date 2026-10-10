@@ -1070,6 +1070,28 @@ impl MessageRepo {
         Ok(res.rows_affected())
     }
 
+    /// Revenir avant le dernier message de la personne : lui et tout ce qui le
+    /// suit disparaissent, et son texte revient pour être corrigé. C'est
+    /// « Modifier » — retirer le message de l'écran seulement le laissait en
+    /// base, et il repartait au modèle à côté de sa version corrigée.
+    pub async fn rewind_last_user(&self, session_id: Uuid) -> Result<Option<String>, StorageError> {
+        let dernier: Option<(String, String)> = sqlx::query_as(
+            "SELECT content, created_at FROM messages              WHERE session_id = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(session_id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((contenu, depuis)) = dernier else {
+            return Ok(None);
+        };
+        sqlx::query("DELETE FROM messages WHERE session_id = ? AND created_at >= ?")
+            .bind(session_id.to_string())
+            .bind(&depuis)
+            .execute(&self.pool)
+            .await?;
+        Ok(Some(contenu))
+    }
+
     pub async fn append(
         &self,
         session_id: Uuid,
@@ -2749,5 +2771,50 @@ mod fournisseurs_distants_tests {
             .upsert_cloud("omniroute", "https://exemple.test/api", "   ")
             .await
             .is_err());
+    }
+}
+
+#[cfg(test)]
+mod rewind_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn modifier_retire_le_dernier_message_et_sa_suite() {
+        let pool = crate::open_in_memory().await.unwrap();
+        let s = Storage::new(pool);
+        let p = s
+            .projects
+            .create("/tmp/p", "p", TrustLevel::Trusted)
+            .await
+            .unwrap();
+        let sess = s.sessions.create(p.id, None).await.unwrap();
+        s.messages
+            .append(sess.id, MessageRole::User, "un")
+            .await
+            .unwrap();
+        s.messages
+            .append(sess.id, MessageRole::Assistant, "réponse un")
+            .await
+            .unwrap();
+        s.messages
+            .append(sess.id, MessageRole::User, "deux avec faute")
+            .await
+            .unwrap();
+        s.messages
+            .append(sess.id, MessageRole::Assistant, "réponse deux")
+            .await
+            .unwrap();
+
+        let rendu = s.messages.rewind_last_user(sess.id).await.unwrap();
+        assert_eq!(rendu.as_deref(), Some("deux avec faute"));
+        let reste: Vec<String> = s
+            .messages
+            .list_for_session(sess.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|m| m.content)
+            .collect();
+        assert_eq!(reste, vec!["un", "réponse un"]);
     }
 }
