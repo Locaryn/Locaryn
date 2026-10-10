@@ -259,6 +259,13 @@ export interface Message {
   forged?: boolean;
 }
 
+/** La permission d'une conversation, telle que le serveur la rend. */
+export interface SessionTrust {
+  effective: string;
+  override_value: string | null;
+  project: string;
+}
+
 /** Ce que la conversation occupe de la fenêtre du modèle. */
 export interface ContextStatus {
   /** Jetons estimés de la conversation. */
@@ -464,6 +471,7 @@ export const core = {
     conversationId: string | null,
     ephemeral: boolean,
     onEvent: (ev: ChatStreamEvent) => void,
+    images?: string[],
   ) => {
     const canal = new Channel<ChatStreamEvent>();
     canal.onmessage = onEvent;
@@ -471,9 +479,16 @@ export const core = {
       text,
       conversationId,
       ephemeral,
+      images: images ?? null,
       onEvent: canal,
     });
   },
+  /** La permission de la conversation (effective, exception, héritage). */
+  sessionTrust: (conversationId: string) =>
+    invoke<SessionTrust>("session_trust", { conversationId }),
+  /** Poser une permission sur la conversation ; `null` : celle du projet. */
+  setSessionTrust: (conversationId: string, trust: string | null) =>
+    invoke<SessionTrust>("set_session_trust", { conversationId, trust }),
   /** La place qu'occupe la conversation dans la fenêtre du modèle. */
   contextStatus: (conversationId: string) =>
     invoke<ContextStatus>("context_status", { conversationId }),
@@ -731,6 +746,16 @@ export const demoCore: typeof core = {
     return "demo";
   },
   contextStatus: async () => ({ used: 5400, window: 8192, messages: 14, compressible: true }),
+  sessionTrust: async () => ({
+    effective: "untrusted",
+    override_value: null,
+    project: "untrusted",
+  }),
+  setSessionTrust: async (_id, trust) => ({
+    effective: trust ?? "untrusted",
+    override_value: trust,
+    project: "untrusted",
+  }),
   compressContext: async () => {
     await sleep(1200);
     return 8;

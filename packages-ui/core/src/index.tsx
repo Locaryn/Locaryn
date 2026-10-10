@@ -61,3 +61,6 @@ export {
   type PresentationScene,
   type PresentationStep,
 } from "./presentation";
+
+export { renderMarkdown } from "./markdown";
+export { TRUST_LEVELS, trustInfo, type TrustLevel } from "./trust";

@@ -888,6 +888,7 @@ async fn send_message_stream(
     text: String,
     conversation_id: Option<String>,
     ephemeral: Option<bool>,
+    images: Option<Vec<String>>,
     on_event: tauri::ipc::Channel<serde_json::Value>,
 ) -> Result<String, String> {
     let (client, server, session) = authenticated()?;
@@ -911,7 +912,9 @@ async fn send_message_stream(
     let resp = client
         .post(format!("{base}/v1/sessions/{session_id}/messages"))
         .bearer_auth(&session.token)
-        .json(&serde_json::json!({ "content": text }))
+        // Les photos jointes partent en base64, comme depuis le bureau : le
+        // modèle de vision les lit avec le message.
+        .json(&serde_json::json!({ "content": text, "images": images.unwrap_or_default() }))
         .send()
         .await
         .map_err(|_| unreachable(&server))?;
@@ -1017,6 +1020,44 @@ async fn withdraw_message(conversation_id: String, id: String) -> Result<bool, S
         .get("withdrawn")
         .and_then(|v| v.as_bool())
         .unwrap_or(true))
+}
+
+/// La permission de la conversation : effective, exception, héritage.
+#[tauri::command]
+async fn session_trust(conversation_id: String) -> Result<serde_json::Value, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/sessions/{conversation_id}/trust"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur n'a pas répondu ({}).", resp.status()));
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+/// Changer la permission de la conversation (`null` : celle du projet).
+#[tauri::command]
+async fn set_session_trust(
+    conversation_id: String,
+    trust: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/sessions/{conversation_id}/trust"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "trust": trust }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur a refusé ({}).", resp.status()));
+    }
+    resp.json().await.map_err(|e| e.to_string())
 }
 
 /// Ce que la conversation occupe de la fenêtre du modèle (jauge du chat).
@@ -2702,6 +2743,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_message_stream,
             context_status,
+            session_trust,
+            set_session_trust,
             compress_context,
             cancel_message,
             deposit_message,

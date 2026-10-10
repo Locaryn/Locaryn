@@ -1,4 +1,4 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, renderMarkdown } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ChatStreamEvent,
@@ -14,6 +14,7 @@ import {
 import type { PhoneExtension } from "../lib/core";
 import { useCoucheRetour } from "../lib/navigation";
 import { notifyMessageReceived, notifyToolApprovalRequired } from "../lib/notifications";
+import { AddContextSheet, type PieceJointe } from "./AddContextSheet";
 import { ComposerActions } from "./ComposerActions";
 import { ContextGauge } from "./ContextGauge";
 import { Drawer } from "./Drawer";
@@ -23,7 +24,22 @@ import { UpdateButton } from "./UpdateButton";
 import { ExtensionSlot } from "./extensions/ExtensionSlot";
 
 /** Un message écrit pendant que le modèle travaille (voir le bureau). */
-type EnFile = { id: string; text: string; remis?: boolean };
+type EnFile = { id: string; text: string; pieces?: PieceJointe[]; remis?: boolean };
+
+/** La réflexion du modèle, telle qu'il l'a écrite (pour la déplier). */
+function reflexion(texte: string): string {
+  const blocs = [...texte.matchAll(/<think>([\s\S]*?)(?:<\/think>|$)/g)].map((m) => m[1].trim());
+  return blocs.filter(Boolean).join("\n\n");
+}
+
+/** Le message qui part : le texte, puis chaque fichier texte joint, sous une
+ *  enveloppe qui dit au modèle d'où il vient. */
+function composer(texte: string, pieces: PieceJointe[]): string {
+  const fichiers = pieces
+    .filter((p) => p.genre === "texte")
+    .map((p) => `\n\n--- Fichier joint : ${p.nom} ---\n${p.contenu}\n--- Fin de ${p.nom} ---`);
+  return texte + fichiers.join("");
+}
 
 let compteur = 0;
 function nouvelId(prefixe: string): string {
@@ -107,6 +123,12 @@ export function Chat({
   const canCreate = capabilities.some((c) => c.endsWith("-gen") || c === "voice-tts");
   const canFigures = capabilities.includes("figures");
   const [draft, setDraft] = useState("");
+  /** Photos et fichiers joints au prochain message. */
+  const [pieces, setPieces] = useState<PieceJointe[]>([]);
+  const [feuille, setFeuille] = useState(false);
+  /** Les réflexions dépliées, par message. */
+  const [deplie, setDeplie] = useState<Set<string>>(new Set());
+  const saisieRef = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState(false);
   /** Les messages écrits pendant que le modèle travaille. */
   const [file, setFile] = useState<EnFile[]>([]);
@@ -335,15 +357,18 @@ export function Chat({
    *  attend, le message prend sa place dans la file : il ne la double jamais. */
   function send() {
     const text = draft.trim();
-    if (!text) return;
+    if (!text && pieces.length === 0) return;
+    const jointes = pieces;
     setDraft("");
+    setPieces([]);
+    if (saisieRef.current) saisieRef.current.style.height = "auto";
     setError(null);
     if (busy || fileRef.current.length > 0) {
-      setFile((f) => [...f, { id: nouvelId("q"), text }]);
+      setFile((f) => [...f, { id: nouvelId("q"), text, pieces: jointes }]);
       if (!busy) setFilePause(false);
       return;
     }
-    void repondre(text);
+    void repondre(text, jointes);
   }
 
   // La file part d'elle-même, dans l'ordre, dès que le modèle est libre.
@@ -352,7 +377,7 @@ export function Chat({
     const prochain = file.find((m) => !m.remis);
     if (!prochain) return;
     setFile((f) => f.filter((m) => m.id !== prochain.id));
-    void repondre(prochain.text);
+    void repondre(prochain.text, prochain.pieces ?? []);
   }, [busy, filePause, file]);
 
   function ajouterAuFil(ev: ChatStreamEvent) {
@@ -459,16 +484,37 @@ export function Chat({
   }
 
   /** Envoyer un message et suivre la réponse en direct. */
-  async function repondre(text: string) {
-    setMessages((m) => [...m, { id: nouvelId("u"), role: "user", content: text }]);
+  async function repondre(text: string, jointes: PieceJointe[] = []) {
+    const images = jointes.filter((p) => p.genre === "image");
+    setMessages((m) => [
+      ...m,
+      {
+        id: nouvelId("u"),
+        role: "user",
+        content: [text, ...jointes.filter((p) => p.genre === "texte").map((p) => `📎 ${p.nom}`)]
+          .filter(Boolean)
+          .join("\n"),
+        images: images.map((p) => ({
+          name: p.nom,
+          mime: p.apercu?.slice(5, p.apercu.indexOf(";")) || "image/png",
+          data_base64: p.contenu,
+        })),
+      },
+    ]);
     setBusy(true);
     arretRef.current = false;
     let reponse = "";
     try {
-      await api.sendStream(text, currentId, ephemeral, (ev) => {
-        if (ev.type === "token") reponse += (ev as { text: string }).text;
-        ajouterAuFil(ev);
-      });
+      await api.sendStream(
+        composer(text, jointes),
+        currentId,
+        ephemeral,
+        (ev) => {
+          if (ev.type === "token") reponse += (ev as { text: string }).text;
+          ajouterAuFil(ev);
+        },
+        images.length ? images.map((p) => p.contenu) : undefined,
+      );
       if (document.hidden && reponse) {
         notifyMessageReceived(status.server_name ?? "Locaryn", sansReflexion(reponse));
       }
@@ -592,8 +638,12 @@ export function Chat({
             <Icon name="figures" />
           </button>
         )}
-        <ExtensionSlot name="topbar.actions" context={{ onNavigate: onGo }} />
-        <ExtensionSlot name="chat.header" context={{ onNavigate: onGo }} />
+        <ExtensionSlot
+          extensions={extensions}
+          name="topbar.actions"
+          context={{ onNavigate: onGo }}
+        />
+        <ExtensionSlot extensions={extensions} name="chat.header" context={{ onNavigate: onGo }} />
         <ContextGauge
           conversationId={currentId}
           busy={busy}
@@ -672,17 +722,42 @@ export function Chat({
               key={m.id}
               className={`lo-msg-group${m.role === "user" ? " lo-msg-group-me" : ""}`}
             >
-              {texte !== "" && (
-                <div className={`lo-msg ${m.role === "user" ? "lo-msg-me" : "lo-msg-ai"}`}>
-                  {texte}
-                </div>
+              {m.role === "assistant" && reflexion(m.content) !== "" && (
+                <button
+                  type="button"
+                  className={`lo-reflexion${enCours ? " is-live" : ""}`}
+                  aria-expanded={deplie.has(m.id)}
+                  onClick={() =>
+                    setDeplie((d) => {
+                      const n = new Set(d);
+                      if (n.has(m.id)) n.delete(m.id);
+                      else n.add(m.id);
+                      return n;
+                    })
+                  }
+                >
+                  <span className="lo-reflexion-tete">
+                    {enCours && <span className="lo-spinner" aria-hidden />}
+                    {enCours ? "Réflexion…" : "Réflexion"}
+                    <span className={`lo-reflexion-caret${deplie.has(m.id) ? " is-open" : ""}`}>
+                      ›
+                    </span>
+                  </span>
+                  {deplie.has(m.id) && (
+                    <span className="lo-reflexion-texte">{reflexion(m.content)}</span>
+                  )}
+                </button>
               )}
-              {enCours && texte === "" && (
-                <div className="lo-msg lo-msg-ai lo-msg-busy" role="status">
-                  <span className="lo-spinner" aria-hidden />
-                  <span>Réflexion…</span>
-                </div>
-              )}
+              {texte !== "" &&
+                (m.role === "user" ? (
+                  <div className="lo-msg lo-msg-me">{texte}</div>
+                ) : (
+                  <div
+                    className="lo-msg lo-msg-ai lo-md"
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown échappe tout le HTML source avant d'injecter ses propres balises (packages-ui/core/src/markdown.ts) : rien de ce que produit le modèle n'atteint le DOM sous forme de balise.
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(texte) }}
+                  />
+                ))}
               {m.luEnCours && <span className="lo-msg-lu">✓ Lu pendant la tâche</span>}
               {(m.images?.length || m.forge) && (
                 <div
@@ -870,39 +945,92 @@ export function Chat({
       )}
 
       <div className="lo-compose">
-        <ComposerActions draft={draft} onDraft={setDraft} onError={setError} />
-        <ExtensionSlot
-          name="composer.toolbar"
-          context={{ input: draft, setInput: setDraft, send, canCompose: true, onNavigate: onGo }}
-        />
-        <input
-          className="lo-input"
-          placeholder="Votre message"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-        />
-        {busy && !draft.trim() ? (
-          <button
-            type="button"
-            className="lo-send lo-stop"
-            onClick={() => void arreter()}
-            aria-label="Arrêter la réponse"
-          >
-            ■
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="lo-send"
-            disabled={!draft.trim()}
-            onClick={send}
-            aria-label={busy ? "Mettre en file" : "Envoyer"}
-          >
-            ↑
-          </button>
-        )}
+        <div className="lo-composer">
+          {pieces.length > 0 && (
+            <div className="lo-pieces">
+              {pieces.map((p) => (
+                <span key={p.id} className="lo-piece">
+                  {p.apercu ? <img src={p.apercu} alt="" /> : <Icon name="edit" size={14} />}
+                  <span className="lo-piece-nom">{p.nom}</span>
+                  <button
+                    type="button"
+                    aria-label={`Retirer ${p.nom}`}
+                    onClick={() => setPieces((l) => l.filter((x) => x.id !== p.id))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={saisieRef}
+            className="lo-composer-input"
+            rows={1}
+            placeholder={busy ? "Mettez un message en attente…" : "Votre message"}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              const el = e.target;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+            }}
+          />
+          <div className="lo-composer-bar">
+            <button
+              type="button"
+              className="lo-composer-plus"
+              onClick={() => setFeuille(true)}
+              aria-label="Ajouter du contexte"
+            >
+              <Icon name="plus" size={20} />
+            </button>
+            <ComposerActions draft={draft} onDraft={setDraft} onError={setError} />
+            <ExtensionSlot
+              extensions={extensions}
+              name="composer.toolbar"
+              context={{
+                input: draft,
+                setInput: setDraft,
+                send,
+                canCompose: true,
+                onNavigate: onGo,
+              }}
+            />
+            <span className="lo-composer-espace" />
+            {busy && !draft.trim() && pieces.length === 0 ? (
+              <button
+                type="button"
+                className="lo-composer-send lo-stop"
+                onClick={() => void arreter()}
+                aria-label="Arrêter la réponse"
+              >
+                <span className="lo-stop-carre" aria-hidden />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="lo-composer-send"
+                disabled={!draft.trim() && pieces.length === 0}
+                onClick={send}
+                aria-label={busy ? "Mettre en file" : "Envoyer"}
+              >
+                ↑
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      <AddContextSheet
+        ouvert={feuille}
+        onFermer={() => setFeuille(false)}
+        conversationId={currentId}
+        onJoindre={(liste) =>
+          setPieces((l) => [...l, ...liste.filter((x) => !l.some((y) => y.id === x.id))])
+        }
+        onErreur={setError}
+      />
 
       <ToolApprovalModal
         approval={pendingApproval}

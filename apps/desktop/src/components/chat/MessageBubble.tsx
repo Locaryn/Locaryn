@@ -1,8 +1,7 @@
-import { Icon } from "@locaryn/ui-core";
+import { Icon, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { core } from "../../lib/core";
 import { pickSaveFile } from "../../lib/dialog";
-import { renderMarkdown } from "../../lib/markdown";
 import { splitReasoning } from "../../lib/reasoning";
 import { formatRate } from "../SpeedBadge";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -391,7 +390,7 @@ export function MessageBubble({
       <div
         ref={mdRef}
         className="locaryn-msg-md"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown échappe tout le HTML source avant d'injecter ses propres balises (modèle de sûreté en tête de lib/markdown.ts). Rien de ce que produit le modèle n'atteint le DOM sous forme de balise.
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown échappe tout le HTML source avant d'injecter ses propres balises (modèle de sûreté en tête de packages-ui/core/src/markdown.ts). Rien de ce que produit le modèle n'atteint le DOM sous forme de balise.
         dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
       />
       {((images && images.length > 0) || (forge && forge.kind !== "audio")) && (

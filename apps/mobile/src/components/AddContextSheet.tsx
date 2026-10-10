@@ -1,0 +1,227 @@
+import { Icon, type IconName, TRUST_LEVELS, trustInfo } from "@locaryn/ui-core";
+import { useEffect, useRef, useState } from "react";
+import { type SessionTrust, api } from "../lib/core";
+import { useCoucheRetour } from "../lib/navigation";
+
+/** Une pièce jointe prête à partir. */
+export type PieceJointe = {
+  id: string;
+  nom: string;
+  /** `image` part en base64 vers le modèle de vision ; `texte` dans le message. */
+  genre: "image" | "texte";
+  /** Image : base64 sans préfixe. Texte : le contenu lu. */
+  contenu: string;
+  /** Image : l'URL de la miniature. */
+  apercu?: string;
+};
+
+type Props = {
+  ouvert: boolean;
+  onFermer: () => void;
+  conversationId: string | null;
+  onJoindre: (pieces: PieceJointe[]) => void;
+  onErreur: (message: string) => void;
+};
+
+/** Un texte se joint jusqu'à cette taille : au-delà, il étoufferait la fenêtre. */
+const TEXTE_MAX = 200_000;
+
+function lireFichier(f: File): Promise<PieceJointe> {
+  return new Promise((resolve, reject) => {
+    const lecteur = new FileReader();
+    const id = `${f.name}-${f.size}-${f.lastModified}`;
+    if (f.type.startsWith("image/")) {
+      lecteur.onload = () => {
+        const url = String(lecteur.result);
+        resolve({
+          id,
+          nom: f.name,
+          genre: "image",
+          contenu: url.slice(url.indexOf(",") + 1),
+          apercu: url,
+        });
+      };
+      lecteur.readAsDataURL(f);
+    } else {
+      if (f.size > TEXTE_MAX) {
+        reject(
+          new Error(
+            `« ${f.name} » est trop grand pour être joint (${Math.round(f.size / 1024)} Ko).`,
+          ),
+        );
+        return;
+      }
+      lecteur.onload = () =>
+        resolve({ id, nom: f.name, genre: "texte", contenu: String(lecteur.result) });
+      lecteur.readAsText(f);
+    }
+    lecteur.onerror = () => reject(lecteur.error ?? new Error(`« ${f.name} » illisible.`));
+  });
+}
+
+/**
+ * « + » du composeur : joindre une photo prise sur le moment, une image de la
+ * galerie, un fichier, ou changer la permission de la conversation — le panneau
+ * du bas que l'on attend d'une application de chat sur téléphone.
+ */
+export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, onErreur }: Props) {
+  const camera = useRef<HTMLInputElement>(null);
+  const galerie = useRef<HTMLInputElement>(null);
+  const fichiers = useRef<HTMLInputElement>(null);
+  const [permission, setPermission] = useState<SessionTrust | null>(null);
+  const [niveaux, setNiveaux] = useState(false);
+
+  useCoucheRetour(ouvert, onFermer);
+
+  useEffect(() => {
+    if (!ouvert || !conversationId) {
+      setPermission(null);
+      return;
+    }
+    let annule = false;
+    api
+      .sessionTrust(conversationId)
+      .then((p) => {
+        if (!annule) setPermission(p);
+      })
+      .catch((e) => console.warn("permission illisible :", e));
+    return () => {
+      annule = true;
+    };
+  }, [ouvert, conversationId]);
+
+  useEffect(() => {
+    if (!ouvert) setNiveaux(false);
+  }, [ouvert]);
+
+  async function choisis(liste: FileList | null) {
+    if (!liste || liste.length === 0) return;
+    const pieces: PieceJointe[] = [];
+    for (const f of Array.from(liste)) {
+      try {
+        pieces.push(await lireFichier(f));
+      } catch (e) {
+        onErreur(e instanceof Error ? e.message : String(e));
+      }
+    }
+    if (pieces.length) onJoindre(pieces);
+    onFermer();
+  }
+
+  async function poser(niveau: string) {
+    if (!conversationId) return;
+    try {
+      setPermission(await api.setSessionTrust(conversationId, niveau));
+      setNiveaux(false);
+    } catch (e) {
+      onErreur(String(e));
+    }
+  }
+
+  if (!ouvert) return null;
+  const actuel = permission ? trustInfo(permission.effective as never) : null;
+  const tuiles: { icone: IconName; libelle: string; cible: React.RefObject<HTMLInputElement> }[] = [
+    { icone: "image", libelle: "Appareil photo", cible: camera },
+    { icone: "image", libelle: "Photos", cible: galerie },
+    { icone: "download", libelle: "Fichiers", cible: fichiers },
+  ];
+
+  return (
+    <div className="lo-sheet-voile" role="presentation" onClick={onFermer}>
+      <div
+        className="lo-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Ajouter du contexte"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="lo-sheet-poignee" aria-hidden />
+        <div className="lo-sheet-tete">
+          <button type="button" className="lo-sheet-fermer" onClick={onFermer} aria-label="Fermer">
+            <Icon name="close" size={20} />
+          </button>
+          <h2>{niveaux ? "Autorisation" : "Ajouter du contexte"}</h2>
+        </div>
+
+        {niveaux ? (
+          <ul className="lo-sheet-niveaux">
+            {TRUST_LEVELS.map((n) => (
+              <li key={n.value}>
+                <button
+                  type="button"
+                  className={`lo-sheet-niveau${permission?.effective === n.value ? " is-on" : ""}`}
+                  onClick={() => void poser(n.value)}
+                >
+                  <span className="lo-sheet-pastille" style={{ background: n.color }} />
+                  <span className="lo-sheet-niveau-texte">
+                    <strong>{n.label}</strong>
+                    <small>{n.hint}</small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <>
+            <div className="lo-sheet-tuiles">
+              {tuiles.map((t) => (
+                <button
+                  key={t.libelle}
+                  type="button"
+                  className="lo-sheet-tuile"
+                  onClick={() => t.cible.current?.click()}
+                >
+                  <Icon name={t.icone} size={22} />
+                  <span>{t.libelle}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="lo-sheet-ligne"
+              disabled={!conversationId}
+              onClick={() => setNiveaux(true)}
+            >
+              <span className="lo-sheet-ligne-icone">
+                <Icon name="shield" size={20} />
+              </span>
+              <span className="lo-sheet-ligne-texte">
+                <strong>Autorisation</strong>
+                <small>
+                  {conversationId
+                    ? (actuel?.label ?? "…")
+                    : "Envoyez un premier message pour régler cette conversation"}
+                </small>
+              </span>
+              <Icon name="chevron" size={18} />
+            </button>
+          </>
+        )}
+
+        <input
+          ref={camera}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+          onChange={(e) => void choisis(e.target.files)}
+        />
+        <input
+          ref={galerie}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(e) => void choisis(e.target.files)}
+        />
+        <input
+          ref={fichiers}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => void choisis(e.target.files)}
+        />
+      </div>
+    </div>
+  );
+}

@@ -100,6 +100,24 @@ export function App() {
     void refreshCapabilities();
   }, [status?.signed_in, refreshCapabilities]);
 
+  // Une extension installée, désactivée ou supprimée sur le serveur doit
+  // apparaître ou disparaître ici aussi : la liste n'était lue qu'à la
+  // connexion, et le bouton d'un morph supprimé restait dans le composeur.
+  useEffect(() => {
+    if (!status?.signed_in) return;
+    const relire = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshCapabilities();
+      window.dispatchEvent(new Event("locaryn:extensions-changed"));
+    };
+    const minuterie = window.setInterval(relire, 30_000);
+    document.addEventListener("visibilitychange", relire);
+    return () => {
+      window.clearInterval(minuterie);
+      document.removeEventListener("visibilitychange", relire);
+    };
+  }, [status?.signed_in, refreshCapabilities]);
+
   const refresh = useCallback(async () => {
     // Cet appel est le tout premier que fait l'application. S'il échoue sans
     // être rattrapé, `status` reste nul, l'écran reste sur « loading », et

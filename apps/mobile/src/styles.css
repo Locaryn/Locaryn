@@ -2219,3 +2219,366 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   white-space: nowrap;
   animation: lo-fade-up var(--dur-med) var(--ease-out) both;
 }
+
+/* ── Chat comme sur le bureau ──────────────────────────────────
+   La réponse n'est pas une bulle : elle occupe la largeur, mise en forme
+   (titres, listes, code). Seul le message de la personne reste en bulle. */
+.lo-msg.lo-msg-ai {
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  white-space: normal;
+}
+.lo-md > :first-child {
+  margin-top: 0;
+}
+.lo-md > :last-child {
+  margin-bottom: 0;
+}
+.lo-md p {
+  margin: 0 0 0.7em;
+}
+.lo-md h1,
+.lo-md h2,
+.lo-md h3 {
+  margin: 1em 0 0.4em;
+  font-size: 16px;
+  font-weight: 600;
+}
+.lo-md ul,
+.lo-md ol {
+  margin: 0 0 0.7em;
+  padding-left: 1.3em;
+}
+.lo-md li {
+  margin: 0.2em 0;
+}
+.lo-md code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.lo-md pre {
+  margin: 0 0 0.7em;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow-x: auto;
+  white-space: pre;
+}
+.lo-md pre code {
+  padding: 0;
+  background: none;
+}
+.lo-md blockquote {
+  margin: 0 0 0.7em;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+  color: var(--text-dim);
+}
+.lo-md a {
+  color: var(--accent);
+}
+
+/* La réflexion du modèle, repliée sur une ligne. */
+.lo-reflexion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.lo-reflexion-tete {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+}
+.lo-reflexion-caret {
+  display: inline-block;
+  transition: transform 160ms var(--ease-out);
+}
+.lo-reflexion-caret.is-open {
+  transform: rotate(90deg);
+}
+.lo-reflexion-texte {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+/* ── Composeur en carte ────────────────────────────────────────
+   Le champ sur toute la largeur, les actions en dessous : il n'est plus
+   écrasé entre les boutons des extensions. */
+.lo-compose {
+  display: block;
+}
+.lo-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+}
+.lo-composer-input {
+  width: 100%;
+  min-height: 28px;
+  max-height: 160px;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+}
+.lo-composer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lo-composer-espace {
+  flex: 1;
+}
+.lo-composer-plus,
+.lo-composer-send {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 18px;
+}
+.lo-composer-plus {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.lo-composer-send {
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.lo-composer-send:disabled {
+  opacity: 0.35;
+}
+.lo-composer-send.lo-stop {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.lo-stop-carre {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--text);
+}
+.lo-composer-plus:active,
+.lo-composer-send:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.lo-pieces {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+}
+.lo-piece {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  height: 40px;
+  padding: 0 4px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+.lo-piece img {
+  width: 30px;
+  height: 30px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.lo-piece-nom {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lo-piece button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 16px;
+}
+
+/* ── Panneau du bas « Ajouter du contexte » ─────────────────── */
+.lo-sheet-voile {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.45);
+  animation: lo-fade-in var(--dur-fast) var(--ease-out) both;
+}
+.lo-sheet {
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  border-radius: 24px 24px 0 0;
+  background: var(--surface);
+  animation: lo-sheet-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes lo-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+.lo-sheet-poignee {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0 auto var(--space-3);
+  border-radius: 2px;
+  background: var(--border);
+}
+.lo-sheet-tete {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-bottom: var(--space-4);
+}
+.lo-sheet-tete h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+}
+.lo-sheet-fermer {
+  position: absolute;
+  left: 0;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  color: var(--text);
+}
+.lo-sheet-tuiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.lo-sheet-tuile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 96px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+.lo-sheet-tuile:active,
+.lo-sheet-ligne:active:not(:disabled),
+.lo-sheet-niveau:active {
+  background: var(--surface-2);
+}
+.lo-sheet-ligne {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 64px;
+  padding: var(--space-3);
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.lo-sheet-ligne:disabled {
+  opacity: 0.55;
+}
+.lo-sheet-ligne-icone {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+.lo-sheet-ligne-texte,
+.lo-sheet-niveau-texte {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lo-sheet-ligne-texte small,
+.lo-sheet-niveau-texte small {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.lo-sheet-niveaux {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.lo-sheet-niveau {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.lo-sheet-niveau.is-on {
+  border-color: var(--accent);
+  background: var(--accent-fill);
+}
+.lo-sheet-pastille {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+}
