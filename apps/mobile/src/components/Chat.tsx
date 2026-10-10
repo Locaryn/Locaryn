@@ -15,6 +15,7 @@ import type { PhoneExtension } from "../lib/core";
 import { useCoucheRetour } from "../lib/navigation";
 import { notifyMessageReceived, notifyToolApprovalRequired } from "../lib/notifications";
 import { ComposerActions } from "./ComposerActions";
+import { ContextGauge } from "./ContextGauge";
 import { Drawer } from "./Drawer";
 import { type Destination, MainMenu, type ModelsTab } from "./MainMenu";
 import { ToolApprovalModal } from "./ToolApprovalModal";
@@ -593,6 +594,13 @@ export function Chat({
         )}
         <ExtensionSlot name="topbar.actions" context={{ onNavigate: onGo }} />
         <ExtensionSlot name="chat.header" context={{ onNavigate: onGo }} />
+        <ContextGauge
+          conversationId={currentId}
+          busy={busy}
+          onCompressed={() => {
+            if (currentId) void open(currentId);
+          }}
+        />
         <UpdateButton onOpen={onOpenUpdate} />
         <button
           type="button"

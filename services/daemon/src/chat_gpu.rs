@@ -176,3 +176,94 @@ pub fn arbitre(state: Arc<DaemonState>) -> GpuArbiterHandle {
         free_vram_gb: locaryn_llmfit::hardware::free_vram_gb,
     })
 }
+
+// ─── Fenêtre de contexte ─────────────────────────────────────────────────────
+
+/// GET /v1/sessions/:id/context — ce que la conversation occupe de la fenêtre
+/// du modèle, pour la jauge du téléphone.
+pub async fn contexte(
+    axum::extract::State(s): axum::extract::State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let Ok(sid) = Uuid::parse_str(&id) else {
+        return conversation_inconnue();
+    };
+    let messages = s
+        .storage
+        .messages
+        .list_for_session(sid)
+        .await
+        .unwrap_or_default();
+    let fenetre = match s.storage.providers.active().await.ok().flatten() {
+        Some(p) => locaryn_agent_runtime::tool_budget::server_context(&s.http, &p.endpoint).await,
+        None => None,
+    };
+    Json(serde_json::json!({
+        "used": locaryn_agent_runtime::compaction::jetons_estimes(&messages),
+        "window": fenetre,
+        "messages": messages.len(),
+        "compressible": messages.len() >= locaryn_agent_runtime::compaction::MINIMUM,
+    }))
+    .into_response()
+}
+
+/// POST /v1/sessions/:id/compress — résumer les vieux échanges, comme l'appui
+/// long sur la jauge du bureau.
+pub async fn compresser(
+    axum::extract::State(s): axum::extract::State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let Ok(sid) = Uuid::parse_str(&id) else {
+        return conversation_inconnue();
+    };
+    match compresser_session(&s, sid).await {
+        Ok(retires) => Json(serde_json::json!({ "removed": retires })).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
+    }
+}
+
+async fn compresser_session(s: &DaemonState, sid: Uuid) -> Result<u64, String> {
+    use locaryn_agent_runtime::compaction;
+    let messages = s
+        .storage
+        .messages
+        .list_for_session(sid)
+        .await
+        .map_err(|e| e.to_string())?;
+    let plan = compaction::planifier(&messages)?;
+    let actif = s
+        .storage
+        .providers
+        .active()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("aucun fournisseur actif")?;
+    let modele = actif.model.clone().unwrap_or_else(|| "default".into());
+    let resume = compaction::resumer(&s.http, &actif.endpoint, &modele, &plan.transcript).await?;
+    let retires = s
+        .storage
+        .messages
+        .delete_before(sid, plan.cutoff)
+        .await
+        .map_err(|e| e.to_string())?;
+    s.storage
+        .messages
+        .append_full(
+            sid,
+            MessageRole::Assistant,
+            &format!("{}{resume}", compaction::PREFIXE_RESUME),
+            None,
+            None,
+            0,
+            0,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    tracing::info!(session = %sid, retires, "conversation compressée depuis un client");
+    Ok(retires)
+}

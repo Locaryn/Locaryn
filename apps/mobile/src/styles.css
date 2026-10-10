@@ -2080,3 +2080,142 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
     animation: none;
   }
 }
+
+/* ── Jauge de contexte ──────────────────────────────────────── */
+.lo-ctx {
+  position: relative;
+}
+.lo-ctx-ring {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.lo-ctx-ring svg {
+  transform: rotate(-90deg);
+}
+.lo-ctx-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+.lo-ctx-track {
+  stroke: var(--border);
+}
+.lo-ctx-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 400ms var(--ease-out);
+}
+.lo-ctx-ring.is-high .lo-ctx-fill {
+  stroke: var(--warn);
+}
+.lo-ctx-ring.is-full .lo-ctx-fill {
+  stroke: var(--danger);
+}
+/* L'appui se remplit en 1,2 s : on voit la compression arriver. */
+.lo-ctx-hold {
+  stroke: var(--text);
+  stroke-dashoffset: 69.1;
+  opacity: 0;
+}
+.lo-ctx-ring.is-holding .lo-ctx-hold {
+  opacity: 0.85;
+  animation: lo-ctx-hold 1200ms linear forwards;
+}
+@keyframes lo-ctx-hold {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.lo-ctx-ring.is-busy svg {
+  animation: lo-ctx-spin 1.1s linear infinite;
+}
+@keyframes lo-ctx-spin {
+  to {
+    transform: rotate(270deg);
+  }
+}
+.lo-ctx-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: min(280px, calc(100vw - 32px));
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  animation: lo-fade-up var(--dur-med) var(--ease-out) both;
+}
+.lo-ctx-title {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.lo-ctx-value {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+}
+.lo-ctx-value span {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.lo-ctx-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.lo-ctx-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.lo-ctx-bar span.is-high {
+  background: var(--warn);
+}
+.lo-ctx-bar span.is-full {
+  background: var(--danger);
+}
+.lo-ctx-note {
+  margin: var(--space-3) 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+.lo-ctx-action {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+.lo-ctx-action:disabled {
+  opacity: 0.45;
+}
+.lo-ctx-bulle {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 41;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  white-space: nowrap;
+  animation: lo-fade-up var(--dur-med) var(--ease-out) both;
+}

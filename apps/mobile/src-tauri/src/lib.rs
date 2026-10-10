@@ -1019,6 +1019,41 @@ async fn withdraw_message(conversation_id: String, id: String) -> Result<bool, S
         .unwrap_or(true))
 }
 
+/// Ce que la conversation occupe de la fenêtre du modèle (jauge du chat).
+#[tauri::command]
+async fn context_status(conversation_id: String) -> Result<serde_json::Value, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/sessions/{conversation_id}/context"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur n'a pas répondu ({}).", resp.status()));
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+/// Compresser la conversation : les vieux échanges deviennent un résumé.
+#[tauri::command]
+async fn compress_context(conversation_id: String) -> Result<u64, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/sessions/{conversation_id}/compress"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    let corps: serde_json::Value = resp.json().await.unwrap_or_default();
+    if let Some(e) = corps.get("error").and_then(|e| e.as_str()) {
+        return Err(e.to_string());
+    }
+    Ok(corps.get("removed").and_then(|r| r.as_u64()).unwrap_or(0))
+}
+
 /// Une conversation du serveur, telle que le téléphone la liste.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Conversation {
@@ -2666,6 +2701,8 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             send_message_stream,
+            context_status,
+            compress_context,
             cancel_message,
             deposit_message,
             withdraw_message,

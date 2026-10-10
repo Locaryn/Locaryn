@@ -299,6 +299,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/v1/sessions/:id/cancel", post(cancel_session))
         .route("/v1/sessions/:id/mailbox", post(chat_gpu::deposer))
+        .route("/v1/sessions/:id/context", get(chat_gpu::contexte))
+        .route("/v1/sessions/:id/compress", post(chat_gpu::compresser))
         .route(
             "/v1/sessions/:id/mailbox/:mid",
             axum::routing::delete(chat_gpu::reprendre),

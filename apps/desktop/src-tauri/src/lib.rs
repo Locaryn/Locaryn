@@ -2407,16 +2407,7 @@ fn image_marker(path: &str) -> String {
 
 /// Remove UI-only artifact markers before replaying history to a model.
 fn strip_ui_markers(content: &str) -> String {
-    let mut text = locaryn_agent_runtime::openai_tool_loop::sans_reflexion(content);
-    for marker in ["<!--locaryn-audio:", "<!--locaryn-image:"] {
-        while let Some(start) = text.find(marker) {
-            let Some(end_rel) = text[start..].find("-->") else {
-                break;
-            };
-            text.replace_range(start..start + end_rel + 3, "");
-        }
-    }
-    text.trim().to_string()
+    locaryn_agent_runtime::compaction::sans_marqueurs(content)
 }
 
 /// When no local model can answer, stream a clear, actionable explanation
@@ -4766,39 +4757,7 @@ async fn compress_chat_context(core: State<'_, Core>, session_id: Uuid) -> Resul
         .list_for_session(session_id)
         .await
         .map_err(|e| e.to_string())?;
-    let convo: Vec<_> = msgs
-        .iter()
-        .filter(|m| matches!(m.role, MessageRole::User | MessageRole::Assistant))
-        .collect();
-    if convo.len() < 6 {
-        return Err("La conversation est trop courte pour avoir a compresser".into());
-    }
-
-    // Le resume porte sur tout sauf les derniers echanges.
-    let keep = 4;
-    let split = convo.len() - keep;
-    let transcript: String = convo[..split]
-        .iter()
-        .map(|m| {
-            format!(
-                "{}: {}",
-                if m.role == MessageRole::Assistant {
-                    "assistant"
-                } else {
-                    "user"
-                },
-                strip_ui_markers(&m.content)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(
-            "
-",
-        )
-        .chars()
-        .take(12000)
-        .collect();
-
+    let plan = locaryn_agent_runtime::compaction::planifier(&msgs)?;
     let active = core
         .storage
         .providers
@@ -4810,43 +4769,17 @@ async fn compress_chat_context(core: State<'_, Core>, session_id: Uuid) -> Resul
         .model
         .clone()
         .unwrap_or_else(|| "default".to_string());
-    let url = format!(
-        "{}/v1/chat/completions",
-        active.endpoint.trim_end_matches('/')
-    );
-    let body = serde_json::json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content":
-              "Resume la conversation ci-dessous en francais, en moins de 200 mots. Conserve les decisions, contraintes, noms de fichiers et faits techniques. Pas de preambule, uniquement le resume." },
-            { "role": "user", "content": transcript }
-        ],
-        "max_tokens": 320,
-        "temperature": 0.2,
-        "stream": false,
-        "reasoning_budget": 0,
-        "chat_template_kwargs": { "enable_thinking": false }
-    });
-    let resp = core
-        .http
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("moteur injoignable : {e}"))?;
-    let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let summary = val["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if summary.is_empty() {
-        return Err("le modele n'a pas produit de resume".into());
-    }
+    let summary = locaryn_agent_runtime::compaction::resumer(
+        &core.http,
+        &active.endpoint,
+        &model,
+        &plan.transcript,
+    )
+    .await?;
+    let cutoff = plan.cutoff;
 
     // Le resume remplace les vieux tours. La coupure se fait au message
     // conserve le plus ancien : tout ce qui est avant part, le resume entre.
-    let cutoff = convo[split].created_at;
     let removed = core
         .storage
         .messages
@@ -4863,8 +4796,8 @@ async fn compress_chat_context(core: State<'_, Core>, session_id: Uuid) -> Resul
             session_id,
             MessageRole::Assistant,
             &format!(
-                "[Resume des echanges precedents]
-{summary}"
+                "{}{summary}",
+                locaryn_agent_runtime::compaction::PREFIXE_RESUME
             ),
             None,
             None,

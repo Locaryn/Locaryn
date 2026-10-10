@@ -6,6 +6,7 @@
 pub mod approval;
 pub mod approval_gate;
 pub mod arg_schema;
+pub mod compaction;
 pub mod context_window;
 pub mod embeddings;
 pub mod exec;

@@ -259,6 +259,16 @@ export interface Message {
   forged?: boolean;
 }
 
+/** Ce que la conversation occupe de la fenêtre du modèle. */
+export interface ContextStatus {
+  /** Jetons estimés de la conversation. */
+  used: number;
+  /** Fenêtre du moteur en marche ; `null` s'il ne la dit pas. */
+  window: number | null;
+  messages: number;
+  compressible: boolean;
+}
+
 /** Un média qui se fabrique : ses proportions, l'étape en cours. */
 export interface MediaForge {
   callId: string;
@@ -464,6 +474,12 @@ export const core = {
       onEvent: canal,
     });
   },
+  /** La place qu'occupe la conversation dans la fenêtre du modèle. */
+  contextStatus: (conversationId: string) =>
+    invoke<ContextStatus>("context_status", { conversationId }),
+  /** Résumer les vieux échanges ; rend le nombre de messages retirés. */
+  compressContext: (conversationId: string) =>
+    invoke<number>("compress_context", { conversationId }),
   /** Stop : la réponse s'arrête sur le serveur. */
   cancelMessage: (conversationId: string) => invoke<void>("cancel_message", { conversationId }),
   /** « Envoyer maintenant » : remis au modèle, lu à sa prochaine étape. */
@@ -713,6 +729,11 @@ export const demoCore: typeof core = {
     }
     onEvent({ type: "message_end" });
     return "demo";
+  },
+  contextStatus: async () => ({ used: 5400, window: 8192, messages: 14, compressible: true }),
+  compressContext: async () => {
+    await sleep(1200);
+    return 8;
   },
   cancelMessage: async () => {
     demoArret.current = true;
