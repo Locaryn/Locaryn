@@ -13,6 +13,10 @@
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+/// Chemin du projet caché qui porte les conversations libres. Ce n'est pas un
+/// dossier : chaque conversation reçoit le sien (`resolve`).
+pub const FREE_CHAT_PROJECT_PATH: &str = "__locaryn_free_chats__";
+
 /// Adjectifs identiques au masculin et au féminin, pour que « renard calme » et
 /// « lune calme » s'accordent sans règle.
 const ADJECTIFS: [&str; 32] = [

@@ -1697,6 +1697,8 @@ export interface CoreApi {
   /** `question` est le message auquel la réponse répond : sans lui, les
    *  suggestions ne savent pas de quoi parle la conversation. */
   suggestFollowups(answer: string, question?: string): Promise<string[]>;
+  /** Le texte d'un PDF ou d'un binaire joint (octets en base64). */
+  extractDocument(nom: string, donnees: string): Promise<{ texte: string; tronque: boolean }>;
   /** Persist a message contributed by an extension without exposing its runtime. */
   appendChatMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<void>;
   /** Legacy convenience for assistant artifacts contributed by extensions. */
@@ -2194,6 +2196,8 @@ const tauriCore: CoreApi = {
   workspaceDiff: (sessionId, chemin) => invoke<string>("workspace_diff", { sessionId, chemin }),
   suggestFollowups: (answer, question) =>
     invoke<string[]>("suggest_followups", { answer, question }),
+  extractDocument: (nom, donnees) =>
+    invoke<{ texte: string; tronque: boolean }>("extract_document", { nom, donnees }),
   planTask: (request, force) => invoke<TaskPlan>("plan_task", { request, force: force ?? null }),
   appendChatMessage: (sessionId, role, content) =>
     invoke<void>("append_chat_message", { sessionId, role, content }),
@@ -4425,6 +4429,10 @@ Contenu de démonstration.
       "Appliquer la modification",
       "Vérifier que tout fonctionne",
     ],
+  }),
+  extractDocument: async (nom) => ({
+    texte: `Texte de démonstration tiré de « ${nom} ».`,
+    tronque: false,
   }),
   suggestFollowups: async () => [
     "Lier le bouton à une fonction",

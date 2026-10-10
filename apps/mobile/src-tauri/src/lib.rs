@@ -1158,6 +1158,41 @@ async fn compress_context(conversation_id: String) -> Result<u64, String> {
     Ok(corps.get("removed").and_then(|r| r.as_u64()).unwrap_or(0))
 }
 
+/// Le texte d'un document joint (PDF compris), tiré par le serveur.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TexteDocument {
+    pub texte: String,
+    pub tronque: bool,
+}
+
+/// Un PDF ou un fichier binaire joint : le serveur en tire le texte, qui
+/// rejoint le message. Lu comme du texte sur le téléphone, un PDF ne donnait
+/// que des octets illisibles — et assez pour déborder la fenêtre du modèle.
+#[tauri::command]
+async fn extract_document(nom: String, donnees: String) -> Result<TexteDocument, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/documents/text"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "nom": nom, "donnees": donnees }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    let statut = resp.status();
+    let corps: serde_json::Value = resp.json().await.unwrap_or_default();
+    if !statut.is_success() {
+        return Err(corps
+            .pointer("/error/message")
+            .and_then(|m| m.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                format!("Le serveur n'a pas pu lire « {nom} » ({statut}). Mettez-le à jour.")
+            }));
+    }
+    serde_json::from_value(corps).map_err(|e| format!("Réponse du serveur illisible : {e}"))
+}
+
 /// Une conversation du serveur, telle que le téléphone la liste.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Conversation {
@@ -2810,6 +2845,7 @@ pub fn run() {
             delete_session,
             set_session_trust,
             compress_context,
+            extract_document,
             cancel_message,
             deposit_message,
             withdraw_message,

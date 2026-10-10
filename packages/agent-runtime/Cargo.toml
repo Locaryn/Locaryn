@@ -26,6 +26,7 @@ bytes = { workspace = true }
 http = "1"
 tokio-stream = "0.1"
 locaryn-mcp = { workspace = true }
+pdf-extract = "0.12.1"
 
 [dev-dependencies]
 axum = { workspace = true }

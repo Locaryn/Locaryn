@@ -121,6 +121,77 @@ pub fn jetons_estimes(messages: &[Message]) -> u64 {
         .sum()
 }
 
+/// Ce qu'un résultat d'outil garde, en caractères, quand il est rejoué.
+const RESULTAT_MAX: usize = 600;
+
+/// La conversation telle que le modèle doit la relire au tour suivant.
+///
+/// Les appels d'outils et leurs résultats y restent, résumés dans la réponse
+/// qui les a faits. Sans eux, une réponse faite seulement de réflexion et d'un
+/// appel d'outil devenait vide : au « Réessaye » suivant, le modèle ne savait
+/// plus ni ce qu'on lui avait demandé d'essayer, ni pourquoi ça avait échoué.
+/// Partagé par le bureau et le démon, qui rejouaient chacun la leur.
+pub fn historique(messages: &[Message]) -> Vec<crate::ChatTurn> {
+    let mut tours: Vec<crate::ChatTurn> = Vec::new();
+    // L'outil de chaque appel, pour nommer son résultat.
+    let mut outils: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for m in messages {
+        match m.role {
+            MessageRole::User => tours.push(crate::ChatTurn {
+                role: "user".into(),
+                content: sans_marqueurs(&m.content),
+            }),
+            MessageRole::Assistant => {
+                let mut texte = sans_marqueurs(&m.content);
+                for appel in m.tool_calls.iter().flatten() {
+                    outils.insert(appel.call_id.as_str(), appel.tool.as_str());
+                    let args = abreger(&appel.args.to_string(), 200);
+                    texte.push_str(&format!(
+                        "
+[Outil appelé : {}({args})]",
+                        appel.tool
+                    ));
+                }
+                tours.push(crate::ChatTurn {
+                    role: "assistant".into(),
+                    content: texte.trim().to_string(),
+                });
+            }
+            MessageRole::Tool => {
+                let outil = m
+                    .tool_call_id
+                    .as_deref()
+                    .and_then(|id| outils.get(id).copied())
+                    .unwrap_or("outil");
+                let note = format!(
+                    "
+[Résultat de {outil} : {}]",
+                    abreger(m.content.trim(), RESULTAT_MAX)
+                );
+                // Le résultat suit la réponse qui l'a demandé.
+                match tours.last_mut() {
+                    Some(t) if t.role == "assistant" => t.content.push_str(&note),
+                    _ => tours.push(crate::ChatTurn {
+                        role: "assistant".into(),
+                        content: note.trim().to_string(),
+                    }),
+                }
+            }
+            _ => {}
+        }
+    }
+    tours.retain(|t| !t.content.trim().is_empty());
+    tours
+}
+
+fn abreger(texte: &str, max: usize) -> String {
+    if texte.chars().count() <= max {
+        return texte.to_string();
+    }
+    let debut: String = texte.chars().take(max).collect();
+    format!("{debut}…")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +209,35 @@ mod tests {
             parent_id: None,
             created_at: chrono::DateTime::from_timestamp(minute * 60, 0).unwrap(),
         }
+    }
+
+    #[test]
+    fn les_outils_et_leurs_resultats_restent_dans_l_historique() {
+        let mut appel = message(MessageRole::Assistant, "<think>je regarde</think>", 1);
+        appel.tool_calls = Some(vec![locaryn_shared_types::ToolCall {
+            call_id: "c1".into(),
+            tool: "desktop_status".into(),
+            args: serde_json::json!({}),
+        }]);
+        let mut resultat = message(MessageRole::Tool, "Tool 'desktop_status' was blocked.", 2);
+        resultat.tool_call_id = Some("c1".into());
+        let msgs = vec![
+            message(MessageRole::User, "Mes 3 applis les plus gourmandes ?", 0),
+            appel,
+            resultat,
+            message(MessageRole::User, "Réessaye", 3),
+        ];
+        let tours = historique(&msgs);
+        assert_eq!(tours.len(), 3);
+        assert_eq!(tours[1].role, "assistant");
+        assert!(tours[1]
+            .content
+            .contains("[Outil appelé : desktop_status({})]"));
+        assert!(tours[1]
+            .content
+            .contains("[Résultat de desktop_status : Tool 'desktop_status' was blocked.]"));
+        assert!(!tours[1].content.contains("je regarde"));
+        assert_eq!(tours[2].content, "Réessaye");
     }
 
     #[test]

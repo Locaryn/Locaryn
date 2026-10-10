@@ -368,7 +368,7 @@ pub async fn run_openai_tool_loop(
         let body_text = first_resp.text().await.unwrap_or_default();
         if !fenetre_pleine(&body_text) {
             tracing::warn!(%status, body = %body_text, "openai-compat returned non-2xx");
-            return Err(AgentError::ProviderUnavailable);
+            return Err(refus(status.as_u16(), &body_text));
         }
         // Le moteur dit la taille réelle de la requête. L'estimation (octets
         // de JSON) la sous-évalue quand le gabarit du modèle enrobe chaque
@@ -450,7 +450,7 @@ pub async fn run_openai_tool_loop(
         let status = first_resp.status();
         let body_text = first_resp.text().await.unwrap_or_default();
         tracing::warn!(%status, body = %body_text, "openai-compat returned non-2xx");
-        return Err(AgentError::ProviderUnavailable);
+        return Err(refus(status.as_u16(), &body_text));
     }
     let first_resp = if native_ollama {
         convert_native_to_openai_stream(first_resp)
@@ -995,6 +995,15 @@ fn fenetre_pleine(texte: &str) -> bool {
     bas.contains("context") && (bas.contains("exceed") || bas.contains("size"))
 }
 
+/// Un refus du moteur : une requête qu'il a lue et rejetée se dit avec ses
+/// mots. Seule une réponse vide, sans rien d'exploitable, reste « indisponible ».
+fn refus(status: u16, body: &str) -> AgentError {
+    if body.trim().is_empty() && status >= 500 {
+        return AgentError::ProviderUnavailable;
+    }
+    AgentError::Refused(server_error_message(status, body))
+}
+
 fn server_error_message(status: u16, body: &str) -> String {
     let detail = serde_json::from_str::<serde_json::Value>(body)
         .ok()
@@ -1004,7 +1013,17 @@ fn server_error_message(status: u16, body: &str) -> String {
                 .map(str::to_string)
         })
         .unwrap_or_else(|| body.trim().to_string());
+    let bas = detail.to_lowercase();
+    if bas.contains("image input is not supported") || bas.contains("mmproj") {
+        return "Le modèle chargé ne sait pas analyser les images : il lui faut un projecteur                 « mmproj » à côté de ses poids. Choisissez un modèle multimodal, ou envoyez le                 message sans l'image."
+            .into();
+    }
     if fenetre_pleine(&detail) {
+        if let Some(n) = jetons_annonces(body) {
+            return format!(
+                "Le message dépasse la fenêtre de contexte du modèle ({n} jetons). Un document                  joint trop long en est la cause la plus fréquente : joignez-en une partie, ou                  augmentez la fenêtre dans Paramètres du modèle."
+            );
+        }
         return "La fenêtre de contexte du modèle est pleine. Augmentez-la dans Paramètres du \
                 modèle, ou repartez d'une nouvelle conversation."
             .into();
@@ -1254,6 +1273,13 @@ mod tests {
             server_error_message(502, ""),
             "Le moteur a refusé la requête (HTTP 502)."
         );
+        let image = r#"{"error":{"code":500,"message":"image input is not supported - hint: if this is unexpected, you may need to provide the mmproj"}}"#;
+        assert!(server_error_message(500, image)
+            .starts_with("Le modèle chargé ne sait pas analyser les images"));
+        let pdf = r#"{"error":{"code":400,"message":"request (32151 tokens) exceeds the available context size (8192 tokens), try increasing it"}}"#;
+        assert!(server_error_message(400, pdf).contains("32151 jetons"));
+        assert!(matches!(refus(500, image), AgentError::Refused(_)));
+        assert!(matches!(refus(502, ""), AgentError::ProviderUnavailable));
     }
 
     #[test]

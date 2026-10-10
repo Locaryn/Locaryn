@@ -8,8 +8,10 @@ pub mod approval_gate;
 pub mod arg_schema;
 pub mod compaction;
 pub mod context_window;
+pub mod documents;
 pub mod embeddings;
 pub mod exec;
+pub mod free_chat_dir;
 pub mod gpu;
 pub mod gpu_standard;
 pub mod host_tools;
@@ -305,6 +307,11 @@ pub enum AgentError {
     Tool(#[from] ToolError),
     #[error("provider unavailable")]
     ProviderUnavailable,
+    /// Le moteur répond mais refuse cette requête-là (image sans projecteur,
+    /// fenêtre dépassée…). Le texte se montre tel quel : ce n'est pas une
+    /// panne, et « aucun modèle disponible » mentait.
+    #[error("{0}")]
+    Refused(String),
     #[error("no agent profile: {0}")]
     NoProfile(String),
     #[error("cancelled")]

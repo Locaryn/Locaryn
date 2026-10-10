@@ -358,6 +358,16 @@ function natureMedia(file: File): "audio" | "video" | null {
  * L'examen porte sur le debut du fichier, assez pour trancher sans le charger
  * en entier.
  */
+/** Des octets en base64, par tranches : `btoa` d'un seul tenant déborde la pile sur un gros PDF. */
+function enBase64(octets: ArrayBuffer): string {
+  const vue = new Uint8Array(octets);
+  let binaire = "";
+  for (let i = 0; i < vue.length; i += 0x8000) {
+    binaire += String.fromCharCode(...vue.subarray(i, i + 0x8000));
+  }
+  return btoa(binaire);
+}
+
 function porteDuTexte(octets: ArrayBuffer): boolean {
   const debut = new Uint8Array(octets, 0, Math.min(octets.byteLength, 8192));
   if (debut.some((o) => o === 0)) return false;
@@ -433,6 +443,15 @@ async function readFile(file: File, vision: boolean): Promise<Lecture> {
   }
 
   const octets = await file.arrayBuffer();
+  // Un PDF porte du texte que le modèle peut lire, une fois tiré de ses pages.
+  if (!porteDuTexte(octets) && /\.pdf$/i.test(file.name)) {
+    try {
+      const { texte } = await core.extractDocument(file.name, enBase64(octets));
+      return { ok: true, piece: { id: nextId("att"), kind: "text", text: texte, name: file.name } };
+    } catch (e) {
+      return { ok: false, nom: file.name, raison: String(e) };
+    }
+  }
   if (!porteDuTexte(octets)) {
     // Le modele ne peut rien lire dans un binaire, mais refuser le joint
     // empechait de simplement l'attacher a la conversation (a montrer, a

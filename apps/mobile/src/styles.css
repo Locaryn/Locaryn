@@ -2491,6 +2491,15 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   background: none;
   color: var(--text);
 }
+.lo-ajout-lecture {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
 .lo-ajout-tuiles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

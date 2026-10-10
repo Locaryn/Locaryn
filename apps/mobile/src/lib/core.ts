@@ -260,6 +260,13 @@ export interface Message {
 }
 
 /** La permission d'une conversation, telle que le serveur la rend. */
+/** Le texte d'un document joint, tiré par le serveur. */
+export interface TexteDocument {
+  texte: string;
+  /** Le document dépassait la taille jointe : seul son début est parti. */
+  tronque: boolean;
+}
+
 export interface SessionTrust {
   effective: string;
   override_value: string | null;
@@ -502,6 +509,9 @@ export const core = {
   /** Résumer les vieux échanges ; rend le nombre de messages retirés. */
   compressContext: (conversationId: string) =>
     invoke<number>("compress_context", { conversationId }),
+  /** Le texte d'un PDF ou d'un binaire joint, tiré par le serveur. */
+  extractDocument: (nom: string, donnees: string) =>
+    invoke<TexteDocument>("extract_document", { nom, donnees }),
   /** Stop : la réponse s'arrête sur le serveur. */
   cancelMessage: (conversationId: string) => invoke<void>("cancel_message", { conversationId }),
   /** « Envoyer maintenant » : remis au modèle, lu à sa prochaine étape. */
@@ -775,6 +785,10 @@ export const demoCore: typeof core = {
   compressContext: async () => {
     await sleep(1200);
     return 8;
+  },
+  extractDocument: async (nom) => {
+    await sleep(600);
+    return { texte: `Texte de démonstration tiré de « ${nom} ».`, tronque: false };
   },
   cancelMessage: async () => {
     demoArret.current = true;

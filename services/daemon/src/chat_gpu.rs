@@ -294,3 +294,45 @@ async fn compresser_session(s: &DaemonState, sid: Uuid) -> Result<u64, String> {
     tracing::info!(session = %sid, retires, "conversation compressée depuis un client");
     Ok(retires)
 }
+
+// ─── Documents joints ────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct DocumentBody {
+    nom: String,
+    /// Les octets du fichier, en base64.
+    donnees: String,
+}
+
+/// POST /v1/documents/text — le texte d'un document joint depuis le téléphone
+/// ou le web (PDF compris), pour qu'il rejoigne le message au lieu de ses
+/// octets bruts.
+pub async fn texte_document(Json(body): Json<DocumentBody>) -> Response {
+    use base64::Engine as _;
+    let octets = match base64::engine::general_purpose::STANDARD.decode(body.donnees.trim()) {
+        Ok(o) => o,
+        Err(_) => return refus_document("Le fichier est arrivé abîmé (base64 invalide)."),
+    };
+    let nom = body.nom.clone();
+    // L'extraction d'un gros PDF prend du temps de calcul : hors du fil réseau.
+    match tokio::task::spawn_blocking(move || {
+        locaryn_agent_runtime::documents::extraire(&nom, &octets)
+    })
+    .await
+    {
+        Ok(Ok(extrait)) => Json(extrait).into_response(),
+        Ok(Err(raison)) => refus_document(&raison),
+        Err(e) => {
+            tracing::warn!(error = %e, "extraction de document interrompue");
+            refus_document("La lecture du document a échoué.")
+        }
+    }
+}
+
+fn refus_document(message: &str) -> Response {
+    (
+        axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+        Json(serde_json::json!({ "error": { "code": "document_illisible", "message": message } })),
+    )
+        .into_response()
+}

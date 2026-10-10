@@ -14,7 +14,7 @@ use axum::{
     Json, Router,
 };
 use futures::StreamExt as _;
-use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent};
+use locaryn_agent_runtime::{free_chat_dir, Agent, AgentInput, EventStream, OpenAiCompatAgent};
 use locaryn_events::{sse_event_tag, StreamEvent};
 use locaryn_extensions::ExtensionRegistry;
 use locaryn_mcp::McpState;
@@ -306,6 +306,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/v1/sessions/:id/cancel", post(cancel_session))
         .route("/v1/sessions/:id/mailbox", post(chat_gpu::deposer))
+        .route("/v1/documents/text", post(chat_gpu::texte_document))
         .route("/v1/sessions/:id/context", get(chat_gpu::contexte))
         .route("/v1/sessions/:id/compress", post(chat_gpu::compresser))
         .route(
@@ -543,6 +544,9 @@ async fn main() -> anyhow::Result<()> {
                 .route("/v1/users/:id", delete(auth::delete_user))
                 .with_state(auth_state.clone()),
         )
+        // Une photo de téléphone en base64 dépasse vite les 2 Mo qu'axum
+        // accepte par défaut : la requête était refusée avant même d'arriver.
+        .layer(axum::extract::DefaultBodyLimit::max(TAILLE_REQUETE_MAX))
         // Applied last so it wraps every route above, including ones added later.
         .layer(axum::middleware::from_fn_with_state(
             auth_state.clone(),
@@ -965,7 +969,7 @@ async fn create_session(
     // Les conversations libres portent les permissions par defaut du compte :
     // c'est la que « chaque nouveau chat » se decide sur le web et le mobile.
     if let Ok(project) = s.storage.projects.get(project_id).await {
-        if project.path == "__locaryn_free_chats__" {
+        if project.path == free_chat_dir::FREE_CHAT_PROJECT_PATH {
             let defaut = locaryn_config::load(None)
                 .map(|c| c.assistance.default_trust)
                 .unwrap_or_default();
@@ -1108,6 +1112,10 @@ async fn list_messages(State(s): State<Arc<DaemonState>>, Path(id): Path<String>
     }
 }
 
+/// Ce qu'une requête peut peser : des photos et un document joints au même
+/// message, encodés en base64 (un tiers de plus que leurs octets).
+const TAILLE_REQUETE_MAX: usize = 64 * 1024 * 1024;
+
 /// Send a message and stream the agent's reply as SSE.
 async fn send_message(
     State(s): State<Arc<DaemonState>>,
@@ -1156,6 +1164,28 @@ async fn send_message(
     let (project_id, project_path, trust) = match s.storage.sessions.get(session_uuid).await {
         Ok(session) => {
             match s.storage.projects.get(session.project_id).await {
+                // Une conversation libre travaille dans son propre dossier, et
+                // c'est son exception à elle qui décide des permissions. Sans
+                // ça, le projet caché (qui n'est pas un dossier) ne fournissait
+                // rien : tout retombait en Sandbox, même en « tout autoriser ».
+                Ok(project) if project.path == free_chat_dir::FREE_CHAT_PROJECT_PATH => {
+                    let dir = free_chat_dir::resolve(
+                        &locaryn_config::free_chats_dir(),
+                        session.id,
+                        session.created_at,
+                    );
+                    match free_chat_dir::ensure(&dir, session.id).await {
+                        Ok(()) => (
+                            Some(session.project_id),
+                            Some(dir),
+                            Some(session.trust_override.unwrap_or(project.trust_level)),
+                        ),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "dossier de conversation libre impossible à créer");
+                            (None, None, None)
+                        }
+                    }
+                }
                 // The tool loop only runs when all three are present, so a
                 // project whose path is not a real directory — the internal
                 // free-chat container, or a folder since deleted — must not
@@ -1221,17 +1251,9 @@ async fn send_message(
             .list_for_session(session_uuid)
             .await
             .unwrap_or_default();
-        let mut turns: Vec<locaryn_agent_runtime::ChatTurn> = prior
-            .into_iter()
-            .filter(|m| matches!(m.role, MessageRole::User | MessageRole::Assistant))
-            .map(|m| locaryn_agent_runtime::ChatTurn {
-                role: match m.role {
-                    MessageRole::Assistant => "assistant".to_string(),
-                    _ => "user".to_string(),
-                },
-                content: m.content,
-            })
-            .collect();
+        // Les outils appelés et leurs résultats restent : sans eux, le modèle
+        // oubliait ce qu'il venait d'essayer.
+        let mut turns = locaryn_agent_runtime::compaction::historique(&prior);
         turns.pop(); // the message just persisted is sent separately
         turns
     };
@@ -1390,6 +1412,12 @@ async fn send_message(
                 let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
                 match agent.run(input.clone()).await {
                     Ok(stream) => stream,
+                    // Le moteur a lu la requête et l'a refusée : sa raison
+                    // suffit, « aucun modèle disponible » mentait.
+                    Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
+                        tracing::warn!(%raison, "requête refusée par le moteur");
+                        texte_stream(raison)
+                    }
                     Err(e) => {
                         tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
                         no_model_stream(&format!("le moteur a refusé la requête ({e})"))
@@ -1602,12 +1630,16 @@ struct SendMessageBody {
 /// modèle qui répète la question au lieu d'un service qui dit ce qui lui
 /// manque — et le journal, seul à porter la raison, n'est lu par personne.
 fn no_model_stream(reason: &str) -> EventStream {
-    let message = format!(
+    texte_stream(format!(
         "Aucun modèle de conversation n'est disponible : {reason}.\n\n\
          Vérifiez dans Réglages → Moteur que le moteur local est installé et \
          qu'un modèle de discussion est sélectionné (les modèles d'image ou de \
          voix ne savent pas répondre à une conversation).",
-    );
+    ))
+}
+
+/// Une réponse de l'application, pas du modèle, diffusée comme un message.
+fn texte_stream(message: String) -> EventStream {
     let message_id = Uuid::new_v4().to_string();
     Box::pin(futures::stream::iter(vec![
         StreamEvent::MessageStart {

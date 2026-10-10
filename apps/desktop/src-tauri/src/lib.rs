@@ -17,7 +17,6 @@ mod client_cert;
 mod cloud_providers;
 mod core_engines;
 mod extensions;
-mod free_chat_dir;
 mod gpu_arbiter;
 mod hooks;
 mod inference_engines;
@@ -632,11 +631,12 @@ async fn update_project(
         .map_err(|e| e.to_string())
 }
 
+use locaryn_agent_runtime::free_chat_dir;
 /// Path marking the internal project that holds project-less ("free") chats.
 /// `sessions.project_id` is NOT NULL, so free chats live in this hidden project
 /// instead of leaking into a real one (which made the same session show up both
 /// as a free chat and inside a project).
-pub const FREE_CHAT_PROJECT_PATH: &str = "__locaryn_free_chats__";
+pub use locaryn_agent_runtime::free_chat_dir::FREE_CHAT_PROJECT_PATH;
 
 /// Dossier de travail d'une conversation libre : un nom que la personne
 /// reconnaît (`2026-10-04-renard-calme`), et non un identifiant aléatoire. Les
@@ -1066,6 +1066,22 @@ async fn compact_history(
     }
     out.extend(recent.iter().cloned());
     out
+}
+
+/// Le texte d'un PDF (ou d'un binaire) joint à un message. Ses octets bruts ne
+/// donnaient au modèle que du charabia ; c'est son texte qui doit partir.
+#[tauri::command]
+async fn extract_document(
+    nom: String,
+    donnees: String,
+) -> Result<locaryn_agent_runtime::documents::TexteExtrait, String> {
+    use base64::Engine as _;
+    let octets = base64::engine::general_purpose::STANDARD
+        .decode(donnees.trim())
+        .map_err(|_| format!("« {nom} » est arrivé abîmé."))?;
+    tokio::task::spawn_blocking(move || locaryn_agent_runtime::documents::extraire(&nom, &octets))
+        .await
+        .map_err(|e| format!("La lecture du document a échoué ({e})."))?
 }
 
 /// Ask the local model, in the background, what the user could sensibly do next
@@ -2007,19 +2023,10 @@ async fn send_message(
             .list_for_session(session_id)
             .await
             .unwrap_or_default();
-        let mut turns: Vec<locaryn_agent_runtime::ChatTurn> = prior
-            .into_iter()
-            .filter(|m| matches!(m.role, MessageRole::User | MessageRole::Assistant))
-            .map(|m| locaryn_agent_runtime::ChatTurn {
-                role: match m.role {
-                    MessageRole::Assistant => "assistant".to_string(),
-                    _ => "user".to_string(),
-                },
-                // Artifact markers are UI persistence details, not part of the
-                // conversation the model should answer from.
-                content: strip_ui_markers(&m.content),
-            })
-            .collect();
+        // Artifact markers are UI persistence details, not part of the
+        // conversation the model should answer from — but the tools it
+        // called, and what they returned, are.
+        let mut turns = locaryn_agent_runtime::compaction::historique(&prior);
         // The message we just persisted is the current one — it is sent separately.
         turns.pop();
 
@@ -2265,6 +2272,12 @@ async fn send_message(
                 let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
                 match agent.run(input.clone()).await {
                     Ok(stream) => stream,
+                    // Le moteur a lu la requête et l'a refusée : ce n'est pas
+                    // une panne, sa raison suffit.
+                    Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
+                        tracing::warn!(%raison, "requête refusée par le moteur");
+                        refus_du_moteur(raison)
+                    }
                     Err(e) => {
                         tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
                         panne_de_modele(&core, project_id, session_id, &match &panne_du_moteur {
@@ -2405,11 +2418,6 @@ fn image_marker(path: &str) -> String {
     artifact_marker("image", path)
 }
 
-/// Remove UI-only artifact markers before replaying history to a model.
-fn strip_ui_markers(content: &str) -> String {
-    locaryn_agent_runtime::compaction::sans_marqueurs(content)
-}
-
 /// When no local model can answer, stream a clear, actionable explanation
 /// instead of silently echoing (which reads as "the app is broken").
 ///
@@ -2441,6 +2449,16 @@ async fn panne_de_modele(
         )
         .await;
     no_model_stream(reason)
+}
+
+/// Un refus du moteur (image sans projecteur, fenêtre dépassée) : un avis, sans
+/// la pastille de panne ni le mode d'emploi d'installation.
+fn refus_du_moteur(raison: String) -> EventStream {
+    Box::pin(futures::stream::iter(vec![StreamEvent::Log {
+        level: locaryn_events::LogLevel::Error,
+        msg: format!("⚠️ {raison}"),
+        source: "moteur".to_string(),
+    }]))
 }
 
 fn no_model_stream(reason: &str) -> EventStream {
@@ -6791,6 +6809,7 @@ pub fn run() {
             append_chat_message,
             append_assistant_message,
             suggest_followups,
+            extract_document,
             plan_task,
             list_sessions,
             create_session,
@@ -7341,7 +7360,7 @@ mod tests {
         assert_eq!(decode, r"D:\Documents\Syncho\media\img_1.png");
         // Rejoué vers le modèle, le marqueur ne doit plus rien laisser paraître.
         assert_eq!(
-            super::strip_ui_markers(&format!(
+            locaryn_agent_runtime::compaction::sans_marqueurs(&format!(
                 "Voici l'image.
 {marqueur}"
             )),
