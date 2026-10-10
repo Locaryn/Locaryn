@@ -31,6 +31,7 @@ mod model_recommendations;
 mod model_residency;
 mod notifications;
 mod project_context;
+mod snippets;
 mod trust_source;
 mod workspace;
 use locaryn_sdk::secure_client;
@@ -2450,8 +2451,6 @@ async fn run_terminal(
     cwd: Option<String>,
     on_output: Channel<TerminalEvent>,
 ) -> Result<(), String> {
-    use tokio::io::{AsyncBufReadExt, BufReader};
-
     let mut cmd = if cfg!(windows) {
         let mut c = tokio::process::Command::new("cmd");
         c.args(["/C", &command]);
@@ -2464,6 +2463,46 @@ async fn run_terminal(
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         cmd.current_dir(dir);
     }
+    diffuser_processus(cmd, on_output).await
+}
+
+/// Exécuter un bloc de code d'une réponse : écrit dans un fichier à la bonne
+/// extension, lu par l'interprète de son langage (voir `snippets`).
+#[tauri::command]
+async fn run_snippet(
+    lang: String,
+    code: String,
+    cwd: Option<String>,
+    on_output: Channel<TerminalEvent>,
+) -> Result<(), String> {
+    let interprete = snippets::pour_langage(&lang, cfg!(windows)).ok_or_else(|| {
+        format!("Les blocs « {lang} » ne s'exécutent pas ici : copiez-le dans l'outil adapté.")
+    })?;
+    let fichier = snippets::fichier_temporaire(interprete.extension, &code)
+        .map_err(|e| format!("Fichier temporaire impossible : {e}"))?;
+    let mut cmd = tokio::process::Command::new(&interprete.programme);
+    cmd.args(&interprete.arguments).arg(&fichier);
+    if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
+        cmd.current_dir(dir);
+    }
+    let resultat = diffuser_processus(cmd, on_output).await.map_err(|e| {
+        format!(
+            "« {} » introuvable ou impossible à lancer ({e}). Installez-le, ou vérifiez qu'il est dans le PATH.",
+            interprete.programme
+        )
+    });
+    if let Err(e) = std::fs::remove_file(&fichier) {
+        tracing::debug!(error = %e, "extrait temporaire non supprimé");
+    }
+    resultat
+}
+
+/// Lancer un processus et en relayer la sortie ligne à ligne, puis son code.
+async fn diffuser_processus(
+    mut cmd: tokio::process::Command,
+    on_output: Channel<TerminalEvent>,
+) -> Result<(), String> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
     hide_tokio_console(&mut cmd);
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -6880,6 +6919,7 @@ pub fn run() {
             travel_mode::pairing_code,
             travel_mode::user_login_qr,
             live_watch::watch_live_session,
+            run_snippet,
             travel_mode::pairing_state,
             travel_mode::reject_pairing,
             travel_mode::run_composer_tool,

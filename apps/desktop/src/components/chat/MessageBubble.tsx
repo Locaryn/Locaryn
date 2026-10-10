@@ -77,9 +77,15 @@ const RUNNABLE: Record<string, string> = {
   shell: "Shell",
   powershell: "PowerShell",
   ps1: "PowerShell",
+  zsh: "Shell",
+  pwsh: "PowerShell",
   javascript: "Node",
   js: "Node",
   node: "Node",
+  // Invite de commandes Windows (exécuté par cmd.exe, voir snippets.rs).
+  cmd: "Invite de commandes",
+  bat: "Invite de commandes",
+  batch: "Invite de commandes",
   // Not executed on the machine: rendered live in the preview panel.
   html: "Aperçu",
   htm: "Aperçu",

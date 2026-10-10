@@ -537,8 +537,6 @@ export function ChatPanel({
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [quickModelOpen, setQuickModelOpen] = useState(false);
   const [ragOpen, setRagOpen] = useState(false);
-  /** Indexed chunk count — shown on the Documents chip so the feature is discoverable. */
-  const [ragCount, setRagCount] = useState(0);
   const [isLocalModel, setIsLocalModel] = useState(true);
   /** Where the agent works: a local folder, an SSH server, a remote environment, or standalone. */
   const [workspace, setWorkspace] = useState<WorkspaceSelection>({
@@ -905,25 +903,6 @@ export function ChatPanel({
       return null;
     }
   }
-
-  // Keep the Documents chip count in sync (refreshes when the panel closes).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `ragOpen` n'est pas lu dans le corps, il sert de déclencheur — refermer le panneau Documents doit relancer le comptage pour que la pastille montre les fragments qui viennent d'être indexés.
-  useEffect(() => {
-    if (!projectId) {
-      setRagCount(0);
-      return;
-    }
-    let cancelled = false;
-    core
-      .ragStatus(projectId)
-      .then((s) => {
-        if (!cancelled) setRagCount(s.chunk_count);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, ragOpen]);
 
   // Extensions can add assistant content (for example a generated artifact)
   // through the generic plugin bridge. Persisted content is also inserted in
@@ -1807,46 +1786,36 @@ export function ChatPanel({
       return;
     }
 
-    const runners: Record<string, (f: string) => string> = {
-      python: (f) => `python "${f}"`,
-      py: (f) => `python "${f}"`,
-      javascript: (f) => `node "${f}"`,
-      js: (f) => `node "${f}"`,
-      node: (f) => `node "${f}"`,
-      powershell: (f) => `powershell -File "${f}"`,
-      ps1: (f) => `powershell -File "${f}"`,
-    };
-    const preview = code.length > 400 ? `${code.slice(0, 400)}\u2026` : code;
-    if (!window.confirm(`Ex\u00e9cuter ce code (${lang}) sur votre machine ?\n\n${preview}`))
+    const preview = code.length > 400 ? `${code.slice(0, 400)}…` : code;
+    if (
+      !window.confirm(
+        `Exécuter ce code (${lang || "console"}) sur votre machine ?
+
+${preview}`,
+      )
+    )
       return;
 
     const cwd = await resolveRunCwd();
-    // Shell snippets run as-is; other languages go through a temp file.
-    const isShell = ["bash", "sh", "shell"].includes(lang);
-    const cmd = isShell
-      ? code
-      : (() => {
-          const ext = lang.startsWith("py")
-            ? "py"
-            : lang === "powershell" || lang === "ps1"
-              ? "ps1"
-              : "js";
-          const file = `locaryn_snippet_${Date.now()}.${ext}`;
-          const body = code.replace(/'/g, "''");
-          const write = `@'\n${body}\n'@ | Set-Content -Encoding utf8 "$env:TEMP\\${file}"`;
-          const run = (runners[lang] ?? runners.python)(`$env:TEMP\\${file}`);
-          return `powershell -NoProfile -Command "${write.replace(/"/g, '\\"')}"; ${run}`;
-        })();
-
-    // A session with no workspace still runs, just wherever the shell starts;
-    // say so rather than showing an empty path.
-    startTerminalRun(lang, isShell ? code : `${lang} (extrait)`, cwd ?? "dossier par défaut");
+    // Le code part dans un fichier lu par l'interprète de son langage, côté
+    // Rust : plus de ligne PowerShell fabriquée ici, qui envoyait un bloc
+    // « cmd » vers Python et cassait sur la première apostrophe.
+    const shell = ["bash", "sh", "shell", "zsh", "cmd", "bat", "console", ""].includes(lang);
+    startTerminalRun(
+      lang || "console",
+      shell ? code : `${lang} (extrait)`,
+      cwd ?? "dossier par défaut",
+    );
+    let fini = false;
     try {
-      await core.runTerminal(cmd, cwd, (ev) => {
+      await core.runSnippet(lang, code, cwd, (ev) => {
         if (ev.type === "line") appendRunLine(ev.text);
-        else if (ev.type === "exit") finishTerminalRun(ev.code ?? 0);
+        else if (ev.type === "exit") {
+          fini = true;
+          finishTerminalRun(ev.code ?? 0);
+        }
       });
-      finishTerminalRun(0);
+      if (!fini) finishTerminalRun(0);
     } catch (e) {
       appendRunLine(String(e));
       finishTerminalRun(1);
@@ -2388,29 +2357,42 @@ export function ChatPanel({
             tabIndex={-1}
           >
             <div className="locaryn-slash-head">
-              Désigner les outils à utiliser pour cette demande
+              <Icon name="plugs" size={14} /> Désigner les outils à utiliser pour cette demande
             </div>
-            {mention.items.map((m, i) => (
-              <button
-                key={`${m.icon}-${m.name}`}
-                type="button"
-                role="option"
-                aria-selected={i === mentionIndex}
-                className={`locaryn-slash-item${i === mentionIndex ? " locaryn-active" : ""}`}
-                onMouseEnter={() => setMentionIndex(i)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => choisirMention(m)}
-              >
-                <span className="locaryn-slash-icon">
-                  <Icon name={m.icon} size={15} />
-                </span>
-                <span className="locaryn-slash-text">
-                  <span className="locaryn-slash-label">{m.label}</span>
-                  <span className="locaryn-slash-hint">{m.hint}</span>
-                </span>
-                <code className="locaryn-slash-cmd">@{m.name}</code>
-              </button>
-            ))}
+            <div className="locaryn-slash-liste">
+              {mention.items.map((m, i) => (
+                <button
+                  key={`${m.icon}-${m.name}`}
+                  type="button"
+                  role="option"
+                  aria-selected={i === mentionIndex}
+                  className={`locaryn-slash-item${i === mentionIndex ? " locaryn-active" : ""}`}
+                  onMouseEnter={() => setMentionIndex(i)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => choisirMention(m)}
+                >
+                  <span className="locaryn-slash-icon">
+                    <Icon name={m.icon} size={15} />
+                  </span>
+                  <span className="locaryn-slash-text">
+                    <span className="locaryn-slash-label">{m.label}</span>
+                    <span className="locaryn-slash-hint">{m.hint}</span>
+                  </span>
+                  <code className="locaryn-slash-cmd">@{m.name}</code>
+                </button>
+              ))}
+            </div>
+            <div className="locaryn-slash-pied" aria-hidden>
+              <span>
+                <kbd>↑</kbd> <kbd>↓</kbd> choisir
+              </span>
+              <span>
+                <kbd>Entrée</kbd> valider
+              </span>
+              <span>
+                <kbd>Échap</kbd> fermer
+              </span>
+            </div>
           </div>
         )}
 
@@ -2423,54 +2405,75 @@ export function ChatPanel({
           // champ de saisie — ce sont ses flèches qui déplacent la sélection,
           // et un arrêt de tabulation ici piégerait l'utilisateur.
           <div className="locaryn-slash" role="listbox" aria-label="Commandes" tabIndex={-1}>
-            {slash.kind === "args" && (
-              <div className="locaryn-slash-head">
-                <Icon name={slash.command.icon} size={14} /> {slash.command.label} — choisissez la
-                qualite
-              </div>
-            )}
-            {slash.kind === "commands"
-              ? slash.items.map((c, i) => (
-                  <button
-                    key={c.name}
-                    type="button"
-                    role="option"
-                    aria-selected={i === slashIndex}
-                    className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
-                    onMouseEnter={() => setSlashIndex(i)}
-                    onClick={() => runSlash(c)}
-                  >
-                    <span className="locaryn-slash-icon">
-                      <Icon name={c.icon} size={15} />
-                    </span>
-                    <span className="locaryn-slash-text">
-                      <span className="locaryn-slash-label">{c.label}</span>
-                      <span className="locaryn-slash-hint">{c.hint}</span>
-                    </span>
-                    <code className="locaryn-slash-cmd">
-                      /{c.name}
-                      {c.args?.length ? " ..." : ""}
-                    </code>
-                  </button>
-                ))
-              : slash.items.map((a, i) => (
-                  <button
-                    key={a.value}
-                    type="button"
-                    role="option"
-                    aria-selected={i === slashIndex}
-                    className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
-                    onMouseEnter={() => setSlashIndex(i)}
-                    onClick={() => runSlash(slash.command, argToSize(a.value))}
-                  >
-                    <span className="locaryn-slash-icon">&#128208;</span>
-                    <span className="locaryn-slash-text">
-                      <span className="locaryn-slash-label">{a.label}</span>
-                      <span className="locaryn-slash-hint">{a.hint}</span>
-                    </span>
-                    <code className="locaryn-slash-cmd">{a.value}</code>
-                  </button>
-                ))}
+            <div className="locaryn-slash-head">
+              {slash.kind === "args" ? (
+                <>
+                  <Icon name={slash.command.icon} size={14} /> {slash.command.label} — choisissez la
+                  qualité
+                </>
+              ) : (
+                <>
+                  <Icon name="terminal-window" size={14} /> Commandes
+                </>
+              )}
+            </div>
+            <div className="locaryn-slash-liste">
+              {slash.kind === "commands"
+                ? slash.items.map((c, i) => (
+                    <button
+                      key={c.name}
+                      type="button"
+                      role="option"
+                      aria-selected={i === slashIndex}
+                      className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
+                      onMouseEnter={() => setSlashIndex(i)}
+                      onClick={() => runSlash(c)}
+                    >
+                      <span className="locaryn-slash-icon">
+                        <Icon name={c.icon} size={15} />
+                      </span>
+                      <span className="locaryn-slash-text">
+                        <span className="locaryn-slash-label">{c.label}</span>
+                        <span className="locaryn-slash-hint">{c.hint}</span>
+                      </span>
+                      <code className="locaryn-slash-cmd">
+                        /{c.name}
+                        {c.args?.length ? " ..." : ""}
+                      </code>
+                    </button>
+                  ))
+                : slash.items.map((a, i) => (
+                    <button
+                      key={a.value}
+                      type="button"
+                      role="option"
+                      aria-selected={i === slashIndex}
+                      className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
+                      onMouseEnter={() => setSlashIndex(i)}
+                      onClick={() => runSlash(slash.command, argToSize(a.value))}
+                    >
+                      <span className="locaryn-slash-icon">
+                        <Icon name={slash.command.icon} size={15} />
+                      </span>
+                      <span className="locaryn-slash-text">
+                        <span className="locaryn-slash-label">{a.label}</span>
+                        <span className="locaryn-slash-hint">{a.hint}</span>
+                      </span>
+                      <code className="locaryn-slash-cmd">{a.value}</code>
+                    </button>
+                  ))}
+            </div>
+            <div className="locaryn-slash-pied" aria-hidden>
+              <span>
+                <kbd>↑</kbd> <kbd>↓</kbd> choisir
+              </span>
+              <span>
+                <kbd>Entrée</kbd> valider
+              </span>
+              <span>
+                <kbd>Échap</kbd> fermer
+              </span>
+            </div>
           </div>
         )}
 
@@ -2485,17 +2488,20 @@ export function ChatPanel({
         {/* Le dossier de travail se choisit avant le premier message : une
             fois la conversation commencée, on ne le déplace plus en plein
             cours. Sans dossier choisi, la pastille s'efface à l'envoi. */}
-        {!(workspace.kind === "none" && items.some((i) => i.kind === "msg")) && (
-          <div className="locaryn-composer-context">
-            <WorkspacePicker
-              value={workspace}
-              onChange={handleWorkspaceChange}
-              onAddProject={onAddProject}
-              cloudConnected={connectionMode === "remote"}
-              extensions={extensions}
-            />
-          </div>
-        )}
+        {!(workspace.kind === "none" && items.some((i) => i.kind === "msg")) &&
+          // La palette ouverte prend la place : les deux menus se chevauchaient.
+          !(slash && slash.items.length > 0) &&
+          !(mention && mention.items.length > 0) && (
+            <div className="locaryn-composer-context">
+              <WorkspacePicker
+                value={workspace}
+                onChange={handleWorkspaceChange}
+                onAddProject={onAddProject}
+                cloudConnected={connectionMode === "remote"}
+                extensions={extensions}
+              />
+            </div>
+          )}
 
         {/* La question du modèle, au-dessus du composeur elle aussi. Elle
             passe derrière la demande d'autorisation : un outil arrêté en plein
@@ -2750,16 +2756,6 @@ export function ChatPanel({
             </button>
             <ReasoningPicker value={reasoning} onChange={setReasoning} disabled={!canCompose} />
 
-            <button
-              type="button"
-              className={`locaryn-chip-btn${ragCount > 0 ? " locaryn-chip-on" : ""}`}
-              title="Base de connaissances : ajoutez des documents, le modèle s'en servira pour répondre"
-              disabled={!projectId}
-              onClick={() => setRagOpen(true)}
-            >
-              <Icon name="models" size={15} /> Documents
-              {ragCount > 0 && <span className="locaryn-chip-state">{ragCount}</span>}
-            </button>
             <span className="locaryn-composer-hint">
               Entrée pour envoyer · Shift+Entrée pour saut de ligne
             </span>

@@ -39,7 +39,9 @@ pub async fn watch_live_session(
         return Ok(false);
     }
     let mut flux = reponse.bytes_stream();
-    let mut tampon = String::new();
+    // Des octets, pas du texte : un caractère accentué peut tomber à cheval sur
+    // deux morceaux, et le décoder morceau par morceau le cassait.
+    let mut tampon: Vec<u8> = Vec::new();
     while let Some(morceau) = flux.next().await {
         let morceau = match morceau {
             Ok(m) => m,
@@ -48,20 +50,21 @@ pub async fn watch_live_session(
                 break;
             }
         };
-        tampon.push_str(&String::from_utf8_lossy(&morceau));
+        tampon.extend_from_slice(&morceau);
         // Un événement SSE se termine par une ligne vide.
-        while let Some(fin) = tampon.find("\n\n") {
-            let bloc: String = tampon.drain(..fin + 2).collect();
-            for donnees in donnees_sse(&bloc) {
-                match serde_json::from_str::<serde_json::Value>(&donnees) {
-                    Ok(ev) => {
-                        if on_event.send(ev).is_err() {
-                            // L'écran a fermé la conversation : on lâche.
-                            return Ok(true);
-                        }
+        while let Some(fin) = tampon.windows(2).position(|w| w == b"\n\n") {
+            let bloc: Vec<u8> = tampon.drain(..fin + 2).collect();
+            let Some(donnees) = donnees_sse(&String::from_utf8_lossy(&bloc)) else {
+                continue;
+            };
+            match serde_json::from_str::<serde_json::Value>(&donnees) {
+                Ok(ev) => {
+                    if on_event.send(ev).is_err() {
+                        // L'écran a fermé la conversation : on lâche.
+                        return Ok(true);
                     }
-                    Err(e) => tracing::warn!(error = %e, "événement en direct illisible"),
                 }
+                Err(e) => tracing::warn!(error = %e, "événement en direct illisible"),
             }
         }
     }

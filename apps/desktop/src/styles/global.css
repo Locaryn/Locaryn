@@ -3344,8 +3344,10 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
   min-width: 0;
 }
 @media (max-width: 1100px) {
+  /* L'indice cède la place, mais pas son rôle de ressort : Envoyer reste à
+     droite. */
   .locaryn-composer-hint {
-    display: none;
+    visibility: hidden;
   }
 }
 
@@ -4192,82 +4194,144 @@ pre.md-code {
   border-radius: 4px;
 }
 
-/* Slash-command palette above the composer */
-/* Compacte : une ligne de description ne mérite pas toute la largeur du
-   champ de saisie. */
+/* Palette des commandes « / » et des mentions « @ ».
+   Elle flotte au-dessus de tout le composeur, à la largeur de sa carte : elle
+   ne décale plus la mise en page et ne croise plus la pastille du dossier de
+   travail (masquée tant qu'elle est ouverte). */
+.locaryn-composer {
+  position: relative;
+}
 .locaryn-slash {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - var(--space-2));
+  z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  width: min(440px, 100%);
-  align-self: flex-start;
-  max-height: 280px;
-  overflow-y: auto;
-  margin-bottom: 8px;
-  padding: 4px;
-  background: var(--surface);
+  width: min(var(--measure), calc(100% - 2 * var(--space-6)));
+  max-height: min(360px, 50vh);
+  padding: var(--space-1);
+  background-color: var(--surface);
+  background-image: var(--mica);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 1px 0 var(--stroke-top), 0 12px 32px rgba(0, 0, 0, 0.32);
+  transform: translateX(-50%);
+  animation: locaryn-slash-entree var(--dur-fast, 0.14s) var(--ease-out, ease-out);
+}
+@keyframes locaryn-slash-entree {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-slash {
+    animation: none;
+  }
 }
 .locaryn-slash-head {
-  padding: 6px 10px 7px;
-  font-size: 10px;
-  color: var(--text-faint);
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 3px;
-}
-.locaryn-slash-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+.locaryn-slash-liste {
+  display: grid;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 0 var(--space-1);
+}
+.locaryn-slash-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
   width: 100%;
-  padding: 7px 10px;
+  min-height: 44px;
+  padding: var(--space-1) var(--space-2);
   background: transparent;
   border: none;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius);
   color: var(--text-dim);
   text-align: left;
   cursor: pointer;
+  transition: background var(--dur-fast, 0.14s) ease;
 }
 .locaryn-slash-item:hover,
 .locaryn-slash-item.locaryn-active {
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--text);
 }
+.locaryn-slash-item.locaryn-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.locaryn-slash-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .locaryn-slash-icon {
-  flex: none;
-  width: 20px;
-  text-align: center;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.locaryn-slash-item.locaryn-active .locaryn-slash-icon {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 .locaryn-slash-text {
   display: flex;
   flex-direction: column;
+  gap: 1px;
   min-width: 0;
-  flex: 1;
 }
 .locaryn-slash-label {
-  font-size: var(--text-xs);
+  font-size: var(--text-sm, 13px);
   font-weight: 500;
+  color: var(--text);
 }
 .locaryn-slash-hint {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .locaryn-slash-cmd {
-  flex: none;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-faint);
-  background: var(--bg);
-  padding: 1px 6px;
-  border-radius: 4px;
 }
 .locaryn-slash-item.locaryn-active .locaryn-slash-cmd {
   color: var(--accent);
+}
+.locaryn-slash-pied {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.locaryn-slash-pied kbd {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
 }
 
 /* Follow-up suggestion chips (asked to the model after each answer) */

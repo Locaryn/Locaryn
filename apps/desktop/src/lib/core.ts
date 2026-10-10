@@ -1818,6 +1818,13 @@ export interface CoreApi {
     cwd: string | null,
     onOutput: (ev: TerminalEvent) => void,
   ): Promise<void>;
+  /** Exécute un bloc de code d'une réponse avec l'interprète de son langage. */
+  runSnippet(
+    lang: string,
+    code: string,
+    cwd: string | null,
+    onOutput: (ev: TerminalEvent) => void,
+  ): Promise<void>;
   listProviders(): Promise<Provider[]>;
   setActiveProvider(id: string): Promise<Provider>;
   configureProvider(endpoint: string, model: string | null): Promise<Provider>;
@@ -2310,6 +2317,11 @@ const tauriCore: CoreApi = {
     const chan = new Channel<TerminalEvent>();
     chan.onmessage = onOutput;
     return invoke("run_terminal", { command, cwd, onOutput: chan });
+  },
+  runSnippet(lang, code, cwd, onOutput) {
+    const chan = new Channel<TerminalEvent>();
+    chan.onmessage = onOutput;
+    return invoke("run_snippet", { lang, code, cwd, onOutput: chan });
   },
 
   listProviders: () => invoke<Provider[]>("list_providers"),
@@ -4866,6 +4878,15 @@ Contenu de démonstration.
     return Promise.resolve(true);
   },
 
+  async runSnippet(lang, _code, _cwd, onOutput) {
+    await sleep(150);
+    onOutput({
+      type: "line",
+      stream: "stdout",
+      text: `demo : extrait ${lang || "console"} exécuté`,
+    });
+    onOutput({ type: "exit", code: 0 });
+  },
   async runTerminal(command, _cwd, onOutput) {
     await sleep(150);
     onOutput({ type: "line", stream: "stdout", text: `demo shell: ${command}` });
