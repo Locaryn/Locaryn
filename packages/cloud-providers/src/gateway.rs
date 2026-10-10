@@ -436,28 +436,26 @@ pub async fn install(host: &Host<'_>, p: &DeclaredProvider) -> Result<String, St
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Le dossier {} n'a pas pu être créé : {e}", dir.display()))?;
 
+    // Une installation interrompue laisse un `node_modules` à moitié posé, que
+    // npm n'arrive plus à remplacer (« ENOTEMPTY: directory not empty, rmdir »).
+    // Il ne contient rien d'autre que ce que npm va reposer : on repart propre.
+    if install.kind == "npm" {
+        retirer_installation_partielle(&dir);
+    }
+
     tracing::info!(fournisseur = %p.id, commande = %cmd.join(" "), "installation de la passerelle");
-    let programme_ = programme(&cmd[0]);
-    let arguments: Vec<String> = cmd[1..].to_vec();
-    let dossier = dir.clone();
-    let sortie = tokio::task::spawn_blocking(move || {
-        let mut command = Command::new(&programme_);
-        command.args(&arguments).current_dir(&dossier);
-        quiet(&mut command);
-        command.output()
-    })
-    .await
-    .map_err(|e| format!("l'installation n'a pas pu être lancée : {e}"))?
-    .map_err(|e| {
-        format!(
-            "« {} » n'a pas pu être lancé ({e}). {}",
-            cmd.join(" "),
-            local
-                .install_hint
-                .clone()
-                .unwrap_or_else(|| "Le gestionnaire de paquets est-il installé ?".into())
-        )
-    })?;
+    let mut sortie = lancer_installation(&cmd, &dir, &local).await?;
+    // Sous Windows, un antivirus ou un indexeur tient parfois un fichier le
+    // temps que npm veuille le déplacer : une seconde tentative, sur un dossier
+    // remis à plat, passe.
+    if !sortie.status.success()
+        && install.kind == "npm"
+        && queue(&sortie.stderr).contains("ENOTEMPTY")
+    {
+        tracing::warn!(fournisseur = %p.id, "npm bloqué par un dossier non vide : nouvelle tentative");
+        retirer_installation_partielle(&dir);
+        sortie = lancer_installation(&cmd, &dir, &local).await?;
+    }
 
     if !sortie.status.success() {
         return Err(format!(
@@ -482,6 +480,57 @@ pub async fn install(host: &Host<'_>, p: &DeclaredProvider) -> Result<String, St
         p.label(),
         dir.display()
     ))
+}
+
+/// Lancer la commande d'installation dans le dossier de la passerelle.
+async fn lancer_installation(
+    cmd: &[String],
+    dir: &std::path::Path,
+    local: &locaryn_extensions::manifest::CloudLocalRuntime,
+) -> Result<std::process::Output, String> {
+    let programme_ = programme(&cmd[0]);
+    let arguments: Vec<String> = cmd[1..].to_vec();
+    let dossier = dir.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let mut command = Command::new(&programme_);
+        command.args(&arguments).current_dir(&dossier);
+        quiet(&mut command);
+        command.output()
+    })
+    .await
+    .map_err(|e| format!("l'installation n'a pas pu être lancée : {e}"))?
+    .map_err(|e| {
+        format!(
+            "« {} » n'a pas pu être lancé ({e}). {}",
+            cmd.join(" "),
+            local
+                .install_hint
+                .clone()
+                .unwrap_or_else(|| "Le gestionnaire de paquets est-il installé ?".into())
+        )
+    })
+}
+
+/// Retirer ce qu'une installation npm interrompue a laissé (le programme, pas
+/// les données de la passerelle, qui vivent dans `data`).
+fn retirer_installation_partielle(dir: &std::path::Path) {
+    for nom in ["node_modules", "package-lock.json"] {
+        let chemin = dir.join(nom);
+        if !chemin.exists() {
+            continue;
+        }
+        let resultat = if chemin.is_dir() {
+            std::fs::remove_dir_all(&chemin)
+        } else {
+            std::fs::remove_file(&chemin)
+        };
+        match resultat {
+            Ok(()) => tracing::info!(chemin = %chemin.display(), "installation partielle retirée"),
+            Err(e) => {
+                tracing::warn!(chemin = %chemin.display(), error = %e, "installation partielle non retirée")
+            }
+        }
+    }
 }
 
 /// Retirer le programme de la passerelle, en gardant ses données.
