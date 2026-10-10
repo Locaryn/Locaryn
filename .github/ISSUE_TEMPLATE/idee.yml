@@ -1,0 +1,30 @@
+name: Proposer une idée
+description: Une fonction qui manque, une amélioration.
+title: "[Idée] "
+labels: ["enhancement", "à trier"]
+body:
+  - type: dropdown
+    id: ou
+    attributes:
+      label: Où
+      description: Le label correspondant est ajouté tout seul.
+      options:
+        - Application de bureau
+        - Application mobile
+        - Serveur
+        - Morph (extension)
+        - Marketplace / modèles
+        - Partout
+    validations:
+      required: true
+  - type: textarea
+    id: besoin
+    attributes:
+      label: Ce dont vous avez besoin
+      description: Le problème à résoudre, avant la solution.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Ce que vous imaginez

@@ -1,0 +1,46 @@
+name: Signaler un bug
+description: Quelque chose ne marche pas comme prévu.
+title: "[Bug] "
+labels: ["bug", "à trier"]
+body:
+  - type: dropdown
+    id: ou
+    attributes:
+      label: Où
+      description: Le label correspondant est ajouté tout seul.
+      options:
+        - Application de bureau
+        - Application mobile
+        - Serveur
+        - Morph (extension)
+        - Marketplace / modèles
+        - Je ne sais pas
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version de Locaryn
+      description: Réglages → À propos (ex. 0.3.97).
+      placeholder: "0.3.97"
+    validations:
+      required: true
+  - type: textarea
+    id: quoi
+    attributes:
+      label: Ce qui se passe
+      description: Ce que vous avez fait, ce que vous attendiez, ce qui est arrivé.
+    validations:
+      required: true
+  - type: textarea
+    id: etapes
+    attributes:
+      label: Pour le reproduire
+      placeholder: |
+        1. …
+        2. …
+  - type: textarea
+    id: machine
+    attributes:
+      label: Machine
+      description: Système, carte graphique, modèle utilisé — si ça peut jouer.

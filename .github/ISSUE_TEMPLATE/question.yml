@@ -1,0 +1,11 @@
+name: Poser une question
+description: Comment faire, pourquoi ça marche ainsi.
+title: "[Question] "
+labels: ["question", "à trier"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Votre question
+    validations:
+      required: true

@@ -1,0 +1,35 @@
+# Une personne extérieure au dépôt ne peut pas poser de label elle-même : le
+# modèle de ticket pose le type (bug, idée, question), et ce flux ajoute le
+# domaine d'après la réponse « Où » du formulaire.
+name: Labels des tickets
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  domaine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label d'après « Où »
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUMERO: ${{ github.event.issue.number }}
+          CORPS: ${{ github.event.issue.body }}
+        run: |
+          ou=$(printf '%s\n' "$CORPS" | awk '/^### Où/{getline; getline; print; exit}')
+          case "$ou" in
+            "Application de bureau") label="bureau" ;;
+            "Application mobile") label="mobile" ;;
+            "Serveur") label="serveur" ;;
+            "Morph (extension)") label="morphs" ;;
+            "Marketplace / modèles") label="marketplace" ;;
+            *) label="" ;;
+          esac
+          if [ -n "$label" ]; then
+            gh issue edit "$NUMERO" --repo "$REPO" --add-label "$label"
+          fi
