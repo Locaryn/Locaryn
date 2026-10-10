@@ -682,6 +682,68 @@ export function ChatPanel({
       fin?.();
     };
   }, []);
+  // Une réponse lancée ailleurs (le téléphone, servi par le service de cette
+  // machine) se suit ici en direct : sans ça, elle n'apparaissait qu'une fois
+  // finie, après avoir quitté puis rouvert la conversation. On regarde à
+  // l'ouverture puis toutes les quelques secondes tant que rien ne tourne ici.
+  const streamingRef = useRef(false);
+  streamingRef.current = streaming;
+  const handleEventRef = useRef<(ev: StreamEvent) => void>(() => {});
+  useEffect(() => {
+    if (!isTauri || !sessionId) return;
+    const sid = sessionId;
+    let fini = false;
+    let attente: ReturnType<typeof setTimeout> | null = null;
+    const relire = async () => {
+      try {
+        const msgs = await core.listMessages(sid);
+        if (sessionRef.current === sid) setItems(msgs.flatMap(storedMessageItems));
+      } catch (e) {
+        console.warn("conversation non relue :", e);
+      }
+    };
+    const guetter = async () => {
+      if (fini) return;
+      if (!streamingRef.current && !runSessionRef.current) {
+        runRef.current += 1;
+        const run = runRef.current;
+        let suivie = false;
+        try {
+          suivie = await core.watchLiveSession(sid, (ev) => {
+            if (runRef.current !== run || sessionRef.current !== sid) return;
+            if (!suivie) {
+              suivie = true;
+              // La question posée sur le téléphone est déjà enregistrée :
+              // elle s'affiche, puis la réponse depuis son début.
+              runSessionRef.current = sid;
+              fullTextRef.current = "";
+              setStreaming(true);
+              void relire().then(() => {
+                if (runRef.current === run) handleEventRef.current(ev);
+              });
+              return;
+            }
+            handleEventRef.current(ev);
+          });
+        } catch (e) {
+          console.warn("suivi en direct impossible :", e);
+        }
+        if (suivie && runRef.current === run) {
+          runSessionRef.current = null;
+          setStreaming(false);
+          setAttente(null);
+          // La version enregistrée remplace ce qui a été reçu au vol.
+          await relire();
+        }
+      }
+      if (!fini) attente = setTimeout(() => void guetter(), 3000);
+    };
+    void guetter();
+    return () => {
+      fini = true;
+      if (attente) clearTimeout(attente);
+    };
+  }, [sessionId]);
   /** Session we just created from the home screen: skip the DB reload once so
    *  the optimistic first message isn't wiped by an empty fetch. */
   const skipLoadRef = useRef<string | null>(null);
@@ -964,6 +1026,7 @@ export function ChatPanel({
     el.style.height = `${nextH}px`;
   }
 
+  handleEventRef.current = handleEvent;
   function handleEvent(ev: StreamEvent) {
     // Des que quelque chose arrive, l'attente est finie : le contenu prend le
     // relais de l'indicateur.

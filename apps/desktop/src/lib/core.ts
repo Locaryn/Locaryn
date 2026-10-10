@@ -1840,6 +1840,9 @@ export interface CoreApi {
   listServerUsers(): Promise<ServerUserSummary[]>;
   /** Le QR de connexion d'un compte : code temporaire, sans mot de passe. */
   userLoginQr(userId: string): Promise<UserLoginQr>;
+  /** Suivre la réponse en cours d'une conversation servie par le service local
+   *  (lancée depuis le téléphone). `false` si aucune ne tourne. */
+  watchLiveSession(sessionId: string, onEvent: (ev: StreamEvent) => void): Promise<boolean>;
   createServerUser(username: string, password: string, isAdmin?: boolean): Promise<ServerStatus>;
   deleteServerUser(userId: string): Promise<ServerStatus>;
   /** Deployment settings dropped next to the installer, if any. */
@@ -2350,6 +2353,11 @@ const tauriCore: CoreApi = {
   restartServer: () => invoke<ServerStatus>("restart_server"),
   listServerUsers: () => invoke<ServerUserSummary[]>("list_server_users"),
   userLoginQr: (userId) => invoke<UserLoginQr>("user_login_qr", { userId }),
+  watchLiveSession: (sessionId, onEvent) => {
+    const chan = new Channel<StreamEvent>();
+    chan.onmessage = onEvent;
+    return invoke<boolean>("watch_live_session", { sessionId, onEvent: chan });
+  },
   createServerUser: (username, password, isAdmin = true) =>
     invoke<ServerStatus>("create_server_user", {
       args: { username, password, isAdmin },
@@ -5001,6 +5009,7 @@ Contenu de démonstration.
     fingerprint: "BD:E9:FA:13:1A:62:B6:93",
     blocker: null,
   }),
+  watchLiveSession: async () => false,
   userLoginQr: async () => ({
     code: Math.random().toString(36).slice(2, 8).toUpperCase(),
     username: "admin",

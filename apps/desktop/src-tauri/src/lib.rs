@@ -20,6 +20,7 @@ mod extensions;
 mod gpu_arbiter;
 mod hooks;
 mod inference_engines;
+mod live_watch;
 mod local_profile;
 mod mailbox;
 mod mcp_servers;
@@ -6944,6 +6945,7 @@ pub fn run() {
             travel_mode::travel_home_code,
             travel_mode::pairing_code,
             travel_mode::user_login_qr,
+            live_watch::watch_live_session,
             travel_mode::pairing_state,
             travel_mode::reject_pairing,
             travel_mode::run_composer_tool,

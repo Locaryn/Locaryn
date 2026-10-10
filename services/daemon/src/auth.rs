@@ -69,6 +69,20 @@ pub struct AuthState {
     pub required: bool,
 }
 
+/// Le bureau de cette machine suit en direct une réponse servie ici (lancée
+/// depuis le téléphone). Il n'a pas de jeton : il lit déjà la même base. Seule
+/// la boucle locale est exemptée, et seulement pour regarder.
+fn suivi_depuis_cette_machine(req: &Request<Body>) -> bool {
+    let chemin = req.uri().path();
+    let suivi = chemin.starts_with("/v1/sessions/") && chemin.ends_with("/live");
+    suivi
+        && req.method() == axum::http::Method::GET
+        && req
+            .extensions()
+            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+            .is_some_and(|c| c.0.ip().to_canonical().is_loopback())
+}
+
 /// Extract a bearer token from the `Authorization` header.
 fn bearer(req: &Request<Body>) -> Option<String> {
     let raw = req
@@ -97,7 +111,7 @@ pub async fn require_token(
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
-    if !state.required || is_public(req.uri().path()) {
+    if !state.required || is_public(req.uri().path()) || suivi_depuis_cette_machine(&req) {
         return next.run(req).await;
     }
 

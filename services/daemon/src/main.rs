@@ -29,6 +29,7 @@ mod routes;
 use std::collections::HashMap;
 mod auth;
 mod chat_gpu;
+mod live;
 mod media;
 mod mtls;
 mod port_forward;
@@ -306,6 +307,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/v1/sessions/:id/cancel", post(cancel_session))
         .route("/v1/sessions/:id/mailbox", post(chat_gpu::deposer))
+        .route("/v1/sessions/:id/live", get(live::suivre))
         .route("/v1/documents/text", post(chat_gpu::texte_document))
         .route("/v1/sessions/:id/context", get(chat_gpu::contexte))
         .route("/v1/sessions/:id/compress", post(chat_gpu::compresser))
@@ -1461,6 +1463,8 @@ async fn send_message(
         .as_deref()
         .map(|m| m.rsplit(['/', '\\']).next().unwrap_or(m).to_string());
     let started_at = std::time::Instant::now();
+    // Les autres écrans (le bureau, un second téléphone) suivent cette réponse.
+    live::ouvrir(session_uuid);
     tokio::spawn(async move {
         let mut full_text = String::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
@@ -1594,6 +1598,8 @@ async fn send_message(
 
         // Clean up cancellation entry regardless of how the stream ended.
         cancel_map_bg.lock().unwrap().remove(&session_uuid);
+        // Enregistrée : les écrans qui suivaient relisent la conversation.
+        live::fermer(session_uuid);
     });
 
     // 7. Convert to SSE, teeing events to the background collector. The
@@ -1606,6 +1612,7 @@ async fn send_message(
             futures::future::ready(keep)
         })
         .map(move |ev: StreamEvent| {
+            live::publier(session_uuid, &ev);
             let _ = tx.try_send(ev.clone());
             let json = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".into());
             Ok::<Event, std::convert::Infallible>(
