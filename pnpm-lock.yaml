@@ -149,6 +149,10 @@ importers:
         version: 5.9.3
 
   packages-ui/core:
+    dependencies:
+      reicon-react:
+        specifier: 1.2.6
+        version: 1.2.6(react@18.3.1)
     devDependencies:
       '@types/react':
         specifier: ^18.3.12
@@ -820,6 +824,11 @@ packages:
     resolution: {integrity: sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==}
     engines: {node: '>=0.10.0'}
 
+  reicon-react@1.2.6:
+    resolution: {integrity: sha512-Dh+XZzXLPzcX3ez9jYddK06nD18vJr9XkB8Cg+NGu1xsLBQcyKPyloEmfX2tQTsw22xACnDkel/o/XoqsFEm2w==}
+    peerDependencies:
+      react: '>=16.8.0'
+
   rollup@4.62.2:
     resolution: {integrity: sha512-RFnrW4lhXA3s3eqHDZvN654g8OTjzRfqpIRJYczCGB6HzphckVAi/Qh4tbPUbRuDi7s1Llv8g/NspLkttY3gTA==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
@@ -1408,6 +1417,10 @@ snapshots:
   react@18.3.1:
     dependencies:
       loose-envify: 1.4.0
+
+  reicon-react@1.2.6(react@18.3.1):
+    dependencies:
+      react: 18.3.1
 
   rollup@4.62.2:
     dependencies:
