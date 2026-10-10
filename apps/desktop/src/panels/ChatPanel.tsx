@@ -601,6 +601,24 @@ export function ChatPanel({
   queueRef.current = messageQueue;
   const sessionRef = useRef<string | null>(sessionId);
   sessionRef.current = sessionId;
+  /** Le numéro de la réponse que ce fil suit. Changer de conversation le fait
+   *  avancer : la réponse précédente continue côté serveur et s'enregistre
+   *  dans la sienne, mais ses jetons ne s'affichent plus ici — ils se
+   *  déversaient dans la nouvelle conversation. */
+  const runRef = useRef(0);
+  const runSessionRef = useRef<string | null>(null);
+
+  // Une autre conversation à l'écran : la réponse en cours ailleurs est
+  // détachée, et celle-ci est libre d'envoyer tout de suite.
+  useEffect(() => {
+    if (runSessionRef.current && runSessionRef.current !== sessionId) {
+      runRef.current += 1;
+      runSessionRef.current = null;
+      stopRequestedRef.current = false;
+      setStreaming(false);
+      setAttente(null);
+    }
+  }, [sessionId]);
   const fileVisible = messageQueue.filter((m) => m.sessionId === sessionId);
 
   // La file se vide d'elle-même, dans l'ordre, dès que le modèle est libre.
@@ -1357,6 +1375,15 @@ export function ChatPanel({
       if (inputRef.current) inputRef.current.style.height = "auto";
     }
 
+    // Cette réponse, et elle seule, écrit dans ce fil — tant que c'est lui
+    // qui est à l'écran.
+    runRef.current += 1;
+    const run = runRef.current;
+    runSessionRef.current = sid;
+    const surEvenement = (ev: StreamEvent) => {
+      if (runRef.current === run) handleEvent(ev);
+    };
+
     // Show the message and the thinking indicator FIRST. Anything slow (model
     // loading, intent detection) must never leave the user staring at a frozen
     // composer after pressing Enter.
@@ -1403,7 +1430,7 @@ export function ChatPanel({
           sid,
           text,
           {
-            onEvent: handleEvent,
+            onEvent: surEvenement,
             onStepStart: (i, total, step, attempt) =>
               setItems((prev) => [
                 ...prev,
@@ -1451,7 +1478,7 @@ export function ChatPanel({
       await core.sendMessage(
         sid,
         text,
-        handleEvent,
+        surEvenement,
         images.length ? images : undefined,
         jsonMode === "on" || (jsonMode === "auto" && wantsJson(text))
           ? { type: "json_object" }
@@ -1460,11 +1487,22 @@ export function ChatPanel({
         documents.length ? documents : undefined,
       );
     } catch (e) {
-      setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: `send failed: ${e}` }]);
+      if (runRef.current === run) {
+        setItems((prev) => [
+          ...prev,
+          { id: nextId("log"), kind: "log", text: `send failed: ${e}` },
+        ]);
+      }
     } finally {
-      setStreaming(false);
-      setAttente(null);
-      setItems((prev) => terminerForge(prev, null, "Interrompu avant la fin."));
+      // Une réponse détachée (on a changé de conversation) ne touche plus à
+      // l'écran : elle a fini ailleurs.
+      const toujoursIci = runRef.current === run;
+      if (toujoursIci) runSessionRef.current = null;
+      if (toujoursIci) {
+        setStreaming(false);
+        setAttente(null);
+        setItems((prev) => terminerForge(prev, null, "Interrompu avant la fin."));
+      }
 
       // Update the duration estimator so it can learn how fast each model
       // produces answers on this machine.
@@ -1479,7 +1517,7 @@ export function ChatPanel({
       }
 
       // Invisible side call: ask the model what to do next, shown as chips.
-      if (lastAnswer) {
+      if (lastAnswer && toujoursIci) {
         setFollowupsLoading(true);
         core
           .suggestFollowups(lastAnswer, text)

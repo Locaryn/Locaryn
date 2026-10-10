@@ -145,6 +145,18 @@ export function Chat({
   const [chargement, setChargement] = useState(false);
   const conversationRef = useRef<string | null>(null);
   const arretRef = useRef(false);
+  /** Le numéro de la réponse que ce fil suit : ouvrir une autre conversation
+   *  le fait avancer, et la réponse précédente cesse d'écrire ici (elle
+   *  continue sur le serveur et s'enregistre dans la sienne). */
+  const runRef = useRef(0);
+
+  /** Détacher la réponse en cours avant de changer de conversation. */
+  function detacher() {
+    runRef.current += 1;
+    setBusy(false);
+    setOutil(null);
+    setChargement(false);
+  }
   /** Une conversation est en train de charger ses messages. */
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,6 +264,7 @@ export function Chat({
 
   /** Reprendre une conversation, d'où qu'elle vienne. */
   async function open(id: string) {
+    detacher();
     setDrawerOpen(false);
     setError(null);
     conversationRef.current = id;
@@ -276,6 +289,7 @@ export function Chat({
   }
 
   function startNew() {
+    detacher();
     setDrawerOpen(false);
     conversationRef.current = null;
     setCurrentId(null);
@@ -513,6 +527,8 @@ export function Chat({
     ]);
     setBusy(true);
     arretRef.current = false;
+    runRef.current += 1;
+    const run = runRef.current;
     let reponse = "";
     try {
       await api.sendStream(
@@ -520,6 +536,7 @@ export function Chat({
         currentId,
         ephemeral,
         (ev) => {
+          if (runRef.current !== run) return;
           if (ev.type === "token") reponse += (ev as { text: string }).text;
           ajouterAuFil(ev);
         },
@@ -533,6 +550,7 @@ export function Chat({
       // Une conversation éphémère n'apparaît nulle part : rien à rafraîchir.
       if (!ephemeral) void refreshList();
     } catch (e) {
+      if (runRef.current !== run) return;
       setError(String(e));
       if (!reponse) {
         // Rien n'est venu : le texte revient dans le champ plutôt que d'être perdu.
@@ -540,10 +558,12 @@ export function Chat({
         setMessages((m) => m.filter((x, i) => !(i === m.length - 1 && x.role === "user")));
       }
     } finally {
-      setBusy(false);
-      setOutil(null);
-      setChargement(false);
-      setMessages((m) => terminerForge(m, null, "Interrompu avant la fin."));
+      if (runRef.current === run) {
+        setBusy(false);
+        setOutil(null);
+        setChargement(false);
+        setMessages((m) => terminerForge(m, null, "Interrompu avant la fin."));
+      }
       if (arretRef.current && fileRef.current.length > 0) setFilePause(true);
       void reprendreLesRemis();
     }
