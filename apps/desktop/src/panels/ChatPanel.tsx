@@ -7,6 +7,7 @@ import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
+import { ContextDetails, type ContextUsage } from "../components/chat/ContextDetails";
 import {
   type MessageAttachment,
   MessageBubble,
@@ -626,6 +627,13 @@ export function ChatPanel({
    *  déversaient dans la nouvelle conversation. */
   const runRef = useRef(0);
   const runSessionRef = useRef<string | null>(null);
+  /** Ce que la boucle d'agent a mesuré au dernier tour de cette conversation. */
+  const [ctxUsage, setCtxUsage] = useState<ContextUsage | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `sessionId` n'est pas lu, il signale le changement de conversation.
+  useEffect(() => {
+    setCtxUsage(null);
+    setCtxDetails(false);
+  }, [sessionId]);
 
   // Une autre conversation à l'écran : la réponse en cours ailleurs est
   // détachée, et celle-ci est libre d'envoyer tout de suite.
@@ -1202,6 +1210,13 @@ export function ChatPanel({
             ),
           );
         });
+    } else if (ev.type === "context_usage") {
+      setCtxUsage({
+        window: ev.window,
+        parts: ev.parts,
+        deferredTokens: ev.deferred_tokens,
+        deferredCount: ev.deferred_count,
+      });
     } else if (ev.type === "timings") {
       const speed: MessageSpeed = {
         generated: ev.generated_tokens,
@@ -1677,6 +1692,8 @@ export function ChatPanel({
   /** Appui long sur la jauge : compresser à la main avant une longue tâche.
    *  `holding` pendant l'appui, `ctxBulle` dit ce qui se passe. */
   const [holding, setHolding] = useState(false);
+  /** Le détail de la fenêtre, ouvert par un clic bref sur la jauge. */
+  const [ctxDetails, setCtxDetails] = useState(false);
   const [ctxBulle, setCtxBulle] = useState<string | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bulleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1705,6 +1722,12 @@ export function ChatPanel({
     setHolding(false);
   }
 
+  /** Relâcher avant la compression : un clic, qui ouvre ou ferme le détail. */
+  function relacherAppui() {
+    if (holdTimer.current) setCtxDetails((v) => !v);
+    annulerAppui();
+  }
+
   /** Compression proposee quand la fenetre appliquee passe sous ce que la
    *  conversation a deja consomme. Les vieux tours partent dans un resume
    *  produit par le modele lui-meme — le meme travail que la compaction
@@ -1717,6 +1740,8 @@ export function ChatPanel({
       const fresh = await core.listMessages(sessionId);
       setItems(fresh.flatMap(storedMessageItems));
       setCompressProposal(null);
+      // La mesure d'avant ne vaut plus : la conversation a rétréci.
+      setCtxUsage(null);
       return retires > 0;
     } catch (e) {
       // Le resume a echoue : la proposition reste, l'utilisateur peut
@@ -1764,6 +1789,7 @@ export function ChatPanel({
         setInput(it.text);
         setItems((prev) => prev.slice(0, i));
         setFollowups([]);
+        setCtxUsage(null);
         inputRef.current?.focus();
         return;
       }
@@ -2122,12 +2148,17 @@ export function ChatPanel({
     };
   }, [input, canSend, sessionId]);
 
-  // Context calculations
-  const usedTokens = items.reduce((acc, it) => {
+  // Context calculations. La mesure de la boucle d'agent (prompt système,
+  // outils, messages) quand elle existe ; sinon l'estimation des seuls messages
+  // affichés, qui ignorait tout ce que le modèle reçoit d'autre.
+  const estimeMessages = items.reduce((acc, it) => {
     if (it.kind === "msg") return acc + Math.ceil(it.text.length / 4);
     if (it.kind === "tool") return acc + Math.ceil((it.output?.length ?? 0) / 4);
     return acc;
   }, 0);
+  const usedTokens = ctxUsage
+    ? ctxUsage.parts.reduce((acc, p) => acc + p.tokens, 0)
+    : estimeMessages;
   // Fenetre reellement appliquee au moteur : la prop d'App, sinon ce que le
   // panneau de reglages annonce (Appliquer), sinon la valeur par defaut. La
   // jauge doit raconter ce que le moteur a, pas ce qu'un menu laisse croire.
@@ -2835,8 +2866,23 @@ export function ChatPanel({
               </button>
             )}
 
-            {/* Context gauge — maintenir pour compresser la conversation */}
+            {/* Context gauge — clic : le détail ; maintenir : compresser */}
             <div className="locaryn-ctx-gauge-zone">
+              {ctxDetails && (
+                <>
+                  <button
+                    type="button"
+                    className="locaryn-ctx-details-voile"
+                    aria-label="Fermer le détail du contexte"
+                    onClick={() => setCtxDetails(false)}
+                  />
+                  <ContextDetails
+                    usage={ctxUsage}
+                    fenetre={ctxUsage?.window || ctxWindow}
+                    estimeMessages={estimeMessages}
+                  />
+                </>
+              )}
               <span
                 className={`locaryn-ctx-bulle${ctxBulle || holding ? " is-visible" : ""}`}
                 role="status"
@@ -2858,7 +2904,7 @@ export function ChatPanel({
                   e.currentTarget.setPointerCapture(e.pointerId);
                   commencerAppui();
                 }}
-                onPointerUp={annulerAppui}
+                onPointerUp={relacherAppui}
                 onPointerCancel={annulerAppui}
                 onLostPointerCapture={annulerAppui}
                 onKeyDown={(e) => {
@@ -2868,7 +2914,8 @@ export function ChatPanel({
                   }
                 }}
                 onKeyUp={(e) => {
-                  if (e.key === " " || e.key === "Enter") annulerAppui();
+                  if (e.key === " " || e.key === "Enter") relacherAppui();
+                  if (e.key === "Escape") setCtxDetails(false);
                 }}
               >
                 <div

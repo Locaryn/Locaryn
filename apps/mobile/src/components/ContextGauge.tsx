@@ -1,3 +1,4 @@
+import { ContextRing } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type ContextStatus, api } from "../lib/core";
 
@@ -12,6 +13,12 @@ type Props = {
 /** Le temps d'appui qui lance la compression — le même que sur le bureau. */
 const APPUI_MS = 1200;
 const RELECTURE_MS = 6000;
+const POSTES = [
+  { key: "messages", libelle: "Messages", teinte: "var(--ctx-messages)" },
+  { key: "system", libelle: "Prompt système", teinte: "var(--ctx-system)" },
+  { key: "tools", libelle: "Outils intégrés", teinte: "var(--ctx-tools)" },
+  { key: "mcp_tools", libelle: "Outils des connecteurs", teinte: "var(--ctx-mcp)" },
+] as const;
 const RAYON = 11;
 const TOUR = 2 * Math.PI * RAYON;
 
@@ -159,13 +166,35 @@ export function ContextGauge({ conversationId, busy, onCompressed }: Props) {
           <p className="lo-ctx-title">Fenêtre de contexte</p>
           {fenetre ? (
             <>
-              <p className="lo-ctx-value">
-                {kilo(etat?.used ?? 0)} / {kilo(fenetre)} jetons
-                <span>{Math.round(part * 100)} %</span>
-              </p>
-              <div className="lo-ctx-bar">
-                <span className={niveau} style={{ width: `${part * 100}%` }} />
-              </div>
+              {etat?.parts ? (
+                <ContextRing
+                  parts={POSTES.flatMap((p) => {
+                    const n = etat.parts?.find((x) => x.key === p.key)?.tokens;
+                    return n === undefined
+                      ? []
+                      : [{ key: p.key, label: p.libelle, tokens: n, color: p.teinte }];
+                  })}
+                  window={fenetre}
+                  extra={
+                    (etat.deferred_count ?? 0) > 0
+                      ? {
+                          label: `Outils différés (${etat.deferred_count})`,
+                          tokens: etat.deferred_tokens ?? 0,
+                        }
+                      : null
+                  }
+                />
+              ) : (
+                <>
+                  <p className="lo-ctx-value">
+                    {kilo(etat?.used ?? 0)} / {kilo(fenetre)} jetons
+                    <span>{Math.round(part * 100)} %</span>
+                  </p>
+                  <div className="lo-ctx-bar">
+                    <span className={niveau} style={{ width: `${part * 100}%` }} />
+                  </div>
+                </>
+              )}
             </>
           ) : (
             <p className="lo-ctx-value">Le moteur ne dit pas sa fenêtre (modèle arrêté ?).</p>

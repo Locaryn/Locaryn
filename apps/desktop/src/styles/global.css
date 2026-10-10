@@ -1,6 +1,7 @@
 @import "../../../../packages-ui/tokens/tokens.css";
 @import "../../../../packages-ui/tokens/fonts.css";
 @import "../../../../packages-ui/tokens/loading.css";
+@import "../../../../packages-ui/tokens/context-ring.css";
 @import "../../../../packages-ui/tokens/presentation.css";
 
 /* ═══════════════════════════════════════════════════════════
@@ -13269,4 +13270,48 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   place-items: center;
   aspect-ratio: 1;
   color: var(--text-faint);
+}
+
+/* ── Détail de la fenêtre de contexte (clic bref sur la jauge) ───────────── */
+.locaryn-ctx-details-voile {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+.locaryn-ctx-details {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--space-2));
+  z-index: 20;
+  width: min(380px, calc(100vw - var(--space-8)));
+  padding: var(--space-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  font-size: var(--text-xs);
+  animation: locaryn-ctx-details-entree 0.16s ease-out;
+}
+@keyframes locaryn-ctx-details-entree {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-ctx-details {
+    animation: none;
+  }
+}
+.locaryn-ctx-details-tete {
+  margin: 0 0 var(--space-3);
+  color: var(--text-dim);
+}
+.locaryn-ctx-details-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-dim);
 }

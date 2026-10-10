@@ -1,0 +1,175 @@
+/* La fenêtre de contexte en anneau (packages-ui/core/src/context-ring.tsx). */
+
+/* Les teintes des postes : l'accent pour la conversation, des tons sourds pour
+   ce que l'application pose devant le modèle. */
+:root {
+  --ctx-messages: var(--accent);
+  --ctx-system: var(--info);
+  --ctx-tools: var(--warn);
+  --ctx-mcp: var(--text-dim);
+}
+
+.lo-ring {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.lo-ring-figure {
+  position: relative;
+  flex: none;
+  width: 132px;
+  height: 132px;
+}
+
+.lo-ring-piste {
+  fill: none;
+  stroke: var(--surface-2);
+}
+
+.lo-ring-arc {
+  fill: none;
+  stroke-linecap: butt;
+  cursor: pointer;
+  transition:
+    opacity 0.18s ease,
+    stroke-width 0.18s ease;
+  animation: lo-ring-trace 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.lo-ring-arc.is-eteint {
+  opacity: 0.28;
+}
+
+@keyframes lo-ring-trace {
+  from {
+    stroke-dasharray: 0 999;
+  }
+}
+
+.lo-ring-centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 var(--space-5);
+  text-align: center;
+  pointer-events: none;
+}
+
+.lo-ring-centre strong {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.lo-ring-centre span {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--text-dim);
+}
+
+.lo-ring-legende {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Spécificité doublée : l'anneau se pose dans des barres dont les boutons sont
+   en ligne (.lo-bar button). */
+.lo-ring .lo-ring-legende button,
+.lo-ring .lo-ring-ligne {
+  display: grid;
+  grid-template-columns: 8px 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.lo-ring-legende button {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.lo-ring-legende button:hover,
+.lo-ring-legende button.is-actif {
+  background: var(--surface-2);
+}
+
+.lo-ring-legende button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.lo-ring-legende .is-libre,
+.lo-ring-legende .is-hors {
+  color: var(--text-dim);
+}
+
+.lo-ring-legende .is-hors .lo-ring-ligne {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.lo-ring-pastille {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.lo-ring-pastille.is-vide {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.lo-ring-pastille.is-hors {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--text-dim);
+}
+
+.lo-ring-nom {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lo-ring-n {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+@media (max-width: 420px) {
+  .lo-ring {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lo-ring-figure {
+    align-self: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lo-ring-arc {
+    animation: none;
+    transition: none;
+  }
+}

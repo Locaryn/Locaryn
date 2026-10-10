@@ -1271,12 +1271,26 @@ export type StreamEvent =
       generation_tokens_per_sec: number;
     }
   | {
+      /** Ce qui occupe la fenêtre à ce tour, poste par poste. */
+      type: "context_usage";
+      window: number;
+      parts: ContextPart[];
+      deferred_tokens: number;
+      deferred_count: number;
+    }
+  | {
       type: "message_end";
       message_id: string;
       tokens_in: number;
       tokens_out: number;
       duration_ms: number;
     };
+
+/** Un poste de la fenêtre de contexte (`system`, `tools`, `mcp_tools`, `messages`). */
+export interface ContextPart {
+  key: "system" | "tools" | "mcp_tools" | "messages";
+  tokens: number;
+}
 
 export type TerminalEvent =
   | { type: "line"; stream: "stdout" | "stderr"; text: string }
@@ -4811,6 +4825,18 @@ Contenu de démonstration.
       onEvent({ type: "token", text: word });
       await sleep(18);
     }
+    onEvent({
+      type: "context_usage",
+      window: 8192,
+      parts: [
+        { key: "system", tokens: 640 },
+        { key: "tools", tokens: 1850 },
+        { key: "mcp_tools", tokens: 2210 },
+        { key: "messages", tokens: 180 },
+      ],
+      deferred_tokens: 9400,
+      deferred_count: 41,
+    });
     onEvent({
       type: "timings",
       prompt_tokens: 120,

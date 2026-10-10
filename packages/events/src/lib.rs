@@ -104,12 +104,33 @@ pub enum StreamEvent {
     MailRead {
         ids: Vec<String>,
     },
+    /// Ce qui occupe la fenêtre du modèle à ce tour, poste par poste (prompt
+    /// système, outils intégrés, outils des connecteurs, messages), recalé sur
+    /// le compte réel du moteur. La jauge le détaille au lieu de ne compter
+    /// que les messages.
+    ContextUsage {
+        /// La fenêtre du moteur, en jetons (0 si inconnue).
+        window: u64,
+        parts: Vec<ContextPart>,
+        /// Outils des connecteurs différés (chargeables à la demande) : leur
+        /// poids s'ils étaient tous chargés. Hors fenêtre.
+        deferred_tokens: u64,
+        deferred_count: u32,
+    },
     MessageEnd {
         message_id: String,
         tokens_in: u64,
         tokens_out: u64,
         duration_ms: u64,
     },
+}
+
+/// Un poste de la fenêtre de contexte.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ContextPart {
+    /// `system`, `tools`, `mcp_tools`, `messages`.
+    pub key: String,
+    pub tokens: u64,
 }
 
 // Risk is re-exported from locaryn_shared_types so there is a single
@@ -234,6 +255,7 @@ pub fn sse_event_tag(event: &StreamEvent) -> &'static str {
         StreamEvent::Timings { .. } => "timings",
         StreamEvent::MediaPending { .. } => "media.pending",
         StreamEvent::MailRead { .. } => "mail.read",
+        StreamEvent::ContextUsage { .. } => "context.usage",
         StreamEvent::MessageEnd { .. } => "message.end",
     }
 }

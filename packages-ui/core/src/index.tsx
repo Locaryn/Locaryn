@@ -64,3 +64,11 @@ export {
 
 export { renderMarkdown } from "./markdown";
 export { TRUST_LEVELS, trustInfo, type TrustLevel } from "./trust";
+
+// La fenêtre de contexte en anneau : la même mesure se lit pareil partout.
+export {
+  ContextRing,
+  formatTokens,
+  type ContextRingPart,
+  type ContextRingProps,
+} from "./context-ring";

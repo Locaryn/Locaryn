@@ -153,8 +153,9 @@ pub async fn run_openai_tool_loop(
     // Les définitions d'outils doivent tenir dans le contexte du serveur : quelques
     // connecteurs MCP suffisent à le dépasser, et le serveur refuse alors la
     // requête en bloc (41 009 jetons pour un contexte de 8 192, mesuré avec
-    // Roblox Studio). On réduit seulement si ça déborde, et on le dit.
-    let mut tools_notice: Option<String> = None;
+    // Roblox Studio). Ce qui ne tient pas est différé, jamais retiré.
+    // Les outils qui ne tenaient pas dans la fenêtre, chargeables à la demande.
+    let mut differes: Vec<crate::tools::ToolSpec> = Vec::new();
     let contexte_serveur = crate::tool_budget::server_context(client, endpoint).await;
     // Toute la conversation départage les outils, pas le seul dernier
     // message : « continue » ne nomme rien, et l'outil dont la tâche
@@ -177,30 +178,20 @@ pub async fn run_openai_tool_loop(
             let ctx_estime = (ctx as f64 / echelle_connue()) as usize;
             let fit =
                 crate::tool_budget::fit_selon(all_tools, ctx_estime, &demande, input.trim_tools);
+            // Rien n'est écarté : ce qui ne tient pas est différé, et le modèle
+            // le charge quand il en a besoin (`charger_outils`). L'ancien avis
+            // « N outils laissés de côté » annonçait une décision que la
+            // personne n'avait pas prise.
             if fit.dropped > 0 || fit.compacted {
-                tracing::warn!(
+                tracing::info!(
                     contexte = ctx,
                     avant = before,
-                    apres = fit.specs.len(),
-                    retires = fit.dropped,
+                    offerts = fit.specs.len(),
+                    differes = fit.dropped,
                     "outils ajustés au contexte du modèle"
                 );
-                tools_notice = Some(if fit.forced {
-                    format!(
-                        "Les outils des connecteurs dépassent ce que la fenêtre du modèle ({ctx} jetons) peut porter : {} ont été laissés de côté, d'après votre demande. Augmentez le contexte (profil Automatique), ou décochez des outils dans Réglages → Connecteurs MCP.",
-                        fit.dropped
-                    )
-                } else if fit.dropped > 0 {
-                    format!(
-                        "Le contexte du modèle ({ctx} jetons) ne contient pas tous les outils : {} ont été laissés de côté, d'après votre demande. Décochez ceux dont vous n'avez pas besoin dans Réglages → Connecteurs MCP → Configurer, ou augmentez le contexte.",
-                        fit.dropped
-                    )
-                } else {
-                    format!(
-                        "Le contexte du modèle ({ctx} jetons) est serré : les descriptions des outils ont été raccourcies."
-                    )
-                });
             }
+            differes = fit.deferred;
             fit.specs
         }
         _ => all_tools,
@@ -407,14 +398,10 @@ pub async fn run_openai_tool_loop(
                     ?fait,
                     "fenêtre pleine au premier envoi : outils allégés selon la taille réelle"
                 );
-                tools_notice = Some(format!(
-                    "La requête dépassait la fenêtre du modèle ({reelle} jetons pour {ctx}) : {} outil(s) sur {} ont été gardés, d'après votre demande. Pour tout garder, augmentez le contexte (profil Automatique sur une plus grande carte) ou décochez des outils dans Réglages → Connecteurs MCP.",
-                    refit.specs.len(),
-                    outils_complets.len()
-                ));
                 if !fait.rien() {
                     annonce_contexte = Some(fait.annonce());
                 }
+                differes = refit.deferred;
                 all_tools = refit.specs;
                 tools_json = if all_tools.is_empty() {
                     None
@@ -473,15 +460,6 @@ pub async fn run_openai_tool_loop(
             })
             .await;
     }
-    if let Some(msg) = tools_notice {
-        let _ = tx
-            .send(StreamEvent::Log {
-                level: locaryn_events::LogLevel::Warn,
-                msg,
-                source: "outils".into(),
-            })
-            .await;
-    }
 
     let input = input.clone();
     let client = client.clone();
@@ -489,13 +467,17 @@ pub async fn run_openai_tool_loop(
     let native_ollama_loop = native_ollama;
     let native_url_loop = native_url;
     let message_id_loop = message_id.clone();
-    let tools_for_dispatch = all_tools.clone();
+    let mut tools_for_dispatch = all_tools.clone();
+    // Pour la jauge : quels outils viennent d'un connecteur.
+    let noms_mcp: std::collections::HashSet<String> =
+        mcp_tools.iter().map(|t| t.name.clone()).collect();
     let mcp_state_for_dispatch = input.mcp_state.clone();
     let approval = input.approval.clone();
     let question = input.question.clone();
     let host_tools = input.host_tools.clone();
-    // Les outils ne changent plus pendant la tâche : leur poids estimé non plus.
-    let outils_estimes: usize = all_tools
+    // Le poids estimé des outils offerts ; il grandit quand le modèle charge
+    // un outil différé.
+    let mut outils_estimes: usize = all_tools
         .iter()
         .map(crate::tool_budget::estimate_tokens)
         .sum();
@@ -670,6 +652,17 @@ pub async fn run_openai_tool_loop(
             }
             tokens_in += round_result.tokens_in;
             tokens_out += round_result.tokens_out;
+            let _ = tx
+                .send(bilan_du_contexte(
+                    &messages,
+                    &tools_for_dispatch,
+                    &noms_mcp,
+                    &differes,
+                    contexte_serveur.unwrap_or(0) as u64,
+                    round_result.tokens_in,
+                    round_result.tokens_out,
+                ))
+                .await;
             timings.add(round_result.timings);
 
             if round_result.calls.is_empty() {
@@ -738,6 +731,39 @@ pub async fn run_openai_tool_loop(
             // implémentation de la politique d'approbation, où que l'appel
             // vienne.
             for call in &round_result.calls {
+                // Charger des outils différés : traité ici, rien ne part vers
+                // un connecteur. Ils sont offerts dès le tour suivant.
+                if call.name == crate::tool_budget::CHARGER_OUTILS {
+                    let args: serde_json::Value =
+                        serde_json::from_str(&call.arguments_raw).unwrap_or(serde_json::json!({}));
+                    let resultat = charger_differes(
+                        &mut differes,
+                        &mut tools_for_dispatch,
+                        &mut tools_json,
+                        &mut outils_estimes,
+                        &args,
+                    );
+                    let _ = tx
+                        .send(StreamEvent::ToolCall {
+                            call_id: call.id.clone(),
+                            tool: call.name.clone(),
+                            args,
+                        })
+                        .await;
+                    let _ = tx
+                        .send(StreamEvent::ToolResult {
+                            call_id: call.id.clone(),
+                            ok: true,
+                            output: resultat.clone(),
+                        })
+                        .await;
+                    messages.as_array_mut().unwrap().push(serde_json::json!({
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": resultat,
+                    }));
+                    continue;
+                }
                 // La permission a pu changer pendant que le modèle écrivait :
                 // c'est celle de maintenant qui décide, pas celle de l'envoi.
                 if let Some(source) = &input.trust_source {
@@ -978,6 +1004,106 @@ fn retenir_echelle(echelle: f64) {
         echelle.clamp(1.0, 8.0).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
+}
+
+/// Ce qui occupe la fenêtre à ce tour, poste par poste. Les postes sont
+/// estimés (octets / 3) puis recalés sur `tokens_in`, le compte du moteur,
+/// quand il le donne : la somme est alors exacte, la répartition approchée.
+fn bilan_du_contexte(
+    messages: &serde_json::Value,
+    offerts: &[crate::tools::ToolSpec],
+    noms_mcp: &std::collections::HashSet<String>,
+    differes: &[crate::tools::ToolSpec],
+    window: u64,
+    tokens_in: u64,
+    // La réponse de ce tour occupera la fenêtre au suivant : elle compte avec
+    // les messages.
+    tokens_out: u64,
+) -> StreamEvent {
+    let liste = messages.as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let (systeme, conversation): (Vec<_>, Vec<_>) = liste
+        .iter()
+        .cloned()
+        .partition(|m| m.get("role").and_then(|r| r.as_str()) == Some("system"));
+    let systeme = crate::context_window::estimate_tokens(&serde_json::Value::Array(systeme));
+    let conversation =
+        crate::context_window::estimate_tokens(&serde_json::Value::Array(conversation));
+    let (mcp, integres): (Vec<_>, Vec<_>) =
+        offerts.iter().partition(|t| noms_mcp.contains(&t.name));
+    let poids = |l: &[&crate::tools::ToolSpec]| -> usize {
+        l.iter()
+            .map(|t| crate::tool_budget::estimate_tokens(t))
+            .sum()
+    };
+    let estimes = [
+        ("system", systeme),
+        ("tools", poids(&integres)),
+        ("mcp_tools", poids(&mcp)),
+        ("messages", conversation),
+    ];
+    let somme: usize = estimes.iter().map(|(_, n)| n).sum();
+    let echelle = if tokens_in > 0 && somme > 0 {
+        tokens_in as f64 / somme as f64
+    } else {
+        1.0
+    };
+    StreamEvent::ContextUsage {
+        window,
+        parts: estimes
+            .iter()
+            .map(|(cle, n)| locaryn_events::ContextPart {
+                key: (*cle).to_string(),
+                tokens: (*n as f64 * echelle).round() as u64
+                    + if *cle == "messages" { tokens_out } else { 0 },
+            })
+            .collect(),
+        deferred_tokens: (differes
+            .iter()
+            .map(crate::tool_budget::estimate_tokens)
+            .sum::<usize>() as f64
+            * echelle)
+            .round() as u64,
+        deferred_count: differes.len() as u32,
+    }
+}
+
+/// Charger les outils différés que le modèle nomme : ils rejoignent les outils
+/// offerts (et la liste de dispatch), l'outil de chargement ne liste plus que
+/// ce qui reste. Rend le texte que le modèle lit en résultat.
+fn charger_differes(
+    differes: &mut Vec<crate::tools::ToolSpec>,
+    offerts: &mut Vec<crate::tools::ToolSpec>,
+    tools_json: &mut Option<serde_json::Value>,
+    outils_estimes: &mut usize,
+    args: &serde_json::Value,
+) -> String {
+    let (charges, inconnus) = crate::tool_budget::charger(differes, args);
+    offerts.retain(|s| s.name != crate::tool_budget::CHARGER_OUTILS);
+    let noms: Vec<String> = charges.iter().map(|s| s.name.clone()).collect();
+    offerts.extend(charges);
+    if !differes.is_empty() {
+        offerts.push(crate::tool_budget::outil_de_chargement(differes));
+    }
+    *tools_json = Some(ollama_tools_json(offerts));
+    *outils_estimes = offerts
+        .iter()
+        .map(crate::tool_budget::estimate_tokens)
+        .sum();
+    let mut texte = if noms.is_empty() {
+        "Aucun outil chargé.".to_string()
+    } else {
+        format!(
+            "Outils chargés : {}. Tu peux les appeler maintenant.",
+            noms.join(", ")
+        )
+    };
+    if !inconnus.is_empty() {
+        texte.push_str(&format!(
+            " Inconnus (vérifie l'orthographe dans la liste de charger_outils) : {}.",
+            inconnus.join(", ")
+        ));
+    }
+    texte
 }
 
 /// La taille réelle d'une requête refusée, telle que llama-server l'annonce :

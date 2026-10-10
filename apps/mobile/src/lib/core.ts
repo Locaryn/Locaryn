@@ -281,6 +281,10 @@ export interface ContextStatus {
   window: number | null;
   messages: number;
   compressible: boolean;
+  /** Le détail mesuré au dernier tour (prompt système, outils, messages). */
+  parts?: { key: "system" | "tools" | "mcp_tools" | "messages"; tokens: number }[] | null;
+  deferred_tokens?: number;
+  deferred_count?: number;
 }
 
 /** Un média qui se fabrique : ses proportions, l'étape en cours. */
@@ -777,7 +781,20 @@ export const demoCore: typeof core = {
     onEvent({ type: "message_end" });
     return "demo";
   },
-  contextStatus: async () => ({ used: 5400, window: 8192, messages: 14, compressible: true }),
+  contextStatus: async () => ({
+    used: 5400,
+    window: 8192,
+    messages: 14,
+    compressible: true,
+    parts: [
+      { key: "messages", tokens: 1700 },
+      { key: "system", tokens: 640 },
+      { key: "tools", tokens: 1850 },
+      { key: "mcp_tools", tokens: 1210 },
+    ],
+    deferred_tokens: 9400,
+    deferred_count: 41,
+  }),
   sessionTrust: async () => ({
     effective: "untrusted",
     override_value: null,

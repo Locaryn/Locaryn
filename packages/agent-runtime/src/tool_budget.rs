@@ -35,8 +35,11 @@ const SHORT_DESCRIPTION: usize = 160;
 #[derive(Debug, Clone)]
 pub struct Fit {
     pub specs: Vec<ToolSpec>,
-    /// Outils retirés faute de place, intégrés exceptés.
+    /// Outils qui ne tenaient pas, intégrés exceptés : différés, pas retirés.
     pub dropped: usize,
+    /// Les outils différés, tels quels : le modèle les charge à la demande par
+    /// [`CHARGER_OUTILS`]. Rien n'est écarté sans que le modèle le décide.
+    pub deferred: Vec<ToolSpec>,
     /// Descriptions raccourcies.
     pub compacted: bool,
     /// Allégement imposé alors que la personne l'a désactivé : les outils
@@ -279,6 +282,7 @@ pub fn fit_selon(specs: Vec<ToolSpec>, ctx: usize, request: &str, alleger: bool)
             dropped: 0,
             compacted: false,
             forced: false,
+            deferred: Vec::new(),
         };
     }
     Fit {
@@ -297,6 +301,7 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
             dropped: 0,
             compacted: false,
             forced: false,
+            deferred: Vec::new(),
         };
     }
 
@@ -308,6 +313,7 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
             dropped: 0,
             compacted: false,
             forced: false,
+            deferred: Vec::new(),
         };
     }
 
@@ -329,6 +335,7 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
             dropped: 0,
             compacted: true,
             forced: false,
+            deferred: Vec::new(),
         };
     }
 
@@ -346,23 +353,96 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
             .or_else(|| split_prefixed(&s.name).map(|(srv, _)| srv));
         std::cmp::Reverse(relevance(&request_words, s, server))
     });
-    let total_optional = optional.len();
+    // L'index des outils différés (leurs noms, dans l'outil de chargement) prend
+    // lui aussi de la place : on la réserve d'avance, au pire cas.
+    let index: usize = optional.iter().map(cout_dans_l_index).sum::<usize>() + 60;
+    let budget = budget.saturating_sub(index.min(budget / 4));
     let mut kept = fixed;
+    let mut deferred = Vec::new();
     for spec in optional {
         let cost = estimate_tokens(&spec);
         if used + cost > budget {
+            deferred.push(spec);
             continue;
         }
         used += cost;
         kept.push(spec);
     }
-    let dropped = total_optional - (kept.len() - fixed_len);
+    debug_assert!(kept.len() >= fixed_len);
+    if !deferred.is_empty() {
+        kept.push(outil_de_chargement(&deferred));
+    }
     Fit {
         specs: kept,
-        dropped,
+        dropped: deferred.len(),
+        deferred,
         compacted: true,
         forced: false,
     }
+}
+
+/// L'outil qui charge les outils différés. Il est traité par la boucle d'agent
+/// elle-même, jamais envoyé à un connecteur.
+pub const CHARGER_OUTILS: &str = "charger_outils";
+
+fn cout_dans_l_index(spec: &ToolSpec) -> usize {
+    (spec.name.len() as f64 / BYTES_PER_TOKEN).ceil() as usize + 1
+}
+
+/// L'outil de chargement, avec dans sa description le nom de chaque outil
+/// différé. Le modèle sait ainsi tout ce qui existe — comme les outils
+/// « différés » de Claude — et charge ce dont il a besoin au moment voulu.
+pub fn outil_de_chargement(deferred: &[ToolSpec]) -> ToolSpec {
+    let noms: Vec<&str> = deferred.iter().map(|s| s.name.as_str()).collect();
+    ToolSpec {
+        name: CHARGER_OUTILS.to_string(),
+        description: format!(
+            "D'autres outils sont disponibles mais pas encore chargés (la fenêtre du modèle \
+             ne les porte pas tous à la fois). Pour en utiliser un, appelle d'abord cet outil \
+             avec son nom ; il devient appelable au tour suivant. Disponibles : {}.",
+            noms.join(", ")
+        ),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "noms": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Les noms exacts des outils à charger."
+                }
+            },
+            "required": ["noms"]
+        }),
+        risk: crate::tools::Risk::Low,
+        required_permissions: Vec::new(),
+    }
+}
+
+/// Ce que le modèle a demandé à charger : retiré de `deferred`, rendu pour
+/// rejoindre les outils offerts. Les noms inconnus sont rendus à part.
+pub fn charger(
+    deferred: &mut Vec<ToolSpec>,
+    args: &serde_json::Value,
+) -> (Vec<ToolSpec>, Vec<String>) {
+    let demandes: Vec<String> = ["noms", "names", "outils", "tools"]
+        .iter()
+        .find_map(|cle| args.get(*cle).and_then(|v| v.as_array()))
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut charges = Vec::new();
+    let mut inconnus = Vec::new();
+    for nom in demandes {
+        match deferred.iter().position(|s| s.name == nom) {
+            Some(i) => charges.push(deferred.remove(i)),
+            None => inconnus.push(nom),
+        }
+    }
+    (charges, inconnus)
 }
 
 /// Outil que l'on ne retire ni n'allège : tout ce qui ne vient pas d'un
@@ -509,6 +589,32 @@ mod tests {
         let r = fit_selon(beaucoup_d_outils(), 2048, "x", false);
         assert!(r.forced);
         assert!(r.dropped > 0, "des outils de connecteur doivent partir");
+    }
+
+    #[test]
+    fn un_outil_qui_ne_tient_pas_est_differe_puis_chargeable() {
+        let mut r = fit_selon(beaucoup_d_outils(), 2048, "x", false);
+        assert_eq!(r.deferred.len(), r.dropped);
+        let chargeur = r
+            .specs
+            .iter()
+            .find(|s| s.name == CHARGER_OUTILS)
+            .expect("l'outil de chargement est offert dès qu'un outil est différé");
+        let premier = r.deferred[0].name.clone();
+        assert!(
+            chargeur.description.contains(&premier),
+            "chaque différé est nommé"
+        );
+
+        let avant = r.deferred.len();
+        let (charges, inconnus) = charger(
+            &mut r.deferred,
+            &serde_json::json!({ "noms": [premier.clone(), "n_existe_pas"] }),
+        );
+        assert_eq!(charges.len(), 1);
+        assert_eq!(charges[0].name, premier);
+        assert_eq!(inconnus, vec!["n_existe_pas".to_string()]);
+        assert_eq!(r.deferred.len(), avant - 1);
     }
 
     #[test]

@@ -29,6 +29,30 @@ struct Direct {
 static DIRECTS: LazyLock<Mutex<HashMap<Uuid, Direct>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// La dernière mesure de la fenêtre de chaque conversation (`ContextUsage`) :
+/// la jauge du téléphone la relit entre deux réponses.
+static MESURES: LazyLock<Mutex<HashMap<Uuid, StreamEvent>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// La dernière mesure de la fenêtre pour cette conversation, si une réponse
+/// en a produit une depuis le lancement du service.
+pub fn derniere_mesure(session: Uuid) -> Option<StreamEvent> {
+    MESURES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&session)
+        .cloned()
+}
+
+/// La conversation a rétréci (compressée, message retiré) : la mesure ne vaut
+/// plus jusqu'à la prochaine réponse.
+pub fn oublier_mesure(session: Uuid) {
+    MESURES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&session);
+}
+
 fn verrou() -> std::sync::MutexGuard<'static, HashMap<Uuid, Direct>> {
     // Un verrou empoisonné ne garde qu'un tampon d'affichage : on le reprend.
     DIRECTS.lock().unwrap_or_else(|e| e.into_inner())
@@ -49,6 +73,12 @@ pub fn ouvrir(session: Uuid) {
 /// Un événement de la réponse : retenu pour les retardataires, diffusé aux
 /// écrans qui suivent déjà.
 pub fn publier(session: Uuid, ev: &StreamEvent) {
+    if matches!(ev, StreamEvent::ContextUsage { .. }) {
+        MESURES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session, ev.clone());
+    }
     let mut directs = verrou();
     let Some(direct) = directs.get_mut(&session) else {
         return;

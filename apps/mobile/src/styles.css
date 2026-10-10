@@ -2,6 +2,7 @@
 @import "../../../packages-ui/tokens/presentation.css";
 @import "../../../packages-ui/tokens/fonts.css";
 @import "../../../packages-ui/tokens/loading.css";
+@import "../../../packages-ui/tokens/context-ring.css";
 
 /* ═══════════════════════════════════════════════════════════
    Locaryn — téléphone.
@@ -2205,11 +2206,15 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   }
 }
 .lo-ctx-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  /* Fixé à l'écran, pas à l'anneau : ancré sous lui, le menu débordait à
+     gauche d'un téléphone étroit. */
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 60px);
+  right: var(--space-4);
+  left: var(--space-4);
   z-index: 40;
-  width: min(280px, calc(100vw - 32px));
+  max-width: 360px;
+  margin-left: auto;
   padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius);

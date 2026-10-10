@@ -225,11 +225,36 @@ pub async fn contexte(
         Some(p) => locaryn_agent_runtime::tool_budget::server_context(&s.http, &p.endpoint).await,
         None => None,
     };
+    // La mesure du dernier tour (prompt système, outils, messages) quand une
+    // réponse en a donné une ; sinon l'estimation des seuls messages.
+    let mesure = crate::live::derniere_mesure(sid);
+    let (used, parts, differes, nb_differes) = match &mesure {
+        Some(locaryn_events::StreamEvent::ContextUsage {
+            parts,
+            deferred_tokens,
+            deferred_count,
+            ..
+        }) => (
+            parts.iter().map(|p| p.tokens).sum::<u64>(),
+            Some(parts.clone()),
+            *deferred_tokens,
+            *deferred_count,
+        ),
+        _ => (
+            locaryn_agent_runtime::compaction::jetons_estimes(&messages),
+            None,
+            0,
+            0,
+        ),
+    };
     Json(serde_json::json!({
-        "used": locaryn_agent_runtime::compaction::jetons_estimes(&messages),
+        "used": used,
         "window": fenetre,
         "messages": messages.len(),
         "compressible": messages.len() >= locaryn_agent_runtime::compaction::MINIMUM,
+        "parts": parts,
+        "deferred_tokens": differes,
+        "deferred_count": nb_differes,
     }))
     .into_response()
 }
@@ -291,6 +316,7 @@ async fn compresser_session(s: &DaemonState, sid: Uuid) -> Result<u64, String> {
         )
         .await
         .map_err(|e| e.to_string())?;
+    crate::live::oublier_mesure(sid);
     tracing::info!(session = %sid, retires, "conversation compressée depuis un client");
     Ok(retires)
 }
@@ -382,6 +408,7 @@ pub async fn revenir(
     let Ok(sid) = Uuid::parse_str(&id) else {
         return (axum::http::StatusCode::BAD_REQUEST, "identifiant invalide").into_response();
     };
+    crate::live::oublier_mesure(sid);
     match s.storage.messages.rewind_last_user(sid).await {
         Ok(texte) => Json(serde_json::json!({ "content": texte })).into_response(),
         Err(e) => (
