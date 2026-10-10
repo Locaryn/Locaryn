@@ -6924,6 +6924,7 @@ pub fn run() {
             travel_mode::set_travel_mode,
             travel_mode::travel_home_code,
             travel_mode::pairing_code,
+            travel_mode::user_login_qr,
             travel_mode::pairing_state,
             travel_mode::reject_pairing,
             travel_mode::run_composer_tool,

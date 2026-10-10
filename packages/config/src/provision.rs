@@ -55,6 +55,12 @@ pub struct Provisioning {
     /// Optional note displayed under the sign-in form.
     #[serde(default)]
     pub note: String,
+    /// Code de connexion temporaire d'un compte (QR « Afficher le QR de
+    /// connexion » d'un utilisateur) : le téléphone qui scanne ouvre la
+    /// session de ce compte sans identifiant ni mot de passe. Absent du QR
+    /// d'appairage ordinaire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub login_code: Option<String>,
 }
 
 /// Standard file name. Recognisable next to an installer.
@@ -351,6 +357,7 @@ mod tests {
             note: "Identifiants fournis par le service informatique.".into(),
             authority_pem: None,
             access_mode: Some("local".into()),
+            login_code: None,
         };
         let path = write(&dir, &p).expect("écriture");
         let back: Provisioning =

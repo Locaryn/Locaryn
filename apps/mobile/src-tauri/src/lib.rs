@@ -2819,6 +2819,7 @@ pub fn run() {
             pairing::apply_pairing_link,
             pairing::announce_pairing,
             pairing::confirm_pairing,
+            pairing::redeem_login_code,
             server_capabilities,
             list_capabilities,
             update::check_update,

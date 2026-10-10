@@ -1291,6 +1291,7 @@ async fn provision_cmd(
         // la génération — contrairement au code scanné, qui sait par quel
         // canal il vient d'être produit.
         access_mode: None,
+        login_code: None,
     };
     let dir = std::path::PathBuf::from(out.unwrap_or_else(|| ".".into()));
     let path = locaryn_config::provision::write(&dir, &p).map_err(|e| anyhow::anyhow!(e))?;

@@ -6,6 +6,8 @@ export type ProvisioningApercu = {
   serverUrl: string;
   organisation: string;
   accessMode?: string | null;
+  /** QR de connexion d'un compte : le code qui ouvre sa session. */
+  loginCode?: string | null;
 };
 
 const MODES: Record<string, { label: string; explication: string }> = {
@@ -190,6 +192,7 @@ export function lireApercu(brut: string): ProvisioningApercu | null {
           : typeof v.access_mode === "string"
             ? v.access_mode
             : null,
+      loginCode: typeof v.loginCode === "string" ? v.loginCode : null,
     };
   } catch {
     return null;

@@ -224,6 +224,80 @@ pub async fn confirm_pairing(
     })
 }
 
+/// Connexion par le QR d'un compte : le code temporaire scanné s'échange
+/// contre une session de ce compte — sans identifiant, sans mot de passe,
+/// comme une télé qu'on relie à son téléphone.
+#[tauri::command]
+pub async fn redeem_login_code(
+    code: String,
+    device_label: Option<String>,
+) -> Result<PairingResult, String> {
+    let store = servers::load();
+    let active = store
+        .active
+        .clone()
+        .ok_or("Aucun serveur enregistré. Scannez d'abord le QR de l'ordinateur.")?;
+    let Some(server) = store.get(&active).cloned() else {
+        return Err("Aucun serveur enregistré sur cet appareil.".into());
+    };
+    let client = crate::client_for(&server)?;
+    let resp = client
+        .post(format!(
+            "{}/v1/auth/login-code",
+            server.current_url.trim_end_matches('/')
+        ))
+        .json(&serde_json::json!({
+            "code": code.trim(),
+            "device_label": device_label.unwrap_or_else(|| "téléphone".into()),
+        }))
+        .send()
+        .await
+        .map_err(|_| "Serveur injoignable. Vérifiez que l'ordinateur est allumé.".to_string())?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(
+            "Code expiré ou déjà utilisé. Scannez le QR affiché maintenant sur l'ordinateur."
+                .into(),
+        );
+    }
+    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err("Trop d'essais. Patientez quelques minutes.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la connexion ({}) — il est peut-être d'une version antérieure.",
+            resp.status()
+        ));
+    }
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let token = body
+        .get("token")
+        .and_then(|t| t.as_str())
+        .ok_or("Le serveur n'a pas renvoyé de jeton.")?
+        .to_string();
+    let username = body
+        .get("username")
+        .and_then(|u| u.as_str())
+        .unwrap_or("téléphone")
+        .to_string();
+    let session = crate::Session {
+        key_id: server.key_id.clone(),
+        username: username.clone(),
+        token,
+    };
+    std::fs::create_dir_all(locaryn_config::default_data_dir()).map_err(|e| e.to_string())?;
+    std::fs::write(
+        crate::session_path(),
+        serde_json::to_string_pretty(&session).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("écriture : {e}"))?;
+    tracing::info!("connexion par code temporaire, session enregistrée");
+    Ok(PairingResult {
+        server_name: server.name.clone(),
+        travelling: server.travelling,
+        message: format!("Connecté à {} en tant que {username}.", server.name),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { type ServerStatus, type ServerUserSummary, core } from "../lib/core";
+import { UserLoginQr } from "./UserLoginQr";
 
 /**
  * Share this machine's models with other people.
@@ -13,6 +14,8 @@ import { type ServerStatus, type ServerUserSummary, core } from "../lib/core";
 export function ServerSettings() {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [users, setUsers] = useState<ServerUserSummary[]>([]);
+  /** Le compte dont on affiche le QR de connexion. */
+  const [qrCompte, setQrCompte] = useState<{ id: string; username: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -351,19 +354,39 @@ export function ServerSettings() {
                     {u.role === "admin" ? "Administrateur" : "Membre"}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className="locaryn-btn-ghost"
-                  style={{ fontSize: 11, padding: "2px 8px", color: "var(--danger)" }}
-                  onClick={() => void handleDeleteUser(u.id, u.username)}
-                >
-                  Supprimer
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost"
+                    style={{ fontSize: 11, padding: "2px 8px" }}
+                    disabled={u.disabled}
+                    title="Un QR à scanner depuis l'app mobile : la session de ce compte s'ouvre sans mot de passe"
+                    onClick={() => setQrCompte({ id: u.id, username: u.username })}
+                  >
+                    QR de connexion
+                  </button>
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost"
+                    style={{ fontSize: 11, padding: "2px 8px", color: "var(--danger)" }}
+                    onClick={() => void handleDeleteUser(u.id, u.username)}
+                  >
+                    Supprimer
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {qrCompte && (
+        <UserLoginQr
+          userId={qrCompte.id}
+          username={qrCompte.username}
+          onClose={() => setQrCompte(null)}
+        />
+      )}
 
       {status?.running && (
         <>

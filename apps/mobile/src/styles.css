@@ -2636,3 +2636,41 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* Connexion par code temporaire (QR de connexion d'un compte). */
+.lo-code-connexion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.lo-code-connexion-ligne {
+  display: flex;
+  gap: var(--space-2);
+}
+.lo-code-connexion-input {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  letter-spacing: 0.25em;
+  text-align: center;
+}
+.lo-code-connexion-ligne .lo-btn {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 0 var(--space-4);
+}
+.lo-separateur {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+.lo-separateur::before,
+.lo-separateur::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}

@@ -276,7 +276,19 @@ export function App() {
       await new Promise((r) => setTimeout(r, 850));
       setStatus(nextStatus);
       setProvisioningSuccess(false);
+      const codeConnexion = pendingProvisioning.apercu.loginCode;
       setPendingProvisioning(null);
+      // QR de connexion d'un compte : le code scanné ouvre la session tout de
+      // suite — ni identifiant, ni mot de passe, ni code à recopier.
+      if (codeConnexion) {
+        try {
+          setPaired(await api.redeemLoginCode(codeConnexion));
+          await refresh();
+        } catch (e) {
+          setScanError(e instanceof Error ? e.message : String(e));
+        }
+        return;
+      }
       // « J'ai scanné, je suis là » : c'est cette annonce qui fait apparaître
       // le code sur l'écran de l'hôte, avec le nom de ce téléphone et
       // l'adresse d'où il vient. Sans elle, il n'y a rien à recopier.

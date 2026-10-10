@@ -26,6 +26,8 @@ export function SignIn({
 }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  /** Code de connexion d'un compte, affiché sous son QR sur l'ordinateur. */
+  const [codeConnexion, setCodeConnexion] = useState("");
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +97,32 @@ export function SignIn({
       await new Promise((r) => setTimeout(r, 750));
       setSuccessInfo(null);
       onRegistered(s);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function connecterParCode() {
+    const code = codeConnexion.replace(/[^a-z0-9]/gi, "").toUpperCase();
+    if (code.length !== 6) {
+      setError("Le code de connexion compte six caractères.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.redeemLoginCode(code);
+      const next = await api.status();
+      setCodeConnexion("");
+      setSuccessInfo({
+        title: "Connecté avec succès !",
+        subtitle: next.server_name ?? "Session active",
+      });
+      await new Promise((r) => setTimeout(r, 900));
+      setSuccessInfo(null);
+      onSignedIn(next);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -454,6 +482,44 @@ export function SignIn({
         <p className="lo-sub">
           {status.travelling ? "Connexion depuis l'extérieur." : "Connexion sur le réseau local."}
         </p>
+
+        <div className="lo-code-connexion">
+          <label className="lo-label" htmlFor="code">
+            Code de connexion
+          </label>
+          <div className="lo-code-connexion-ligne">
+            <input
+              id="code"
+              className="lo-input lo-code-connexion-input"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              inputMode="text"
+              maxLength={7}
+              placeholder="ABC123"
+              value={codeConnexion}
+              disabled={busy}
+              onChange={(e) => setCodeConnexion(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === "Enter" && void connecterParCode()}
+            />
+            <button
+              type="button"
+              className="lo-btn"
+              disabled={busy || codeConnexion.replace(/[^a-z0-9]/gi, "").length !== 6}
+              onClick={() => void connecterParCode()}
+            >
+              Valider
+            </button>
+          </div>
+          <p className="lo-hint">
+            Sur l'ordinateur : Réglages → Serveur → « QR de connexion » à côté de votre compte.
+            Scannez-le, ou recopiez le code affiché dessous.
+          </p>
+          <button type="button" className="lo-btn-ghost" onClick={onScan} disabled={busy}>
+            Scanner le QR de connexion
+          </button>
+        </div>
+
+        <p className="lo-separateur">ou avec un identifiant</p>
 
         <div>
           <label className="lo-label" htmlFor="u">

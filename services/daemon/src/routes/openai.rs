@@ -1080,6 +1080,7 @@ mod api_tests {
                     .unwrap(),
             ),
             gpu_tools: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            login_codes: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         });
         (state, racine)
     }

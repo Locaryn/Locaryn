@@ -463,6 +463,9 @@ export const core = {
   announcePairing: (deviceLabel?: string) => invoke<boolean>("announce_pairing", { deviceLabel }),
   confirmPairing: (pairingCode: string, deviceLabel?: string) =>
     invoke<PairingResult>("confirm_pairing", { pairingCode, deviceLabel }),
+  /** Le QR de connexion d'un compte : son code ouvre la session sans mot de passe. */
+  redeemLoginCode: (code: string, deviceLabel?: string) =>
+    invoke<PairingResult>("redeem_login_code", { code, deviceLabel }),
   send: (text: string, conversationId: string | null, ephemeral = false) =>
     invoke<ChatReply>("send_message", { text, conversationId, ephemeral }),
   /** Envoyer et recevoir la réponse au fil de l'eau ; rend la conversation. */
@@ -696,6 +699,11 @@ export const demoCore: typeof core = {
     server_name: "",
     travelling: false,
     message: "Appairé (simulation).",
+  }),
+  redeemLoginCode: async () => ({
+    server_name: "Atelier Vasseur",
+    travelling: false,
+    message: "Connecté (simulation).",
   }),
   applyPairingLink: async () => ({
     server_name: "Atelier Vasseur",

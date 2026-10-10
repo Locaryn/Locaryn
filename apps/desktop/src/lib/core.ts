@@ -791,6 +791,14 @@ export interface ServerStatus {
   blocker: string | null;
 }
 
+/** Le QR de connexion d'un compte (code temporaire qui se renouvelle). */
+export interface UserLoginQr {
+  code: string;
+  username: string;
+  qr_svg: string;
+  ttl_seconds: number;
+}
+
 export interface ServerUserSummary {
   id: string;
   username: string;
@@ -1828,6 +1836,8 @@ export interface CoreApi {
   setServerMode(enabled: boolean, port?: number): Promise<ServerStatus>;
   restartServer(): Promise<ServerStatus>;
   listServerUsers(): Promise<ServerUserSummary[]>;
+  /** Le QR de connexion d'un compte : code temporaire, sans mot de passe. */
+  userLoginQr(userId: string): Promise<UserLoginQr>;
   createServerUser(username: string, password: string, isAdmin?: boolean): Promise<ServerStatus>;
   deleteServerUser(userId: string): Promise<ServerStatus>;
   /** Deployment settings dropped next to the installer, if any. */
@@ -2335,6 +2345,7 @@ const tauriCore: CoreApi = {
     invoke<ServerStatus>("set_server_mode", { args: { enabled, port: port ?? null } }),
   restartServer: () => invoke<ServerStatus>("restart_server"),
   listServerUsers: () => invoke<ServerUserSummary[]>("list_server_users"),
+  userLoginQr: (userId) => invoke<UserLoginQr>("user_login_qr", { userId }),
   createServerUser: (username, password, isAdmin = true) =>
     invoke<ServerStatus>("create_server_user", {
       args: { username, password, isAdmin },
@@ -4981,6 +4992,13 @@ Contenu de démonstration.
     accounts: 1,
     fingerprint: "BD:E9:FA:13:1A:62:B6:93",
     blocker: null,
+  }),
+  userLoginQr: async () => ({
+    code: Math.random().toString(36).slice(2, 8).toUpperCase(),
+    username: "admin",
+    qr_svg:
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21"><rect width="21" height="21" fill="#fff"/><rect x="1" y="1" width="7" height="7" fill="#000"/><rect x="13" y="1" width="7" height="7" fill="#000"/><rect x="1" y="13" width="7" height="7" fill="#000"/></svg>',
+    ttl_seconds: 90,
   }),
   listServerUsers: async () => [
     { id: "usr-admin-1", username: "admin", role: "admin", disabled: false },

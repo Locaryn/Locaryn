@@ -42,6 +42,10 @@ fn is_public(path: &str) -> bool {
         // l'ecran de l'hote. Un appareil qui s'appaire n'a pas encore de
         // jeton : exiger une authentification ici interdirait l'appairage.
         || path == "/v1/auth/pair/announce"
+        // Le code de connexion d'un compte EST la preuve : affiché sur l'écran
+        // de l'hôte, valable 90 s, une seule fois. L'appareil qui l'échange
+        // n'a pas encore de jeton.
+        || path == "/v1/auth/login-code"
         // Les téléchargements d'appairage. L'autorité est publique par
         // construction ; le paquet client, lui, est un secret — mais il
         // vérifie ses propres identifiants Basic dans son handler, et exiger

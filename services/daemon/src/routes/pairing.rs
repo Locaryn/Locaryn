@@ -103,114 +103,23 @@ pub struct QrQuery {
     pub url: Option<String>,
 }
 
+/// Ce que porte un QR : l'adresse résolue, la charge (JSON ASCII) et son SVG.
+struct Charge {
+    url: String,
+    charge: String,
+    svg: String,
+}
+
 /// GET /v1/pairing — l'adresse, la configuration, et le code qui la porte.
 pub async fn qr(
     State(s): State<Arc<DaemonState>>,
     ConnectInfo(pair): ConnectInfo<SocketAddr>,
     Query(q): Query<QrQuery>,
 ) -> Response {
-    let mode = q.mode.as_deref().unwrap_or("local");
-
-    let url = match mode {
-        "local" => {
-            // Le service n'écoute sur le réseau que si le mode serveur est
-            // actif. Produire un code portant l'adresse locale sans cela
-            // donnerait un carré parfaitement valide menant à une adresse qui
-            // ne répond à personne — un échec que le téléphone constaterait
-            // sans pouvoir l'expliquer.
-            if !s.auth_required {
-                return erreur(
-                    StatusCode::CONFLICT,
-                    "Cette machine n'écoute que sur elle-même. Activez le mode serveur \
-                     dans les réglages pour qu'un téléphone du réseau local puisse la joindre."
-                        .into(),
-                );
-            }
-            s.local_url.clone()
-        }
-        "tunnel" => {
-            let Some(u) = s.travel.tunnel_url().await.filter(|u| !u.is_empty()) else {
-                return erreur(
-                    StatusCode::CONFLICT,
-                    "Le mode Remote n'est pas actif : il n'y a pas encore d'adresse extérieure \
-                     à mettre dans un code."
-                        .into(),
-                );
-            };
-            u
-        }
-        "public" => {
-            let Some(u) = q.url.filter(|u| !u.trim().is_empty()) else {
-                return erreur(
-                    StatusCode::BAD_REQUEST,
-                    "Indiquez l'adresse publique par laquelle on joint cette machine.".into(),
-                );
-            };
-            normaliser(&u)
-        }
-        autre => {
-            return erreur(
-                StatusCode::BAD_REQUEST,
-                format!("Mode inconnu : « {autre} » (local, public ou tunnel)."),
-            );
-        }
-    };
-
-    let ca = match locaryn_config::mtls::authority(&s.data_dir) {
-        Ok(ca) => ca,
-        Err(e) => {
-            return erreur(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("autorité locale illisible : {e}"),
-            );
-        }
-    };
-
-    // Le mode Remote avec le code : sans lui, le téléphone ne sait pas s'il
-    // reçoit une adresse de réseau local, un port ouvert, ou un tunnel dont
-    // l'adresse expirera. Les trois se comportent différemment, et la
-    // différence se voit le jour où ça ne marche plus.
-    //
-    // Construit le vrai type plutôt qu'un objet écrit à la main : celui-ci
-    // porte `#[serde(rename_all = "camelCase")]`, et un `json!({"server_url":
-    // ...})` composé indépendamment produisait des clés que le téléphone ne
-    // reconnaissait pas — chaque code scanné échouait au décodage, en silence
-    // jusqu'à ce qu'une personne essaie vraiment de s'appairer.
-    let provisioning = locaryn_config::provision::Provisioning {
-        server_url: url.clone(),
-        organisation: nom_du_serveur(),
-        certificate_fingerprint: None,
-        authority_pem: Some(ca.cert_pem),
-        access_mode: Some(mode.to_string()),
-        note: String::new(),
-    };
-    let charge = match serde_json::to_string(&provisioning) {
+    let mode = q.mode.as_deref().unwrap_or("local").to_string();
+    let Charge { url, charge, svg } = match construire_charge(&s, &mode, q.url, None).await {
         Ok(c) => c,
-        Err(e) => {
-            return erreur(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("configuration illisible ({e})"),
-            );
-        }
-    };
-
-    // La charge passe en ASCII avant d'entrer dans le code. Un QR n'annonce
-    // pas son jeu de caracteres : sans cela, le nom d'une machine francaise
-    // ressortait en cyrillique sur l'ecran du telephone. Le meme texte est
-    // renvoye dans la reponse, pour que le QR et le champ HTTP restent
-    // identiques au caractere pres.
-    let charge = locaryn_travel::qr::ascii_seul(&charge);
-
-    let svg = match locaryn_travel::qr::svg(&charge) {
-        Ok(svg) => svg,
-        Err(e) => {
-            // Un PEM d'autorité tient dans un code, mais pas dans n'importe
-            // lequel : le dire est plus utile qu'un carré vide.
-            return erreur(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("code impossible à produire ({e}) — l'autorité est trop longue."),
-            );
-        }
+        Err(r) => return r,
     };
 
     // Le code à usage unique : généré à chaque affichage du QR, consommé au
@@ -239,6 +148,299 @@ pub async fn qr(
         "pairing_ttl_seconds": PAIRING_TTL.as_secs(),
     }))
     .into_response()
+}
+
+/// L'adresse selon le mode, l'autorité, la charge et son QR.
+async fn construire_charge(
+    s: &DaemonState,
+    mode: &str,
+    url_publique: Option<String>,
+    login_code: Option<String>,
+) -> Result<Charge, Response> {
+    let q_url = url_publique;
+
+    let url = match mode {
+        "local" => {
+            // Le service n'écoute sur le réseau que si le mode serveur est
+            // actif. Produire un code portant l'adresse locale sans cela
+            // donnerait un carré parfaitement valide menant à une adresse qui
+            // ne répond à personne — un échec que le téléphone constaterait
+            // sans pouvoir l'expliquer.
+            if !s.auth_required {
+                return Err(erreur(
+                    StatusCode::CONFLICT,
+                    "Cette machine n'écoute que sur elle-même. Activez le mode serveur \
+                     dans les réglages pour qu'un téléphone du réseau local puisse la joindre."
+                        .into(),
+                ));
+            }
+            s.local_url.clone()
+        }
+        "tunnel" => {
+            let Some(u) = s.travel.tunnel_url().await.filter(|u| !u.is_empty()) else {
+                return Err(erreur(
+                    StatusCode::CONFLICT,
+                    "Le mode Remote n'est pas actif : il n'y a pas encore d'adresse extérieure \
+                     à mettre dans un code."
+                        .into(),
+                ));
+            };
+            u
+        }
+        "public" => {
+            let Some(u) = q_url.filter(|u| !u.trim().is_empty()) else {
+                return Err(erreur(
+                    StatusCode::BAD_REQUEST,
+                    "Indiquez l'adresse publique par laquelle on joint cette machine.".into(),
+                ));
+            };
+            normaliser(&u)
+        }
+        autre => {
+            return Err(erreur(
+                StatusCode::BAD_REQUEST,
+                format!("Mode inconnu : « {autre} » (local, public ou tunnel)."),
+            ));
+        }
+    };
+
+    let ca = match locaryn_config::mtls::authority(&s.data_dir) {
+        Ok(ca) => ca,
+        Err(e) => {
+            return Err(erreur(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("autorité locale illisible : {e}"),
+            ));
+        }
+    };
+
+    // Le mode Remote avec le code : sans lui, le téléphone ne sait pas s'il
+    // reçoit une adresse de réseau local, un port ouvert, ou un tunnel dont
+    // l'adresse expirera. Les trois se comportent différemment, et la
+    // différence se voit le jour où ça ne marche plus.
+    //
+    // Construit le vrai type plutôt qu'un objet écrit à la main : celui-ci
+    // porte `#[serde(rename_all = "camelCase")]`, et un `json!({"server_url":
+    // ...})` composé indépendamment produisait des clés que le téléphone ne
+    // reconnaissait pas — chaque code scanné échouait au décodage, en silence
+    // jusqu'à ce qu'une personne essaie vraiment de s'appairer.
+    let provisioning = locaryn_config::provision::Provisioning {
+        server_url: url.clone(),
+        organisation: nom_du_serveur(),
+        certificate_fingerprint: None,
+        authority_pem: Some(ca.cert_pem),
+        access_mode: Some(mode.to_string()),
+        note: String::new(),
+        login_code,
+    };
+    let charge = match serde_json::to_string(&provisioning) {
+        Ok(c) => c,
+        Err(e) => {
+            return Err(erreur(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("configuration illisible ({e})"),
+            ));
+        }
+    };
+
+    // La charge passe en ASCII avant d'entrer dans le code. Un QR n'annonce
+    // pas son jeu de caracteres : sans cela, le nom d'une machine francaise
+    // ressortait en cyrillique sur l'ecran du telephone. Le meme texte est
+    // renvoye dans la reponse, pour que le QR et le champ HTTP restent
+    // identiques au caractere pres.
+    let charge = locaryn_travel::qr::ascii_seul(&charge);
+
+    let svg = match locaryn_travel::qr::svg(&charge) {
+        Ok(svg) => svg,
+        Err(e) => {
+            // Un PEM d'autorité tient dans un code, mais pas dans n'importe
+            // lequel : le dire est plus utile qu'un carré vide.
+            return Err(erreur(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("code impossible à produire ({e}) — l'autorité est trop longue."),
+            ));
+        }
+    };
+    Ok(Charge { url, charge, svg })
+}
+
+// ─── Connexion par code temporaire (à la manière d'une télé) ─────────────────
+
+/// Un code de connexion en attente : à quel compte il ouvre une session.
+pub struct CodeConnexion {
+    pub user_id: uuid::Uuid,
+    pub username: String,
+    pub cree: std::time::Instant,
+}
+
+/// Durée de vie d'un code : l'écran en affiche un nouveau toutes les 60 s,
+/// le précédent reste bon le temps de finir un scan commencé.
+pub const CODE_CONNEXION_TTL: std::time::Duration = std::time::Duration::from_secs(90);
+/// Six caractères sans ambiguïté (ni 0/O ni 1/I/L) : lisibles et saisissables
+/// à la main si la caméra ne lit pas.
+const ALPHABET_CODE: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+fn generer_code_connexion() -> String {
+    use rand::RngCore;
+    let n = ALPHABET_CODE.len() as u32;
+    let zone = u32::MAX - (u32::MAX % n);
+    let mut code = String::with_capacity(6);
+    while code.len() < 6 {
+        let mut b = [0u8; 4];
+        rand::rngs::OsRng.fill_bytes(&mut b);
+        let v = u32::from_le_bytes(b);
+        if v < zone {
+            code.push(ALPHABET_CODE[(v % n) as usize] as char);
+        }
+    }
+    code
+}
+
+fn normaliser_code(brut: &str) -> String {
+    brut.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
+}
+
+#[derive(serde::Deserialize)]
+pub struct LoginQrQuery {
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+/// GET /v1/users/:id/login-qr — le QR de connexion d'un compte : adresse,
+/// autorité et un code temporaire. Réservé à cette machine ou à un
+/// administrateur : c'est l'équivalent d'un mot de passe à usage unique.
+pub async fn login_qr(
+    State(s): State<Arc<DaemonState>>,
+    ConnectInfo(pair): ConnectInfo<SocketAddr>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Query(q): Query<LoginQrQuery>,
+    appelant: Option<axum::extract::Extension<locaryn_storage::users::User>>,
+) -> Response {
+    let admin = appelant
+        .as_ref()
+        .is_some_and(|u| u.0.role == locaryn_storage::users::Role::Admin);
+    if !sur_cette_machine(pair) && !admin {
+        return erreur(
+            StatusCode::FORBIDDEN,
+            "Seul un administrateur peut afficher le QR de connexion d'un compte.".into(),
+        );
+    }
+    let Ok(user_id) = uuid::Uuid::parse_str(&id) else {
+        return erreur(StatusCode::BAD_REQUEST, "compte inconnu".into());
+    };
+    let compte = match s.users.list().await {
+        Ok(liste) => liste.into_iter().find(|u| u.id == user_id),
+        Err(e) => return erreur(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    let Some(compte) = compte else {
+        return erreur(StatusCode::NOT_FOUND, "compte introuvable".into());
+    };
+    if compte.disabled {
+        return erreur(StatusCode::CONFLICT, "Ce compte est désactivé.".into());
+    }
+    let code = generer_code_connexion();
+    let mode = q.mode.as_deref().unwrap_or("local").to_string();
+    let Charge { url, charge, svg } =
+        match construire_charge(&s, &mode, q.url, Some(code.clone())).await {
+            Ok(c) => c,
+            Err(r) => return r,
+        };
+    {
+        let mut codes = s.login_codes.lock().expect("verrou codes");
+        codes.retain(|_, c| c.cree.elapsed() < CODE_CONNEXION_TTL);
+        codes.insert(
+            code.clone(),
+            CodeConnexion {
+                user_id,
+                username: compte.username.clone(),
+                cree: std::time::Instant::now(),
+            },
+        );
+    }
+    Json(serde_json::json!({
+        "code": code,
+        "username": compte.username,
+        "url": url,
+        "provisioning": charge,
+        "qr_svg": svg,
+        "ttl_seconds": CODE_CONNEXION_TTL.as_secs(),
+    }))
+    .into_response()
+}
+
+#[derive(serde::Deserialize)]
+pub struct RedeemBody {
+    pub code: String,
+    #[serde(default)]
+    pub device_label: Option<String>,
+}
+
+/// Échecs récents d'échange de code, toutes adresses confondues : au-delà, on
+/// refuse un moment. 31^6 codes, 90 s de vie — ce plafond rend la devinette
+/// vaine.
+static ECHECS: std::sync::LazyLock<std::sync::Mutex<Vec<std::time::Instant>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+const ECHECS_MAX: usize = 20;
+const ECHECS_FENETRE: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// POST /v1/auth/login-code — échanger un code de connexion contre une
+/// session d'appareil pour le compte qu'il désigne. Une seule fois.
+pub async fn redeem_login_code(
+    State(s): State<Arc<DaemonState>>,
+    Json(body): Json<RedeemBody>,
+) -> Response {
+    {
+        let mut echecs = ECHECS.lock().unwrap_or_else(|e| e.into_inner());
+        echecs.retain(|t| t.elapsed() < ECHECS_FENETRE);
+        if echecs.len() >= ECHECS_MAX {
+            return erreur(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Trop d'essais. Patientez quelques minutes.".into(),
+            );
+        }
+    }
+    let code = normaliser_code(&body.code);
+    let trouve = {
+        let mut codes = s.login_codes.lock().expect("verrou codes");
+        codes.retain(|_, c| c.cree.elapsed() < CODE_CONNEXION_TTL);
+        codes.remove(&code)
+    };
+    let Some(trouve) = trouve else {
+        ECHECS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(std::time::Instant::now());
+        return erreur(
+            StatusCode::UNAUTHORIZED,
+            "Code inconnu ou expiré. Affichez un nouveau QR de connexion sur l'ordinateur.".into(),
+        );
+    };
+    let etiquette = label_appareil(&body.device_label);
+    match s
+        .users
+        .issue_token(trouve.user_id, Some(&etiquette), 180)
+        .await
+    {
+        Ok(tok) => {
+            tracing::info!(compte = %trouve.username, "connexion par code temporaire");
+            Json(serde_json::json!({
+                "token": tok.plaintext,
+                "expires_at": tok.expires_at,
+                "device_label": etiquette,
+                "username": trouve.username,
+            }))
+            .into_response()
+        }
+        Err(e) => erreur(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("session impossible ({e})"),
+        ),
+    }
 }
 
 /// POST /v1/auth/pair/announce — « j'ai scanne, je suis la ».
@@ -634,6 +836,16 @@ pub async fn get_client_cert(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn un_code_de_connexion_est_lisible_et_se_recopie_sans_piege() {
+        for _ in 0..200 {
+            let code = super::generer_code_connexion();
+            assert_eq!(code.len(), 6);
+            assert!(code.bytes().all(|b| super::ALPHABET_CODE.contains(&b)), "{code}");
+            assert!(!code.contains(['0', 'O', '1', 'I', 'L']));
+        }
+        assert_eq!(super::normaliser_code(" ab-c 12 3"), "ABC123");
+    }
     use super::{constant_time_eq, generer_code, normaliser, sur_cette_machine};
 
     /// La frontiere qui protege le code de confirmation. Une IPv4 mappee en

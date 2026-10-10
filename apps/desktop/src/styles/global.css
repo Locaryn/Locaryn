@@ -13229,3 +13229,44 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
+
+/* QR de connexion d'un compte : le code en clair et le temps qui reste. */
+.locaryn-login-qr-code {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: var(--space-3) 0 var(--space-2);
+}
+.locaryn-login-qr-code span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.locaryn-login-qr-temps {
+  height: 3px;
+  margin: 0 auto var(--space-3);
+  width: 60%;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.locaryn-login-qr-temps span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 1s linear;
+}
+.locaryn-login-qr-attente {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  color: var(--text-faint);
+}

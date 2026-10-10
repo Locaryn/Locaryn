@@ -400,6 +400,37 @@ pub async fn pairing_code(mode: String, url: Option<String>) -> Result<PairingCo
     })
 }
 
+/// Le QR de connexion d'un compte : un code temporaire qui ouvre sa session
+/// sur le téléphone qui scanne, sans identifiant ni mot de passe.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginQr {
+    pub code: String,
+    pub username: String,
+    pub qr_svg: String,
+    pub ttl_seconds: u64,
+}
+
+#[tauri::command]
+pub async fn user_login_qr(user_id: String) -> Result<LoginQr, String> {
+    let req = daemon(&format!("/v1/users/{user_id}/login-qr?mode=local")).await?;
+    let resp = req.send().await.map_err(|_| not_running())?;
+    let status = resp.status();
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(body
+            .pointer("/error/message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("Le service a refusé de produire le QR de connexion.")
+            .to_string());
+    }
+    Ok(LoginQr {
+        code: body["code"].as_str().unwrap_or_default().to_string(),
+        username: body["username"].as_str().unwrap_or_default().to_string(),
+        qr_svg: body["qr_svg"].as_str().unwrap_or_default().to_string(),
+        ttl_seconds: body["ttl_seconds"].as_u64().unwrap_or(90),
+    })
+}
+
 /// Ce que l'hôte doit montrer d'un appairage en cours.
 ///
 /// Le code n'arrive qu'une fois un appareil annoncé : avant, `pairing_code`

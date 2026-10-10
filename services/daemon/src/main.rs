@@ -98,6 +98,9 @@ struct DaemonState {
     /// Par serveur MCP d'extension : ses outils à modèle propre (section
     /// `gpu` des manifestes), que l'arbitre de la carte fait passer en priorité.
     pub gpu_tools: Arc<std::sync::RwLock<locaryn_agent_runtime::gpu_standard::GpuToolMap>>,
+    /// Codes de connexion temporaires par compte (QR de connexion d'un
+    /// utilisateur), par code.
+    pub login_codes: Arc<Mutex<HashMap<String, routes::pairing::CodeConnexion>>>,
 }
 
 /// Le trousseau du système, quand il y en a un.
@@ -262,6 +265,7 @@ async fn main() -> anyhow::Result<()> {
         pairing_admin_user_id: pairing_admin,
         users: users.clone(),
         gpu_tools: Arc::new(std::sync::RwLock::new(HashMap::new())),
+        login_codes: Arc::new(Mutex::new(HashMap::new())),
     });
 
     // Les extensions installées reviennent de la base : sans cela, un
@@ -429,6 +433,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/pairing/cert", get(routes::pairing::get_client_cert))
         .route("/v1/auth/pair/announce", post(routes::pairing::announce))
         .route("/v1/auth/pair/confirm", post(routes::pairing::confirm))
+        // Le QR de connexion d'un compte (code temporaire), et son échange
+        // contre une session — sans identifiant ni mot de passe.
+        .route("/v1/users/:id/login-qr", get(routes::pairing::login_qr))
+        .route(
+            "/v1/auth/login-code",
+            post(routes::pairing::redeem_login_code),
+        )
         .route(
             "/v1/mcp/servers",
             get(routes::mcp::list_servers).post(routes::mcp::register_server),
