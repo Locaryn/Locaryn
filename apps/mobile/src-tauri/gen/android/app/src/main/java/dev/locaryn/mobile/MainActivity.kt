@@ -36,10 +36,21 @@ class MainActivity : TauriActivity() {
     // Android 15+ impose l'edge-to-edge : la WebView dessine sous l'horloge et
     // sous la barre de gestes. La replacer dans la zone sûre — le CSS ne peut
     // pas le faire, env(safe-area-inset-*) n'est pas peuplé par la WebView.
+    //
+    // Le clavier aussi : en edge-to-edge, `adjustResize` ne redimensionne plus
+    // la fenêtre. Sans cette marge, la vue web gardait toute sa hauteur sous
+    // le clavier, et Android faisait défiler la page entière pour montrer le
+    // champ — la barre du haut ou le champ de saisie sortaient de l'écran.
     ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
       window.decorView.findViewById<View>(android.R.id.content)?.let { content ->
         val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-        content.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+        val clavier = insets.getInsets(WindowInsetsCompat.Type.ime())
+        content.setPadding(
+          bars.left,
+          bars.top,
+          bars.right,
+          maxOf(bars.bottom, clavier.bottom),
+        )
       }
       insets
     }

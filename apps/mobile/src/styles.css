@@ -244,7 +244,11 @@ body {
 /* ── Conversation ────────────────────────────────────────── */
 .lo-thread {
   flex: 1;
+  /* Sans plancher à zéro, un fil long ne rétrécit pas sous sa hauteur de
+     contenu : l'écran dépassait et c'est la page entière qui défilait. */
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-4) var(--space-5) var(--space-2);
   display: flex;
   flex-direction: column;
