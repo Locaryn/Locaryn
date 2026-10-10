@@ -89,7 +89,11 @@ export async function scan(pendant?: (ouvert: boolean) => void): Promise<string 
     // délai borné rend la main à la personne dans tous les cas plutôt que de
     // la laisser bloquée sans échappatoire.
     const resultat = await Promise.race([
-      mod.scan({ windowed: false, formats: [mod.Format.QRCode] }),
+      // `windowed: true` : la caméra est dessinée *derrière* la vue web,
+      // rendue transparente, et le cadre de visée reste visible. Avec
+      // `false`, le greffon pose l'aperçu par-dessus la page : plus de cadre,
+      // plus de consigne, plus de bouton Annuler.
+      mod.scan({ windowed: true, formats: [mod.Format.QRCode] }),
       delaiEcoule(),
       attendreRenoncement(),
     ]);

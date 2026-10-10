@@ -184,7 +184,10 @@ class BarcodeScannerPlugin(private val activity: Activity) : Plugin(activity),
                 preview.setSurfaceProvider(previewView?.surfaceProvider)
                 val imageAnalysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setTargetResolution(Size(1280, 720))
+                    // Correctif Locaryn : le QR d'appairage porte l'autorité du
+                    // serveur (~800 caractères) — un code dense, que 720p
+                    // laissait souvent sans lecture.
+                    .setTargetResolution(Size(1920, 1080))
                     .build()
                 imageAnalysis.setAnalyzer(
                     ContextCompat.getMainExecutor(activity),

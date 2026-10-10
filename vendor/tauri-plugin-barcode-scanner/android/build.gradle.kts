@@ -41,7 +41,12 @@ dependencies {
     implementation("androidx.camera:camera-camera2:${camerax_version}")
     implementation("androidx.camera:camera-lifecycle:${camerax_version}")
     implementation("androidx.camera:camera-view:${camerax_version}")
-    implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.1.0")
+    // Correctif Locaryn : le modèle *embarqué* plutôt que celui des services
+    // Google. La version « play-services » télécharge son module au premier
+    // usage ; tant qu'il n'est pas là — téléphone hors ligne, services Google
+    // bridés, première ouverture — chaque image échoue en silence et le scan
+    // ne lit jamais rien. Embarqué, il marche tout de suite et partout.
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
