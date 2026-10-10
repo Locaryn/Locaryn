@@ -510,6 +510,8 @@ export const core = {
   listProjectConversations: (projectId: string) =>
     invoke<Conversation[]>("list_project_conversations", { projectId }),
   /** Ranger une conversation aux archives, ou l'en ressortir. */
+  /** Effacer une conversation du serveur (et ses messages). */
+  deleteConversation: (id: string) => invoke<void>("delete_session", { id }),
   archiveConversation: (id: string, archived: boolean) =>
     invoke<void>("archive_session", { id, archived }),
   /** Déplacer une conversation dans un projet. */
@@ -772,6 +774,7 @@ export const demoCore: typeof core = {
   listProjects: async () => [{ id: "p1", name: "Atelier" }],
   listProjectConversations: async () => [],
   archiveConversation: async () => {},
+  deleteConversation: async () => {},
   moveConversation: async () => {},
   createProject: async (name) => ({
     id: `p-${Date.now()}`,

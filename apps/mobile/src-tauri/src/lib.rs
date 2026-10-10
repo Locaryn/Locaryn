@@ -1022,6 +1022,26 @@ async fn withdraw_message(conversation_id: String, id: String) -> Result<bool, S
         .unwrap_or(true))
 }
 
+/// Effacer une conversation du serveur, et ses messages.
+#[tauri::command]
+async fn delete_session(id: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .delete(format!("{base}/v1/sessions/{id}"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur n'a pas effacé la conversation ({}) — il est peut-être d'une version antérieure.",
+            resp.status()
+        ));
+    }
+    Ok(())
+}
+
 /// La permission de la conversation : effective, exception, héritage.
 #[tauri::command]
 async fn session_trust(conversation_id: String) -> Result<serde_json::Value, String> {
@@ -2744,6 +2764,7 @@ pub fn run() {
             send_message_stream,
             context_status,
             session_trust,
+            delete_session,
             set_session_trust,
             compress_context,
             cancel_message,

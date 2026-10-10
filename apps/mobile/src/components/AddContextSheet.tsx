@@ -127,33 +127,33 @@ export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, o
   ];
 
   return (
-    <div className="lo-sheet-voile" role="presentation" onClick={onFermer}>
+    <div className="lo-ajout-voile" role="presentation" onClick={onFermer}>
       <div
-        className="lo-sheet"
+        className="lo-ajout"
         role="dialog"
         aria-modal="true"
         aria-label="Ajouter du contexte"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="lo-sheet-poignee" aria-hidden />
-        <div className="lo-sheet-tete">
-          <button type="button" className="lo-sheet-fermer" onClick={onFermer} aria-label="Fermer">
+        <span className="lo-ajout-poignee" aria-hidden />
+        <div className="lo-ajout-tete">
+          <button type="button" className="lo-ajout-fermer" onClick={onFermer} aria-label="Fermer">
             <Icon name="close" size={20} />
           </button>
           <h2>{niveaux ? "Autorisation" : "Ajouter du contexte"}</h2>
         </div>
 
         {niveaux ? (
-          <ul className="lo-sheet-niveaux">
+          <ul className="lo-ajout-niveaux">
             {TRUST_LEVELS.map((n) => (
               <li key={n.value}>
                 <button
                   type="button"
-                  className={`lo-sheet-niveau${permission?.effective === n.value ? " is-on" : ""}`}
+                  className={`lo-ajout-niveau${permission?.effective === n.value ? " is-on" : ""}`}
                   onClick={() => void poser(n.value)}
                 >
-                  <span className="lo-sheet-pastille" style={{ background: n.color }} />
-                  <span className="lo-sheet-niveau-texte">
+                  <span className="lo-ajout-pastille" style={{ background: n.color }} />
+                  <span className="lo-ajout-niveau-texte">
                     <strong>{n.label}</strong>
                     <small>{n.hint}</small>
                   </span>
@@ -163,12 +163,12 @@ export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, o
           </ul>
         ) : (
           <>
-            <div className="lo-sheet-tuiles">
+            <div className="lo-ajout-tuiles">
               {tuiles.map((t) => (
                 <button
                   key={t.libelle}
                   type="button"
-                  className="lo-sheet-tuile"
+                  className="lo-ajout-tuile"
                   onClick={() => t.cible.current?.click()}
                 >
                   <Icon name={t.icone} size={22} />
@@ -178,14 +178,14 @@ export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, o
             </div>
             <button
               type="button"
-              className="lo-sheet-ligne"
+              className="lo-ajout-ligne"
               disabled={!conversationId}
               onClick={() => setNiveaux(true)}
             >
-              <span className="lo-sheet-ligne-icone">
+              <span className="lo-ajout-ligne-icone">
                 <Icon name="shield" size={20} />
               </span>
-              <span className="lo-sheet-ligne-texte">
+              <span className="lo-ajout-ligne-texte">
                 <strong>Autorisation</strong>
                 <small>
                   {conversationId

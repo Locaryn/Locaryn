@@ -17,6 +17,7 @@ type Props = {
 type Menu =
   | { kind: "chat"; chat: Conversation }
   | { kind: "move"; chat: Conversation }
+  | { kind: "moveMany" }
   | { kind: "create" }
   | null;
 
@@ -33,11 +34,14 @@ function ConversationRow({
   isCurrent,
   onOpen,
   onLongPress,
+  selection,
 }: {
   chat: Conversation;
   isCurrent: boolean;
   onOpen: () => void;
   onLongPress: () => void;
+  /** En sélection : la ligne se coche au lieu de s'ouvrir. */
+  selection?: { cochee: boolean; basculer: () => void };
 }) {
   const timer = useRef<number | null>(null);
 
@@ -56,6 +60,22 @@ function ConversationRow({
       window.clearTimeout(timer.current);
       timer.current = null;
     }
+  }
+
+  if (selection) {
+    return (
+      <button
+        type="button"
+        className={`lo-drawer-item lo-drawer-selectable${selection.cochee ? " is-checked" : ""}`}
+        onClick={selection.basculer}
+        aria-pressed={selection.cochee}
+      >
+        <span className="lo-drawer-check" aria-hidden>
+          {selection.cochee ? "✓" : ""}
+        </span>
+        <span className="lo-drawer-item-title">{chat.title}</span>
+      </button>
+    );
   }
 
   return (
@@ -108,6 +128,57 @@ export function Drawer({
   const [newProjectName, setNewProjectName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Sélection multiple : `null` hors sélection. */
+  const [selection, setSelection] = useState<Set<string> | null>(null);
+  /** La suppression se confirme d'un second toucher. */
+  const [confirmerSuppression, setConfirmerSuppression] = useState(false);
+
+  useCoucheRetour(selection !== null && menu === null, () => setSelection(null));
+
+  // Fermer le tiroir quitte la sélection.
+  useEffect(() => {
+    if (!open) setSelection(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!selection || selection.size === 0) setConfirmerSuppression(false);
+  }, [selection]);
+
+  function basculer(id: string) {
+    setSelection((sel) => {
+      const n = new Set(sel ?? []);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+
+  function ligneSelection(id: string) {
+    return selection ? { cochee: selection.has(id), basculer: () => basculer(id) } : undefined;
+  }
+
+  /** Appliquer une action à toute la sélection, puis en sortir. */
+  async function pourChacune(action: (id: string) => Promise<void>) {
+    if (!selection || selection.size === 0) return;
+    setBusy(true);
+    setError(null);
+    const echecs: string[] = [];
+    for (const id of selection) {
+      try {
+        await action(id);
+      } catch (e) {
+        echecs.push(String(e));
+      }
+    }
+    setBusy(false);
+    setMenu(null);
+    setSelection(null);
+    onChanged();
+    reloadSide();
+    setProjectChats({});
+    setOpenProject(null);
+    if (echecs.length) setError(echecs[0]);
+  }
 
   // Le retour d'Android ferme la feuille du menu contextuel avant tout.
   useCoucheRetour(menu !== null, () => setMenu(null));
@@ -235,6 +306,22 @@ export function Drawer({
               <button
                 type="button"
                 className="lo-sheet-item"
+                onClick={() => {
+                  setSelection(new Set([menu.chat.id]));
+                  setMenu(null);
+                }}
+              >
+                <span className="lo-sheet-icon">☑</span>
+                <span className="lo-sheet-text">
+                  <span className="lo-sheet-label">Sélectionner plusieurs</span>
+                  <span className="lo-hint">
+                    Archiver, déplacer ou effacer plusieurs conversations
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="lo-sheet-item"
                 disabled={busy}
                 onClick={() => setMenu({ kind: "move", chat: menu.chat })}
               >
@@ -288,6 +375,31 @@ export function Drawer({
             </>
           )}
 
+          {menu.kind === "moveMany" && (
+            <>
+              <p className="lo-sheet-context">
+                Déplacer {selection?.size ?? 0} conversation(s) vers…
+              </p>
+              {projects?.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="lo-sheet-item"
+                  disabled={busy}
+                  onClick={() => void pourChacune((id) => api.moveConversation(id, p.id))}
+                >
+                  <span className="lo-sheet-icon">📁</span>
+                  <span className="lo-sheet-text">
+                    <span className="lo-sheet-label">{p.name}</span>
+                  </span>
+                </button>
+              ))}
+              {projects?.length === 0 && (
+                <p className="lo-sub lo-pad">Aucun projet : créez-en un depuis l'historique.</p>
+              )}
+            </>
+          )}
+
           {menu.kind === "create" && (
             <>
               <p className="lo-sheet-context">Nouveau projet</p>
@@ -337,7 +449,16 @@ export function Drawer({
       )}
       <nav className={`lo-drawer${open ? " lo-drawer-open" : ""}`} aria-hidden={!open}>
         <div className="lo-drawer-head">
-          <span className="lo-drawer-title">Historique</span>
+          <span className="lo-drawer-title">
+            {selection ? `${selection.size} sélectionnée(s)` : "Historique"}
+          </span>
+          <button
+            type="button"
+            className="lo-drawer-select"
+            onClick={() => setSelection((sel) => (sel ? null : new Set()))}
+          >
+            {selection ? "Annuler" : "Sélectionner"}
+          </button>
         </div>
 
         <div className="lo-drawer-scroll">
@@ -388,6 +509,7 @@ export function Drawer({
                             isCurrent={c.id === currentId}
                             onOpen={() => onPick(c.id)}
                             onLongPress={() => setMenu({ kind: "chat", chat: c })}
+                            selection={ligneSelection(c.id)}
                           />
                         ))}
                       </ul>
@@ -429,10 +551,52 @@ export function Drawer({
                 isCurrent={c.id === currentId}
                 onOpen={() => onPick(c.id)}
                 onLongPress={() => setMenu({ kind: "chat", chat: c })}
+                selection={ligneSelection(c.id)}
               />
             ))}
           </ul>
         </div>
+
+        {selection && (
+          <div className="lo-drawer-actions">
+            {error && <p className="lo-error">{error}</p>}
+            <div className="lo-drawer-actions-row">
+              <button
+                type="button"
+                className="lo-btn-small"
+                disabled={busy || selection.size === 0}
+                onClick={() => void pourChacune((id) => api.archiveConversation(id, true))}
+              >
+                Archiver
+              </button>
+              <button
+                type="button"
+                className="lo-btn-small"
+                disabled={busy || selection.size === 0}
+                onClick={() => {
+                  if (projects === null) reloadSide();
+                  setMenu({ kind: "moveMany" });
+                }}
+              >
+                Déplacer
+              </button>
+              <button
+                type="button"
+                className={`lo-btn-small lo-drawer-delete${confirmerSuppression ? " is-armed" : ""}`}
+                disabled={busy || selection.size === 0}
+                onClick={() => {
+                  if (!confirmerSuppression) {
+                    setConfirmerSuppression(true);
+                    return;
+                  }
+                  void pourChacune((id) => api.deleteConversation(id));
+                }}
+              >
+                {confirmerSuppression ? `Effacer ${selection.size} ?` : "Effacer"}
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
       {rendreMenu()}

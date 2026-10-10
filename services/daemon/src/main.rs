@@ -292,7 +292,10 @@ async fn main() -> anyhow::Result<()> {
             "/v1/projects/:pid/sessions",
             get(list_sessions).post(create_session),
         )
-        .route("/v1/sessions/:id", get(get_session))
+        .route(
+            "/v1/sessions/:id",
+            get(get_session).delete(chat_gpu::supprimer),
+        )
         .route(
             "/v1/sessions/:id/messages",
             get(list_messages).post(send_message),

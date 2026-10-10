@@ -177,6 +177,33 @@ pub fn arbitre(state: Arc<DaemonState>) -> GpuArbiterHandle {
     })
 }
 
+// ─── Suppression ─────────────────────────────────────────────────────────────
+
+/// DELETE /v1/sessions/:id — effacer une conversation et ses messages (la
+/// sélection multiple du téléphone, comme celle du bureau).
+pub async fn supprimer(
+    axum::extract::State(s): axum::extract::State<Arc<DaemonState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let Ok(sid) = Uuid::parse_str(&id) else {
+        return conversation_inconnue();
+    };
+    verrou().remove(&sid);
+    match s.storage.sessions.delete(sid).await {
+        Ok(()) => Json(serde_json::json!({ "deleted": true })).into_response(),
+        Err(locaryn_storage::StorageError::NotFound(_)) => (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "conversation introuvable" })),
+        )
+            .into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 // ─── Fenêtre de contexte ─────────────────────────────────────────────────────
 
 /// GET /v1/sessions/:id/context — ce que la conversation occupe de la fenêtre
