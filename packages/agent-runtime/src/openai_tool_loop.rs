@@ -695,7 +695,9 @@ pub async fn run_openai_tool_loop(
                 if round + 1 < MAX_TOOL_ROUNDS {
                     if let Some(boite) = &input.mailbox {
                         let mut suite = serde_json::json!([]);
-                        if boite.verser(&mut suite).await > 0 {
+                        let lus = boite.verser(&mut suite).await;
+                        if !lus.is_empty() {
+                            let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
                             let liste = messages.as_array_mut().unwrap();
                             liste.push(serde_json::json!({
                                 "role": "assistant",
@@ -782,8 +784,9 @@ pub async fn run_openai_tool_loop(
             // avant que le modèle décide de la suite.
             if let Some(boite) = &input.mailbox {
                 let lus = boite.verser(&mut messages).await;
-                if lus > 0 {
-                    tracing::info!(lus, "message(s) remis en cours de tâche");
+                if !lus.is_empty() {
+                    tracing::info!(lus = lus.len(), "message(s) remis en cours de tâche");
+                    let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
                 }
             }
 

@@ -432,6 +432,7 @@ pub async fn sync_mcp_servers(state: &DaemonState) {
         }
     };
     let mut desired: HashMap<String, locaryn_mcp::McpServerEntry> = HashMap::new();
+    let mut gpu_tools: locaryn_agent_runtime::gpu_standard::GpuToolMap = HashMap::new();
     for record in records.into_iter().filter(|record| record.enabled) {
         if !record.granted.contains(&Permission::Mcp) {
             continue;
@@ -457,10 +458,25 @@ pub async fn sync_mcp_servers(state: &DaemonState) {
                 server.env.insert(key.clone(), value.clone());
             }
             server.owner = Some(entry.name.clone());
+            if !loaded.manifest.gpu.tools.is_empty() {
+                gpu_tools.insert(
+                    scoped.clone(),
+                    loaded
+                        .manifest
+                        .gpu
+                        .tools
+                        .iter()
+                        .map(|(nom, spec)| (nom.clone(), spec.produces.clone()))
+                        .collect(),
+                );
+            }
             desired.insert(scoped, server);
         }
     }
 
+    if let Ok(mut carte) = state.gpu_tools.write() {
+        *carte = gpu_tools;
+    }
     let stale = {
         let mut config = state.mcp_state.config.lock().unwrap();
         let stale: Vec<String> = config

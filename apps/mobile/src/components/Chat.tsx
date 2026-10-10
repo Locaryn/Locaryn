@@ -1,7 +1,9 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type ChatStreamEvent,
   type Conversation,
+  type MediaForge,
   type MediaResult,
   type Message,
   type MobileStatus,
@@ -18,6 +20,42 @@ import { type Destination, MainMenu, type ModelsTab } from "./MainMenu";
 import { ToolApprovalModal } from "./ToolApprovalModal";
 import { UpdateButton } from "./UpdateButton";
 import { ExtensionSlot } from "./extensions/ExtensionSlot";
+
+/** Un message écrit pendant que le modèle travaille (voir le bureau). */
+type EnFile = { id: string; text: string; remis?: boolean };
+
+let compteur = 0;
+function nouvelId(prefixe: string): string {
+  compteur += 1;
+  return `${prefixe}-${Date.now()}-${compteur}`;
+}
+
+/** Le texte à montrer : la réflexion du modèle (`<think>…</think>`) n'est pas
+ *  la réponse, elle se résume à une ligne pendant qu'elle s'écrit. */
+function sansReflexion(texte: string): string {
+  return texte
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/<think>[\s\S]*$/, "")
+    .trimStart();
+}
+
+function reflechit(texte: string): boolean {
+  const ouvertes = (texte.match(/<think>/g) ?? []).length;
+  const fermees = (texte.match(/<\/think>/g) ?? []).length;
+  return ouvertes > fermees;
+}
+
+/** Clore les tuiles d'un appel (ou toutes) : les images reçues restent, une
+ *  place vide disparaît — sauf échec, qu'elle dit. */
+function terminerForge(liste: Message[], callId: string | null, echec: string | null): Message[] {
+  return liste.flatMap((m) => {
+    if (!m.forge || m.forge.failed) return [m];
+    if (callId !== null && m.forge.callId !== callId) return [m];
+    if ((m.images?.length ?? 0) > 0) return [{ ...m, forge: undefined }];
+    if (echec) return [{ ...m, forge: { ...m.forge, failed: echec } }];
+    return [];
+  });
+}
 
 type Props = {
   status: MobileStatus;
@@ -69,6 +107,17 @@ export function Chat({
   const canFigures = capabilities.includes("figures");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Les messages écrits pendant que le modèle travaille. */
+  const [file, setFile] = useState<EnFile[]>([]);
+  const fileRef = useRef<EnFile[]>([]);
+  fileRef.current = file;
+  /** Après un Stop, la file attend la personne. */
+  const [filePause, setFilePause] = useState(false);
+  const [fileReduite, setFileReduite] = useState(false);
+  /** L'outil que le modèle est en train d'utiliser, pour le dire. */
+  const [outil, setOutil] = useState<string | null>(null);
+  const conversationRef = useRef<string | null>(null);
+  const arretRef = useRef(false);
   /** Une conversation est en train de charger ses messages. */
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +227,7 @@ export function Chat({
   async function open(id: string) {
     setDrawerOpen(false);
     setError(null);
+    conversationRef.current = id;
     setCurrentId(id);
     setMessages([]);
     setLoadingConversation(true);
@@ -200,6 +250,7 @@ export function Chat({
 
   function startNew() {
     setDrawerOpen(false);
+    conversationRef.current = null;
     setCurrentId(null);
     setMessages([]);
     setError(null);
@@ -279,36 +330,213 @@ export function Chat({
     }
   }
 
-  async function send() {
+  /** Envoyer ce qui est écrit. Pendant une réponse, ou derrière une file qui
+   *  attend, le message prend sa place dans la file : il ne la double jamais. */
+  function send() {
     const text = draft.trim();
-    if (!text || busy) return;
+    if (!text) return;
     setDraft("");
     setError(null);
-    setMessages((m) => [...m, { id: `u${m.length}`, role: "user", content: text }]);
-    setBusy(true);
-    try {
-      const reply = await api.send(text, currentId, ephemeral);
-      setCurrentId(reply.conversation_id);
-      setMessages((m) => [
-        ...m,
-        { id: `a${m.length}`, role: "assistant", content: reply.text, images: reply.images },
-      ]);
-      if (reply.approval) {
-        setPendingApproval(reply.approval);
-        notifyToolApprovalRequired(reply.approval.tool, reply.approval.risk);
+    if (busy || fileRef.current.length > 0) {
+      setFile((f) => [...f, { id: nouvelId("q"), text }]);
+      if (!busy) setFilePause(false);
+      return;
+    }
+    void repondre(text);
+  }
+
+  // La file part d'elle-même, dans l'ordre, dès que le modèle est libre.
+  useEffect(() => {
+    if (busy || filePause) return;
+    const prochain = file.find((m) => !m.remis);
+    if (!prochain) return;
+    setFile((f) => f.filter((m) => m.id !== prochain.id));
+    void repondre(prochain.text);
+  }, [busy, filePause, file]);
+
+  function ajouterAuFil(ev: ChatStreamEvent) {
+    switch (ev.type) {
+      case "session": {
+        const id = (ev as { id: string }).id;
+        conversationRef.current = id;
+        setCurrentId(id);
+        return;
       }
-      if (document.hidden && reply.text) {
-        notifyMessageReceived(status.server_name ?? "Locaryn", reply.text);
+      case "token": {
+        const t = (ev as { text: string }).text;
+        setMessages((m) => {
+          const dernier = m[m.length - 1];
+          if (
+            dernier &&
+            dernier.role === "assistant" &&
+            !dernier.forge &&
+            !dernier.images?.length
+          ) {
+            return [...m.slice(0, -1), { ...dernier, content: dernier.content + t }];
+          }
+          return [...m, { id: nouvelId("a"), role: "assistant", content: t }];
+        });
+        return;
+      }
+      case "tool_call":
+        setOutil((ev as { tool: string }).tool);
+        return;
+      case "media_pending": {
+        const e = ev as Extract<ChatStreamEvent, { type: "media_pending" }>;
+        const forge: MediaForge = {
+          callId: e.call_id,
+          kind: e.kind,
+          total: Math.max(1, e.count),
+          width: e.width,
+          height: e.height,
+          etape: null,
+          failed: null,
+        };
+        setMessages((m) => [
+          ...m,
+          { id: nouvelId("f"), role: "assistant", content: "", images: [], forge, forged: true },
+        ]);
+        return;
+      }
+      case "task_update": {
+        const e = ev as { task_id: string; status: string };
+        setMessages((m) =>
+          m.map((x) =>
+            x.forge?.callId === e.task_id ? { ...x, forge: { ...x.forge, etape: e.status } } : x,
+          ),
+        );
+        return;
+      }
+      case "image_ready": {
+        const media = (ev as { media: MediaResult }).media;
+        setMessages((m) => {
+          for (let i = m.length - 1; i >= 0; i--) {
+            const x = m[i];
+            if (x.forge && x.forge.kind === "image" && (x.images?.length ?? 0) < x.forge.total) {
+              const suite = [...m];
+              suite[i] = { ...x, images: [...(x.images ?? []), media] };
+              return suite;
+            }
+          }
+          return [...m, { id: nouvelId("i"), role: "assistant", content: "", images: [media] }];
+        });
+        return;
+      }
+      case "tool_result": {
+        const e = ev as { call_id: string; ok: boolean };
+        setOutil(null);
+        setMessages((m) =>
+          terminerForge(m, e.call_id, e.ok ? null : "La génération n'a pas abouti."),
+        );
+        return;
+      }
+      case "mail_read": {
+        const ids = (ev as { ids: string[] }).ids;
+        const lus = fileRef.current.filter((q) => ids.includes(q.id));
+        setFile((f) => f.filter((q) => !ids.includes(q.id)));
+        if (lus.length === 0) return;
+        setMessages((m) => [
+          ...m,
+          ...lus.map((q) => ({
+            id: nouvelId("u"),
+            role: "user" as const,
+            content: q.text,
+            luEnCours: true,
+          })),
+        ]);
+        return;
+      }
+      case "tool_approval": {
+        const demande = ev as unknown as ToolApprovalRequest;
+        setPendingApproval(demande);
+        notifyToolApprovalRequired(demande.tool, demande.risk);
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  /** Envoyer un message et suivre la réponse en direct. */
+  async function repondre(text: string) {
+    setMessages((m) => [...m, { id: nouvelId("u"), role: "user", content: text }]);
+    setBusy(true);
+    arretRef.current = false;
+    let reponse = "";
+    try {
+      await api.sendStream(text, currentId, ephemeral, (ev) => {
+        if (ev.type === "token") reponse += (ev as { text: string }).text;
+        ajouterAuFil(ev);
+      });
+      if (document.hidden && reponse) {
+        notifyMessageReceived(status.server_name ?? "Locaryn", sansReflexion(reponse));
       }
       // Une conversation éphémère n'apparaît nulle part : rien à rafraîchir.
       if (!ephemeral) void refreshList();
     } catch (e) {
       setError(String(e));
-      // Put the text back rather than losing it to a failed send.
-      setDraft(text);
-      setMessages((m) => m.slice(0, -1));
+      if (!reponse) {
+        // Rien n'est venu : le texte revient dans le champ plutôt que d'être perdu.
+        setDraft(text);
+        setMessages((m) => m.filter((x, i) => !(i === m.length - 1 && x.role === "user")));
+      }
     } finally {
       setBusy(false);
+      setOutil(null);
+      setMessages((m) => terminerForge(m, null, "Interrompu avant la fin."));
+      if (arretRef.current && fileRef.current.length > 0) setFilePause(true);
+      void reprendreLesRemis();
+    }
+  }
+
+  /** Stop : la réponse s'arrête, la file attend. */
+  async function arreter() {
+    const id = conversationRef.current ?? currentId;
+    arretRef.current = true;
+    if (fileRef.current.length > 0) setFilePause(true);
+    if (!id) return;
+    try {
+      await api.cancelMessage(id);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  /** « Envoyer maintenant » : pendant une réponse, remis au modèle qui le lit
+   *  à sa prochaine étape ; sinon, en tête de file et parti tout de suite. */
+  async function envoyerMaintenant(q: EnFile) {
+    const id = conversationRef.current ?? currentId;
+    if (!busy || !id) {
+      setFile((f) => [q, ...f.filter((x) => x.id !== q.id)]);
+      setFilePause(false);
+      return;
+    }
+    setFile((f) => f.map((x) => (x.id === q.id ? { ...x, remis: true } : x)));
+    try {
+      await api.depositMessage(id, q.id, q.text);
+    } catch (e) {
+      setError(String(e));
+      setFile((f) => f.map((x) => (x.id === q.id ? { ...x, remis: false } : x)));
+    }
+  }
+
+  async function retirer(q: EnFile) {
+    const id = conversationRef.current ?? currentId;
+    if (q.remis && id) {
+      const repris = await api.withdrawMessage(id, q.id).catch(() => false);
+      if (!repris) return; // déjà lu : il arrive dans le fil
+    }
+    setFile((f) => f.filter((x) => x.id !== q.id));
+  }
+
+  /** La réponse est finie et un message remis n'a pas été lu : il redevient
+   *  un message en file, qui part normalement. */
+  async function reprendreLesRemis() {
+    const id = conversationRef.current;
+    if (!id) return;
+    for (const q of fileRef.current.filter((x) => x.remis)) {
+      const repris = await api.withdrawMessage(id, q.id).catch(() => true);
+      if (repris) setFile((f) => f.map((x) => (x.id === q.id ? { ...x, remis: false } : x)));
     }
   }
 
@@ -428,42 +656,98 @@ export function Chat({
             Posez une question. Le modèle tourne sur {status.server_name ?? "votre serveur"}.
           </p>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={`lo-msg-group${m.role === "user" ? " lo-msg-group-me" : ""}`}>
-            <div className={`lo-msg ${m.role === "user" ? "lo-msg-me" : "lo-msg-ai"}`}>
-              {m.content}
+        {messages.map((m) => {
+          const texte = m.role === "assistant" ? sansReflexion(m.content) : m.content;
+          const enCours = m.role === "assistant" && busy && reflechit(m.content);
+          return (
+            <div
+              key={m.id}
+              className={`lo-msg-group${m.role === "user" ? " lo-msg-group-me" : ""}`}
+            >
+              {texte !== "" && (
+                <div className={`lo-msg ${m.role === "user" ? "lo-msg-me" : "lo-msg-ai"}`}>
+                  {texte}
+                </div>
+              )}
+              {enCours && texte === "" && (
+                <div className="lo-msg lo-msg-ai lo-msg-busy" role="status">
+                  <span className="lo-spinner" aria-hidden />
+                  <span>Réflexion…</span>
+                </div>
+              )}
+              {m.luEnCours && <span className="lo-msg-lu">✓ Lu pendant la tâche</span>}
+              {(m.images?.length || m.forge) && (
+                <div
+                  className={`lo-msg-images${m.forged ? " lo-msg-images-forged" : ""}`}
+                  data-count={m.forge ? m.forge.total : m.images?.length}
+                >
+                  {m.images?.map((img) => (
+                    <button
+                      key={img.name}
+                      type="button"
+                      className={`lo-msg-image${m.forged ? " lo-msg-image-pop" : ""}`}
+                      onClick={() => setLightbox(img)}
+                      title="Ouvrir l'image"
+                    >
+                      <img
+                        src={`data:${img.mime};base64,${img.data_base64}`}
+                        alt={m.content || "image générée"}
+                        // Une image générée pèse un mégaoctet et demi : la
+                        // décoder sur le fil principal fige l'application le
+                        // temps de l'afficher, et Android finit par proposer
+                        // de la fermer.
+                        decoding="async"
+                        loading="lazy"
+                      />
+                    </button>
+                  ))}
+                  {m.forge &&
+                    !m.forge.failed &&
+                    Array.from(
+                      { length: Math.max(0, m.forge.total - (m.images?.length ?? 0)) },
+                      (_, i) => (
+                        <div
+                          // biome-ignore lint/suspicious/noArrayIndexKey: une tuile n'a pas d'autre identité que sa place.
+                          key={`forge-${i}`}
+                          className="lo-forge"
+                          role="img"
+                          aria-label="Image en cours de création"
+                          style={{
+                            aspectRatio: `${m.forge?.width ?? 1} / ${m.forge?.height ?? 1}`,
+                          }}
+                        >
+                          <span className="lo-forge-dots" />
+                          <span className="lo-forge-glow" />
+                        </div>
+                      ),
+                    )}
+                </div>
+              )}
+              {m.forge &&
+                (m.forge.failed ? (
+                  <span className="lo-forge-caption lo-forge-failed">{m.forge.failed}</span>
+                ) : (
+                  m.forge.etape && <span className="lo-forge-caption">{m.forge.etape}</span>
+                ))}
+              {texte.trim() !== "" && (
+                <button type="button" className="lo-msg-copy" onClick={() => void copy(texte)}>
+                  Copier
+                </button>
+              )}
             </div>
-            {m.images?.map((img) => (
-              <button
-                key={img.name}
-                type="button"
-                className="lo-msg-image"
-                onClick={() => setLightbox(img)}
-                title="Ouvrir l'image"
-              >
-                <img
-                  src={`data:${img.mime};base64,${img.data_base64}`}
-                  alt={m.content}
-                  // Une image générée pèse un mégaoctet et demi : la décoder
-                  // sur le fil principal fige l'application le temps de
-                  // l'afficher, et Android finit par proposer de la fermer.
-                  decoding="async"
-                  loading="lazy"
-                />
-              </button>
-            ))}
-            {m.content.trim() !== "" && (
-              <button type="button" className="lo-msg-copy" onClick={() => void copy(m.content)}>
-                Copier
-              </button>
-            )}
-          </div>
-        ))}
-        {busy && (
+          );
+        })}
+        {busy && (messages.length === 0 || messages[messages.length - 1].role === "user") && (
           <div className="lo-msg lo-msg-ai lo-msg-busy" role="status">
             <span className="lo-spinner" aria-hidden />
-            <span>Le modèle réfléchit…</span>
+            <span>{outil ? `Utilise ${outil}…` : "Le modèle réfléchit…"}</span>
           </div>
+        )}
+        {busy && outil && messages[messages.length - 1]?.role !== "user" && (
+          <p className="lo-outil" role="status">
+            <span className="lo-spinner" aria-hidden />
+            Utilise {outil}…
+          </p>
         )}
         {error && <p className="lo-error">{error}</p>}
         <div ref={endRef} />
@@ -522,28 +806,94 @@ export function Chat({
         </div>
       )}
 
+      {file.length > 0 && (
+        <section className="lo-queue" aria-label="Messages en attente">
+          <div className="lo-queue-head">
+            <button
+              type="button"
+              className="lo-queue-fold"
+              aria-expanded={!fileReduite}
+              onClick={() => setFileReduite((v) => !v)}
+            >
+              <span className={`lo-queue-caret${fileReduite ? " is-closed" : ""}`} aria-hidden>
+                ▾
+              </span>
+              {filePause ? "En pause" : busy ? "Après cette réponse" : "Envoi…"} · {file.length}
+              {fileReduite && <span className="lo-queue-peek">{file[0].text}</span>}
+            </button>
+            {filePause && !busy && (
+              <button type="button" className="lo-queue-btn" onClick={() => setFilePause(false)}>
+                Reprendre
+              </button>
+            )}
+          </div>
+          {!fileReduite && (
+            <ol className="lo-queue-list">
+              {file.map((q) => (
+                <li key={q.id} className={`lo-queue-item${q.remis ? " is-remis" : ""}`}>
+                  <div className="lo-queue-body">
+                    <span className="lo-queue-text">{q.text}</span>
+                    {q.remis && (
+                      <span className="lo-queue-state">Remis — lu à la prochaine étape</span>
+                    )}
+                  </div>
+                  {!q.remis && (
+                    <button
+                      type="button"
+                      className="lo-queue-btn"
+                      onClick={() => void envoyerMaintenant(q)}
+                    >
+                      Maintenant
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="lo-queue-btn lo-queue-x"
+                    onClick={() => void retirer(q)}
+                    aria-label="Retirer de la file"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      )}
+
       <div className="lo-compose">
         <ComposerActions draft={draft} onDraft={setDraft} onError={setError} />
         <ExtensionSlot
           name="composer.toolbar"
-          context={{ input: draft, setInput: setDraft, send, canCompose: !busy, onNavigate: onGo }}
+          context={{ input: draft, setInput: setDraft, send, canCompose: true, onNavigate: onGo }}
         />
         <input
           className="lo-input"
           placeholder="Votre message"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void send()}
+          onKeyDown={(e) => e.key === "Enter" && send()}
         />
-        <button
-          type="button"
-          className="lo-send"
-          disabled={busy || !draft.trim()}
-          onClick={send}
-          aria-label="Envoyer"
-        >
-          ↑
-        </button>
+        {busy && !draft.trim() ? (
+          <button
+            type="button"
+            className="lo-send lo-stop"
+            onClick={() => void arreter()}
+            aria-label="Arrêter la réponse"
+          >
+            ■
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="lo-send"
+            disabled={!draft.trim()}
+            onClick={send}
+            aria-label={busy ? "Mettre en file" : "Envoyer"}
+          >
+            ↑
+          </button>
+        )}
       </div>
 
       <ToolApprovalModal

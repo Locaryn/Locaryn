@@ -3577,6 +3577,7 @@ dependencies = [
  "locaryn-core-bridge",
  "locaryn-events",
  "locaryn-extensions",
+ "locaryn-llmfit",
  "locaryn-mcp",
  "locaryn-media",
  "locaryn-preview",

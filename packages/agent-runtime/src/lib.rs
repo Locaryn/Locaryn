@@ -10,6 +10,7 @@ pub mod context_window;
 pub mod embeddings;
 pub mod exec;
 pub mod gpu;
+pub mod gpu_standard;
 pub mod host_tools;
 pub mod mailbox;
 pub mod reasoning;

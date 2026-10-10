@@ -28,6 +28,7 @@ mod routes;
 
 use std::collections::HashMap;
 mod auth;
+mod chat_gpu;
 mod media;
 mod mtls;
 mod port_forward;
@@ -94,6 +95,9 @@ struct DaemonState {
     /// Comptes et tokens : le confirm d'appairage émet un token de session
     /// appareil via ce repo (partagé avec AuthState).
     pub users: locaryn_storage::users::UserRepo,
+    /// Par serveur MCP d'extension : ses outils à modèle propre (section
+    /// `gpu` des manifestes), que l'arbitre de la carte fait passer en priorité.
+    pub gpu_tools: Arc<std::sync::RwLock<locaryn_agent_runtime::gpu_standard::GpuToolMap>>,
 }
 
 /// Le trousseau du système, quand il y en a un.
@@ -257,6 +261,7 @@ async fn main() -> anyhow::Result<()> {
         pairing_pending: Arc::new(Mutex::new(None)),
         pairing_admin_user_id: pairing_admin,
         users: users.clone(),
+        gpu_tools: Arc::new(std::sync::RwLock::new(HashMap::new())),
     });
 
     // Les extensions installées reviennent de la base : sans cela, un
@@ -293,6 +298,11 @@ async fn main() -> anyhow::Result<()> {
             get(list_messages).post(send_message),
         )
         .route("/v1/sessions/:id/cancel", post(cancel_session))
+        .route("/v1/sessions/:id/mailbox", post(chat_gpu::deposer))
+        .route(
+            "/v1/sessions/:id/mailbox/:mid",
+            axum::routing::delete(chat_gpu::reprendre),
+        )
         // Les permissions d'une conversation : ce que le modele peut faire
         // ici, regle depuis le client mobile ou le web.
         .route(
@@ -1316,8 +1326,11 @@ async fn send_message(
         question: None,
         host_tools: None,
         trust_source: None,
-        mailbox: None,
-        gpu: None,
+        // « Envoyer maintenant » depuis le téléphone ou le web.
+        mailbox: Some(chat_gpu::mailbox(s.clone(), session_uuid)),
+        // Les morphs à modèle propre libèrent la carte du modèle de
+        // conversation le temps de leur rendu, comme sur le bureau.
+        gpu: Some(chat_gpu::arbitre(s.clone())),
         trim_tools: locaryn_config::load(None)
             .map(|c| c.assistance.trim_tools)
             .unwrap_or(false),

@@ -715,7 +715,27 @@ async fn send_message(
 ) -> Result<ChatReply, String> {
     let (client, server, session) = authenticated()?;
     let base = server.current_url.trim_end_matches('/').to_string();
+    let session_id = ouvrir_conversation(
+        &client,
+        &server,
+        &session,
+        &base,
+        conversation_id,
+        ephemeral,
+    )
+    .await?;
+    send_message_with(&client, &server, &session, &base, session_id, text).await
+}
 
+/// La conversation à continuer, ou une nouvelle.
+async fn ouvrir_conversation(
+    client: &reqwest::Client,
+    server: &servers::KnownServer,
+    session: &Session,
+    base: &str,
+    conversation_id: Option<String>,
+    ephemeral: Option<bool>,
+) -> Result<String, String> {
     // Une conversation existante est reprise ; sinon on en ouvre une.
     //
     // Le téléphone en créait une neuve à *chaque* message : le modèle
@@ -725,7 +745,7 @@ async fn send_message(
     let session_id = match conversation_id {
         Some(id) if !id.trim().is_empty() => id,
         _ => {
-            let project_id = ensure_free_chat_project(&client, &server, &session.token).await?;
+            let project_id = ensure_free_chat_project(client, server, &session.token).await?;
             let session_resp = client
                 .post(format!("{base}/v1/projects/{project_id}/sessions"))
                 .bearer_auth(&session.token)
@@ -734,7 +754,7 @@ async fn send_message(
                 .json(&serde_json::json!({ "ephemeral": ephemeral.unwrap_or(false) }))
                 .send()
                 .await
-                .map_err(|_| unreachable(&server))?;
+                .map_err(|_| unreachable(server))?;
             if !session_resp.status().is_success() {
                 return Err(format!(
                     "Le serveur a refusé la demande ({}).",
@@ -748,14 +768,24 @@ async fn send_message(
                 .to_string()
         }
     };
+    Ok(session_id)
+}
 
+async fn send_message_with(
+    client: &reqwest::Client,
+    server: &servers::KnownServer,
+    session: &Session,
+    base: &str,
+    session_id: String,
+    text: String,
+) -> Result<ChatReply, String> {
     let resp = client
         .post(format!("{base}/v1/sessions/{session_id}/messages"))
         .bearer_auth(&session.token)
         .json(&serde_json::json!({ "content": text }))
         .send()
         .await
-        .map_err(|_| unreachable(&server))?;
+        .map_err(|_| unreachable(server))?;
 
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err("Votre session a expiré. Reconnectez-vous.".into());
@@ -833,7 +863,7 @@ async fn send_message(
     // perdre la réponse écrite, donc on le passe.
     let mut images = Vec::new();
     for id in artifact_ids {
-        if let Ok(media) = fetch_artifact(&client, &base, &session.token, &id).await {
+        if let Ok(media) = fetch_artifact(client, base, &session.token, &id).await {
             images.push(media);
         }
     }
@@ -844,6 +874,149 @@ async fn send_message(
         conversation_id: session_id,
         approval: pending_approval,
     })
+}
+
+/// Envoyer un message et relayer le flux du serveur **au fil de l'eau** :
+/// jetons, réflexion, outils, emplacement d'un média, étapes, lectures d'un
+/// message remis en cours de tâche. Une image produite est récupérée aussitôt
+/// et relayée (`image_ready`) : elle prend la place qui l'attendait.
+///
+/// L'ancien `send_message` attendait la réponse entière — ni texte en direct,
+/// ni Stop, ni animation d'image n'étaient possibles sur le téléphone.
+#[tauri::command]
+async fn send_message_stream(
+    text: String,
+    conversation_id: Option<String>,
+    ephemeral: Option<bool>,
+    on_event: tauri::ipc::Channel<serde_json::Value>,
+) -> Result<String, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/').to_string();
+    let session_id = ouvrir_conversation(
+        &client,
+        &server,
+        &session,
+        &base,
+        conversation_id,
+        ephemeral,
+    )
+    .await?;
+    let relayer = |v: serde_json::Value| {
+        if let Err(e) = on_event.send(v) {
+            tracing::warn!("flux vers l'écran interrompu : {e}");
+        }
+    };
+    relayer(serde_json::json!({ "type": "session", "id": session_id }));
+
+    let resp = client
+        .post(format!("{base}/v1/sessions/{session_id}/messages"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "content": text }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Votre session a expiré. Reconnectez-vous.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé la demande ({}).",
+            resp.status()
+        ));
+    }
+
+    let mut flux = resp.bytes_stream();
+    let mut tampon = String::new();
+    while let Some(morceau) = flux.next().await {
+        let morceau = morceau.map_err(|e| format!("flux interrompu : {e}"))?;
+        tampon.push_str(&String::from_utf8_lossy(&morceau));
+        while let Some(fin) = tampon.find("\n\n") {
+            let bloc: String = tampon.drain(..fin + 2).collect();
+            let Some(data) = bloc
+                .lines()
+                .find_map(|l| l.strip_prefix("data:").map(str::trim))
+            else {
+                continue;
+            };
+            let Ok(ev) = serde_json::from_str::<serde_json::Value>(data) else {
+                continue;
+            };
+            let image = ev.get("type").and_then(|t| t.as_str()) == Some("artifact")
+                && ev
+                    .get("kind")
+                    .and_then(|k| k.as_str())
+                    .is_some_and(|k| k.starts_with("image"));
+            let id = ev
+                .get("artifact_id")
+                .and_then(|i| i.as_str())
+                .map(str::to_string);
+            relayer(ev);
+            if let (true, Some(id)) = (image, id) {
+                match fetch_artifact(&client, &base, &session.token, &id).await {
+                    Ok(media) => relayer(serde_json::json!({
+                        "type": "image_ready",
+                        "artifact_id": id,
+                        "media": media,
+                    })),
+                    Err(e) => tracing::warn!("image {id} non récupérée : {e}"),
+                }
+            }
+        }
+    }
+    Ok(session_id)
+}
+
+/// Stop : la réponse en cours s'arrête sur le serveur.
+#[tauri::command]
+async fn cancel_message(conversation_id: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    client
+        .post(format!("{base}/v1/sessions/{conversation_id}/cancel"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    Ok(())
+}
+
+/// « Envoyer maintenant » : le modèle lit le message à sa prochaine étape.
+#[tauri::command]
+async fn deposit_message(conversation_id: String, id: String, text: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/sessions/{conversation_id}/mailbox"))
+        .bearer_auth(&session.token)
+        .json(&serde_json::json!({ "id": id, "text": text }))
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur n'a pas pris le message ({}) — il est peut-être d'une version antérieure.",
+            resp.status()
+        ));
+    }
+    Ok(())
+}
+
+/// Reprendre un message remis et pas encore lu ; `false` s'il l'a été.
+#[tauri::command]
+async fn withdraw_message(conversation_id: String, id: String) -> Result<bool, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .delete(format!("{base}/v1/sessions/{conversation_id}/mailbox/{id}"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    let corps: serde_json::Value = resp.json().await.unwrap_or_default();
+    Ok(corps
+        .get("withdrawn")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true))
 }
 
 /// Une conversation du serveur, telle que le téléphone la liste.
@@ -2492,6 +2665,10 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            send_message_stream,
+            cancel_message,
+            deposit_message,
+            withdraw_message,
             status,
             register_server,
             register_address,

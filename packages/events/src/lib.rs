@@ -98,6 +98,12 @@ pub enum StreamEvent {
         width: Option<u32>,
         height: Option<u32>,
     },
+    /// Des messages remis pendant la tâche (« Envoyer maintenant ») viennent
+    /// d'être lus par le modèle : les clients les sortent de leur file et les
+    /// montrent dans la conversation.
+    MailRead {
+        ids: Vec<String>,
+    },
     MessageEnd {
         message_id: String,
         tokens_in: u64,
@@ -227,6 +233,7 @@ pub fn sse_event_tag(event: &StreamEvent) -> &'static str {
         StreamEvent::Log { .. } => "log",
         StreamEvent::Timings { .. } => "timings",
         StreamEvent::MediaPending { .. } => "media.pending",
+        StreamEvent::MailRead { .. } => "mail.read",
         StreamEvent::MessageEnd { .. } => "message.end",
     }
 }

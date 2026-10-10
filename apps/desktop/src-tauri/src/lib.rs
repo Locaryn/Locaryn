@@ -2219,9 +2219,7 @@ async fn send_message(
         )),
         // Les morphs qui chargent leur propre modèle (image, voix, dictée)
         // passent par l'arbitre de la carte.
-        gpu: Some(locaryn_agent_runtime::gpu::GpuArbiterHandle::new(
-            gpu_arbiter::DesktopGpuArbiter::new(app.clone()),
-        )),
+        gpu: Some(gpu_arbiter::handle(&app)),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
         // Le dialecte natif n'existait que pour Ollama, qui n'honorait

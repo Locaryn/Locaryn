@@ -251,7 +251,50 @@ export interface Message {
   content: string;
   /** Ce qu'un outil a produit pendant ce tour : images générées, s'il y en a. */
   images?: MediaResult[];
+  /** Un média en cours de création : sa place réservée, animée. */
+  forge?: MediaForge;
+  /** Remis par « Envoyer maintenant » et lu par le modèle pendant sa tâche. */
+  luEnCours?: boolean;
+  /** Ses images viennent d'être créées ici : elles apparaissent animées. */
+  forged?: boolean;
 }
+
+/** Un média qui se fabrique : ses proportions, l'étape en cours. */
+export interface MediaForge {
+  callId: string;
+  kind: string;
+  total: number;
+  width: number | null;
+  height: number | null;
+  etape: string | null;
+  failed: string | null;
+}
+
+/**
+ * Un événement du flux de réponse, tel que le serveur l'émet — plus deux que
+ * le téléphone ajoute : `session` (la conversation ouverte) et `image_ready`
+ * (l'image récupérée, prête à remplacer sa tuile).
+ */
+export type ChatStreamEvent =
+  | { type: "session"; id: string }
+  | { type: "token"; text: string }
+  | { type: "tool_call"; call_id: string; tool: string }
+  | { type: "tool_result"; call_id: string; ok: boolean; output: string }
+  | {
+      type: "media_pending";
+      call_id: string;
+      kind: string;
+      count: number;
+      width: number | null;
+      height: number | null;
+    }
+  | { type: "task_update"; task_id: string; status: string }
+  | { type: "image_ready"; artifact_id: string; media: MediaResult }
+  | { type: "mail_read"; ids: string[] }
+  | ({ type: "tool_approval" } & ToolApprovalRequest)
+  | { type: "log"; level: string; msg: string; source: string }
+  | { type: "message_end" }
+  | { type: string; [cle: string]: unknown };
 
 /** Un tour de conversation : les mots, et ce que les outils ont fabriqué. */
 export interface ChatReply {
@@ -405,6 +448,30 @@ export const core = {
     invoke<PairingResult>("confirm_pairing", { pairingCode, deviceLabel }),
   send: (text: string, conversationId: string | null, ephemeral = false) =>
     invoke<ChatReply>("send_message", { text, conversationId, ephemeral }),
+  /** Envoyer et recevoir la réponse au fil de l'eau ; rend la conversation. */
+  sendStream: (
+    text: string,
+    conversationId: string | null,
+    ephemeral: boolean,
+    onEvent: (ev: ChatStreamEvent) => void,
+  ) => {
+    const canal = new Channel<ChatStreamEvent>();
+    canal.onmessage = onEvent;
+    return invoke<string>("send_message_stream", {
+      text,
+      conversationId,
+      ephemeral,
+      onEvent: canal,
+    });
+  },
+  /** Stop : la réponse s'arrête sur le serveur. */
+  cancelMessage: (conversationId: string) => invoke<void>("cancel_message", { conversationId }),
+  /** « Envoyer maintenant » : remis au modèle, lu à sa prochaine étape. */
+  depositMessage: (conversationId: string, id: string, text: string) =>
+    invoke<void>("deposit_message", { conversationId, id, text }),
+  /** Reprendre un message remis et pas encore lu ; `false` s'il l'a été. */
+  withdrawMessage: (conversationId: string, id: string) =>
+    invoke<boolean>("withdraw_message", { conversationId, id }),
   /** Les conversations du serveur — les mêmes que sur l'ordinateur. */
   listConversations: () => invoke<Conversation[]>("list_conversations"),
   /** Les projets du serveur, et les conversations de l'un d'eux. */
@@ -516,6 +583,9 @@ export const coreMode: "tauri" | "demo" = isTauri ? "tauri" : "demo";
  * Deliberately not a second implementation of anything that matters: the
  * pairing decision lives in Rust and is tested there.
  */
+/** Le Stop du mode démo coupe la réponse simulée comme le vrai serveur. */
+const demoArret = { current: false };
+
 export const demoCore: typeof core = {
   status: async () => ({
     server_name: "Atelier Vasseur",
@@ -604,6 +674,51 @@ export const demoCore: typeof core = {
     images: [],
     conversation_id: "demo",
   }),
+  sendStream: async (t, _id, _eph, onEvent) => {
+    demoArret.current = false;
+    onEvent({ type: "session", id: "demo" });
+    if (/image|icône|icone|logo/i.test(t)) {
+      onEvent({ type: "tool_call", call_id: "img1", tool: "generate_image" });
+      onEvent({
+        type: "media_pending",
+        call_id: "img1",
+        kind: "image",
+        count: 2,
+        width: 512,
+        height: 640,
+      });
+      onEvent({
+        type: "task_update",
+        task_id: "img1",
+        status: "Libération de la mémoire vidéo : le modèle de conversation se met de côté…",
+      });
+      await sleep(1500);
+      onEvent({ type: "task_update", task_id: "img1", status: "Génération en cours — 2 images…" });
+      for (const teinte of ["#5fa37e", "#d9b37e"]) {
+        await sleep(1800);
+        if (demoArret.current) break;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="640"><rect width="512" height="640" fill="${teinte}"/><circle cx="256" cy="260" r="70" fill="#f2f1ed" opacity="0.8"/></svg>`;
+        onEvent({
+          type: "image_ready",
+          artifact_id: teinte,
+          media: { name: `${teinte}.svg`, mime: "image/svg+xml", data_base64: btoa(svg) },
+        });
+      }
+      onEvent({ type: "tool_result", call_id: "img1", ok: true, output: "" });
+    }
+    for (const mot of `Réponse de démonstration à « ${t} ».`.split(/(?<=\s)/)) {
+      if (demoArret.current) break;
+      await sleep(60);
+      onEvent({ type: "token", text: mot });
+    }
+    onEvent({ type: "message_end" });
+    return "demo";
+  },
+  cancelMessage: async () => {
+    demoArret.current = true;
+  },
+  depositMessage: async () => {},
+  withdrawMessage: async () => true,
   listConversations: async () => [
     { id: "demo", title: "Conversation de démonstration", last_message_at: null },
     { id: "demo-2", title: "Préparer la terrasse", last_message_at: null },

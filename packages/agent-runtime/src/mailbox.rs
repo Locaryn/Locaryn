@@ -40,16 +40,16 @@ impl MailboxHandle {
     }
 
     /// Relève la boîte et ajoute chaque message à la conversation envoyée au
-    /// modèle. Rend le nombre de messages ajoutés.
-    pub async fn verser(&self, messages: &mut serde_json::Value) -> usize {
+    /// modèle. Rend les identifiants des messages ajoutés.
+    pub async fn verser(&self, messages: &mut serde_json::Value) -> Vec<String> {
         let courrier = self.0.relever().await;
         let Some(liste) = messages.as_array_mut() else {
-            return 0;
+            return Vec::new();
         };
         for c in &courrier {
             liste.push(serde_json::json!({ "role": "user", "content": c.text }));
         }
-        courrier.len()
+        courrier.into_iter().map(|c| c.id).collect()
     }
 }
 
@@ -80,11 +80,11 @@ mod tests {
             },
         ])));
         let mut messages = serde_json::json!([{ "role": "tool", "content": "ok" }]);
-        assert_eq!(boite.verser(&mut messages).await, 2);
+        assert_eq!(boite.verser(&mut messages).await, vec!["a", "b"]);
         assert_eq!(messages[1]["content"], "plutôt en bleu");
         assert_eq!(messages[2]["role"], "user");
         // Déjà lu : rien ne repart au relevé suivant.
-        assert_eq!(boite.verser(&mut messages).await, 0);
+        assert!(boite.verser(&mut messages).await.is_empty());
         assert_eq!(messages.as_array().unwrap().len(), 3);
     }
 }

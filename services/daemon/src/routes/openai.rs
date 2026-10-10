@@ -1079,6 +1079,7 @@ mod api_tests {
                     .await
                     .unwrap(),
             ),
+            gpu_tools: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         });
         (state, racine)
     }
