@@ -889,6 +889,7 @@ async fn send_message_stream(
     conversation_id: Option<String>,
     ephemeral: Option<bool>,
     images: Option<Vec<String>>,
+    trust: Option<String>,
     on_event: tauri::ipc::Channel<serde_json::Value>,
 ) -> Result<String, String> {
     let (client, server, session) = authenticated()?;
@@ -902,12 +903,54 @@ async fn send_message_stream(
         ephemeral,
     )
     .await?;
+    // L'autorisation choisie avant le premier message : posée sur la
+    // conversation avant que ce message parte, sinon il partirait avec celle
+    // du projet.
+    if let Some(niveau) = trust.filter(|t| !t.trim().is_empty()) {
+        let resp = client
+            .post(format!("{base}/v1/sessions/{session_id}/trust"))
+            .bearer_auth(&session.token)
+            .json(&serde_json::json!({ "trust": niveau }))
+            .send()
+            .await
+            .map_err(|_| unreachable(&server))?;
+        if !resp.status().is_success() {
+            return Err(format!(
+                "Le serveur a refusé l'autorisation choisie ({}).",
+                resp.status()
+            ));
+        }
+    }
     let relayer = |v: serde_json::Value| {
         if let Err(e) = on_event.send(v) {
             tracing::warn!("flux vers l'écran interrompu : {e}");
         }
     };
     relayer(serde_json::json!({ "type": "session", "id": session_id }));
+
+    // Le serveur charge le modèle avant de répondre quoi que ce soit : tant
+    // qu'aucun moteur n'est prêt, l'écran dit « chargement », pas « réflexion »
+    // — une attente d'une minute n'est pas une réflexion.
+    let pret = match client
+        .get(format!("{base}/v1/supervisor/status"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r
+            .json::<Vec<serde_json::Value>>()
+            .await
+            .map(|moteurs| {
+                moteurs
+                    .iter()
+                    .any(|m| m.get("healthy").and_then(|h| h.as_bool()) == Some(true))
+            })
+            .unwrap_or(true),
+        _ => true,
+    };
+    if !pret {
+        relayer(serde_json::json!({ "type": "loading" }));
+    }
 
     let resp = client
         .post(format!("{base}/v1/sessions/{session_id}/messages"))

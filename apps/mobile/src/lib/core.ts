@@ -294,6 +294,8 @@ export interface MediaForge {
  */
 export type ChatStreamEvent =
   | { type: "session"; id: string }
+  /** Le serveur charge le modèle en mémoire avant de répondre. */
+  | { type: "loading" }
   | { type: "token"; text: string }
   | { type: "tool_call"; call_id: string; tool: string }
   | { type: "tool_result"; call_id: string; ok: boolean; output: string }
@@ -475,6 +477,7 @@ export const core = {
     ephemeral: boolean,
     onEvent: (ev: ChatStreamEvent) => void,
     images?: string[],
+    trust?: string | null,
   ) => {
     const canal = new Channel<ChatStreamEvent>();
     canal.onmessage = onEvent;
@@ -483,6 +486,7 @@ export const core = {
       conversationId,
       ephemeral,
       images: images ?? null,
+      trust: trust ?? null,
       onEvent: canal,
     });
   },
@@ -718,6 +722,8 @@ export const demoCore: typeof core = {
   sendStream: async (t, _id, _eph, onEvent) => {
     demoArret.current = false;
     onEvent({ type: "session", id: "demo" });
+    onEvent({ type: "loading" });
+    await sleep(1200);
     if (/image|icône|icone|logo/i.test(t)) {
       onEvent({ type: "tool_call", call_id: "img1", tool: "generate_image" });
       onEvent({

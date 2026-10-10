@@ -126,6 +126,8 @@ export function Chat({
   /** Photos et fichiers joints au prochain message. */
   const [pieces, setPieces] = useState<PieceJointe[]>([]);
   const [feuille, setFeuille] = useState(false);
+  /** L'autorisation choisie avant le premier message d'une conversation. */
+  const [niveauAvant, setNiveauAvant] = useState<string | null>(null);
   /** Les réflexions dépliées, par message. */
   const [deplie, setDeplie] = useState<Set<string>>(new Set());
   const saisieRef = useRef<HTMLTextAreaElement>(null);
@@ -139,6 +141,8 @@ export function Chat({
   const [fileReduite, setFileReduite] = useState(false);
   /** L'outil que le modèle est en train d'utiliser, pour le dire. */
   const [outil, setOutil] = useState<string | null>(null);
+  /** Le modèle se charge en mémoire sur le serveur (avant tout jeton). */
+  const [chargement, setChargement] = useState(false);
   const conversationRef = useRef<string | null>(null);
   const arretRef = useRef(false);
   /** Une conversation est en train de charger ses messages. */
@@ -277,6 +281,7 @@ export function Chat({
     setCurrentId(null);
     setMessages([]);
     setError(null);
+    setNiveauAvant(null);
   }
 
   // Une conversation venue d'ailleurs (l'écran Figures en a ouvert une) se
@@ -381,7 +386,12 @@ export function Chat({
   }, [busy, filePause, file]);
 
   function ajouterAuFil(ev: ChatStreamEvent) {
+    // Le premier signe de vie du modèle met fin au chargement.
+    if (ev.type !== "loading" && ev.type !== "session") setChargement(false);
     switch (ev.type) {
+      case "loading":
+        setChargement(true);
+        return;
       case "session": {
         const id = (ev as { id: string }).id;
         conversationRef.current = id;
@@ -514,7 +524,9 @@ export function Chat({
           ajouterAuFil(ev);
         },
         images.length ? images.map((p) => p.contenu) : undefined,
+        currentId ? null : niveauAvant,
       );
+      setNiveauAvant(null);
       if (document.hidden && reponse) {
         notifyMessageReceived(status.server_name ?? "Locaryn", sansReflexion(reponse));
       }
@@ -530,6 +542,7 @@ export function Chat({
     } finally {
       setBusy(false);
       setOutil(null);
+      setChargement(false);
       setMessages((m) => terminerForge(m, null, "Interrompu avant la fin."));
       if (arretRef.current && fileRef.current.length > 0) setFilePause(true);
       void reprendreLesRemis();
@@ -823,7 +836,13 @@ export function Chat({
         {busy && (messages.length === 0 || messages[messages.length - 1].role === "user") && (
           <div className="lo-msg lo-msg-ai lo-msg-busy" role="status">
             <span className="lo-spinner" aria-hidden />
-            <span>{outil ? `Utilise ${outil}…` : "Le modèle réfléchit…"}</span>
+            <span>
+              {chargement
+                ? "Chargement du modèle en mémoire…"
+                : outil
+                  ? `Utilise ${outil}…`
+                  : "Le modèle réfléchit…"}
+            </span>
           </div>
         )}
         {busy && outil && messages[messages.length - 1]?.role !== "user" && (
@@ -1030,6 +1049,8 @@ export function Chat({
           setPieces((l) => [...l, ...liste.filter((x) => !l.some((y) => y.id === x.id))])
         }
         onErreur={setError}
+        niveauAvant={niveauAvant}
+        onNiveauAvant={setNiveauAvant}
       />
 
       <ToolApprovalModal

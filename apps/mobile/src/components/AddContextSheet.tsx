@@ -21,6 +21,9 @@ type Props = {
   conversationId: string | null;
   onJoindre: (pieces: PieceJointe[]) => void;
   onErreur: (message: string) => void;
+  /** Conversation pas encore commencée : le niveau choisi, posé à sa création. */
+  niveauAvant: string | null;
+  onNiveauAvant: (niveau: string | null) => void;
 };
 
 /** Un texte se joint jusqu'à cette taille : au-delà, il étoufferait la fenêtre. */
@@ -64,7 +67,15 @@ function lireFichier(f: File): Promise<PieceJointe> {
  * galerie, un fichier, ou changer la permission de la conversation — le panneau
  * du bas que l'on attend d'une application de chat sur téléphone.
  */
-export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, onErreur }: Props) {
+export function AddContextSheet({
+  ouvert,
+  onFermer,
+  conversationId,
+  onJoindre,
+  onErreur,
+  niveauAvant,
+  onNiveauAvant,
+}: Props) {
   const camera = useRef<HTMLInputElement>(null);
   const galerie = useRef<HTMLInputElement>(null);
   const fichiers = useRef<HTMLInputElement>(null);
@@ -109,7 +120,12 @@ export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, o
   }
 
   async function poser(niveau: string) {
-    if (!conversationId) return;
+    // Pas encore de conversation : le choix attend sa création.
+    if (!conversationId) {
+      onNiveauAvant(niveau);
+      setNiveaux(false);
+      return;
+    }
     try {
       setPermission(await api.setSessionTrust(conversationId, niveau));
       setNiveaux(false);
@@ -119,7 +135,8 @@ export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, o
   }
 
   if (!ouvert) return null;
-  const actuel = permission ? trustInfo(permission.effective as never) : null;
+  const effectif = conversationId ? (permission?.effective ?? null) : niveauAvant;
+  const actuel = effectif ? trustInfo(effectif as never) : null;
   const tuiles: { icone: IconName; libelle: string; cible: React.RefObject<HTMLInputElement> }[] = [
     { icone: "image", libelle: "Appareil photo", cible: camera },
     { icone: "image", libelle: "Photos", cible: galerie },
@@ -149,7 +166,7 @@ export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, o
               <li key={n.value}>
                 <button
                   type="button"
-                  className={`lo-ajout-niveau${permission?.effective === n.value ? " is-on" : ""}`}
+                  className={`lo-ajout-niveau${effectif === n.value ? " is-on" : ""}`}
                   onClick={() => void poser(n.value)}
                 >
                   <span className="lo-ajout-pastille" style={{ background: n.color }} />
@@ -176,21 +193,15 @@ export function AddContextSheet({ ouvert, onFermer, conversationId, onJoindre, o
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              className="lo-ajout-ligne"
-              disabled={!conversationId}
-              onClick={() => setNiveaux(true)}
-            >
+            <button type="button" className="lo-ajout-ligne" onClick={() => setNiveaux(true)}>
               <span className="lo-ajout-ligne-icone">
                 <Icon name="shield" size={20} />
               </span>
               <span className="lo-ajout-ligne-texte">
                 <strong>Autorisation</strong>
                 <small>
-                  {conversationId
-                    ? (actuel?.label ?? "…")
-                    : "Envoyez un premier message pour régler cette conversation"}
+                  {actuel?.label ??
+                    (conversationId ? "…" : "Celle du projet — à choisir avant de commencer")}
                 </small>
               </span>
               <Icon name="chevron" size={18} />
