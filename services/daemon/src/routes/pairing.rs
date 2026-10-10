@@ -841,7 +841,10 @@ mod tests {
         for _ in 0..200 {
             let code = super::generer_code_connexion();
             assert_eq!(code.len(), 6);
-            assert!(code.bytes().all(|b| super::ALPHABET_CODE.contains(&b)), "{code}");
+            assert!(
+                code.bytes().all(|b| super::ALPHABET_CODE.contains(&b)),
+                "{code}"
+            );
             assert!(!code.contains(['0', 'O', '1', 'I', 'L']));
         }
         assert_eq!(super::normaliser_code(" ab-c 12 3"), "ABC123");
