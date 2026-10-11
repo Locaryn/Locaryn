@@ -182,11 +182,10 @@ export function SessionRow({
           onDoubleClick={() => setEditing(true)}
           title={label}
         >
-          {bullet === "chat" ? (
-            <Icon name="chat" size={14} />
-          ) : bullet === "dot" ? (
-            <span className="locaryn-history-session-bullet" aria-hidden="true" />
-          ) : null}{" "}
+          {/* Une conversation a la même icône partout, qu'elle vive seule ou
+              dans un projet, sur ce poste ou lancée depuis le téléphone : deux
+              dessins pour la même chose se lisaient comme deux sortes. */}
+          {bullet !== "" && <Icon name="chat" size={14} />}{" "}
           <span className="locaryn-session-label" title={label}>
             {label}
           </span>

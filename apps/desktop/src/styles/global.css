@@ -439,15 +439,6 @@ body.locaryn-resizing .locaryn-resizer::after {
   border-left: 1px solid var(--border);
   gap: 1px;
 }
-.locaryn-history-session-bullet {
-  flex: 0 0 7px;
-  width: 7px;
-  height: 7px;
-  margin: 0 2px;
-  border: 1px solid var(--text-faint);
-  border-radius: 50%;
-  display: inline-block;
-}
 .locaryn-history-group-free {
   margin-bottom: 2px;
 }
@@ -6503,6 +6494,9 @@ pre.md-code {
 
 /* Menu button styling in topbar */
 .locaryn-menu-btn {
+  /* Alignement optique sur le bord du panneau latéral (« + Nouveau », 16px) :
+     la zone cliquable déborde dans la marge, l'icône tombe sur le bord. */
+  margin-left: -10px;
   margin-right: var(--space-2);
 }
 

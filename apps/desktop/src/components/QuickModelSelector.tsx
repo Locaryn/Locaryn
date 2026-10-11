@@ -16,7 +16,6 @@ type Props = {
   onClose: () => void;
   activeModel: string;
   installedModels?: string[];
-  isProviderLocal?: boolean;
   onSelectModel: (tag: string) => Promise<void> | void;
   onOpenMarketplace?: () => void;
 };
@@ -37,7 +36,6 @@ export function QuickModelSelector({
   onClose,
   activeModel,
   installedModels = [],
-  isProviderLocal = true,
   onSelectModel,
   onOpenMarketplace,
 }: Props) {
@@ -131,9 +129,11 @@ export function QuickModelSelector({
             icon = "image";
           }
 
+          // La liste vient du moteur local : un modèle y est local, que le
+          // fournisseur actif soit lui aussi local ou un catalogue distant.
           const isRemoteTag =
             tag.includes("openrouter") || tag.includes("openai") || tag.includes("cloud");
-          const isLocal = isProviderLocal && !isRemoteTag;
+          const isLocal = !isRemoteTag;
 
           return {
             tag,
@@ -150,7 +150,7 @@ export function QuickModelSelector({
         // Specialized media models are owned by their extensions.
         .filter((o) => isChatModel(o.tag) && o.isLocal)
     );
-  }, [dedupedModels, isProviderLocal, registry]);
+  }, [dedupedModels, registry]);
 
   // Le dossier ouvert lit sa liste chez le fournisseur — une fois, et gardée
   // ensuite par l'hôte : rouvrir le dossier ne relance pas d'appel réseau.

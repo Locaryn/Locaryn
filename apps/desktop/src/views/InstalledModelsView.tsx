@@ -10,6 +10,7 @@ import {
 import { type InstalledExtension, type ModelMetric, type StoredWeight, core } from "../lib/core";
 import { claimantOf, loadExtensionMarketplaces } from "../lib/extensionMarketplace";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
+import { VUE_RECHOISIE } from "../lib/vues";
 
 type Props = {
   installedModels: string[];
@@ -117,6 +118,14 @@ export function InstalledModelsView({
      une page, pas un panneau qui se glisse à côté. */
   const { providers: cloudProviders, reload: reloadCloudProviders } = useCloudProviders();
   const [openFolder, setOpenFolder] = useState<string | null>(null);
+  // Recliquer « Modèles » dans la barre latérale referme le dossier ouvert.
+  useEffect(() => {
+    const surRechoix = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === "installed") setOpenFolder(null);
+    };
+    window.addEventListener(VUE_RECHOISIE, surRechoix);
+    return () => window.removeEventListener(VUE_RECHOISIE, surRechoix);
+  }, []);
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [activatingModel, setActivatingModel] = useState<string | null>(null);
   const [modelsDir, setModelsDir] = useState("");

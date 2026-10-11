@@ -806,14 +806,18 @@ ${d.texte}`
     try {
       const providers = await core.listProviders();
       const active = providers.find((p) => p.is_active) ?? providers[0];
-      const endpoint = active?.endpoint ?? "http://127.0.0.1:8080";
+      // Les modèles de cette machine se lisent chez le moteur local, même quand
+      // un catalogue distant (OmniRoute…) est actif : sinon ils disparaissaient
+      // du sélecteur, et on ne pouvait plus revenir à un modèle local.
+      const local = providers.find((p) => p.kind === "local") ?? active;
+      const endpoint = local?.endpoint ?? "http://127.0.0.1:8080";
 
       let list: string[] = [];
       try {
         list = await core.listModels(endpoint);
         setInstalledModels(list);
       } catch {
-        list = active?.model ? [active.model] : [];
+        list = local?.model ? [local.model] : [];
         setInstalledModels(list);
       }
 
@@ -2343,13 +2347,19 @@ ${preview}`,
     return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
   }
 
+  /** Un modèle de cette machine choisi dans le sélecteur. Si un catalogue
+   *  distant était actif, le moteur local redevient le fournisseur actif —
+   *  avant, le nom du fichier local était inscrit sur le fournisseur distant,
+   *  qui ne savait pas quoi en faire. */
   async function handleSwitchModel(tag: string) {
     const providers = await core.listProviders();
-    const active = providers.find((p) => p.is_active) ?? providers[0];
-    if (active) {
-      await core.configureProvider(active.endpoint, tag);
-      await refreshActiveModel();
-    }
+    const local = providers.find((p) => p.kind === "local");
+    const cible = local ?? providers.find((p) => p.is_active) ?? providers[0];
+    if (!cible) return;
+    if (!cible.is_active) await core.setActiveProvider(cible.id);
+    await core.configureProvider(cible.endpoint, tag);
+    window.dispatchEvent(new Event(ACTIVE_MODEL_CHANGED));
+    await refreshActiveModel();
   }
 
   return (
@@ -2369,7 +2379,6 @@ ${preview}`,
         onClose={() => setQuickModelOpen(false)}
         activeModel={activeModel}
         installedModels={installedModels}
-        isProviderLocal={isLocalModel}
         onSelectModel={handleSwitchModel}
         onOpenMarketplace={onOpenMarketplace}
       />

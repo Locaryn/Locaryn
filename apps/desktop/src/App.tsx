@@ -36,6 +36,7 @@ import type { ModelDownloadSource } from "./lib/modelRegistry";
 import { setRunReveal } from "./lib/runPanel";
 import { suivreSousAgents } from "./lib/sousAgents";
 import { taskCenter } from "./lib/taskCenter";
+import { VUE_RECHOISIE } from "./lib/vues";
 import { KINDS, type WorkspaceKind, openTab, setWorkspaceOpen, toggleTab } from "./lib/workspace";
 import { BottomPanel } from "./panels/BottomPanel";
 import { ChatPanel } from "./panels/ChatPanel";
@@ -225,6 +226,12 @@ export function App() {
 
   // Active top-level view: "chat" | "models" | "studio" | "training" | "connectors" | "settings" | "account"
   const [activeView, setActiveView] = useState<string>("chat");
+  /** Recliquer l'écran déjà ouvert ramène à sa page d'accueil (un dossier de
+   *  modèles ouvert se referme) : le raccourci « retour » qu'on attend. */
+  const choisirVue = (v: typeof activeView) => {
+    if (v === activeView) window.dispatchEvent(new CustomEvent(VUE_RECHOISIE, { detail: v }));
+    setActiveView(v);
+  };
   const [settingsInitialSection, setSettingsInitialSection] = useState<Section | undefined>(
     undefined,
   );
@@ -1043,7 +1050,7 @@ export function App() {
       <TopBar
         onToggleRail={() => setLeftOpen((v) => !v)}
         activeView={activeView}
-        onSelectView={(v) => setActiveView(v)}
+        onSelectView={(v) => choisirVue(v as typeof activeView)}
         mode={health?.mode ?? "local"}
         demo={health?.version.includes("demo") ?? false}
         conversationTitle={
@@ -1233,7 +1240,7 @@ export function App() {
                 onSessionsMerged={handleMergeSessions}
                 onNewEphemeralChat={handleNewEphemeralChat}
                 activeView={activeView}
-                onSelectView={(v) => setActiveView(v as typeof activeView)}
+                onSelectView={(v) => choisirVue(v as typeof activeView)}
                 activeCapabilities={activeCapabilities}
                 installedExtensions={activeExtensions}
                 onOpenProjectSettings={(p) => setProjectSettings(p)}
