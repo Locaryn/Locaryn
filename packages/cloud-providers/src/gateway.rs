@@ -347,6 +347,9 @@ pub async fn status(host: &Host<'_>, p: &DeclaredProvider) -> CloudProviderStatu
     let installed = is_installed(&dir, &local);
     let url = health_url(p, &local);
     let running = probe(host, &url, stored_key(host, &p.id).as_deref()).await;
+    if running {
+        rattraper_cle(host, p, &local, &dir).await;
+    }
 
     let detail = if running {
         format!("{} répond sur {}.", p.label(), p.manifest.api_url)
@@ -747,35 +750,85 @@ async fn obtenir_cle(host: &Host<'_>, p: &DeclaredProvider, local: &CloudLocalRu
             return;
         }
     };
-    let dossier = dir.to_path_buf();
-    let sortie = tokio::task::spawn_blocking(move || {
-        let mut command = Command::new(&programme_);
-        command.args(&arguments).current_dir(&dossier);
-        for (k, v) in &env {
-            command.env(k, v);
-        }
-        quiet(&mut command);
-        command.output()
-    })
-    .await;
-    let Ok(Ok(sortie)) = sortie else {
-        tracing::warn!(fournisseur = %p.id, "la commande de clé n'a pas pu être lancée");
-        return;
-    };
-    let texte = String::from_utf8_lossy(&sortie.stdout);
-    match extraire_cle(&texte, &prov.field) {
-        Some(cle) => match set_key(host, &p.id, &cle) {
-            Ok(()) => tracing::info!(fournisseur = %p.id, "clé obtenue auprès de la passerelle"),
-            Err(e) => {
-                tracing::warn!(fournisseur = %p.id, erreur = %e, "clé obtenue mais non gardée")
+    // La passerelle répond (401) avant que son API de clés soit prête : la
+    // première demande échouait, et rien ne la refaisait — la clé restait « en
+    // attente » pour toujours. On réessaie le temps qu'elle finisse de démarrer.
+    for essai in 1..=TENTATIVES_CLE {
+        let dossier = dir.to_path_buf();
+        let (programme_, arguments, env) = (programme_.clone(), arguments.clone(), env.clone());
+        let sortie = tokio::task::spawn_blocking(move || {
+            let mut command = Command::new(&programme_);
+            command.args(&arguments).current_dir(&dossier);
+            for (k, v) in &env {
+                command.env(k, v);
             }
-        },
-        None => tracing::warn!(
-            fournisseur = %p.id,
-            sortie = %queue(&sortie.stderr),
-            "la passerelle n'a pas rendu de clé"
-        ),
+            quiet(&mut command);
+            command.output()
+        })
+        .await;
+        let Ok(Ok(sortie)) = sortie else {
+            tracing::warn!(fournisseur = %p.id, "la commande de clé n'a pas pu être lancée");
+            return;
+        };
+        let texte = String::from_utf8_lossy(&sortie.stdout);
+        match extraire_cle(&texte, &prov.field) {
+            Some(cle) => {
+                match set_key(host, &p.id, &cle) {
+                    Ok(()) => {
+                        tracing::info!(fournisseur = %p.id, essai, "clé obtenue auprès de la passerelle")
+                    }
+                    Err(e) => {
+                        tracing::warn!(fournisseur = %p.id, erreur = %e, "clé obtenue mais non gardée")
+                    }
+                }
+                return;
+            }
+            None => tracing::warn!(
+                fournisseur = %p.id,
+                essai,
+                sortie = %queue(&sortie.stdout),
+                erreurs = %queue(&sortie.stderr),
+                "la passerelle n'a pas rendu de clé"
+            ),
+        }
+        if essai < TENTATIVES_CLE {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
     }
+}
+
+/// Combien de fois demander la clé à une passerelle qui finit de démarrer.
+const TENTATIVES_CLE: u32 = 6;
+
+/// La dernière demande de clé faite depuis l'état, par fournisseur : l'écran
+/// relit l'état souvent, et chaque demande lance un processus.
+static DERNIERE_DEMANDE: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// La passerelle tourne mais Locaryn n'a pas sa clé (demande ratée au
+/// démarrage, ou passerelle lancée à la main) : la redemander, au plus une fois
+/// par minute.
+async fn rattraper_cle(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+    local: &CloudLocalRuntime,
+    dir: &Path,
+) {
+    if local.provision_key.is_none() || stored_key(host, &p.id).is_some() {
+        return;
+    }
+    {
+        let mut dernieres = DERNIERE_DEMANDE.lock().unwrap_or_else(|e| e.into_inner());
+        if dernieres
+            .get(&p.id)
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(60))
+        {
+            return;
+        }
+        dernieres.insert(p.id.clone(), std::time::Instant::now());
+    }
+    obtenir_cle(host, p, local, dir).await;
 }
 
 #[cfg(test)]

@@ -3821,6 +3821,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-barcode-scanner",
  "tauri-plugin-deep-link",
+ "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tokio",
  "tracing",

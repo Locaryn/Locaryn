@@ -130,7 +130,8 @@ async fn fetch(host: &Host<'_>, p: &DeclaredProvider) -> Result<Vec<CloudModel>,
     // La clé n'est pas toujours nécessaire pour lire un catalogue ; quand elle
     // l'est, l'absence se voit sur un 401 explicite plutôt que sur une liste
     // vide.
-    if let Some(key) = stored_key(host, &p.id) {
+    let cle = stored_key(host, &p.id);
+    if let Some(key) = &cle {
         req = req.bearer_auth(key);
     }
     for (name, value) in &p.manifest.headers {
@@ -143,6 +144,16 @@ async fn fetch(host: &Host<'_>, p: &DeclaredProvider) -> Result<Vec<CloudModel>,
     if !resp.status().is_success() {
         let code = resp.status();
         return Err(match code.as_u16() {
+            // Pas de clé du tout : il n'y a rien à « vérifier », elle manque.
+            401 | 403 if cle.is_none() && p.manifest.local.is_some() => format!(
+                "{} attend sa clé d'accès. Locaryn la demande à la passerelle dès qu'elle est \
+                 prête ; « Vérifier » relance la demande.",
+                p.label()
+            ),
+            401 | 403 if cle.is_none() => format!(
+                "{} demande une clé d'accès : collez-la dans ce dossier.",
+                p.label()
+            ),
             401 | 403 => format!(
                 "{} a refusé la clé ({code}). Vérifiez-la dans le panneau du fournisseur.",
                 p.label()
