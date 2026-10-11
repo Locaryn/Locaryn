@@ -282,7 +282,7 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
                     });
                   }}
                 >
-                  {copied ? "Copié ✓" : "Copier"}
+                  {copied ? "Copié" : "Copier"}
                 </button>
               </div>
               <p className="lo-hint">Ce texte disparaîtra au rechargement de la page.</p>

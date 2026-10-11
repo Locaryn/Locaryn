@@ -1,4 +1,4 @@
-import { capabilityLabel } from "@locaryn/ui-core";
+import { Icon, capabilityLabel } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CATALOGUE, type Capability, type PhoneExtension, api } from "../lib/core";
 import { useCoucheRetour } from "../lib/navigation";
@@ -292,7 +292,7 @@ export function Extensions({ onBack, onChanged }: Props) {
             }}
             onClick={() => setSearchQuery("")}
           >
-            ✕
+            <Icon name="close" size={18} />
           </button>
         )}
       </div>
@@ -606,7 +606,7 @@ export function Extensions({ onBack, onChanged }: Props) {
                 style={{ width: "auto", minHeight: "auto", padding: "4px 8px", border: "none" }}
                 onClick={() => setShowInstallModal(false)}
               >
-                ✕
+                <Icon name="close" size={18} />
               </button>
             </div>
             <form onSubmit={handleManualInstall}>
@@ -659,7 +659,7 @@ export function Extensions({ onBack, onChanged }: Props) {
                 style={{ width: "auto", minHeight: "auto", padding: "4px 8px", border: "none" }}
                 onClick={() => setPermissionTarget(null)}
               >
-                ✕
+                <Icon name="close" size={18} />
               </button>
             </div>
             <div className="lo-modal-body">

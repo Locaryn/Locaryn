@@ -1,4 +1,4 @@
-import { LoProgress } from "@locaryn/ui-core";
+import { Icon, LoProgress } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type MediaModel, type ModelPullProgress, api } from "../lib/core";
 import { useCoucheRetour } from "../lib/navigation";
@@ -493,7 +493,7 @@ export function Models({ onBack, initialTab }: Props) {
                 }}
                 onClick={() => setSearchQuery("")}
               >
-                ✕
+                <Icon name="close" size={18} />
               </button>
             )}
           </div>
@@ -666,7 +666,7 @@ export function Models({ onBack, initialTab }: Props) {
                 style={{ width: "auto", minHeight: "auto", padding: "4px 8px", border: "none" }}
                 onClick={() => setShowCustomPull(false)}
               >
-                ✕
+                <Icon name="close" size={18} />
               </button>
             </div>
             <form onSubmit={handleCustomInstall}>

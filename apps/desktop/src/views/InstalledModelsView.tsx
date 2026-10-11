@@ -328,11 +328,11 @@ export function InstalledModelsView({
       setDebridedModels(updated);
       if (active) {
         setNoticeMessage(
-          `⚡ Débridage activé pour « ${entry.title} ». Le modèle répondra sans restriction ni censure.`,
+          `Débridage activé pour « ${entry.title} ». Le modèle répondra sans restriction ni censure.`,
         );
       } else {
         setNoticeMessage(
-          `🛡️ Débridage retiré pour « ${entry.title} » (Mode éthique standard rétabli).`,
+          `Débridage retiré pour « ${entry.title} » (Mode éthique standard rétabli).`,
         );
       }
       setTimeout(() => setNoticeMessage(null), 4500);

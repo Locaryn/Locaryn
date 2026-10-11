@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Ce que le téléphone a le droit de faire, partout.",
   "windows": ["main"],
-  "permissions": ["core:default", "deep-link:default"]
+  "permissions": ["core:default", "deep-link:default", "notification:default"]
 }

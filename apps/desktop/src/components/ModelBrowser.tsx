@@ -1234,7 +1234,7 @@ export function ModelBrowser({
     }
     if (q.includes("Q4_0_4_4") || q.includes("Q4_0_8_8") || q.includes("Q4_0_4_8")) {
       return {
-        badge: "⚡ 4-bit Vectorisé (ARM / NPU)",
+        badge: "4-bit Vectorisé (ARM / NPU)",
         badgeStyle: {
           background: "rgba(110, 168, 254, 0.15)",
           color: "var(--info)",
@@ -1250,7 +1250,7 @@ export function ModelBrowser({
     }
     if (q === "Q4_0" || q === "Q4_K") {
       return {
-        badge: "⚡ 4-bit Uniforme (Legacy)",
+        badge: "4-bit Uniforme (Legacy)",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
           color: "var(--warn)",
@@ -1266,7 +1266,7 @@ export function ModelBrowser({
     }
     if (q === "Q4_1") {
       return {
-        badge: "⚡ 4-bit Uniforme + Offset",
+        badge: "4-bit Uniforme + Offset",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
           color: "var(--warn)",
@@ -1400,7 +1400,7 @@ export function ModelBrowser({
     // --- Q3 Variants ---
     if (q.includes("Q3_K_M")) {
       return {
-        badge: "⚡ 3-bit K-Quant Medium",
+        badge: "3-bit K-Quant Medium",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
           color: "var(--warn)",
@@ -1421,7 +1421,7 @@ export function ModelBrowser({
       q.includes("Q3_K")
     ) {
       return {
-        badge: "⚡ 3-bit K-Quant",
+        badge: "3-bit K-Quant",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
           color: "var(--warn)",
@@ -1438,7 +1438,7 @@ export function ModelBrowser({
     // --- Q2 Variants ---
     if (q.includes("Q2_K")) {
       return {
-        badge: "⚡ 2-bit Extrême",
+        badge: "2-bit Extrême",
         badgeStyle: {
           background: "rgba(251, 191, 36, 0.15)",
           color: "var(--warn)",
@@ -2698,7 +2698,9 @@ export function ModelBrowser({
                           </span>
                         ))}
                         <span className="locaryn-tag locaryn-tag-soft">{f.license}</span>
-                        <span className="locaryn-model-chevron">{open ? "▾" : "▸"}</span>
+                        <span className="locaryn-model-chevron">
+                          <Icon name={open ? "caret-down" : "caret-right"} size={12} />
+                        </span>
                       </div>
                     </button>
                   </div>
@@ -3222,7 +3224,7 @@ export function ModelBrowser({
                         borderRadius: "4px",
                       }}
                     >
-                      <strong style={{ color: "var(--warn)" }}>⚡ Q3_K / IQ (Ultra léger)</strong>
+                      <strong style={{ color: "var(--warn)" }}>Q3_K / IQ (Ultra léger)</strong>
                       <div style={{ color: "var(--text-dim)" }}>
                         Pour PC modestes ou cartes 4-8 Go.
                       </div>
@@ -3323,7 +3325,7 @@ export function ModelBrowser({
                         onClick={() => setQuantFilter("light")}
                         style={{ fontSize: "11px", padding: "4px 9px" }}
                       >
-                        ⚡ Légères (Q2/Q3/IQ)
+                        Légères (Q2/Q3/IQ)
                       </button>
                     )}
                     {repoInspection.candidates.filter((c) => {

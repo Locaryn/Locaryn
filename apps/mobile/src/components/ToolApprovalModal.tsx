@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
 
 export type RiskLevel = "low" | "medium" | "high" | "critical";
@@ -88,7 +89,7 @@ export function ToolApprovalModal({ approval, onResolve, onCancel }: Props) {
               }}
               onClick={onCancel}
             >
-              ✕
+              <Icon name="close" size={18} />
             </button>
           )}
         </div>

@@ -187,7 +187,9 @@ export function WorkspacePicker({
           <Icon name={displayIcon} size={14} />
         </span>
         <span className="locaryn-ws-label">{displayLabel}</span>
-        <span className="locaryn-ws-caret">{open ? "▾" : "▸"}</span>
+        <span className="locaryn-ws-caret">
+          <Icon name={open ? "caret-down" : "caret-right"} size={12} />
+        </span>
       </button>
 
       {open && (
@@ -318,7 +320,7 @@ export function WorkspacePicker({
                     onClick={(e) => handleRemoveSsh(e, s.id)}
                     title="Retirer cet emplacement"
                   >
-                    ×
+                    <Icon name="close" size={16} />
                   </button>
                 </div>
               ))}

@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type Conversation,
@@ -163,7 +164,7 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
           title="Historique"
           onClick={() => setDrawerOpen(true)}
         >
-          ☰
+          <Icon name="menu" size={20} />
         </button>
         <span className="lo-dot" />
         <span className="lo-bar-title">{status.server_name ?? "Locaryn"}</span>
@@ -285,7 +286,7 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
                 onClick={() => setLightbox(null)}
                 aria-label="Fermer l'image agrandie"
               >
-                ×
+                <Icon name="close" size={16} />
               </button>
             </div>
             <img

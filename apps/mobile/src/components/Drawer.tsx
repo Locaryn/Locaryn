@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { type Conversation, type PhoneProject, api } from "../lib/core";
 import { useCoucheRetour } from "../lib/navigation";
@@ -71,7 +72,7 @@ function ConversationRow({
         aria-pressed={selection.cochee}
       >
         <span className="lo-drawer-check" aria-hidden>
-          {selection.cochee ? "✓" : ""}
+          {selection.cochee && <Icon name="check" size={14} />}
         </span>
         <span className="lo-drawer-item-title">{chat.title}</span>
       </button>
@@ -295,7 +296,9 @@ export function Drawer({
                 disabled={busy}
                 onClick={() => void archiver(menu.chat)}
               >
-                <span className="lo-sheet-icon">🗄</span>
+                <span className="lo-sheet-icon">
+                  <Icon name="archive" size={18} />
+                </span>
                 <span className="lo-sheet-text">
                   <span className="lo-sheet-label">Archiver</span>
                   <span className="lo-hint">
@@ -311,7 +314,9 @@ export function Drawer({
                   setMenu(null);
                 }}
               >
-                <span className="lo-sheet-icon">☑</span>
+                <span className="lo-sheet-icon">
+                  <Icon name="check-circle" size={18} />
+                </span>
                 <span className="lo-sheet-text">
                   <span className="lo-sheet-label">Sélectionner plusieurs</span>
                   <span className="lo-hint">
@@ -325,7 +330,9 @@ export function Drawer({
                 disabled={busy}
                 onClick={() => setMenu({ kind: "move", chat: menu.chat })}
               >
-                <span className="lo-sheet-icon">📁</span>
+                <span className="lo-sheet-icon">
+                  <Icon name="project" size={18} />
+                </span>
                 <span className="lo-sheet-text">
                   <span className="lo-sheet-label">Déplacer vers un projet…</span>
                   <span className="lo-hint">Range la conversation dans un projet</span>
@@ -346,7 +353,9 @@ export function Drawer({
                   disabled={busy}
                   onClick={() => void deplacer(menu.chat, p.id)}
                 >
-                  <span className="lo-sheet-icon">📁</span>
+                  <span className="lo-sheet-icon">
+                    <Icon name="project" size={18} />
+                  </span>
                   <span className="lo-sheet-text">
                     <span className="lo-sheet-label">{p.name}</span>
                   </span>
@@ -388,7 +397,9 @@ export function Drawer({
                   disabled={busy}
                   onClick={() => void pourChacune((id) => api.moveConversation(id, p.id))}
                 >
-                  <span className="lo-sheet-icon">📁</span>
+                  <span className="lo-sheet-icon">
+                    <Icon name="project" size={18} />
+                  </span>
                   <span className="lo-sheet-text">
                     <span className="lo-sheet-label">{p.name}</span>
                   </span>
@@ -486,7 +497,12 @@ export function Drawer({
                       onClick={() => void toggleProject(p.id)}
                       aria-expanded={openProject === p.id}
                     >
-                      <span className="lo-drawer-caret">{openProject === p.id ? "▾" : "▸"}</span>
+                      <span className="lo-drawer-caret">
+                        <Icon
+                          name={openProject === p.id ? "caret-down" : "caret-right"}
+                          size={14}
+                        />
+                      </span>
                       {p.name}
                     </button>
                     {openProject === p.id && (

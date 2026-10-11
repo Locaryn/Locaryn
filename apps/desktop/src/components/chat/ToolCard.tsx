@@ -56,7 +56,7 @@ export function ToolCard({ tool, args, status, output }: Props) {
           )}
         </span>
         <span className="locaryn-tool-chevron" aria-hidden="true">
-          {open ? "▾" : "▸"}
+          <Icon name={open ? "caret-down" : "caret-right"} size={12} />
         </span>
       </button>
       {open && (

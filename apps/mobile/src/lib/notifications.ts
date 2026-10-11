@@ -1,65 +1,132 @@
 /**
- * Gestion des notifications push et alertes système pour l'application mobile Locaryn.
+ * Les notifications du téléphone : réponse prête, autorisation en attente,
+ * modèle téléchargé, média produit.
+ *
+ * Dans l'application, elles passent par le plugin natif de Tauri : l'API
+ * `Notification` du navigateur n'existe pas dans la WebView Android — aucune
+ * demande d'autorisation ne s'affichait et rien ne partait. L'API du navigateur
+ * ne sert plus que dans l'aperçu web.
  */
 
-const STORAGE_KEY = "locaryn_push_notifications_enabled";
+import {
+  sendNotification as envoyerNatif,
+  isPermissionGranted,
+  requestPermission,
+} from "@tauri-apps/plugin-notification";
 
-export function isNotificationSupported(): boolean {
-  return typeof window !== "undefined" && "Notification" in window;
+const STORAGE_KEY = "locaryn_push_notifications_enabled";
+/** La demande Android n'est faite d'office qu'une fois : ensuite, c'est le réglage. */
+const DEMANDEE_KEY = "locaryn_notifications_demandees";
+
+const natif = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+type Etat = NotificationPermission | "unsupported";
+
+/** La permission connue, mise à jour dès que le système répond. */
+let etat: Etat = natif
+  ? "default"
+  : typeof window !== "undefined" && "Notification" in window
+    ? Notification.permission
+    : "unsupported";
+
+function lire(cle: string): string | null {
+  try {
+    return localStorage.getItem(cle);
+  } catch (e) {
+    console.warn("réglage de notification illisible :", e);
+    return null;
+  }
 }
 
-export function getNotificationPermission(): NotificationPermission | "unsupported" {
-  if (!isNotificationSupported()) return "unsupported";
-  return Notification.permission;
+function ecrire(cle: string, valeur: string): void {
+  try {
+    localStorage.setItem(cle, valeur);
+  } catch (e) {
+    console.warn("réglage de notification non enregistré :", e);
+  }
+}
+
+export function isNotificationSupported(): boolean {
+  return etat !== "unsupported";
+}
+
+export function getNotificationPermission(): Etat {
+  return etat;
 }
 
 export function isPushEnabled(): boolean {
-  if (!isNotificationSupported()) return false;
-  if (Notification.permission !== "granted") return false;
-  const stored = localStorage.getItem(STORAGE_KEY);
+  if (etat !== "granted") return false;
+  const stored = lire(STORAGE_KEY);
   return stored === null ? true : stored === "true";
 }
 
 export function setPushEnabled(enabled: boolean): void {
-  localStorage.setItem(STORAGE_KEY, enabled ? "true" : "false");
+  ecrire(STORAGE_KEY, enabled ? "true" : "false");
+}
+
+/**
+ * Au démarrage : relire la permission, et la demander une première fois
+ * d'office (la fenêtre Android « Autoriser Locaryn à vous envoyer des
+ * notifications ? »). Un refus ne se redemande pas : il se change dans Réglages.
+ */
+export async function initNotifications(): Promise<void> {
+  if (!natif) return;
+  try {
+    if (await isPermissionGranted()) {
+      etat = "granted";
+      return;
+    }
+    if (lire(DEMANDEE_KEY)) {
+      etat = "denied";
+      return;
+    }
+    ecrire(DEMANDEE_KEY, "1");
+    etat = await requestPermission();
+    if (etat === "granted") setPushEnabled(true);
+  } catch (e) {
+    console.warn("permission de notification illisible :", e);
+  }
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (!isNotificationSupported()) return false;
   try {
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      setPushEnabled(true);
-      return true;
+    if (natif) {
+      etat = (await isPermissionGranted()) ? "granted" : await requestPermission();
+    } else if (etat !== "unsupported") {
+      etat = await Notification.requestPermission();
+    } else {
+      return false;
     }
-    setPushEnabled(false);
-    return false;
   } catch (e) {
-    console.warn("Échec de la demande de permission de notification:", e);
+    console.warn("Échec de la demande de permission de notification :", e);
     return false;
   }
+  const ok = etat === "granted";
+  setPushEnabled(ok);
+  return ok;
 }
 
 export function sendNotification(
   title: string,
   options?: {
     body?: string;
-    icon?: string;
     tag?: string;
-    silent?: boolean;
-    data?: unknown;
   },
 ): boolean {
   if (!isPushEnabled()) return false;
   try {
-    new Notification(title, {
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      ...options,
-    });
+    if (natif) {
+      envoyerNatif({ title, body: options?.body });
+    } else {
+      new Notification(title, {
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        ...options,
+      });
+    }
     return true;
   } catch (e) {
-    console.warn("Échec de l'envoi de la notification:", e);
+    console.warn("Échec de l'envoi de la notification :", e);
     return false;
   }
 }

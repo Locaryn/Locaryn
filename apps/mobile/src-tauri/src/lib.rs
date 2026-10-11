@@ -2874,7 +2874,8 @@ async fn approve_tool_call(decision: ToolApprovalDecision) -> Result<(), String>
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init());
 
     // The camera plugin only exists on a phone. Registering it unconditionally
     // would stop the desktop build, which is what the layout is developed on.

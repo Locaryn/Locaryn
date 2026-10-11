@@ -562,6 +562,8 @@ body {
 .lo-back {
   flex: none;
   min-width: 44px;
+  /* Même alignement optique que le bouton du tiroir : l'icône sur la marge. */
+  margin-left: -12px;
   padding: 0 var(--space-2);
   background: none;
   border: none;
@@ -779,6 +781,15 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
 }
 .lo-bar-menu:active {
   color: var(--text);
+}
+/* Alignement optique : la zone tactile fait 44px mais l'icône 20, centrée.
+   Sans compensation, l'icône du bord commençait 12px en retrait de la marge
+   de 20px que suit tout le reste de l'écran — elle paraissait décalée. */
+.lo-bar > .lo-bar-menu:first-child {
+  margin-left: -12px;
+}
+.lo-bar > .lo-bar-menu:last-child {
+  margin-right: -12px;
 }
 
 .lo-drawer-veil {

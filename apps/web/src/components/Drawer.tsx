@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { type Conversation, type PhoneProject, api } from "../lib/core";
 
@@ -96,7 +97,12 @@ export function Drawer({ open, onClose, conversations, currentId, onPick, onNew 
                       onClick={() => void toggleProject(p.id)}
                       aria-expanded={openProject === p.id}
                     >
-                      <span className="lo-drawer-caret">{openProject === p.id ? "▾" : "▸"}</span>
+                      <span className="lo-drawer-caret">
+                        <Icon
+                          name={openProject === p.id ? "caret-down" : "caret-right"}
+                          size={14}
+                        />
+                      </span>
                       {p.name}
                     </button>
                     {openProject === p.id && (

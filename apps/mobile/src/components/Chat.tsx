@@ -836,7 +836,7 @@ export function Chat({
                     {enCours && <span className="lo-spinner" aria-hidden />}
                     {enCours ? "Réflexion…" : "Réflexion"}
                     <span className={`lo-reflexion-caret${deplie.has(m.id) ? " is-open" : ""}`}>
-                      ›
+                      <Icon name="caret-right" size={12} />
                     </span>
                   </span>
                   {deplie.has(m.id) && (
@@ -854,7 +854,11 @@ export function Chat({
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(texte) }}
                   />
                 ))}
-              {m.luEnCours && <span className="lo-msg-lu">✓ Lu pendant la tâche</span>}
+              {m.luEnCours && (
+                <span className="lo-msg-lu">
+                  <Icon name="check" size={12} /> Lu pendant la tâche
+                </span>
+              )}
               {(m.images?.length || m.forge) && (
                 <div
                   className={`lo-msg-images${m.forged ? " lo-msg-images-forged" : ""}`}
@@ -998,7 +1002,7 @@ export function Chat({
                 onClick={() => setLightbox(null)}
                 aria-label="Fermer l'image agrandie"
               >
-                ×
+                <Icon name="close" size={16} />
               </button>
             </div>
             <img
@@ -1026,7 +1030,7 @@ export function Chat({
               onClick={() => setFileReduite((v) => !v)}
             >
               <span className={`lo-queue-caret${fileReduite ? " is-closed" : ""}`} aria-hidden>
-                ▾
+                <Icon name="caret-down" size={12} />
               </span>
               {filePause ? "En pause" : busy ? "Après cette réponse" : "Envoi…"} · {file.length}
               {fileReduite && <span className="lo-queue-peek">{file[0].text}</span>}
@@ -1062,7 +1066,7 @@ export function Chat({
                     onClick={() => void retirer(q)}
                     aria-label="Retirer de la file"
                   >
-                    ×
+                    <Icon name="close" size={16} />
                   </button>
                 </li>
               ))}
@@ -1084,7 +1088,7 @@ export function Chat({
                     aria-label={`Retirer ${p.nom}`}
                     onClick={() => setPieces((l) => l.filter((x) => x.id !== p.id))}
                   >
-                    ×
+                    <Icon name="close" size={16} />
                   </button>
                 </span>
               ))}

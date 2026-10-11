@@ -1,3 +1,4 @@
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { reasoningPeek, reasoningSummary } from "../../lib/reasoning";
 
@@ -42,7 +43,7 @@ export function ReasoningBlock({ reasoning, inProgress }: Props) {
         aria-expanded={open}
       >
         <span className="locaryn-reason-caret" aria-hidden="true">
-          {open ? "▾" : "▸"}
+          <Icon name={open ? "caret-down" : "caret-right"} size={12} />
         </span>
         <span className="locaryn-reason-label">{inProgress ? "Réflexion…" : "Raisonnement"}</span>
         {!open && (

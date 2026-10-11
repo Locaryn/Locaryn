@@ -23,6 +23,7 @@ import {
   coreMode,
 } from "./lib/core";
 import { useCoucheRetour, useNavigation } from "./lib/navigation";
+import { initNotifications } from "./lib/notifications";
 import { surEchecReseau } from "./lib/reachability";
 import { annulerScan, isScannerAvailable, scan } from "./lib/scanner";
 import { appliquerTheme, lireTheme } from "./lib/theme";
@@ -77,6 +78,12 @@ export function App() {
   useEffect(() => {
     appliquerTheme(lireTheme());
   }, []);
+
+  // Une fois connecté : la demande Android d'envoyer des notifications (réponse
+  // prête, autorisation en attente), faite une seule fois d'office.
+  useEffect(() => {
+    if (status?.signed_in) void initNotifications();
+  }, [status?.signed_in]);
 
   // Le retour d'Android annule la confirmation d'appairage au lieu de quitter
   // l'application en plein milieu.

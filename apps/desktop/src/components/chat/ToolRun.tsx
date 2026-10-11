@@ -58,7 +58,7 @@ export function ToolRun({ entries }: Props) {
           </span>
         )}
         <span className="locaryn-toolrun-caret" aria-hidden="true">
-          {ouvert ? "▾" : "›"}
+          <Icon name={ouvert ? "caret-down" : "caret-right"} size={12} />
         </span>
       </button>
 

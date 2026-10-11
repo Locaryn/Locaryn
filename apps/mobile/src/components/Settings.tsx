@@ -719,7 +719,7 @@ export function Settings({
                 style={{ width: "auto", minHeight: "auto", padding: "4px 8px", border: "none" }}
                 onClick={() => setShowPasswordModal(false)}
               >
-                ✕
+                <Icon name="close" size={18} />
               </button>
             </div>
             <form onSubmit={handleChangePassword}>
@@ -786,7 +786,7 @@ export function Settings({
                 style={{ width: "auto", minHeight: "auto", padding: "4px 8px", border: "none" }}
                 onClick={() => setShowAddUserModal(false)}
               >
-                ✕
+                <Icon name="close" size={18} />
               </button>
             </div>
             <form onSubmit={handleCreateUser}>
