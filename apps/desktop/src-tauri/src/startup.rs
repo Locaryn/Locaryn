@@ -61,6 +61,11 @@ pub fn build_main_window(app: &AppHandle) -> tauri::Result<()> {
         .center()
         .background_color(BACKGROUND)
         .visible(false)
+        // Les fichiers glissés sur la fenêtre doivent arriver à la page (un
+        // dépôt dans la conversation les joint au message) : le gestionnaire
+        // natif de Tauri les captait avant elle, et l'événement `drop` du
+        // navigateur ne recevait aucun fichier.
+        .disable_drag_drop_handler()
         .build()?;
     arm_deadline(app.clone());
     Ok(())

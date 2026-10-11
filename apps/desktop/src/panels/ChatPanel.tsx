@@ -1343,7 +1343,47 @@ ${d.texte}`
     if (!e.target.files) return;
     const picked = Array.from(e.target.files);
     e.target.value = "";
+    await joindreFichiers(picked);
+  }
 
+  /** Des fichiers glissés sur la conversation : joints comme par « Joindre ». */
+  const [survolDepot, setSurvolDepot] = useState(false);
+  const profondeurDepot = useRef(0);
+  function porteDesFichiers(e: React.DragEvent): boolean {
+    return Array.from(e.dataTransfer.types).includes("Files");
+  }
+  function surEntreeDepot(e: React.DragEvent) {
+    if (!porteDesFichiers(e) || !canCompose) return;
+    e.preventDefault();
+    // Entrer dans un enfant déclenche dragenter avant le dragleave du parent :
+    // on compte, sinon la zone clignote en survolant les messages.
+    profondeurDepot.current += 1;
+    setSurvolDepot(true);
+  }
+  function surSurvolDepot(e: React.DragEvent) {
+    if (!porteDesFichiers(e) || !canCompose) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+  function surSortieDepot(e: React.DragEvent) {
+    if (!porteDesFichiers(e)) return;
+    profondeurDepot.current = Math.max(0, profondeurDepot.current - 1);
+    if (profondeurDepot.current === 0) setSurvolDepot(false);
+  }
+  function surDepot(e: React.DragEvent) {
+    if (!porteDesFichiers(e)) return;
+    e.preventDefault();
+    profondeurDepot.current = 0;
+    setSurvolDepot(false);
+    if (!canCompose) return;
+    const fichiers = Array.from(e.dataTransfer.files);
+    if (fichiers.length) {
+      void joindreFichiers(fichiers);
+      inputRef.current?.focus();
+    }
+  }
+
+  async function joindreFichiers(picked: File[]) {
     // Rien n'est ecarte avant lecture : c'est elle qui dit ce qu'on peut faire
     // de chaque fichier. Ce qui ne passe pas est rapporte nommement — un
     // fichier avale en silence, dont le modele ne verra rien, est pire qu'un
@@ -2363,7 +2403,22 @@ ${preview}`,
   }
 
   return (
-    <section className={`locaryn-chat${ephemeral ? " locaryn-chat-ephemeral" : ""}`}>
+    <section
+      className={`locaryn-chat${ephemeral ? " locaryn-chat-ephemeral" : ""}${survolDepot ? " is-depot" : ""}`}
+      onDragEnter={surEntreeDepot}
+      onDragOver={surSurvolDepot}
+      onDragLeave={surSortieDepot}
+      onDrop={surDepot}
+    >
+      {survolDepot && (
+        <div className="locaryn-depot" aria-hidden>
+          <div className="locaryn-depot-carte">
+            <Icon name="download-simple" size={28} />
+            <strong>Déposez vos fichiers</strong>
+            <span>Ils seront joints au message : images, PDF, textes, code…</span>
+          </div>
+        </div>
+      )}
       {/*
         Le mode éphémère se voit, il ne se devine pas. Une bande en tête et un
         liseré tout autour : on doit savoir sans le chercher que ce qui se dit
