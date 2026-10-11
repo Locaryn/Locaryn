@@ -23,7 +23,11 @@ pub struct PluginManifest {
     pub name: String,
     /// Le nom produit, quand il diffère du slug du dépôt. Le catalogue
     /// l'affiche tel quel ; à défaut, il dérive un nom du slug.
-    #[serde(default, rename = "displayName", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "displayName",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub display_name: Option<String>,
     pub version: String,
     #[serde(default)]

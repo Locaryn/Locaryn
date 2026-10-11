@@ -41,7 +41,12 @@ fn capacites_du_socle(famille: &Value) -> Vec<&'static str> {
 
 /// GET /v1/marketplace — `{ categories, families }`.
 pub async fn catalogue(State(s): State<Arc<DaemonState>>) -> Response {
-    let extensions: Vec<_> = s.extensions.list().into_iter().filter(|e| e.enabled).collect();
+    let extensions: Vec<_> = s
+        .extensions
+        .list()
+        .into_iter()
+        .filter(|e| e.enabled)
+        .collect();
     let capacites_actives: std::collections::HashSet<String> = extensions
         .iter()
         .flat_map(|e| e.capabilities.iter().cloned())
@@ -61,7 +66,11 @@ pub async fn catalogue(State(s): State<Arc<DaemonState>>) -> Response {
         let Some(racine) = e.manifest_path.parent() else {
             continue;
         };
-        for slot in e.ui.slots.iter().filter(|s| s.slot == "marketplace.catalogs") {
+        for slot in
+            e.ui.slots
+                .iter()
+                .filter(|s| s.slot == "marketplace.catalogs")
+        {
             let Some(entree) = slot.entry.as_deref() else {
                 continue;
             };
