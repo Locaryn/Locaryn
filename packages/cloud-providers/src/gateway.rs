@@ -14,7 +14,7 @@
 //!
 //! **L'installer chez Locaryn.** Un paquet npm va dans un dossier réservé à la
 //! passerelle ([`gateway_dir`]), sur le volume des données lourdes, et non dans
-//! le dossier global de npm. OmniRoute pèse 450 Mo : `-g` le posait sur le
+//! le dossier global de npm. Une passerelle Node pèse des centaines de Mo : `-g` la posait sur le
 //! disque système, sur le `PATH` de tout le poste, et hors de portée de la
 //! désinstallation du morph.
 //!
@@ -226,9 +226,9 @@ fn entree_secrete(provider_id: &str, nom: &str) -> String {
 /// Une valeur secrète neuve : deux UUID v4, soit 244 bits tirés du
 /// générateur du système, en 64 caractères hexadécimaux.
 ///
-/// La longueur compte autant que l'aléa : OmniRoute refuse de démarrer avec un
-/// `JWT_SECRET` de moins de 32 caractères — et le dit dans son journal, pas à
-/// l'écran de celui qui a cliqué sur « Démarrer ».
+/// La longueur compte autant que l'aléa : une passerelle peut refuser de
+/// démarrer avec un secret de moins de 32 caractères — et le dire dans son
+/// journal, pas à l'écran de celui qui a cliqué sur « Démarrer ».
 fn nouveau_secret() -> String {
     format!(
         "{}{}",
@@ -400,7 +400,7 @@ fn queue(sortie: &[u8]) -> String {
 
 /// Installer la passerelle avec la commande déclarée par le manifeste.
 ///
-/// Bloquante et longue — OmniRoute met plusieurs minutes. La sortie est
+/// Bloquante et longue — une passerelle Node met plusieurs minutes. La sortie est
 /// renvoyée en cas d'échec : c'est elle qui dit qu'il manque Node, les droits,
 /// ou le réseau.
 pub async fn install(host: &Host<'_>, p: &DeclaredProvider) -> Result<String, String> {
@@ -869,8 +869,8 @@ mod tests {
     /// globalement, et la version épinglée s'y retrouve.
     #[test]
     fn un_paquet_npm_s_installe_dans_son_dossier() {
-        let dir = Path::new("D:/donnees/gateways/omniroute");
-        let mut i = npm("omniroute");
+        let dir = Path::new("D:/donnees/gateways/passerelle");
+        let mut i = npm("passerelle");
         i.version = Some("3.8.50".into());
         let cmd = i.command_line(dir).unwrap();
         assert!(
@@ -879,7 +879,7 @@ mod tests {
         );
         assert_eq!(cmd[..3], ["npm", "install", "--prefix"]);
         assert_eq!(cmd[3], dir.display().to_string());
-        assert_eq!(cmd.last().unwrap(), "omniroute@3.8.50");
+        assert_eq!(cmd.last().unwrap(), "passerelle@3.8.50");
     }
 
     #[test]
@@ -956,16 +956,16 @@ mod tests {
         let dir = dossier_d_essai("resolution");
         poser_paquet(
             &dir,
-            "omniroute",
-            serde_json::json!({ "omniroute": "bin/cli.mjs", "autre": "x" }),
+            "passerelle",
+            serde_json::json!({ "passerelle": "bin/cli.mjs", "autre": "x" }),
         );
         let local = CloudLocalRuntime {
-            install: Some(npm("omniroute")),
+            install: Some(npm("passerelle")),
             ..Default::default()
         };
         assert!(is_installed(&dir, &local), "le script du paquet suffit");
 
-        let commande: Vec<String> = ["omniroute", "serve", "--data", "{{data_dir}}"]
+        let commande: Vec<String> = ["passerelle", "serve", "--data", "{{data_dir}}"]
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -992,11 +992,11 @@ mod tests {
     fn sans_paquet_le_programme_garde_son_nom() {
         let dir = dossier_d_essai("sans-paquet");
         let local = CloudLocalRuntime {
-            install: Some(npm("omniroute")),
+            install: Some(npm("passerelle")),
             ..Default::default()
         };
-        let (prog, _) = resoudre(&["omniroute".to_string()], &local, &dir).unwrap();
-        assert_eq!(prog, "omniroute");
+        let (prog, _) = resoudre(&["passerelle".to_string()], &local, &dir).unwrap();
+        assert_eq!(prog, "passerelle");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1025,8 +1025,8 @@ mod tests {
         assert!(!d.display().to_string().contains(".."), "{}", d.display());
     }
 
-    /// Un secret généré passe la validation d'OmniRoute (32 caractères au
-    /// moins), et deux ne se ressemblent jamais.
+    /// Un secret généré passe la validation usuelle des passerelles (32
+    /// caractères au moins), et deux ne se ressemblent jamais.
     #[test]
     fn un_secret_genere_est_long_et_unique() {
         let a = nouveau_secret();

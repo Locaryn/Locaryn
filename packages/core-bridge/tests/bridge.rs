@@ -340,7 +340,7 @@ async fn runs_session_id_porte_la_clé_stable() {
 
 /// Le scénario complet demandé : la conversation est confiée à un noyau
 /// apporté par un morph (Hermes), et le modèle vient d'une passerelle
-/// installée par un autre morph (OmniRoute).
+/// installée par un autre morph.
 ///
 /// Ce qui doit tenir : l'identifiant du modèle traverse le pont **tel quel**.
 /// Un noyau route lui-même vers le fournisseur ; le réécrire, le raccourcir ou
@@ -353,7 +353,7 @@ async fn un_modele_de_passerelle_traverse_le_noyau_tel_quel() {
     let session = uuid::Uuid::new_v4();
 
     let mut entree = input(session, "bonjour");
-    // La forme exacte d'un identifiant OmniRoute : fournisseur / modèle.
+    // La forme exacte d'un identifiant de passerelle : fournisseur / modèle.
     entree.model = Some("anthropic/claude-opus-5".to_string());
     collect(agent.run(entree).await.expect("run")).await;
 

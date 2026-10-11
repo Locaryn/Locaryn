@@ -53,19 +53,19 @@ impl Keychain for TrousseauDEssai {
 
 const MANIFESTE: &str = r#"{
   "apiVersion": "0.1",
-  "name": "morph-omniroute",
+  "name": "morph-passerelle",
   "version": "1.0.0",
   "cloud_provider": {
-    "id": "omniroute",
-    "label": "OmniRoute",
-    "api_url": "http://localhost:20128",
-    "keys_url": "http://localhost:20128",
+    "id": "passerelle",
+    "label": "Passerelle d'exemple",
+    "api_url": "http://localhost:8899",
+    "keys_url": "http://localhost:8899",
     "refresh_hours": 1,
     "local": {
-      "start": ["omniroute"],
-      "dashboard_url": "http://localhost:20128",
-      "install_hint": "npm install -g omniroute",
-      "install": { "kind": "npm", "package": "omniroute", "probe_bin": "omniroute" }
+      "start": ["passerelle"],
+      "dashboard_url": "http://localhost:8899",
+      "install_hint": "npm install -g ma-passerelle",
+      "install": { "kind": "npm", "package": "passerelle", "probe_bin": "passerelle" }
     }
   }
 }"#;
@@ -93,7 +93,7 @@ impl Machine {
     async fn nouvelle(nom: &str) -> Self {
         let racine = std::env::temp_dir().join(format!("locaryn-cloud-test-{nom}"));
         let _ = std::fs::remove_dir_all(&racine);
-        let paquet = racine.join("plugins/morph-omniroute");
+        let paquet = racine.join("plugins/morph-passerelle");
         std::fs::create_dir_all(&paquet).expect("dossier du paquet");
         std::fs::write(paquet.join("morph.json"), MANIFESTE).expect("manifeste");
         let data_dir = racine.join("data");
@@ -106,13 +106,13 @@ impl Machine {
         let record = storage
             .extensions
             .upsert(NewExtension {
-                name: "morph-omniroute".into(),
+                name: "morph-passerelle".into(),
                 version: "1.0.0".into(),
                 api_version: "0.1".into(),
                 kind: ExtensionKind::Plugin,
                 scope: ExtensionScope::User,
                 ecosystem: ExtensionEcosystem::Locaryn,
-                source: Some("github:Locaryn/morph-omniroute".into()),
+                source: Some("github:Locaryn/morph-passerelle".into()),
                 manifest_path: paquet.join("morph.json").display().to_string(),
                 requested: Vec::new(),
             })
@@ -146,7 +146,7 @@ impl Machine {
                 ..Default::default()
             }],
         }
-        .save(&self.data_dir, "omniroute")
+        .save(&self.data_dir, "passerelle")
         .expect("catalogue écrit");
     }
 }
@@ -161,11 +161,11 @@ async fn une_extension_active_apporte_son_fournisseur() {
     let trouves = cloud::declared(&h).await;
     assert_eq!(trouves.len(), 1);
     let p = &trouves[0];
-    assert_eq!(p.id, "omniroute");
-    assert_eq!(p.label(), "OmniRoute");
+    assert_eq!(p.id, "passerelle");
+    assert_eq!(p.label(), "Passerelle d'exemple");
     assert_eq!(
         p.manifest.effective_models_url(),
-        "http://localhost:20128/v1/models"
+        "http://localhost:8899/v1/models"
     );
     assert!(p.manifest.local.is_some(), "une passerelle locale");
 
@@ -202,16 +202,16 @@ async fn lapi_retrouve_le_fournisseur_dun_modele() {
     let p = cloud::provider_of_model(&h, "anthropic/claude-opus-5")
         .await
         .expect("modèle du catalogue");
-    assert_eq!(p.id, "omniroute");
+    assert_eq!(p.id, "passerelle");
 
     // Et la forme préfixée, que l'API accepte pour lever une ambiguïté entre
     // deux catalogues qui publieraient le même nom.
-    let p = cloud::provider_of_model(&h, "omniroute/anthropic/claude-opus-5")
+    let p = cloud::provider_of_model(&h, "passerelle/anthropic/claude-opus-5")
         .await
         .expect("modèle préfixé");
-    assert_eq!(p.id, "omniroute");
+    assert_eq!(p.id, "passerelle");
     assert_eq!(
-        cloud::strip_provider_prefix(&p.id, "omniroute/anthropic/claude-opus-5"),
+        cloud::strip_provider_prefix(&p.id, "passerelle/anthropic/claude-opus-5"),
         "anthropic/claude-opus-5",
         "la passerelle ne connaît que son propre identifiant"
     );
@@ -232,7 +232,7 @@ async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
     m.poser_catalogue();
     let h = m.host();
 
-    let refus = cloud::select(&h, "omniroute", "anthropic/claude-opus-5")
+    let refus = cloud::select(&h, "passerelle", "anthropic/claude-opus-5")
         .await
         .expect_err("sans clé, le choix doit être refusé");
     assert!(
@@ -240,12 +240,12 @@ async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
         "le message doit parler de la clé : {refus}"
     );
 
-    cloud::set_key(&h, "omniroute", "cle-dessai").expect("clé posée");
-    assert!(cloud::stored_key(&h, "omniroute").is_some());
+    cloud::set_key(&h, "passerelle", "cle-dessai").expect("clé posée");
+    assert!(cloud::stored_key(&h, "passerelle").is_some());
 
     // Le préfixe est retiré à l'écriture : c'est l'identifiant du fournisseur
     // qui part sur le fil, pas celui de l'API.
-    cloud::select(&h, "omniroute", "omniroute/anthropic/claude-opus-5")
+    cloud::select(&h, "passerelle", "passerelle/anthropic/claude-opus-5")
         .await
         .expect("le choix doit passer");
 
@@ -259,7 +259,7 @@ async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
     assert_eq!(actif.model.as_deref(), Some("anthropic/claude-opus-5"));
     assert_eq!(
         ProviderRepo::cloud_provider_of(&actif).as_deref(),
-        Some("omniroute")
+        Some("passerelle")
     );
     // Et c'est bien cette clé que la conversation joindra à sa requête.
     assert_eq!(
@@ -267,11 +267,11 @@ async fn choisir_sans_cle_est_refuse_et_avec_cle_ecrit_le_fournisseur() {
         Some("cle-dessai")
     );
 
-    cloud::clear_key(&h, "omniroute").expect("clé effacée");
-    assert!(cloud::stored_key(&h, "omniroute").is_none());
+    cloud::clear_key(&h, "passerelle").expect("clé effacée");
+    assert!(cloud::stored_key(&h, "passerelle").is_none());
 }
 
-/// Une passerelle qui converse sans clé (OmniRoute) ne doit pas être refusée
+/// Une passerelle qui converse sans clé (la passerelle) ne doit pas être refusée
 /// faute de clé : l'exiger bloquait un chemin qui fonctionnait déjà.
 #[tokio::test]
 async fn une_passerelle_sans_cle_obligatoire_se_choisit_sans_cle() {
@@ -296,7 +296,7 @@ async fn une_passerelle_sans_cle_obligatoire_se_choisit_sans_cle() {
     assert!(!infos[0].key_required, "le manifeste le déclare");
     assert!(!infos[0].has_key);
 
-    cloud::select(&h, "omniroute", "anthropic/claude-opus-5")
+    cloud::select(&h, "passerelle", "anthropic/claude-opus-5")
         .await
         .expect("sans clé obligatoire, le choix doit passer");
     let actif = m.storage.providers.active().await.unwrap().expect("actif");
@@ -314,11 +314,11 @@ async fn une_passerelle_sans_cle_obligatoire_se_choisit_sans_cle() {
 async fn sans_trousseau_la_cle_vient_de_lenvironnement() {
     let _env = ENV_LOCK.lock().expect("verrou env");
     let m = Machine::nouvelle("environnement").await;
-    let nom = cloud::env_key_name("omniroute");
-    assert_eq!(nom, "LOCARYN_CLOUD_OMNIROUTE_KEY");
+    let nom = cloud::env_key_name("passerelle");
+    assert_eq!(nom, "LOCARYN_CLOUD_PASSERELLE_KEY");
 
     std::env::set_var(&nom, "cle-de-serveur");
-    let trouvee = cloud::stored_key(&m.host(), "omniroute");
+    let trouvee = cloud::stored_key(&m.host(), "passerelle");
     std::env::remove_var(&nom);
 
     assert_eq!(trouvee.as_deref(), Some("cle-de-serveur"));

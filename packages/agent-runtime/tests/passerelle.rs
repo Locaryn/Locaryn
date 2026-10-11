@@ -1,5 +1,5 @@
 //! Ce qui part réellement sur le fil quand le modèle actif vient d'une
-//! passerelle installée par un morph (OmniRoute et consorts).
+//! passerelle installée par un morph.
 //!
 //! Trois choses doivent tenir, et aucune ne se voit à la lecture du code
 //! appelant : l'adresse (`{endpoint}/v1/chat/completions`), l'en-tête

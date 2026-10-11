@@ -2,8 +2,12 @@
 
 > Un morph peut ajouter un **dossier** dans « Mes modèles » et dans le
 > sélecteur du chat. Derrière ce dossier : une API compatible OpenAI — une
-> passerelle auto-hébergée comme OmniRoute, ou un service distant. Ni moteur,
-> ni noyau : rien ne calcule de jetons sur cette machine.
+> passerelle auto-hébergée, ou un service distant. Ni moteur, ni noyau : rien
+> ne calcule de jetons sur cette machine.
+>
+> L'application ne connaît **aucun** fournisseur en particulier. Tout ce qui
+> suit est déclaré par le morph ; n'importe qui peut publier le sien sans
+> toucher au code de Locaryn (voir § 8).
 
 ---
 
@@ -16,37 +20,39 @@
 | Section du manifeste | `core` | `engine` | `cloud_provider` |
 | Choisi par | une session | le fournisseur actif | le modèle actif |
 
-Confondre un fournisseur avec un moteur ferait apparaître OmniRoute dans
-Réglages → Moteur, à côté de llama.cpp, comme s'il servait des poids. Il n'en
-sert aucun : il route vers Anthropic, OpenAI, Google — chez qui l'utilisateur
-a un compte.
+Confondre un fournisseur avec un moteur ferait apparaître une passerelle dans
+Réglages → Moteur, à côté de llama.cpp, comme si elle servait des poids. Elle
+n'en sert aucun : elle route vers les services chez qui l'utilisateur a un
+compte.
 
 ---
 
 ## 2. Ce que déclare un morph
 
+L'exemple suit une passerelle fictive, `ma-passerelle`, distribuée par npm :
+
 ```json
 "cloud_provider": {
-  "id": "omniroute",
-  "label": "OmniRoute",
-  "api_url": "http://127.0.0.1:20128",
-  "models_url": "http://127.0.0.1:20128/v1/models",
+  "id": "ma-passerelle",
+  "label": "Ma passerelle",
+  "api_url": "http://127.0.0.1:8899",
+  "models_url": "http://127.0.0.1:8899/v1/models",
   "key_required": false,
   "refresh_hours": 1,
   "local": {
-    "install": { "kind": "npm", "package": "omniroute", "version": "3.8.50", "probe_bin": "omniroute" },
-    "start": ["omniroute", "serve", "--no-open", "--port", "20128"],
-    "stop": ["omniroute", "stop"],
-    "env": { "OMNIROUTE_SERVER_HOST": "127.0.0.1", "DATA_DIR": "{{data_dir}}" },
-    "secrets": ["JWT_SECRET", "API_KEY_SECRET", "INITIAL_PASSWORD"],
-    "dashboard_password": "INITIAL_PASSWORD",
+    "install": { "kind": "npm", "package": "ma-passerelle", "version": "1.2.3", "probe_bin": "ma-passerelle" },
+    "start": ["ma-passerelle", "serve", "--port", "8899"],
+    "stop": ["ma-passerelle", "stop"],
+    "env": { "HOST": "127.0.0.1", "DATA_DIR": "{{data_dir}}" },
+    "secrets": ["JWT_SECRET", "ADMIN_PASSWORD"],
+    "dashboard_password": "ADMIN_PASSWORD",
     "provision_key": {
-      "command": ["omniroute", "api", "api-keys", "post-api-keys", "--body", "{\"name\":\"Locaryn\"}", "--output", "json"],
+      "command": ["ma-passerelle", "keys", "create", "--name", "Locaryn", "--json"],
       "field": "key"
     },
     "start_timeout_seconds": 180,
-    "health_url": "http://127.0.0.1:20128/v1/models",
-    "dashboard_url": "http://127.0.0.1:20128/dashboard"
+    "health_url": "http://127.0.0.1:8899/v1/models",
+    "dashboard_url": "http://127.0.0.1:8899/dashboard"
   }
 }
 ```
@@ -55,13 +61,13 @@ a un compte.
 `/v1/chat/completions` elle-même. Le bloc `local` est absent pour un service
 purement distant — il n'y a alors rien à démarrer.
 
-`127.0.0.1` et non `localhost` : la passerelle n'écoute que la boucle IPv4, et
-`localhost` peut se résoudre d'abord en `::1`.
+`127.0.0.1` et non `localhost` : une passerelle qui n'écoute que la boucle IPv4
+reste injoignable si `localhost` se résout d'abord en `::1`.
 
 `key_required` vaut vrai par défaut : un service distant facture, et l'appeler
-sans clé ne mène qu'à un refus. Une passerelle qui route vers des modèles
-gratuits dès son installation le déclare faux — le choix d'un modèle n'est alors
-plus refusé faute de clé, ni par l'application ni par son API.
+sans clé ne mène qu'à un refus. Une passerelle qui obtient sa clé toute seule
+(`provision_key`) ou converse sans peut le déclarer faux — le choix d'un modèle
+n'est alors plus refusé faute de clé, ni par l'application ni par son API.
 
 ---
 
@@ -87,27 +93,21 @@ marqueur que la conversation relit pour joindre la bonne clé.
 
 ## 3 bis. Installer la passerelle avec le morph
 
-Un morph qui apporte une passerelle déclare comment l'installer :
-
-```json
-"local": {
-  "install": { "kind": "npm", "package": "omniroute", "version": "3.8.50", "probe_bin": "omniroute" }
-}
-```
-
-`npm`, `pip`, `docker`, ou une `command` explicite.
+`install.kind` vaut `npm`, `pip`, `docker`, ou `command` (commande explicite).
 
 **Un paquet npm s'installe chez Locaryn**, dans `gateways/<id>` sous le volume
 des données lourdes (`locaryn_config::gateways_dir`), avec `npm install
---prefix`. Jamais `-g` : OmniRoute pèse 450 Mo, et une installation globale le
-posait sur le disque système, sur le `PATH` de tout le poste, et hors de portée
-de la désinstallation du morph. Désinstaller le morph retire le programme et
-garde `data/` — les fournisseurs connectés y restent pour une réinstallation.
+--prefix`. Jamais `-g` : une passerelle Node pèse des centaines de mégaoctets,
+et une installation globale la posait sur le disque système, sur le `PATH` de
+tout le poste, et hors de portée de la désinstallation du morph. Désinstaller
+le morph retire le programme et garde `data/` — les fournisseurs connectés y
+restent pour une réinstallation. Une installation interrompue (un
+`node_modules` à moitié posé) est retirée avant la suivante.
 
 **Sous Windows**, `npm` est `npm.cmd`, que `Command::new("npm")` ne trouve pas :
 l'hôte appelle `npm.cmd`. Et les commandes qui nomment l'exécutable du paquet
-(`omniroute …`) lancent directement son script par `node`, lu dans le `bin` de
-son `package.json` — aucun raccourci `.cmd` à trouver.
+lancent directement son script par `node`, lu dans le `bin` de son
+`package.json` — aucun raccourci `.cmd`, qui casse sur un chemin à parenthèses.
 
 **Les marqueurs** `{{gateway_dir}}` et `{{data_dir}}` sont remplacés dans les
 commandes et les valeurs d'environnement. La version est épinglée par
@@ -118,11 +118,10 @@ est renvoyé à `install_hint` plutôt qu'à une approximation exécutée en son
 ## 3 ter. Ce que l'hôte fait à la place de l'utilisateur
 
 **Les secrets.** Les noms listés dans `secrets` reçoivent chacun une valeur
-aléatoire à la première installation, gardée dans le trousseau
-(`locaryn/cloud/<id>/secret/<NOM>`) et passée à chaque démarrage. Le paquet npm
-d'OmniRoute embarque un `.env` au même `JWT_SECRET` pour toutes les
-installations et le mot de passe `CHANGEME` ; les valeurs de l'environnement
-priment sur ce fichier. Si le trousseau refuse, la passerelle ne démarre pas :
+aléatoire (64 caractères) à la première installation, gardée dans le trousseau
+(`locaryn/cloud/<id>/secret/<NOM>`) et passée à chaque démarrage. Une passerelle
+publiée avec des secrets par défaut identiques pour tous est ainsi rendue
+propre à l'installation. Si le trousseau refuse, la passerelle ne démarre pas :
 mieux vaut un refus qu'une passerelle aux secrets publics.
 
 **Le mot de passe du tableau de bord** (`dashboard_password`) est montré à
@@ -130,18 +129,13 @@ l'utilisateur sur demande, dans la carte de l'hôte — jamais au panneau du mor
 
 **La clé.** Une fois la passerelle joignable, si aucune clé n'est enregistrée,
 l'hôte lance `provision_key.command` et lit le champ indiqué dans l'objet JSON
-imprimé. Pour OmniRoute, la ligne de commande locale s'authentifie par un jeton
-dérivé de la machine et crée la clé sans mot de passe. Sans clé, `/v1/models`
-répond 401 alors que la conversation passe.
-
-**L'écoute.** Par défaut OmniRoute ouvre toutes les interfaces sans clé : tout
-le réseau peut dépenser les quotas de l'utilisateur. Le manifeste impose
-`OMNIROUTE_SERVER_HOST=127.0.0.1`.
+imprimé. Une passerelle répond souvent avant que son API de clés soit prête :
+l'hôte réessaie plusieurs fois, puis la redemande au plus une fois par minute
+tant qu'elle manque.
 
 **L'attente.** `start_timeout_seconds` borne l'attente de la sonde après le
-lancement. Le premier démarrage d'OmniRoute applique 159 migrations, bien
-au-delà d'une minute ; la sortie de la passerelle va dans
-`gateways/<id>/gateway.log`.
+lancement (un premier démarrage peut appliquer des migrations pendant plus
+d'une minute) ; la sortie de la passerelle va dans `gateways/<id>/gateway.log`.
 
 **Activer le morph installe la passerelle** : la permission `shell` accordée,
 l'application lance l'installation en tâche de fond, puis démarre la
@@ -170,14 +164,14 @@ Les trois formes de réponse rencontrées se lisent : `{ "data": [...] }`,
 | Endroit | Ce qui apparaît |
 | --- | --- |
 | Mes modèles | un **dossier**, à la place d'une carte de modèle. Il dit si la clé est posée, combien de modèles sont routés, lequel est actif. |
-| La page du dossier | la carte de la passerelle, tenue par l'application (démarrer, arrêter, mot de passe du tableau de bord), puis l'écran du morph (slot `models.folder`) — pour OmniRoute, ses modèles et sa clé. Sans écran déclaré, l'application dessine le sien. |
-| Sélecteur du chat | le même dossier, sous le champ de saisie. On l'ouvre, on choisit, la conversation part chez ce modèle. |
+| La page du dossier | la carte de la passerelle, tenue par l'application (démarrer, arrêter, mot de passe du tableau de bord), puis l'écran du morph (slot `models.folder`). Sans écran déclaré, l'application dessine le sien. |
+| Sélecteur du chat | le même dossier, sous le champ de saisie, à côté des modèles de la machine. On l'ouvre, on choisit, la conversation part chez ce modèle. |
+| Sous-agents | `lister_modeles` propose les modèles de chaque fournisseur (`<id>:<modèle>`). |
 
-Le tableau de bord d'une passerelle **n'est pas affiché dans un cadre** :
-OmniRoute envoie `X-Frame-Options: DENY` et `frame-ancestors 'none'` sur toutes
-ses pages, et le cadre restait blanc sans rien dire. Un bouton l'ouvre dans le
-navigateur du système, avec l'URL du manifeste — jamais une adresse venue de
-l'interface.
+Le tableau de bord d'une passerelle **n'est pas affiché dans un cadre** : une
+passerelle peut envoyer `X-Frame-Options: DENY`, et le cadre restait blanc sans
+rien dire. Un bouton l'ouvre dans le navigateur du système, avec l'URL du
+manifeste — jamais une adresse venue de l'interface.
 
 ---
 
@@ -190,23 +184,20 @@ ce que la machine sait servir** :
 
 | Route | Ce qu'elle rend |
 | --- | --- |
-| `GET /v1/models` | les poids installés (`owned_by: local`) **et** les modèles de chaque passerelle, préfixés par son identifiant (`omniroute/anthropic/claude-opus-5`) |
+| `GET /v1/models` | les poids installés (`owned_by: local`) **et** les modèles de chaque passerelle, préfixés par son identifiant (`ma-passerelle/anthropic/claude-opus-5`) |
 | `POST /v1/chat/completions` | la conversation, relayée à qui sert le modèle |
 
 Le serveur résout le modèle demandé : s'il appartient au catalogue d'une
 passerelle, la requête part chez elle avec la clé de l'hôte ; sinon elle va au
 moteur local actif. Le corps est transmis tel quel et la réponse renvoyée
-telle quelle, flux compris — réécrire l'un ou l'autre ferait perdre les champs
-que ce serveur ne connaît pas encore. L'`Authorization` du client authentifie
-auprès de *ce* serveur et n'est jamais relayée en aval.
+telle quelle, flux compris. L'`Authorization` du client authentifie auprès de
+*ce* serveur et n'est jamais relayée en aval.
 
-Ajouter OmniRoute à l'application l'ajoute donc du même coup à son API : un
-client tiers pointé sur Locaryn voit les modèles locaux et les modèles routés
-dans la même liste, et les appelle de la même façon.
+Ajouter une passerelle à l'application l'ajoute donc du même coup à son API.
 
 Sur un serveur sans session graphique, il n'y a pas de trousseau : la clé est
-lue dans `LOCARYN_CLOUD_<ID>_KEY` — `LOCARYN_CLOUD_OMNIROUTE_KEY` pour
-OmniRoute.
+lue dans `LOCARYN_CLOUD_<ID>_KEY` (`LOCARYN_CLOUD_MA_PASSERELLE_KEY` pour
+l'exemple).
 
 ---
 
@@ -214,10 +205,8 @@ OmniRoute.
 
 Un modèle de fournisseur fonctionne aussi quand la session est confiée à un
 noyau apporté par un autre morph. L'identifiant traverse le pont **tel quel** :
-`anthropic/claude-opus-5` arrive entier au noyau, qui route à son tour. Le
-réécrire ou retomber sur le modèle par défaut du manifeste enverrait la
-conversation ailleurs que là où l'utilisateur l'a envoyée — c'est vérifié par
-`packages/core-bridge/tests/bridge.rs`.
+`anthropic/claude-opus-5` arrive entier au noyau, qui route à son tour —
+vérifié par `packages/core-bridge/tests/bridge.rs`.
 
 ---
 
@@ -225,9 +214,32 @@ conversation ailleurs que là où l'utilisateur l'a envoyée — c'est vérifié
 
 | Test | Ce qu'il verrouille |
 | --- | --- |
-| `packages/extensions` — `une_passerelle_locale_se_lit` | le manifeste, et `api_url` sans `/v1` |
+| `packages/extensions` — `une_passerelle_locale_se_lit`, `les_manifestes_des_morphs_presents_se_lisent` | le manifeste, `api_url` sans `/v1`, et pour chaque morph présent : écoute locale, version épinglée, pas d'installation globale, permission `shell` |
 | `packages/storage` — `fournisseurs_distants_tests` | un seul fournisseur actif, un modèle distant n'est pas refusé comme « non chargeable », changer de modèle ne multiplie pas les lignes |
 | `packages/agent-runtime` — `tests/passerelle.rs` | la route, l'en-tête `Authorization` présent avec clé et **absent** sans, l'identifiant `fournisseur/modèle` intact |
 | `packages/core-bridge` — `un_modele_de_passerelle_traverse_le_noyau_tel_quel` | le noyau reçoit l'identifiant du fournisseur |
 | `packages/cloud-providers` — `tests/decouverte.rs` | le chemin complet : extension installée → fournisseur découvert → modèle résolu par l'API → choix écrit en base, clé comprise |
+| `packages/cloud-providers` — `tests/passerelle_reelle.rs` (manuel) | contre la vraie passerelle d'un morph désigné par `LOCARYN_PASSERELLE_MORPH` : démarrage, clé, catalogue, arrêt |
 | `packages/cloud-providers` — `catalog`, `gateway` | lecture du catalogue, fraîcheur, cache non traversant, commandes d'installation déduites et refus des gestionnaires inconnus |
+
+---
+
+## 8. Publier son propre morph de passerelle
+
+Rien à modifier dans Locaryn :
+
+1. Un dépôt avec un `morph.json` : `capabilities: ["cloud-provider"]`, la
+   section `cloud_provider` (§ 2), et la permission `shell` si la passerelle
+   tourne sur la machine.
+2. Facultatif : un écran (`dist/ui.js`, élément personnalisé, slot
+   `models.folder`) pour montrer ses modèles à sa façon ; sans lui,
+   l'application dessine un dossier générique.
+3. Une release GitHub taguée `vX.Y.Z` ; le catalogue lit la version déclarée
+   dans le manifeste quand l'API des releases ne répond pas.
+4. Vérifier : placer le dossier dans `plugins/` d'un clone de Locaryn et lancer
+   `cargo test -p locaryn-extensions les_manifestes_des_morphs_presents_se_lisent`,
+   puis `tests/passerelle_reelle.rs` contre la vraie passerelle.
+
+Les particularités d'une passerelle donnée (ses variables d'environnement, ses
+secrets par défaut, la durée de son premier démarrage) se documentent dans le
+dépôt de son morph, pas ici.

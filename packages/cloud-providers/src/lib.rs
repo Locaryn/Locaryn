@@ -5,7 +5,7 @@
 //! chercher sa clé.
 //!
 //! Deux formes. Un service distant — on lui parle, il n'y a rien à lancer. Ou
-//! une passerelle auto-hébergée, comme OmniRoute : elle s'installe, tourne sur
+//! une passerelle auto-hébergée, apportée par un morph : elle s'installe, tourne sur
 //! la machine, détient les clés des fournisseurs que l'utilisateur y a
 //! connectés, et route vers eux. Locaryn ne réécrit rien de tout cela : il
 //! installe, sonde, démarre, et parle à son `/v1`.
@@ -70,8 +70,8 @@ pub fn keychain_key(provider_id: &str) -> String {
 /// Nom de la variable d'environnement qui remplace le trousseau.
 ///
 /// Un serveur n'a souvent ni session graphique ni trousseau : sans ce repli,
-/// le mode serveur ne pourrait jamais parler à une passerelle. `omniroute`
-/// donne `LOCARYN_CLOUD_OMNIROUTE_KEY`.
+/// le mode serveur ne pourrait jamais parler à une passerelle. `ma-passerelle`
+/// donne `LOCARYN_CLOUD_MA_PASSERELLE_KEY`.
 pub fn env_key_name(provider_id: &str) -> String {
     let up: String = provider_id
         .chars()
@@ -93,7 +93,7 @@ pub fn env_key_name(provider_id: &str) -> String {
 /// Un fournisseur, tel qu'on le montre.
 #[derive(Debug, Clone, Serialize)]
 pub struct CloudProviderInfo {
-    /// Identifiant stable (`omniroute`).
+    /// Identifiant stable (`ma-passerelle`).
     pub id: String,
     pub label: String,
     /// L'extension qui l'apporte — la retirer retire le fournisseur.
@@ -407,7 +407,7 @@ mod tests {
     /// doit pouvoir deviner depuis l'identifiant du fournisseur.
     #[test]
     fn le_nom_de_variable_se_deduit_de_lidentifiant() {
-        assert_eq!(env_key_name("omniroute"), "LOCARYN_CLOUD_OMNIROUTE_KEY");
+        assert_eq!(env_key_name("passerelle"), "LOCARYN_CLOUD_PASSERELLE_KEY");
         assert_eq!(env_key_name("mon-service"), "LOCARYN_CLOUD_MON_SERVICE_KEY");
     }
 
@@ -415,7 +415,7 @@ mod tests {
     /// changer de modèle ne doit pas faire perdre la clé.
     #[test]
     fn la_cle_est_nommee_par_le_catalogue() {
-        assert_eq!(keychain_key("omniroute"), "locaryn/cloud/omniroute");
+        assert_eq!(keychain_key("passerelle"), "locaryn/cloud/passerelle");
     }
 
     /// L'API accepte les deux formes ; le fournisseur, lui, ne connaît que la
@@ -423,11 +423,11 @@ mod tests {
     #[test]
     fn le_prefixe_est_retire_avant_dappeler() {
         assert_eq!(
-            strip_provider_prefix("omniroute", "omniroute/anthropic/claude-opus-5"),
+            strip_provider_prefix("passerelle", "passerelle/anthropic/claude-opus-5"),
             "anthropic/claude-opus-5"
         );
         assert_eq!(
-            strip_provider_prefix("omniroute", "anthropic/claude-opus-5"),
+            strip_provider_prefix("passerelle", "anthropic/claude-opus-5"),
             "anthropic/claude-opus-5"
         );
     }
@@ -436,7 +436,7 @@ mod tests {
     /// dossier ou le fichier.
     #[test]
     fn la_racine_du_paquet_se_deduit() {
-        let p = plugin_root("/plugins/morph-omniroute/morph.json").expect("racine");
-        assert!(p.ends_with("morph-omniroute"));
+        let p = plugin_root("/plugins/morph-passerelle/morph.json").expect("racine");
+        assert!(p.ends_with("morph-passerelle"));
     }
 }

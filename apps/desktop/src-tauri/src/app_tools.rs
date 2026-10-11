@@ -176,7 +176,7 @@ impl HostTools for AppTools {
             ),
             spec(
                 "lister_modeles",
-                "Liste les modèles qu'un sous-agent peut utiliser : `local` (celui de cette machine) et ceux des catalogues branchés (OmniRoute…), avec ceux qui savent appeler des outils et ceux qui sont gratuits.",
+                "Liste les modèles qu'un sous-agent peut utiliser : `local` (celui de cette machine) et ceux des catalogues qu'apportent les morphs, avec ceux qui savent appeler des outils et ceux qui sont gratuits.",
                 json!({ "type": "object", "properties": {} }),
                 Risk::Low,
             ),

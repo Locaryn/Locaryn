@@ -250,17 +250,17 @@ impl CatalogClient {
             // montrait le tagline, jamais le manifeste. Best-effort — un
             // manifeste injoignable retombe sur le tagline plutôt que de
             // faire échouer tout le registre pour un seul dépôt.
-            let manifest_own_description = self
+            let manifeste = self
                 .get_json(&format!(
                     "https://raw.githubusercontent.com/Locaryn/{name}/HEAD/morph.json"
                 ))
                 .await
-                .ok()
-                .and_then(|m| {
-                    m.get("description")
-                        .and_then(|d| d.as_str())
-                        .map(str::to_string)
-                });
+                .ok();
+            let manifest_own_description = manifeste.as_ref().and_then(|m| {
+                m.get("description")
+                    .and_then(|d| d.as_str())
+                    .map(str::to_string)
+            });
             let description = manifest_own_description.or_else(|| {
                 r.get("description")
                     .and_then(|d| d.as_str())
@@ -273,15 +273,15 @@ impl CatalogClient {
                 _ => name.replace("morph-", "").replace('-', " "),
             };
             // Versions réelles d'abord : les releases GitHub du dépôt sont la
-            // source de vérité, la table ci-dessous (`versions_from_known_table`)
-            // n'est que le filet de sécurité hors-ligne. Inventer un tag pour un
-            // dépôt inconnu de la table proposait `v1.0.0-beta.1` — un numéro
-            // jamais publié — et l'installation de `morph-cluster` échouait sur
-            // ce tag fantôme, alors que ses releases v0.2.0 / v0.1.0 existent.
+            // source de vérité. À défaut, la version que le morph déclare
+            // lui-même dans son manifeste — jamais une table tenue dans
+            // l'application, qui nommait chaque morph officiel et retardait
+            // sur leurs publications. Sans l'une ni l'autre, aucune version
+            // inventée : un tag fantôme faisait échouer l'installation.
             let versions: Vec<locaryn_shared_types::MorphVersionRelease> =
                 match self.fetch_morph_releases(full_name).await {
                     Some(v) if !v.is_empty() => v,
-                    _ => versions_from_known_table(name, full_name),
+                    _ => version_declaree(manifeste.as_ref(), full_name),
                 };
             // La dernière version décide de la maturité affichée : une
             // pre-release rend l'entrée bêta, une version stable la laisse
@@ -1074,88 +1074,38 @@ fn release_from_json(
     })
 }
 
-/// Filet de sécurité hors-ligne : les versions vérifiées des morphs connus,
-/// dans l'ordre GitHub (plus récentes d'abord). Un dépôt inconnu de la table
-/// n'obtient AUCUNE version inventée : mieux vaut une entrée sans version,
-/// installable depuis la racine du dépôt, qu'un tag fantôme qui fait échouer
-/// l'installation.
-fn versions_from_known_table(
-    name: &str,
+/// Filet de sécurité hors-ligne : la version que le morph déclare dans son
+/// `morph.json`. Sans manifeste lisible ni version déclarée, rien — mieux vaut
+/// une entrée sans version, installable depuis la racine du dépôt, qu'un tag
+/// fantôme qui fait échouer l'installation.
+fn version_declaree(
+    manifeste: Option<&serde_json::Value>,
     full_name: &str,
 ) -> Vec<locaryn_shared_types::MorphVersionRelease> {
-    let (latest_ver, stables): (&str, &[&str]) = match name {
-        "morph-image" => (
-            "3.2.0-beta.1",
-            &["3.1.0-beta.1", "3.0.0", "2.2.0", "2.1.0", "2.0.0"],
-        ),
-        "morph-voice-tts" => ("2.4.0-beta.1", &["2.3.0", "2.1.0", "2.0.0", "1.0.0"]),
-        "morph-dictaphone" => ("2.3.0-beta.1", &["2.2.0-beta.1", "2.1.0", "2.0.0", "1.0.0"]),
-        "morph-rag-qa" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
-        "morph-ssh" => ("2.2.0-beta.1", &["2.1.0", "2.0.0", "1.0.0"]),
-        // Les seules entrees de cette table verifiees contre les
-        // releases publiees. La 3.0.0 est celle qui declare les deux
-        // segments d'appairage : offrir la precedente installerait un
-        // morph qui ne contribue nulle part dans cette version de
-        // l'application.
-        "morph-remote" => ("3.1.0", &["3.0.0", "2.1.0"]),
-        "morph-3d-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
-        "morph-video-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
-        "morph-music-gen" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
-        "morph-vision-ocr" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
-        "morph-figures" => ("1.1.0-beta.1", &["1.0.1", "1.0.0"]),
-        "morph-translation" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
-        "morph-text-analysis" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
-        "morph-model-training" => ("2.1.0-beta.1", &["2.0.0", "1.5.0", "1.0.0"]),
-        "morph-freetoken" => ("2.1.0-beta.1", &["2.0.0", "1.0.0"]),
-        // La 1.0.0-beta.1 publiée ne contient ni son écran ni son
-        // README, et aucune 0.9.0 n'a jamais existé : les proposer
-        // installait un dossier vide, ou rien du tout.
-        "morph-omniroute" => ("1.0.0-beta.2", &[]),
-        "morph-cluster" => ("0.2.0", &["0.1.0"]),
-        // Publiés en bêta, sans version stable antérieure : la ligne par défaut leur
-        // ferait offrir une 1.0.0-beta.1 qui n'existe pas.
-        "morph-desktop" => ("0.1.0-beta.6", &["0.1.0-beta.5"]),
-        "morph-browser" => ("0.1.0-beta.4", &[]),
-        // Anciennement morph-bonsai : le dépôt a été renommé, ses tags suivent.
-        "morph-prismml" => ("0.2.0-beta.1", &["0.1.0-beta.2"]),
-        // Un dépôt jamais vu ne reçoit RIEN : pas de `1.0.0-beta.1` ni de
-        // « 0.9.0 » inventés — c'était le bug d'origine.
-        _ => return Vec::new(),
+    let Some(version) = manifeste
+        .and_then(|m| m.get("version"))
+        .and_then(|v| v.as_str())
+        .map(|v| v.trim().trim_start_matches('v').to_string())
+        .filter(|v| !v.is_empty())
+    else {
+        return Vec::new();
     };
-
-    // La derniere version n'est une pre-release que si son numero le
-    // dit. Marquer « Bêta · non testé » une version stable la fait
-    // eviter par ceux qui devraient justement la prendre.
-    let derniere_est_beta = latest_ver.contains('-');
-    let mut versions = vec![locaryn_shared_types::MorphVersionRelease {
-        version: latest_ver.to_string(),
-        tag: Some(format!("v{latest_ver}")),
-        is_beta: derniere_est_beta,
-        released_at: Some("2026-08-29".to_string()),
-        summary: Some(if derniere_est_beta {
-            format!("Version Bêta ({latest_ver}) — pre-release non testée")
+    // Une version n'est une pre-release que si son numéro le dit.
+    let beta = version.contains('-');
+    vec![locaryn_shared_types::MorphVersionRelease {
+        tag: Some(format!("v{version}")),
+        is_beta: beta,
+        released_at: None,
+        summary: Some(if beta {
+            format!("Version Bêta ({version}) — pre-release non testée")
         } else {
-            format!("Version stable v{latest_ver}")
+            format!("Version stable v{version}")
         }),
-        // `@` et non `#` : dans la grammaire des sources, `#` désigne
-        // un sous-dossier. `owner/repo#v1.0.0` téléchargeait la branche
-        // par défaut puis cherchait un dossier nommé `v1.0.0`, et
-        // l'installation de chaque morph officiel échouait sur
-        // « subdirectory does not exist ».
-        install_source: Some(format!("{full_name}@v{latest_ver}")),
-    }];
-
-    for sv in stables {
-        versions.push(locaryn_shared_types::MorphVersionRelease {
-            version: sv.to_string(),
-            tag: Some(format!("v{sv}")),
-            is_beta: false,
-            released_at: Some("2026-08-27".to_string()),
-            summary: Some(format!("Version de référence stable v{sv}")),
-            install_source: Some(format!("{full_name}@v{sv}")),
-        });
-    }
-    versions
+        // `@` et non `#` : dans la grammaire des sources, `#` désigne un
+        // sous-dossier.
+        install_source: Some(format!("{full_name}@v{version}")),
+        version,
+    }]
 }
 
 #[cfg(test)]
@@ -1185,7 +1135,7 @@ mod tests {
     fn prerelease_or_suffixed_tag_is_beta() {
         let r =
             serde_json::json!({"tag_name": "v1.0.0-beta.2", "prerelease": true, "draft": false});
-        let v = release_from_json(&r, "Locaryn/morph-omniroute").expect("version");
+        let v = release_from_json(&r, "Locaryn/morph-exemple").expect("version");
         assert!(v.is_beta);
         // Un suffixe suffit, même si GitHub ne marque pas la release
         // pre-release (l'oubli humain est le cas commun).
@@ -1216,19 +1166,21 @@ mod tests {
             depuis_flux[0].install_source.as_deref(),
             Some("Locaryn/morph-ssh@v2.3.0")
         );
-        let v = versions_from_known_table("morph-cluster", "Locaryn/morph-cluster");
+        // Hors ligne, la version vient du manifeste du morph lui-même.
+        let manifeste = serde_json::json!({ "name": "morph-exemple", "version": "0.2.0" });
+        let v = version_declaree(Some(&manifeste), "Locaryn/morph-exemple");
         assert_eq!(v[0].version, "0.2.0");
         assert_eq!(v[0].tag.as_deref(), Some("v0.2.0"));
         assert_eq!(
             v[0].install_source.as_deref(),
-            Some("Locaryn/morph-cluster@v0.2.0")
+            Some("Locaryn/morph-exemple@v0.2.0")
         );
-        // Le bug d'origine : le fallback inventait « 1.0.0-beta.1 » (et ses
-        // « 0.9.0 » / « 0.8.0 ») pour tout dépôt hors table — des tags qui
-        // n'existent pas, donc des installations mortes. Un dépôt nouveau
-        // ne reçoit plus rien.
-        assert!(versions_from_known_table("morph-nouveau", "Locaryn/morph-nouveau").is_empty());
-        assert!(versions_from_known_table("morph-omniroute", "Locaryn/morph-omniroute")[0].is_beta);
+        let beta = serde_json::json!({ "version": "1.0.0-beta.2" });
+        assert!(version_declaree(Some(&beta), "Locaryn/morph-exemple")[0].is_beta);
+        // Le bug d'origine : le fallback inventait « 1.0.0-beta.1 » pour tout
+        // dépôt inconnu. Sans manifeste ni version déclarée : rien.
+        assert!(version_declaree(None, "Locaryn/morph-nouveau").is_empty());
+        assert!(version_declaree(Some(&serde_json::json!({})), "Locaryn/morph-nouveau").is_empty());
     }
 
     #[test]

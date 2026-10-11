@@ -172,14 +172,13 @@ pub struct CloudProviderManifest {
     /// Faut-il une clé pour converser ? Vrai par défaut : un service distant
     /// facture, et l'appeler sans clé ne mène qu'à un refus.
     ///
-    /// Une passerelle locale peut le déclarer faux. OmniRoute route vers des
-    /// fournisseurs gratuits dès son premier démarrage, sans aucune clé : exiger
-    /// qu'on en colle une avant de choisir un modèle bloquait un chemin qui
-    /// fonctionnait déjà.
+    /// Une passerelle locale peut le déclarer faux : quand elle obtient sa clé
+    /// toute seule (`provision_key`) ou converse sans, exiger qu'on en colle une
+    /// avant de choisir un modèle bloquait un chemin qui fonctionnait déjà.
     #[serde(default, rename = "key_required", alias = "keyRequired")]
     pub key_required: Option<bool>,
     /// Quand le fournisseur tourne **sur la machine** — une passerelle
-    /// auto-hébergée comme OmniRoute — ce bloc dit comment l'installer, la
+    /// auto-hébergée qu'apporte un morph — ce bloc dit comment l'installer, la
     /// démarrer, et où se trouve son tableau de bord.
     ///
     /// Absent, le fournisseur est purement distant : il n'y a rien à lancer.
@@ -249,10 +248,10 @@ pub struct CloudLocalRuntime {
     /// Variables d'environnement secrètes que l'hôte génère **une fois par
     /// installation**, garde dans le trousseau, et passe à chaque démarrage.
     ///
-    /// Une passerelle publiée avec ses secrets par défaut — OmniRoute 3.8
-    /// embarque un `.env` au même `JWT_SECRET` pour tous et le mot de passe
-    /// `CHANGEME` — est ouverte à qui connaît le paquet. Les valeurs de
-    /// l'environnement priment sur ce fichier.
+    /// Une passerelle publiée avec ses secrets par défaut (un `.env` au même
+    /// secret pour tous, un mot de passe connu) est ouverte à qui connaît le
+    /// paquet : ceux-ci les remplacent par des valeurs propres à
+    /// l'installation, passées dans l'environnement.
     #[serde(default)]
     pub secrets: Vec<String>,
     /// Lequel de ces secrets est le mot de passe du tableau de bord. L'hôte le
@@ -264,10 +263,9 @@ pub struct CloudLocalRuntime {
     pub provision_key: Option<CloudKeyProvisioning>,
     /// Combien de secondes attendre qu'elle réponde après l'avoir lancée.
     ///
-    /// Un premier démarrage peut être long : OmniRoute applique 159 migrations
-    /// de base avant d'ouvrir son port, bien au-delà d'une minute. Rendre la
-    /// main trop tôt affichait « ne répond pas » sur une passerelle qui
-    /// démarrait normalement.
+    /// Un premier démarrage peut être long (migrations de base avant d'ouvrir
+    /// le port, parfois bien au-delà d'une minute). Rendre la main trop tôt
+    /// affichait « ne répond pas » sur une passerelle qui démarrait normalement.
     #[serde(
         default = "secondes_de_demarrage",
         rename = "start_timeout_seconds",
@@ -293,7 +291,7 @@ pub struct CloudLocalInstall {
     /// `npm`, `pip`, `docker`, `command`, ou `manual`.
     #[serde(default)]
     pub kind: String,
-    /// Nom du paquet (`omniroute`).
+    /// Nom du paquet (`ma-passerelle`).
     #[serde(default)]
     pub package: Option<String>,
     /// Version épinglée. Absente : la dernière publiée.
@@ -1213,13 +1211,13 @@ mod tests {
     #[test]
     fn une_section_cloud_provider_se_lit() {
         let json = r#"{
-            "schema": "x", "apiVersion": "0.1", "name": "morph-omniroute", "version": "1",
+            "schema": "x", "apiVersion": "0.1", "name": "morph-passerelle", "version": "1",
             "cloud_provider": {
-                "id": "omniroute",
-                "label": "OmniRoute",
-                "api_url": "http://localhost:20128",
-                "keys_url": "http://localhost:20128",
-                "key_hint": "Clé émise par OmniRoute",
+                "id": "passerelle",
+                "label": "Passerelle d'exemple",
+                "api_url": "http://localhost:8899",
+                "keys_url": "http://localhost:8899",
+                "key_hint": "Clé émise par la passerelle",
                 "headers": { "X-Title": "Locaryn" },
                 "refresh_hours": 6
             }
@@ -1227,8 +1225,8 @@ mod tests {
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         assert!(validate(&m).is_ok());
         let p = m.cloud_provider.expect("la section doit être lue");
-        assert_eq!(p.effective_id("morph-omniroute"), "omniroute");
-        assert_eq!(p.label, "OmniRoute");
+        assert_eq!(p.effective_id("morph-passerelle"), "passerelle");
+        assert_eq!(p.label, "Passerelle d'exemple");
         assert_eq!(p.refresh_hours, 6);
         assert_eq!(
             p.headers.get("X-Title").map(String::as_str),
@@ -1236,103 +1234,69 @@ mod tests {
         );
     }
 
-    /// Le manifeste réellement livré avec `morph-omniroute` doit se lire, et
-    /// déclarer ce que l'application attend d'un fournisseur : une base sans
-    /// `/v1`, un dossier à ouvrir, et de quoi démarrer la passerelle.
+    /// Les manifestes des morphs présents dans `plugins/` se lisent, et ceux
+    /// qui apportent un fournisseur respectent ce que l'application attend :
+    /// une base sans `/v1`, une passerelle locale qui écoute la boucle locale,
+    /// démarre, s'installe dans son dossier avec une version épinglée.
     ///
-    /// Un manifeste publié qui ne se lit pas ne se voit qu'à l'installation,
-    /// chez l'utilisateur.
+    /// Générique : aucun morph n'est nommé ici. Ce que chacun a de propre se
+    /// vérifie dans son propre dépôt.
     #[test]
-    fn le_manifeste_livre_de_morph_omniroute_se_lit() {
-        let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../plugins/morph-omniroute/morph.json");
-        let Ok(texte) = std::fs::read_to_string(&chemin) else {
-            // Le paquet est publié à part : son absence n'est pas un échec.
+    fn les_manifestes_des_morphs_presents_se_lisent() {
+        let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+        let Ok(dossiers) = std::fs::read_dir(&racine) else {
+            // Les morphs sont publiés à part : leur absence n'est pas un échec.
             return;
         };
-        let m: PluginManifest = serde_json::from_str(&texte).expect("manifeste lisible");
-        assert!(validate(&m).is_ok());
-
-        let p = m
-            .cloud_provider
-            .clone()
-            .expect("morph-omniroute doit déclarer un cloud_provider");
-        assert_eq!(p.effective_id(&m.name), "omniroute");
-        assert!(
-            !p.api_url.trim_end_matches('/').ends_with("/v1"),
-            "la base ne porte pas /v1 : la boucle de conversation l'ajoute"
-        );
-        // 127.0.0.1 et non `localhost` : la passerelle n'écoute que sur la
-        // boucle IPv4, et `localhost` peut se résoudre d'abord en `::1`.
-        assert_eq!(p.effective_models_url(), "http://127.0.0.1:20128/v1/models");
-        assert_eq!(
-            p.key_required,
-            Some(false),
-            "OmniRoute converse sans clé : l'exiger bloquait un chemin qui marche"
-        );
-
-        let local = p.local.expect("une passerelle locale");
-        assert!(!local.start.is_empty(), "de quoi la démarrer");
-        assert!(!local.stop.is_empty(), "de quoi l'arrêter");
-        assert!(local.dashboard_url.is_some(), "un tableau de bord à ouvrir");
-        assert!(
-            local.start_timeout_seconds >= 120,
-            "le premier démarrage applique ses migrations pendant plus d'une minute"
-        );
-        // Le paquet npm embarque des secrets identiques pour tous : ils
-        // doivent être remplacés par des valeurs propres à l'installation.
-        for secret in ["JWT_SECRET", "API_KEY_SECRET", "INITIAL_PASSWORD"] {
+        for dossier in dossiers.flatten() {
+            let chemin = dossier.path().join("morph.json");
+            let Ok(texte) = std::fs::read_to_string(&chemin) else {
+                continue;
+            };
+            let m: PluginManifest = serde_json::from_str(&texte)
+                .unwrap_or_else(|e| panic!("{} illisible : {e}", chemin.display()));
+            assert!(validate(&m).is_ok(), "{} invalide", chemin.display());
+            let Some(p) = m.cloud_provider.clone() else {
+                continue;
+            };
             assert!(
-                local.secrets.iter().any(|s| s == secret),
-                "secret {secret} généré"
+                !p.api_url.trim_end_matches('/').ends_with("/v1"),
+                "{} : la base ne porte pas /v1, la boucle de conversation l'ajoute",
+                m.name
             );
+            let Some(local) = p.local else {
+                continue;
+            };
+            assert!(
+                p.api_url.contains("://127.0.0.1") || p.api_url.contains("://localhost"),
+                "{} : une passerelle locale n'écoute que la boucle locale",
+                m.name
+            );
+            assert!(!local.start.is_empty(), "{} : de quoi la démarrer", m.name);
+            if let Some(install) = local.install.filter(|i| i.is_runnable()) {
+                assert!(
+                    install.version.as_deref().is_some_and(|v| !v.is_empty()),
+                    "{} : une version épinglée",
+                    m.name
+                );
+                let cmd = install
+                    .command_line(std::path::Path::new("D:/g/passerelle"))
+                    .unwrap();
+                assert!(
+                    !cmd.iter().any(|a| a == "-g"),
+                    "{} : jamais d'installation globale",
+                    m.name
+                );
+                // Démarrer un programme au nom de l'utilisateur se demande.
+                assert!(
+                    requested_permissions(&m)
+                        .iter()
+                        .any(|(perm, _)| *perm == Permission::Shell),
+                    "{} : la permission shell doit être demandée",
+                    m.name
+                );
+            }
         }
-        assert_eq!(
-            local.dashboard_password.as_deref(),
-            Some("INITIAL_PASSWORD")
-        );
-        // Écouter la boucle locale : par défaut OmniRoute ouvre 0.0.0.0 sans
-        // clé, et tout le réseau dépense les quotas de l'utilisateur.
-        assert_eq!(
-            local.env.get("OMNIROUTE_SERVER_HOST").map(String::as_str),
-            Some("127.0.0.1")
-        );
-        let clef = local.provision_key.expect("la clé est obtenue par l'hôte");
-        assert_eq!(clef.field, "key");
-        // Installer le morph doit installer la passerelle : sans commande
-        // déclarée, le dossier s'ouvrirait sur une phrase à recopier.
-        let install = local.install.expect("de quoi l'installer");
-        assert!(install.is_runnable(), "l'hôte doit savoir l'installer");
-        assert!(
-            install.version.as_deref().is_some_and(|v| !v.is_empty()),
-            "une version épinglée : sans elle, deux machines n'installent pas la même chose"
-        );
-        let cmd = install
-            .command_line(std::path::Path::new("D:/g/omniroute"))
-            .unwrap();
-        assert!(
-            !cmd.iter().any(|a| a == "-g"),
-            "jamais d'installation globale"
-        );
-
-        // Le dossier dans « Mes modèles » et dans le sélecteur du chat.
-        let dossier =
-            m.ui.slots
-                .iter()
-                .find(|s| s.slot == "models.folder")
-                .expect("un écran de dossier");
-        assert_eq!(dossier.kind, "custom-element");
-        assert_eq!(dossier.entry.as_deref(), Some("dist/ui.js"));
-        assert_eq!(dossier.value.as_deref(), Some("omniroute"));
-
-        // Démarrer un programme au nom de l'utilisateur se demande.
-        let permissions = requested_permissions(&m);
-        assert!(
-            permissions
-                .iter()
-                .any(|(perm, _)| *perm == Permission::Shell),
-            "la permission shell doit être demandée pour démarrer la passerelle"
-        );
     }
 
     /// Une passerelle qui tourne sur la machine déclare comment la démarrer
@@ -1341,32 +1305,32 @@ mod tests {
     #[test]
     fn une_passerelle_locale_se_lit() {
         let json = r#"{
-            "schema": "x", "apiVersion": "0.1", "name": "morph-omniroute", "version": "1",
+            "schema": "x", "apiVersion": "0.1", "name": "morph-passerelle", "version": "1",
             "cloud_provider": {
-                "id": "omniroute",
-                "label": "OmniRoute",
-                "api_url": "http://localhost:20128",
+                "id": "passerelle",
+                "label": "Passerelle d'exemple",
+                "api_url": "http://localhost:8899",
                 "local": {
-                    "start": ["omniroute"],
-                    "health_url": "http://localhost:20128/v1/models",
-                    "dashboard_url": "http://localhost:20128",
-                    "install_hint": "npm install -g omniroute"
+                    "start": ["passerelle"],
+                    "health_url": "http://localhost:8899/v1/models",
+                    "dashboard_url": "http://localhost:8899",
+                    "install_hint": "npm install -g ma-passerelle"
                 }
             }
         }"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         let p = m.cloud_provider.expect("section lue");
         let local = p.local.clone().expect("le bloc local doit être lu");
-        assert_eq!(local.start, vec!["omniroute".to_string()]);
+        assert_eq!(local.start, vec!["passerelle".to_string()]);
         assert_eq!(
             local.dashboard_url.as_deref(),
-            Some("http://localhost:20128")
+            Some("http://localhost:8899")
         );
         assert!(local.install_hint.is_some());
         // La base ne porte pas « /v1 » : c'est la boucle de conversation qui
         // l'ajoute pour atteindre /v1/chat/completions.
         assert!(!p.api_url.ends_with("/v1"));
-        assert_eq!(p.effective_models_url(), "http://localhost:20128/v1/models");
+        assert_eq!(p.effective_models_url(), "http://localhost:8899/v1/models");
     }
 
     /// Un service purement distant n'a rien à démarrer : le bloc local doit

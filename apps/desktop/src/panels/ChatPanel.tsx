@@ -807,7 +807,7 @@ ${d.texte}`
       const providers = await core.listProviders();
       const active = providers.find((p) => p.is_active) ?? providers[0];
       // Les modèles de cette machine se lisent chez le moteur local, même quand
-      // un catalogue distant (OmniRoute…) est actif : sinon ils disparaissaient
+      // un catalogue distant est actif : sinon ils disparaissaient
       // du sélecteur, et on ne pouvait plus revenir à un modèle local.
       const local = providers.find((p) => p.kind === "local") ?? active;
       const endpoint = local?.endpoint ?? "http://127.0.0.1:8080";

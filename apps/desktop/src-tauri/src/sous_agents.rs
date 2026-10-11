@@ -3,7 +3,7 @@
 //!
 //! La conversation choisit le modèle de chaque sous-agent (`lister_modeles`) :
 //! celui chargé sur cette machine, ou un modèle d'un catalogue branché
-//! (OmniRoute, OpenRouter…). Le sous-agent travaille avec les mêmes outils et
+//! (ceux qu'apportent les morphs). Le sous-agent travaille avec les mêmes outils et
 //! les mêmes permissions que la conversation, sans pouvoir lancer à son tour
 //! d'autres sous-agents. Son fil part vers l'interface (onglet « Tâches ») et,
 //! à la fin, son compte rendu revient dans la conversation qui l'a lancé :

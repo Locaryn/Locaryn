@@ -423,7 +423,7 @@ export function CloudGatewayCard({
         </div>
       )}
 
-      {/* Pas de cadre intégré : OmniRoute envoie `X-Frame-Options: DENY` et
+      {/* Pas de cadre intégré : une passerelle peut envoyer `X-Frame-Options: DENY` et
           `frame-ancestors 'none'` sur toutes ses pages. Le cadre restait
           blanc, sans un mot pour dire pourquoi. Le tableau de bord s'ouvre
           donc dans le navigateur, où il fonctionne. */}

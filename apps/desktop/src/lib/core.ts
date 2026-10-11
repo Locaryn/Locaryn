@@ -105,7 +105,7 @@ export interface CloudProvider {
   updated_at: string | null;
   /** Le modèle de ce catalogue actuellement actif, s'il l'est. */
   active_model: string | null;
-  /** Vrai quand la passerelle tourne sur la machine (OmniRoute et consorts). */
+  /** Vrai quand la passerelle tourne sur la machine. */
   is_local: boolean;
   /** Le tableau de bord de la passerelle, quand elle en a un. */
   dashboard_url: string | null;
@@ -3045,34 +3045,34 @@ const cloneHealth = (): Health => ({
 
 const demoCloudProviders: CloudProvider[] = [
   {
-    id: "omniroute",
-    label: "OmniRoute",
-    extension_id: "demo-omniroute",
-    extension_name: "morph-omniroute",
-    api_url: "http://127.0.0.1:20128",
-    models_url: "http://127.0.0.1:20128/v1/models",
-    keys_url: "http://127.0.0.1:20128/dashboard",
-    docs_url: "https://github.com/diegosouzapw/OmniRoute#readme",
+    id: "passerelle-demo",
+    label: "Passerelle de démonstration",
+    extension_id: "demo-passerelle",
+    extension_name: "morph-passerelle-demo",
+    api_url: "http://127.0.0.1:8899",
+    models_url: "http://127.0.0.1:8899/v1/models",
+    keys_url: "http://127.0.0.1:8899/dashboard",
+    docs_url: "https://example.org/passerelle",
     key_hint: "Obtenue automatiquement au premier démarrage",
     has_key: false,
     model_count: 0,
     updated_at: null,
     active_model: null,
     is_local: true,
-    dashboard_url: "http://127.0.0.1:20128/dashboard",
-    install_hint: "Locaryn installe OmniRoute lui-même. Il faut Node.js 22 ou 24.",
+    dashboard_url: "http://127.0.0.1:8899/dashboard",
+    install_hint: "Locaryn installe la passerelle lui-même. Il faut Node.js 22 ou 24.",
     can_start: true,
     can_install: true,
     installed: false,
     key_required: false,
     key_provisioned: true,
     can_stop: true,
-    gateway_dir: "D:/Locaryn/gateways/omniroute",
+    gateway_dir: "D:/Locaryn/gateways/passerelle-demo",
     has_dashboard_password: false,
   },
 ];
 
-// Ce qu'OmniRoute expose une fois ses fournisseurs connectés : les modèles de
+// Ce qu'une passerelle expose une fois ses fournisseurs connectés : les modèles de
 // tout le monde, derrière une seule adresse et une seule clé.
 const demoCloudModels: CloudModel[] = [
   {
@@ -3985,43 +3985,6 @@ const demoCatalog: CatalogEntry[] = [
         released_at: "2026-08-27",
         summary: "Version de référence stable v1.0.0",
         install_source: "Locaryn/morph-freetoken@v1.0.0",
-      },
-    ],
-  },
-  {
-    id: "locaryn:morph-omniroute",
-    name: "morph-omniroute",
-    display_name: "OmniRoute Gateway",
-    description:
-      "Passerelle OmniRoute : un point d'accès unifié pour des centaines de modèles distants.",
-    author: "Locaryn Team",
-    version: "1.0.0-beta.1",
-    homepage: "https://github.com/Locaryn/morph-omniroute",
-    ecosystem: "locaryn",
-    catalog_id: "locaryn:official",
-    catalog_label: "Locaryn Official",
-    install_source: "Locaryn/morph-omniroute@v1.0.0-beta.1",
-    keywords: ["official", "morph", "beta"],
-    advertised: ["morph officiel", "bêta"],
-    compat: "native",
-    installed: false,
-    is_beta: true,
-    versions: [
-      {
-        version: "1.0.0-beta.1",
-        tag: "v1.0.0-beta.1",
-        is_beta: true,
-        released_at: "2026-08-29",
-        summary: "Version Bêta (1.0.0-beta.1) — pre-release non testée par des utilisateurs",
-        install_source: "Locaryn/morph-omniroute@v1.0.0-beta.1",
-      },
-      {
-        version: "0.9.0",
-        tag: "v0.9.0",
-        is_beta: false,
-        released_at: "2026-08-27",
-        summary: "Version de référence stable v0.9.0",
-        install_source: "Locaryn/morph-omniroute@v0.9.0",
       },
     ],
   },

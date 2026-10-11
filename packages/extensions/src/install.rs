@@ -100,9 +100,9 @@ async fn install_into(
     // contribution is a `cloud_provider` (or `engine`/`core`) manifest
     // section, declared in JSON and read straight off `report.manifest`
     // rather than materialized through the loader, tallies zero on every
-    // one of those counters despite being a complete, working package —
-    // morph-omniroute's actual failure mode: nothing to load in the
-    // loader's sense, but very much not nothing to install.
+    // one of those counters despite being a complete, working package:
+    // nothing to load in the loader's sense, but very much not nothing to
+    // install.
     let manifest_declares_a_provider_or_engine = report.manifest.cloud_provider.is_some()
         || report.manifest.engine.is_some()
         || report.manifest.core.is_some();
@@ -343,7 +343,7 @@ mod tests {
         assert!(matches!(err, InstallError::Empty));
     }
 
-    /// morph-omniroute's real shape: a `morph.json` whose entire contribution
+    /// A gateway morph's usual shape: a `morph.json` whose entire contribution
     /// is a `cloud_provider` section — no `components`, so nothing for
     /// `loader.rs` to count. Before this fix that made it indistinguishable
     /// from the genuinely hollow bundle above; a cloud-provider-only morph
@@ -365,7 +365,7 @@ mod tests {
                 "cloud_provider": {
                     "id": "gateway",
                     "label": "Gateway",
-                    "api_url": "http://127.0.0.1:20128"
+                    "api_url": "http://127.0.0.1:8899"
                 }
             }"#,
         )
@@ -463,33 +463,6 @@ mod tests {
         );
         assert_eq!(out.ecosystem, ExtensionEcosystem::Locaryn);
         assert!(out.root.join("morph.json").is_file());
-    }
-
-    /// Locaryn/Locaryn#12 : morph-omniroute ne déclare que `cloud_provider`,
-    /// sans `components` — le paquet réel qui a révélé le bogue, pas un
-    /// équivalent construit à la main.
-    #[tokio::test]
-    #[ignore = "requires network"]
-    async fn installs_the_real_cloud_provider_only_morph_omniroute() {
-        let base = std::env::temp_dir().join("locaryn-install-omniroute");
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
-        let http = reqwest::Client::builder()
-            .user_agent("locaryn/0.1")
-            .build()
-            .unwrap();
-
-        let out = install(
-            &http,
-            "github:Locaryn/morph-omniroute",
-            ExtensionScope::Workspace,
-            Some(&base),
-        )
-        .await
-        .expect("install de morph-omniroute");
-
-        assert_eq!(out.manifest.name, "morph-omniroute");
-        assert!(out.manifest.cloud_provider.is_some());
     }
 
     /// Un Morph livré avec un binaire : il passe par l'archive de release, pas

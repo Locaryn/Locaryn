@@ -1,16 +1,17 @@
-//! Le chemin réel, contre le vrai OmniRoute : démarrer, obtenir la clé, lire
-//! le catalogue, converser, arrêter.
+//! Le chemin réel, contre une vraie passerelle apportée par un morph :
+//! démarrer, obtenir la clé, lire le catalogue, converser, arrêter.
 //!
-//! Ignoré par défaut — il exige Node, un OmniRoute déjà installé dans le
-//! dossier des passerelles, et le réseau pour la conversation. Il se lance à la
-//! main, quand on touche au démarrage d'une passerelle :
+//! Ignoré par défaut — il exige le morph sur le disque, sa passerelle déjà
+//! installée, et souvent le réseau. Il se lance à la main, quand on touche au
+//! démarrage d'une passerelle. Aucun morph n'est nommé ici : on lui donne le
+//! dossier de celui qu'on veut éprouver.
 //!
 //! ```text
-//! LOCARYN_STORAGE_ROOT=<racine> cargo test -p locaryn-cloud-providers \
-//!     --test omniroute_reel -- --ignored --nocapture
+//! LOCARYN_PASSERELLE_MORPH=<dossier du morph> LOCARYN_STORAGE_ROOT=<racine> \
+//!     cargo test -p locaryn-cloud-providers --test passerelle_reelle -- --ignored --nocapture
 //! ```
 //!
-//! C'est le seul test qui prouve que les commandes du manifeste publié
+//! C'est le seul test qui prouve que les commandes d'un manifeste publié
 //! fonctionnent vraiment : les autres vérifient qu'elles se lisent.
 
 use locaryn_auth::{Keychain, KeychainError};
@@ -49,14 +50,22 @@ impl Keychain for TrousseauDEssai {
 }
 
 #[tokio::test]
-#[ignore = "exige Node, un OmniRoute installé et le réseau"]
-async fn omniroute_demarre_donne_sa_cle_converse_et_s_arrete() {
-    let paquet = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../plugins/morph-omniroute")
-        .canonicalize()
-        .expect("le morph est dans le dépôt");
+#[ignore = "exige un morph de passerelle installé (LOCARYN_PASSERELLE_MORPH)"]
+async fn une_passerelle_demarre_donne_sa_cle_et_s_arrete() {
+    let paquet = std::path::PathBuf::from(
+        std::env::var("LOCARYN_PASSERELLE_MORPH")
+            .expect("LOCARYN_PASSERELLE_MORPH : le dossier du morph à éprouver"),
+    )
+    .canonicalize()
+    .expect("le dossier du morph existe");
+    let manifeste: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(paquet.join("morph.json")).expect("morph.json lisible"),
+    )
+    .expect("morph.json valide");
+    let nom = manifeste["name"].as_str().expect("un nom").to_string();
+    let version = manifeste["version"].as_str().unwrap_or("0.0.0").to_string();
 
-    let data_dir = std::env::temp_dir().join("locaryn-omniroute-reel");
+    let data_dir = std::env::temp_dir().join("locaryn-passerelle-reelle");
     let _ = std::fs::remove_dir_all(&data_dir);
     std::fs::create_dir_all(&data_dir).expect("dossier de données");
 
@@ -67,8 +76,8 @@ async fn omniroute_demarre_donne_sa_cle_converse_et_s_arrete() {
     let record = storage
         .extensions
         .upsert(NewExtension {
-            name: "morph-omniroute".into(),
-            version: "1.0.0-beta.2".into(),
+            name: nom.clone(),
+            version,
             api_version: "0.1".into(),
             kind: ExtensionKind::Plugin,
             scope: ExtensionScope::User,
@@ -93,9 +102,14 @@ async fn omniroute_demarre_donne_sa_cle_converse_et_s_arrete() {
         http: &http,
         keychain: &keychain,
     };
-    let p = cloud::find(&h, "omniroute").await.expect("fournisseur");
+    let p = cloud::declared(&h)
+        .await
+        .into_iter()
+        .next()
+        .expect("le morph déclare un fournisseur");
     println!(
-        "dossier de la passerelle : {}",
+        "{} — dossier de la passerelle : {}",
+        p.label(),
         cloud::gateway_dir(&p.id).display()
     );
 
@@ -109,59 +123,38 @@ async fn omniroute_demarre_donne_sa_cle_converse_et_s_arrete() {
         etat.detail
     );
 
-    // ── Les secrets et la clé, obtenus sans l'utilisateur ───────────────
-    assert!(
-        cloud::dashboard_password(&h, &p).is_some(),
-        "le mot de passe du tableau de bord est généré"
-    );
-    let cle = cloud::stored_key(&h, "omniroute").expect("la clé est obtenue au démarrage");
-    println!("clé obtenue : {} caractères", cle.len());
+    // ── La clé, obtenue sans l'utilisateur, si le manifeste sait comment ──
+    let declare_une_cle = p
+        .manifest
+        .local
+        .as_ref()
+        .is_some_and(|l| l.provision_key.is_some());
+    let cle = cloud::stored_key(&h, &p.id);
+    if declare_une_cle {
+        let cle = cle.as_ref().expect("la clé est obtenue au démarrage");
+        println!("clé obtenue : {} caractères", cle.len());
+    }
 
     // ── Le catalogue ─────────────────────────────────────────────────────
     let modeles = cloud::models(&h, &p, true).await.expect("catalogue");
     println!("{} modèles routés", modeles.len());
-    assert!(!modeles.is_empty(), "la clé ouvre la liste des modèles");
+    assert!(!modeles.is_empty(), "la liste des modèles s'ouvre");
 
-    // ── Une vraie conversation, sans que l'utilisateur ait rien configuré ─
-    let reponse = http
+    // ── Une conversation : son succès dépend des comptes connectés à la
+    //    passerelle, on le montre sans l'exiger.
+    let mut requete = http
         .post(format!("{}/v1/chat/completions", p.manifest.api_url))
-        .bearer_auth(&cle)
         .json(&serde_json::json!({
             "model": "auto",
             "messages": [{ "role": "user", "content": "Réponds seulement : bonjour" }],
             "max_tokens": 30
-        }))
-        .send()
-        .await
-        .expect("requête");
-    let code = reponse.status();
-    let corps: serde_json::Value = reponse.json().await.expect("réponse JSON");
-    println!("conversation {code} : {corps}");
-    assert!(
-        code.is_success(),
-        "OmniRoute doit répondre sans configuration"
-    );
-
-    // ── La boucle locale seulement ───────────────────────────────────────
-    // Joindre la passerelle par une autre adresse de la machine doit échouer :
-    // par défaut OmniRoute écoute tout le réseau, sans clé.
-    let hote = std::process::Command::new("hostname")
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
-    if let Some(hote) = hote.filter(|h| !h.is_empty()) {
-        let ailleurs = http
-            .get(format!("http://{hote}:20128/v1/models"))
-            .timeout(std::time::Duration::from_secs(3))
-            .send()
-            .await;
-        if let Ok(r) = &ailleurs {
-            // `hostname` peut se résoudre en 127.0.0.1 sur certaines machines :
-            // on ne conclut que sur une réponse venue d'une autre adresse.
-            println!("par {hote} : {}", r.status());
-        } else {
-            println!("par {hote} : injoignable, comme attendu");
-        }
+        }));
+    if let Some(cle) = &cle {
+        requete = requete.bearer_auth(cle);
+    }
+    match requete.send().await {
+        Ok(r) => println!("conversation : {}", r.status()),
+        Err(e) => println!("conversation impossible : {e}"),
     }
 
     // ── Arrêter ──────────────────────────────────────────────────────────

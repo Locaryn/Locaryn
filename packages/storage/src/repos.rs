@@ -2673,8 +2673,8 @@ mod fournisseurs_distants_tests {
         let d = depot_fournisseurs().await;
         let p = d
             .upsert_cloud(
-                "omniroute",
-                "http://localhost:20128",
+                "passerelle",
+                "http://localhost:8899",
                 "anthropic/claude-opus-5",
             )
             .await
@@ -2684,7 +2684,7 @@ mod fournisseurs_distants_tests {
         assert_eq!(p.model.as_deref(), Some("anthropic/claude-opus-5"));
         assert_eq!(
             ProviderRepo::cloud_provider_of(&p).as_deref(),
-            Some("omniroute"),
+            Some("passerelle"),
             "sans ce marqueur, la conversation ne sait pas quelle clé joindre"
         );
     }
@@ -2696,13 +2696,13 @@ mod fournisseurs_distants_tests {
     async fn changer_de_modele_ne_multiplie_pas_les_fournisseurs() {
         let d = depot_fournisseurs().await;
         let a = d
-            .upsert_cloud("omniroute", "http://localhost:20128", "openai/gpt-5")
+            .upsert_cloud("passerelle", "http://localhost:8899", "openai/gpt-5")
             .await
             .unwrap();
         let b = d
             .upsert_cloud(
-                "omniroute",
-                "http://localhost:20128",
+                "passerelle",
+                "http://localhost:8899",
                 "anthropic/claude-opus-5",
             )
             .await
@@ -2725,7 +2725,7 @@ mod fournisseurs_distants_tests {
         .await
         .unwrap();
         let distant = d
-            .upsert_cloud("omniroute", "http://localhost:20128", "openai/gpt-5")
+            .upsert_cloud("passerelle", "http://localhost:8899", "openai/gpt-5")
             .await
             .unwrap();
         let actifs: Vec<_> = d
@@ -2768,7 +2768,7 @@ mod fournisseurs_distants_tests {
             .await
             .is_err());
         assert!(d
-            .upsert_cloud("omniroute", "https://exemple.test/api", "   ")
+            .upsert_cloud("passerelle", "https://exemple.test/api", "   ")
             .await
             .is_err());
     }

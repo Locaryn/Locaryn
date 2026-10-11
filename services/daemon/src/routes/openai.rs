@@ -7,10 +7,10 @@
 //!
 //! Et surtout : **une seule porte pour tout ce que la machine sait servir**.
 //! Le modèle demandé peut être un fichier de poids servi par le moteur local,
-//! ou un modèle routé par une passerelle installée par un morph (OmniRoute).
+//! ou un modèle routé par une passerelle installée par un morph.
 //! Le client n'a pas à savoir lequel : il nomme un modèle, le serveur trouve
 //! qui le sert, et joint la clé s'il en faut une. C'est ce qui fait qu'ajouter
-//! OmniRoute à l'application l'ajoute du même coup à son API.
+//! une passerelle à l'application l'ajoute du même coup à son API.
 //!
 //! Le corps de la requête est transmis tel quel, et la réponse renvoyée
 //! telle quelle — flux compris. Réécrire l'un ou l'autre ferait perdre les
@@ -131,7 +131,7 @@ fn erreur_anthropic(code: StatusCode, message: &str, kind: &str) -> Response {
 ///
 /// Les poids installés localement, et les modèles de chaque passerelle
 /// active. Les seconds sont préfixés par l'identifiant de leur fournisseur
-/// (`omniroute/anthropic/claude-opus-5`) : deux catalogues peuvent publier le
+/// (`passerelle/anthropic/claude-opus-5`) : deux catalogues peuvent publier le
 /// même nom, et un client doit pouvoir désigner celui qu'il veut. La forme
 /// non préfixée reste acceptée à l'appel.
 pub async fn list_models(State(state): State<Arc<DaemonState>>) -> Response {
@@ -209,7 +209,7 @@ pub async fn chat_completions(
         // Un modèle de passerelle : on parle à la passerelle, avec sa clé.
         Some(p) => {
             let cle = cloud::stored_key(&h, &p.id);
-            // Une passerelle qui converse sans clé (OmniRoute) ne doit pas être
+            // Une passerelle qui converse sans clé ne doit pas être
             // refusée ici : c'est elle qui dira non si elle en exige une.
             if cle.is_none() && cloud::key_required(&p) {
                 return erreur(
@@ -640,7 +640,7 @@ pub async fn messages(
     let (url, cle, modele_cible) = match cloud::provider_of_model(&h, &modele).await {
         Some(p) => {
             let cle = cloud::stored_key(&h, &p.id);
-            // Une passerelle qui converse sans clé (OmniRoute) ne doit pas être
+            // Une passerelle qui converse sans clé ne doit pas être
             // refusée ici : c'est elle qui dira non si elle en exige une.
             if cle.is_none() && cloud::key_required(&p) {
                 return erreur_anthropic(
@@ -991,20 +991,20 @@ mod api_tests {
     async fn service(nom: &str, base_passerelle: &str) -> (Arc<DaemonState>, std::path::PathBuf) {
         let racine = std::env::temp_dir().join(format!("locaryn-openai-api-{nom}"));
         let _ = std::fs::remove_dir_all(&racine);
-        let paquet = racine.join("plugins/morph-omniroute");
+        let paquet = racine.join("plugins/morph-passerelle");
         std::fs::create_dir_all(&paquet).expect("paquet");
         std::fs::write(
             paquet.join("morph.json"),
             format!(
                 r#"{{
                   "apiVersion": "0.1",
-                  "name": "morph-omniroute",
+                  "name": "morph-passerelle",
                   "version": "1.0.0",
                   "cloud_provider": {{
-                    "id": "omniroute",
-                    "label": "OmniRoute",
+                    "id": "passerelle",
+                    "label": "Passerelle d'exemple",
                     "api_url": "{base_passerelle}",
-                    "local": {{ "start": ["omniroute"] }}
+                    "local": {{ "start": ["passerelle"] }}
                   }}
                 }}"#
             ),
@@ -1020,7 +1020,7 @@ mod api_tests {
         let record = storage
             .extensions
             .upsert(NewExtension {
-                name: "morph-omniroute".into(),
+                name: "morph-passerelle".into(),
                 version: "1.0.0".into(),
                 api_version: "0.1".into(),
                 kind: ExtensionKind::Plugin,
@@ -1048,7 +1048,7 @@ mod api_tests {
                 ..Default::default()
             }],
         }
-        .save(&data_dir, "omniroute")
+        .save(&data_dir, "passerelle")
         .expect("catalogue");
 
         let supervisor = locaryn_provider_supervisor::Supervisor::new(
@@ -1108,7 +1108,7 @@ mod api_tests {
             .filter_map(|m| m["id"].as_str().map(str::to_string))
             .collect();
         assert!(
-            ids.contains(&"omniroute/anthropic/claude-opus-5".to_string()),
+            ids.contains(&"passerelle/anthropic/claude-opus-5".to_string()),
             "le modèle routé doit être listé, préfixé : {ids:?}"
         );
     }
@@ -1130,7 +1130,7 @@ mod api_tests {
         let corps = corps_json(reponse).await;
         let message = corps["error"]["message"].as_str().unwrap_or_default();
         assert!(
-            message.contains("LOCARYN_CLOUD_OMNIROUTE_KEY"),
+            message.contains("LOCARYN_CLOUD_PASSERELLE_KEY"),
             "le message doit nommer la variable d'environnement : {message}"
         );
         assert!(
@@ -1147,7 +1147,7 @@ mod api_tests {
         let (state, _racine) = service("avec-cle", &base).await;
         state
             .keychain
-            .put("locaryn/cloud/omniroute", "cle-dessai")
+            .put("locaryn/cloud/passerelle", "cle-dessai")
             .expect("clé posée");
 
         // La forme préfixée, celle que `GET /v1/models` publie.
@@ -1155,7 +1155,7 @@ mod api_tests {
             axum::extract::State(state),
             HeaderMap::new(),
             Json(json!({
-                "model": "omniroute/anthropic/claude-opus-5",
+                "model": "passerelle/anthropic/claude-opus-5",
                 "messages": [{ "role": "user", "content": "bonjour" }]
             })),
         )
