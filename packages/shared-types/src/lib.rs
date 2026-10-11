@@ -12,6 +12,7 @@ use uuid::Uuid;
 // ============================================================================
 
 pub mod capabilities;
+pub mod chat_models;
 pub mod frontmatter;
 pub mod joint_document;
 pub mod model_source;

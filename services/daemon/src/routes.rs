@@ -2,6 +2,7 @@
 
 pub mod cores;
 pub mod extensions;
+pub mod marketplace;
 pub mod mcp;
 pub mod memory;
 pub mod openai;

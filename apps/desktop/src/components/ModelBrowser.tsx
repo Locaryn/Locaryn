@@ -105,47 +105,37 @@ function getAirllmEntry(f: ModelFamily): { repo: string; sizeGb: number } | unde
   return undefined;
 }
 
-/**
- * Hides every specialized family unless an enabled extension owns the
- * corresponding capability. This is deliberately applied before cards,
- * brands and years are derived so uninstalling a plugin removes all of its
- * Marketplace traces in the same render.
- */
-export function isFamilyAvailableForCapabilities(
-  family: ModelFamily,
-  activeCapabilities: string[],
-): boolean {
-  const has = (capability: string) => activeCapabilities.includes(capability);
-  const hasTts = has("voice-tts") || has("voice-cloning");
+/** What the core chat engine does on its own. Anything else belongs to a morph. */
+const CORE_CAPABILITIES = new Set(["chat", "instruct", "code", "vision", "reasoning", "audio"]);
 
-  if (family.tts && !hasTts) return false;
-  if (family.videoGen && !has("video-gen")) return false;
-  if (family.musicGen && !has("music-gen")) return false;
-  if (family.model3d && !has("3d-gen")) return false;
-  if (family.objectDetection && !family.instruct && !has("vision-ocr")) return false;
-  if (family.textAnalysis && !family.instruct && !has("text-analysis")) return false;
-  if (family.questionAnswering && !family.instruct && !has("rag-qa")) return false;
-  if (family.translation && !family.instruct && !has("translation")) return false;
-  return true;
-}
-
+/** Every capability a family declares, core flags included. */
 function familyMarketplaceCapabilities(family: ModelFamily): Set<string> {
   const capabilities = new Set(family.marketplaceCapabilities ?? []);
   if (family.instruct) capabilities.add("chat");
   if (family.code) capabilities.add("code");
   if (family.vision) capabilities.add("vision");
   if (family.reasoning) capabilities.add("reasoning");
-  if (family.tts) capabilities.add("voice-tts");
-  if (family.voiceCloning) capabilities.add("voice-cloning");
-  if (family.videoGen) capabilities.add("video-gen");
-  if (family.translation) capabilities.add("translation");
-  if (family.model3d) capabilities.add("3d-gen");
-  if (family.musicGen) capabilities.add("music-gen");
-  if (family.objectDetection) capabilities.add("vision-ocr");
-  if (family.textAnalysis) capabilities.add("text-analysis");
-  if (family.questionAnswering) capabilities.add("rag-qa");
   if (family.audio) capabilities.add("audio");
   return capabilities;
+}
+
+/**
+ * Hides a family that needs a capability no enabled morph provides. Applied
+ * before cards, brands and years are derived, so disabling a morph removes all
+ * of its Marketplace traces in the same render. The core names no specialised
+ * capability: whatever is not in `CORE_CAPABILITIES` must come from a morph.
+ */
+export function isFamilyAvailableForCapabilities(
+  family: ModelFamily,
+  activeCapabilities: string[],
+): boolean {
+  const specialised = [...familyMarketplaceCapabilities(family)].filter(
+    (capability) => !CORE_CAPABILITIES.has(capability) && capability !== "uncensored",
+  );
+  return (
+    specialised.length === 0 ||
+    specialised.some((capability) => activeCapabilities.includes(capability))
+  );
 }
 
 const EMPTY_EXTENSION_MARKETPLACE: ExtensionMarketplaceCatalog = {
@@ -157,29 +147,32 @@ const EMPTY_EXTENSION_MARKETPLACE: ExtensionMarketplaceCatalog = {
 /** Une capacité annoncée : son icône et son nom. */
 type Pastille = { icon: IconName; label: string };
 
-function capBadges(f: ModelFamily, activeCapabilities: string[] = []): Pastille[] {
+/**
+ * The badges of a card: the core's own (engine, chat abilities), then one per
+ * morph category the family belongs to, with the label and icon the morph
+ * declared.
+ */
+function capBadges(f: ModelFamily, morphCategories: ModelCategoryDefinition[] = []): Pastille[] {
   const caps: Pastille[] = [];
-  const a = (c: string) => activeCapabilities.includes(c);
   if (f.source === "airllm" || f.variants.some((v) => v.quants.includes("airllm"))) {
     caps.push({ icon: "star", label: "AirLLM" });
   }
-  if (f.imageGen && a("image-gen")) caps.push({ icon: "image", label: "Image" });
-  if (f.tts && a("voice-tts")) caps.push({ icon: "mic", label: "Voix" });
-  if (f.voiceCloning && a("voice-cloning")) caps.push({ icon: "figures", label: "Clonage" });
-  if (f.videoGen && a("video-gen")) caps.push({ icon: "video", label: "Vidéo" });
-  if (f.musicGen && a("music-gen")) caps.push({ icon: "music", label: "Musique" });
-  if (f.model3d && a("3d-gen")) caps.push({ icon: "cube", label: "3D" });
-  if (f.translation && a("translation")) caps.push({ icon: "translate", label: "Traduction" });
-  if (f.objectDetection && a("vision-ocr")) caps.push({ icon: "target", label: "Détection" });
-  if (f.textAnalysis && a("text-analysis")) caps.push({ icon: "chart", label: "Texte" });
-  if (f.imageEditing && a("image-editor")) caps.push({ icon: "edit", label: "Édition" });
-  if (f.questionAnswering && a("rag-qa")) caps.push({ icon: "question", label: "Q&R" });
-  if (f.vision && a("vision-ocr")) caps.push({ icon: "image", label: "Vision" });
-  if (f.audio && a("voice-tts")) caps.push({ icon: "sound", label: "Audio" });
+  const owned = familyMarketplaceCapabilities(f);
+  for (const category of morphCategories) {
+    if (category.matches.some((capability) => owned.has(capability))) {
+      caps.push({ icon: badgeIcon(category.icon), label: category.label });
+    }
+  }
+  if (f.vision) caps.push({ icon: "image", label: "Vision" });
   if (f.code) caps.push({ icon: "cpu", label: "Code" });
   if (f.reasoning) caps.push({ icon: "memory", label: "Raisonnement" });
   if (f.instruct) caps.push({ icon: "chat", label: "Instruct" });
   return caps;
+}
+
+/** A morph names its icon freely; an unknown name falls back to a neutral one. */
+function badgeIcon(name: string): IconName {
+  return isIconName(name) ? name : "extensions";
 }
 
 function getQuantTag(baseTag: string, quant: string): string {
@@ -622,6 +615,12 @@ export function ModelBrowser({
     }
     return [...categories.values()];
   }, [extensionMarketplace.categories]);
+
+  // The categories a morph brought: they also label the cards.
+  const morphCategories = useMemo(
+    () => extensionMarketplace.categories.filter((c) => c.id !== "all"),
+    [extensionMarketplace.categories],
+  );
 
   // An extension's filters exist only while its data slot is enabled.
   const visibleCategories = useMemo(() => {
@@ -2577,7 +2576,7 @@ export function ModelBrowser({
                         <Icon name="marketplace" size={15} /> HuggingFace
                       </span>
                     )}
-                    {capBadges(f, activeCapabilities).map((c) => (
+                    {capBadges(f, morphCategories).map((c) => (
                       <span key={c.label} className="locaryn-tag">
                         <Icon name={c.icon} size={13} /> {c.label}
                       </span>
@@ -2692,7 +2691,7 @@ export function ModelBrowser({
                             <Icon name="marketplace" size={15} /> HuggingFace
                           </span>
                         )}
-                        {capBadges(f, activeCapabilities).map((c) => (
+                        {capBadges(f, morphCategories).map((c) => (
                           <span key={c.label} className="locaryn-tag">
                             <Icon name={c.icon} size={13} /> {c.label}
                           </span>

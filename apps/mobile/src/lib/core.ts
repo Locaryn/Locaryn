@@ -82,6 +82,46 @@ export interface PhoneExtension {
   ui?: ExtensionUi;
 }
 
+/** Un fichier qu'un morph demande de télécharger avec un modèle. */
+export interface MarketplaceDownload {
+  url: string;
+  file: string;
+  label?: string;
+}
+
+/** Une variante d'un modèle du Marketplace. */
+export interface MarketplaceVariant {
+  size: string;
+  tag: string;
+  storageGb?: number;
+  downloads?: MarketplaceDownload[];
+}
+
+/** Une famille de modèles du Marketplace (socle ou morph). */
+export interface MarketplaceFamily {
+  id: string;
+  name: string;
+  brand?: string;
+  description?: string;
+  marketplaceCapabilities?: string[];
+  /** Le morph qui l'apporte ; absent pour le socle. */
+  marketplaceOwner?: string;
+  variants: MarketplaceVariant[];
+}
+
+/** Une catégorie, apportée par le socle ou par un morph actif. */
+export interface MarketplaceCategory {
+  id: string;
+  label: string;
+  icon?: string;
+  matches: string[];
+}
+
+export interface CatalogueMarketplace {
+  categories: MarketplaceCategory[];
+  families: MarketplaceFamily[];
+}
+
 /** Une permission qu'une extension demande. */
 export interface PermissionDemandee {
   /** `shell`, `network`, `files_write`… */
@@ -595,11 +635,21 @@ export const core = {
    * `onProgress` reçoit l'avancement au fil de l'eau — un canal, pas une
    * promesse : la barre se dessine sans attendre la fin du téléchargement.
    */
-  pullModel: (url: string, onProgress: (p: ModelPullProgress) => void) => {
+  pullModel: (
+    url: string,
+    onProgress: (p: ModelPullProgress) => void,
+    companions?: MarketplaceDownload[],
+  ) => {
     const canal = new Channel<ModelPullProgress>();
     canal.onmessage = onProgress;
-    return invoke<{ name: string; size: number }>("pull_model", { url, onProgress: canal });
+    return invoke<{ name: string; size: number }>("pull_model", {
+      url,
+      companions: companions ?? null,
+      onProgress: canal,
+    });
   },
+  /** Le Marketplace du serveur : socle + morphs actifs. */
+  marketplace: () => invoke<CatalogueMarketplace>("marketplace"),
   /** Retirer un modèle installé du serveur : ses fichiers sont effacés. */
   removeModel: (name: string) => invoke<void>("remove_model", { name }),
   removeExtension: (name: string) => invoke<void>("remove_extension", { name }),
@@ -897,6 +947,22 @@ export const demoCore: typeof core = {
   setExtensionEnabled: async () => {},
   activateExtension: async () => {},
   removeExtension: async () => {},
+  marketplace: async (): Promise<CatalogueMarketplace> => ({
+    categories: [
+      { id: "chat", label: "Conversation", icon: "chat", matches: ["chat"] },
+      { id: "code", label: "Code", icon: "code", matches: ["code"] },
+    ],
+    families: [
+      {
+        id: "demo-chat",
+        name: "Modèle de démonstration",
+        brand: "Exemple",
+        description: "Un modèle de conversation fictif, pour l'aperçu.",
+        marketplaceCapabilities: ["chat"],
+        variants: [{ size: "4B", tag: "demo:4b", storageGb: 2.6 }],
+      },
+    ],
+  }),
   pullModel: async (_url, onProgress) => {
     const total = 250 * 1024 * 1024;
     for (const pct of [3, 12, 27, 46, 68, 87, 100]) {

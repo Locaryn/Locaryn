@@ -159,41 +159,49 @@ export const CATALOGUE: { repo: string; label: string; note: string }[] = [
   { repo: "Locaryn/morph-remote", label: "Accès distant", note: "Joindre depuis dehors" },
 ];
 
-/** Un modèle proposé à l'installation, comme les extensions du catalogue. */
-export interface CatalogueModel {
-  /** URL directe vers un fichier de poids, ou dépôt HuggingFace complet. */
+/** Un fichier qu'un morph demande de télécharger avec un modèle. */
+export interface MarketplaceDownload {
   url: string;
-  kind: "audio";
-  /** Le nom sous lequel il apparaîtra dans « Modèles ». */
+  file: string;
+  label?: string;
+}
+
+/** Une variante d'un modèle du Marketplace. */
+export interface MarketplaceVariant {
+  size: string;
+  tag: string;
+  storageGb?: number;
+  downloads?: MarketplaceDownload[];
+}
+
+/** Une famille de modèles du Marketplace (socle ou morph). */
+export interface MarketplaceFamily {
+  id: string;
   name: string;
+  brand?: string;
+  description?: string;
+  marketplaceCapabilities?: string[];
+  /** Le morph qui l'apporte ; absent pour le socle. */
+  marketplaceOwner?: string;
+  variants: MarketplaceVariant[];
+}
+
+/** Une catégorie, apportée par le socle ou par un morph actif. */
+export interface MarketplaceCategory {
+  id: string;
   label: string;
-  note: string;
-  /** Taille approximative sur disque, en Go. */
-  sizeGb: number;
+  icon?: string;
+  matches: string[];
 }
 
 /**
- * Le catalogue de modèles — les mêmes poids que le marketplace du bureau.
- * Ils s'installent sur le serveur ; le navigateur ne fait que désigner lequel.
+ * Le Marketplace tel que le serveur le sert : les modèles de conversation du
+ * socle, plus ce que chaque morph actif déclare. Rien n'est tenu dans la page.
  */
-export const MODEL_CATALOGUE: CatalogueModel[] = [
-  {
-    url: "https://huggingface.co/hexgrad/Kokoro-82M",
-    kind: "audio",
-    name: "hexgrad__Kokoro-82M",
-    label: "Kokoro-82M",
-    note: "Voix naturelle, 82M",
-    sizeGb: 0.3,
-  },
-  {
-    url: "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-    kind: "audio",
-    name: "Qwen__Qwen3-TTS-12Hz-1.7B-CustomVoice",
-    label: "Qwen3-TTS 1.7B",
-    note: "Clonage de voix, multilingue",
-    sizeGb: 3.4,
-  },
-];
+export interface CatalogueMarketplace {
+  categories: MarketplaceCategory[];
+  families: MarketplaceFamily[];
+}
 
 /** Les lignes telles que le daemon les renvoie. */
 interface SessionRow {
@@ -542,6 +550,7 @@ export const api = {
   async pullModel(
     url: string,
     onProgress: (p: ModelPullProgress) => void,
+    companions?: MarketplaceDownload[],
   ): Promise<{ name: string; size: number }> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const token = getToken();
@@ -550,7 +559,9 @@ export const api = {
     const resp = await fetch("/v1/models/pull", {
       method: "POST",
       headers,
-      body: JSON.stringify({ url }),
+      // Les fichiers compagnons d'un morph (VAE, encodeur…) partent avec le
+      // modèle : sans eux, il ne se charge pas.
+      body: JSON.stringify({ url, companions: companions ?? [] }),
     });
     if (resp.status === 401) {
       clearSession();
@@ -695,6 +706,17 @@ export const api = {
       body: { figure_id: figureId },
     });
     return session.id;
+  },
+
+  /** Le Marketplace du serveur : socle + morphs actifs. */
+  async marketplace(): Promise<CatalogueMarketplace> {
+    return http<CatalogueMarketplace>("/v1/marketplace");
+  },
+
+  /** Les modèles de conversation installés sur le serveur. */
+  async listModels(): Promise<string[]> {
+    const r = await http<{ data?: Array<{ id: string }> }>("/v1/models");
+    return (r.data ?? []).map((m) => m.id);
   },
 
   /** Les modèles audio génériques exposés par Locaryn. */

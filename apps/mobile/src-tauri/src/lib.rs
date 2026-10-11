@@ -1202,6 +1202,27 @@ async fn rewind_last_message(conversation_id: String) -> Result<(), String> {
     }
 }
 
+/// Le Marketplace des modèles : ceux du socle et ceux des morphs actifs du
+/// serveur, avec leurs catégories. Rien n'est tenu sur le téléphone.
+#[tauri::command]
+async fn marketplace() -> Result<serde_json::Value, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}/v1/marketplace"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err("Le serveur ne sert pas encore le Marketplace : mettez-le à jour.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur n'a pas répondu ({}).", resp.status()));
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
 /// Le texte d'un document joint (PDF compris), tiré par le serveur.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TexteDocument {
@@ -2360,6 +2381,7 @@ pub struct ModelPullProgress {
 #[tauri::command]
 async fn pull_model(
     url: String,
+    companions: Option<Vec<serde_json::Value>>,
     on_progress: tauri::ipc::Channel<ModelPullProgress>,
 ) -> Result<serde_json::Value, String> {
     let (client, server, session) = authenticated()?;
@@ -2370,7 +2392,9 @@ async fn pull_model(
         // Les poids font des centaines de Mo à plusieurs Go : on laisse le
         // temps au serveur de les télécharger.
         .timeout(std::time::Duration::from_secs(3600))
-        .json(&serde_json::json!({ "url": url }))
+        // Les fichiers compagnons qu'un morph déclare (VAE, encodeur de texte…)
+        // partent avec le modèle : sans eux, il ne se charge pas.
+        .json(&serde_json::json!({ "url": url, "companions": companions.unwrap_or_default() }))
         .send()
         .await
         .map_err(|_| unreachable(&server))?;
@@ -2933,6 +2957,7 @@ pub fn run() {
             set_session_trust,
             compress_context,
             extract_document,
+            marketplace,
             suggest_followups,
             rewind_last_message,
             cancel_message,
