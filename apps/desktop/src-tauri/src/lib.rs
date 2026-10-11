@@ -31,6 +31,7 @@ mod model_recommendations;
 mod model_residency;
 mod notifications;
 mod project_context;
+mod reveler;
 mod snippets;
 mod sous_agents;
 mod trust_source;
@@ -5938,27 +5939,15 @@ async fn delete_model_cmd(
 
 #[tauri::command]
 fn open_models_folder(path: Option<String>) -> Result<(), String> {
-    let dir = match path {
-        Some(p) if !p.is_empty() => std::path::PathBuf::from(p),
-        _ => locaryn_config::models_dir(),
+    let repli = locaryn_config::models_dir();
+    // Le fichier d'un modèle se montre sélectionné dans son dossier ; un
+    // chemin écrit avec des `/` ou un fichier disparu ne renvoient plus sur
+    // Documents (voir `reveler`).
+    let cible = match path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => reveler::cible(&reveler::normaliser(p, cfg!(windows)), &repli),
+        None => reveler::Cible::Dossier(repli),
     };
-    if cfg!(target_os = "windows") {
-        std::process::Command::new("explorer")
-            .arg(&dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    } else if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
-            .arg(&dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    } else {
-        std::process::Command::new("xdg-open")
-            .arg(&dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    reveler::ouvrir(&cible)
 }
 
 // ============================================================================
