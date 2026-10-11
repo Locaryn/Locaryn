@@ -11,7 +11,14 @@ import type { IconName } from "@locaryn/ui-core";
  * ouvrent un onglet sans que le panneau ait à être monté.
  */
 
-export type WorkspaceKind = "browser" | "files" | "terminal" | "changes" | "preview" | "model";
+export type WorkspaceKind =
+  | "browser"
+  | "files"
+  | "terminal"
+  | "changes"
+  | "preview"
+  | "model"
+  | "tasks";
 
 export interface WorkspaceTab {
   id: string;
@@ -52,6 +59,13 @@ export const KINDS: Record<WorkspaceKind, KindInfo> = {
     description: "Une ligne de commande dans le dossier de la conversation.",
     multiple: true,
   },
+  tasks: {
+    label: "Tâches",
+    icon: "list-bullets",
+    description:
+      "Ce qui tourne en arrière-plan : sous-agents, plans, téléchargements, générations.",
+    multiple: false,
+  },
   changes: {
     label: "Modifications",
     icon: "git-branch",
@@ -80,6 +94,7 @@ export const LAUNCHER_ORDER: WorkspaceKind[] = [
   "changes",
   "preview",
   "model",
+  "tasks",
 ];
 
 const STORAGE_KEY = "locaryn.workspace";

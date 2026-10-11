@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { BrowserTab } from "../components/workspace/BrowserTab";
 import { ChangesTab } from "../components/workspace/ChangesTab";
 import { FilesTab } from "../components/workspace/FilesTab";
+import { TasksTab } from "../components/workspace/TasksTab";
 import { TerminalConsole } from "../components/workspace/TerminalConsole";
 import { useSessionWorkspace } from "../hooks/useSessionWorkspace";
 import {
@@ -89,6 +90,8 @@ export function WorkspacePanel({ sessionId, projectPath }: Props) {
         return <RunPanel />;
       case "model":
         return <ModelConfigPanel sessionId={sessionId} onClose={() => closeTab(tab.id)} />;
+      case "tasks":
+        return <TasksTab />;
     }
   }
 

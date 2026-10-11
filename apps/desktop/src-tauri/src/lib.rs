@@ -32,6 +32,7 @@ mod model_residency;
 mod notifications;
 mod project_context;
 mod snippets;
+mod sous_agents;
 mod trust_source;
 mod workspace;
 use locaryn_sdk::secure_client;
@@ -2175,7 +2176,7 @@ async fn send_message(
         // Connecteurs, morphs, skills : le modèle agit sur l'application par
         // les mêmes commandes que l'écran des réglages.
         host_tools: Some(locaryn_agent_runtime::host_tools::HostToolsHandle::new(
-            app_tools::AppTools::new(app.clone()),
+            app_tools::AppTools::new(app.clone(), session_id),
         )),
         // Le réglage « Alléger les outils » (désactivé par défaut).
         trim_tools: locaryn_config::load(None)

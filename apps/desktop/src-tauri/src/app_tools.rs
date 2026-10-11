@@ -21,11 +21,13 @@ const RESULTATS_CATALOGUE: usize = 10;
 
 pub struct AppTools {
     app: AppHandle,
+    /// La conversation qui appelle : un sous-agent lui rend son compte rendu.
+    session: uuid::Uuid,
 }
 
 impl AppTools {
-    pub fn new(app: AppHandle) -> Self {
-        Self { app }
+    pub fn new(app: AppHandle, session: uuid::Uuid) -> Self {
+        Self { app, session }
     }
 }
 
@@ -173,6 +175,26 @@ impl HostTools for AppTools {
                 Risk::Low,
             ),
             spec(
+                "lister_modeles",
+                "Liste les modèles qu'un sous-agent peut utiliser : `local` (celui de cette machine) et ceux des catalogues branchés (OmniRoute…), avec ceux qui savent appeler des outils et ceux qui sont gratuits.",
+                json!({ "type": "object", "properties": {} }),
+                Risk::Low,
+            ),
+            spec(
+                "lancer_sous_agent",
+                "Confie une tâche à un sous-agent qui travaille en arrière-plan avec ses propres outils, pendant que la conversation continue. Rend aussitôt la main ; son compte rendu arrive dans la conversation quand il a fini. Plusieurs sous-agents peuvent tourner en même temps.",
+                json!({
+                    "type": "object",
+                    "required": ["tache"],
+                    "properties": {
+                        "tache": { "type": "string", "description": "Ce que le sous-agent doit faire, complet : il ne voit pas la conversation." },
+                        "modele": { "type": "string", "description": "`local` (défaut) ou `<catalogue>:<modèle>` rendu par lister_modeles." },
+                        "nom": { "type": "string", "description": "Un nom court pour le reconnaître." }
+                    }
+                }),
+                Risk::Low,
+            ),
+            spec(
                 "browser_back",
                 "Revient à la page précédente du navigateur intégré et la rend.",
                 json!({ "type": "object", "properties": {} }),
@@ -210,6 +232,26 @@ impl HostTools for AppTools {
                 None => erreur("`direction` manquante : down, up, top ou bottom."),
             },
             "browser_back" => resultat(browser::revenir(&self.app).await),
+            "lister_modeles" => ok(crate::sous_agents::lister(&core).await),
+            "lancer_sous_agent" => match args.get("tache").and_then(Value::as_str) {
+                Some(tache) if !tache.trim().is_empty() => resultat(
+                    crate::sous_agents::lancer(
+                        &self.app,
+                        self.session,
+                        tache.to_string(),
+                        args.get("modele")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
+                        args.get("nom")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
+                    )
+                    .await,
+                ),
+                _ => erreur("`tache` manquante : ce que le sous-agent doit faire."),
+            },
             autre => erreur(format!("outil de l'application inconnu : {autre}")),
         }
     }

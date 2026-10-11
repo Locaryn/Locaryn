@@ -11,7 +11,7 @@ import { notifierSysteme } from "./osNotify";
 /** Douze entrées maximum : au-delà, la pile n'est plus lisible, elle archive. */
 const MAX_TASKS = 12;
 
-export type TaskType = "download" | "generation" | "edit" | "workflow" | "audio";
+export type TaskType = "download" | "generation" | "edit" | "workflow" | "audio" | "subagent";
 export type TaskStatus = "running" | "done" | "error";
 
 export interface AppTask {
@@ -43,6 +43,16 @@ export interface AppTask {
   /** Retry counter — shown as "essai N" when the final check fails and the
    *  workflow is relaunched. 1 on the first run. */
   attempt?: number;
+
+  // ── Sous-agents only ─────────────────────────────────────────────────────
+  /** La conversation qui l'a lancé. */
+  parent?: string;
+  /** Le modèle qui le fait tourner, tel qu'affiché. */
+  model?: string;
+  /** Son fil : ce qu'il écrit, au fur et à mesure. */
+  transcript?: string;
+  /** Les outils qu'il a appelés, dans l'ordre. */
+  tools?: string[];
 }
 
 /**
@@ -64,6 +74,7 @@ const GROUPE_PAR_TYPE: Record<TaskType, NotificationGroup> = {
   edit: "long_tasks",
   workflow: "long_tasks",
   audio: "long_tasks",
+  subagent: "long_tasks",
 };
 
 export const TASK_META: Record<TaskType, { label: string; icon: IconName; color: string }> = {
@@ -72,6 +83,7 @@ export const TASK_META: Record<TaskType, { label: string; icon: IconName; color:
   edit: { label: "Édition modèle", icon: "extensions", color: "var(--accent-300)" },
   workflow: { label: "Workflow", icon: "extensions", color: "var(--warn)" },
   audio: { label: "Synthèse vocale", icon: "mic", color: "var(--info)" },
+  subagent: { label: "Sous-agent", icon: "robot", color: "var(--accent)" },
 };
 
 let tasks: AppTask[] = [];

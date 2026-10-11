@@ -59,6 +59,7 @@ import {
   matchSlashInput,
   parseModifiers,
 } from "../lib/slashCommands";
+import { SOUS_AGENT_ACCORD, SOUS_AGENT_FINI, type SousAgentFini } from "../lib/sousAgents";
 import { runWorkflow } from "../lib/workflow";
 import { DEFAULT_MODEL_PARAMS } from "./ModelConfigPanel";
 
@@ -760,6 +761,39 @@ export function ChatPanel({
       if (attente) clearTimeout(attente);
     };
   }, [sessionId]);
+  // Un sous-agent a fini : son compte rendu revient à la conversation qui l'a
+  // lancé — remis au modèle s'il travaille encore, sinon envoyé comme message
+  // (par la file, qui le fait partir dès que cette conversation est libre).
+  // Une demande d'accord d'un sous-agent s'affiche comme celles du modèle.
+  const envoyerMaintenantRef = useRef<(qm: QueuedMessage) => Promise<void>>(async () => {});
+  useEffect(() => {
+    const surFin = (e: Event) => {
+      const d = (e as CustomEvent<SousAgentFini>).detail;
+      const qm: QueuedMessage = {
+        id: nextId("q"),
+        sessionId: d.parent,
+        text: d.ok
+          ? `[Compte rendu du sous-agent « ${d.nom} »]
+${d.texte}`
+          : `[Le sous-agent « ${d.nom} » n'a pas abouti : ${d.texte}]`,
+        attachments: [],
+      };
+      setMessageQueue((prev) => [...prev, qm]);
+      if (d.parent === sessionRef.current && streamingRef.current) {
+        void envoyerMaintenantRef.current(qm);
+      }
+    };
+    const surAccord = (e: Event) => {
+      const d = (e as CustomEvent<{ parent: string; accord?: StreamEvent }>).detail;
+      if (d.accord && d.parent === sessionRef.current) handleEventRef.current(d.accord);
+    };
+    window.addEventListener(SOUS_AGENT_FINI, surFin);
+    window.addEventListener(SOUS_AGENT_ACCORD, surAccord);
+    return () => {
+      window.removeEventListener(SOUS_AGENT_FINI, surFin);
+      window.removeEventListener(SOUS_AGENT_ACCORD, surAccord);
+    };
+  }, []);
   /** Session we just created from the home screen: skip the DB reload once so
    *  the optimistic first message isn't wiped by an empty fetch. */
   const skipLoadRef = useRef<string | null>(null);
@@ -1743,6 +1777,7 @@ export function ChatPanel({
   /** « Envoyer maintenant ». Pendant une tâche, le message est remis au
    *  modèle, qui le lit à sa prochaine étape ; sinon il passe en tête de la
    *  file et part tout de suite. */
+  envoyerMaintenantRef.current = envoyerMaintenant;
   async function envoyerMaintenant(qm: QueuedMessage) {
     if (!streaming) {
       setMessageQueue((prev) => [qm, ...prev.filter((m) => m.id !== qm.id)]);

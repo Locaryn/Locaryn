@@ -34,6 +34,7 @@ import { parseDeepLink, setPendingInstall } from "./lib/deepLink";
 import { pickFolder } from "./lib/dialog";
 import type { ModelDownloadSource } from "./lib/modelRegistry";
 import { setRunReveal } from "./lib/runPanel";
+import { suivreSousAgents } from "./lib/sousAgents";
 import { taskCenter } from "./lib/taskCenter";
 import { KINDS, type WorkspaceKind, openTab, setWorkspaceOpen, toggleTab } from "./lib/workspace";
 import { BottomPanel } from "./panels/BottomPanel";
@@ -46,6 +47,9 @@ import { InstalledModelsView } from "./views/InstalledModelsView";
 import { ModelStudioView } from "./views/ModelStudioView";
 import { type Section, SettingsView } from "./views/SettingsView";
 import { StudioView } from "./views/StudioView";
+
+// Les sous-agents émettent leur fil dès qu'ils démarrent : l'écoute précède tout écran.
+suivreSousAgents();
 
 /** Les trois séparations déplaçables de la fenêtre. */
 type PanelKey = "leftW" | "rightW" | "bottomH";
