@@ -2760,3 +2760,33 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   height: 1px;
   background: var(--border);
 }
+
+/* Les permissions qu'une extension demande, dans l'invite d'activation. */
+.lo-permissions {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lo-permissions li {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.lo-permissions strong {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.lo-permissions span {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.lo-permissions em {
+  font-size: 12px;
+  font-style: normal;
+  color: var(--text-faint);
+}

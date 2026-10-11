@@ -76,9 +76,18 @@ export interface PhoneExtension {
     hooks?: number;
     lsp_adapters?: number;
   };
-  permissions?: string[];
+  /** Ce qu'elle demande, et ce qui lui est accordé. */
+  permissions?: PermissionDemandee[];
   /** Ce que l'extension ajoute à l'interface. Vide quand elle est éteinte. */
   ui?: ExtensionUi;
+}
+
+/** Une permission qu'une extension demande. */
+export interface PermissionDemandee {
+  /** `shell`, `network`, `files_write`… */
+  permission: string;
+  reason?: string | null;
+  granted: boolean;
 }
 
 /** Une entrée de menu ou un onglet que l'extension pose dans l'interface. */
@@ -576,6 +585,8 @@ export const core = {
     invoke<PhoneFigureSession[]>("figure_sessions", { figureId }),
 
   installExtension: (source: string) => invoke<PhoneExtension>("install_extension", { source }),
+  /** « Autoriser et activer » : permissions demandées accordées, extension active. */
+  activateExtension: (name: string) => invoke<void>("activate_extension", { name }),
   setExtensionEnabled: (name: string, enabled: boolean) =>
     invoke<void>("set_extension_enabled", { name, enabled }),
   /**
@@ -884,6 +895,7 @@ export const demoCore: typeof core = {
     capabilities: [],
   }),
   setExtensionEnabled: async () => {},
+  activateExtension: async () => {},
   removeExtension: async () => {},
   pullModel: async (_url, onProgress) => {
     const total = 250 * 1024 * 1024;

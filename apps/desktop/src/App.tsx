@@ -377,7 +377,16 @@ export function App() {
     // que la navigation suive sans qu'on ait à redémarrer l'application.
     const onChange = () => void refreshCapabilities();
     window.addEventListener("locaryn:extensions-changed", onChange);
-    return () => window.removeEventListener("locaryn:extensions-changed", onChange);
+    // Une extension installée ou activée depuis le téléphone (le service
+    // partage la base) apparaît ici sans redémarrer : relue au retour sur la
+    // fenêtre et toutes les vingt secondes.
+    window.addEventListener("focus", onChange);
+    const minuterie = window.setInterval(onChange, 20_000);
+    return () => {
+      window.removeEventListener("locaryn:extensions-changed", onChange);
+      window.removeEventListener("focus", onChange);
+      window.clearInterval(minuterie);
+    };
   }, [refreshCapabilities]);
 
   // Une extension peut demander l'ouverture d'un écran de l'hôte plutôt que

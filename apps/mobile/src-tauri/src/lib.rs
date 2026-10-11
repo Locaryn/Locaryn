@@ -1817,6 +1817,21 @@ pub struct PhoneExtension {
     /// c'est même le téléphone qui en a le plus besoin.
     #[serde(default)]
     pub ui: ExtensionUi,
+    /// Ce que l'extension demande, et ce qui lui est accordé : c'est ce que
+    /// montre l'invite « Autoriser et activer ».
+    #[serde(default)]
+    pub permissions: Vec<PermissionDemandee>,
+}
+
+/// Une permission qu'une extension demande.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PermissionDemandee {
+    /// `shell`, `network`, `files_write`…
+    pub permission: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub granted: bool,
 }
 
 /// Une figure du serveur, réduite à ce que le téléphone en montre.
@@ -2263,6 +2278,33 @@ async fn install_extension(source: String) -> Result<PhoneExtension, String> {
     resp.json::<PhoneExtension>()
         .await
         .map_err(|e| e.to_string())
+}
+
+/// « Autoriser et activer » : le serveur accorde les permissions demandées et
+/// active l'extension. Sans cela, une extension installée depuis le téléphone
+/// restait éteinte, et rien de ce qu'elle apporte n'apparaissait.
+#[tauri::command]
+async fn activate_extension(name: String) -> Result<(), String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let resp = client
+        .post(format!("{base}/v1/extensions/{name}/activate"))
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(
+            "Le serveur ne sait pas encore activer une extension d'ici : mettez-le à jour.".into(),
+        );
+    }
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Le serveur a refusé l'activation ({}).",
+            resp.status()
+        ));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -2937,6 +2979,7 @@ pub fn run() {
             list_models,
             install_extension,
             set_extension_enabled,
+            activate_extension,
             remove_extension,
             pull_model,
             remove_model,

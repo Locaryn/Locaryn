@@ -381,6 +381,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::extensions::enable_extension),
         )
         .route(
+            "/v1/extensions/:name/activate",
+            post(routes::extensions::activate_extension),
+        )
+        .route(
             "/v1/extensions/:name/disable",
             post(routes::extensions::disable_extension),
         )

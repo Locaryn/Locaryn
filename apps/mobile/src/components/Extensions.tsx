@@ -22,6 +22,23 @@ interface CatalogItem {
   capabilities: string[];
 }
 
+/** Les permissions, dites comme une personne les comprend. */
+const LIBELLES_PERMISSION: Record<string, string> = {
+  shell: "Lancer des programmes",
+  files_read: "Lire des fichiers",
+  files_write: "Écrire des fichiers",
+  network: "Accéder au réseau",
+  extensions: "Gérer les extensions",
+  mcp: "Démarrer ses connecteurs (MCP)",
+  preview: "Ouvrir des aperçus",
+  lsp: "Analyse de code (LSP)",
+  env: "Lire les variables d'environnement",
+};
+
+function estExtension(v: unknown): v is PhoneExtension {
+  return typeof v === "object" && v !== null && "name" in v && "enabled" in v;
+}
+
 const FULL_CATALOGUE: CatalogItem[] = [
   {
     repo: "Locaryn/morph-image",
@@ -185,14 +202,23 @@ export function Extensions({ onBack, onChanged }: Props) {
     setBusy(key);
     setError(null);
     try {
-      await run();
+      const resultat = await run();
       await reload();
       onChanged();
+      // Une extension tout juste installée est éteinte : on propose aussitôt
+      // de l'activer, permissions à l'appui — comme le bureau.
+      if (estExtension(resultat) && !resultat.enabled) setPermissionTarget(resultat);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(null);
     }
+  }
+
+  /** « Autoriser et activer » : permissions accordées, extension active. */
+  async function activer(ext: PhoneExtension) {
+    setPermissionTarget(null);
+    await handleAction(ext.name, () => api.activateExtension(ext.name));
   }
 
   async function handleManualInstall(e: React.FormEvent) {
@@ -439,9 +465,9 @@ export function Extensions({ onBack, onChanged }: Props) {
                       className="lo-btn-small"
                       disabled={working}
                       onClick={() =>
-                        handleAction(ext.name, () =>
-                          api.setExtensionEnabled(ext.name, !ext.enabled),
-                        )
+                        ext.enabled
+                          ? handleAction(ext.name, () => api.setExtensionEnabled(ext.name, false))
+                          : setPermissionTarget(ext)
                       }
                     >
                       {ext.enabled ? "Désactiver" : "Activer"}
@@ -664,46 +690,49 @@ export function Extensions({ onBack, onChanged }: Props) {
             </div>
             <div className="lo-modal-body">
               <p className="lo-hint">
-                Cette extension s'exécute dans un environnement sécurisé sur le serveur avec les
-                autorisations accordées :
+                {permissionTarget.enabled
+                  ? "Ce que cette extension peut faire sur le serveur :"
+                  : "Pour fonctionner, cette extension demande :"}
               </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div
-                  style={{
-                    padding: "8px 12px",
-                    background: "var(--surface)",
-                    borderRadius: "var(--radius-sm)",
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
-                    Capacités déclarées
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
-                    {permissionTarget.capabilities.length > 0
-                      ? permissionTarget.capabilities.join(", ")
-                      : "Aucune capacité particulière requise"}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    padding: "8px 12px",
-                    background: "var(--surface)",
-                    borderRadius: "var(--radius-sm)",
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
-                    Niveau de sécurité
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--accent)", marginTop: 2 }}>
-                    Vérifié & Isolé (Sandbox Daemon)
-                  </div>
-                </div>
-              </div>
+              {(permissionTarget.permissions ?? []).length === 0 ? (
+                <p className="lo-hint">Aucune permission particulière.</p>
+              ) : (
+                <ul className="lo-permissions">
+                  {(permissionTarget.permissions ?? []).map((p) => (
+                    <li key={p.permission}>
+                      <strong>{LIBELLES_PERMISSION[p.permission] ?? p.permission}</strong>
+                      {p.reason && <span>{p.reason}</span>}
+                      {permissionTarget.enabled && (
+                        <em>{p.granted ? "accordée" : "non accordée"}</em>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="lo-modal-footer">
-              <button type="button" className="lo-btn" onClick={() => setPermissionTarget(null)}>
-                Fermer
-              </button>
+              {permissionTarget.enabled ? (
+                <button type="button" className="lo-btn" onClick={() => setPermissionTarget(null)}>
+                  Fermer
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="lo-btn"
+                    onClick={() => void activer(permissionTarget)}
+                  >
+                    Autoriser et activer
+                  </button>
+                  <button
+                    type="button"
+                    className="lo-btn-ghost"
+                    onClick={() => setPermissionTarget(null)}
+                  >
+                    Plus tard
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

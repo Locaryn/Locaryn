@@ -541,6 +541,32 @@ pub async fn list_extensions(core: State<'_, Core>) -> Result<Vec<InstalledExten
     installed_view(&core).await
 }
 
+/// Le service (téléphone, web, CLI) a pu activer ou couper une extension dans
+/// la base commune : si ce qui est chargé ici ne correspond plus, on recharge.
+/// Sans cela, un morph activé depuis le téléphone n'apparaissait sur ce poste
+/// qu'au redémarrage de l'application.
+async fn rattraper_la_base(core: &Core) {
+    let Ok(rows) = core.storage.extensions.list().await else {
+        return;
+    };
+    let actives: std::collections::HashSet<Uuid> =
+        rows.iter().filter(|r| r.enabled).map(|r| r.id).collect();
+    let chargees: std::collections::HashSet<Uuid> = {
+        let rt = core.extensions.read().await;
+        rt.loaded.keys().copied().collect()
+    };
+    if actives != chargees {
+        tracing::info!(
+            actives = actives.len(),
+            chargees = chargees.len(),
+            "extensions changées ailleurs : rechargement"
+        );
+        if let Err(e) = reload(core).await {
+            tracing::warn!(error = %e, "rechargement des extensions impossible");
+        }
+    }
+}
+
 /// Les extensions telles que cet écran doit les voir.
 ///
 /// Connecté à un serveur : celles du serveur — sauf les compagnons d'appareil
@@ -550,6 +576,7 @@ pub async fn list_extensions(core: State<'_, Core>) -> Result<Vec<InstalledExten
 /// `device_install_pending` pour que l'interface propose de l'installer.
 async fn installed_view(core: &Core) -> Result<Vec<InstalledExtension>, String> {
     let Some(client) = core.remote_client() else {
+        rattraper_la_base(core).await;
         return build_installed(core).await;
     };
     let Ok(du_serveur) = client.list_extensions().await else {

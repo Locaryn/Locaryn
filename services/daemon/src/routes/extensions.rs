@@ -819,6 +819,66 @@ pub async fn enable_extension(
     }
 }
 
+/// POST /v1/extensions/{name}/activate — « Autoriser et activer » : accorder
+/// les permissions que l'extension demande, puis l'activer.
+///
+/// C'est le geste du bureau après une installation. Depuis le téléphone, une
+/// extension installée restait éteinte, sans permissions : ni ses outils, ni
+/// ses modèles du Marketplace, ni son écran n'apparaissaient nulle part.
+pub async fn activate_extension(
+    State(s): State<Arc<DaemonState>>,
+    Path(name): Path<String>,
+) -> Response {
+    let Some(entry) = s.extensions.get(&name) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": { "code": "not_found", "message": format!("extension inconnue : {name}") }
+            })),
+        )
+            .into_response();
+    };
+    let demandees: Vec<_> = entry
+        .permissions
+        .requested
+        .iter()
+        .map(|(p, _)| p.clone())
+        .collect();
+    for permission in &demandees {
+        if let Err(e) = s.extensions.grant_permission(&name, permission.clone()) {
+            return registry_error_response(e).into_response();
+        }
+    }
+    if let Some(rec) = find_record(&s, &name).await {
+        if let Some(apres) = s.extensions.get(&name) {
+            if let Err(e) = s
+                .storage
+                .extensions
+                .set_granted(rec.id, &apres.permissions.granted)
+                .await
+            {
+                tracing::warn!(name, error = %e, "permissions accordées mais non enregistrées en base");
+            }
+        }
+    }
+    match s.extensions.enable(&name) {
+        Ok(()) => {
+            persist_enabled(&s, &name, true).await;
+            sync_extension_runtime(&s).await;
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "enabled",
+                    "name": name,
+                    "granted": demandees.len(),
+                })),
+            )
+                .into_response()
+        }
+        Err(e) => registry_error_response(e).into_response(),
+    }
+}
+
 /// POST /v1/extensions/{name}/disable — disable an extension by name.
 pub async fn disable_extension(
     State(s): State<Arc<DaemonState>>,
