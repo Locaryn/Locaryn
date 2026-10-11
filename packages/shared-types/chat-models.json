@@ -20,12 +20,7 @@
           "size": "E2B",
           "params": 2,
           "tag": "gemma4:e2b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 4.6,
           "instruct": true
         },
@@ -33,12 +28,7 @@
           "size": "E4B",
           "params": 4,
           "tag": "gemma4:e4b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 6.6,
           "instruct": true
         },
@@ -46,12 +36,7 @@
           "size": "12B",
           "params": 12,
           "tag": "gemma4:12b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 7.6,
           "instruct": true
         },
@@ -59,12 +44,7 @@
           "size": "26B MoE",
           "params": 26,
           "tag": "gemma4:26b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 16,
           "instruct": true
         },
@@ -72,12 +52,7 @@
           "size": "31B Dense",
           "params": 31,
           "tag": "gemma4:31b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 19,
           "instruct": true
         }
@@ -100,12 +75,7 @@
           "size": "2B",
           "params": 2,
           "tag": "gemma2:2b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 1.6,
           "instruct": true
         },
@@ -113,12 +83,7 @@
           "size": "9B",
           "params": 9,
           "tag": "gemma2:9b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 5.4,
           "instruct": true
         },
@@ -126,12 +91,7 @@
           "size": "27B",
           "params": 27,
           "tag": "gemma2:27b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 16,
           "instruct": true
         }
@@ -157,9 +117,7 @@
           "size": "27B",
           "params": 27,
           "tag": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 16.5,
           "instruct": true,
           "downloads": [
@@ -192,9 +150,7 @@
           "size": "27B",
           "params": 27,
           "tag": "https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/main/Qwen3.6-27B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 16.8,
           "instruct": true,
           "downloads": [
@@ -209,9 +165,7 @@
           "size": "35B MoE (A3B)",
           "params": 35,
           "tag": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 22.1,
           "instruct": true,
           "downloads": [
@@ -244,9 +198,7 @@
           "size": "0.8B",
           "params": 0.8,
           "tag": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 0.5,
           "instruct": true,
           "downloads": [
@@ -261,9 +213,7 @@
           "size": "2B",
           "params": 2,
           "tag": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 1.3,
           "instruct": true,
           "downloads": [
@@ -278,9 +228,7 @@
           "size": "4B",
           "params": 4,
           "tag": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 2.7,
           "instruct": true,
           "downloads": [
@@ -295,9 +243,7 @@
           "size": "9B",
           "params": 9,
           "tag": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 5.7,
           "instruct": true,
           "downloads": [
@@ -312,9 +258,7 @@
           "size": "27B",
           "params": 27,
           "tag": "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 16.7,
           "instruct": true,
           "downloads": [
@@ -329,9 +273,7 @@
           "size": "35B MoE (A3B)",
           "params": 35,
           "tag": "https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF/resolve/main/Qwen3.5-35B-A3B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M"
-          ],
+          "quants": ["q4_K_M"],
           "storageGb": 22,
           "instruct": true,
           "downloads": [
@@ -362,12 +304,7 @@
           "size": "0.6B",
           "params": 0.6,
           "tag": "qwen3:0.6b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 0.5,
           "instruct": true
         },
@@ -375,12 +312,7 @@
           "size": "1.7B",
           "params": 1.7,
           "tag": "qwen3:1.7b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 1.1,
           "instruct": true
         },
@@ -388,12 +320,7 @@
           "size": "4B",
           "params": 4,
           "tag": "qwen3:4b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 2.6,
           "instruct": true
         },
@@ -401,12 +328,7 @@
           "size": "8B",
           "params": 8,
           "tag": "qwen3:8b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 4.9,
           "instruct": true
         },
@@ -414,12 +336,7 @@
           "size": "14B",
           "params": 14,
           "tag": "qwen3:14b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 9,
           "instruct": true
         },
@@ -427,12 +344,7 @@
           "size": "30B MoE",
           "params": 30,
           "tag": "qwen3:30b-a3b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 19,
           "instruct": true
         },
@@ -440,12 +352,7 @@
           "size": "32B",
           "params": 32,
           "tag": "qwen3:32b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 20,
           "instruct": true
         }
@@ -469,12 +376,7 @@
           "size": "30B MoE",
           "params": 30,
           "tag": "qwen3-coder:30b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 19,
           "instruct": true
         }
@@ -497,12 +399,7 @@
           "size": "32B",
           "params": 32,
           "tag": "qwq:32b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 20,
           "instruct": true
         }
@@ -526,12 +423,7 @@
           "size": "7B",
           "params": 7,
           "tag": "qwen2.5-coder:7b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 4.7,
           "instruct": true
         },
@@ -539,12 +431,7 @@
           "size": "14B",
           "params": 14,
           "tag": "qwen2.5-coder:14b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 9,
           "instruct": true
         },
@@ -552,12 +439,7 @@
           "size": "32B",
           "params": 32,
           "tag": "qwen2.5-coder:32b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 20,
           "instruct": true
         }
@@ -581,12 +463,7 @@
           "size": "1.5B",
           "params": 1.5,
           "tag": "deepseek-r1:1.5b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 1.1,
           "instruct": true
         },
@@ -594,12 +471,7 @@
           "size": "7B",
           "params": 7,
           "tag": "deepseek-r1:7b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 4.7,
           "instruct": true
         },
@@ -607,12 +479,7 @@
           "size": "8B",
           "params": 8,
           "tag": "deepseek-r1:8b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 4.9,
           "instruct": true
         },
@@ -620,12 +487,7 @@
           "size": "14B",
           "params": 14,
           "tag": "deepseek-r1:14b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 9,
           "instruct": true
         },
@@ -633,12 +495,7 @@
           "size": "32B",
           "params": 32,
           "tag": "deepseek-r1:32b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 20,
           "instruct": true
         },
@@ -646,12 +503,7 @@
           "size": "70B",
           "params": 70,
           "tag": "deepseek-r1:70b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 42,
           "instruct": true
         }
@@ -674,12 +526,7 @@
           "size": "16B Lite",
           "params": 16,
           "tag": "deepseek-coder-v2:16b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 9.7,
           "instruct": true
         }
@@ -702,12 +549,7 @@
           "size": "Scout 109B MoE",
           "params": 109,
           "tag": "llama4:scout",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 64,
           "instruct": true
         }
@@ -730,12 +572,7 @@
           "size": "1B",
           "params": 1,
           "tag": "llama3.2:1b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 1.3,
           "instruct": true
         },
@@ -743,12 +580,7 @@
           "size": "3B",
           "params": 3,
           "tag": "llama3.2:3b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 2,
           "instruct": true
         }
@@ -770,12 +602,7 @@
           "size": "7B",
           "params": 7,
           "tag": "mistral:7b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 4.1,
           "instruct": true
         }
@@ -798,12 +625,7 @@
           "size": "22B",
           "params": 22,
           "tag": "codestral:22b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 13,
           "instruct": true
         }
@@ -826,12 +648,7 @@
           "size": "14B",
           "params": 14,
           "tag": "phi4:14b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 9.1,
           "instruct": true
         }
@@ -854,12 +671,7 @@
           "size": "3.8B",
           "params": 3.8,
           "tag": "phi4-mini",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 2.4,
           "instruct": true
         }
@@ -881,12 +693,7 @@
           "size": "9B",
           "params": 9,
           "tag": "glm4:9b",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 5.5,
           "instruct": true
         }
@@ -909,12 +716,7 @@
           "size": "7B RL",
           "params": 7,
           "tag": "https://huggingface.co/jedisct1/MiMo-7B-RL-GGUF/resolve/main/MiMo-7B-RL-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q8_0",
-            "fp16"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q8_0", "fp16"],
           "storageGb": 4.7,
           "instruct": true
         },
@@ -922,12 +724,7 @@
           "size": "9B V2.6 Distill",
           "params": 9,
           "tag": "https://huggingface.co/bartowski/MiMo-V2.6-Distill-Qwen-9B-GGUF/resolve/main/MiMo-V2.6-Distill-Qwen-9B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 5.8,
           "instruct": true
         }
@@ -950,12 +747,7 @@
           "size": "30B MoE",
           "params": 30,
           "tag": "https://huggingface.co/unsloth/Nemotron-3-Nano-30B-A3B-GGUF/resolve/main/Nemotron-3-Nano-30B-A3B-Q4_K_M.gguf",
-          "quants": [
-            "q4_K_M",
-            "q5_K_M",
-            "q6_K",
-            "q8_0"
-          ],
+          "quants": ["q4_K_M", "q5_K_M", "q6_K", "q8_0"],
           "storageGb": 24.6,
           "instruct": true
         }
@@ -981,11 +773,7 @@
           "size": "4B · rapide",
           "params": 4,
           "tag": "https://huggingface.co/Qwen/Qwen3-4B-GGUF",
-          "quants": [
-            "Q4_K_M",
-            "Q5_K_M",
-            "Q8_0"
-          ],
+          "quants": ["Q4_K_M", "Q5_K_M", "Q8_0"],
           "storageGb": 2.33,
           "instruct": true
         },
@@ -993,11 +781,7 @@
           "size": "8B · recommandé",
           "params": 8,
           "tag": "https://huggingface.co/Qwen/Qwen3-8B-GGUF",
-          "quants": [
-            "Q4_K_M",
-            "Q5_K_M",
-            "Q8_0"
-          ],
+          "quants": ["Q4_K_M", "Q5_K_M", "Q8_0"],
           "storageGb": 4.68,
           "instruct": true
         },
@@ -1005,11 +789,7 @@
           "size": "14B · qualité",
           "params": 14,
           "tag": "https://huggingface.co/ggml-org/Qwen3-14B-GGUF",
-          "quants": [
-            "Q4_K_M",
-            "Q8_0",
-            "F16"
-          ],
+          "quants": ["Q4_K_M", "Q8_0", "F16"],
           "storageGb": 8.38,
           "instruct": true
         }
@@ -1033,11 +813,7 @@
           "size": "4B · vision rapide",
           "params": 4,
           "tag": "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF",
-          "quants": [
-            "Q4_K_M",
-            "Q8_0",
-            "F16"
-          ],
+          "quants": ["Q4_K_M", "Q8_0", "F16"],
           "storageGb": 3.11,
           "instruct": true
         },
@@ -1045,11 +821,7 @@
           "size": "12B · vision qualité",
           "params": 12,
           "tag": "https://huggingface.co/ggml-org/gemma-3-12b-it-GGUF",
-          "quants": [
-            "Q4_K_M",
-            "Q8_0",
-            "F16"
-          ],
+          "quants": ["Q4_K_M", "Q8_0", "F16"],
           "storageGb": 7.6,
           "instruct": true
         }
@@ -1074,11 +846,7 @@
           "size": "27B",
           "params": 27,
           "tag": "https://huggingface.co/ggml-org/Qwen3.8-27B-GGUF",
-          "quants": [
-            "Q4_K_M",
-            "Q8_0",
-            "BF16"
-          ],
+          "quants": ["Q4_K_M", "Q8_0", "BF16"],
           "storageGb": 18.3,
           "instruct": true
         }
@@ -1101,9 +869,7 @@
           "size": "70B",
           "params": 70,
           "tag": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
-          "quants": [
-            "Q4_K_M"
-          ],
+          "quants": ["Q4_K_M"],
           "storageGb": 40
         }
       ]
@@ -1125,9 +891,7 @@
           "size": "72B",
           "params": 72,
           "tag": "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF/resolve/main/Qwen2.5-72B-Instruct-Q4_K_M.gguf",
-          "quants": [
-            "Q4_K_M"
-          ],
+          "quants": ["Q4_K_M"],
           "storageGb": 42
         }
       ]
