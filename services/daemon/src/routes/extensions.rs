@@ -597,6 +597,71 @@ pub async fn list_extensions(State(s): State<Arc<DaemonState>>) -> Response {
     (StatusCode::OK, Json(json)).into_response()
 }
 
+#[derive(Deserialize, Default)]
+pub struct CatalogueQuery {
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default)]
+    ecosystem: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+    /// `true` : relire les sources (réseau, lent) au lieu de la dernière copie.
+    #[serde(default)]
+    refresh: bool,
+}
+
+/// Les écosystèmes qu'un client distant sait installer sur ce serveur.
+const ECOSYSTEMES_DISTANTS: [&str; 3] = ["locaryn", "gemini_cli", "opencode"];
+
+/// GET /v1/extensions/catalog — le catalogue des extensions installables,
+/// tel que le bureau le montre : les morphs de l'organisation et les registres
+/// compatibles. Le téléphone et le web ne tiennent plus aucune liste ; sans
+/// copie locale, la première lecture interroge les sources.
+pub async fn extension_catalog(
+    State(s): State<Arc<DaemonState>>,
+    Query(q): Query<CatalogueQuery>,
+) -> Response {
+    let client = locaryn_extensions::CatalogClient::new(s.http.clone());
+    let snapshot = match (q.refresh, client.cached()) {
+        (false, Some(copie)) => copie,
+        _ => {
+            let sources: Vec<_> = locaryn_extensions::catalog::builtin_sources()
+                .into_iter()
+                .filter(|src| ECOSYSTEMES_DISTANTS.contains(&src.ecosystem.as_str()))
+                .collect();
+            client.refresh(&sources).await
+        }
+    };
+    let ecosysteme = q
+        .ecosystem
+        .as_deref()
+        .and_then(|e| serde_json::from_value(serde_json::json!(e)).ok());
+    let installes: std::collections::HashSet<String> =
+        s.extensions.list().into_iter().map(|e| e.name).collect();
+    let entries: Vec<_> = locaryn_extensions::catalog::filter(
+        &snapshot.entries,
+        q.q.as_deref().unwrap_or(""),
+        ecosysteme,
+        q.limit.unwrap_or(80).min(300),
+    )
+    .into_iter()
+    .filter(|e| ECOSYSTEMES_DISTANTS.contains(&e.ecosystem.as_str()))
+    .map(|mut e| {
+        e.installed = installes.contains(&e.name);
+        e
+    })
+    .collect();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "entries": entries,
+            "fetched_at": snapshot.fetched_at,
+            "stale": snapshot.stale,
+        })),
+    )
+        .into_response()
+}
+
 /// GET /v1/capabilities — la liste canonique des capacités reconnues.
 ///
 /// C'est la même liste que celle embarquée par les clients à la compilation
@@ -679,7 +744,7 @@ pub async fn install_extension(
 struct Depot {
     owner: String,
     repo: String,
-    /// Tag ou branche : `v2.3.0` dans `Locaryn/morph-ssh@v2.3.0`.
+    /// Tag ou branche : `v2.3.0` dans `Locaryn/morph-distant@v2.3.0`.
     version: Option<String>,
 }
 
@@ -1207,26 +1272,26 @@ mod catalogue_tests {
     #[test]
     fn la_version_du_catalogue_est_acceptee() {
         for source in [
-            "Locaryn/morph-ssh@v2.3.0",
-            "github:Locaryn/morph-ssh@v2.3.0",
-            "Locaryn/morph-ssh#v2.3.0",
+            "Locaryn/morph-distant@v2.3.0",
+            "github:Locaryn/morph-distant@v2.3.0",
+            "Locaryn/morph-distant#v2.3.0",
         ] {
             let d = parse_repo(source).unwrap();
             assert_eq!(
                 (d.repo.as_str(), d.version.as_deref()),
-                ("morph-ssh", Some("v2.3.0"))
+                ("morph-distant", Some("v2.3.0"))
             );
         }
         assert_eq!(
-            parse_repo("Locaryn/morph-desktop@v0.1.0-beta.5")
+            parse_repo("Locaryn/morph-bureau@v0.1.0-beta.5")
                 .unwrap()
                 .version
                 .as_deref(),
             Some("v0.1.0-beta.5")
         );
         // Une version qui n'en est pas une ne passe pas.
-        assert!(parse_repo("Locaryn/morph-ssh@v1;rm -rf").is_err());
-        assert!(parse_repo("Locaryn/morph-ssh@").is_err());
+        assert!(parse_repo("Locaryn/morph-distant@v1;rm -rf").is_err());
+        assert!(parse_repo("Locaryn/morph-distant@").is_err());
     }
 
     #[test]

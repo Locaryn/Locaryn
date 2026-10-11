@@ -361,6 +361,10 @@ async fn main() -> anyhow::Result<()> {
         // Extension routes
         .route("/v1/extensions", get(routes::extensions::list_extensions))
         .route(
+            "/v1/extensions/catalog",
+            get(routes::extensions::extension_catalog),
+        )
+        .route(
             "/v1/extensions/install",
             post(routes::extensions::install_extension),
         )

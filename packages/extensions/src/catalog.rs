@@ -230,8 +230,7 @@ impl CatalogClient {
             // Seuls les Morphs. Le préfixe est le contrat de nommage de
             // l'organisation : il écarte `locaryn-cores`, le dépôt de profil,
             // et les anciens dépôts `plugin-*` restés en place après le
-            // renommage — dont `plugin-image-editor`, fusionné dans
-            // `morph-image` et qui n'a plus à être proposé.
+            // renommage, qui n'ont plus à être proposés.
             if !name.starts_with("morph-") {
                 continue;
             }
@@ -267,11 +266,14 @@ impl CatalogClient {
                     .map(str::to_string)
             });
 
-            let display_name = match name {
-                // Le dépôt garde son slug historique ; le nom produit est Remote.
-                "morph-remote" => "Remote".to_string(),
-                _ => name.replace("morph-", "").replace('-', " "),
-            };
+            // Le nom produit vient du manifeste (`displayName`) : aucune table
+            // de noms tenue ici. À défaut, le slug sans son préfixe.
+            let display_name = manifeste
+                .as_ref()
+                .and_then(|m| m.get("displayName"))
+                .and_then(|d| d.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| name.trim_start_matches("morph-").replace('-', " "));
             // Versions réelles d'abord : les releases GitHub du dépôt sont la
             // source de vérité. À défaut, la version que le morph déclare
             // lui-même dans son manifeste — jamais une table tenue dans
@@ -1120,13 +1122,13 @@ mod tests {
             "draft": false,
             "published_at": "2026-09-10T12:00:00Z"
         });
-        let v = release_from_json(&r, "Locaryn/morph-cluster").expect("version");
+        let v = release_from_json(&r, "Locaryn/morph-grappe").expect("version");
         assert_eq!(v.version, "0.2.0");
         assert_eq!(v.tag.as_deref(), Some("v0.2.0"));
         assert!(!v.is_beta);
         assert_eq!(
             v.install_source.as_deref(),
-            Some("Locaryn/morph-cluster@v0.2.0")
+            Some("Locaryn/morph-grappe@v0.2.0")
         );
         assert_eq!(v.released_at.as_deref(), Some("2026-09-10"));
     }
@@ -1154,17 +1156,17 @@ mod tests {
 
     #[test]
     fn unknown_morph_gets_no_invented_version() {
-        // morph-cluster est désormais dans la table, avec ses VRAIES versions.
+        // morph-grappe est désormais dans la table, avec ses VRAIES versions.
         let atom = r#"<feed><entry><updated>2026-09-21T15:38:20Z</updated>
-            <link rel="alternate" type="text/html" href="https://github.com/Locaryn/morph-ssh/releases/tag/v2.3.0"/></entry>
-            <entry><link rel="alternate" href="https://github.com/Locaryn/morph-ssh/releases/tag/v2.2.0-beta.1"/></entry></feed>"#;
-        let depuis_flux = releases_from_atom(atom, "Locaryn/morph-ssh");
+            <link rel="alternate" type="text/html" href="https://github.com/Locaryn/morph-distant/releases/tag/v2.3.0"/></entry>
+            <entry><link rel="alternate" href="https://github.com/Locaryn/morph-distant/releases/tag/v2.2.0-beta.1"/></entry></feed>"#;
+        let depuis_flux = releases_from_atom(atom, "Locaryn/morph-distant");
         assert_eq!(depuis_flux.len(), 2);
         assert_eq!(depuis_flux[0].version, "2.3.0");
         assert!(!depuis_flux[0].is_beta && depuis_flux[1].is_beta);
         assert_eq!(
             depuis_flux[0].install_source.as_deref(),
-            Some("Locaryn/morph-ssh@v2.3.0")
+            Some("Locaryn/morph-distant@v2.3.0")
         );
         // Hors ligne, la version vient du manifeste du morph lui-même.
         let manifeste = serde_json::json!({ "name": "morph-exemple", "version": "0.2.0" });

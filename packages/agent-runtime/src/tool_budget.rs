@@ -80,9 +80,9 @@ fn split_prefixed(name: &str) -> Option<(&str, &str)> {
 }
 
 /// Comme `split_prefixed`, mais en cherchant la coupure qui laisse un nom court
-/// que l'on connaît : `mcp__morph-cluster__cluster__cluster_status` se lit
-/// (`morph-cluster__cluster`, `cluster_status`) parce que `cluster_status` est
-/// offert, et non (`morph-cluster`, `cluster__cluster_status`).
+/// que l'on connaît : `mcp__morph-grappe__cluster__cluster_status` se lit
+/// (`morph-grappe__cluster`, `cluster_status`) parce que `cluster_status` est
+/// offert, et non (`morph-grappe`, `cluster__cluster_status`).
 fn split_known<'a>(name: &'a str, clean: &HashSet<String>) -> Option<(&'a str, &'a str)> {
     let rest = name.strip_prefix(MCP_PREFIX)?;
     let mut from = 0;
@@ -510,7 +510,7 @@ mod tests {
         }
         for i in 0..30 {
             let nom = format!("cluster_outil_{i}");
-            v.push(spec(&format!("mcp__morph-cluster__{nom}"), &long));
+            v.push(spec(&format!("mcp__morph-grappe__{nom}"), &long));
             v.push(spec(&nom, &long));
         }
         v
@@ -652,12 +652,12 @@ mod tests {
     #[test]
     fn un_serveur_d_extension_contenant_deux_soulignes_est_lu_correctement() {
         let specs = vec![
-            spec("mcp__morph-cluster__cluster__cluster_status", "x"),
+            spec("mcp__morph-grappe__cluster__cluster_status", "x"),
             spec("cluster_status", "x"),
         ];
         let (kept, server_of) = one_name_per_tool(specs);
         assert_eq!(kept.len(), 1);
-        assert_eq!(server_of["cluster_status"], "morph-cluster__cluster");
+        assert_eq!(server_of["cluster_status"], "morph-grappe__cluster");
     }
 
     #[test]

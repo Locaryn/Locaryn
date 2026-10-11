@@ -835,7 +835,7 @@ pub async fn invoke_mcp_tool(
 const FIN_DE_REPONSE_DELAI: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// La réponse est finie — terminée, ou arrêtée par la personne. Chaque
-/// serveur qui expose un outil `*_task_done` (morph-desktop : son overlay)
+/// serveur qui expose un outil `*_task_done` (un overlay, par exemple)
 /// l'apprend par `end_of_response` : un overlay ne reste plus affiché après un
 /// Stop dans le chat, et un Arrêt d'urgence ne vaut que pour la réponse
 /// arrêtée.

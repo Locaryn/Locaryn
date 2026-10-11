@@ -76,16 +76,18 @@ export function WorkspacePicker({
   const [sshPath, setSshPath] = useState("/root");
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // Check if an extension provides SSH / remote workspace capabilities
+  // The extension that brings remote workspaces, whichever it is: the first
+  // one declaring a `chat.workspaces` slot or a remote-workspace capability.
   const workspaceSlots = getSlotContributions(extensions, "chat.workspaces");
-  const hasSshExtension =
-    workspaceSlots.length > 0 ||
-    extensions.some(
+  const remoteProvider =
+    extensions.find((e) => e.enabled && workspaceSlots.some((s) => s.extensionId === e.id)) ??
+    extensions.find(
       (e) =>
         e.enabled &&
         (e.capabilities?.includes("ssh-remote-exec") ||
           e.capabilities?.includes("remote-workspace")),
     );
+  const hasSshExtension = remoteProvider !== undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -121,7 +123,7 @@ export function WorkspacePicker({
       id: `ssh_${Date.now()}`,
       name,
       address,
-      extensionId: "morph-ssh",
+      extensionId: remoteProvider?.name ?? "",
     };
 
     const updated = [...sshWorkspaces, newTarget];
@@ -255,12 +257,13 @@ export function WorkspacePicker({
             </button>
           ))}
 
-          {/* ── Emplacements Distants (Apportés dynamiquement par plugin-ssh) ── */}
+          {/* ── Emplacements distants, apportés par l'extension qui les fournit ── */}
           {hasSshExtension && (
             <>
               <div className="locaryn-ws-sep">
                 <span>
-                  <Icon name="server" size={14} /> Emplacements SSH (morph-ssh)
+                  <Icon name="server" size={14} /> Emplacements SSH (
+                  {remoteProvider?.display_name || remoteProvider?.name})
                 </span>
                 <button
                   type="button"

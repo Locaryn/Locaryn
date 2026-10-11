@@ -978,14 +978,14 @@ mod tests {
     #[test]
     fn a_legacy_manifest_is_refused_by_name_not_adapted_as_claude_code() {
         let d = tmp("legacy");
-        std::fs::write(d.join(LEGACY_MANIFEST), r#"{"name":"morph-image"}"#).unwrap();
+        std::fs::write(d.join(LEGACY_MANIFEST), r#"{"name":"morph-exemple"}"#).unwrap();
         std::fs::write(d.join("SKILL.md"), "# skill").unwrap();
 
         assert!(is_legacy_bundle(&d));
         // Sans le garde-fou, c'est ce que `detect()` répondrait.
         assert_eq!(detect(&d), Some(ExtensionEcosystem::ClaudeCode));
 
-        match adapt(&d, "morph-image") {
+        match adapt(&d, "morph-exemple") {
             Err(AdaptError::LegacyManifest(_)) => {}
             other => panic!("attendu LegacyManifest, obtenu {other:?}"),
         }

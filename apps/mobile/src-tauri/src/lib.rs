@@ -1202,6 +1202,42 @@ async fn rewind_last_message(conversation_id: String) -> Result<(), String> {
     }
 }
 
+/// Le catalogue des extensions installables, tel que le serveur le relève.
+/// Le téléphone ne tient aucune liste de morphs.
+#[tauri::command]
+async fn extension_catalog(
+    query: Option<String>,
+    ecosystem: Option<String>,
+    refresh: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let (client, server, session) = authenticated()?;
+    let base = server.current_url.trim_end_matches('/');
+    let mut params: Vec<(&str, String)> = Vec::new();
+    if let Some(q) = query.filter(|q| !q.trim().is_empty()) {
+        params.push(("q", q));
+    }
+    if let Some(e) = ecosystem.filter(|e| e != "all") {
+        params.push(("ecosystem", e));
+    }
+    if refresh == Some(true) {
+        params.push(("refresh", "true".into()));
+    }
+    let resp = client
+        .get(format!("{base}/v1/extensions/catalog"))
+        .query(&params)
+        .bearer_auth(&session.token)
+        .send()
+        .await
+        .map_err(|_| unreachable(&server))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err("Le serveur ne sert pas encore le catalogue : mettez-le à jour.".into());
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Le serveur n'a pas répondu ({}).", resp.status()));
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
 /// Le Marketplace des modèles : ceux du socle et ceux des morphs actifs du
 /// serveur, avec leurs catégories. Rien n'est tenu sur le téléphone.
 #[tauri::command]
@@ -2958,6 +2994,7 @@ pub fn run() {
             compress_context,
             extract_document,
             marketplace,
+            extension_catalog,
             suggest_followups,
             rewind_last_message,
             cancel_message,

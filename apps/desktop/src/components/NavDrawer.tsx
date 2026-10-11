@@ -132,7 +132,7 @@ export const NAVIGABLE_VIEWS: string[] = BASE_NAV_ITEMS.map((item) => item.id);
  * accessible ? Source unique pour le rail (quelles entrées afficher) et pour
  * l'hôte (App.tsx : faut-il refermer une vue devenue inaccessible) — les deux
  * doivent s'accorder, sinon une entrée visible qui rebondit au clic comme
- * `studio` avec morph-ssh avant ce correctif.
+ * `studio` avant ce correctif.
  */
 export function isNativeViewAccessible(
   viewId: string,

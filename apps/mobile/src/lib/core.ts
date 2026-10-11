@@ -236,31 +236,23 @@ export interface SettingsField {
   default?: string | null;
 }
 
-/**
- * Le catalogue officiel.
- *
- * Écrit ici plutôt que demandé au serveur : ce sont les dépôts publiés par le
- * projet, ils changent au rythme des versions de l'application, et une liste
- * en dur ne peut pas tomber en panne de réseau au pire moment.
- */
-export const CATALOGUE: { repo: string; label: string; note: string }[] = [
-  { repo: "Locaryn/morph-image", label: "Images", note: "Générer et retoucher" },
-  { repo: "Locaryn/morph-voice-tts", label: "Voix de synthèse", note: "Studio, voix" },
-  { repo: "Locaryn/morph-vision-ocr", label: "Vision et OCR", note: "Lire une image" },
-  { repo: "Locaryn/morph-translation", label: "Traduction", note: "Traduire un texte" },
-  { repo: "Locaryn/morph-text-analysis", label: "Analyse de texte", note: "Résumés, extraction" },
-  { repo: "Locaryn/morph-rag-qa", label: "Questions sur documents", note: "Vos fichiers" },
-  { repo: "Locaryn/morph-music-gen", label: "Musique", note: "Studio, audio" },
-  { repo: "Locaryn/morph-video-gen", label: "Vidéo", note: "Studio, vidéo" },
-  { repo: "Locaryn/morph-3d-gen", label: "Objets 3D", note: "Studio, 3D" },
-  {
-    repo: "Locaryn/morph-model-training",
-    label: "Entraînement (LoRA)",
-    note: "Affiner un modèle",
-  },
-  { repo: "Locaryn/morph-ssh", label: "Machine distante (SSH)", note: "Exécuter ailleurs" },
-  { repo: "Locaryn/morph-remote", label: "Accès distant", note: "Joindre depuis dehors" },
-];
+/** Une extension installable, telle que le catalogue du serveur la décrit. */
+export interface CatalogueEntry {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string | null;
+  ecosystem: string;
+  install_source: string;
+  installed: boolean;
+  is_beta?: boolean;
+}
+
+export interface CatalogueExtensions {
+  entries: CatalogueEntry[];
+  fetched_at: string | null;
+  stale: boolean;
+}
 
 /** Les quatre groupes fixes de l'écran de mémoire. */
 export type MemoryGroup = "vous" | "sujets" | "zones" | "personnes";
@@ -625,6 +617,13 @@ export const core = {
     invoke<PhoneFigureSession[]>("figure_sessions", { figureId }),
 
   installExtension: (source: string) => invoke<PhoneExtension>("install_extension", { source }),
+  /** Le catalogue des extensions installables, relevé par le serveur. */
+  extensionCatalog: (opts?: { query?: string; ecosystem?: string; refresh?: boolean }) =>
+    invoke<CatalogueExtensions>("extension_catalog", {
+      query: opts?.query ?? null,
+      ecosystem: opts?.ecosystem ?? null,
+      refresh: opts?.refresh ?? null,
+    }),
   /** « Autoriser et activer » : permissions demandées accordées, extension active. */
   activateExtension: (name: string) => invoke<void>("activate_extension", { name }),
   setExtensionEnabled: (name: string, enabled: boolean) =>
@@ -927,15 +926,30 @@ export const demoCore: typeof core = {
   figureSessions: async () => [],
   listExtensions: async () => [
     {
-      name: "morph-image",
-      display_name: "Images",
+      name: "morph-exemple",
+      display_name: "Extension d'exemple",
       version: "2.0.0",
-      description: "Générer et retoucher",
+      description: "Une extension fictive qui apporte un studio d'images.",
       enabled: true,
       capabilities: ["image-gen", "image-editor"],
     },
   ],
   listCapabilities: async () => [],
+  extensionCatalog: async (): Promise<CatalogueExtensions> => ({
+    entries: [
+      {
+        id: "demo:exemple",
+        name: "exemple",
+        display_name: "Extension d'exemple",
+        description: "Une extension fictive, pour l'aperçu.",
+        ecosystem: "locaryn",
+        install_source: "Exemple/extension",
+        installed: false,
+      },
+    ],
+    fetched_at: null,
+    stale: true,
+  }),
   installExtension: async (source) => ({
     name: source.split("/").pop() ?? source,
     display_name: source,

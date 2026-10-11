@@ -1,6 +1,6 @@
 import { Icon, capabilityLabel } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CATALOGUE, type Capability, type PhoneExtension, api } from "../lib/core";
+import { type Capability, type CatalogueEntry, type PhoneExtension, api } from "../lib/core";
 import { useCoucheRetour } from "../lib/navigation";
 import { Screen } from "./Screen";
 
@@ -12,15 +12,6 @@ type Props = {
 type Tab = "installed" | "catalog";
 type InstalledFilter = "all" | "morphs" | "skills" | "cores";
 type EcosystemFilter = "all" | "locaryn" | "gemini_cli" | "opencode";
-
-interface CatalogItem {
-  repo: string;
-  name: string;
-  label: string;
-  note: string;
-  ecosystem: "locaryn" | "gemini_cli" | "opencode";
-  capabilities: string[];
-}
 
 /** Les permissions, dites comme une personne les comprend. */
 const LIBELLES_PERMISSION: Record<string, string> = {
@@ -38,121 +29,6 @@ const LIBELLES_PERMISSION: Record<string, string> = {
 function estExtension(v: unknown): v is PhoneExtension {
   return typeof v === "object" && v !== null && "name" in v && "enabled" in v;
 }
-
-const FULL_CATALOGUE: CatalogItem[] = [
-  {
-    repo: "Locaryn/morph-image",
-    name: "morph-image",
-    label: "Images",
-    note: "Génération par diffusion et retouche ciblée d'une zone",
-    ecosystem: "locaryn",
-    capabilities: ["image-gen", "image-editor"],
-  },
-  {
-    repo: "Locaryn/morph-voice-tts",
-    name: "morph-voice-tts",
-    label: "Voix de synthèse (TTS)",
-    note: "Synthèse vocale réaliste et notes audio naturelles",
-    ecosystem: "locaryn",
-    capabilities: ["voice-tts"],
-  },
-  {
-    repo: "Locaryn/morph-vision-ocr",
-    name: "morph-vision-ocr",
-    label: "Vision & OCR",
-    note: "Analyse d'images, extraction de texte et description visuelle",
-    ecosystem: "locaryn",
-    capabilities: ["vision-ocr"],
-  },
-  {
-    repo: "Locaryn/morph-translation",
-    name: "morph-translation",
-    label: "Traduction multilingue",
-    note: "Traduction précise en plus de 50 langues",
-    ecosystem: "locaryn",
-    capabilities: ["translation"],
-  },
-  {
-    repo: "Locaryn/morph-text-analysis",
-    name: "morph-text-analysis",
-    label: "Analyse de texte & Résumé",
-    note: "Extraction d'entités, synthèses de documents",
-    ecosystem: "locaryn",
-    capabilities: ["text-analysis"],
-  },
-  {
-    repo: "Locaryn/morph-rag-qa",
-    name: "morph-rag-qa",
-    label: "Questions sur documents (RAG)",
-    note: "Recherche sémantique et réponses sourcées sur vos fichiers",
-    ecosystem: "locaryn",
-    capabilities: ["rag-qa"],
-  },
-  {
-    repo: "Locaryn/morph-music-gen",
-    name: "morph-music-gen",
-    label: "Génération de musique",
-    note: "Composition musicale instrumentale et pistes audio",
-    ecosystem: "locaryn",
-    capabilities: ["music-gen"],
-  },
-  {
-    repo: "Locaryn/morph-video-gen",
-    name: "morph-video-gen",
-    label: "Génération vidéo",
-    note: "Création de courtes séquences vidéo et animations",
-    ecosystem: "locaryn",
-    capabilities: ["video-gen"],
-  },
-  {
-    repo: "Locaryn/morph-3d-gen",
-    name: "morph-3d-gen",
-    label: "Objets 3D (Mesh & Splats)",
-    note: "Génération d'objets 3D et rendus volumétriques",
-    ecosystem: "locaryn",
-    capabilities: ["3d-gen"],
-  },
-  {
-    repo: "Locaryn/morph-model-training",
-    name: "morph-model-training",
-    label: "Entraînement LoRA & Oblitération",
-    note: "Affinement de modèles et désapprentissage ciblé",
-    ecosystem: "locaryn",
-    capabilities: ["model-training"],
-  },
-  {
-    repo: "Locaryn/morph-ssh",
-    name: "morph-ssh",
-    label: "Machine distante (SSH)",
-    note: "Exécution de code et commandes sur serveurs distants",
-    ecosystem: "locaryn",
-    capabilities: ["ssh-terminal"],
-  },
-  {
-    repo: "Locaryn/morph-remote",
-    name: "morph-remote",
-    label: "Mode Voyage sécurisé",
-    note: "Accès au serveur depuis l'extérieur sans redirection de port",
-    ecosystem: "locaryn",
-    capabilities: ["travel-tunnel"],
-  },
-  {
-    repo: "google/gemini-cli-tools",
-    name: "gemini-cli-tools",
-    label: "Gemini CLI Tools Bundle",
-    note: "Commandes déclaratives et connecteurs compatibles Gemini CLI",
-    ecosystem: "gemini_cli",
-    capabilities: ["cli-tools"],
-  },
-  {
-    repo: "opencode-ai/dev-pack",
-    name: "opencode-dev-pack",
-    label: "OpenCode Developer Skills",
-    note: "Skills et agents d'ingénierie logicielle OpenCode",
-    ecosystem: "opencode",
-    capabilities: ["dev-skills"],
-  },
-];
 
 const ECOSYSTEM_LABELS: Record<string, string> = {
   locaryn: "Officiel Locaryn",
@@ -254,20 +130,31 @@ export function Extensions({ onBack, onChanged }: Props) {
     });
   }, [installed, installedFilter, searchQuery]);
 
-  // Filtrage du catalogue
-  const filteredCatalog = useMemo(() => {
-    return FULL_CATALOGUE.filter((item) => {
-      if (ecoFilter !== "all" && item.ecosystem !== ecoFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchLabel = item.label.toLowerCase().includes(q);
-        const matchNote = item.note.toLowerCase().includes(q);
-        const matchRepo = item.repo.toLowerCase().includes(q);
-        if (!matchLabel && !matchNote && !matchRepo) return false;
-      }
-      return true;
-    });
-  }, [ecoFilter, searchQuery]);
+  // Le catalogue : relu au serveur à l'ouverture de l'onglet et à chaque
+  // changement de recherche ou d'écosystème (le filtrage se fait là-bas).
+  const [catalog, setCatalog] = useState<CatalogueEntry[] | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  useEffect(() => {
+    if (tab !== "catalog") return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      api
+        .extensionCatalog({ query: searchQuery, ecosystem: ecoFilter })
+        .then((c) => {
+          if (cancelled) return;
+          setCatalog(c.entries);
+          setCatalogError(null);
+        })
+        .catch((e) => {
+          if (!cancelled) setCatalogError(String(e));
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [tab, searchQuery, ecoFilter]);
+  const filteredCatalog = catalog ?? [];
 
   return (
     <Screen
@@ -535,15 +422,21 @@ export function Extensions({ onBack, onChanged }: Props) {
             appareils connectés.
           </p>
 
+          {catalogError && <p className="lo-error">{catalogError}</p>}
+          {catalog === null && !catalogError && (
+            <p className="lo-sub">Lecture du catalogue du serveur…</p>
+          )}
+          {catalog !== null && filteredCatalog.length === 0 && (
+            <p className="lo-sub">Aucune extension ne correspond.</p>
+          )}
           <ul className="lo-cards">
             {filteredCatalog.map((item) => {
-              const installedExt = installedByName.get(item.name);
-              const isInstalled = Boolean(installedExt);
-              const working = busy === item.repo;
+              const isInstalled = item.installed || installedByName.has(item.name);
+              const working = busy === item.install_source;
 
               return (
                 <li
-                  key={item.repo}
+                  key={item.id}
                   className="lo-card"
                   style={{ flexDirection: "column", alignItems: "stretch" }}
                 >
@@ -559,7 +452,7 @@ export function Extensions({ onBack, onChanged }: Props) {
                       <div
                         style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
                       >
-                        <span className="lo-card-title">{item.label}</span>
+                        <span className="lo-card-title">{item.display_name}</span>
                         <span
                           style={{
                             fontSize: 10,
@@ -572,7 +465,7 @@ export function Extensions({ onBack, onChanged }: Props) {
                           {ECOSYSTEM_LABELS[item.ecosystem] ?? item.ecosystem}
                         </span>
                       </div>
-                      <span className="lo-hint">{item.note}</span>
+                      {item.description && <span className="lo-hint">{item.description}</span>}
                       <span
                         style={{
                           fontSize: 11,
@@ -581,7 +474,7 @@ export function Extensions({ onBack, onChanged }: Props) {
                           display: "block",
                         }}
                       >
-                        <code>{item.repo}</code>
+                        <code>{item.install_source}</code>
                       </span>
                     </div>
 
@@ -605,7 +498,9 @@ export function Extensions({ onBack, onChanged }: Props) {
                           className="lo-btn-small lo-btn-small-on"
                           disabled={working}
                           onClick={() =>
-                            handleAction(item.repo, () => api.installExtension(item.repo))
+                            handleAction(item.install_source, () =>
+                              api.installExtension(item.install_source),
+                            )
                           }
                         >
                           {working ? "Installation…" : "Installer"}
@@ -638,7 +533,7 @@ export function Extensions({ onBack, onChanged }: Props) {
             <form onSubmit={handleManualInstall}>
               <div className="lo-modal-body">
                 <p className="lo-hint">
-                  Indiquez un dépôt GitHub (ex: <code>Locaryn/morph-image</code>) ou une URL de
+                  Indiquez un dépôt GitHub (ex: <code>proprietaire/depot</code>) ou une URL de
                   paquet d'extension.
                 </p>
                 <div>

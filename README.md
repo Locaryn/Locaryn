@@ -99,24 +99,15 @@ Contrairement aux solutions cloisonnées ou dépendantes du cloud propriétaire,
 
 ---
 
-## 🧩 Écosystème d'Extensions & Plugins Officiels
+## 🧩 Écosystème d'Extensions (Morphs)
 
-Locaryn dispose d'une collection d'extensions officielles modulaires prêtes à l'emploi :
+L'application ne connaît aucune extension à l'avance : tout ce qu'un morph
+apporte — studio, catégories et modèles du Marketplace, outils, réglages —
+n'existe que s'il est installé et activé, et disparaît avec lui.
 
-| Plugin | Description | Capacités injectées |
-| :--- | :--- | :--- |
-| **`plugin-model-training`** | Fine-tuning LoRA, quantification GGUF et **Oblitération RepE (Décensure)** | Menu principal *Entraînement & Oblitération* |
-| **`plugin-figures`** | Création de diagrammes, schémas vectoriels et figures scientifiques | Menu *Figures* & Rôles spécialisés |
-| **`plugin-image-gen`** | Génération et édition d'images locales et distantes (Stable Diffusion, FLUX) | Studio d'images, commandes `/image` |
-| **`plugin-image-editor`** | Retouche visuelle, inpainting et masquage d'images | Outils de manipulation d'images |
-| **`plugin-3d-gen`** | Modélisation et génération d'objets et scènes 3D | Studio 3D, export GLB/OBJ |
-| **`plugin-voice-tts`** | Synthèse vocale réaliste et lecture audio des réponses | Voix off, lecture vocale |
-| **`plugin-dictaphone`** | Transcription vocale automatique (Whisper) et dictée | Saisie vocale, transcription audio |
-| **`plugin-vision-ocr`** | Reconnaissance optique de caractères et analyse de documents | Extraction de texte, analyse visuelle |
-| **`plugin-rag-qa`** | Indexation vectorielle, recherche sémantique et RAG local | Indexation de documents, Q&R |
-| **`plugin-ssh`** | Gestionnaire de terminaux et connexions serveurs distants | Navigation SSH, exécution distante |
-| **`morph-remote`** | Accès distant : ouverture de port, tunnels chiffrés (Cloudflare, ngrok, devtunnel), appairage QR/lien/.exe | Remote |
-| **`plugin-translation`** | Traduction neuronale multi-langues de haute fidélité | Outils de traduction |
+Les morphs officiels sont les dépôts
+[`morph-*` de l'organisation](https://github.com/orgs/Locaryn/repositories?q=morph-) ;
+le catalogue de l'application les relève tout seul, avec leurs versions.
 
 ### 🛠 Écrire la vôtre
 
@@ -131,8 +122,8 @@ catalogue de modèles qui se rafraîchit tout seul, permissions, publication et
 mise à jour.
 
 L'exemple minimal vit dans [`examples/plugins/my-plugin`](examples/plugins/my-plugin) ;
-l'exemple complet, avec binaire, panneau et catalogue, est
-[`plugin-image-gen`](https://github.com/Locaryn/plugin-image-gen).
+pour un exemple complet, avec binaire, panneau et catalogue, lisez n'importe
+quel [morph officiel](https://github.com/orgs/Locaryn/repositories?q=morph-).
 
 ---
 

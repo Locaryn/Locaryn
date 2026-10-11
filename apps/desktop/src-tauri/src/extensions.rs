@@ -1508,11 +1508,11 @@ mod compagnons_tests {
     #[test]
     fn les_compagnons_d_appareil_repondent_depuis_ce_poste() {
         let serveur = vec![
-            extension("morph-cluster", true),
-            extension("morph-image", false),
+            extension("morph-grappe", true),
+            extension("morph-exemple", false),
             extension("morph-absent", true),
         ];
-        let mut locale = extension("morph-cluster", false);
+        let mut locale = extension("morph-grappe", false);
         locale.install_dir = "/poste".into();
         let vue = merge_device_companions(serveur, &[locale.clone()]);
 

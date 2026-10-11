@@ -1,6 +1,7 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import {
+  type CatalogEntry,
   type CatalogSource,
   ECOSYSTEM_LABELS,
   type ExtensionEcosystem,
@@ -59,10 +60,27 @@ export function ExtensionInstallDialog({
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewIdRef = useRef(0);
+  // Les suggestions : les morphs de l'organisation tels que le catalogue les a
+  // relevés (dernière copie, sans réseau). Aucune liste tenue ici.
+  const [suggestions, setSuggestions] = useState<CatalogEntry[]>([]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (kind !== "extension") return;
+    let cancelled = false;
+    core
+      .browseExtensionCatalog({ ecosystem: "locaryn", limit: 24 })
+      .then((snapshot) => {
+        if (!cancelled) setSuggestions(snapshot.entries.filter((e) => !e.installed));
+      })
+      .catch((e) => console.warn("[Extensions] catalogue illisible :", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [kind]);
 
   // Aperçu automatique de la source tapée : nom, version, écosystème et
   // permissions demandées, affichés dans la carte de confirmation.
@@ -271,70 +289,30 @@ export function ExtensionInstallDialog({
                     Choisir une archive ZIP…
                   </button>
                 </div>
-                <div style={{ marginTop: 12 }}>
-                  <p className="locaryn-field-hint" style={{ marginBottom: 6 }}>
-                    Suggestions certifiées Locaryn & populaires :
-                  </p>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {(
-                      [
-                        {
-                          icon: "image",
-                          label: "Images",
-                          repo: "Locaryn/morph-image",
-                        },
-                        { icon: "video", label: "Vidéo", repo: "Locaryn/morph-video-gen" },
-                        { icon: "cube", label: "3D", repo: "Locaryn/morph-3d-gen" },
-                        { icon: "mic", label: "Synthèse vocale", repo: "Locaryn/morph-voice-tts" },
-                        { icon: "music", label: "Musique", repo: "Locaryn/morph-music-gen" },
-                        {
-                          icon: "search",
-                          label: "Vision et OCR",
-                          repo: "Locaryn/morph-vision-ocr",
-                        },
-                        {
-                          icon: "models",
-                          label: "Documents et RAG",
-                          repo: "Locaryn/morph-rag-qa",
-                        },
-                        {
-                          icon: "translate",
-                          label: "Traduction",
-                          repo: "Locaryn/morph-translation",
-                        },
-                        {
-                          icon: "chart",
-                          label: "Analyse de texte",
-                          repo: "Locaryn/morph-text-analysis",
-                        },
-                        { icon: "server", label: "SSH", repo: "Locaryn/morph-ssh" },
-                        {
-                          icon: "cloud",
-                          label: "Tunnel Remote",
-                          repo: "Locaryn/morph-remote",
-                        },
-                        {
-                          icon: "shield",
-                          label: "Atelier LoRA",
-                          repo: "Locaryn/morph-model-training",
-                        },
-                      ] as { icon: IconName; label: string; repo: string }[]
-                    ).map((preset) => (
-                      <button
-                        key={preset.repo}
-                        type="button"
-                        className="locaryn-chip"
-                        style={{ fontSize: 11, padding: "2px 8px" }}
-                        onClick={() => {
-                          setSpec(preset.repo);
-                          inputRef.current?.focus();
-                        }}
-                      >
-                        <Icon name={preset.icon} size={12} /> {preset.label}
-                      </button>
-                    ))}
+                {suggestions.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <p className="locaryn-field-hint" style={{ marginBottom: 6 }}>
+                      Morphs du catalogue :
+                    </p>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {suggestions.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          className="locaryn-chip"
+                          style={{ fontSize: 11, padding: "2px 8px" }}
+                          title={entry.description ?? undefined}
+                          onClick={() => {
+                            setSpec(entry.install_source);
+                            inputRef.current?.focus();
+                          }}
+                        >
+                          <Icon name="extensions" size={12} /> {entry.display_name}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
           </div>

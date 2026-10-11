@@ -135,29 +135,16 @@ export interface FigureDraft {
   tools: string;
 }
 
-/**
- * Le catalogue officiel — écrit ici plutôt que demandé au serveur : ce sont
- * les dépôts publiés par le projet, comme sur le téléphone.
- */
-export const CATALOGUE: { repo: string; label: string; note: string }[] = [
-  { repo: "Locaryn/plugin-image-gen", label: "Génération d'images", note: "Studio, images" },
-  { repo: "Locaryn/plugin-voice-tts", label: "Voix de synthèse", note: "Studio, voix" },
-  { repo: "Locaryn/plugin-image-editor", label: "Retouche d'image", note: "Modifier une zone" },
-  { repo: "Locaryn/plugin-vision-ocr", label: "Vision et OCR", note: "Lire une image" },
-  { repo: "Locaryn/plugin-translation", label: "Traduction", note: "Traduire un texte" },
-  { repo: "Locaryn/plugin-text-analysis", label: "Analyse de texte", note: "Résumés, extraction" },
-  { repo: "Locaryn/plugin-rag-qa", label: "Questions sur documents", note: "Vos fichiers" },
-  { repo: "Locaryn/plugin-music-gen", label: "Musique", note: "Studio, audio" },
-  { repo: "Locaryn/plugin-video-gen", label: "Vidéo", note: "Studio, vidéo" },
-  { repo: "Locaryn/plugin-3d-gen", label: "Objets 3D", note: "Studio, 3D" },
-  {
-    repo: "Locaryn/plugin-model-training",
-    label: "Entraînement (LoRA)",
-    note: "Affiner un modèle",
-  },
-  { repo: "Locaryn/plugin-ssh", label: "Machine distante (SSH)", note: "Exécuter ailleurs" },
-  { repo: "Locaryn/morph-remote", label: "Accès distant", note: "Joindre depuis dehors" },
-];
+/** Une extension installable, telle que le catalogue du serveur la décrit. */
+export interface CatalogueEntry {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string | null;
+  ecosystem: string;
+  install_source: string;
+  installed: boolean;
+}
 
 /** Un fichier qu'un morph demande de télécharger avec un modèle. */
 export interface MarketplaceDownload {
@@ -501,6 +488,14 @@ export const api = {
   /** Les extensions installées sur le serveur, et leur pilotage. */
   async listExtensions(): Promise<PhoneExtension[]> {
     return http("/v1/extensions");
+  },
+
+  /** Le catalogue des extensions installables, relevé par le serveur. */
+  async extensionCatalog(query = ""): Promise<CatalogueEntry[]> {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    const r = await http<{ entries: CatalogueEntry[] }>(`/v1/extensions/catalog?${params}`);
+    return r.entries;
   },
 
   async installExtension(source: string): Promise<PhoneExtension> {

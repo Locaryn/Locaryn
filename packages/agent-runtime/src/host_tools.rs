@@ -88,7 +88,7 @@ mod tests {
             &tx,
             "c1",
             "app_install_extension",
-            serde_json::json!({ "source": "Locaryn/morph-image" }),
+            serde_json::json!({ "source": "Exemple/morph-exemple" }),
             &ToolDispatchContext {
                 tools: &specs,
                 ctx: &ctx,

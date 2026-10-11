@@ -160,9 +160,9 @@ mod tests {
 
     #[test]
     fn la_skill_nomme_chaque_morph_et_ses_capacites() {
-        let text = render(&[note("morph-image"), note("morph-ssh")]);
+        let text = render(&[note("morph-exemple"), note("morph-distant")]);
         assert!(text.starts_with("---\nname: locaryn-morphs"));
-        assert!(text.contains("## morph-image (v1.0.0)"));
+        assert!(text.contains("## morph-exemple (v1.0.0)"));
         assert!(text.contains("Capacités : image-gen, image-editor"));
         assert!(text.contains("generate_image"));
     }
@@ -189,13 +189,13 @@ mod tests {
                 .map(|d| d.as_nanos())
                 .unwrap_or(0)
         ));
-        let first = write_skill_in(&base, &[note("morph-ssh")]).unwrap();
+        let first = write_skill_in(&base, &[note("morph-distant")]).unwrap();
         assert!(std::fs::read_to_string(&first)
             .unwrap()
-            .contains("morph-ssh"));
-        write_skill_in(&base, &[note("morph-image")]).unwrap();
+            .contains("morph-distant"));
+        write_skill_in(&base, &[note("morph-exemple")]).unwrap();
         let text = std::fs::read_to_string(&first).unwrap();
-        assert!(text.contains("morph-image") && !text.contains("morph-ssh"));
+        assert!(text.contains("morph-exemple") && !text.contains("morph-distant"));
         let _ = std::fs::remove_dir_all(&base);
     }
 }

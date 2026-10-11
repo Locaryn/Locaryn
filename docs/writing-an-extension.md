@@ -385,7 +385,8 @@ Compte, dessinée par votre élément.
 }
 ```
 
-`morph-cluster` fait exactement cela : c'est l'exemple complet à lire.
+Un morph qui partage des ressources entre postes fait exactement cela : c'est
+l'exemple complet à lire parmi les [morphs officiels](https://github.com/orgs/Locaryn/repositories?q=morph-).
 
 ---
 

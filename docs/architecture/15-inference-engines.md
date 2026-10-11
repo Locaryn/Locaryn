@@ -141,8 +141,7 @@ partagent maintenant le même dossier d'état, par construction.
 
 ## 6. Extension de référence
 
-[`morph-freetoken`](https://github.com/Locaryn/morph-freetoken) met tout cela
-en œuvre : section `engine` complète, lanceur qui passe par WSL2 sous Windows,
-catalogue de checkpoints Mixture-of-Experts vérifié en CI, outils MCP de
-diagnostic, compétence qui explique au modèle quel outil répond à quelle
-question.
+Un morph de moteur complet met tout cela en œuvre : section `engine`
+complète, lanceur qui passe par WSL2 sous Windows, catalogue de checkpoints
+vérifié en CI, outils MCP de diagnostic, compétence qui explique au modèle quel
+outil répond à quelle question.

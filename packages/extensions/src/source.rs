@@ -1043,7 +1043,7 @@ mod tests {
     fn release_asset_falls_back_to_a_platform_neutral_bundle() {
         let assets = vec![asset("plugin-figures-v1.0.0.zip")];
         // Les noms prédits pointent bien sur le paquet de cette plateforme.
-        let predits = predicted_asset_names("morph-ssh", "v2.3.0");
+        let predits = predicted_asset_names("morph-distant", "v2.3.0");
         assert!(choose_release_asset(
             &predits
                 .iter()

@@ -15,7 +15,7 @@ type BatchProvider =
  * le moteur d'inférence. Un historique préchargé de lots jamais soumis, avec
  * des économies et une progression fabriquées, laissait croire à un
  * traitement déjà en cours dès l'installation de l'extension qui déclenche
- * cette vue (`text-analysis`, morph-text-analysis) — Locaryn/Locaryn#1
+ * cette vue (capacité `text-analysis`) — Locaryn/Locaryn#1
  * (déposée sur ce dépôt-là, la capacité qu'il déclare étant ce qui fait
  * apparaître cette vue native). L'échec est maintenant explicite.
  */
