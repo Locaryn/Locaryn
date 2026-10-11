@@ -1715,6 +1715,12 @@ export interface CoreApi {
   extractDocument(nom: string, donnees: string): Promise<{ texte: string; tronque: boolean }>;
   /** Retire le dernier message de la personne et sa suite ; rend son texte. */
   rewindLastMessage(sessionId: string): Promise<string | null>;
+  /** `/objectif` : la consigne du premier tour. */
+  goalConsigne(goal: string): Promise<string>;
+  /** `/objectif` : le message qui relance un tour. */
+  goalRelance(reste: string): Promise<string>;
+  /** `/objectif` : la dernière réponse remplit-elle l'objectif ? */
+  judgeGoal(goal: string, answer: string): Promise<{ atteint: boolean; reste: string }>;
   /** Persist a message contributed by an extension without exposing its runtime. */
   appendChatMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<void>;
   /** Legacy convenience for assistant artifacts contributed by extensions. */
@@ -2223,6 +2229,10 @@ const tauriCore: CoreApi = {
   suggestFollowups: (answer, question) =>
     invoke<string[]>("suggest_followups", { answer, question }),
   rewindLastMessage: (sessionId) => invoke<string | null>("rewind_last_message", { sessionId }),
+  goalConsigne: (goal) => invoke<string>("goal_consigne", { goal }),
+  goalRelance: (reste) => invoke<string>("goal_relance", { reste }),
+  judgeGoal: (goal, answer) =>
+    invoke<{ atteint: boolean; reste: string }>("judge_goal", { goal, answer }),
   extractDocument: (nom, donnees) =>
     invoke<{ texte: string; tronque: boolean }>("extract_document", { nom, donnees }),
   planTask: (request, force) => invoke<TaskPlan>("plan_task", { request, force: force ?? null }),
@@ -2766,6 +2776,8 @@ const demoHealth: Health = {
   },
 };
 
+/** Démo de `/objectif` : nombre de tours jugés. */
+const demoTours = { current: 0 };
 const demoStreaming = { current: false };
 let demoProviders: Provider[] = [
   {
@@ -4468,6 +4480,18 @@ Contenu de démonstration.
     ],
   }),
   rewindLastMessage: async () => null,
+  goalConsigne: async (goal) => `${goal}
+
+[Objectif] Travaille jusqu'au bout.`,
+  goalRelance: async (reste) => `[Objectif] Il reste : ${reste}`,
+  // Démo : atteint au deuxième tour, pour voir la carte avancer.
+  judgeGoal: async () => {
+    demoTours.current += 1;
+    await sleep(500);
+    return demoTours.current >= 2
+      ? { atteint: true, reste: "" }
+      : { atteint: false, reste: "vérifier le résultat" };
+  },
   extractDocument: async (nom) => ({
     texte: `Texte de démonstration tiré de « ${nom} ».`,
     tronque: false,

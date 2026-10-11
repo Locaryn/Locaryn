@@ -16,6 +16,12 @@ export interface WorkflowHooks {
   onStepStart?: (index: number, total: number, step: string, attempt: number) => void;
   /** Called when the whole run ends (success or exhausted retries). */
   onDone?: (ok: boolean, attempts: number) => void;
+  /** Le plan est connu : ses étapes et le nombre d'essais permis. */
+  onPlan?: (steps: string[], maxAttempts: number) => void;
+  /** Une étape s'est terminée ; `ok` faux quand la vérification a échoué. */
+  onStepEnd?: (index: number, ok: boolean) => void;
+  /** Vrai quand la personne a demandé l'arrêt : on ne lance plus d'étape. */
+  arret?: () => boolean;
 }
 
 /** Reprises par defaut quand l'etape de verification echoue. */
@@ -84,6 +90,7 @@ export async function runWorkflow(
   if (loops !== null) plan = { ...plan, needs_loop: true };
   const maxAttempts = loops ?? MAX_ATTEMPTS;
 
+  hooks.onPlan?.(plan.steps, plan.needs_loop ? maxAttempts : 1);
   const taskId = taskCenter.addWorkflow(
     `Plan : ${request.slice(0, 40)}${request.length > 40 ? "…" : ""}`,
   );
@@ -97,6 +104,10 @@ export async function runWorkflow(
     let failed = false;
 
     for (let i = 0; i < plan.steps.length; i++) {
+      if (hooks.arret?.()) {
+        failed = true;
+        break;
+      }
       const step = plan.steps[i];
       hooks.onStepStart?.(i, plan.steps.length, step, attempt);
 
@@ -121,16 +132,20 @@ export async function runWorkflow(
           null,
         );
       } catch {
+        hooks.onStepEnd?.(i, false);
         failed = true;
         break;
       }
 
       taskCenter.advanceStep(taskId);
       if (isCheck && verificationFailed(answer)) {
+        hooks.onStepEnd?.(i, false);
         failed = true;
         break;
       }
+      hooks.onStepEnd?.(i, true);
     }
+    if (hooks.arret?.()) break;
 
     if (!failed) {
       ok = true;

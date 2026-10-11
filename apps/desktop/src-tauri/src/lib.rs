@@ -1070,6 +1070,37 @@ async fn compact_history(
     out
 }
 
+/// `/objectif` : la consigne du premier tour.
+#[tauri::command]
+fn goal_consigne(goal: String) -> String {
+    locaryn_agent_runtime::objectif::consigne(&goal)
+}
+
+/// `/objectif` : le message qui relance un tour, d'après ce qui reste.
+#[tauri::command]
+fn goal_relance(reste: String) -> String {
+    locaryn_agent_runtime::objectif::relance(&reste)
+}
+
+/// `/objectif` : juger la dernière réponse contre l'objectif.
+#[tauri::command]
+async fn judge_goal(
+    core: State<'_, Core>,
+    goal: String,
+    answer: String,
+) -> Result<locaryn_agent_runtime::objectif::Verdict, String> {
+    let provider = core
+        .storage
+        .providers
+        .active()
+        .await
+        .ok()
+        .flatten()
+        .ok_or("aucun modèle actif")?;
+    let model = provider.model.clone().unwrap_or_else(|| "default".into());
+    locaryn_agent_runtime::objectif::juger(&provider.endpoint, &model, &goal, &answer).await
+}
+
 /// « Modifier » le dernier message : il part de la conversation avec tout ce qui
 /// le suit (en base, pas seulement à l'écran), et son texte revient au composeur.
 #[tauri::command]
@@ -6784,6 +6815,9 @@ pub fn run() {
             suggest_followups,
             extract_document,
             rewind_last_message,
+            goal_consigne,
+            goal_relance,
+            judge_goal,
             plan_task,
             list_sessions,
             create_session,

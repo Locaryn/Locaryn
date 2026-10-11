@@ -16,6 +16,7 @@ import {
 import type { MediaForge } from "../components/chat/MessageBubble";
 import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
+import { type EtatEtape, type Suivi, TaskTracker } from "../components/chat/TaskTracker";
 import { ToolCard } from "../components/chat/ToolCard";
 import { type ToolEntry, ToolRun } from "../components/chat/ToolRun";
 import { VoiceNote } from "../components/chat/VoiceNote";
@@ -43,11 +44,14 @@ import {
 } from "../lib/core";
 import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
+import { runGoal } from "../lib/goal";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
 import { notifierSysteme } from "../lib/osNotify";
 import { pluginBridge } from "../lib/pluginBridge";
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
+  GABARITS,
+  SLASH_COMMANDS,
   type SlashCommand,
   type SlashSuggestion,
   argToSize,
@@ -94,7 +98,9 @@ type ChatItem =
       status: "running" | "ok" | "error";
       output: string;
     }
-  | { id: string; kind: "log"; text: string };
+  | { id: string; kind: "log"; text: string }
+  /** Le suivi d'un plan ou d'un objectif : étapes, essais, état. */
+  | { id: string; kind: "suivi"; suivi: Suivi };
 
 /**
  * Une piece jointe. Les deux natures ne suivent pas le meme chemin : une image
@@ -572,6 +578,10 @@ export function ChatPanel({
    * le modele decider, `/workflow` ne le laisse pas.
    */
   const [forceWorkflow, setForceWorkflow] = useState(false);
+  /** `/objectif` choisi dans la palette : la prochaine demande devient un objectif. */
+  const [goalNext, setGoalNext] = useState(false);
+  /** L'arrêt demandé sur la carte d'un plan ou d'un objectif en cours. */
+  const arretSuiviRef = useRef(false);
   const [loopCount, setLoopCount] = useState<number | null>(null);
 
   const streamRef = useRef<HTMLDivElement>(null);
@@ -1350,13 +1360,14 @@ export function ChatPanel({
     const mods = parseModifiers(brut);
     const text = mods.rest;
     const imposeWorkflow = forceWorkflow || mods.force;
+    const objectif = goalNext || mods.goal;
     const reprises = mods.loops ?? loopCount;
     const imgs = attachOverride ?? attachments;
 
     if (!text && imgs.length === 0) {
       // Des modificateurs sans demande : le dire, sinon la palette parait
       // avoir avale le message.
-      if (mods.force || mods.loops !== null) {
+      if (mods.force || mods.loops !== null || mods.goal) {
         setItems((prev) => [
           ...prev,
           {
@@ -1496,6 +1507,80 @@ export function ChatPanel({
 
     const t0 = Date.now();
 
+    // Un plan ou un objectif se suit sur une carte du fil, mise à jour en place.
+    const suiviId = nextId("suivi");
+    const majSuivi = (f: (s: Suivi) => Suivi) =>
+      setItems((prev) =>
+        prev.map((it) =>
+          it.kind === "suivi" && it.id === suiviId ? { ...it, suivi: f(it.suivi) } : it,
+        ),
+      );
+    const poserEtape = (s: Suivi, i: number, etat: EtatEtape): Suivi => ({
+      ...s,
+      etapes: s.etapes.map((e, j) => (j === i ? { ...e, etat } : e)),
+    });
+    arretSuiviRef.current = false;
+
+    // /objectif → enchaîner les tours jusqu'à ce que le juge dise « atteint ».
+    if (objectif) {
+      setGoalNext(false);
+      setItems((prev) => [
+        ...prev,
+        {
+          id: suiviId,
+          kind: "suivi",
+          suivi: {
+            genre: "objectif",
+            titre: text,
+            etapes: [],
+            essai: 1,
+            maxEssais: 1,
+            etat: "cours",
+          },
+        },
+      ]);
+      try {
+        const atteint = await runGoal(sid, text, {
+          onEvent: surEvenement,
+          onTour: (tour) =>
+            majSuivi((s) => ({
+              ...s,
+              etapes: [
+                ...s.etapes.map((e) => (e.etat === "cours" ? { ...e, etat: "echec" as const } : e)),
+                { texte: tour === 1 ? "Premier tour" : `Tour ${tour}`, etat: "cours" },
+              ],
+            })),
+          onVerdict: (tour, ok, reste) =>
+            majSuivi((s) => ({
+              ...poserEtape(s, tour - 1, ok ? "fait" : "echec"),
+              etapes: s.etapes.map((e, j) =>
+                j === tour - 1
+                  ? {
+                      texte: ok ? e.texte : `${e.texte} — reste : ${reste}`,
+                      etat: ok ? "fait" : "echec",
+                    }
+                  : e,
+              ),
+              note: ok ? undefined : reste,
+            })),
+          arret: () => arretSuiviRef.current || runRef.current !== run,
+        });
+        majSuivi((s) => ({
+          ...s,
+          etat: atteint ? "fait" : arretSuiviRef.current ? "arrete" : "echec",
+          note: atteint ? undefined : s.note,
+        }));
+      } catch (e) {
+        majSuivi((s) => ({ ...s, etat: "echec", note: String(e) }));
+      }
+      if (runRef.current === run) {
+        runSessionRef.current = null;
+        setStreaming(false);
+        setAttente(null);
+      }
+      return;
+    }
+
     // /plan → decompose and execute step by step, with a verification loop.
     if (planNext || imposeWorkflow || reprises !== null) {
       setPlanNext(false);
@@ -1507,26 +1592,42 @@ export function ChatPanel({
           text,
           {
             onEvent: surEvenement,
-            onStepStart: (i, total, step, attempt) =>
+            onPlan: (steps, maxAttempts) =>
               setItems((prev) => [
                 ...prev,
                 {
-                  id: nextId("log"),
-                  kind: "log",
-                  text: `\u{1f9e9} \u00c9tape ${i + 1}/${total}${attempt > 1 ? ` (essai ${attempt})` : ""} \u2014 ${step}`,
+                  id: suiviId,
+                  kind: "suivi",
+                  suivi: {
+                    genre: "plan",
+                    titre: text,
+                    etapes: steps.map((texte) => ({ texte, etat: "attente" as const })),
+                    essai: 1,
+                    maxEssais: maxAttempts,
+                    etat: "cours",
+                  },
                 },
               ]),
-            onDone: (ok, attempts) =>
-              setItems((prev) => [
-                ...prev,
-                {
-                  id: nextId("log"),
-                  kind: "log",
-                  text: ok
-                    ? `\u2705 Plan termin\u00e9${attempts > 1 ? ` (essai ${attempts})` : ""}.`
-                    : `\u26a0\ufe0f Plan non abouti apr\u00e8s ${attempts - 1} essai(s).`,
-                },
-              ]),
+            onStepStart: (i, _total, _step, attempt) =>
+              majSuivi((s) => {
+                // Un nouvel essai repart de zéro : toutes les étapes reviennent en attente.
+                const base =
+                  attempt !== s.essai
+                    ? {
+                        ...s,
+                        essai: attempt,
+                        etapes: s.etapes.map((e) => ({ ...e, etat: "attente" as const })),
+                      }
+                    : s;
+                return poserEtape(base, i, "cours");
+              }),
+            onStepEnd: (i, ok) => majSuivi((s) => poserEtape(s, i, ok ? "fait" : "echec")),
+            onDone: (ok) =>
+              majSuivi((s) => ({
+                ...s,
+                etat: ok ? "fait" : arretSuiviRef.current ? "arrete" : "echec",
+              })),
+            arret: () => arretSuiviRef.current || runRef.current !== run,
           },
           // Les modificateurs de la demande arrivent jusqu'ici. Sans eux,
           // `/workflow` et `/loop` etaient analyses, consommes, puis perdus :
@@ -1534,12 +1635,14 @@ export function ChatPanel({
           { force: imposeWorkflow, loops: reprises },
         );
         if (ran) {
+          if (runRef.current === run) runSessionRef.current = null;
           setStreaming(false);
           setAttente(null);
           return;
         }
-      } catch {
+      } catch (e) {
         // Planning failed — fall through to a normal answer.
+        console.warn("plan impossible, réponse simple :", e);
       }
     }
 
@@ -1880,6 +1983,43 @@ ${preview}`,
         break;
       case "workflow":
         setForceWorkflow(true);
+        break;
+      case "goal": {
+        // Écrit d'un trait (« /objectif faire X ») : part tout de suite.
+        const apres = raw.replace(/^\/\S+\s*/, "").trim();
+        if (apres) send(`/objectif ${apres}`);
+        else setGoalNext(true);
+        break;
+      }
+      case "tester":
+      case "revue":
+      case "init": {
+        const apres = raw.replace(/^\/\S+\s*/, "").trim();
+        const gabarit = GABARITS[cmd.action];
+        if (gabarit) send(gabarit(apres));
+        break;
+      }
+      case "compresser":
+        void compressConversation().then((ok) =>
+          setItems((prev) => [
+            ...prev,
+            {
+              id: nextId("log"),
+              kind: "log",
+              text: ok ? "Conversation compressée." : "Rien à compresser pour l'instant.",
+            },
+          ]),
+        );
+        break;
+      case "aide":
+        setItems((prev) => [
+          ...prev,
+          {
+            id: nextId("log"),
+            kind: "log",
+            text: SLASH_COMMANDS.map((c) => `/${c.name} — ${c.hint}`).join("\n"),
+          },
+        ]);
         break;
       case "loop": {
         // Le nombre tape apres la commande, borne comme dans `parseModifiers`.
@@ -2273,6 +2413,18 @@ ${preview}`,
                     status={it.status}
                     error={it.error}
                     onSave={() => handleSaveAudio(it.path)}
+                  />
+                );
+              }
+              if (it.kind === "suivi") {
+                return (
+                  <TaskTracker
+                    key={it.id}
+                    suivi={it.suivi}
+                    onArreter={() => {
+                      arretSuiviRef.current = true;
+                      void stopGeneration();
+                    }}
                   />
                 );
               }
@@ -2858,7 +3010,7 @@ ${preview}`,
                 <span className="locaryn-model-picker-label" style={{ fontWeight: 700 }}>
                   {activeModel || "Choisir un modèle"}
                 </span>
-                <span style={{ fontSize: "9px", color: "var(--text-faint)" }}>▾</span>
+                <Icon name="caret-down" size={12} />
               </button>
             )}
 

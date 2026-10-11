@@ -14,6 +14,12 @@ export type SlashAction =
   | "plan"
   | "workflow"
   | "loop"
+  | "goal"
+  | "tester"
+  | "revue"
+  | "init"
+  | "compresser"
+  | "aide"
   | "clear"
   /** Commande apportee par un plugin : le corps est resolu par le backend. */
   | "extension";
@@ -59,12 +65,15 @@ export interface SlashModifiers {
   force: boolean;
   /** Nombre de tentatives quand la verification echoue. `null` = defaut. */
   loops: number | null;
+  /** `/objectif` : enchainer jusqu'a ce que les conditions soient remplies. */
+  goal: boolean;
   /** Ce qui reste de la demande, les modificateurs retires. */
   rest: string;
 }
 
 /** Les noms qui declenchent chaque modificateur, alias compris. */
 const MODS_FORCE = new Set(["workflow", "orchestre", "orchestration"]);
+const MODS_GOAL = new Set(["objectif", "goal", "but"]);
 const MODS_LOOP = new Set(["loop", "boucle", "repete", "répète"]);
 
 /**
@@ -79,11 +88,17 @@ export function parseModifiers(input: string): SlashModifiers {
   let rest = input.trim();
   let force = false;
   let loops: number | null = null;
+  let goal = false;
 
   for (;;) {
     const m = rest.match(/^\/([\p{L}]+)\s*/u);
     if (!m) break;
     const nom = m[1].toLowerCase();
+    if (MODS_GOAL.has(nom)) {
+      goal = true;
+      rest = rest.slice(m[0].length);
+      continue;
+    }
     if (MODS_FORCE.has(nom)) {
       force = true;
       rest = rest.slice(m[0].length);
@@ -105,7 +120,7 @@ export function parseModifiers(input: string): SlashModifiers {
     break;
   }
 
-  return { force, loops, rest: rest.trim() };
+  return { force, loops, goal, rest: rest.trim() };
 }
 
 /** Map a typed argument to a resolution, or null when it isn't one. */
@@ -161,6 +176,54 @@ export const SLASH_COMMANDS: SlashCommand[] = [
       { value: "3", label: "3 fois", hint: "le défaut" },
       { value: "5", label: "5 fois", hint: "pour ce qui résiste" },
     ],
+  },
+  {
+    name: "objectif",
+    aliases: ["goal", "but", "jusquau", "jusqu'au bout"],
+    icon: "crosshair",
+    label: "Objectif à atteindre",
+    hint: "Le modèle enchaîne sans rendre la main jusqu'à ce que les conditions soient remplies",
+    action: "goal",
+  },
+  {
+    name: "tester",
+    aliases: ["humain", "simuler", "qa", "essai"],
+    icon: "cursor-click",
+    label: "Tester comme un humain",
+    hint: "Le modèle joue un utilisateur qui essaie l'application, l'installation ou la page",
+    action: "tester",
+  },
+  {
+    name: "revue",
+    aliases: ["review", "relecture", "audit"],
+    icon: "magnifying-glass",
+    label: "Revue de code",
+    hint: "Relire les changements du projet : bugs, sécurité, simplifications",
+    action: "revue",
+  },
+  {
+    name: "init",
+    aliases: ["contexte", "projet", "agents"],
+    icon: "file-text",
+    label: "Décrire le projet",
+    hint: "Analyser le dossier et écrire LOCARYN.md, le contexte que le modèle relira",
+    action: "init",
+  },
+  {
+    name: "compresser",
+    aliases: ["compact", "resume", "résumé"],
+    icon: "stack",
+    label: "Compresser la conversation",
+    hint: "Les vieux échanges deviennent un résumé, les derniers restent",
+    action: "compresser",
+  },
+  {
+    name: "aide",
+    aliases: ["help", "commandes", "?"],
+    icon: "question",
+    label: "Aide",
+    hint: "Ce que fait chaque commande",
+    action: "aide",
   },
   {
     name: "documents",
@@ -314,3 +377,30 @@ export function matchExtensionCommand(input: string, extra: SlashCommand[]): Sla
   if (!name) return null;
   return extra.find((c) => c.name === name || c.aliases.includes(name)) ?? null;
 }
+
+/**
+ * Ce que certaines commandes envoient au modèle. `{cible}` reçoit ce qui suit
+ * la commande ; vide, le gabarit dit quoi faire sans.
+ */
+export const GABARITS: Partial<Record<SlashAction, (cible: string) => string>> = {
+  tester: (cible) =>
+    [
+      `Agis comme un utilisateur humain qui découvre ${cible || "l'application ou l'installation en cours"} et la teste pour de vrai. `,
+      "Utilise les outils dont tu disposes (navigateur, contrôle du bureau, terminal) pour la parcourir comme le ferait une personne : ",
+      "suivre l'installation ou le premier lancement, cliquer, remplir les formulaires, revenir en arrière, essayer les cas limites. ",
+      "Ne corrige rien pendant le test. À la fin, rends un rapport : ce qui marche, chaque friction ou bug avec les étapes pour le reproduire, ",
+      "et ce qu'un utilisateur ne comprendrait pas.",
+    ].join(""),
+  revue: (cible) =>
+    [
+      `Fais une revue de code ${cible ? `de ${cible}` : "des changements en cours du projet (git diff, puis les fichiers touchés)"}. `,
+      "Cherche d'abord les bugs réels (avec le scénario qui les déclenche), puis les failles de sécurité, puis ce qui peut être simplifié. ",
+      "Lis le code avant de conclure ; classe chaque point par gravité et cite le fichier et la ligne. Ne modifie rien.",
+    ].join(""),
+  init: (cible) =>
+    [
+      `Analyse ${cible || "le dossier de travail"} : structure, langages, commandes de build et de test, conventions, points d'attention. `,
+      "Écris ensuite un fichier LOCARYN.md à la racine, court et factuel, qui donne à un assistant ce qu'il doit savoir pour y travailler. ",
+      "S'il existe déjà, mets-le à jour au lieu de l'écraser.",
+    ].join(""),
+};

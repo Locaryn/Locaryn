@@ -20,6 +20,7 @@ pub mod reasoning;
 pub mod suivantes;
 
 pub mod mcp_tools;
+pub mod objectif;
 pub mod openai_compat;
 pub mod openai_tool_loop;
 pub mod profile;
