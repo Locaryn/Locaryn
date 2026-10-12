@@ -134,6 +134,10 @@ export function UpdateDialog() {
   const [version, setVersion] = useState<string | null>(null);
   const [supporte, setSupporte] = useState(false);
   const verifieRef = useRef(false);
+  // Version x64 émulée sur un PC ARM (Snapdragon X) : la mise à jour vise
+  // l'application ARM64 native, plutôt que de reconduire l'émulation à
+  // chaque version.
+  const emuleRef = useRef(false);
 
   const fermer = useCallback(() => setEtat({ sorte: "ferme" }), []);
 
@@ -153,7 +157,17 @@ export function UpdateDialog() {
     }
     if (visible) setEtat({ sorte: "recherche" });
     try {
-      const update = await check();
+      let update: Update | null = null;
+      if (emuleRef.current) {
+        try {
+          update = await check({ target: "windows-aarch64" });
+        } catch {
+          // Pas de version ARM64 publiée pour cette version : on reste sur
+          // la mise à jour habituelle.
+          update = null;
+        }
+      }
+      update ??= await check();
       if (!update) {
         setEtat(visible ? { sorte: "ajour", version: null } : { sorte: "ferme" });
         return;
@@ -173,6 +187,7 @@ export function UpdateDialog() {
       .then((info) => {
         if (annule) return;
         setVersion(info.version ?? null);
+        emuleRef.current = info.platform === "windows" && info.emulated === true;
         const ok = coreMode === "tauri" && info.platform !== "linux";
         setSupporte(ok);
         if (ok && !verifieRef.current) {

@@ -100,7 +100,15 @@ export function AboutSettings() {
             </span>
             {info && (
               <span className="locaryn-update-detail">
-                v{info.version} · {info.platform} · {info.arch}
+                v{info.version} · {info.platform} · {info.host_arch ?? info.arch}
+                {info.emulated ? ` (application ${info.arch} émulée)` : ""}
+              </span>
+            )}
+            {info?.emulated && info.platform === "windows" && (
+              <span className="locaryn-update-status">
+                Cette machine est ARM64 : la version x64 tourne sous émulation, plus lentement.
+                Installez la version Windows ARM64 (<code>_arm64-setup.exe</code>) depuis GitHub. Le
+                moteur de conversation, lui, est déjà natif ARM64 et utilise le GPU Adreno.
               </span>
             )}
           </div>
