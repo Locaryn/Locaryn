@@ -24,6 +24,10 @@ use std::time::Instant;
 /// éléments, plus lire l'état et vérifier, en prend déjà huit.
 const MAX_TOOL_ROUNDS: u32 = 20;
 
+/// Source de l'avis émis quand un tour finit sans réponse finale (limite
+/// d'actions atteinte, ou modèle arrêté). L'interface la reconnaît.
+pub const SOURCE_TOUR_INACHEVE: &str = "tour_inacheve";
+
 /// Rappel envoyé quand un tour n'a produit que de la réflexion. Mécanique des
 /// outils seulement : il ne dit pas au modèle quoi faire de la tâche.
 const RELANCE_REFLEXION_SEULE: &str = "Ta réponse ne contenait que ta réflexion : aucun outil \
@@ -555,6 +559,7 @@ pub async fn run_openai_tool_loop(
             let mut pending_resp = Some(first_resp);
             let mut got_final = false;
             let mut relance_faite = false;
+            let mut limite_atteinte = false;
             // Une seule nouvelle tentative par tour après un refus pour fenêtre
             // pleine : l'estimation a pu être trop optimiste.
             let mut serre = false;
@@ -877,13 +882,7 @@ pub async fn run_openai_tool_loop(
                 }
 
                 if round + 1 == MAX_TOOL_ROUNDS {
-                    let _ = tx
-                        .send(StreamEvent::Log {
-                            level: LogLevel::Warn,
-                            msg: "tool-round limit reached".into(),
-                            source: "openai_tool_loop".into(),
-                        })
-                        .await;
+                    limite_atteinte = true;
                 }
             }
 
@@ -899,12 +898,25 @@ pub async fn run_openai_tool_loop(
                 }
             }
 
+            // Dit en clair, et une seule fois : les deux avis anglais
+            // (« tool-round limit reached », « loop ended without a final
+            // response ») se suivaient sous la dernière action, sans dire
+            // quoi faire. `source` reste stable : /goal s'en sert pour
+            // relancer le travail au lieu de juger un tour coupé.
             if !got_final {
+                let msg = if limite_atteinte {
+                    format!(
+                        "Limite de {MAX_TOOL_ROUNDS} actions atteinte pour ce message : la tâche \
+                         s'arrête ici, sans réponse finale. Écrivez « continue » pour reprendre."
+                    )
+                } else {
+                    "Le modèle s'est arrêté sans réponse finale.".to_string()
+                };
                 let _ = tx
                     .send(StreamEvent::Log {
                         level: LogLevel::Warn,
-                        msg: "loop ended without a final response".into(),
-                        source: "openai_tool_loop".into(),
+                        msg,
+                        source: SOURCE_TOUR_INACHEVE.into(),
                     })
                     .await;
             }

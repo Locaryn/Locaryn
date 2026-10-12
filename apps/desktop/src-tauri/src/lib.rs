@@ -1114,7 +1114,24 @@ async fn judge_goal(
         .flatten()
         .ok_or("aucun modèle actif")?;
     let model = provider.model.clone().unwrap_or_else(|| "default".into());
-    locaryn_agent_runtime::objectif::juger(&provider.endpoint, &model, &goal, &answer).await
+    // Le moteur local a pu être libéré entre deux tours.
+    if moteur_supervise(&provider.engine) {
+        core.supervisor
+            .ensure_running(&provider.engine)
+            .await
+            .map_err(|e| format!("le moteur n'a pas démarré : {e}"))?;
+    }
+    let cle = cloud_providers::key_for_active_provider(&core, &provider);
+    let http = cloud_providers::http_for_active_provider(&core, &provider).await;
+    locaryn_agent_runtime::objectif::juger(
+        http.as_ref(),
+        &provider.endpoint,
+        cle.as_deref(),
+        &model,
+        &goal,
+        &answer,
+    )
+    .await
 }
 
 /// « Modifier » le dernier message : il part de la conversation avec tout ce qui

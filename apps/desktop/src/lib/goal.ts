@@ -13,6 +13,18 @@ import { taskCenter } from "./taskCenter";
 /** Tours au plus avant de rendre la main : un objectif mal posé ne tourne pas sans fin. */
 export const TOURS_MAX = 12;
 
+/** Source de l'avis d'un tour fini sans réponse (`SOURCE_TOUR_INACHEVE`). */
+const TOUR_INACHEVE = "tour_inacheve";
+
+/** Ce que le modèle a écrit, sans sa réflexion : le juge lisait la fin d'un
+ *  bloc `<think>` et la prenait pour un bilan. */
+export function sansReflexion(texte: string): string {
+  return texte
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/<think>[\s\S]*$/, "")
+    .trim();
+}
+
 export interface GoalHooks {
   onEvent: (ev: StreamEvent) => void;
   /** Un tour commence (1, 2, 3…). */
@@ -38,11 +50,13 @@ export async function runGoal(
     if (hooks.arret()) break;
     hooks.onTour(tour);
     let reponse = "";
+    let coupe = false;
     await core.sendMessage(
       sessionId,
       message,
       (ev) => {
         if (ev.type === "token") reponse += ev.text;
+        if (ev.type === "log" && ev.source === TOUR_INACHEVE) coupe = true;
         hooks.onEvent(ev);
       },
       undefined,
@@ -50,9 +64,19 @@ export async function runGoal(
       null,
     );
     if (hooks.arret()) break;
+    // Un tour coupé par la limite d'actions, ou sans un mot de réponse, n'a
+    // rien à juger : le travail était en cours. Le juge recevait une réponse
+    // vide, et l'objectif pouvait s'arrêter là, en plein travail.
+    const ecrit = sansReflexion(reponse);
+    if (coupe || !ecrit) {
+      const reste = "la tâche a été interrompue en cours de route : reprends là où tu t'es arrêté";
+      hooks.onVerdict(tour, false, reste);
+      message = await core.goalRelance(reste);
+      continue;
+    }
     let verdict: { atteint: boolean; reste: string };
     try {
-      verdict = await core.judgeGoal(goal, reponse);
+      verdict = await core.judgeGoal(goal, ecrit);
     } catch (e) {
       // Sans juge, on ne relance pas à l'aveugle : on s'arrête et on le dit.
       hooks.onVerdict(tour, false, `le juge est indisponible (${String(e)})`);
