@@ -6443,6 +6443,9 @@ pub struct LlamaRuntimeStatus {
     pub up_to_date: bool,
     pub pinned: String,
     pub path: String,
+    /// Les GPU que le moteur voit réellement (`--list-devices`). Vide : il ne
+    /// voit que le processeur. `None` : le moteur n'a pas répondu.
+    pub devices: Option<Vec<String>>,
 }
 
 #[tauri::command]
@@ -6452,10 +6455,17 @@ async fn llama_runtime_status(_core: State<'_, Core>) -> Result<LlamaRuntimeStat
     // dur. Il annonçait donc « non installé » là où le moteur démarrait très
     // bien, et l'inverse ailleurs.
     let found = locaryn_provider_supervisor::llama_server_path();
+    let devices = match &found {
+        Some(bin) => locaryn_provider_supervisor::llama_devices(bin).await,
+        None => None,
+    };
     Ok(LlamaRuntimeStatus {
         installed: found.is_some(),
         version: None,
-        up_to_date: true,
+        // Faux pour une build d'avant le pin, ou la build CPU posée sur un
+        // Snapdragon : le prochain démarrage du moteur la remplacera.
+        up_to_date: locaryn_provider_supervisor::runtime_install::installed_variant_is_current(),
+        devices,
         pinned: locaryn_provider_supervisor::LLAMA_BUILD.to_string(),
         path: found
             .unwrap_or_else(|| locaryn_config::bin_dir().join("llama").join("llama-server"))
@@ -6488,12 +6498,14 @@ async fn setup_llama_runtime(
         total: 100,
         percentage: 100.0,
     });
+    let devices = locaryn_provider_supervisor::llama_devices(&bin).await;
     Ok(LlamaRuntimeStatus {
         installed: true,
         version: Some(locaryn_provider_supervisor::LLAMA_BUILD.to_string()),
-        up_to_date: true,
+        up_to_date: locaryn_provider_supervisor::runtime_install::installed_variant_is_current(),
         pinned: locaryn_provider_supervisor::LLAMA_BUILD.to_string(),
         path: bin.to_string_lossy().to_string(),
+        devices,
     })
 }
 

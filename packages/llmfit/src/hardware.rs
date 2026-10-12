@@ -535,6 +535,18 @@ fn probe_windows_adapters() -> Option<Gpu> {
         });
     }
 
+    // 2 bis. Le registre ne dit rien d'exploitable (pilote ancien, valeur
+    //    absente ou tronquée) : DXGI, la source du Gestionnaire des tâches,
+    //    donne la mémoire dédiée de chaque carte.
+    if let Some((name, total_vram_gb)) = meilleure_carte_dxgi() {
+        return Some(Gpu {
+            backend: backend_pour_nom(&name),
+            name,
+            total_vram_gb,
+            unified: false,
+        });
+    }
+
     // 3. Aucune mémoire propre déclarée. Sous Windows ARM, un GPU intégré sans
     //    `qwMemorySize` reste un GPU : le compter pour « aucun GPU » affichait
     //    0 Go de VRAM sur une machine qui sait en charger.
@@ -698,6 +710,100 @@ fn lire_cartes_registre() -> Vec<(String, Option<f64>)> {
     cartes
 }
 
+/// La carte dédiée la plus large selon DXGI : `(nom, Go de mémoire dédiée)`.
+///
+/// Appels COM bruts, sans dépendance : `CreateDXGIFactory1`, puis
+/// `EnumAdapters1` et `GetDesc1` par leur rang dans la table virtuelle
+/// (IUnknown 3 + IDXGIObject 4 + IDXGIFactory 5 → `EnumAdapters1` = 12 ;
+/// IUnknown 3 + IDXGIObject 4 + IDXGIAdapter 3 → `GetDesc1` = 10).
+/// Les cartes logicielles (WARP, « Basic Render Driver ») sont écartées, et
+/// une mémoire dédiée sous 0,5 Go n'est pas une carte sur laquelle charger.
+#[cfg(target_os = "windows")]
+fn meilleure_carte_dxgi() -> Option<(String, f64)> {
+    #[repr(C)]
+    struct Guid(u32, u16, u16, [u8; 8]);
+    #[repr(C)]
+    struct AdapterDesc1 {
+        description: [u16; 128],
+        vendor_id: u32,
+        device_id: u32,
+        sub_sys_id: u32,
+        revision: u32,
+        dedicated_video_memory: usize,
+        dedicated_system_memory: usize,
+        shared_system_memory: usize,
+        luid_low: u32,
+        luid_high: i32,
+        flags: u32,
+    }
+    type Release = unsafe extern "system" fn(*mut core::ffi::c_void) -> u32;
+    type EnumAdapters1 =
+        unsafe extern "system" fn(*mut core::ffi::c_void, u32, *mut *mut core::ffi::c_void) -> i32;
+    type GetDesc1 = unsafe extern "system" fn(*mut core::ffi::c_void, *mut AdapterDesc1) -> i32;
+    #[link(name = "dxgi")]
+    extern "system" {
+        fn CreateDXGIFactory1(riid: *const Guid, factory: *mut *mut core::ffi::c_void) -> i32;
+    }
+    const IID_IDXGI_FACTORY1: Guid = Guid(
+        0x770a_ae78,
+        0xf26f,
+        0x4dba,
+        [0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87],
+    );
+    const DXGI_ADAPTER_FLAG_SOFTWARE: u32 = 2;
+
+    /// L'entrée `rang` de la table virtuelle d'un objet COM.
+    unsafe fn methode(objet: *mut core::ffi::c_void, rang: usize) -> *const core::ffi::c_void {
+        let table = *(objet as *const *const *const core::ffi::c_void);
+        *table.add(rang)
+    }
+
+    let mut meilleure: Option<(String, f64)> = None;
+    // SAFETY : chaque pointeur d'interface vient d'un appel qui a réussi
+    // (HRESULT ≥ 0) et est relâché une fois lu ; les rangs de la table
+    // virtuelle sont ceux des interfaces documentées, et la structure de
+    // description suit `DXGI_ADAPTER_DESC1`.
+    unsafe {
+        let mut usine: *mut core::ffi::c_void = std::ptr::null_mut();
+        if CreateDXGIFactory1(&IID_IDXGI_FACTORY1, &mut usine) < 0 || usine.is_null() {
+            return None;
+        }
+        let enumerer: EnumAdapters1 = std::mem::transmute(methode(usine, 12));
+        let mut index = 0u32;
+        loop {
+            let mut carte: *mut core::ffi::c_void = std::ptr::null_mut();
+            if enumerer(usine, index, &mut carte) < 0 || carte.is_null() {
+                break;
+            }
+            index += 1;
+            let decrire: GetDesc1 = std::mem::transmute(methode(carte, 10));
+            let mut desc: AdapterDesc1 = std::mem::zeroed();
+            let lu = decrire(carte, &mut desc) >= 0;
+            let relacher: Release = std::mem::transmute(methode(carte, 2));
+            relacher(carte);
+            if !lu || desc.flags & DXGI_ADAPTER_FLAG_SOFTWARE != 0 {
+                continue;
+            }
+            let fin = desc
+                .description
+                .iter()
+                .position(|c| *c == 0)
+                .unwrap_or(desc.description.len());
+            let nom = String::from_utf16_lossy(&desc.description[..fin]);
+            let go = desc.dedicated_video_memory as f64 / (1024.0 * 1024.0 * 1024.0);
+            if go >= 0.5
+                && !carte_logicielle(&nom)
+                && meilleure.as_ref().is_none_or(|(_, m)| go > *m)
+            {
+                meilleure = Some((nom, go));
+            }
+        }
+        let relacher: Release = std::mem::transmute(methode(usine, 2));
+        relacher(usine);
+    }
+    meilleure
+}
+
 /// Une chaîne UTF-16 terminée par zéro, pour les appels `…W` du registre.
 #[cfg(target_os = "windows")]
 fn registre_wide(texte: &str) -> Vec<u16> {
@@ -764,7 +870,11 @@ fn registre_entier(cle: isize, nom: &str) -> Option<u64> {
     match kind {
         REG_QWORD if taille >= 8 => Some(u64::from_le_bytes(tampon[..8].try_into().ok()?)),
         REG_DWORD if taille >= 4 => Some(u32::from_le_bytes(tampon[..4].try_into().ok()?) as u64),
-        // Certains pilotes publient `MemorySize` en binaire brut de 4 octets.
+        // Certains pilotes publient la taille en binaire brut : 8 octets pour
+        // `qwMemorySize`, 4 pour `MemorySize`. Lire 8 octets sur 4 rendait 0
+        // pour une carte de 8 Go (0x2_0000_0000) — une RX 570 passait alors
+        // pour « aucun GPU ».
+        REG_BINARY if taille >= 8 => Some(u64::from_le_bytes(tampon[..8].try_into().ok()?)),
         REG_BINARY if taille >= 4 => Some(u32::from_le_bytes(tampon[..4].try_into().ok()?) as u64),
         _ => None,
     }

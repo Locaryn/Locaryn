@@ -241,6 +241,22 @@ export function AboutSettings() {
             stable-diffusion.cpp
           </span>
         </div>
+        {runtime?.installed && (
+          <div className="locaryn-kv">
+            {/* Ce que le moteur voit, pas ce que l'application détecte : une
+                carte que le pilote Vulkan n'expose pas reste inutilisée. */}
+            <span className="locaryn-kv-key">GPU du moteur</span>
+            <span className="locaryn-kv-val">
+              {runtime.devices == null
+                ? "le moteur n'a pas répondu"
+                : runtime.devices.length > 0
+                  ? runtime.devices.join(" · ")
+                  : "aucun — le moteur tourne sur le processeur. Mettez à jour le pilote graphique (Vulkan), puis relancez Locaryn."}
+              {runtime.up_to_date === false &&
+                " · moteur à mettre à niveau (au prochain démarrage)"}
+            </span>
+          </div>
+        )}
         <div className="locaryn-kv">
           <span className="locaryn-kv-key">Architecture</span>
           <span className="locaryn-kv-val">Rust + Tauri v2 + React (cœur in-process)</span>

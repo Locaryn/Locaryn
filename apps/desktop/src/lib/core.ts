@@ -1193,6 +1193,10 @@ export interface LlamaRuntimeStatus {
   up_to_date: boolean;
   pinned: string;
   path: string;
+  /** GPUs the engine itself sees (`llama-server --list-devices`), e.g.
+   *  "Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)". Empty: CPU
+   *  only. Null/absent: the engine did not answer. */
+  devices?: string[] | null;
 }
 
 /** One honest snapshot of everything the local runtime can do. */

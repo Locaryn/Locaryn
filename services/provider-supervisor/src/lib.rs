@@ -1001,6 +1001,56 @@ pub fn llama_server_path() -> Option<PathBuf> {
     which("llama-server")
 }
 
+/// Les périphériques de calcul que llama-server voit réellement, d'après
+/// `--list-devices` : `["Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)"]`,
+/// ou une liste vide quand il ne voit que le processeur.
+///
+/// C'est la seule réponse qui compte quand une carte « n'est pas utilisée » :
+/// la détection de l'application peut voir la carte, si le pilote Vulkan (ou
+/// OpenCL sur Snapdragon) ne l'expose pas au moteur, tout part sur le
+/// processeur. `None` quand le moteur n'a pas pu répondre.
+pub async fn llama_devices(bin: &std::path::Path) -> Option<Vec<String>> {
+    let mut cmd = Command::new(bin);
+    cmd.arg("--list-devices")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(dir) = bin.parent() {
+        cmd.current_dir(dir);
+    }
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    let out = tokio::time::timeout(Duration::from_secs(30), cmd.output())
+        .await
+        .ok()?
+        .ok()?;
+    let mut texte = String::from_utf8_lossy(&out.stdout).into_owned();
+    texte.push_str(&String::from_utf8_lossy(&out.stderr));
+    parse_list_devices(&texte)
+}
+
+/// Lit la sortie de `llama-server --list-devices` (b11003) :
+///
+/// ```text
+/// Available devices:
+///   Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)
+/// ```
+///
+/// `(none)` quand seul le processeur est disponible.
+fn parse_list_devices(texte: &str) -> Option<Vec<String>> {
+    let debut = texte.find("Available devices:")?;
+    Some(
+        texte[debut..]
+            .lines()
+            .skip(1)
+            .take_while(|l| l.starts_with(' ') || l.starts_with('\t'))
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && *l != "(none)" && l.contains(':'))
+            .map(str::to_string)
+            .collect(),
+    )
+}
+
 /// La version de llama.cpp que l'application connaît — le pin unique du
 /// runtime géré (l'écran de réglages l'affiche, l'installateur le télécharge).
 pub const LLAMA_BUILD: &str = "b11003";
@@ -1869,6 +1919,23 @@ mod tests {
 
         let pris = std::io::Error::from(std::io::ErrorKind::AddrInUse);
         assert!(port_error_message(8080, &pris).contains("déjà utilisé"));
+    }
+
+    #[test]
+    fn les_peripheriques_du_moteur_se_lisent() {
+        let vulkan = "load_backend: loaded Vulkan backend\nAvailable devices:\n  Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)\n";
+        assert_eq!(
+            parse_list_devices(vulkan),
+            Some(vec![
+                "Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)".to_string()
+            ])
+        );
+        // Sortie réelle de la build CPU b11003 : aucun GPU.
+        assert_eq!(
+            parse_list_devices("Available devices:\n  (none)\n"),
+            Some(vec![])
+        );
+        assert_eq!(parse_list_devices("erreur"), None);
     }
 
     #[test]
