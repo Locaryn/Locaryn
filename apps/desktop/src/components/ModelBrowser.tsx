@@ -185,8 +185,22 @@ function getQuantTag(baseTag: string, quant: string): string {
     : baseTag;
 
   if (tag.startsWith("http://") || tag.startsWith("https://")) {
-    if (tag.match(/-(q[4568]_[a-z0-9_]+|f16|fp16)\.gguf$/i)) {
-      return tag.replace(/-(q[4568]_[a-z0-9_]+|f16|fp16)\.gguf$/i, `-${quant}.gguf`);
+    const m = tag.match(/-(q[4568]_[a-z0-9_]+|f16|fp16)\.gguf$/i);
+    if (m) {
+      // Hugging Face distingue les majuscules : le quant du catalogue
+      // (`q4_K_M`) recopié tel quel donnait `Qwen3.5-4B-q4_K_M.gguf`, absent
+      // d'un dépôt qui publie `Qwen3.5-4B-Q4_K_M.gguf`. Même quant : l'URL
+      // reste celle du catalogue. Autre quant : la casse suit celle du dépôt.
+      const actuel = m[1];
+      if (actuel.toLowerCase() === quant.toLowerCase()) return tag;
+      const voulu = quant.toLowerCase() === "fp16" ? "f16" : quant;
+      const casse =
+        actuel === actuel.toUpperCase()
+          ? voulu.toUpperCase()
+          : actuel === actuel.toLowerCase()
+            ? voulu.toLowerCase()
+            : voulu;
+      return `${tag.slice(0, m.index)}-${casse}.gguf`;
     }
     return tag;
   }

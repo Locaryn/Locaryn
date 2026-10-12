@@ -3744,6 +3744,34 @@ fn hf_refus(statut: u16, url: &str, avec_jeton: bool) -> String {
     }
 }
 
+/// `https://huggingface.co/<auteur>/<dépôt>/resolve/<révision>/<chemin>` →
+/// `(auteur/dépôt, chemin)`. `None` pour toute autre adresse.
+fn hf_resolve_parts(url: &str) -> Option<(String, String)> {
+    let reste = url.strip_prefix("https://huggingface.co/")?;
+    let reste = reste.split(['?', '#']).next()?;
+    let mut parts = reste.splitn(5, '/');
+    let (auteur, depot, resolve, _rev, chemin) = (
+        parts.next()?,
+        parts.next()?,
+        parts.next()?,
+        parts.next()?,
+        parts.next()?,
+    );
+    (resolve == "resolve" && !chemin.is_empty())
+        .then(|| (format!("{auteur}/{depot}"), chemin.to_string()))
+}
+
+/// Le fichier du dépôt qui porte ce chemin à la casse près, s'il est unique
+/// et différent de celui demandé.
+fn hf_corrige_chemin(chemin: &str, fichiers: &[(String, u64)]) -> Option<String> {
+    let mut trouves = fichiers
+        .iter()
+        .map(|(p, _)| p)
+        .filter(|p| p.eq_ignore_ascii_case(chemin) && p.as_str() != chemin);
+    let premier = trouves.next()?;
+    trouves.next().is_none().then(|| premier.clone())
+}
+
 async fn fetch_hf_tree(
     http: &reqwest::Client,
     repo: &str,
@@ -4526,21 +4554,46 @@ async fn do_pull_with_aggregate(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let mut req = client.get(url);
-    if offset > 0 {
-        req = req.header("Range", format!("bytes={offset}-"));
-    }
-    // Gated HuggingFace repos (kyutai/pocket-tts, Qwen3-TTS, …) answer 401
-    // without an access token. Send it only to huggingface.co, never to any
-    // other host this function might be pointed at.
-    if !hf_token.is_empty() && url.starts_with("https://huggingface.co/") {
-        req = req.header("Authorization", format!("Bearer {hf_token}"));
-    }
+    let requete = |url: &str| {
+        let mut req = client.get(url);
+        if offset > 0 {
+            req = req.header("Range", format!("bytes={offset}-"));
+        }
+        // Gated HuggingFace repos (kyutai/pocket-tts, Qwen3-TTS, …) answer 401
+        // without an access token. Send it only to huggingface.co, never to any
+        // other host this function might be pointed at.
+        if !hf_token.is_empty() && url.starts_with("https://huggingface.co/") {
+            req = req.header("Authorization", format!("Bearer {hf_token}"));
+        }
+        req
+    };
 
-    let resp = req
+    let mut resp = requete(url)
         .send()
         .await
         .map_err(|e| format!("download error: {e}"))?;
+
+    // Hugging Face distingue les majuscules : `Qwen3.5-4B-q4_K_M.gguf` n'est
+    // pas `Qwen3.5-4B-Q4_K_M.gguf`, et une étiquette de quantisation recopiée
+    // dans la mauvaise casse donnait « fichier introuvable » sur un fichier
+    // bien présent. Sur un 404, la liste réelle du dépôt tranche.
+    let mut url_corrigee = None;
+    if resp.status().as_u16() == 404 {
+        if let Some((depot, chemin)) = hf_resolve_parts(url) {
+            if let Ok(fichiers) = fetch_hf_tree(&client, &depot, hf_token).await {
+                if let Some(vrai) = hf_corrige_chemin(&chemin, &fichiers) {
+                    let nouvelle = format!("https://huggingface.co/{depot}/resolve/main/{vrai}");
+                    tracing::info!(demande = %url, trouve = %nouvelle, "fichier Hugging Face retrouvé à la casse près");
+                    resp = requete(&nouvelle)
+                        .send()
+                        .await
+                        .map_err(|e| format!("download error: {e}"))?;
+                    url_corrigee = Some(nouvelle);
+                }
+            }
+        }
+    }
+    let url = url_corrigee.as_deref().unwrap_or(url);
 
     if !resp.status().is_success() && resp.status().as_u16() != 206 {
         return Err(hf_refus(resp.status().as_u16(), url, !hf_token.is_empty()));
@@ -7125,6 +7178,35 @@ mod suppression_modele_tests {
 
 #[cfg(test)]
 mod tests {
+    /// Le cas du rapport : l'étiquette `q4_K_M` recopiée dans l'URL d'un
+    /// dépôt unsloth, dont le fichier s'appelle `Q4_K_M`.
+    #[test]
+    fn un_fichier_hugging_face_se_retrouve_a_la_casse_pres() {
+        let url =
+            "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-q4_K_M.gguf";
+        let (depot, chemin) = super::hf_resolve_parts(url).unwrap();
+        assert_eq!(depot, "unsloth/Qwen3.5-4B-GGUF");
+        assert_eq!(chemin, "Qwen3.5-4B-q4_K_M.gguf");
+        let fichiers = vec![
+            ("Qwen3.5-4B-Q4_K_M.gguf".to_string(), 1),
+            ("Qwen3.5-4B-Q4_K_S.gguf".to_string(), 1),
+        ];
+        assert_eq!(
+            super::hf_corrige_chemin(&chemin, &fichiers).as_deref(),
+            Some("Qwen3.5-4B-Q4_K_M.gguf")
+        );
+        // Rien à corriger quand le nom est déjà le bon, ou absent.
+        assert_eq!(
+            super::hf_corrige_chemin("Qwen3.5-4B-Q4_K_M.gguf", &fichiers),
+            None
+        );
+        assert_eq!(super::hf_corrige_chemin("autre.gguf", &fichiers), None);
+        assert_eq!(
+            super::hf_resolve_parts("https://example.com/a/b/resolve/main/x"),
+            None
+        );
+    }
+
     #[test]
     fn un_refus_de_hugging_face_dit_quoi_faire() {
         let verrou = super::hf_refus(
