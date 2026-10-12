@@ -323,6 +323,35 @@ export function MessageBubble({
     }
   }
 
+  // Le compte rendu d'un sous-agent part dans la conversation comme un
+  // message, pour que le modèle enchaîne. Affiché en bulle « utilisateur »,
+  // il passait pour un message que la personne n'avait jamais écrit.
+  const rapport =
+    role === "user"
+      ? /^\[(?:Compte rendu du sous-agent « (.+?) »\]|Le sous-agent « (.+?) » n'a pas abouti)/.exec(
+          text ?? "",
+        )
+      : null;
+  if (rapport) {
+    const nom = rapport[1] ?? rapport[2];
+    const echec = rapport[2] !== undefined;
+    const corps = echec
+      ? (text ?? "").replace(/^\[/, "").replace(/\]\s*$/, "")
+      : (text ?? "").slice(rapport[0].length).trim();
+    return (
+      <div className="locaryn-msg-row">
+        <div className="locaryn-subagent-report">
+          <div className="locaryn-subagent-report-head">
+            <Icon name="users-three" size={14} />
+            {echec ? "Sous-agent en échec" : "Compte rendu du sous-agent"} « {nom} » · envoyé
+            automatiquement au modèle
+          </div>
+          {corps && <div className="locaryn-msg-text">{corps}</div>}
+        </div>
+      </div>
+    );
+  }
+
   if (role === "user") {
     return (
       <div className="locaryn-msg-row locaryn-msg-row-user">

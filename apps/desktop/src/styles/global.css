@@ -13779,3 +13779,26 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
     animation: none;
   }
 }
+
+/* Compte rendu d'un sous-agent : envoyé au modèle par l'application, pas
+   écrit par la personne — il ne prend donc pas l'apparence de ses messages. */
+.locaryn-subagent-report {
+  max-width: 100%;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text-muted, var(--text));
+  background: transparent;
+}
+.locaryn-subagent-report-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 6px;
+  opacity: 0.8;
+}
+.locaryn-subagent-report .locaryn-msg-text {
+  white-space: pre-wrap;
+  font-size: 13px;
+}
