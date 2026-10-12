@@ -594,6 +594,13 @@ export function ChatPanel({
   const [goalNext, setGoalNext] = useState(false);
   /** L'arrêt demandé sur la carte d'un plan ou d'un objectif en cours. */
   const arretSuiviRef = useRef(false);
+  /** Le plan écrit attend l'accord : la réponse de la carte le débloque. */
+  const decisionPlanRef = useRef<((executer: boolean) => void) | null>(null);
+  const deciderPlan = (executer: boolean) => {
+    const decider = decisionPlanRef.current;
+    decisionPlanRef.current = null;
+    decider?.(executer);
+  };
   const [loopCount, setLoopCount] = useState<number | null>(null);
 
   const streamRef = useRef<HTMLDivElement>(null);
@@ -1721,6 +1728,18 @@ ${d.texte}`
                 etat: ok ? "fait" : arretSuiviRef.current ? "arrete" : "echec",
               })),
             arret: () => arretSuiviRef.current || runRef.current !== run,
+            // `/plan` seul : le plan s'affiche, puis attend « Exécuter le
+            // plan ». Avec `/objectif`, on a déjà dit d'aller au bout.
+            confirmer: objectif
+              ? undefined
+              : () =>
+                  new Promise<boolean>((resolve) => {
+                    majSuivi((s) => ({ ...s, etat: "validation" }));
+                    decisionPlanRef.current = (executer) => {
+                      majSuivi((s) => ({ ...s, etat: executer ? "cours" : "arrete" }));
+                      resolve(executer);
+                    };
+                  }),
           },
           // Les modificateurs de la demande arrivent jusqu'ici. Sans eux,
           // `/workflow` et `/loop` etaient analyses, consommes, puis perdus :
@@ -1944,6 +1963,8 @@ ${d.texte}`
     // Un /plan, /goal ou /loop enchaîne les réponses : arrêter seulement
     // celle en cours laissait l'étape suivante repartir aussitôt.
     arretSuiviRef.current = true;
+    // Un plan qui attendait l'accord est abandonné.
+    deciderPlan(false);
     // Arrêté : la file attend, même ce qui allait être lu.
     if (queueRef.current.some((m) => m.sessionId === sessionId)) setFilePause(true);
     try {
@@ -2629,6 +2650,7 @@ ${preview}`,
                       arretSuiviRef.current = true;
                       void stopGeneration();
                     }}
+                    onDecider={deciderPlan}
                   />
                 );
               }

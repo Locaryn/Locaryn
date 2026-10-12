@@ -13,12 +13,14 @@ export type Suivi = {
   /** Plan : l'essai en cours quand la vérification fait reprendre. */
   essai: number;
   maxEssais: number;
-  etat: "cours" | "fait" | "echec" | "arrete";
+  /** `validation` : le plan est écrit, il attend l'accord de la personne. */
+  etat: "validation" | "cours" | "fait" | "echec" | "arrete";
   /** Ce qui reste à faire (objectif), ou la raison d'un échec. */
   note?: string;
 };
 
 const LIBELLE_ETAT: Record<Suivi["etat"], string> = {
+  validation: "En attente de votre accord",
   cours: "En cours",
   fait: "Terminé",
   echec: "Non abouti",
@@ -30,7 +32,16 @@ const LIBELLE_ETAT: Record<Suivi["etat"], string> = {
  * combien d'étapes, lesquelles sont faites, laquelle tourne. Il remplace les
  * lignes de journal « Étape 2/5 » qui se perdaient entre les réponses.
  */
-export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: () => void }) {
+export function TaskTracker({
+  suivi,
+  onArreter,
+  onDecider,
+}: {
+  suivi: Suivi;
+  onArreter?: () => void;
+  /** Exécuter (`true`) ou abandonner (`false`) un plan en attente d'accord. */
+  onDecider?: (executer: boolean) => void;
+}) {
   const faites = suivi.etapes.filter((e) => e.etat === "fait").length;
   const total = suivi.etapes.length;
   const enCours = suivi.etat === "cours";
@@ -109,6 +120,16 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
             ` · essai ${suivi.essai}/${suivi.maxEssais}`}
         </span>
         {suivi.note && <span className="locaryn-suivi-note">{suivi.note}</span>}
+        {suivi.etat === "validation" && onDecider && (
+          <span className="locaryn-suivi-decision">
+            <button type="button" className="locaryn-btn-ghost" onClick={() => onDecider(false)}>
+              Annuler
+            </button>
+            <button type="button" className="locaryn-btn-primary" onClick={() => onDecider(true)}>
+              Exécuter le plan
+            </button>
+          </span>
+        )}
         {enCours && onArreter && (
           <button type="button" className="locaryn-suivi-arreter" onClick={onArreter}>
             Arrêter

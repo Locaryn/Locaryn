@@ -22,6 +22,11 @@ export interface WorkflowHooks {
   onStepEnd?: (index: number, ok: boolean) => void;
   /** Vrai quand la personne a demandé l'arrêt : on ne lance plus d'étape. */
   arret?: () => boolean;
+  /**
+   * Demander l'accord avant d'exécuter le plan écrit. Absent : le plan part
+   * tout de suite (`/plan /objectif`, où l'on a déjà dit d'aller au bout).
+   */
+  confirmer?: (steps: string[]) => Promise<boolean>;
 }
 
 /** Reprises par defaut quand l'etape de verification echoue. */
@@ -97,6 +102,12 @@ export async function runWorkflow(
   const maxAttempts = loops ?? MAX_ATTEMPTS;
 
   hooks.onPlan?.(plan.steps, plan.needs_loop ? maxAttempts : 1);
+  // Un plan se relit avant de partir : il va modifier des fichiers, lancer
+  // des commandes. Refusé, rien n'est exécuté et aucune tâche n'est ouverte.
+  if (hooks.confirmer && !(await hooks.confirmer(plan.steps))) {
+    hooks.onDone?.(false, 0);
+    return true;
+  }
   const taskId = taskCenter.addWorkflow(
     `Plan : ${request.slice(0, 40)}${request.length > 40 ? "…" : ""}`,
   );
