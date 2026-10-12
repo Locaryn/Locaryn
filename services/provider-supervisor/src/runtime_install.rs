@@ -44,47 +44,73 @@ pub fn managed_llama_path() -> PathBuf {
     managed_llama_dir().join(llama_server_name())
 }
 
-/// L'archive publiée pour cette plateforme et cette architecture.
+/// L'archive publiée pour un système et une architecture de *machine*.
 ///
 /// Noms vérifiés sur les assets de la release b11003. Windows x64 prend la
-/// build Vulkan (elle sert aussi les cartes AMD et Intel) ; les autres cibles
-/// prennent la build CPU de leur architecture. Une build CUDA gagnait 12 %
-/// en génération seulement sur une RTX 4050, au prix d'un second téléchargement
-/// lié à la version du pilote : elle reste un choix du morph cluster, qui
-/// sait le mesurer.
-fn release_url() -> Result<&'static str, SupervisorError> {
-    let arm = cfg!(target_arch = "aarch64");
-    let asset = if cfg!(target_os = "windows") {
-        if arm {
-            "llama-b11003-bin-win-cpu-arm64.zip"
-        } else {
-            "llama-b11003-bin-win-vulkan-x64.zip"
-        }
-    } else if cfg!(target_os = "linux") {
+/// build Vulkan (elle sert aussi les cartes AMD et Intel) ; Windows ARM64 la
+/// build OpenCL Adreno — la build CPU qu'il prenait laissait le GPU des
+/// Snapdragon X inutilisé, alors que l'archive Adreno contient exactement les
+/// mêmes fichiers plus `ggml-opencl.dll` (sans pilote OpenCL, llama.cpp
+/// retombe sur le processeur, comme avant). Linux et macOS prennent la build
+/// de leur architecture (Metal est inclus dans celle de macOS ARM64).
+///
+/// Une build CUDA gagnait 12 % en génération seulement sur une RTX 4050, au
+/// prix d'un second téléchargement lié à la version du pilote : elle reste un
+/// choix du morph cluster, qui sait le mesurer.
+fn asset_for(os: &str, arm: bool) -> Option<&'static str> {
+    Some(match (os, arm) {
+        ("windows", true) => "llama-b11003-bin-win-opencl-adreno-arm64.zip",
+        ("windows", false) => "llama-b11003-bin-win-vulkan-x64.zip",
         // Depuis ~b11000 les publications Ubuntu sont des `.tar.gz`.
-        if arm {
-            "llama-b11003-bin-ubuntu-arm64.tar.gz"
-        } else {
-            "llama-b11003-bin-ubuntu-x64.tar.gz"
-        }
-    } else if cfg!(target_os = "macos") {
-        if arm {
-            "llama-b11003-bin-macos-arm64.tar.gz"
-        } else {
-            "llama-b11003-bin-macos-x64.tar.gz"
-        }
-    } else {
-        return Err(SupervisorError::BinaryNotFound(
-            "aucune archive llama.cpp épinglée pour cette plateforme — installez              llama-server à la main puis relancez"
+        ("linux", true) => "llama-b11003-bin-ubuntu-arm64.tar.gz",
+        ("linux", false) => "llama-b11003-bin-ubuntu-x64.tar.gz",
+        ("macos", true) => "llama-b11003-bin-macos-arm64.tar.gz",
+        ("macos", false) => "llama-b11003-bin-macos-x64.tar.gz",
+        _ => return None,
+    })
+}
+
+/// L'archive qui convient à *cette machine*.
+///
+/// L'architecture est celle du processeur, pas celle de l'application : la
+/// version x64 tourne aussi sur Snapdragon (émulée), et un processus émulé
+/// peut lancer un `llama-server` ARM64 natif — c'est même le seul moyen
+/// d'atteindre l'Adreno.
+fn release_asset() -> Result<&'static str, SupervisorError> {
+    asset_for(
+        std::env::consts::OS,
+        locaryn_llmfit::hardware::host_is_arm64(),
+    )
+    .ok_or_else(|| {
+        SupervisorError::BinaryNotFound(
+            "aucune archive llama.cpp épinglée pour cette plateforme — installez \
+             llama-server à la main puis relancez"
                 .into(),
-        ));
-    };
-    Ok(Box::leak(
-        format!(
-            "https://github.com/ggml-org/llama.cpp/releases/download/{PINNED_LLAMA_BUILD}/{asset}"
         )
-        .into_boxed_str(),
+    })
+}
+
+fn release_url() -> Result<String, SupervisorError> {
+    Ok(format!(
+        "https://github.com/ggml-org/llama.cpp/releases/download/{PINNED_LLAMA_BUILD}/{}",
+        release_asset()?
     ))
+}
+
+/// Fichier qui note, à côté du moteur, l'archive dont il vient.
+const VARIANT_FILE: &str = "variant.txt";
+
+/// Le moteur installé est-il celui qui convient à cette machine et à ce pin ?
+///
+/// Faux pour une installation d'avant ce marqueur : elle peut venir d'une
+/// ancienne build (dont les drapeaux ne sont plus ceux du lancement) ou de la
+/// build CPU qu'on posait sur les Snapdragon.
+pub fn installed_variant_is_current() -> bool {
+    let Ok(wanted) = release_asset() else {
+        return true;
+    };
+    std::fs::read_to_string(managed_llama_dir().join(VARIANT_FILE))
+        .is_ok_and(|v| v.trim() == wanted)
 }
 
 /// Avancement du téléchargement, en octets. `total` vaut 0 quand le serveur ne
@@ -98,37 +124,76 @@ pub async fn install_llama_runtime(
     progress: Option<ProgressFn<'_>>,
 ) -> Result<PathBuf, SupervisorError> {
     let target = managed_llama_path();
-    if target.is_file() {
+    let present = target.is_file();
+    if present && installed_variant_is_current() {
         tracing::info!(path = %target.display(), "moteur déjà installé");
         return Ok(target);
     }
 
+    // Installation dans un dossier à part, puis échange : un moteur qui
+    // fonctionne n'est jamais retiré avant que son remplaçant soit prêt. Sans
+    // réseau, ou si l'ancien est en cours d'exécution (Windows verrouille ses
+    // fichiers), on garde l'ancien.
     let dir = managed_llama_dir();
-    std::fs::create_dir_all(&dir)?;
+    match install_into(&staging_dir(), progress).await {
+        Ok(()) => {}
+        Err(e) if present => {
+            tracing::warn!(erreur = %e, "mise à niveau du moteur impossible — l'installation existante est conservée");
+            let _ = std::fs::remove_dir_all(staging_dir());
+            return Ok(target);
+        }
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(staging_dir());
+            return Err(e);
+        }
+    }
+    if let Err(e) = swap_into_place(&staging_dir(), &dir) {
+        let _ = std::fs::remove_dir_all(staging_dir());
+        if present {
+            tracing::warn!(erreur = %e, "moteur en cours d'utilisation — la mise à niveau attendra le prochain lancement");
+            return Ok(target);
+        }
+        return Err(e);
+    }
+
+    tracing::info!(path = %target.display(), variante = %release_asset()?, "moteur installé");
+    Ok(target)
+}
+
+/// Le dossier où se prépare une installation, à côté du dossier géré.
+fn staging_dir() -> PathBuf {
+    managed_llama_dir().with_extension("new")
+}
+
+/// Télécharge, extrait et vérifie le moteur dans `dir`, marqueur compris.
+async fn install_into(dir: &Path, progress: Option<ProgressFn<'_>>) -> Result<(), SupervisorError> {
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::create_dir_all(dir)?;
+    let asset = release_asset()?;
     // L'extension suit l'asset réel : `.zip` côté Windows, `.tar.gz` ailleurs.
-    let is_targz = !cfg!(target_os = "windows");
+    let is_targz = asset.ends_with(".tar.gz");
     let archive = dir.join(format!(
         "llama-{PINNED_LLAMA_BUILD}.{}",
         if is_targz { "tar.gz" } else { "zip" }
     ));
 
-    download(release_url()?, &archive, progress).await?;
+    download(&release_url()?, &archive, progress).await?;
     if is_targz {
-        extract_tar_gz(&archive, &dir)?;
+        extract_tar_gz(&archive, dir)?;
     } else {
-        extract_zip(&archive, &dir)?;
+        extract_zip(&archive, dir)?;
     }
     let _ = std::fs::remove_file(&archive);
 
     // L'archive de llama.cpp range parfois les binaires dans un sous-dossier
-    // (`build/bin/`). On remonte ce qui compte à la racine du dossier géré :
-    // c'est là que le superviseur regarde.
+    // (`build/bin/`). On remonte ce qui compte à la racine du dossier : c'est
+    // là que le superviseur regarde.
+    let target = dir.join(llama_server_name());
     if !target.is_file() {
-        if let Some(found) = find_file(&dir, llama_server_name(), 4) {
-            promote_siblings(&found, &dir)?;
+        if let Some(found) = find_file(dir, llama_server_name(), 4) {
+            promote_siblings(&found, dir)?;
         }
     }
-
     if !target.is_file() {
         return Err(SupervisorError::BinaryNotFound(format!(
             "l'archive a été extraite mais {} reste introuvable",
@@ -144,8 +209,25 @@ pub async fn install_llama_runtime(
         std::fs::set_permissions(&target, perms)?;
     }
 
-    tracing::info!(path = %target.display(), "moteur installé");
-    Ok(target)
+    std::fs::write(dir.join(VARIANT_FILE), asset)?;
+    Ok(())
+}
+
+/// Remplace `dest` par `staged`. L'ancien dossier est d'abord mis de côté :
+/// si le renommage échoue (fichier verrouillé), rien n'a bougé.
+fn swap_into_place(staged: &Path, dest: &Path) -> Result<(), SupervisorError> {
+    let old = dest.with_extension("old");
+    let _ = std::fs::remove_dir_all(&old);
+    if dest.exists() {
+        std::fs::rename(dest, &old)?;
+    }
+    if let Err(e) = std::fs::rename(staged, dest) {
+        // Remettre l'ancien en place plutôt que de laisser un trou.
+        let _ = std::fs::rename(&old, dest);
+        return Err(e.into());
+    }
+    let _ = std::fs::remove_dir_all(&old);
+    Ok(())
 }
 
 async fn download(
@@ -454,5 +536,52 @@ mod tests {
         if let Ok(url) = release_url() {
             assert!(url.contains(PINNED_LLAMA_BUILD), "{url}");
         }
+        for os in ["windows", "linux", "macos"] {
+            for arm in [false, true] {
+                let asset = asset_for(os, arm).expect("plateforme couverte");
+                assert!(asset.contains(PINNED_LLAMA_BUILD), "{asset}");
+                assert_eq!(asset.contains("arm64"), arm, "{asset}");
+            }
+        }
+    }
+
+    /// Un Snapdragon X recevait la build CPU : l'Adreno ne servait jamais.
+    #[test]
+    fn un_snapdragon_recoit_le_moteur_adreno() {
+        assert_eq!(
+            asset_for("windows", true),
+            Some("llama-b11003-bin-win-opencl-adreno-arm64.zip")
+        );
+        // Les PC x64 gardent Vulkan, qui sert NVIDIA, AMD et Intel.
+        assert_eq!(
+            asset_for("windows", false),
+            Some("llama-b11003-bin-win-vulkan-x64.zip")
+        );
+    }
+
+    /// Une mise à niveau ne doit jamais laisser le dossier du moteur vide.
+    #[test]
+    fn l_echange_remplace_le_moteur_sans_trou() {
+        let base = std::env::temp_dir().join(format!(
+            "locaryn_swap_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let dest = base.join("llama");
+        let staged = base.join("llama.new");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::write(dest.join("ancien"), b"x").unwrap();
+        std::fs::write(staged.join("nouveau"), b"y").unwrap();
+
+        swap_into_place(&staged, &dest).unwrap();
+        assert!(dest.join("nouveau").is_file());
+        assert!(!dest.join("ancien").exists());
+        assert!(!staged.exists());
+        assert!(!dest.with_extension("old").exists());
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
