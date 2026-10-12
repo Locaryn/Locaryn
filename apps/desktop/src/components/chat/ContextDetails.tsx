@@ -1,4 +1,4 @@
-import { ContextRing } from "@locaryn/ui-core";
+import { ContextRing, formatTokens } from "@locaryn/ui-core";
 import type { ContextPart } from "../../lib/core";
 
 /** Ce que la boucle d'agent a mesuré au dernier tour. */
@@ -27,7 +27,9 @@ export function ContextDetails({
   estimeMessages,
 }: {
   usage: ContextUsage | null;
-  fenetre: number;
+  /** La fenêtre appliquée, ou `null` quand rien ne la dit (aucun modèle chargé) :
+   *  sans maximum connu, un anneau aux proportions inventées mentirait. */
+  fenetre: number | null;
   /** Faute de mesure (conversation rouverte), l'estimation des seuls messages. */
   estimeMessages: number;
 }) {
@@ -36,6 +38,7 @@ export function ContextDetails({
     const m = mesures.find((x) => x.key === p.key);
     return m ? [{ key: p.key, label: p.libelle, tokens: m.tokens, color: p.teinte }] : [];
   });
+  const utilise = mesures.reduce((acc, m) => acc + m.tokens, 0);
   return (
     <div
       className="locaryn-ctx-details"
@@ -43,23 +46,32 @@ export function ContextDetails({
       aria-label="Détail de la fenêtre de contexte"
     >
       <p className="locaryn-ctx-details-tete">Fenêtre de contexte</p>
-      <ContextRing
-        parts={parts}
-        window={fenetre}
-        extra={
-          usage && usage.deferredCount > 0
-            ? {
-                label: `Outils différés (${usage.deferredCount})`,
-                tokens: usage.deferredTokens,
-              }
-            : null
-        }
-      />
-      <p className="locaryn-ctx-details-note">
-        {usage
-          ? "Maintenir la jauge pour compresser la conversation."
-          : "Seuls les messages sont estimés : la mesure complète arrive au prochain message."}
-      </p>
+      {fenetre === null ? (
+        <p className="locaryn-ctx-details-note">
+          Maximum inconnu tant qu'aucun modèle n'est chargé : la place dépend du modèle qui sera
+          chargé. Les jetons utilisés restent comptés, ~{formatTokens(utilise)} ici.
+        </p>
+      ) : (
+        <>
+          <ContextRing
+            parts={parts}
+            window={fenetre}
+            extra={
+              usage && usage.deferredCount > 0
+                ? {
+                    label: `Outils différés (${usage.deferredCount})`,
+                    tokens: usage.deferredTokens,
+                  }
+                : null
+            }
+          />
+          <p className="locaryn-ctx-details-note">
+            {usage
+              ? "Maintenir la jauge pour compresser la conversation."
+              : "Seuls les messages sont estimés : la mesure complète arrive au prochain message."}
+          </p>
+        </>
+      )}
     </div>
   );
 }

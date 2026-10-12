@@ -47,6 +47,7 @@ import {
 import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { runGoal } from "../lib/goal";
+import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
 import { notifierSysteme } from "../lib/osNotify";
 import { pluginBridge } from "../lib/pluginBridge";
@@ -57,6 +58,7 @@ import {
   type SlashCommand,
   type SlashSuggestion,
   argToSize,
+  commandName,
   matchExtensionCommand,
   matchSlash,
   matchSlashInput,
@@ -65,7 +67,6 @@ import {
 } from "../lib/slashCommands";
 import { SOUS_AGENT_ACCORD, SOUS_AGENT_FINI, type SousAgentFini } from "../lib/sousAgents";
 import { runWorkflow } from "../lib/workflow";
-import { DEFAULT_MODEL_PARAMS } from "./ModelConfigPanel";
 
 type ChatItem =
   | {
@@ -174,7 +175,6 @@ type Props = {
   projectId?: string | null;
   /** Rien de cette conversation ne sera gardé : l'écran doit le dire. */
   ephemeral?: boolean;
-  ctxSize?: number;
   onOpenMarketplace?: () => void;
   /** Home screen: create (and auto-name) a chat from the very first prompt. */
   onCreateSessionForPrompt?: (
@@ -489,7 +489,6 @@ export function ChatPanel({
   sessionId,
   projectId,
   ephemeral,
-  ctxSize,
   onOpenMarketplace,
   onCreateSessionForPrompt,
   onOpenSettings,
@@ -506,6 +505,7 @@ export function ChatPanel({
   onEtatChange,
   extensions = [],
 }: Props) {
+  const { lang } = useI18n();
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -2085,7 +2085,7 @@ ${preview}`,
    *  effacer ; en tête de message, elle s'exécute comme avant. */
   function choisirSlash(cmd: SlashCommand) {
     if (cmd.action === "skill" || slashInline) {
-      const insertion = cmd.action === "skill" ? `@${cmd.name} ` : `/${cmd.name} `;
+      const insertion = cmd.action === "skill" ? `@${cmd.name} ` : `/${commandName(cmd, lang)} `;
       setInput((t) => t.replace(/(^|\s)\/[\w:.-]*$/, `$1${insertion}`));
       setSlash(null);
       setSlashInline(false);
@@ -2163,7 +2163,7 @@ ${preview}`,
           {
             id: nextId("log"),
             kind: "log",
-            text: SLASH_COMMANDS.map((c) => `/${c.name} — ${c.hint}`).join("\n"),
+            text: SLASH_COMMANDS.map((c) => `/${commandName(c, lang)} — ${c.hint}`).join("\n"),
           },
         ]);
         break;
@@ -2333,7 +2333,7 @@ ${preview}`,
           // A command that takes arguments: Tab completes to "/cmd " so its
           // values show up instead of running with an unknown quality.
           if (e.key === "Tab" && !slashInline && cmd.args && cmd.args.length) {
-            const next = `/${cmd.name} `;
+            const next = `/${commandName(cmd, lang)} `;
             setInput(next);
             setSlash(matchSlashInput(next, extCommands, activeCapabilities));
             setSlashIndex(0);
@@ -2443,21 +2443,18 @@ ${preview}`,
   const usedTokens = ctxUsage
     ? ctxUsage.parts.reduce((acc, p) => acc + p.tokens, 0)
     : estimeMessages;
-  // Fenetre reellement appliquee au moteur : la prop d'App, sinon ce que le
-  // panneau de reglages annonce (Appliquer), sinon la valeur par defaut. La
-  // jauge doit raconter ce que le moteur a, pas ce qu'un menu laisse croire.
-  const [appliedCtx, setAppliedCtx] = useState<number | null>(null);
-  // La jauge dit ce que le moteur a vraiment chargé ; à défaut ce qui est réglé
-  // pour le prochain chargement. Les valeurs par défaut ne servent que si rien
-  // ne répond (mode démo, service injoignable).
   const { status: contextStatus } = useContextStatus();
-  const ctxWindow =
-    contextStatus?.running ??
-    // 0 : profil automatique, la fenêtre n'est connue qu'une fois le moteur lancé.
-    (contextStatus?.configured || null) ??
-    ctxSize ??
-    appliedCtx ??
-    DEFAULT_MODEL_PARAMS.ctx_size;
+  /**
+   * La fenêtre de contexte, ou `null` quand elle est inconnue.
+   *
+   * Seul un moteur qui tourne dit la vérité sur ce point : la fenêtre dépend du
+   * modèle chargé. Le réglage du prochain chargement et la valeur par défaut
+   * annonçaient un maximum qui n'existait pas encore — un modèle déchargé
+   * depuis trente minutes affichait la fenêtre d'un autre. On écrit donc « X »,
+   * et les jetons utilisés restent affichés : la conversation, elle, est
+   * toujours là.
+   */
+  const ctxWindow: number | null = contextStatus?.running ?? null;
   // Reduire sous ce qui est deja utilise : la conversation ne tiendrait plus.
   // On ne bloque pas — on propose de compresser, c'est l'utilisateur qui decide.
   const [compressProposal, setCompressProposal] = useState<{
@@ -2465,19 +2462,28 @@ ${preview}`,
     to: number;
   } | null>(null);
   const [compressing, setCompressing] = useState(false);
+  /** La fenêtre déjà annoncée : ne pas remettre la même alerte à chaque
+   *  relecture de l'état du moteur (toutes les 5 s). */
+  const alerteCtxRef = useRef<number | null>(null);
+  // Une fenêtre plus petite que la conversation — modèle plus court choisi,
+  // contexte réglé plus bas — et une grande partie du fil disparaîtrait. On ne
+  // bloque pas : on prévient, et c'est la personne qui décide. Reprendre le
+  // même modèle (ou un plus large) évite la compression ; remonter le réglage
+  // de contexte suffit aussi.
   useEffect(() => {
-    const onApplied = (e: Event) => {
-      const detail = (e as CustomEvent<{ params?: { ctx_size?: number } }>).detail;
-      const next = detail?.params?.ctx_size;
-      if (!next) return;
-      setAppliedCtx(next);
-      if (next < usedTokens) setCompressProposal({ from: usedTokens, to: next });
-    };
-    window.addEventListener("locaryn:model-params-applied", onApplied);
-    return () => window.removeEventListener("locaryn:model-params-applied", onApplied);
-  }, [usedTokens]);
-  const ctxPct = Math.min(usedTokens / ctxWindow, 1);
-  const ctxWarnLevel = ctxPct > 0.85 ? "danger" : ctxPct > 0.6 ? "warn" : "ok";
+    if (ctxWindow === null) return;
+    if (usedTokens <= ctxWindow) {
+      // De nouveau assez large : une baisse future sera annoncée à nouveau.
+      alerteCtxRef.current = null;
+      return;
+    }
+    if (alerteCtxRef.current === ctxWindow) return;
+    alerteCtxRef.current = ctxWindow;
+    setCompressProposal({ from: usedTokens, to: ctxWindow });
+  }, [ctxWindow, usedTokens]);
+  const ctxPct = ctxWindow === null ? 0 : Math.min(usedTokens / ctxWindow, 1);
+  const ctxWarnLevel =
+    ctxWindow === null ? "ok" : ctxPct > 0.85 ? "danger" : ctxPct > 0.6 ? "warn" : "ok";
 
   function ctxFmt(n: number) {
     return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
@@ -2786,7 +2792,7 @@ ${preview}`,
                         <span className="locaryn-slash-hint">{c.hint}</span>
                       </span>
                       <code className="locaryn-slash-cmd">
-                        /{c.name}
+                        /{commandName(c, lang)}
                         {c.args?.length ? " ..." : ""}
                       </code>
                     </button>
@@ -3223,7 +3229,7 @@ ${preview}`,
                   />
                   <ContextDetails
                     usage={ctxUsage}
-                    fenetre={ctxUsage?.window || ctxWindow}
+                    fenetre={ctxUsage?.window ?? ctxWindow}
                     estimeMessages={estimeMessages}
                   />
                 </>
@@ -3237,11 +3243,19 @@ ${preview}`,
                   : (ctxBulle ?? "Maintenir pour compresser le contexte")}
               </span>
               <div
-                className={`locaryn-ctx-gauge-wrap${holding ? " is-holding" : ""}${compressing ? " is-compressing" : ""}`}
-                title={`~${ctxFmt(usedTokens)} / ${ctxFmt(ctxWindow)} tokens utilisés — maintenir pour compresser`}
+                className={`locaryn-ctx-gauge-wrap${holding ? " is-holding" : ""}${compressing ? " is-compressing" : ""}${ctxWindow === null ? " is-unknown" : ""}`}
+                title={
+                  ctxWindow === null
+                    ? `~${ctxFmt(usedTokens)} jetons utilisés — maximum inconnu tant qu'aucun modèle n'est chargé (maintenir pour compresser)`
+                    : `~${ctxFmt(usedTokens)} / ${ctxFmt(ctxWindow)} tokens utilisés — maintenir pour compresser`
+                }
                 role="button"
                 tabIndex={sessionId ? 0 : -1}
-                aria-label={`Contexte : ~${ctxFmt(usedTokens)} sur ${ctxFmt(ctxWindow)} jetons. Maintenir pour compresser la conversation.`}
+                aria-label={
+                  ctxWindow === null
+                    ? `Contexte : ~${ctxFmt(usedTokens)} jetons utilisés, maximum inconnu tant qu'aucun modèle n'est chargé. Maintenir pour compresser la conversation.`
+                    : `Contexte : ~${ctxFmt(usedTokens)} sur ${ctxFmt(ctxWindow)} jetons. Maintenir pour compresser la conversation.`
+                }
                 aria-busy={compressing}
                 style={{ "--ctx-pct": ctxPct } as React.CSSProperties}
                 onPointerDown={(e) => {
@@ -3273,7 +3287,9 @@ ${preview}`,
                     ~{ctxFmt(usedTokens)}
                   </span>
                   <span className="locaryn-ctx-gauge-sep">/</span>
-                  <span className="locaryn-ctx-gauge-total">{ctxFmt(ctxWindow)} ctx</span>
+                  <span className="locaryn-ctx-gauge-total">
+                    {ctxWindow === null ? "X" : ctxFmt(ctxWindow)} ctx
+                  </span>
                 </span>
               </div>
             </div>
@@ -3289,14 +3305,20 @@ ${preview}`,
           className="locaryn-card locaryn-compress-card"
         >
           <h3 style={{ margin: "0 0 8px", fontSize: "var(--text-md)", fontWeight: 700 }}>
-            Fenetre reduite sous la conversation
+            La fenêtre est plus petite que la conversation
           </h3>
+          <p style={{ margin: "0 0 12px", color: "var(--muted)", lineHeight: 1.5 }}>
+            Cette conversation pèse déjà ~{ctxFmt(compressProposal.from)} tokens, la fenêtre
+            actuelle n'en offre que {ctxFmt(compressProposal.to)}. Sans compression, le modèle ne
+            verrait plus le début du fil.
+          </p>
+          <p style={{ margin: "0 0 12px", color: "var(--muted)", lineHeight: 1.5 }}>
+            Le plus sûr est de reprendre le même modèle que la dernière fois — ou un modèle dont le
+            contexte est plus grand. Et si c'est le réglage de contexte qui a baissé, le remonter
+            suffit : changer de modèle n'est pas obligatoire.
+          </p>
           <p style={{ margin: "0 0 16px", color: "var(--muted)", lineHeight: 1.5 }}>
-            La conversation utilise deja ~{ctxFmt(compressProposal.from)} tokens, la nouvelle
-            fenetre n'en offre que {ctxFmt(compressProposal.to)}. Le modele ne verrait plus le debut
-            du fil.
-            <br />
-            Compresser maintenant ? Les anciens echanges deviennent un resume concis, les derniers
+            Compresser maintenant ? Les anciens échanges deviennent un résumé concis, les derniers
             restent intacts.
           </p>
           <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>

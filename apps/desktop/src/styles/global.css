@@ -5099,6 +5099,15 @@ pre.md-code {
   color: var(--text-faint);
 }
 
+/* Fenêtre inconnue — aucun modèle chargé : la piste se raye et reste vide, le
+   maximum s'écrit « X ». Une barre remplie dirait une mesure qu'on n'a pas. */
+.locaryn-ctx-gauge-wrap.is-unknown {
+  background-image: repeating-linear-gradient(135deg, var(--border) 0 2px, transparent 2px 7px);
+}
+.locaryn-ctx-gauge-wrap.is-unknown .locaryn-ctx-gauge-bar {
+  width: 0;
+}
+
 /* ═══════════════════════════════════════════════════════════
    NAV DRAWER (LEFT SLIDE-OUT MENU)
    ═══════════════════════════════════════════════════════════ */
