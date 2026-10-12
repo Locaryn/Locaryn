@@ -52,6 +52,31 @@ pub fn ollama_registry_tag(model: &str) -> Option<String> {
     Some(format!("{name}:{version}"))
 }
 
+/// Ce qu'une réponse refusée de Hugging Face veut dire, en clair. « HTTP 401 »
+/// laissait croire que rien ne s'installait sans jeton, alors que seuls les
+/// dépôts verrouillés en demandent un.
+pub fn hf_refus(statut: u16, url: &str, avec_jeton: bool) -> String {
+    let depot = url
+        .strip_prefix("https://huggingface.co/")
+        .map(|reste| {
+            let reste = reste.strip_prefix("api/models/").unwrap_or(reste);
+            reste.split('/').take(2).collect::<Vec<_>>().join("/")
+        })
+        .filter(|d| d.contains('/'));
+    match (statut, depot) {
+        (401 | 403, Some(d)) if avec_jeton => format!(
+            "Hugging Face refuse l'accès à {d} avec votre jeton : acceptez la licence du modèle sur https://huggingface.co/{d} (même compte que le jeton), ou vérifiez que le jeton est encore valide."
+        ),
+        (401 | 403, Some(d)) => format!(
+            "{d} est un dépôt verrouillé sur Hugging Face : acceptez sa licence sur https://huggingface.co/{d}, puis ajoutez un jeton dans Réglages → Hugging Face. Les autres modèles s'installent sans jeton."
+        ),
+        (404, Some(d)) => format!(
+            "Fichier introuvable sur Hugging Face ({d}) : il a été renommé ou retiré du dépôt. Adresse demandée : {url}"
+        ),
+        _ => format!("HTTP {statut} pour {url}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -29,6 +29,8 @@ import {
   type Session,
   core,
   coreMode,
+  getHfToken,
+  partagerJetonHf,
 } from "./lib/core";
 import { parseDeepLink, setPendingInstall } from "./lib/deepLink";
 import { pickFolder } from "./lib/dialog";
@@ -135,6 +137,11 @@ export function App() {
       // perd un rappel, pas l'application.
       console.warn("attention illisible:", e);
     }
+  }, []);
+
+  // Un jeton enregistré avant que le serveur sache le lire lui est transmis.
+  useEffect(() => {
+    if (getHfToken()) partagerJetonHf();
   }, []);
 
   useEffect(() => {

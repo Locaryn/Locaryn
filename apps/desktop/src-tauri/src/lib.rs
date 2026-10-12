@@ -3762,30 +3762,7 @@ fn hf_candidate_variant(path: &str, quantization: Option<&str>) -> String {
     stem.trim_end_matches(['-', '_', '.', '/']).to_string()
 }
 
-/// Ce qu'une réponse refusée de Hugging Face veut dire, en clair. « HTTP 401 »
-/// laissait croire que rien ne s'installait sans jeton, alors que seuls les
-/// dépôts verrouillés en demandent un.
-fn hf_refus(statut: u16, url: &str, avec_jeton: bool) -> String {
-    let depot = url
-        .strip_prefix("https://huggingface.co/")
-        .map(|reste| {
-            let reste = reste.strip_prefix("api/models/").unwrap_or(reste);
-            reste.split('/').take(2).collect::<Vec<_>>().join("/")
-        })
-        .filter(|d| d.contains('/'));
-    match (statut, depot) {
-        (401 | 403, Some(d)) if avec_jeton => format!(
-            "Hugging Face refuse l'accès à {d} avec votre jeton : acceptez la licence du modèle sur https://huggingface.co/{d} (même compte que le jeton), ou vérifiez que le jeton est encore valide."
-        ),
-        (401 | 403, Some(d)) => format!(
-            "{d} est un dépôt verrouillé sur Hugging Face : acceptez sa licence sur https://huggingface.co/{d}, puis ajoutez un jeton dans Réglages → Hugging Face. Les autres modèles s'installent sans jeton."
-        ),
-        (404, Some(d)) => format!(
-            "Fichier introuvable sur Hugging Face ({d}) : il a été renommé ou retiré du dépôt. Adresse demandée : {url}"
-        ),
-        _ => format!("HTTP {statut} pour {url}"),
-    }
-}
+use locaryn_shared_types::model_source::hf_refus;
 
 /// `https://huggingface.co/<auteur>/<dépôt>/resolve/<révision>/<chemin>` →
 /// `(auteur/dépôt, chemin)`. `None` pour toute autre adresse.
@@ -4951,6 +4928,13 @@ async fn stop_generation(core: State<'_, Core>, session_id: Uuid) -> Result<(), 
         }
         None => Err("aucune generation en cours pour cette session".into()),
     }
+}
+
+/// Le jeton Hugging Face des réglages, partagé avec le serveur de la machine :
+/// sans lui, un modèle verrouillé installé depuis le téléphone échouait.
+#[tauri::command]
+fn set_hf_token_machine(token: String) -> Result<(), String> {
+    locaryn_config::set_hf_token(&token).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -6987,6 +6971,7 @@ pub fn run() {
             storage_root::clean_temp,
             pull_model,
             cancel_pull_model,
+            set_hf_token_machine,
             delete_model_cmd,
             approve_tool_call,
             update_provider_model_params,

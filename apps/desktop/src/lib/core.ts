@@ -2215,13 +2215,22 @@ export function getHfToken(): string {
 
 /** Persist (or clear, when empty) the HuggingFace access token. */
 export function setHfToken(token: string): void {
+  const t = token.trim();
   try {
-    const t = token.trim();
     if (t) localStorage.setItem(HF_TOKEN_KEY, t);
     else localStorage.removeItem(HF_TOKEN_KEY);
   } catch {
     // localStorage unavailable — the token just won't persist.
   }
+  partagerJetonHf(t);
+}
+
+/** Le serveur de cette machine (installations lancées depuis le téléphone)
+ *  lit le jeton à côté de ses données : il ne voit pas celui de l'interface. */
+export function partagerJetonHf(token: string = getHfToken()): void {
+  invoke<void>("set_hf_token_machine", { token }).catch(() => {
+    // Hors de l'application (aperçu web) : rien à partager.
+  });
 }
 
 const tauriCore: CoreApi = {

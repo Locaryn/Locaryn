@@ -310,6 +310,60 @@ pub fn default_data_dir() -> PathBuf {
     builtin_data_dir()
 }
 
+/// Fichier du jeton Hugging Face que l'application de bureau partage avec le
+/// serveur de la même machine.
+fn hf_token_file() -> PathBuf {
+    default_data_dir().join("hf_token")
+}
+
+/// Le jeton Hugging Face de cette machine, pour les dépôts verrouillés.
+///
+/// Dans l'ordre : `HF_TOKEN` (ou `HUGGING_FACE_HUB_TOKEN`), celui enregistré
+/// dans les réglages de l'application, puis celui de `huggingface-cli login`.
+/// Le jeton ne vivait que dans l'interface du bureau : les installations
+/// passées par le serveur — depuis le téléphone — n'en avaient aucun.
+pub fn hf_token() -> Option<String> {
+    let non_vide = |t: String| {
+        let t = t.trim().to_string();
+        (!t.is_empty()).then_some(t)
+    };
+    for var in ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"] {
+        if let Some(t) = std::env::var(var).ok().and_then(non_vide) {
+            return Some(t);
+        }
+    }
+    let cli = std::env::var_os("HF_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|h| h.join(".cache").join("huggingface")))
+        .map(|d| d.join("token"));
+    std::iter::once(hf_token_file())
+        .chain(cli)
+        .find_map(|f| std::fs::read_to_string(f).ok().and_then(non_vide))
+}
+
+/// Enregistrer (ou effacer, si vide) le jeton Hugging Face des réglages, pour
+/// que le serveur de cette machine s'en serve aussi.
+pub fn set_hf_token(token: &str) -> std::io::Result<()> {
+    let fichier = hf_token_file();
+    let token = token.trim();
+    if token.is_empty() {
+        return match std::fs::remove_file(&fichier) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+    }
+    if let Some(dossier) = fichier.parent() {
+        std::fs::create_dir_all(dossier)?;
+    }
+    std::fs::write(&fichier, token)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fichier, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
 /// Engine binaries (llama-server, sd). Hundreds of megabytes, so they follow
 /// the storage root.
 pub fn bin_dir() -> PathBuf {
