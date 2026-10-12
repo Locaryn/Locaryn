@@ -6,6 +6,7 @@ import { ModalShell } from "../components/ModalShell";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
+import { SousAgentsEnCours } from "../components/SousAgentsEnCours";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import { ContextDetails, type ContextUsage } from "../components/chat/ContextDetails";
 import {
@@ -2648,6 +2649,8 @@ ${preview}`,
                 <span className="locaryn-sr-only">Le modèle répond</span>
               </div>
             )}
+
+            {sessionId && <SousAgentsEnCours sessionId={sessionId} />}
 
             {/* Next-step suggestions, asked to the model in the background. */}
             {!streaming && (followupsLoading || followups.length > 0) && (
