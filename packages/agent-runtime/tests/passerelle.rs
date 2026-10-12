@@ -386,3 +386,54 @@ async fn un_outil_impose_exige_un_appel_au_premier_tour() {
         .expect("un corps JSON");
     assert!(corps.get("tool_choice").is_none(), "{corps}");
 }
+
+/// Un moteur qui refuse la grammaire des outils au premier envoi (llama-server :
+/// « failed to parse grammar ») : la boucle renvoie une fois, et la réponse
+/// arrive au lieu d'une erreur affichée à la personne.
+#[tokio::test]
+async fn une_grammaire_refusee_est_retentee_une_fois() {
+    let appels = Arc::new(Mutex::new(0u32));
+    let app = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(|State(appels): State<Arc<Mutex<u32>>>| async move {
+                let n = {
+                    let mut a = appels.lock().expect("verrou");
+                    *a += 1;
+                    *a
+                };
+                if n == 1 {
+                    return axum::response::Response::builder()
+                        .status(400)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(
+                            r#"{"error":{"code":400,"message":"Failed to initialize samplers: failed to parse grammar"}}"#,
+                        ))
+                        .expect("réponse");
+                }
+                axum::response::Response::builder()
+                    .header("content-type", "text/event-stream")
+                    .body(axum::body::Body::from(
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"salut\"},\"finish_reason\":null}]}\n\n\
+                         data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+                         data: [DONE]\n\n",
+                    ))
+                    .expect("réponse")
+            }),
+        )
+        .with_state(appels.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("port libre");
+    let addr = listener.local_addr().expect("adresse");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let client = reqwest::Client::new();
+    let flux = run_openai_tool_loop(&format!("http://{addr}"), &client, &entree("qwen3-4b.gguf"))
+        .await
+        .expect("le second envoi doit aboutir");
+    assert_eq!(vider(flux).await, "salut");
+    assert_eq!(*appels.lock().expect("verrou"), 2, "un seul nouvel essai");
+}

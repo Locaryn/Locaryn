@@ -375,76 +375,94 @@ pub async fn run_openai_tool_loop(
         })?;
     // Fenêtre pleine malgré l'estimation : on resserre et on renvoie une fois,
     // plutôt que d'annoncer un moteur indisponible.
-    if let (false, Some(b)) = (first_resp.status().is_success(), budget_conversation) {
+    if !first_resp.status().is_success() {
         let status = first_resp.status();
         let body_text = first_resp.text().await.unwrap_or_default();
-        if !fenetre_pleine(&body_text) {
+        // Le moteur n'a pas su traduire un schéma d'outil en grammaire : un
+        // seul connecteur mal décrit suffisait à empêcher toute réponse. On
+        // renvoie une fois, les arguments des outils MCP réduits à leurs noms.
+        let grammaire = erreur_de_grammaire(&body_text) && !all_tools.is_empty();
+        if grammaire {
+            tracing::warn!(%status, body = %body_text, "grammaire des outils refusée par le moteur — nouvel essai avec des schémas MCP simplifiés");
+            for t in all_tools.iter_mut().filter(|t| {
+                t.required_permissions
+                    .contains(&locaryn_shared_types::Permission::Mcp)
+            }) {
+                t.input_schema = crate::mcp_tools::schema_permissif(&t.input_schema);
+            }
+            tools_json = Some(ollama_tools_json(&all_tools));
+        } else if !fenetre_pleine(&body_text) {
             tracing::warn!(%status, body = %body_text, "openai-compat returned non-2xx");
             return Err(refus(status.as_u16(), &body_text));
         }
-        // Le moteur dit la taille réelle de la requête. L'estimation (octets
-        // de JSON) la sous-évalue quand le gabarit du modèle enrobe chaque
-        // outil : 92 outils comptés sous 80 % d'une fenêtre de 8 192 en
-        // faisaient 22 558. On recale l'échelle sur ce chiffre, on allège les
-        // outils à ce qui tient vraiment, puis la conversation.
-        let reelle = jetons_annonces(&body_text);
-        match (reelle, contexte_serveur) {
-            (Some(reelle), Some(ctx)) if !outils_complets.is_empty() => {
-                let estimee: usize = all_tools
-                    .iter()
-                    .map(crate::tool_budget::estimate_tokens)
-                    .sum::<usize>()
-                    + crate::context_window::estimate_tokens(&messages);
-                // Estimation brute (octets) contre taille réelle : le rapport
-                // est l'échelle, retenue pour les messages suivants.
-                let echelle = (reelle as f64 / estimee.max(1) as f64).max(1.0);
-                retenir_echelle(echelle);
-                let ctx_recale = (ctx as f64 / echelle) as usize;
-                let refit = crate::tool_budget::fit(
-                    outils_complets.clone(),
-                    ctx_recale,
-                    &demande,
-                    &input.forced_tools,
-                );
-                let outils: usize = refit
-                    .specs
-                    .iter()
-                    .map(crate::tool_budget::estimate_tokens)
-                    .sum();
-                let fait = crate::context_window::fit(
-                    &mut messages,
-                    crate::context_window::budget(ctx_recale, outils),
-                );
-                tracing::warn!(
-                    reelle,
-                    estimee,
-                    echelle,
-                    outils_avant = all_tools.len(),
-                    outils_apres = refit.specs.len(),
-                    ?fait,
-                    "fenêtre pleine au premier envoi : outils allégés selon la taille réelle"
-                );
-                if !fait.rien() {
-                    annonce_contexte = Some(fait.annonce());
+        let budget_refus = if grammaire { None } else { budget_conversation };
+        if let Some(b) = budget_refus {
+            // Le moteur dit la taille réelle de la requête. L'estimation (octets
+            // de JSON) la sous-évalue quand le gabarit du modèle enrobe chaque
+            // outil : 92 outils comptés sous 80 % d'une fenêtre de 8 192 en
+            // faisaient 22 558. On recale l'échelle sur ce chiffre, on allège les
+            // outils à ce qui tient vraiment, puis la conversation.
+            let reelle = jetons_annonces(&body_text);
+            match (reelle, contexte_serveur) {
+                (Some(reelle), Some(ctx)) if !outils_complets.is_empty() => {
+                    let estimee: usize = all_tools
+                        .iter()
+                        .map(crate::tool_budget::estimate_tokens)
+                        .sum::<usize>()
+                        + crate::context_window::estimate_tokens(&messages);
+                    // Estimation brute (octets) contre taille réelle : le rapport
+                    // est l'échelle, retenue pour les messages suivants.
+                    let echelle = (reelle as f64 / estimee.max(1) as f64).max(1.0);
+                    retenir_echelle(echelle);
+                    let ctx_recale = (ctx as f64 / echelle) as usize;
+                    let refit = crate::tool_budget::fit(
+                        outils_complets.clone(),
+                        ctx_recale,
+                        &demande,
+                        &input.forced_tools,
+                    );
+                    let outils: usize = refit
+                        .specs
+                        .iter()
+                        .map(crate::tool_budget::estimate_tokens)
+                        .sum();
+                    let fait = crate::context_window::fit(
+                        &mut messages,
+                        crate::context_window::budget(ctx_recale, outils),
+                    );
+                    tracing::warn!(
+                        reelle,
+                        estimee,
+                        echelle,
+                        outils_avant = all_tools.len(),
+                        outils_apres = refit.specs.len(),
+                        ?fait,
+                        "fenêtre pleine au premier envoi : outils allégés selon la taille réelle"
+                    );
+                    if !fait.rien() {
+                        annonce_contexte = Some(fait.annonce());
+                    }
+                    differes = refit.deferred;
+                    all_tools = refit.specs;
+                    tools_json = if all_tools.is_empty() {
+                        None
+                    } else {
+                        Some(ollama_tools_json(&all_tools))
+                    };
                 }
-                differes = refit.deferred;
-                all_tools = refit.specs;
-                tools_json = if all_tools.is_empty() {
-                    None
-                } else {
-                    Some(ollama_tools_json(&all_tools))
-                };
-            }
-            _ => {
-                let fait = crate::context_window::fit(&mut messages, b * 6 / 10);
-                tracing::warn!(
-                    ?fait,
-                    "fenêtre pleine au premier envoi : conversation resserrée"
-                );
-                if !fait.rien() {
-                    annonce_contexte = Some(fait.annonce());
+                _ => {
+                    let fait = crate::context_window::fit(&mut messages, b * 6 / 10);
+                    tracing::warn!(
+                        ?fait,
+                        "fenêtre pleine au premier envoi : conversation resserrée"
+                    );
+                    if !fait.rien() {
+                        annonce_contexte = Some(fait.annonce());
+                    }
                 }
             }
+        } else if !grammaire {
+            return Err(refus(status.as_u16(), &body_text));
         }
         let (mut openai_body, native_body) = make_body(&messages, &tools_json);
         if exige_outil {
@@ -1008,6 +1026,15 @@ async fn post_json(
         req = req.bearer_auth(t);
     }
     req.json(body).send().await
+}
+
+/// Le moteur a refusé de traduire un schéma d'outil en grammaire
+/// (llama-server : « failed to parse grammar », « JSON schema error … »).
+fn erreur_de_grammaire(corps: &str) -> bool {
+    let bas = corps.to_ascii_lowercase();
+    bas.contains("parse grammar")
+        || bas.contains("json schema error")
+        || bas.contains("failed to initialize samplers")
 }
 
 /// Ce que la personne lit quand le moteur refuse une requête. Le statut seul

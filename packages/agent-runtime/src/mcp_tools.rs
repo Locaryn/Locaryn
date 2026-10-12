@@ -29,6 +29,118 @@ pub fn is_ui_only_tool(tool_name: &str) -> bool {
     tool_name.starts_with(UI_ONLY_PREFIX)
 }
 
+/// Le schéma d'un outil MCP, débarrassé de ce que llama.cpp refuse de
+/// traduire en grammaire. Un seul schéma refusé fait échouer **toute** la
+/// requête (« Failed to initialize samplers: failed to parse grammar », ou
+/// « JSON schema error ») : le modèle ne pouvait plus répondre du tout dès
+/// qu'un connecteur mal décrit était branché.
+///
+/// Corrigé, d'après des essais sur llama-server b11003 : un `enum` vide, un
+/// `$ref` qui ne mène nulle part, un schéma booléen (`true`/`false`) à la
+/// place d'un objet. Chacun devient « n'importe quelle valeur » (`{}`), ce
+/// qui garde l'outil utilisable.
+pub fn assainir_schema(schema: &serde_json::Value) -> serde_json::Value {
+    let racine = schema.clone();
+    let mut out = schema.clone();
+    assainir_noeud(&mut out, &racine);
+    match out {
+        serde_json::Value::Object(_) => out,
+        _ => serde_json::json!({ "type": "object" }),
+    }
+}
+
+fn assainir_noeud(v: &mut serde_json::Value, racine: &serde_json::Value) {
+    use serde_json::Value;
+    let Value::Object(map) = v else {
+        return;
+    };
+    if map
+        .get("enum")
+        .is_some_and(|e| e.as_array().is_none_or(|a| a.is_empty()))
+    {
+        map.remove("enum");
+    }
+    if let Some(cible) = map.get("$ref").and_then(Value::as_str) {
+        let resolu = cible
+            .strip_prefix('#')
+            .is_some_and(|chemin| chemin.is_empty() || racine.pointer(chemin).is_some());
+        if !resolu {
+            map.remove("$ref");
+        }
+    }
+    if let Some(Value::Array(req)) = map.get_mut("required") {
+        req.retain(Value::is_string);
+    }
+    for (cle, enfant) in map.iter_mut() {
+        match cle.as_str() {
+            // Des tables de schémas : chaque valeur est un schéma.
+            "properties" | "$defs" | "definitions" | "patternProperties" => {
+                if let Value::Object(table) = enfant {
+                    for sous in table.values_mut() {
+                        remplacer_booleen(sous);
+                        assainir_noeud(sous, racine);
+                    }
+                }
+            }
+            // Des listes de schémas.
+            "anyOf" | "oneOf" | "allOf" | "prefixItems" => {
+                if let Value::Array(liste) = enfant {
+                    for sous in liste.iter_mut() {
+                        remplacer_booleen(sous);
+                        assainir_noeud(sous, racine);
+                    }
+                }
+            }
+            // Un schéma unique (ou, pour `items`, une liste de schémas).
+            "items" | "additionalProperties" | "not" => {
+                if let Value::Array(liste) = enfant {
+                    for sous in liste.iter_mut() {
+                        remplacer_booleen(sous);
+                        assainir_noeud(sous, racine);
+                    }
+                } else if cle != "additionalProperties" || enfant.is_object() {
+                    remplacer_booleen(enfant);
+                    assainir_noeud(enfant, racine);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Un schéma booléen devient « n'importe quelle valeur ».
+fn remplacer_booleen(v: &mut serde_json::Value) {
+    if v.is_boolean() {
+        *v = serde_json::json!({});
+    }
+}
+
+/// La forme la plus simple d'un schéma qui garde les noms d'arguments :
+/// chaque argument accepte n'importe quelle valeur. Le dernier recours quand
+/// llama.cpp refuse encore la grammaire d'un outil.
+pub fn schema_permissif(schema: &serde_json::Value) -> serde_json::Value {
+    let proprietes: serde_json::Map<String, serde_json::Value> = schema
+        .get("properties")
+        .and_then(|p| p.as_object())
+        .map(|p| {
+            p.keys()
+                .map(|k| (k.clone(), serde_json::json!({})))
+                .collect()
+        })
+        .unwrap_or_default();
+    let requis: Vec<serde_json::Value> = schema
+        .get("required")
+        .and_then(|r| r.as_array())
+        .map(|r| {
+            r.iter()
+                .filter(|n| n.as_str().is_some_and(|n| proprietes.contains_key(n)))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    serde_json::json!({ "type": "object", "properties": proprietes, "required": requis })
+}
+
 /// Build the prefixed tool name that the LLM sees.
 pub fn mcp_tool_name(server_name: &str, tool_name: &str) -> String {
     format!("{MCP_PREFIX}{server_name}{SEP}{tool_name}")
@@ -106,10 +218,11 @@ pub async fn collect_mcp_tools(state: &McpState) -> Vec<ToolSpec> {
                         .clone()
                         .unwrap_or_else(|| format!("MCP tool from server '{server_name}'"));
                     let risk = risk_from_annotations(t);
+                    let schema = assainir_schema(&t.input_schema);
                     specs.push(ToolSpec {
                         name: mcp_tool_name(server_name, &t.name),
                         description: desc.clone(),
-                        input_schema: t.input_schema.clone(),
+                        input_schema: schema.clone(),
                         risk,
                         required_permissions: vec![locaryn_shared_types::Permission::Mcp],
                     });
@@ -117,7 +230,7 @@ pub async fn collect_mcp_tools(state: &McpState) -> Vec<ToolSpec> {
                         specs.push(ToolSpec {
                             name: t.name.clone(),
                             description: desc,
-                            input_schema: t.input_schema.clone(),
+                            input_schema: schema,
                             risk,
                             required_permissions: vec![locaryn_shared_types::Permission::Mcp],
                         });
@@ -355,6 +468,51 @@ fn artifact_from_object(candidate: &serde_json::Value) -> Option<ToolArtifact> {
 
 #[cfg(test)]
 mod tests {
+
+    /// Les trois schémas que llama-server b11003 refuse — chacun faisait
+    /// échouer toute la requête — deviennent acceptables, sans perdre les
+    /// arguments de l'outil.
+    #[test]
+    fn un_schema_mcp_refuse_par_llama_cpp_est_assaini() {
+        let brut = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "mode": { "type": "string", "enum": [] },
+                "cible": { "$ref": "#/$defs/Absent" },
+                "libre": true,
+                "liste": { "type": "array", "items": false },
+                "ok": { "$ref": "#/$defs/X" }
+            },
+            "$defs": { "X": { "type": "string" } },
+            "required": ["mode", 3, "cible"]
+        });
+        let s = super::assainir_schema(&brut);
+        assert!(s.pointer("/properties/mode/enum").is_none());
+        assert!(s.pointer("/properties/cible/$ref").is_none());
+        assert_eq!(s.pointer("/properties/libre"), Some(&serde_json::json!({})));
+        assert_eq!(
+            s.pointer("/properties/liste/items"),
+            Some(&serde_json::json!({}))
+        );
+        // Une référence valide est gardée.
+        assert_eq!(
+            s.pointer("/properties/ok/$ref").and_then(|v| v.as_str()),
+            Some("#/$defs/X")
+        );
+        assert_eq!(s["required"], serde_json::json!(["mode", "cible"]));
+        // Un schéma qui n'est pas un objet devient un objet.
+        assert_eq!(
+            super::assainir_schema(&serde_json::json!(true))["type"],
+            "object"
+        );
+
+        let permissif = super::schema_permissif(&brut);
+        assert_eq!(permissif["required"], serde_json::json!(["mode", "cible"]));
+        assert_eq!(
+            permissif.pointer("/properties/ok"),
+            Some(&serde_json::json!({}))
+        );
+    }
     #[test]
     fn toutes_les_variantes_d_un_rendu_sont_declarees() {
         let sortie = serde_json::to_string_pretty(&serde_json::Value::String(
