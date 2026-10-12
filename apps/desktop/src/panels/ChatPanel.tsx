@@ -57,8 +57,10 @@ import {
   type SlashSuggestion,
   argToSize,
   matchExtensionCommand,
+  matchSlash,
   matchSlashInput,
   parseModifiers,
+  slashEnFin,
 } from "../lib/slashCommands";
 import { SOUS_AGENT_ACCORD, SOUS_AGENT_FINI, type SousAgentFini } from "../lib/sousAgents";
 import { runWorkflow } from "../lib/workflow";
@@ -565,6 +567,11 @@ export function ChatPanel({
   // installer ou desactiver une extension change la palette sans redemarrage.
   const [extCommands, setExtCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
+  /** La palette a été ouverte par un « /mot » en fin de texte : choisir une
+   *  entrée l'insère au lieu de l'exécuter (le message garde son texte). */
+  const [slashInline, setSlashInline] = useState(false);
+  /** Les skills, proposés aussi dans la palette « / » (insérés en « @nom »). */
+  const [skillCommands, setSkillCommands] = useState<SlashCommand[]>([]);
   /** « @ » : connecteurs MCP et extensions actives qu'on peut désigner au
    *  modèle pour cette demande. */
   const [mention, setMention] = useState<{ query: string; items: MentionItem[] } | null>(null);
@@ -2031,6 +2038,59 @@ ${preview}`,
     };
   }, []);
 
+  useEffect(() => {
+    let annule = false;
+    core
+      .listSkills()
+      .then((skills) => {
+        if (annule) return;
+        setSkillCommands(
+          skills.map((sk) => ({
+            name: sk.name,
+            aliases: [],
+            icon: "sparkle",
+            label: sk.name,
+            hint: `Skill · ${sk.source}${sk.description ? ` — ${sk.description}` : ""}`,
+            action: "skill",
+          })),
+        );
+      })
+      .catch((e: unknown) => console.warn("skills illisibles :", e));
+    return () => {
+      annule = true;
+    };
+  }, []);
+
+  /** La palette « / » pour ce texte : en tête de message, ou « /mot » à la fin. */
+  function calculerSlash(texte: string) {
+    const pool = [...extCommands, ...skillCommands];
+    const debut = matchSlashInput(texte, pool, activeCapabilities);
+    if (debut) {
+      setSlashInline(false);
+      setSlash(debut);
+      return;
+    }
+    const mot = slashEnFin(texte);
+    const items = mot === null ? [] : (matchSlash(`/${mot}`, pool, activeCapabilities) ?? []);
+    setSlashInline(items.length > 0);
+    setSlash(items.length ? { kind: "commands", items } : null);
+  }
+
+  /** Choisir une commande de la palette. Un skill s'insère en « @nom » ; une
+   *  commande tapée au milieu d'un texte s'insère aussi, sans rien exécuter ni
+   *  effacer ; en tête de message, elle s'exécute comme avant. */
+  function choisirSlash(cmd: SlashCommand) {
+    if (cmd.action === "skill" || slashInline) {
+      const insertion = cmd.action === "skill" ? `@${cmd.name} ` : `/${cmd.name} `;
+      setInput((t) => t.replace(/(^|\s)\/[\w:.-]*$/, `$1${insertion}`));
+      setSlash(null);
+      setSlashInline(false);
+      inputRef.current?.focus();
+      return;
+    }
+    runSlash(cmd);
+  }
+
   function runSlash(cmd: SlashCommand, size?: number | null) {
     // Capture avant vidage : une commande de plugin a besoin de ce qui a ete
     // tape apres son nom pour resoudre ses arguments.
@@ -2156,6 +2216,10 @@ ${preview}`,
     const m = /(?:^|\s)@([\w.-]*)$/.exec(texte);
     if (!m) {
       setMention(null);
+      // Relire au prochain « @ » : un connecteur arrêté ou un logiciel fermé
+      // entre-temps ne doit pas rester affiché « prêt ».
+      connecteursRef.current = null;
+      skillsRef.current = null;
       return;
     }
     if (connecteursRef.current === null) {
@@ -2186,9 +2250,11 @@ ${preview}`,
       ...connecteursRef.current.map((c) => ({
         name: c.name,
         label: c.name,
-        hint: c.running
-          ? `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`
-          : "Connecteur MCP · arrêté",
+        hint: !c.running
+          ? "Connecteur MCP · arrêté"
+          : c.companion && !c.companion.running
+            ? `Connecteur MCP · ${c.companion.name} n'est pas ouvert`
+            : `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`,
         icon: "plugs-connected" as const,
       })),
       ...extensions
@@ -2262,14 +2328,14 @@ ${preview}`,
           const cmd = slash.items[idx];
           // A command that takes arguments: Tab completes to "/cmd " so its
           // values show up instead of running with an unknown quality.
-          if (e.key === "Tab" && cmd.args && cmd.args.length) {
+          if (e.key === "Tab" && !slashInline && cmd.args && cmd.args.length) {
             const next = `/${cmd.name} `;
             setInput(next);
             setSlash(matchSlashInput(next, extCommands, activeCapabilities));
             setSlashIndex(0);
             return;
           }
-          runSlash(cmd);
+          choisirSlash(cmd);
         } else {
           runSlash(slash.command, argToSize(slash.items[idx].value));
         }
@@ -2704,7 +2770,7 @@ ${preview}`,
                       aria-selected={i === slashIndex}
                       className={`locaryn-slash-item${i === slashIndex ? " locaryn-active" : ""}`}
                       onMouseEnter={() => setSlashIndex(i)}
-                      onClick={() => runSlash(c)}
+                      onClick={() => choisirSlash(c)}
                     >
                       <span className="locaryn-slash-icon">
                         <Icon name={c.icon} size={15} />
@@ -2988,7 +3054,7 @@ ${preview}`,
             onChange={(e) => {
               setInput(e.target.value);
               autoGrow();
-              setSlash(matchSlashInput(e.target.value, extCommands, activeCapabilities));
+              calculerSlash(e.target.value);
               setSlashIndex(0);
               void suivreMention(e.target.value);
             }}
