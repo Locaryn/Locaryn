@@ -210,7 +210,7 @@ fn probe_static() -> StaticProbe {
         std::thread::sleep(Duration::from_millis(700));
         probe_gpu()
     });
-    let unified = cfg!(target_os = "macos") && gpu.is_some();
+    let unified = gpu.as_ref().is_some_and(|g| g.unified);
     let (measured_bw, measured) = match sample_ram_bandwidth_gbps() {
         Some(bw) => (bw, true),
         None => (RAM_BANDWIDTH_FALLBACK, false),
@@ -221,9 +221,11 @@ fn probe_static() -> StaticProbe {
         None => (None, 0.0, Backend::Cpu),
     };
     let vram_bandwidth_gbps = if unified {
-        // Sur mémoire unifiée, le GPU lit la même mémoire que le processeur —
-        // plus vite que lui, mais pas dans une autre puce.
-        apple_bandwidth(gpu_name.as_deref()).unwrap_or(measured_bw * 2.0)
+        // Sur mémoire unifiée, le GPU lit la même mémoire que le processeur.
+        // À défaut d'une table pour la puce (Adreno des Snapdragon, future puce
+        // Apple), la mesure de la mémoire système donne le bon ordre de
+        // grandeur : le GPU ne lit pas deux fois plus vite qu'elle.
+        apple_bandwidth(gpu_name.as_deref()).unwrap_or(measured_bw)
     } else if total_vram_gb > 0.0 {
         gpu_bandwidth(gpu_name.as_deref(), total_vram_gb)
     } else {
@@ -350,16 +352,23 @@ fn free_ram_gb() -> Option<f64> {
     meminfo_kb("MemAvailable:").map(|kb| kb / (1024.0 * 1024.0))
 }
 
+/// `sysctl` par son chemin absolu d'abord : une application lancée depuis le
+/// Finder n'a pas forcément le même `PATH` qu'un terminal.
+#[cfg(target_os = "macos")]
+fn sysctl(args: &[&str]) -> Option<String> {
+    run("/usr/sbin/sysctl", args).or_else(|| run("sysctl", args))
+}
+
 #[cfg(target_os = "macos")]
 fn total_ram_gb() -> Option<f64> {
-    let text = run("sysctl", &["-n", "hw.memsize"])?;
+    let text = sysctl(&["-n", "hw.memsize"])?;
     let bytes: f64 = text.trim().parse().ok()?;
     Some(bytes / (1024.0 * 1024.0 * 1024.0))
 }
 
 #[cfg(target_os = "macos")]
 fn free_ram_gb() -> Option<f64> {
-    let text = run("vm_stat", &[])?;
+    let text = run("/usr/bin/vm_stat", &[]).or_else(|| run("vm_stat", &[]))?;
     let page_size = 4096.0;
     let mut pages = 0.0;
     for line in text.lines() {
@@ -384,6 +393,11 @@ struct Gpu {
     name: String,
     total_vram_gb: f64,
     backend: Backend,
+    /// Vrai quand le GPU n'a pas de mémoire à lui : il lit celle du système.
+    /// Sur Apple Silicon et sur les Snapdragon X (Adreno), « la VRAM » *est* la
+    /// RAM — la compter séparément la surestime, la croire absente affiche 0 Go
+    /// sur une machine qui sait parfaitement en charger.
+    unified: bool,
 }
 
 fn probe_gpu() -> Option<Gpu> {
@@ -422,6 +436,7 @@ fn probe_nvidia() -> Option<Gpu> {
         name,
         total_vram_gb: mib / 1024.0,
         backend: Backend::Cuda,
+        unified: false,
     })
 }
 
@@ -453,6 +468,7 @@ fn probe_amd() -> Option<Gpu> {
         },
         total_vram_gb: total_bytes / (1024.0 * 1024.0 * 1024.0),
         backend: Backend::Rocm,
+        unified: false,
     })
 }
 
@@ -465,31 +481,91 @@ fn probe_amd() -> Option<Gpu> {
 /// fiable et sans dépendance qui couvre AMD comme Intel.
 #[cfg(target_os = "windows")]
 fn probe_windows_adapters() -> Option<Gpu> {
-    choisir_meilleure_carte(lire_cartes_registre())
-}
+    let cartes = lire_cartes_registre();
 
-/// Retenir la carte qui compte : celle qui a le plus de mémoire.
-///
-/// Un poste de bureau en déclare souvent deux — un processeur graphique
-/// intégré et la carte dédiée. C'est la dédiée, la plus large, sur laquelle un
-/// modèle tiendra ; prendre la première clé du registre choisirait au hasard.
-/// Les pilotes logiciels (`Microsoft Basic Display Adapter`) n'ont pas de
-/// mémoire propre et sont écartés.
-#[cfg(any(target_os = "windows", test))]
-fn choisir_meilleure_carte(cartes: Vec<(String, f64)>) -> Option<Gpu> {
-    cartes
-        .into_iter()
-        .filter(|(_, go)| *go >= 0.5)
-        .filter(|(nom, _)| {
-            let bas = nom.to_ascii_lowercase();
-            !bas.contains("basic display") && !bas.contains("render only")
-        })
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(name, total_vram_gb)| Gpu {
+    // 1. Un GPU à mémoire unifiée — l'Adreno des Snapdragon X, un Mali — est
+    //    reconnu même quand le pilote annonce une taille : celle-ci n'est
+    //    qu'une part réservée d'une mémoire qui appartient au système.
+    if let Some(nom) = cartes
+        .iter()
+        .filter(|(nom, _)| !carte_logicielle(nom))
+        .map(|(nom, _)| nom.as_str())
+        .find(|nom| gpu_unifie(nom))
+    {
+        return Some(Gpu {
+            name: nom.to_string(),
+            total_vram_gb: 0.0, // renseigné plus haut : la mémoire du système
+            backend: Backend::Vulkan,
+            unified: true,
+        });
+    }
+
+    // 2. Sinon la plus large carte à mémoire propre : c'est sur elle qu'un
+    //    modèle tiendra.
+    if let Some((name, total_vram_gb)) = meilleure_carte_dediee(&cartes) {
+        return Some(Gpu {
             backend: backend_pour_nom(&name),
             name,
             total_vram_gb,
-        })
+            unified: false,
+        });
+    }
+
+    // 3. Aucune mémoire propre déclarée. Sous Windows ARM, un GPU intégré sans
+    //    `qwMemorySize` reste un GPU : le compter pour « aucun GPU » affichait
+    //    0 Go de VRAM sur une machine qui sait en charger.
+    #[cfg(target_arch = "aarch64")]
+    if let Some(name) = premiere_carte_integree(&cartes) {
+        return Some(Gpu {
+            name,
+            total_vram_gb: 0.0,
+            backend: Backend::Vulkan,
+            unified: true,
+        });
+    }
+
+    None
+}
+
+/// La carte dédiée — celle qui a de la mémoire propre. La plus large l'emporte :
+/// un poste de bureau en déclare souvent deux, l'intégré et la dédiée.
+#[cfg(any(target_os = "windows", test))]
+fn meilleure_carte_dediee(cartes: &[(String, Option<f64>)]) -> Option<(String, f64)> {
+    cartes
+        .iter()
+        .filter(|(nom, _)| !carte_logicielle(nom))
+        .filter_map(|(nom, mem)| mem.filter(|go| *go >= 0.5).map(|go| (nom.clone(), go)))
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+/// La première carte intégrée — un GPU sans mémoire propre, qui lit celle du
+/// système. C'est le cas de l'Adreno des Snapdragon X.
+#[cfg(any(all(target_os = "windows", target_arch = "aarch64"), test))]
+fn premiere_carte_integree(cartes: &[(String, Option<f64>)]) -> Option<String> {
+    cartes
+        .iter()
+        .find(|(nom, mem)| mem.is_none() && !carte_logicielle(nom))
+        .map(|(nom, _)| nom.clone())
+}
+
+/// Les pilotes logiciels : ils n'ont pas de mémoire propre par nature et ne
+/// sont pas la carte de la machine. Les prendre pour elle serait faux.
+#[cfg(any(target_os = "windows", test))]
+fn carte_logicielle(nom: &str) -> bool {
+    let bas = nom.to_ascii_lowercase();
+    bas.trim().is_empty() || bas.contains("basic display") || bas.contains("render only")
+}
+
+/// Un GPU à mémoire unifiée, d'après son nom : il n'a pas de VRAM à lui, il lit
+/// celle du système. Adreno (Snapdragon X) et Mali sont intégrés par
+/// construction ; Apple est unifié sur toute sa gamme.
+#[cfg(any(target_os = "windows", test))]
+fn gpu_unifie(nom: &str) -> bool {
+    let bas = nom.to_ascii_lowercase();
+    bas.contains("adreno")
+        || bas.contains("qualcomm")
+        || bas.contains("snapdragon")
+        || bas.contains("mali")
 }
 
 /// Le moteur qu'un nom de carte désigne sous Windows.
@@ -509,11 +585,12 @@ fn backend_pour_nom(nom: &str) -> Backend {
     }
 }
 
-/// Les cartes installées, `(nom, Go)` : chaque sous-clé de la classe des cartes
-/// d'affichage est une carte, `DriverDesc` son nom et
-/// `HardwareInformation.qwMemorySize` sa mémoire dédiée en octets.
+/// Les cartes installées, `(nom, mémoire propre éventuelle en Go)` : chaque
+/// sous-clé de la classe des cartes d'affichage est une carte, `DriverDesc` son
+/// nom et `HardwareInformation.qwMemorySize` sa mémoire dédiée en octets.
+/// `None` quand le pilote n'annonce aucune mémoire propre — un GPU intégré.
 #[cfg(target_os = "windows")]
-fn lire_cartes_registre() -> Vec<(String, f64)> {
+fn lire_cartes_registre() -> Vec<(String, Option<f64>)> {
     let racine = registre_wide(
         r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}",
     );
@@ -579,10 +656,13 @@ fn lire_cartes_registre() -> Vec<(String, f64)> {
         // SAFETY : clé précédemment ouverte.
         unsafe { RegCloseKey(carte_cle) };
 
-        if let (Some(nom), Some(octets)) = (nom, octets) {
-            if octets > 0 {
-                cartes.push((nom, octets as f64 / (1024.0 * 1024.0 * 1024.0)));
-            }
+        if let Some(nom) = nom {
+            // `None` : le pilote ne déclare aucune mémoire propre. Sur un GPU
+            // intégré (Adreno), c'est normal — il lit celle du système.
+            let memoire = octets
+                .filter(|octets| *octets > 0)
+                .map(|octets| octets as f64 / (1024.0 * 1024.0 * 1024.0));
+            cartes.push((nom, memoire));
         }
     }
     // SAFETY : clé précédemment ouverte.
@@ -709,19 +789,35 @@ extern "system" {
     fn RegCloseKey(hkey: isize) -> i32;
 }
 
-#[cfg(target_os = "macos")]
-fn probe_apple() -> Option<Gpu> {
-    let brand = run("sysctl", &["-n", "machdep.cpu.brand_string"])?;
-    let brand = brand.trim();
-    if !brand.starts_with("Apple") {
+/// Le nom de la puce Apple, d'après ce que le système publie. `None` sur un
+/// Mac Intel : c'est cette fonction qui décide si la machine a un GPU Apple.
+///
+/// `hw.optional.arm64` (répond `1`) tranche à lui seul, sans dépendre de la
+/// chaîne de marque — que certaines machines M1 ne publient pas. C'est ce
+/// silence qui les faisait passer pour « aucun GPU » : 0 Go de VRAM, modèles
+/// relégués au processeur, sur une machine dont le GPU est pourtant le cœur.
+#[cfg(any(target_os = "macos", test))]
+fn identite_apple(arm64: Option<&str>, marque: Option<&str>) -> Option<String> {
+    let est_arm = arm64.is_some_and(|t| t.trim() == "1");
+    let marque = marque.map(str::trim).filter(|t| !t.is_empty());
+    if !(est_arm || marque.is_some_and(|t| t.starts_with("Apple"))) {
         return None;
     }
+    // Sans nom lisible — le cas des M1 muets — la puce reste identifiée.
+    Some(marque.unwrap_or("Apple Silicon").to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn probe_apple() -> Option<Gpu> {
+    let arm = sysctl(&["-n", "hw.optional.arm64"]);
+    let marque = sysctl(&["-n", "machdep.cpu.brand_string"]);
     // Mémoire unifiée : la taille est celle de la RAM, renseignée par
     // l'appelant. On ne remonte ici que l'identité de la puce.
     Some(Gpu {
-        name: brand.to_string(),
+        name: identite_apple(arm.as_deref(), marque.as_deref())?,
         total_vram_gb: total_ram_gb().unwrap_or(0.0),
         backend: Backend::Metal,
+        unified: true,
     })
 }
 
@@ -944,13 +1040,12 @@ mod tests {
     #[test]
     fn la_carte_la_plus_large_est_retenue() {
         let cartes = vec![
-            ("Intel(R) UHD Graphics 630".to_string(), 1.0),
-            ("AMD Radeon RX 570 Series".to_string(), 8.0),
+            ("Intel(R) UHD Graphics 630".to_string(), Some(1.0)),
+            ("AMD Radeon RX 570 Series".to_string(), Some(8.0)),
         ];
-        let gpu = choisir_meilleure_carte(cartes).expect("une carte");
-        assert_eq!(gpu.total_vram_gb, 8.0);
-        assert_eq!(gpu.backend, Backend::Vulkan);
-        assert!(gpu.name.contains("RX 570"));
+        let (nom, go) = meilleure_carte_dediee(&cartes).expect("une carte");
+        assert_eq!(nom, "AMD Radeon RX 570 Series");
+        assert_eq!(go, 8.0);
     }
 
     /// Un adaptateur logiciel sans mémoire propre ne doit pas devenir « le GPU »
@@ -958,15 +1053,70 @@ mod tests {
     #[test]
     fn l_adaptateur_logiciel_n_est_pas_un_gpu() {
         let cartes = vec![
-            ("Microsoft Basic Display Adapter".to_string(), 0.0),
-            ("AMD Radeon RX 570 Series".to_string(), 8.0),
+            ("Microsoft Basic Display Adapter".to_string(), None),
+            ("AMD Radeon RX 570 Series".to_string(), Some(8.0)),
         ];
-        assert!(choisir_meilleure_carte(cartes).is_some_and(|g| g.total_vram_gb == 8.0));
-        assert!(choisir_meilleure_carte(vec![(
-            "Microsoft Basic Display Adapter".to_string(),
-            0.0
-        )])
-        .is_none());
+        assert_eq!(meilleure_carte_dediee(&cartes).map(|(_, go)| go), Some(8.0));
+        assert!(
+            meilleure_carte_dediee(&[("Microsoft Basic Display Adapter".to_string(), None)])
+                .is_none()
+        );
+    }
+
+    /// Un GPU intégré à mémoire unifiée — l'Adreno des Snapdragon X — n'annonce
+    /// aucune mémoire propre : c'est la RAM qui sert de VRAM. Il doit être
+    /// reconnu comme tel, et non comme une machine sans GPU.
+    #[test]
+    fn une_carte_a_memoire_unifiee_est_reconnue() {
+        let cartes = vec![("Qualcomm(R) Adreno(TM) X1-85 GPU".to_string(), None)];
+        assert!(gpu_unifie("Qualcomm(R) Adreno(TM) X1-85 GPU"));
+        assert_eq!(
+            premiere_carte_integree(&cartes).as_deref(),
+            Some("Qualcomm(R) Adreno(TM) X1-85 GPU")
+        );
+        // Une vraie carte dédiée n'est jamais prise pour de la mémoire unifiée.
+        assert!(!gpu_unifie("NVIDIA GeForce RTX 4060"));
+        assert!(!gpu_unifie("AMD Radeon RX 570 Series"));
+    }
+
+    /// Sous Windows, seul NVIDIA a CUDA : tout le reste passe par Vulkan. Le
+    /// libellé ne doit annoncer « ROCm » sur aucune carte — ROCm n'existe pas
+    /// sur cette plateforme.
+    #[test]
+    fn le_backend_suit_le_nom_de_la_carte() {
+        assert_eq!(backend_pour_nom("NVIDIA GeForce RTX 4060"), Backend::Cuda);
+        assert_eq!(
+            backend_pour_nom("AMD Radeon RX 570 Series"),
+            Backend::Vulkan
+        );
+        assert_eq!(
+            backend_pour_nom("Qualcomm(R) Adreno(TM) X1-85 GPU"),
+            Backend::Vulkan
+        );
+    }
+
+    /// Sur Apple Silicon, la mémoire est unifiée : la VRAM est la RAM. La puce
+    /// doit être reconnue même quand le système ne publie pas son nom — le cas
+    /// de certains M1 — et un Mac Intel ne doit jamais passer pour elle.
+    #[test]
+    fn la_puce_apple_est_reconnue_meme_sans_son_nom() {
+        assert_eq!(
+            identite_apple(Some("1"), None).as_deref(),
+            Some("Apple Silicon")
+        );
+        assert_eq!(
+            identite_apple(Some("1"), Some("Apple M2 Pro")).as_deref(),
+            Some("Apple M2 Pro")
+        );
+        // La chaîne de marque suffit quand le drapeau manque.
+        assert_eq!(
+            identite_apple(None, Some("Apple M1")).as_deref(),
+            Some("Apple M1")
+        );
+        // Un Mac Intel n'a pas de mémoire unifiée : ce n'est pas un GPU Apple.
+        assert_eq!(identite_apple(Some("0"), None), None);
+        assert_eq!(identite_apple(None, Some("Intel(R) Core(TM) i7")), None);
+        assert_eq!(identite_apple(None, None), None);
     }
 
     /// Une RX 570 annonce sa vraie bande passante (~224 Go/s), pas le repli
