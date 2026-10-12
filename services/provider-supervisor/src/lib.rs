@@ -461,6 +461,14 @@ impl Supervisor {
                 (None, _) => self.inner.cfg.startup_timeout,
             };
             let deadline = Instant::now() + startup_budget;
+            // Au-delà du délai, un llama-server vivant qui répond « loading »
+            // charge encore — disque lent, pilote Vulkan qui compile ses
+            // shaders, antivirus qui lit les poids. Le tuer à 180 s faisait
+            // échouer le chargement au hasard et le relancer de zéro : sur une
+            // RX 570, cinq à dix minutes pour un modèle qui finissait par
+            // tenir. On le laisse finir, dans cette limite.
+            let limite_absolue = Instant::now() + startup_budget.max(Duration::from_secs(20 * 60));
+            let mut prolonge = false;
             loop {
                 if self.probe(&endpoint, spec.as_ref()).await {
                     let _ = self
@@ -564,6 +572,23 @@ impl Supervisor {
                     }
                 }
 
+                if Instant::now() >= deadline
+                    && Instant::now() < limite_absolue
+                    && spec.is_none()
+                    && matches!(engine, ProviderEngine::LlamaCpp)
+                    && llama_port_state(&self.inner.http, &endpoint).await
+                        == LlamaPortState::Loading
+                {
+                    if !prolonge {
+                        prolonge = true;
+                        tracing::warn!(
+                            ?startup_budget,
+                            "llama-server charge encore au-delà du délai — on le laisse finir"
+                        );
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    continue;
+                }
                 if Instant::now() >= deadline {
                     // Clean up the dead child.
                     self.kill_owned(engine).await;
