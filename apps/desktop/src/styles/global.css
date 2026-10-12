@@ -7710,6 +7710,13 @@ pre.md-code {
   flex: 0 1 280px;
   min-width: 0;
 }
+/* En colonne, la base de 280px s'appliquait à la hauteur : chaque réglage
+   (décodage spéculatif, experts MoE, RPC…) laissait un grand vide sous son
+   titre. Le texte prend la hauteur qu'il lui faut. */
+.perf-row-col > .perf-row-left {
+  flex: 0 0 auto;
+  width: 100%;
+}
 /* Une ligne de réglage passe sur deux rangées quand la fenêtre se resserre,
    au lieu d'écraser son texte d'aide. */
 .perf-row {
