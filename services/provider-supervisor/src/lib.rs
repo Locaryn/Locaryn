@@ -1224,6 +1224,16 @@ pub const VRAM_AVANT_MOTEUR: &str = "llama_vram_before.json";
 /// vaut déporter une couche que d'offrir 4 096 jetons.
 pub const AUTO_FIT_MIN_CTX: u32 = 8192;
 
+/// La marge (Mio) que `--fit` doit laisser libre sur une carte dédiée : 5 % de
+/// sa mémoire, entre 256 et 512 Mio. `None` : on garde celle de llama.cpp
+/// (mémoire unifiée, ou aucune carte connue).
+pub fn fit_margin_mib(total_vram_gb: f64, unified: bool) -> Option<u64> {
+    if unified || total_vram_gb <= 0.0 {
+        return None;
+    }
+    Some(((total_vram_gb * 1024.0 * 0.05) as u64).clamp(256, 512))
+}
+
 /// Le profil automatique : toutes les couches demandées et aucun contexte fixé.
 /// llama.cpp choisit alors les deux d'après la mémoire libre.
 pub fn is_auto_fit(gpu_layers: i64, context_length: u64) -> bool {
@@ -1387,6 +1397,20 @@ async fn spawn_llama_server(
     let auto = is_auto_fit(gpu_layers, ctx);
     if ctx == 0 {
         cmd.arg("--fit-ctx").arg(AUTO_FIT_MIN_CTX.to_string());
+    }
+    // La marge que `--fit` laisse libre sur la carte : 1 024 Mio par défaut
+    // (vérifié sur le --help de b11003). Sur une carte de 6 Go, c'était
+    // 0,7 Go jamais utilisé, alors qu'il aurait fait du contexte. Une carte
+    // dédiée garde 5 % (256 à 512 Mio) ; la mémoire unifiée garde la marge de
+    // llama.cpp, puisqu'elle est aussi celle du système.
+    if !cpu_only {
+        let marge = inference_cfg["fit_margin_mb"].as_u64().or_else(|| {
+            let p = locaryn_llmfit::profile();
+            fit_margin_mib(p.total_vram_gb, p.unified_memory)
+        });
+        if let Some(marge) = marge {
+            cmd.arg("--fit-target").arg(marge.to_string());
+        }
     }
     // Repli processeur : le pilote GPU a fait tomber le moteur au démarrage
     // (OpenCL d'un Snapdragon, Vulkan d'une vieille carte). `--device none`
@@ -1936,6 +1960,18 @@ mod tests {
             Some(vec![])
         );
         assert_eq!(parse_list_devices("erreur"), None);
+    }
+
+    /// Une carte de 6 Go gardait 1 Go libre (marge par défaut de `--fit`) :
+    /// 0,7 Go jamais utilisés pour le contexte.
+    #[test]
+    fn la_marge_de_fit_suit_la_carte() {
+        assert_eq!(fit_margin_mib(6.0, false), Some(307));
+        assert_eq!(fit_margin_mib(4.0, false), Some(256));
+        assert_eq!(fit_margin_mib(24.0, false), Some(512));
+        // Mémoire unifiée ou pas de carte : la marge de llama.cpp.
+        assert_eq!(fit_margin_mib(16.0, true), None);
+        assert_eq!(fit_margin_mib(0.0, false), None);
     }
 
     #[test]
