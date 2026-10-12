@@ -687,10 +687,13 @@ pub async fn run_openai_tool_loop(
                     break;
                 }
             };
-            // Le moteur a compté la requête : l'échelle suit la mesure.
+            // Le moteur a compté la requête : l'échelle suit la mesure, dans
+            // les deux sens. Bornée à 1 par le bas, une estimation trop
+            // pessimiste n'était jamais corrigée : à 14 336 de fenêtre, la
+            // conversation était raccourcie vers 10 000 jetons réels.
             if round_result.tokens_in > 0 && estimation_envoyee > 0 {
-                let mesuree =
-                    (round_result.tokens_in as f64 / estimation_envoyee as f64).clamp(1.0, 8.0);
+                let mesuree = (round_result.tokens_in as f64 / estimation_envoyee as f64)
+                    .clamp(ECHELLE_MIN, 8.0);
                 if (mesuree - echelle).abs() > 0.05 {
                     tracing::debug!(echelle = mesuree, "échelle des jetons mesurée");
                     echelle = mesuree;
@@ -1046,18 +1049,22 @@ fn erreur_de_grammaire(corps: &str) -> bool {
 /// chaque message : les suivants partent déjà allégés.
 static ECHELLE_CONNUE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Plancher de l'échelle mesurée : l'estimation (octets / 3) surévalue le
+/// texte courant, mais jamais de moitié ; en deçà, la mesure est suspecte.
+const ECHELLE_MIN: f64 = 0.6;
+
 fn echelle_connue() -> f64 {
     let bits = ECHELLE_CONNUE.load(std::sync::atomic::Ordering::Relaxed);
     if bits == 0 {
         1.0
     } else {
-        f64::from_bits(bits).clamp(1.0, 8.0)
+        f64::from_bits(bits).clamp(ECHELLE_MIN, 8.0)
     }
 }
 
 fn retenir_echelle(echelle: f64) {
     ECHELLE_CONNUE.store(
-        echelle.clamp(1.0, 8.0).to_bits(),
+        echelle.clamp(ECHELLE_MIN, 8.0).to_bits(),
         std::sync::atomic::Ordering::Relaxed,
     );
 }

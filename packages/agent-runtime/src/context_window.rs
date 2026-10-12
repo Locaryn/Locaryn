@@ -54,7 +54,7 @@ impl Squeeze {
             parts.push(format!("{} ancien(s) message(s) retiré(s)", self.retires));
         }
         format!(
-            "Fenêtre de contexte pleine : {} pour continuer.",
+            "Contexte presque plein : {} pour garder la place de la réponse.",
             parts.join(", ")
         )
     }
@@ -67,7 +67,8 @@ pub fn estimate_tokens(messages: &Value) -> usize {
 }
 
 /// Ce que la conversation peut occuper : la fenêtre, moins les outils et la
-/// place de la réponse.
+/// place de la réponse — un sixième de la fenêtre, de quoi écrire la
+/// réflexion et la réponse sans que le moteur les coupe en route.
 pub fn budget(ctx: usize, outils: usize) -> usize {
     let reponse = (ctx / 6).max(1024);
     ctx.saturating_sub(outils).saturating_sub(reponse)
