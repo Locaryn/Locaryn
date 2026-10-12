@@ -13,8 +13,14 @@ use tauri::State;
 /// `@nom` présent dans `texte`, insensible à la casse, et pas au milieu d'un
 /// mot (`courriel@nom.fr` n'est pas une mention).
 fn mentionne(texte: &str, nom: &str) -> bool {
+    designe(texte, '@', nom)
+}
+
+/// `<préfixe>nom` présent dans `texte`, mot entier. Un skill se désigne aussi
+/// par `/nom`, comme dans Claude Code ou Codex.
+fn designe(texte: &str, prefixe: char, nom: &str) -> bool {
     let bas = texte.to_lowercase();
-    let cible = format!("@{}", nom.to_lowercase());
+    let cible = format!("{prefixe}{}", nom.to_lowercase());
     let mut depart = 0;
     while let Some(i) = bas[depart..].find(&cible) {
         let debut = depart + i;
@@ -38,12 +44,21 @@ fn mentionne(texte: &str, nom: &str) -> bool {
 /// Ce qu'on ajoute au message pour le modèle, si `texte` mentionne un
 /// connecteur ou une extension active.
 pub async fn precisions(core: State<'_, Core>, texte: &str) -> Option<String> {
-    if !texte.contains('@') {
+    if !texte.contains('@') && !texte.contains('/') {
         return None;
     }
     let mut lignes = Vec::new();
     if let Ok(serveurs) = mcp_servers::list_mcp_servers(core.clone()).await {
         for s in serveurs.iter().filter(|s| mentionne(texte, &s.name)) {
+            // Le logiciel piloté est fermé : ses outils échoueront tous. Le
+            // dire évite au modèle de les essayer un par un pour rien.
+            if let Some(c) = s.companion.as_ref().filter(|c| !c.running) {
+                lignes.push(format!(
+                    "- le connecteur MCP « {} » : {} n'est PAS ouvert sur cette machine, ses outils échoueront. N'appelle aucun de ses outils : demande d'abord à la personne d'ouvrir {}.",
+                    s.name, c.name, c.name
+                ));
+                continue;
+            }
             let outils: Vec<&str> = s
                 .tools
                 .iter()
@@ -91,7 +106,7 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Option<String> {
     // Les skills désignés : leur contenu complet, pas seulement leur nom.
     let imposes: Vec<String> = tous_les_skills
         .iter()
-        .filter(|(_, s)| mentionne(texte, &s.name))
+        .filter(|(_, s)| mentionne(texte, &s.name) || designe(texte, '/', &s.name))
         .map(|(source, s)| skills::consigne(source, s))
         .collect();
 
@@ -127,5 +142,8 @@ mod tests {
         assert!(!mentionne("écris à moi@fetch.fr", "fetch"));
         assert!(!mentionne("@fetcher la page", "fetch"));
         assert!(!mentionne("sans mention", "fetch"));
+        // Un skill se désigne aussi par « /nom », jamais au milieu d'un chemin.
+        assert!(super::designe("fais un rapport /docx stp", '/', "docx"));
+        assert!(!super::designe("ouvre docs/docx/a.md", '/', "docx"));
     }
 }

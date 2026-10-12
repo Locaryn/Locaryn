@@ -950,6 +950,9 @@ export interface McpServerInfo {
   tools: string[];
   /** Outils que la personne a interdits au modèle. */
   disabled_tools?: string[];
+  /** Le logiciel que ce connecteur pilote (Roblox Studio…) et s'il est
+   *  ouvert : le serveur MCP répond même quand il est fermé. */
+  companion?: { name: string; running: boolean } | null;
 }
 
 /** La page du navigateur intégré. */

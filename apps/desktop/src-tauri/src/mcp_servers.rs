@@ -14,6 +14,7 @@ use locaryn_mcp::{McpClient, McpServerEntry, McpState, Transport};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::State;
 
 use crate::Core;
@@ -40,6 +41,69 @@ pub struct McpServerInfo {
     /// démon d'avant ce champ doit se lire quand même.
     #[serde(default)]
     pub disabled_tools: Vec<String>,
+    /// Le logiciel que ce connecteur pilote (Roblox Studio…), et s'il est
+    /// ouvert. Le serveur MCP de Roblox répond et liste ses outils même
+    /// Studio fermé : « démarré » ne voulait pas dire « utilisable ».
+    #[serde(default)]
+    pub companion: Option<Companion>,
+}
+
+/// Le logiciel qu'un connecteur MCP sert de pont vers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Companion {
+    pub name: String,
+    pub running: bool,
+}
+
+/// Les connecteurs dont l'utilité dépend d'un logiciel ouvert à côté :
+/// `(nom affiché, noms de processus)`. Reconnus par leur nom ou leur commande.
+fn compagnon_attendu(name: &str, target: &str) -> Option<(&'static str, &'static [&'static str])> {
+    let tout = format!("{name} {target}").to_ascii_lowercase();
+    if tout.contains("roblox") || tout.contains("rbx-studio") || tout.contains("rbx_studio") {
+        Some((
+            "Roblox Studio",
+            &["RobloxStudioBeta.exe", "RobloxStudio.exe", "RobloxStudio"],
+        ))
+    } else if tout.contains("blender") {
+        Some(("Blender", &["blender.exe", "Blender", "blender"]))
+    } else {
+        None
+    }
+}
+
+/// La liste des processus de la machine, en minuscules, lue une fois par
+/// rafraîchissement.
+async fn processus_ouverts() -> String {
+    #[cfg(windows)]
+    let sortie = {
+        let mut cmd = tokio::process::Command::new("tasklist");
+        cmd.args(["/FO", "CSV", "/NH"]).creation_flags(0x0800_0000);
+        cmd.output().await
+    };
+    #[cfg(not(windows))]
+    let sortie = tokio::process::Command::new("ps")
+        .args(["-A", "-o", "comm="])
+        .output()
+        .await;
+    sortie
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase())
+        .unwrap_or_default()
+}
+
+/// Un des processus nommés figure-t-il dans la liste ? Comparaison sur le nom
+/// de fichier, pas sur une sous-chaîne : `blender` ne doit pas répondre pour
+/// `blender-mcp`.
+fn processus_present(liste: &str, noms: &[&str]) -> bool {
+    liste.lines().any(|ligne| {
+        let premier = ligne
+            .split(',')
+            .next()
+            .unwrap_or(ligne)
+            .trim()
+            .trim_matches('"');
+        let fichier = premier.rsplit(['/', '\\']).next().unwrap_or(premier);
+        noms.iter().any(|n| fichier.eq_ignore_ascii_case(n))
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -582,31 +646,60 @@ pub async fn list_mcp_servers(core: State<'_, Core>) -> Result<Vec<McpServerInfo
         v
     };
 
-    let running = core.mcp.running.read().await;
+    let clients: HashMap<String, Arc<dyn McpClient>> = core.mcp.running.read().await.clone();
+    let liste_processus = if entries
+        .iter()
+        .any(|(n, e)| compagnon_attendu(n, &entry_target(e)).is_some())
+    {
+        processus_ouverts().await
+    } else {
+        String::new()
+    };
+    let mut morts = Vec::new();
     let mut out = Vec::with_capacity(entries.len());
     for (name, e) in entries {
-        let client = running.get(&name).cloned();
-        let tools = match client {
-            Some(c) => c
-                .discover()
-                .await
-                .map(|caps| caps.tools.into_iter().map(|t| t.name).collect())
-                .unwrap_or_default(),
-            None => Vec::new(),
+        // « Démarré un jour » n'est pas « vivant » : chaque rafraîchissement
+        // interroge réellement le serveur. Une erreur dit qu'il est mort (le
+        // client est retiré, le prochain démarrage repart de zéro) ; un délai
+        // dépassé dit seulement qu'il est occupé, et on ne le coupe pas.
+        let (vivant, tools) = match clients.get(&name) {
+            Some(c) => match tokio::time::timeout(Duration::from_secs(5), c.discover()).await {
+                Ok(Ok(caps)) => (true, caps.tools.into_iter().map(|t| t.name).collect()),
+                Ok(Err(err)) => {
+                    tracing::warn!(serveur = %name, erreur = %err, "connecteur MCP qui ne répond plus — marqué arrêté");
+                    morts.push(name.clone());
+                    (false, Vec::new())
+                }
+                Err(_) => (true, Vec::new()),
+            },
+            None => (false, Vec::new()),
         };
+        let companion = compagnon_attendu(&name, &entry_target(&e)).map(|(nom, procs)| Companion {
+            name: nom.to_string(),
+            running: processus_present(&liste_processus, procs),
+        });
         out.push(McpServerInfo {
+            companion,
             transport: match e.transport {
                 Transport::Stdio => "stdio".into(),
                 Transport::Http => "http".into(),
             },
             target: entry_target(&e),
-            running: running.contains_key(&name),
+            running: vivant,
             auto_start: e.auto_start,
             env: e.env,
             tools,
             disabled_tools: e.disabled_tools.clone(),
             name,
         });
+    }
+    if !morts.is_empty() {
+        let mut running = core.mcp.running.write().await;
+        for nom in morts {
+            if let Some(c) = running.remove(&nom) {
+                let _ = c.shutdown().await;
+            }
+        }
     }
     Ok(out)
 }
@@ -905,6 +998,24 @@ pub async fn start_automatic(state: &McpState) {
 
 #[cfg(test)]
 mod tests {
+
+    /// Roblox Studio fermé : le serveur MCP répondait quand même, et l'écran
+    /// annonçait « connecté ». La présence du logiciel se lit dans la liste
+    /// des processus, sur le nom exact.
+    #[test]
+    fn le_logiciel_d_un_connecteur_se_repere_dans_les_processus() {
+        let windows = "\"System Idle Process\",\"0\"\n\"robloxstudiobeta.exe\",\"4242\"\n";
+        let (nom, procs) =
+            super::compagnon_attendu("Roblox_Studio", "rbx-studio-mcp --stdio").unwrap();
+        assert_eq!(nom, "Roblox Studio");
+        assert!(super::processus_present(windows, procs));
+        assert!(!super::processus_present("\"explorer.exe\",\"1\"\n", procs));
+        // Unix : `ps -o comm=` donne des chemins ; `blender-mcp` n'est pas Blender.
+        let (_, blender) = super::compagnon_attendu("blender", "uvx blender-mcp").unwrap();
+        assert!(!super::processus_present("/usr/bin/blender-mcp\n", blender));
+        assert!(super::processus_present("/usr/bin/blender\n", blender));
+        assert!(super::compagnon_attendu("fetch", "uvx mcp-server-fetch").is_none());
+    }
     use super::*;
 
     #[test]

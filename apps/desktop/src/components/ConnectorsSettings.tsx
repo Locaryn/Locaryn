@@ -70,6 +70,19 @@ export function ConnectorsSettings() {
     refresh();
   }, [refresh]);
 
+  // L'état d'un connecteur change sans l'application : un logiciel qu'on
+  // ouvre ou qu'on ferme, un serveur qui s'arrête. Tant que l'écran est
+  // ouvert, il se relit — et à chaque retour sur la fenêtre.
+  useEffect(() => {
+    const id = window.setInterval(() => void refresh(), 10_000);
+    const auRetour = () => void refresh();
+    window.addEventListener("focus", auRetour);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", auRetour);
+    };
+  }, [refresh]);
+
   async function saveCustomMcp() {
     const name = mcpName.trim();
     const target = mcpCommand.trim();
@@ -395,7 +408,9 @@ export function ConnectorsSettings() {
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <span
                         className={`locaryn-health-dot ${
-                          m.running ? "locaryn-health-ok" : "locaryn-health-off"
+                          m.running && m.companion?.running !== false
+                            ? "locaryn-health-ok"
+                            : "locaryn-health-off"
                         }`}
                       />
                       <div>
@@ -422,6 +437,15 @@ export function ConnectorsSettings() {
                         : "Démarré, mais ce serveur n'annonce aucun outil."
                       : "Arrêté."}
                   </p>
+                  {m.running && m.companion && !m.companion.running && (
+                    <p
+                      className="locaryn-box-desc"
+                      style={{ color: "var(--warning, var(--danger))" }}
+                    >
+                      {m.companion.name} n'est pas ouvert : ses outils ne répondront pas. Ouvrez{" "}
+                      {m.companion.name}, l'état se met à jour tout seul.
+                    </p>
+                  )}
                   <div
                     style={{
                       marginTop: "auto",
