@@ -2271,8 +2271,13 @@ async fn send_message(
                     // ici qu'elle rejoint la requête. Un moteur local n'en a pas,
                     // et l'en-tête reste absent — exactement comme avant.
                     input.bearer_token = cloud_providers::key_for_active_provider(&core, p);
-                    let agent =
+                    let mut agent =
                         OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
+                    // Un autre PC Locaryn : son certificat vient de sa propre
+                    // autorité, que le client ordinaire refuserait.
+                    if let Some(http) = cloud_providers::http_for_active_provider(&core, p).await {
+                        agent = agent.with_client(http);
+                    }
                     match agent.run(input.clone()).await {
                         Ok(stream) => stream,
                         // Le moteur a lu la requête et l'a refusée : ce n'est pas
@@ -7019,6 +7024,9 @@ pub fn run() {
             cloud_providers::cloud_provider_clear_key,
             cloud_providers::cloud_provider_models,
             cloud_providers::cloud_provider_select,
+            cloud_providers::serveurs_modeles,
+            cloud_providers::serveur_modeles_ajouter,
+            cloud_providers::serveur_modeles_retirer,
             cloud_providers::cloud_provider_status,
             cloud_providers::cloud_provider_start,
             cloud_providers::cloud_provider_open_dashboard,

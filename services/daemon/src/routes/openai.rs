@@ -178,6 +178,58 @@ pub async fn list_models(State(state): State<Arc<DaemonState>>) -> Response {
 // POST /v1/chat/completions
 // ============================================================================
 
+/// Le moteur local, prêt à servir `modele`.
+///
+/// Un autre poste qui se sert de ce PC comme fournisseur de modèle n'ouvre
+/// pas de session : rien ne démarrait le moteur, et après l'arrêt pour
+/// inactivité chaque requête échouait en 502. Et `/v1/models` annonce tous
+/// les poids installés, mais seul le modèle actif répondait, quel que soit
+/// celui demandé. Un modèle installé, demandé par son nom, devient donc le
+/// modèle actif, et le moteur est démarré (ou relancé) avant de relayer.
+async fn moteur_local_pret(
+    state: &DaemonState,
+    modele: &str,
+) -> Result<locaryn_shared_types::Provider, String> {
+    use locaryn_shared_types::ProviderEngine;
+    let aucun = || "Aucun moteur actif et aucun fournisseur ne sert ce modèle.".to_string();
+    let mut p = state
+        .storage
+        .providers
+        .active()
+        .await
+        .ok()
+        .flatten()
+        .ok_or_else(aucun)?;
+    if p.engine == ProviderEngine::LlamaCpp
+        && p.model.as_deref() != Some(modele)
+        && crate::media::list_chat_models().iter().any(|m| m == modele)
+    {
+        tracing::info!(%modele, "modèle demandé par un autre poste — il devient le modèle actif");
+        p = state
+            .storage
+            .providers
+            .upsert_local(
+                &ProviderEngine::LlamaCpp,
+                &p.endpoint,
+                Some(modele.to_string()),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    if matches!(
+        p.engine,
+        ProviderEngine::LlamaCpp | ProviderEngine::AirLlm | ProviderEngine::Extension(_)
+    ) {
+        state
+            .supervisor
+            .ensure_running(&p.engine)
+            .await
+            .map_err(|e| format!("Le moteur de ce PC n'a pas démarré : {e}"))?;
+        state.supervisor.note_activity(&p.engine).await;
+    }
+    Ok(p)
+}
+
 /// Une conversation, dans le dialecte que tout le monde parle.
 ///
 /// Le serveur ne fait pas l'agent ici : pas d'outils, pas d'approbation, pas
@@ -233,19 +285,13 @@ pub async fn chat_completions(
             )
         }
         // Sinon le moteur local : celui que l'application a rendu actif.
-        None => match state.storage.providers.active().await.ok().flatten() {
-            Some(p) => (
+        None => match moteur_local_pret(&state, &modele).await {
+            Ok(p) => (
                 format!("{}/v1/chat/completions", p.endpoint.trim_end_matches('/')),
                 cloud::key_for_active_provider(&h, &p),
                 modele.clone(),
             ),
-            None => {
-                return erreur(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Aucun moteur actif et aucun fournisseur ne sert ce modèle.",
-                    "server_error",
-                )
-            }
+            Err(raison) => return erreur(StatusCode::SERVICE_UNAVAILABLE, &raison, "server_error"),
         },
     };
 
@@ -662,18 +708,14 @@ pub async fn messages(
                 cloud::strip_provider_prefix(&p.id, &modele),
             )
         }
-        None => match state.storage.providers.active().await.ok().flatten() {
-            Some(p) => (
+        None => match moteur_local_pret(&state, &modele).await {
+            Ok(p) => (
                 format!("{}/v1/chat/completions", p.endpoint.trim_end_matches('/')),
                 cloud::key_for_active_provider(&h, &p),
                 modele.clone(),
             ),
-            None => {
-                return erreur_anthropic(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Aucun moteur actif et aucun fournisseur ne sert ce modele.",
-                    "server_error",
-                )
+            Err(raison) => {
+                return erreur_anthropic(StatusCode::SERVICE_UNAVAILABLE, &raison, "server_error")
             }
         },
     };

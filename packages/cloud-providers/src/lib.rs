@@ -42,6 +42,7 @@ use std::path::{Path, PathBuf};
 
 pub mod catalog;
 pub mod gateway;
+pub mod serveurs;
 
 pub use catalog::{models, parse_models, CachedCatalog, CloudModel};
 pub use gateway::{
@@ -147,6 +148,9 @@ pub struct DeclaredProvider {
     pub extension_name: String,
     /// Racine du paquet, pour lire ses fichiers.
     pub plugin_root: PathBuf,
+    /// Autorité de certification à croire pour ce fournisseur : celle d'un
+    /// autre PC Locaryn (voir [`serveurs`]). `None` : les autorités publiques.
+    pub autorite: Option<String>,
 }
 
 impl DeclaredProvider {
@@ -207,9 +211,36 @@ pub async fn declared(host: &Host<'_>) -> Vec<DeclaredProvider> {
             extension_id: row.id,
             extension_name: row.name.clone(),
             plugin_root: root,
+            autorite: None,
         });
     }
+    // Les autres PC Locaryn ajoutés comme fournisseurs de modèle.
+    out.extend(serveurs::declares(host.data_dir));
     out
+}
+
+/// Le client HTTP qui sait parler à ce fournisseur : celui de l'hôte, ou un
+/// client qui croit aussi l'autorité d'un autre PC Locaryn.
+pub fn http_for(host: &Host<'_>, p: &DeclaredProvider) -> reqwest::Client {
+    match p.autorite.as_deref() {
+        Some(pem) => serveurs::client_pour(Some(pem), None).unwrap_or_else(|e| {
+            tracing::warn!(fournisseur = %p.id, erreur = %e, "autorité inutilisable");
+            host.http.clone()
+        }),
+        None => host.http.clone(),
+    }
+}
+
+/// Le client pour converser avec le fournisseur actif, quand il lui en faut
+/// un particulier (un autre PC Locaryn). `None` : le client ordinaire suffit.
+pub async fn http_for_active(
+    host: &Host<'_>,
+    provider: &locaryn_shared_types::Provider,
+) -> Option<reqwest::Client> {
+    let id = ProviderRepo::cloud_provider_of(provider)?;
+    let p = declared(host).await.into_iter().find(|p| p.id == id)?;
+    let pem = p.autorite.as_deref()?;
+    serveurs::client_pour(Some(pem), Some(std::time::Duration::from_secs(600))).ok()
 }
 
 /// Un fournisseur par son identifiant, ou l'erreur qui dit quoi faire.

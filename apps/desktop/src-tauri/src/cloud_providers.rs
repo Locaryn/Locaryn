@@ -31,9 +31,80 @@ pub fn key_for_active_provider(
     cloud::key_for_active_provider(&host(core), provider)
 }
 
+/// Le client HTTP pour converser avec le fournisseur actif quand c'est un
+/// autre PC Locaryn (son certificat vient de sa propre autorité).
+pub async fn http_for_active_provider(
+    core: &Core,
+    provider: &locaryn_shared_types::Provider,
+) -> Option<reqwest::Client> {
+    cloud::http_for_active(&host(core), provider).await
+}
+
 // ============================================================================
 // Commandes
 // ============================================================================
+
+/// Les autres PC Locaryn ajoutés comme fournisseurs de modèle.
+#[tauri::command]
+pub fn serveurs_modeles(core: State<'_, Core>) -> Vec<cloud::serveurs::ServeurModeles> {
+    cloud::serveurs::lister(&core.data_dir)
+        .into_iter()
+        // L'autorité ne sert qu'ici : inutile de la promener dans l'interface.
+        .map(|s| cloud::serveurs::ServeurModeles {
+            autorite: None,
+            ..s
+        })
+        .collect()
+}
+
+/// Ajouter un autre PC Locaryn : ses modèles deviennent un catalogue.
+#[tauri::command]
+pub async fn serveur_modeles_ajouter(
+    core: State<'_, Core>,
+    adresse: String,
+    identifiant: String,
+    mot_de_passe: String,
+) -> Result<cloud::serveurs::ServeurModeles, String> {
+    let h = host(&core);
+    let ce_poste = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "ce PC".into());
+    let s = cloud::serveurs::ajouter(&h, &adresse, &identifiant, &mot_de_passe, &ce_poste).await?;
+    // Le catalogue tout de suite : le sélecteur s'ouvre plein.
+    if let Ok(p) = cloud::find(&h, &s.id).await {
+        if let Err(e) = cloud::models(&h, &p, true).await {
+            tracing::warn!(serveur = %s.id, erreur = %e, "liste des modèles du serveur illisible");
+        }
+    }
+    Ok(cloud::serveurs::ServeurModeles {
+        autorite: None,
+        ..s
+    })
+}
+
+/// Retirer un autre PC. S'il servait la conversation, le modèle local
+/// reprend la main.
+#[tauri::command]
+pub async fn serveur_modeles_retirer(core: State<'_, Core>, id: String) -> Result<(), String> {
+    let h = host(&core);
+    let actif = core.storage.providers.active().await.ok().flatten();
+    cloud::serveurs::retirer(&h, &id)?;
+    let servait = actif
+        .as_ref()
+        .and_then(locaryn_storage::repos::ProviderRepo::cloud_provider_of)
+        == Some(id);
+    if servait {
+        if let Ok(liste) = core.storage.providers.list().await {
+            if let Some(local) = liste
+                .into_iter()
+                .find(|p| p.engine == locaryn_shared_types::ProviderEngine::LlamaCpp)
+            {
+                let _ = core.storage.providers.set_active(local.id).await;
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Les catalogues disponibles, avec ce qu'on sait déjà d'eux.
 #[tauri::command]
@@ -170,6 +241,7 @@ pub async fn retirer_passerelle(core: &Core, record: &locaryn_storage::repos::Ex
         extension_id: record.id,
         extension_name: record.name.clone(),
         plugin_root: root,
+        autorite: None,
     };
     match cloud::gateway::uninstall(&host(core), &p).await {
         Ok(()) => tracing::info!(fournisseur = %p.id, "passerelle retirée avec son extension"),

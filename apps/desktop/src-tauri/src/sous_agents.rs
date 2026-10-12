@@ -43,6 +43,8 @@ struct Cible {
     modele: Option<String>,
     cle: Option<String>,
     libelle: String,
+    /// Le client d'un autre PC Locaryn, qui croit son autorité.
+    http: Option<reqwest::Client>,
 }
 
 fn hote(core: &Core) -> cloud::Host<'_> {
@@ -136,7 +138,9 @@ async fn cible(core: &Core, modele: &str) -> Result<Cible, String> {
             }
         }
         let cle = crate::cloud_providers::key_for_active_provider(core, &p);
+        let http = crate::cloud_providers::http_for_active_provider(core, &p).await;
         return Ok(Cible {
+            http,
             endpoint: p.endpoint.clone(),
             libelle: p
                 .model
@@ -157,6 +161,8 @@ async fn cible(core: &Core, modele: &str) -> Result<Cible, String> {
         modele: Some(id.to_string()),
         cle: cloud::stored_key(&h, &p.id),
         libelle: format!("{} · {id}", p.label()),
+        // Un autre PC Locaryn : le client qui croit son autorité.
+        http: p.autorite.is_some().then(|| cloud::http_for(&h, &p)),
     })
 }
 
@@ -223,7 +229,11 @@ pub async fn lancer(
         bearer_token: cible.cle.clone(),
         native_chat_api: false,
     };
-    let agent = OpenAiCompatAgent::with_defaults(Some(&cible.endpoint), cible.modele.as_deref());
+    let mut agent =
+        OpenAiCompatAgent::with_defaults(Some(&cible.endpoint), cible.modele.as_deref());
+    if let Some(http) = cible.http.clone() {
+        agent = agent.with_client(http);
+    }
     let flux = agent.run(input).await.map_err(|e| e.to_string())?;
 
     let emettre = {

@@ -8,6 +8,7 @@ import { DeviceCompanionCard } from "../components/DeviceCompanionCard";
 import { EngineSettings } from "../components/EngineSettings";
 import { ExtensionsSettings } from "../components/ExtensionsSettings";
 import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
+import { ModeleAutrePc } from "../components/ModeleAutrePc";
 import { PairingCodes } from "../components/PairingCodes";
 import { PerformancePanel } from "../components/PerformancePanel";
 import { ServerSettings } from "../components/ServerSettings";
@@ -547,6 +548,7 @@ export function SettingsView({
               <div className="locaryn-network-config">
                 <ServerSettings />
                 {remoteEnabled && <TravelSettings />}
+                <ModeleAutrePc />
                 <ConnectionSettings />
               </div>
               <PairingCodes />

@@ -141,6 +141,15 @@ export interface CloudProviderStatus {
 }
 
 /** Un modèle du catalogue distant. */
+/** Un autre PC Locaryn dont ce poste emprunte le modèle (voir `serveurs.rs`). */
+export interface ServeurModeles {
+  /** Identifiant de catalogue (« pc-bureau ») : préfixe des modèles. */
+  id: string;
+  /** Nom de la machine. */
+  nom: string;
+  url: string;
+}
+
 export interface CloudModel {
   id: string;
   name: string;
@@ -2155,6 +2164,16 @@ export interface CoreApi {
   checkModelFit(model: string): Promise<ModelFit>;
   /** Les catalogues distants qu'apportent les extensions actives. */
   cloudProviders(): Promise<CloudProvider[]>;
+  /** Les autres PC Locaryn dont ce poste emprunte le modèle. */
+  serveursModeles(): Promise<ServeurModeles[]>;
+  /** Ajouter un autre PC avec un compte qui y existe. Le mot de passe sert
+   *  une fois, à créer une clé propre à ce poste. */
+  serveurModelesAjouter(
+    adresse: string,
+    identifiant: string,
+    motDePasse: string,
+  ): Promise<ServeurModeles>;
+  serveurModelesRetirer(id: string): Promise<void>;
   /** Enregistrer une clé dans le trousseau du système. Elle n'en ressort pas. */
   cloudProviderSetKey(provider: string, key: string): Promise<void>;
   /** Oublier la clé d'un fournisseur. */
@@ -2664,6 +2683,10 @@ const tauriCore: CoreApi = {
   modelResidency: () => invoke<ResidencyStatus>("model_residency"),
   checkModelFit: (model) => invoke<ModelFit>("check_model_fit", { model }),
   cloudProviders: () => invoke<CloudProvider[]>("cloud_providers"),
+  serveursModeles: () => invoke<ServeurModeles[]>("serveurs_modeles"),
+  serveurModelesAjouter: (adresse, identifiant, motDePasse) =>
+    invoke<ServeurModeles>("serveur_modeles_ajouter", { adresse, identifiant, motDePasse }),
+  serveurModelesRetirer: (id) => invoke<void>("serveur_modeles_retirer", { id }),
   cloudProviderSetKey: (provider, key) => invoke<void>("cloud_provider_set_key", { provider, key }),
   cloudProviderClearKey: (provider) => invoke<void>("cloud_provider_clear_key", { provider }),
   cloudProviderModels: (provider, refresh) =>
@@ -5090,6 +5113,13 @@ Contenu de démonstration.
   async checkModelFit(model) {
     return demoFit(model, demoCaution);
   },
+  async serveursModeles() {
+    return [];
+  },
+  async serveurModelesAjouter(): Promise<ServeurModeles> {
+    throw new Error("Disponible dans l'application de bureau.");
+  },
+  async serveurModelesRetirer() {},
   async cloudProviders() {
     return demoCloudProviders.map((p) => ({
       ...p,
