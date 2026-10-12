@@ -115,6 +115,11 @@ export function ModelResidency() {
     return () => window.removeEventListener("locaryn:speed", onSpeed);
   }, []);
   const [config, setConfig] = useState<InferenceConfig | null>(null);
+  /** Secondes avant que le modèle quitte la mémoire faute d'utilisation. */
+  const resteAvantLiberation =
+    status && status.idle_timeout_seconds > 0
+      ? Math.max(0, status.idle_timeout_seconds - status.idle_seconds)
+      : null;
   const boxRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
@@ -130,6 +135,29 @@ export function ModelResidency() {
     void refresh();
     const t = setInterval(() => void refresh(), 15_000);
     return () => clearInterval(t);
+  }, [refresh]);
+
+  // Taper ou cliquer dans l'application, c'est s'en servir : le délai
+  // d'inactivité repart, au plus une fois par minute. Sans cela, seul l'envoi
+  // d'un message comptait, et le modèle pouvait être libéré pendant qu'on
+  // lisait sa réponse ou qu'on écrivait la suite.
+  useEffect(() => {
+    let dernier = 0;
+    const surActivite = () => {
+      const maintenant = Date.now();
+      if (maintenant - dernier < 60_000) return;
+      dernier = maintenant;
+      void core
+        .signalerActivite()
+        .then(() => refresh())
+        .catch(() => {});
+    };
+    window.addEventListener("keydown", surActivite);
+    window.addEventListener("pointerdown", surActivite);
+    return () => {
+      window.removeEventListener("keydown", surActivite);
+      window.removeEventListener("pointerdown", surActivite);
+    };
   }, [refresh]);
 
   useEffect(() => {
@@ -262,12 +290,20 @@ export function ModelResidency() {
         </span>
       )}
 
-      {loaded && !status?.pinned && (
-        <span className="locaryn-res-hint">
-          libéré dans{" "}
-          {minutes(Math.max(0, (status?.idle_timeout_seconds ?? 0) - (status?.idle_seconds ?? 0)))}
-        </span>
-      )}
+      {/* Un compte à rebours permanent annonçait une libération à quelqu'un en
+          plein travail. Il n'apparaît qu'à l'approche de l'échéance, quand
+          l'application n'a vraiment pas servi. */}
+      {loaded &&
+        !status?.pinned &&
+        resteAvantLiberation !== null &&
+        resteAvantLiberation <= 300 && (
+          <span
+            className="locaryn-res-hint"
+            title="Le modèle quitte la mémoire après une période sans utilisation. Un message, ou n'importe quelle action dans l'application, le garde chargé."
+          >
+            libéré dans {minutes(resteAvantLiberation)} sans utilisation
+          </span>
+        )}
 
       {loaded && (
         <button

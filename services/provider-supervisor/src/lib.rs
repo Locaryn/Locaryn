@@ -835,6 +835,16 @@ impl Supervisor {
                         continue;
                     }
                     let idle = Instant::now().duration_since(state.last_activity);
+                    // Un moteur en pleine génération n'est pas inactif, même
+                    // si la requête a commencé il y a plus que le délai : une
+                    // longue tâche d'agent était coupée en plein travail.
+                    if idle >= idle_timeout
+                        && !extension_specs.contains_key(engine.as_token().as_str())
+                        && llama_occupe(&self.inner.http, &state.endpoint).await
+                    {
+                        state.last_activity = Instant::now();
+                        continue;
+                    }
                     if idle >= idle_timeout {
                         tracing::info!(
                             ?engine,
@@ -1393,6 +1403,28 @@ pub async fn llama_port_state(http: &reqwest::Client, endpoint: &str) -> LlamaPo
     } else {
         LlamaPortState::Other
     }
+}
+
+/// Un llama-server est-il en train de traiter une requête ? (`/slots` :
+/// `is_processing`.) Faux s'il ne répond pas ou n'expose pas ses slots.
+async fn llama_occupe(http: &reqwest::Client, endpoint: &str) -> bool {
+    let Ok(resp) = http
+        .get(format!("{endpoint}/slots"))
+        .timeout(Duration::from_secs(3))
+        .send()
+        .await
+    else {
+        return false;
+    };
+    resp.json::<serde_json::Value>()
+        .await
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .is_some_and(|slots| {
+            slots
+                .iter()
+                .any(|s| s.get("is_processing").and_then(|b| b.as_bool()) == Some(true))
+        })
 }
 
 /// La build d'un llama-server, d'après `/props` (`build_info`, par exemple

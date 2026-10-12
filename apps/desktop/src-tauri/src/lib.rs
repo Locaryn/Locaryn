@@ -2370,6 +2370,14 @@ async fn send_message(
     // Lâcher le flux tout de suite : la boucle d'outils le voit et s'arrête
     // — plus de requête au moteur ni d'outil lancé après Stop.
     drop(event_stream);
+    // La fin d'une réponse est une utilisation : le délai d'inactivité court
+    // d'ici, pas du moment où la question est partie.
+    if let Some(p) = active_provider
+        .as_ref()
+        .filter(|p| moteur_supervise(&p.engine))
+    {
+        core.supervisor.note_activity(&p.engine).await;
+    }
     let stopped = cancel.is_cancelled();
     core.chat_cancels.lock().await.remove(&session_id);
     tokio::spawn(mcp_servers::signaler_fin_de_reponse(core.mcp.clone()));
@@ -7039,6 +7047,7 @@ pub fn run() {
             model_residency::llmfit_catalog,
             model_residency::load_chat_model,
             model_residency::eject_chat_model,
+            model_residency::signaler_activite,
             model_residency::caution_level,
             model_residency::set_caution_level,
             open_models_folder,

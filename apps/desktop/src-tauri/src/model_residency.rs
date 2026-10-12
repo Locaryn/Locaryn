@@ -323,6 +323,22 @@ pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, S
     })
 }
 
+/// La personne se sert de l'application : le modèle reste en mémoire.
+///
+/// Le délai d'inactivité ne comptait que les messages envoyés : lire une
+/// longue réponse, écrire la suite, relire du code, et l'écran annonçait
+/// « libéré dans 27 min » à quelqu'un en plein travail. L'interface appelle
+/// ceci, au plus une fois par minute, quand on tape ou clique.
+#[tauri::command]
+pub async fn signaler_activite(core: State<'_, Core>) -> Result<(), String> {
+    if let Some(p) = core.storage.providers.active().await.ok().flatten() {
+        if crate::moteur_supervise(&p.engine) {
+            core.supervisor.note_activity(&p.engine).await;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn caution_level(core: State<'_, Core>) -> CautionLevel {
     CautionSetting::load(&core.data_dir).level

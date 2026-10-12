@@ -2160,6 +2160,8 @@ export interface CoreApi {
 
   /** Ce qui est actuellement en mémoire, et si le minuteur peut y toucher. */
   modelResidency(): Promise<ResidencyStatus>;
+  /** La personne se sert de l'application : le modèle reste en mémoire. */
+  signalerActivite(): Promise<void>;
   /** Ce que donnerait le chargement de ce modèle, sans rien charger. */
   checkModelFit(model: string): Promise<ModelFit>;
   /** Les catalogues distants qu'apportent les extensions actives. */
@@ -2681,6 +2683,7 @@ const tauriCore: CoreApi = {
   checkHardware: () => invoke("check_hardware"),
 
   modelResidency: () => invoke<ResidencyStatus>("model_residency"),
+  signalerActivite: () => invoke<void>("signaler_activite"),
   checkModelFit: (model) => invoke<ModelFit>("check_model_fit", { model }),
   cloudProviders: () => invoke<CloudProvider[]>("cloud_providers"),
   serveursModeles: () => invoke<ServeurModeles[]>("serveurs_modeles"),
@@ -5107,6 +5110,7 @@ Contenu de démonstration.
       path: "C:/Users/you/.locaryn/data/bin/llama",
     };
   },
+  async signalerActivite() {},
   async modelResidency() {
     return demoResidencyStatus();
   },
