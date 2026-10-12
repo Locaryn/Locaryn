@@ -1,4 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
+import { useState } from "react";
 
 /** L'état d'une étape d'un plan, ou d'un tour d'objectif. */
 export type EtatEtape = "attente" | "cours" | "fait" | "echec";
@@ -12,12 +13,14 @@ export type Suivi = {
   /** Plan : l'essai en cours quand la vérification fait reprendre. */
   essai: number;
   maxEssais: number;
-  etat: "cours" | "fait" | "echec" | "arrete";
+  /** `validation` : le plan est écrit, il attend l'accord de la personne. */
+  etat: "validation" | "cours" | "fait" | "echec" | "arrete";
   /** Ce qui reste à faire (objectif), ou la raison d'un échec. */
   note?: string;
 };
 
 const LIBELLE_ETAT: Record<Suivi["etat"], string> = {
+  validation: "En attente de votre accord",
   cours: "En cours",
   fait: "Terminé",
   echec: "Non abouti",
@@ -29,10 +32,23 @@ const LIBELLE_ETAT: Record<Suivi["etat"], string> = {
  * combien d'étapes, lesquelles sont faites, laquelle tourne. Il remplace les
  * lignes de journal « Étape 2/5 » qui se perdaient entre les réponses.
  */
-export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: () => void }) {
+export function TaskTracker({
+  suivi,
+  onArreter,
+  onDecider,
+}: {
+  suivi: Suivi;
+  onArreter?: () => void;
+  /** Exécuter (`true`) ou abandonner (`false`) un plan en attente d'accord. */
+  onDecider?: (executer: boolean) => void;
+}) {
   const faites = suivi.etapes.filter((e) => e.etat === "fait").length;
   const total = suivi.etapes.length;
   const enCours = suivi.etat === "cours";
+  // Repliée, la carte garde son compte et sa barre : on voit où en est le
+  // travail sans que la liste pousse la conversation vers le haut.
+  const [replie, setReplie] = useState(false);
+  const courante = suivi.etapes.findIndex((e) => e.etat === "cours");
   return (
     <section
       className={`locaryn-suivi is-${suivi.etat}`}
@@ -49,6 +65,18 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
         <span className="locaryn-suivi-compte" aria-live="polite">
           {suivi.genre === "plan" ? `${faites}/${total}` : `tour ${total}`}
         </span>
+        {total > 0 && (
+          <button
+            type="button"
+            className={`locaryn-suivi-replier${replie ? " is-replie" : ""}`}
+            onClick={() => setReplie((r) => !r)}
+            aria-expanded={!replie}
+            aria-label={replie ? "Afficher les étapes" : "Masquer les étapes"}
+            title={replie ? "Afficher les étapes" : "Masquer les étapes"}
+          >
+            <Icon name="caret-down" size={14} />
+          </button>
+        )}
       </header>
 
       {suivi.genre === "plan" && total > 0 && (
@@ -60,7 +88,13 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
         </div>
       )}
 
-      <ol className="locaryn-suivi-etapes">
+      {replie && courante >= 0 && (
+        <p className="locaryn-suivi-courante">
+          Étape {courante + 1}/{total} : {suivi.etapes[courante].texte}
+        </p>
+      )}
+
+      <ol className="locaryn-suivi-etapes" hidden={replie}>
         {suivi.etapes.map((e, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: une étape n'a pas d'autre identité que son rang.
           <li key={i} className={`is-${e.etat}`}>
@@ -71,9 +105,7 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
                 <Icon name="close" size={12} />
               ) : e.etat === "cours" ? (
                 <span className="locaryn-suivi-pouls" />
-              ) : (
-                i + 1
-              )}
+              ) : null}
             </span>
             <span className="locaryn-suivi-texte">{e.texte}</span>
           </li>
@@ -88,6 +120,16 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
             ` · essai ${suivi.essai}/${suivi.maxEssais}`}
         </span>
         {suivi.note && <span className="locaryn-suivi-note">{suivi.note}</span>}
+        {suivi.etat === "validation" && onDecider && (
+          <span className="locaryn-suivi-decision">
+            <button type="button" className="locaryn-btn-ghost" onClick={() => onDecider(false)}>
+              Annuler
+            </button>
+            <button type="button" className="locaryn-btn-primary" onClick={() => onDecider(true)}>
+              Exécuter le plan
+            </button>
+          </span>
+        )}
         {enCours && onArreter && (
           <button type="button" className="locaryn-suivi-arreter" onClick={onArreter}>
             Arrêter

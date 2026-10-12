@@ -2,6 +2,7 @@ import { Icon, LoProgress, LoSpinner } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { type AppTask, TASK_META, taskCenter, useTasks } from "../lib/taskCenter";
+import { ResumeTache } from "./ResumeTache";
 
 type Props = {
   onOpenResult?: (t: AppTask) => void;
@@ -62,6 +63,8 @@ export function TaskCenter({ onOpenResult }: Props) {
   const tasks = useTasks();
   const [open, setOpen] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<{ id: string; text: string } | null>(null);
+  /** Le plan dont le résumé est ouvert. */
+  const [resume, setResume] = useState<string | null>(null);
   const panelRef = useRef<HTMLDialogElement | null>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -151,8 +154,16 @@ export function TaskCenter({ onOpenResult }: Props) {
                 // notifications restent interactives uniquement si elles ont
                 // réellement une destination.
                 const isError = t.status === "error" && Boolean(t.error);
-                const actionable = isError || (t.status !== "error" && Boolean(t.resultImageUrl));
+                // Un plan s'ouvre sur son résumé : étape en cours, temps,
+                // estimation de ce qui reste.
+                const estPlan = t.type === "workflow" && (t.steps?.length ?? 0) > 0;
+                const actionable =
+                  estPlan || isError || (t.status !== "error" && Boolean(t.resultImageUrl));
                 const activate = async () => {
+                  if (estPlan) {
+                    setResume(t.id);
+                    return;
+                  }
                   if (isError && t.error) {
                     const copied = await copyText(t.error);
                     setCopyFeedback({
@@ -190,11 +201,13 @@ export function TaskCenter({ onOpenResult }: Props) {
                         }
                       : {})}
                     title={
-                      isError
-                        ? "Copier le détail de l'erreur"
-                        : t.resultImageUrl
-                          ? "Ouvrir le résultat"
-                          : undefined
+                      estPlan
+                        ? "Voir le résumé"
+                        : isError
+                          ? "Copier le détail de l'erreur"
+                          : t.resultImageUrl
+                            ? "Ouvrir le résultat"
+                            : undefined
                     }
                   >
                     <div className="locaryn-notif-item-head">
@@ -227,7 +240,7 @@ export function TaskCenter({ onOpenResult }: Props) {
                       <span className={`locaryn-notif-status locaryn-notif-${t.status}`}>
                         {t.status === "running"
                           ? t.type === "workflow" && t.steps && t.steps.length
-                            ? `${Math.min(t.stepIndex ?? 0, t.steps.length)}/${t.steps.length}`
+                            ? `${Math.min(t.stepIndex ?? 0, t.steps.length)}/${t.steps.length} étapes`
                             : (t.detail ?? "en cours")
                           : t.status === "done"
                             ? "terminé"
@@ -305,6 +318,7 @@ export function TaskCenter({ onOpenResult }: Props) {
           </div>
         </dialog>
       )}
+      {resume && <ResumeTache id={resume} onClose={() => setResume(null)} />}
     </>
   );
 }

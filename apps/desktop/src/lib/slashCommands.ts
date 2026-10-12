@@ -69,6 +69,8 @@ export interface SlashModifiers {
   loops: number | null;
   /** `/objectif` : enchainer jusqu'a ce que les conditions soient remplies. */
   goal: boolean;
+  /** `/plan` : decouper en etapes, puis les executer une a une. */
+  plan: boolean;
   /** Ce qui reste de la demande, les modificateurs retires. */
   rest: string;
 }
@@ -76,6 +78,7 @@ export interface SlashModifiers {
 /** Les noms qui declenchent chaque modificateur, alias compris. */
 const MODS_FORCE = new Set(["workflow", "orchestre", "orchestration"]);
 const MODS_GOAL = new Set(["objectif", "goal", "but"]);
+const MODS_PLAN = new Set(["plan", "etapes", "étapes"]);
 const MODS_LOOP = new Set(["loop", "boucle", "repete", "répète"]);
 
 /**
@@ -91,6 +94,7 @@ export function parseModifiers(input: string): SlashModifiers {
   let force = false;
   let loops: number | null = null;
   let goal = false;
+  let plan = false;
 
   for (;;) {
     const m = rest.match(/^\/([\p{L}]+)\s*/u);
@@ -98,6 +102,14 @@ export function parseModifiers(input: string): SlashModifiers {
     const nom = m[1].toLowerCase();
     if (MODS_GOAL.has(nom)) {
       goal = true;
+      rest = rest.slice(m[0].length);
+      continue;
+    }
+    // `/plan /objectif faire X` : tape d'un trait, `/plan` n'etait pas
+    // reconnu devant un autre modificateur, et toute la ligne partait au
+    // modele comme un message ordinaire.
+    if (MODS_PLAN.has(nom)) {
+      plan = true;
       rest = rest.slice(m[0].length);
       continue;
     }
@@ -122,7 +134,7 @@ export function parseModifiers(input: string): SlashModifiers {
     break;
   }
 
-  return { force, loops, goal, rest: rest.trim() };
+  return { force, loops, goal, plan, rest: rest.trim() };
 }
 
 /** Map a typed argument to a resolution, or null when it isn't one. */

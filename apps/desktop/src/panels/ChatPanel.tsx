@@ -594,6 +594,13 @@ export function ChatPanel({
   const [goalNext, setGoalNext] = useState(false);
   /** L'arrêt demandé sur la carte d'un plan ou d'un objectif en cours. */
   const arretSuiviRef = useRef(false);
+  /** Le plan écrit attend l'accord : la réponse de la carte le débloque. */
+  const decisionPlanRef = useRef<((executer: boolean) => void) | null>(null);
+  const deciderPlan = (executer: boolean) => {
+    const decider = decisionPlanRef.current;
+    decisionPlanRef.current = null;
+    decider?.(executer);
+  };
   const [loopCount, setLoopCount] = useState<number | null>(null);
 
   const streamRef = useRef<HTMLDivElement>(null);
@@ -1450,13 +1457,14 @@ ${d.texte}`
     const text = mods.rest;
     const imposeWorkflow = forceWorkflow || mods.force;
     const objectif = goalNext || mods.goal;
+    const planifier = planNext || mods.plan;
     const reprises = mods.loops ?? loopCount;
     const imgs = attachOverride ?? attachments;
 
     if (!text && imgs.length === 0) {
       // Des modificateurs sans demande : le dire, sinon la palette parait
       // avoir avale le message.
-      if (mods.force || mods.loops !== null || mods.goal) {
+      if (mods.force || mods.loops !== null || mods.goal || mods.plan) {
         setItems((prev) => [
           ...prev,
           {
@@ -1611,7 +1619,9 @@ ${d.texte}`
     arretSuiviRef.current = false;
 
     // /objectif → enchaîner les tours jusqu'à ce que le juge dise « atteint ».
-    if (objectif) {
+    // Combiné à /plan, c'est le plan qui mène (plus bas) : écrire le plan
+    // puis s'arrêter n'était pas ce qu'on demandait.
+    if (objectif && !planifier) {
       setGoalNext(false);
       setItems((prev) => [
         ...prev,
@@ -1671,8 +1681,9 @@ ${d.texte}`
     }
 
     // /plan → decompose and execute step by step, with a verification loop.
-    if (planNext || imposeWorkflow || reprises !== null) {
+    if (planifier || imposeWorkflow || reprises !== null) {
       setPlanNext(false);
+      setGoalNext(false);
       setForceWorkflow(false);
       setLoopCount(null);
       try {
@@ -1717,11 +1728,28 @@ ${d.texte}`
                 etat: ok ? "fait" : arretSuiviRef.current ? "arrete" : "echec",
               })),
             arret: () => arretSuiviRef.current || runRef.current !== run,
+            // `/plan` seul : le plan s'affiche, puis attend « Exécuter le
+            // plan ». Avec `/objectif`, on a déjà dit d'aller au bout.
+            confirmer: objectif
+              ? undefined
+              : () =>
+                  new Promise<boolean>((resolve) => {
+                    majSuivi((s) => ({ ...s, etat: "validation" }));
+                    decisionPlanRef.current = (executer) => {
+                      majSuivi((s) => ({ ...s, etat: executer ? "cours" : "arrete" }));
+                      resolve(executer);
+                    };
+                  }),
           },
           // Les modificateurs de la demande arrivent jusqu'ici. Sans eux,
           // `/workflow` et `/loop` etaient analyses, consommes, puis perdus :
           // la commande paraissait marcher et ne changeait rien.
-          { force: imposeWorkflow, loops: reprises },
+          // `/plan /objectif` : le plan est imposé, exécuté jusqu'au bout,
+          // vérifié, et repris tant que la vérification échoue.
+          {
+            force: imposeWorkflow || objectif,
+            loops: objectif ? (reprises ?? 5) : reprises,
+          },
         );
         if (ran) {
           if (runRef.current === run) runSessionRef.current = null;
@@ -1935,6 +1963,8 @@ ${d.texte}`
     // Un /plan, /goal ou /loop enchaîne les réponses : arrêter seulement
     // celle en cours laissait l'étape suivante repartir aussitôt.
     arretSuiviRef.current = true;
+    // Un plan qui attendait l'accord est abandonné.
+    deciderPlan(false);
     // Arrêté : la file attend, même ce qui allait être lu.
     if (queueRef.current.some((m) => m.sessionId === sessionId)) setFilePause(true);
     try {
@@ -2620,6 +2650,7 @@ ${preview}`,
                       arretSuiviRef.current = true;
                       void stopGeneration();
                     }}
+                    onDecider={deciderPlan}
                   />
                 );
               }
