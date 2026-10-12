@@ -1,5 +1,6 @@
 import { Icon, LoProgress, LoSpinner } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
+import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { type AppTask, TASK_META, taskCenter, useTasks } from "../lib/taskCenter";
 
 type Props = {
@@ -8,7 +9,7 @@ type Props = {
 
 async function copyText(text: string): Promise<boolean> {
   try {
-    await navigator.clipboard.writeText(text);
+    await ecrirePressePapiers(text);
     return true;
   } catch {
     // Tauri/WebView permissions can reject navigator.clipboard. Keep the same

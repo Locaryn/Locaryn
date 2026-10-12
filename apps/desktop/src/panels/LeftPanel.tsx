@@ -5,6 +5,7 @@ import { visibleNavItems } from "../components/NavDrawer";
 import { SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
 import { pickFolder } from "../lib/dialog";
+import { ecrirePressePapiers } from "../lib/pressePapiers";
 import {
   type CibleDepot,
   SESSION_DRAG_CANCEL,
@@ -820,7 +821,7 @@ export function LeftPanel({
                             role="menuitem"
                             onClick={() => {
                               setMenuFor(null);
-                              navigator.clipboard?.writeText(p.path).catch(() => {});
+                              ecrirePressePapiers(p.path).catch(() => {});
                             }}
                           >
                             <Icon name="check" size={15} /> Copier le chemin

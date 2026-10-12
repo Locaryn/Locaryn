@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { type ServerStatus, type ServerUserSummary, core } from "../lib/core";
+import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { UserLoginQr } from "./UserLoginQr";
 
 /**
@@ -407,7 +408,7 @@ export function ServerSettings() {
               className="locaryn-btn-ghost"
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(status.url);
+                  await ecrirePressePapiers(status.url);
                   setCopied(true);
                   window.setTimeout(() => setCopied(false), 1500);
                 } catch {

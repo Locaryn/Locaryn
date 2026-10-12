@@ -30,6 +30,7 @@ mod model_abilities;
 mod model_recommendations;
 mod model_residency;
 mod notifications;
+mod presse_papiers;
 mod project_context;
 mod reveler;
 mod skills;
@@ -7025,6 +7026,8 @@ pub fn run() {
             cloud_providers::cloud_provider_models,
             cloud_providers::cloud_provider_select,
             cloud_providers::serveurs_modeles,
+            presse_papiers::lire_presse_papiers,
+            presse_papiers::ecrire_presse_papiers,
             cloud_providers::serveur_modeles_ajouter,
             cloud_providers::serveur_modeles_retirer,
             cloud_providers::cloud_provider_status,

@@ -2,6 +2,7 @@ import { Icon, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { core } from "../../lib/core";
 import { pickSaveFile } from "../../lib/dialog";
+import { ecrirePressePapiers } from "../../lib/pressePapiers";
 import { splitReasoning } from "../../lib/reasoning";
 import { formatRate } from "../SpeedBadge";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -275,7 +276,7 @@ export function MessageBubble({
         // textarea + execCommand so copying works in every embedding context.
         let ok = false;
         try {
-          await navigator.clipboard.writeText(code);
+          await ecrirePressePapiers(code);
           ok = true;
         } catch {
           try {
@@ -315,7 +316,7 @@ export function MessageBubble({
     try {
       // The answer, not the scratchpad: nobody wants to paste the model's
       // deliberation into a document.
-      await navigator.clipboard.writeText(role === "assistant" ? answer : text);
+      await ecrirePressePapiers(role === "assistant" ? answer : text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {

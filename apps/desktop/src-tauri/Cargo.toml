@@ -19,6 +19,7 @@ path = "src/main.rs"
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
+arboard = { version = "3", default-features = false }
 tauri = { version = "2.1", features = ["protocol-asset", "tray-icon", "unstable"] }
 tauri-plugin-shell = "2.0"
 tauri-plugin-deep-link = "2"
