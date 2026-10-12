@@ -454,12 +454,40 @@ fn compute_bytes(spec: &ModelSpec, context: u32, options: &RunOptions) -> u64 {
     (total as u64).max(128 * 1024 * 1024)
 }
 
+/// Ce qui reste utilisable, réserve déduite, côté VRAM et côté RAM.
+///
+/// Sur mémoire unifiée — Apple Silicon, Snapdragon X — les deux ne sont qu'un
+/// seul pool : « la VRAM » *est* la RAM. Les traiter séparément le compte deux
+/// fois, un modèle de 20 Go paraissant tenir sur une machine de 16 ; et
+/// déborder d'un côté en croyant se rattraper de l'autre fait charger un modèle
+/// qui ne rentre pas. Le pool est donc unique, et rien ne reste « en RAM » à
+/// côté du GPU : ce qui tient y tient en entier, ce qui ne tient pas ne tient
+/// pas.
+fn budgets_utilisables(
+    hardware: &HardwareProfile,
+    reserve_vram: f64,
+    reserve_ram: f64,
+) -> (f64, f64) {
+    let vram = hardware.usable_vram_gb(reserve_vram);
+    let ram = hardware.usable_ram_gb(reserve_ram);
+    if hardware.unified_memory {
+        // Une seule mémoire, donc une seule réserve utile : la plus forte des
+        // deux, celle du client le plus exigeant. Le GPU n'en reçoit qu'une
+        // part (la moitié sous Windows, deux tiers à trois quarts sous macOS —
+        // voir `hardware::unified_gpu_budget_gb`) ; le reste du même pool peut
+        // garder des couches côté processeur, comme llama.cpp le fait. Ce que
+        // le GPU y prend en est retiré dans `estimate`, jamais additionné.
+        (vram.min(ram), ram)
+    } else {
+        (vram, ram)
+    }
+}
+
 /// L'estimation complète.
 pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptions) -> FitReport {
     let context = resolve_context(spec, options);
     let (reserve_vram, reserve_ram) = options.headroom.reserves();
-    let usable_vram = hardware.usable_vram_gb(reserve_vram);
-    let usable_ram = hardware.usable_ram_gb(reserve_ram);
+    let (usable_vram, usable_ram) = budgets_utilisables(hardware, reserve_vram, reserve_ram);
 
     let kv_bytes = kv_cache_bytes(spec, context, options.kv_type);
     let compute = compute_bytes(spec, context, options);
@@ -497,7 +525,7 @@ pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptio
     let suggested_quant = if matches!(verdict, Verdict::Confortable) {
         None
     } else {
-        lighter_quant_that_fits(spec, hardware, options).map(|q| q.name.to_string())
+        lighter_quant_that_fits(spec, usable_vram, options).map(|q| q.name.to_string())
     };
 
     let report = FitReport {
@@ -732,11 +760,10 @@ fn largest_context_within(spec: &ModelSpec, options: &RunOptions, budget_gb: f64
 /// La meilleure quantification qui tiendrait entièrement sur le GPU.
 fn lighter_quant_that_fits(
     spec: &ModelSpec,
-    hardware: &HardwareProfile,
+    usable_vram_gb: f64,
     options: &RunOptions,
 ) -> Option<Quant> {
-    let (reserve_vram, _) = options.headroom.reserves();
-    let budget = (hardware.usable_vram_gb(reserve_vram) * GIB) as u64;
+    let budget = (usable_vram_gb * GIB) as u64;
     if budget == 0 {
         return None;
     }
@@ -992,6 +1019,72 @@ mod tests {
     fn un_snapdragon_partage_un_modele_qui_deborde_la_part_gpu() {
         let report = estimate(&modele(14.0), &snapdragon(32.0), &RunOptions::default());
         assert_ne!(report.verdict, Verdict::Refuse, "{}", report.message);
+    }
+
+    /// Une machine à mémoire unifiée — un Mac Apple Silicon, un Snapdragon X :
+    /// son GPU n'a pas de mémoire à lui, il lit celle du système.
+    fn unifie(ram_gb: f64) -> HardwareProfile {
+        HardwareProfile {
+            unified_memory: true,
+            gpu_name: Some("Apple M2".into()),
+            total_vram_gb: ram_gb,
+            free_vram_gb: ram_gb * 0.8,
+            free_ram_gb: ram_gb * 0.8,
+            backend: Backend::Metal,
+            vram_bandwidth_gbps: 100.0,
+            ..machine(ram_gb, ram_gb)
+        }
+    }
+
+    /// Sur mémoire unifiée, « 12 Go de VRAM » et « 12 Go de RAM » sont la même
+    /// mémoire : les additionner la compterait deux fois. Le pool utilisable est
+    /// celui d'un seul, jamais leur somme.
+    #[test]
+    fn sur_memoire_unifiee_la_memoire_n_est_comptee_qu_une_fois() {
+        let mut m = machine(16.0, 16.0);
+        m.free_vram_gb = 12.0;
+        m.free_ram_gb = 12.0;
+
+        // Deux mémoires distinctes : deux pools, chacun sa réserve.
+        let (vram, ram) = budgets_utilisables(&m, 1.0, 2.0);
+        assert!((vram - 11.0).abs() < 1e-9);
+        assert!((ram - 10.0).abs() < 1e-9);
+
+        // La même mémoire des deux côtés : un seul pool. La part du GPU ne
+        // dépasse jamais ce pool, et le pool n'est pas ajouté à la part du
+        // GPU — `estimate` en retire ce que le GPU occupe.
+        m.unified_memory = true;
+        let (vram, ram) = budgets_utilisables(&m, 1.0, 2.0);
+        assert!((ram - 10.0).abs() < 1e-9, "pool : {ram}");
+        assert!((vram - 10.0).abs() < 1e-9, "obtenu {vram}");
+        m.free_vram_gb = 6.0; // la part GPU d'un Snapdragon de 12 Go libres
+        let (vram, ram) = budgets_utilisables(&m, 1.0, 2.0);
+        assert!((vram - 5.0).abs() < 1e-9, "part GPU : {vram}");
+        assert!((ram - 10.0).abs() < 1e-9, "pool : {ram}");
+    }
+
+    /// Un modèle qui tient dans la mémoire unifiée est bien placé sur le GPU.
+    #[test]
+    fn un_petit_modele_tient_sur_la_memoire_unifiee() {
+        let report = estimate(&modele(4.0), &unifie(16.0), &RunOptions::default());
+        assert_eq!(report.verdict, Verdict::Confortable);
+        assert_eq!(report.placement, Placement::Gpu);
+        assert_eq!(report.gpu_layers, report.total_layers);
+    }
+
+    /// Un modèle plus gros que la mémoire de la machine est refusé. Sans cela il
+    /// passerait pour « partagé », l'excédent semblant atterrir dans une RAM
+    /// distincte — qui n'existe pas sur un Mac Apple Silicon.
+    #[test]
+    fn un_modele_plus_gros_que_la_memoire_unifiee_est_refuse() {
+        let gros = modele(32.0);
+        let report = estimate(&gros, &unifie(16.0), &RunOptions::default());
+        assert_ne!(report.placement, Placement::Partage);
+        assert!(
+            matches!(report.verdict, Verdict::Refuse | Verdict::Risque),
+            "verdict {:?}",
+            report.verdict
+        );
     }
 
     fn modele(params_b: f64) -> ModelSpec {
