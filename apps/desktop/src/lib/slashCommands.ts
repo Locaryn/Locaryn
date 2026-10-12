@@ -26,6 +26,11 @@ export type SlashAction =
   /** Un skill : choisi, il s'insere en « @nom », que le backend impose au modele. */
   | "skill";
 
+/** Minuscules sans accents : « Étapes » et « etapes » sont le meme mot. */
+function normWord(s: string): string {
+  return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
 /** Values a command accepts after a space (Tab/Enter completes them). */
 export interface SlashArg {
   value: string;
@@ -36,6 +41,12 @@ export interface SlashArg {
 export interface SlashCommand {
   /** Typed after the slash, without it. */
   name: string;
+  /**
+   * Nom affiche quand l'interface est en anglais. Facultatif : une commande
+   * dont le nom francais est aussi le nom anglais (« plan ») n'en a pas besoin.
+   * Les deux graphies restent acceptees a la frappe, quelle que soit la langue.
+   */
+  nameEn?: string;
   /** Extra words that also match (search is fuzzy over name + aliases). */
   aliases: string[];
   /** Un nom du jeu d'icônes partagé, jamais un caractère. */
@@ -71,58 +82,6 @@ export interface SlashModifiers {
   goal: boolean;
   /** Ce qui reste de la demande, les modificateurs retires. */
   rest: string;
-}
-
-/** Les noms qui declenchent chaque modificateur, alias compris. */
-const MODS_FORCE = new Set(["workflow", "orchestre", "orchestration"]);
-const MODS_GOAL = new Set(["objectif", "goal", "but"]);
-const MODS_LOOP = new Set(["loop", "boucle", "repete", "répète"]);
-
-/**
- * Detache les modificateurs poses au debut d'une demande.
- *
- * Boucle tant que le texte commence par l'un d'eux, pour qu'ils se cumulent
- * dans n'importe quel ordre. Le nombre qui suit `/loop` est avale seulement
- * s'il en est un : `/loop repare le bug` garde « repare le bug » comme demande
- * et retombe sur le nombre de tentatives par defaut.
- */
-export function parseModifiers(input: string): SlashModifiers {
-  let rest = input.trim();
-  let force = false;
-  let loops: number | null = null;
-  let goal = false;
-
-  for (;;) {
-    const m = rest.match(/^\/([\p{L}]+)\s*/u);
-    if (!m) break;
-    const nom = m[1].toLowerCase();
-    if (MODS_GOAL.has(nom)) {
-      goal = true;
-      rest = rest.slice(m[0].length);
-      continue;
-    }
-    if (MODS_FORCE.has(nom)) {
-      force = true;
-      rest = rest.slice(m[0].length);
-      continue;
-    }
-    if (MODS_LOOP.has(nom)) {
-      rest = rest.slice(m[0].length);
-      const n = rest.match(/^(\d+)\s*/);
-      if (n) {
-        // Borne haute assumee : au-dela de cinq reprises, ce n'est plus une
-        // verification qui echoue, c'est une demande a reformuler.
-        loops = Math.min(5, Math.max(2, Number(n[1])));
-        rest = rest.slice(n[0].length);
-      } else {
-        loops = 3;
-      }
-      continue;
-    }
-    break;
-  }
-
-  return { force, loops, goal, rest: rest.trim() };
 }
 
 /** Map a typed argument to a resolution, or null when it isn't one. */
@@ -181,6 +140,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     name: "objectif",
+    nameEn: "goal",
     aliases: ["goal", "but", "jusquau", "jusqu'au bout"],
     icon: "crosshair",
     label: "Objectif à atteindre",
@@ -294,6 +254,110 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
 ];
 
+/**
+ * Le nom a montrer dans la langue de l'interface.
+ *
+ * Les deux graphies restent acceptees a la frappe, quelle que soit la langue :
+ * seul l'affichage suit le reglage. Le nom francais est celui de reference.
+ */
+export function commandName(c: SlashCommand, lang: "fr" | "en"): string {
+  return lang === "en" ? (c.nameEn ?? c.name) : c.name;
+}
+
+/**
+ * Les mots qui declenchent chaque modificateur, deduits des commandes.
+ *
+ * Ils etaient ecrits a la main, ici, en plus des commandes de la palette : les
+ * deux listes pouvaient diverger, et un nom que la palette propose se retrouvait
+ * refuse a la frappe — la ligne entiere partait alors au modele comme un message
+ * ordinaire. Une seule source, donc : `SLASH_COMMANDS`.
+ */
+const MOTS_MODIFICATEURS = new Map<SlashAction, Set<string>>();
+
+/** Les mots reconnus pour une action : nom courant, nom anglais et alias. */
+function motsDeLaction(action: SlashAction): Set<string> {
+  const connu = MOTS_MODIFICATEURS.get(action);
+  if (connu) return connu;
+  const mots = new Set<string>();
+  for (const c of SLASH_COMMANDS) {
+    if (c.action !== action) continue;
+    for (const mot of [c.name, c.nameEn, ...c.aliases]) {
+      // Un mot qui contient un espace (« jusqu'au bout ») ne s'ecrit pas d'un
+      // trait apres un seul « / » : ce n'est pas un modificateur tapable.
+      if (mot && !/\s/.test(mot)) mots.add(normWord(mot));
+    }
+  }
+  MOTS_MODIFICATEURS.set(action, mots);
+  return mots;
+}
+
+/**
+ * Detache les modificateurs, ou qu'ils soient dans la demande.
+ *
+ * « continue /goal » vaut « /goal continue » : on ne doit pas etre oblige de
+ * poser la commande au debut du message. Chaque mot reconnu est retire du
+ * texte, et ce qui reste devient la demande. Le nombre qui suit `/loop` est
+ * avale seulement s'il en est un : `/loop repare le bug` garde « repare le
+ * bug » comme demande et retombe sur le nombre de tentatives par defaut.
+ *
+ * Le mot doit commencer un mot (debut du texte, ou un espace devant) : une
+ * adresse qui finit par « /goal » n'est pas une commande.
+ */
+export function parseModifiers(input: string): SlashModifiers {
+  let force = false;
+  let loops: number | null = null;
+  let goal = false;
+
+  const motif = /(?:^|\s)\/([\p{L}]+)/gu;
+  let rest = "";
+  let curseur = 0;
+  for (const m of input.matchAll(motif)) {
+    const nom = normWord(m[1]);
+    const but = motsDeLaction("goal").has(nom);
+    const orchestre = motsDeLaction("workflow").has(nom);
+    const boucle = motsDeLaction("loop").has(nom);
+    if (!but && !orchestre && !boucle) continue;
+    rest += input.slice(curseur, m.index);
+    curseur = m.index + m[0].length;
+    // La ponctuation collee au mot part avec lui : « continue /goal. » ne doit
+    // pas laisser un point orphelin.
+    if (".,;:!?".includes(input.charAt(curseur))) curseur += 1;
+    if (but) {
+      goal = true;
+      continue;
+    }
+    if (orchestre) {
+      force = true;
+      continue;
+    }
+    // Le nombre qui suit `/loop` est avale seulement s'il en est un.
+    const n = input.slice(curseur).match(/^\s*(\d+)(?=\s|$)/);
+    if (n) {
+      // Borne haute assumee : au-dela de cinq reprises, ce n'est plus une
+      // verification qui echoue, c'est une demande a reformuler.
+      loops = Math.min(5, Math.max(2, Number(n[1])));
+      curseur += n[0].length;
+    } else {
+      loops = 3;
+    }
+  }
+  rest += input.slice(curseur);
+
+  return {
+    force,
+    loops,
+    goal,
+    // Les trous laisses par les mots retires se referment : « continue  et
+    // verifie » redevient lisible. Les sauts de ligne et l'indentation d'un
+    // extrait colle dans la demande sont conserves.
+    rest: rest
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/[ \t]+$/gm, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+  };
+}
+
 /** What the palette should show: commands, or the arguments of one command. */
 export type SlashSuggestion =
   | { kind: "commands"; items: SlashCommand[] }
@@ -361,8 +425,7 @@ export function matchSlash(
   // Only a single leading token counts as a command query.
   const q = input.slice(1);
   if (/\s/.test(q)) return null;
-  const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-  const nq = norm(q);
+  const nq = normWord(q);
   const rawAll = extra.length ? [...SLASH_COMMANDS, ...extra] : SLASH_COMMANDS;
   const all = rawAll.filter(
     (c) => !c.requiredCapability || activeCapabilities.includes(c.requiredCapability),
@@ -370,9 +433,9 @@ export function matchSlash(
   if (!nq) return all;
   return all.filter(
     (c) =>
-      norm(c.name).includes(nq) ||
-      c.aliases.some((a) => norm(a).includes(nq)) ||
-      norm(c.label).includes(nq),
+      normWord(c.name).includes(nq) ||
+      c.aliases.some((a) => normWord(a).includes(nq)) ||
+      normWord(c.label).includes(nq),
   );
 }
 
@@ -390,6 +453,18 @@ export function matchExtensionCommand(input: string, extra: SlashCommand[]): Sla
   const space = rest.indexOf(" ");
   const name = (space >= 0 ? rest.slice(0, space) : rest).trim();
   if (!name) return null;
+  // Une commande integree garde son nom : sans ce garde-fou, un plugin qui
+  // declare « objectif » prend la place de `/objectif` — la commande integree
+  // parait alors cassee, alors que son alias `/goal` repond encore. Le plugin
+  // reste joignable par son nom qualifie (`/plugin:objectif`).
+  const reserve = normWord(name);
+  const integr = SLASH_COMMANDS.some(
+    (c) =>
+      normWord(c.name) === reserve ||
+      normWord(c.nameEn ?? "") === reserve ||
+      c.aliases.some((a) => normWord(a) === reserve),
+  );
+  if (integr) return null;
   return extra.find((c) => c.name === name || c.aliases.includes(name)) ?? null;
 }
 
