@@ -765,6 +765,21 @@ async fn seed_default_provider(storage: &Storage) {
             tracing::warn!(error = %e, "failed to seed default provider");
         }
     }
+    // Le port de llama-server est choisi au démarrage (8080 s'il est libre) :
+    // l'adresse enregistrée du moteur local le suit.
+    if let Ok(list) = storage.providers.list().await {
+        for p in list
+            .into_iter()
+            .filter(|p| p.engine == ProviderEngine::LlamaCpp)
+        {
+            if let Some(nouvelle) =
+                locaryn_provider_supervisor::realigner_endpoint_llama(&p.endpoint)
+            {
+                tracing::warn!(ancienne = %p.endpoint, %nouvelle, "adresse de llama-server alignée sur le port choisi");
+                let _ = storage.providers.set_endpoint(p.id, &nouvelle).await;
+            }
+        }
+    }
 }
 
 /// JSON 404 for unknown `/v1/*` paths, so an API consumer never receives the

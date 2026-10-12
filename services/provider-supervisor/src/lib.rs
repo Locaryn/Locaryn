@@ -874,15 +874,101 @@ pub struct EngineSnapshot {
 // Free functions
 // ============================================================================
 
-/// Port de `llama-server`. 8080 par défaut, mais c'est aussi le port de la
-/// moitié des services qu'on trouve sur un serveur : `LOCARYN_LLAMA_PORT`
-/// permet de s'en écarter sans toucher au reste de la configuration.
+/// Port de `llama-server`, choisi une fois par processus.
+///
+/// 8080 est aussi le port de la moitié des services qu'on trouve sur une
+/// machine. Imposé, il suffisait qu'un autre programme l'occupe pour que le
+/// moteur meure au démarrage (« couldn't bind HTTP server socket ») : le
+/// modèle ne chargeait jamais, la VRAM ne bougeait pas, et l'application
+/// attendait un chargement qui n'aurait pas lieu. Le port est donc le premier
+/// de 8080 à 8099 qui soit libre — ou déjà tenu par un llama-server, celui de
+/// l'application ou de son service —, à défaut un port donné par le système.
+/// `LOCARYN_LLAMA_PORT` l'impose toujours.
 pub fn llama_port() -> u16 {
-    std::env::var("LOCARYN_LLAMA_PORT")
-        .ok()
-        .and_then(|v| v.trim().parse::<u16>().ok())
-        .filter(|p| *p != 0)
+    static PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
+    *PORT.get_or_init(|| {
+        if let Some(p) = std::env::var("LOCARYN_LLAMA_PORT")
+            .ok()
+            .and_then(|v| v.trim().parse::<u16>().ok())
+            .filter(|p| *p != 0)
+        {
+            return p;
+        }
+        let choisi = choisir_port_llama(8080..=8099);
+        if choisi != 8080 {
+            tracing::warn!(
+                port = choisi,
+                "port 8080 occupé par un autre programme — llama-server écoutera ailleurs"
+            );
+        }
+        choisi
+    })
+}
+
+/// Le premier port de `candidats` utilisable par llama-server.
+fn choisir_port_llama(candidats: std::ops::RangeInclusive<u16>) -> u16 {
+    for p in candidats {
+        if port_libre(p) || llama_ecoute(p) {
+            return p;
+        }
+    }
+    std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
         .unwrap_or(8080)
+}
+
+/// Personne n'écoute sur ce port, et llama-server pourra l'ouvrir.
+///
+/// Le seul `bind` sur 127.0.0.1 ne suffit pas : sous Windows, il réussit
+/// quand un autre programme écoute sur toutes les adresses (0.0.0.0), alors
+/// que llama-server, qui demande le port en exclusivité, sera refusé. Une
+/// connexion qui aboutit dit qu'il est pris, quelle que soit l'adresse
+/// d'écoute — sans rien ouvrir vers l'extérieur.
+fn port_libre(port: u16) -> bool {
+    let adresse = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    if std::net::TcpStream::connect_timeout(&adresse, Duration::from_millis(200)).is_ok() {
+        return false;
+    }
+    std::net::TcpListener::bind(adresse).is_ok()
+}
+
+/// Un llama-server répond-il sur ce port ? (`/props` porte `build_info`.)
+/// Lecture HTTP minimale et bloquante : elle sert au choix du port, avant
+/// tout runtime asynchrone.
+fn llama_ecoute(port: u16) -> bool {
+    use std::io::{Read as _, Write as _};
+    let adresse = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut flux) = std::net::TcpStream::connect_timeout(&adresse, Duration::from_millis(200))
+    else {
+        return false;
+    };
+    let _ = flux.set_read_timeout(Some(Duration::from_millis(800)));
+    let _ = flux.set_write_timeout(Some(Duration::from_millis(800)));
+    if flux
+        .write_all(b"GET /props HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n")
+        .is_err()
+    {
+        return false;
+    }
+    let mut corps = Vec::new();
+    let _ = flux.take(256 * 1024).read_to_end(&mut corps);
+    String::from_utf8_lossy(&corps).contains("\"build_info\"")
+}
+
+/// L'adresse locale de llama-server enregistrée ailleurs (base, réglages)
+/// doit suivre le port choisi. `Some(nouvelle)` quand `actuelle` désigne le
+/// moteur local sur un autre port ; une adresse vers une autre machine n'est
+/// jamais touchée.
+pub fn realigner_endpoint_llama(actuelle: &str) -> Option<String> {
+    let reste = actuelle.trim_end_matches('/').strip_prefix("http://")?;
+    let (hote, port) = reste.rsplit_once(':')?;
+    if !matches!(hote, "127.0.0.1" | "localhost") {
+        return None;
+    }
+    let port: u16 = port.parse().ok()?;
+    let voulu = llama_port();
+    (port != voulu).then(|| format!("http://127.0.0.1:{voulu}"))
 }
 
 fn llama_endpoint() -> &'static str {
@@ -1123,7 +1209,16 @@ pub fn ollama_options_hint() -> serde_json::Value {
 /// place au vrai serveur. Message nommé, plutôt qu'un `bind()` raté côté
 /// llama-server dont la sortie peut ne jamais atteindre le disque.
 fn ensure_port_free(port: u16) -> Result<(), String> {
-    std::net::TcpListener::bind(("127.0.0.1", port))
+    // Une connexion qui aboutit : quelqu'un écoute, peut-être sur toutes les
+    // adresses — cas que le seul `bind` sur 127.0.0.1 laissait passer.
+    let adresse = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    if std::net::TcpStream::connect_timeout(&adresse, Duration::from_millis(200)).is_ok() {
+        return Err(port_error_message(
+            port,
+            &std::io::Error::from(std::io::ErrorKind::AddrInUse),
+        ));
+    }
+    std::net::TcpListener::bind(adresse)
         .map(|_| ())
         .map_err(|e| port_error_message(port, &e))
 }
@@ -2028,6 +2123,41 @@ mod tests {
         assert!(build_is_pinned("b11003"));
         assert!(!build_is_pinned("b10088-1234abc"));
         assert!(!build_is_pinned("b110031-x"));
+    }
+
+    /// Le cas du rapport : un autre programme écoute sur le port. Le choix
+    /// passe au suivant au lieu de laisser llama-server mourir au démarrage.
+    #[test]
+    fn un_port_occupe_par_un_autre_programme_est_evite() {
+        let occupant = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let pris = occupant.local_addr().unwrap().port();
+        assert!(!port_libre(pris), "un port écouté n'est pas libre");
+        assert!(!llama_ecoute(pris), "l'occupant n'est pas un llama-server");
+        let choisi = choisir_port_llama(pris..=pris);
+        assert_ne!(choisi, pris, "le port occupé ne doit pas être choisi");
+        assert!(ensure_port_free(pris).is_err());
+        drop(occupant);
+    }
+
+    /// Une adresse locale suit le port choisi ; une adresse distante, jamais.
+    #[test]
+    fn l_adresse_locale_du_moteur_suit_le_port() {
+        let voulu = llama_port();
+        let autre = if voulu == 8080 { 8099 } else { 8080 };
+        assert_eq!(
+            realigner_endpoint_llama(&format!("http://127.0.0.1:{autre}")),
+            Some(format!("http://127.0.0.1:{voulu}"))
+        );
+        assert_eq!(
+            realigner_endpoint_llama(&format!("http://localhost:{autre}/")),
+            Some(format!("http://127.0.0.1:{voulu}"))
+        );
+        assert_eq!(
+            realigner_endpoint_llama(&format!("http://127.0.0.1:{voulu}")),
+            None
+        );
+        assert_eq!(realigner_endpoint_llama("http://192.168.1.20:8080"), None);
+        assert_eq!(realigner_endpoint_llama("https://api.exemple.fr"), None);
     }
 
     #[test]

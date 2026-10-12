@@ -321,7 +321,12 @@ async fn init_core() -> anyhow::Result<Core> {
         tracing::info!("seeding default llama-server provider");
         if let Err(e) = storage
             .providers
-            .upsert_local(&ProviderEngine::LlamaCpp, "http://127.0.0.1:8080", None)
+            .upsert_local(
+                &ProviderEngine::LlamaCpp,
+                locaryn_provider_supervisor::default_endpoint(&ProviderEngine::LlamaCpp)
+                    .unwrap_or("http://127.0.0.1:8080"),
+                None,
+            )
             .await
         {
             tracing::warn!(error = %e, "failed to seed default provider");
@@ -334,13 +339,20 @@ async fn init_core() -> anyhow::Result<Core> {
             .into_iter()
             .filter(|p| p.engine == ProviderEngine::LlamaCpp && p.endpoint.contains(":11434"))
         {
-            let fixed = p.endpoint.replace(":11434", ":8080");
+            let fixed = p.endpoint.replace(
+                ":11434",
+                &format!(":{}", locaryn_provider_supervisor::llama_port()),
+            );
             tracing::warn!(old = %p.endpoint, new = %fixed, "repairing llama.cpp endpoint (was Ollama's port)");
             if let Err(e) = storage.providers.set_endpoint(p.id, &fixed).await {
                 tracing::warn!(error = %e, "endpoint repair failed");
             }
         }
     }
+    // Le port de llama-server n'est plus fixe : 8080 pris par un autre
+    // programme, il en choisit un autre. L'adresse enregistrée suit, sinon le
+    // chat parlerait à l'autre programme.
+    realigner_endpoints_llama(&storage).await;
 
     // Un modèle actif dont les poids ne sont plus là ne doit pas rester
     // affiché comme installé. Le cas arrive après un téléchargement interrompu
@@ -7525,5 +7537,24 @@ ligne utile B
             ),
             "erreur inconnue (aucune sortie)"
         );
+    }
+}
+
+/// Les adresses locales de llama-server enregistrées suivent le port choisi
+/// par le superviseur (voir `locaryn_provider_supervisor::llama_port`).
+pub(crate) async fn realigner_endpoints_llama(storage: &Storage) {
+    let Ok(list) = storage.providers.list().await else {
+        return;
+    };
+    for p in list
+        .into_iter()
+        .filter(|p| p.engine == ProviderEngine::LlamaCpp)
+    {
+        if let Some(nouvelle) = locaryn_provider_supervisor::realigner_endpoint_llama(&p.endpoint) {
+            tracing::warn!(ancienne = %p.endpoint, %nouvelle, "adresse de llama-server alignée sur le port choisi");
+            if let Err(e) = storage.providers.set_endpoint(p.id, &nouvelle).await {
+                tracing::warn!(error = %e, "alignement de l'adresse impossible");
+            }
+        }
     }
 }
