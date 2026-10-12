@@ -1931,6 +1931,9 @@ ${d.texte}`
     if (!sessionId || stopping) return;
     setStopping(true);
     stopRequestedRef.current = true;
+    // Un /plan, /goal ou /loop enchaîne les réponses : arrêter seulement
+    // celle en cours laissait l'étape suivante repartir aussitôt.
+    arretSuiviRef.current = true;
     // Arrêté : la file attend, même ce qui allait être lu.
     if (queueRef.current.some((m) => m.sessionId === sessionId)) setFilePause(true);
     try {

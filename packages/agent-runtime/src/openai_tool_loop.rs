@@ -530,386 +530,403 @@ pub async fn run_openai_tool_loop(
         .sum();
     let estimation_premiere = outils_estimes + crate::context_window::estimate_tokens(&messages);
 
+    // Personne n'écoute plus (Stop, conversation fermée) : la boucle s'arrête
+    // au lieu de continuer en arrière-plan. Elle relançait le modèle et
+    // exécutait encore des outils après un Stop — le GPU tournait toujours,
+    // et la réponse suivante attendait derrière.
+    let garde = tx.clone();
     tokio::spawn(async move {
-        let mut ctx = ToolContext {
-            project_id: input.project_id.unwrap_or_default(),
-            project_path: input.project_path.clone().unwrap_or_default(),
-            trust,
-            session_id: input.session_id,
-            // TODO: populate remote_target for SSH/MCP calls so
-            // approval_decision() can escalate to Critical.
-            remote_target: None,
-        };
+        let travail = async move {
+            let mut ctx = ToolContext {
+                project_id: input.project_id.unwrap_or_default(),
+                project_path: input.project_path.clone().unwrap_or_default(),
+                trust,
+                session_id: input.session_id,
+                // TODO: populate remote_target for SSH/MCP calls so
+                // approval_decision() can escalate to Critical.
+                remote_target: None,
+            };
 
-        let mut tokens_in = 0u64;
-        let mut tokens_out = 0u64;
-        let mut timings = RoundTimings::default();
+            let mut tokens_in = 0u64;
+            let mut tokens_out = 0u64;
+            let mut timings = RoundTimings::default();
 
-        // Consume the first (already-sent) response, then loop.
-        let mut pending_resp = Some(first_resp);
-        let mut got_final = false;
-        let mut relance_faite = false;
-        // Une seule nouvelle tentative par tour après un refus pour fenêtre
-        // pleine : l'estimation a pu être trop optimiste.
-        let mut serre = false;
-        let mut contexte_annonce = false;
-        // Jetons réels par jeton estimé, mesurés à chaque tour sur ce que le
-        // moteur annonce. L'estimation (octets / 3) sous-évaluait la requête
-        // d'un modèle à gabarit bavard : à 8 192 de fenêtre, la requête
-        // atteignait 7 900 jetons, la réponse était coupée net au milieu de
-        // la réflexion, puis le moteur refusait la suite.
-        let mut echelle = echelle_connue();
-        let mut estimation_envoyee = estimation_premiere;
+            // Consume the first (already-sent) response, then loop.
+            let mut pending_resp = Some(first_resp);
+            let mut got_final = false;
+            let mut relance_faite = false;
+            // Une seule nouvelle tentative par tour après un refus pour fenêtre
+            // pleine : l'estimation a pu être trop optimiste.
+            let mut serre = false;
+            let mut contexte_annonce = false;
+            // Jetons réels par jeton estimé, mesurés à chaque tour sur ce que le
+            // moteur annonce. L'estimation (octets / 3) sous-évaluait la requête
+            // d'un modèle à gabarit bavard : à 8 192 de fenêtre, la requête
+            // atteignait 7 900 jetons, la réponse était coupée net au milieu de
+            // la réflexion, puis le moteur refusait la suite.
+            let mut echelle = echelle_connue();
+            let mut estimation_envoyee = estimation_premiere;
 
-        for round in 0..MAX_TOOL_ROUNDS {
-            let resp = match pending_resp.take() {
-                Some(r) => Some(r),
-                None => loop {
-                    // Un morph a pu décharger le modèle de conversation pour
-                    // travailler : il revient avant qu'on lui parle.
-                    if let Some(arbitre) = &input.gpu {
-                        if let Err(e) = arbitre
-                            .0
-                            .restore(&crate::gpu::Annonce::dans_le_journal(&tx))
-                            .await
-                        {
-                            let _ = tx
-                                .send(StreamEvent::Log {
-                                    level: LogLevel::Warn,
-                                    msg: format!(
+            for round in 0..MAX_TOOL_ROUNDS {
+                let resp = match pending_resp.take() {
+                    Some(r) => Some(r),
+                    None => loop {
+                        // Un morph a pu décharger le modèle de conversation pour
+                        // travailler : il revient avant qu'on lui parle.
+                        if let Some(arbitre) = &input.gpu {
+                            if let Err(e) = arbitre
+                                .0
+                                .restore(&crate::gpu::Annonce::dans_le_journal(&tx))
+                                .await
+                            {
+                                let _ = tx
+                                    .send(StreamEvent::Log {
+                                        level: LogLevel::Warn,
+                                        msg: format!(
                                         "Le modèle de conversation n'a pas pu être rechargé : {e}"
                                     ),
-                                    source: "gpu".into(),
-                                })
-                                .await;
-                            break None;
+                                        source: "gpu".into(),
+                                    })
+                                    .await;
+                                break None;
+                            }
                         }
-                    }
-                    let budget_tour = contexte_serveur.map(|c| {
-                        crate::context_window::budget((c as f64 / echelle) as usize, outils_estimes)
-                    });
-                    if let Some(b) = budget_tour {
-                        // Après un refus, on vise plus bas que l'estimation.
-                        let cible = if serre { b * 6 / 10 } else { b };
-                        let fait = crate::context_window::fit(&mut messages, cible);
-                        // Une seule annonce par message : la répéter à chaque
-                        // tour noyait la conversation sous le même avis.
-                        if !fait.rien() && !contexte_annonce {
-                            contexte_annonce = true;
-                            let _ = tx
-                                .send(StreamEvent::Log {
-                                    level: LogLevel::Warn,
-                                    msg: fait.annonce(),
-                                    source: "contexte".into(),
-                                })
-                                .await;
+                        let budget_tour = contexte_serveur.map(|c| {
+                            crate::context_window::budget(
+                                (c as f64 / echelle) as usize,
+                                outils_estimes,
+                            )
+                        });
+                        if let Some(b) = budget_tour {
+                            // Après un refus, on vise plus bas que l'estimation.
+                            let cible = if serre { b * 6 / 10 } else { b };
+                            let fait = crate::context_window::fit(&mut messages, cible);
+                            // Une seule annonce par message : la répéter à chaque
+                            // tour noyait la conversation sous le même avis.
+                            if !fait.rien() && !contexte_annonce {
+                                contexte_annonce = true;
+                                let _ = tx
+                                    .send(StreamEvent::Log {
+                                        level: LogLevel::Warn,
+                                        msg: fait.annonce(),
+                                        source: "contexte".into(),
+                                    })
+                                    .await;
+                            }
                         }
-                    }
-                    estimation_envoyee =
-                        outils_estimes + crate::context_window::estimate_tokens(&messages);
-                    let (openai_body, native_body) = make_body(&messages, &tools_json);
-                    let (url, body) = if native_ollama_loop {
-                        (native_url_loop.clone(), native_body)
-                    } else {
-                        (chat_url.clone(), openai_body)
-                    };
-                    let posted = post_json(&client, &url, &body, bearer.as_deref()).await;
-                    let resp = match posted {
-                        Ok(r) => r,
-                        Err(e) => {
-                            let _ = tx
-                                .send(StreamEvent::Log {
-                                    level: LogLevel::Warn,
-                                    msg: format!("model server connection failed: {e}"),
-                                    source: "openai_tool_loop".into(),
-                                })
-                                .await;
-                            break None;
-                        }
-                    };
-                    let resp = if native_ollama_loop {
-                        convert_native_to_openai_stream(resp)
-                    } else {
-                        resp
-                    };
-                    match resp {
-                        r if r.status().is_success() => {
-                            serre = false;
-                            break Some(r);
-                        }
-                        r => {
-                            let status = r.status();
-                            let body = r.text().await.unwrap_or_default();
-                            if !serre && contexte_serveur.is_some() && fenetre_pleine(&body) {
-                                // La taille réelle annoncée recale l'échelle
-                                // avant de resserrer.
-                                if let Some(reelle) = jetons_annonces(&body) {
-                                    echelle = (reelle as f64 / estimation_envoyee.max(1) as f64)
-                                        .max(echelle)
-                                        .clamp(1.0, 8.0);
-                                    retenir_echelle(echelle);
-                                    tracing::warn!(
-                                        reelle,
-                                        estimation_envoyee,
-                                        echelle,
-                                        "fenêtre pleine en cours de tâche : échelle recalée"
-                                    );
+                        estimation_envoyee =
+                            outils_estimes + crate::context_window::estimate_tokens(&messages);
+                        let (openai_body, native_body) = make_body(&messages, &tools_json);
+                        let (url, body) = if native_ollama_loop {
+                            (native_url_loop.clone(), native_body)
+                        } else {
+                            (chat_url.clone(), openai_body)
+                        };
+                        let posted = post_json(&client, &url, &body, bearer.as_deref()).await;
+                        let resp = match posted {
+                            Ok(r) => r,
+                            Err(e) => {
+                                let _ = tx
+                                    .send(StreamEvent::Log {
+                                        level: LogLevel::Warn,
+                                        msg: format!("model server connection failed: {e}"),
+                                        source: "openai_tool_loop".into(),
+                                    })
+                                    .await;
+                                break None;
+                            }
+                        };
+                        let resp = if native_ollama_loop {
+                            convert_native_to_openai_stream(resp)
+                        } else {
+                            resp
+                        };
+                        match resp {
+                            r if r.status().is_success() => {
+                                serre = false;
+                                break Some(r);
+                            }
+                            r => {
+                                let status = r.status();
+                                let body = r.text().await.unwrap_or_default();
+                                if !serre && contexte_serveur.is_some() && fenetre_pleine(&body) {
+                                    // La taille réelle annoncée recale l'échelle
+                                    // avant de resserrer.
+                                    if let Some(reelle) = jetons_annonces(&body) {
+                                        echelle = (reelle as f64
+                                            / estimation_envoyee.max(1) as f64)
+                                            .max(echelle)
+                                            .clamp(1.0, 8.0);
+                                        retenir_echelle(echelle);
+                                        tracing::warn!(
+                                            reelle,
+                                            estimation_envoyee,
+                                            echelle,
+                                            "fenêtre pleine en cours de tâche : échelle recalée"
+                                        );
+                                    }
+                                    serre = true;
+                                    continue;
                                 }
-                                serre = true;
+                                let _ = tx
+                                    .send(StreamEvent::Log {
+                                        level: LogLevel::Warn,
+                                        msg: server_error_message(status.as_u16(), &body),
+                                        source: "openai_tool_loop".into(),
+                                    })
+                                    .await;
+                                break None;
+                            }
+                        }
+                    },
+                };
+                let Some(resp) = resp else {
+                    break;
+                };
+
+                let round_result = match stream_one_round(resp, &tx).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let _ = tx
+                            .send(StreamEvent::Log {
+                                level: LogLevel::Warn,
+                                msg: format!("stream error: {e}"),
+                                source: "openai_tool_loop".into(),
+                            })
+                            .await;
+                        break;
+                    }
+                };
+                // Le moteur a compté la requête : l'échelle suit la mesure, dans
+                // les deux sens. Bornée à 1 par le bas, une estimation trop
+                // pessimiste n'était jamais corrigée : à 14 336 de fenêtre, la
+                // conversation était raccourcie vers 10 000 jetons réels.
+                if round_result.tokens_in > 0 && estimation_envoyee > 0 {
+                    let mesuree = (round_result.tokens_in as f64 / estimation_envoyee as f64)
+                        .clamp(ECHELLE_MIN, 8.0);
+                    if (mesuree - echelle).abs() > 0.05 {
+                        tracing::debug!(echelle = mesuree, "échelle des jetons mesurée");
+                        echelle = mesuree;
+                        retenir_echelle(echelle);
+                    }
+                }
+                tokens_in += round_result.tokens_in;
+                tokens_out += round_result.tokens_out;
+                let _ = tx
+                    .send(bilan_du_contexte(
+                        &messages,
+                        &tools_for_dispatch,
+                        &noms_mcp,
+                        &differes,
+                        contexte_serveur.unwrap_or(0) as u64,
+                        round_result.tokens_in,
+                        round_result.tokens_out,
+                    ))
+                    .await;
+                timings.add(round_result.timings);
+
+                if round_result.calls.is_empty() {
+                    // Un tour fait de réflexion seule, sans appel ni réponse : le
+                    // modèle a écrit son appel d'outil dans sa réflexion (Bonsai y
+                    // pose des balises `<parameter>`), où le serveur ne le lit pas.
+                    // La tâche s'arrêtait là, muette. Une relance, jamais deux de
+                    // suite : un modèle qui recommence n'est pas relancé en boucle.
+                    if !relance_faite
+                        && round_result.reasoned
+                        && round_result.content.trim().is_empty()
+                        && round + 1 < MAX_TOOL_ROUNDS
+                    {
+                        relance_faite = true;
+                        messages.as_array_mut().unwrap().push(serde_json::json!({
+                            "role": "user",
+                            "content": RELANCE_REFLEXION_SEULE,
+                        }));
+                        continue;
+                    }
+                    // Une correction remise pendant la réponse finale n'attend pas
+                    // le message suivant : le modèle la lit et reprend.
+                    if round + 1 < MAX_TOOL_ROUNDS {
+                        if let Some(boite) = &input.mailbox {
+                            let mut suite = serde_json::json!([]);
+                            let lus = boite.verser(&mut suite).await;
+                            if !lus.is_empty() {
+                                let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
+                                let liste = messages.as_array_mut().unwrap();
+                                liste.push(serde_json::json!({
+                                    "role": "assistant",
+                                    "content": round_result.content,
+                                }));
+                                liste.extend(suite.as_array().cloned().unwrap_or_default());
                                 continue;
                             }
-                            let _ = tx
-                                .send(StreamEvent::Log {
-                                    level: LogLevel::Warn,
-                                    msg: server_error_message(status.as_u16(), &body),
-                                    source: "openai_tool_loop".into(),
-                                })
-                                .await;
-                            break None;
                         }
                     }
-                },
-            };
-            let Some(resp) = resp else {
-                break;
-            };
-
-            let round_result = match stream_one_round(resp, &tx).await {
-                Ok(r) => r,
-                Err(e) => {
-                    let _ = tx
-                        .send(StreamEvent::Log {
-                            level: LogLevel::Warn,
-                            msg: format!("stream error: {e}"),
-                            source: "openai_tool_loop".into(),
-                        })
-                        .await;
+                    got_final = true;
                     break;
                 }
-            };
-            // Le moteur a compté la requête : l'échelle suit la mesure, dans
-            // les deux sens. Bornée à 1 par le bas, une estimation trop
-            // pessimiste n'était jamais corrigée : à 14 336 de fenêtre, la
-            // conversation était raccourcie vers 10 000 jetons réels.
-            if round_result.tokens_in > 0 && estimation_envoyee > 0 {
-                let mesuree = (round_result.tokens_in as f64 / estimation_envoyee as f64)
-                    .clamp(ECHELLE_MIN, 8.0);
-                if (mesuree - echelle).abs() > 0.05 {
-                    tracing::debug!(echelle = mesuree, "échelle des jetons mesurée");
-                    echelle = mesuree;
-                    retenir_echelle(echelle);
-                }
-            }
-            tokens_in += round_result.tokens_in;
-            tokens_out += round_result.tokens_out;
-            let _ = tx
-                .send(bilan_du_contexte(
-                    &messages,
-                    &tools_for_dispatch,
-                    &noms_mcp,
-                    &differes,
-                    contexte_serveur.unwrap_or(0) as u64,
-                    round_result.tokens_in,
-                    round_result.tokens_out,
-                ))
-                .await;
-            timings.add(round_result.timings);
 
-            if round_result.calls.is_empty() {
-                // Un tour fait de réflexion seule, sans appel ni réponse : le
-                // modèle a écrit son appel d'outil dans sa réflexion (Bonsai y
-                // pose des balises `<parameter>`), où le serveur ne le lit pas.
-                // La tâche s'arrêtait là, muette. Une relance, jamais deux de
-                // suite : un modèle qui recommence n'est pas relancé en boucle.
-                if !relance_faite
-                    && round_result.reasoned
-                    && round_result.content.trim().is_empty()
-                    && round + 1 < MAX_TOOL_ROUNDS
-                {
-                    relance_faite = true;
-                    messages.as_array_mut().unwrap().push(serde_json::json!({
-                        "role": "user",
-                        "content": RELANCE_REFLEXION_SEULE,
-                    }));
-                    continue;
-                }
-                // Une correction remise pendant la réponse finale n'attend pas
-                // le message suivant : le modèle la lit et reprend.
-                if round + 1 < MAX_TOOL_ROUNDS {
-                    if let Some(boite) = &input.mailbox {
-                        let mut suite = serde_json::json!([]);
-                        let lus = boite.verser(&mut suite).await;
-                        if !lus.is_empty() {
-                            let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
-                            let liste = messages.as_array_mut().unwrap();
-                            liste.push(serde_json::json!({
-                                "role": "assistant",
-                                "content": round_result.content,
-                            }));
-                            liste.extend(suite.as_array().cloned().unwrap_or_default());
-                            continue;
+                relance_faite = false;
+
+                // Echo the assistant tool-call message back into the transcript.
+                let tc_json: Vec<serde_json::Value> = round_result
+                    .calls
+                    .iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "id": c.id,
+                            "type": "function",
+                            "function": { "name": c.name, "arguments": c.arguments_raw }
+                        })
+                    })
+                    .collect();
+                messages.as_array_mut().unwrap().push(serde_json::json!({
+                    "role": "assistant",
+                    "content": round_result.content,
+                    "tool_calls": tc_json,
+                }));
+
+                // Dispatch each call (with approval gating), feed results back.
+                // Le chemin d'exécution (décision, refus, dispatch, événements)
+                // est partagé avec le pont de noyaux alternatifs : une seule
+                // implémentation de la politique d'approbation, où que l'appel
+                // vienne.
+                for call in &round_result.calls {
+                    // Charger des outils différés : traité ici, rien ne part vers
+                    // un connecteur. Ils sont offerts dès le tour suivant.
+                    if call.name == crate::tool_budget::CHARGER_OUTILS {
+                        let args: serde_json::Value = serde_json::from_str(&call.arguments_raw)
+                            .unwrap_or(serde_json::json!({}));
+                        let resultat = charger_differes(
+                            &mut differes,
+                            &mut tools_for_dispatch,
+                            &mut tools_json,
+                            &mut outils_estimes,
+                            &args,
+                        );
+                        let _ = tx
+                            .send(StreamEvent::ToolCall {
+                                call_id: call.id.clone(),
+                                tool: call.name.clone(),
+                                args,
+                            })
+                            .await;
+                        let _ = tx
+                            .send(StreamEvent::ToolResult {
+                                call_id: call.id.clone(),
+                                ok: true,
+                                output: resultat.clone(),
+                            })
+                            .await;
+                        messages.as_array_mut().unwrap().push(serde_json::json!({
+                            "role": "tool",
+                            "tool_call_id": call.id,
+                            "content": resultat,
+                        }));
+                        continue;
+                    }
+                    // La permission a pu changer pendant que le modèle écrivait :
+                    // c'est celle de maintenant qui décide, pas celle de l'envoi.
+                    if let Some(source) = &input.trust_source {
+                        let maintenant = source.refresh(ctx.trust).await;
+                        if maintenant != ctx.trust {
+                            tracing::info!(avant = ?ctx.trust, apres = ?maintenant, "permission changée en cours de tâche");
+                            ctx.trust = maintenant;
                         }
                     }
-                }
-                got_final = true;
-                break;
-            }
-
-            relance_faite = false;
-
-            // Echo the assistant tool-call message back into the transcript.
-            let tc_json: Vec<serde_json::Value> = round_result
-                .calls
-                .iter()
-                .map(|c| {
-                    serde_json::json!({
-                        "id": c.id,
-                        "type": "function",
-                        "function": { "name": c.name, "arguments": c.arguments_raw }
-                    })
-                })
-                .collect();
-            messages.as_array_mut().unwrap().push(serde_json::json!({
-                "role": "assistant",
-                "content": round_result.content,
-                "tool_calls": tc_json,
-            }));
-
-            // Dispatch each call (with approval gating), feed results back.
-            // Le chemin d'exécution (décision, refus, dispatch, événements)
-            // est partagé avec le pont de noyaux alternatifs : une seule
-            // implémentation de la politique d'approbation, où que l'appel
-            // vienne.
-            for call in &round_result.calls {
-                // Charger des outils différés : traité ici, rien ne part vers
-                // un connecteur. Ils sont offerts dès le tour suivant.
-                if call.name == crate::tool_budget::CHARGER_OUTILS {
                     let args: serde_json::Value =
                         serde_json::from_str(&call.arguments_raw).unwrap_or(serde_json::json!({}));
-                    let resultat = charger_differes(
-                        &mut differes,
-                        &mut tools_for_dispatch,
-                        &mut tools_json,
-                        &mut outils_estimes,
-                        &args,
-                    );
-                    let _ = tx
-                        .send(StreamEvent::ToolCall {
-                            call_id: call.id.clone(),
-                            tool: call.name.clone(),
-                            args,
-                        })
-                        .await;
-                    let _ = tx
-                        .send(StreamEvent::ToolResult {
-                            call_id: call.id.clone(),
-                            ok: true,
-                            output: resultat.clone(),
-                        })
-                        .await;
+
+                    let result_content = match crate::execute_tool_call(
+                        &tx,
+                        &call.id,
+                        &call.name,
+                        args,
+                        &crate::exec::ToolDispatchContext {
+                            tools: &tools_for_dispatch,
+                            ctx: &ctx,
+                            mcp: mcp_state_for_dispatch.as_deref(),
+                            approval: approval.as_ref(),
+                            question: question.as_ref(),
+                            host: host_tools.as_ref(),
+                            trust: input.trust_source.as_ref(),
+                            gpu: input.gpu.as_ref(),
+                        },
+                    )
+                    .await
+                    {
+                        Some(text) => text,
+                        // Client gone — nobody is listening, stop the loop.
+                        None => return,
+                    };
+
                     messages.as_array_mut().unwrap().push(serde_json::json!({
                         "role": "tool",
                         "tool_call_id": call.id,
-                        "content": resultat,
+                        "content": result_content,
                     }));
-                    continue;
                 }
-                // La permission a pu changer pendant que le modèle écrivait :
-                // c'est celle de maintenant qui décide, pas celle de l'envoi.
-                if let Some(source) = &input.trust_source {
-                    let maintenant = source.refresh(ctx.trust).await;
-                    if maintenant != ctx.trust {
-                        tracing::info!(avant = ?ctx.trust, apres = ?maintenant, "permission changée en cours de tâche");
-                        ctx.trust = maintenant;
+
+                // Ce que la personne a remis pendant ces appels arrive maintenant,
+                // avant que le modèle décide de la suite.
+                if let Some(boite) = &input.mailbox {
+                    let lus = boite.verser(&mut messages).await;
+                    if !lus.is_empty() {
+                        tracing::info!(lus = lus.len(), "message(s) remis en cours de tâche");
+                        let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
                     }
                 }
-                let args: serde_json::Value =
-                    serde_json::from_str(&call.arguments_raw).unwrap_or(serde_json::json!({}));
 
-                let result_content = match crate::execute_tool_call(
-                    &tx,
-                    &call.id,
-                    &call.name,
-                    args,
-                    &crate::exec::ToolDispatchContext {
-                        tools: &tools_for_dispatch,
-                        ctx: &ctx,
-                        mcp: mcp_state_for_dispatch.as_deref(),
-                        approval: approval.as_ref(),
-                        question: question.as_ref(),
-                        host: host_tools.as_ref(),
-                        trust: input.trust_source.as_ref(),
-                        gpu: input.gpu.as_ref(),
-                    },
-                )
-                .await
-                {
-                    Some(text) => text,
-                    // Client gone — nobody is listening, stop the loop.
-                    None => return,
-                };
-
-                messages.as_array_mut().unwrap().push(serde_json::json!({
-                    "role": "tool",
-                    "tool_call_id": call.id,
-                    "content": result_content,
-                }));
-            }
-
-            // Ce que la personne a remis pendant ces appels arrive maintenant,
-            // avant que le modèle décide de la suite.
-            if let Some(boite) = &input.mailbox {
-                let lus = boite.verser(&mut messages).await;
-                if !lus.is_empty() {
-                    tracing::info!(lus = lus.len(), "message(s) remis en cours de tâche");
-                    let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
+                if round + 1 == MAX_TOOL_ROUNDS {
+                    let _ = tx
+                        .send(StreamEvent::Log {
+                            level: LogLevel::Warn,
+                            msg: "tool-round limit reached".into(),
+                            source: "openai_tool_loop".into(),
+                        })
+                        .await;
                 }
             }
 
-            if round + 1 == MAX_TOOL_ROUNDS {
+            // La tâche s'arrête sur un outil qui avait libéré la carte : le modèle
+            // de conversation revient quand même, prêt pour le message suivant.
+            if let Some(arbitre) = &input.gpu {
+                if let Err(e) = arbitre
+                    .0
+                    .restore(&crate::gpu::Annonce::dans_le_journal(&tx))
+                    .await
+                {
+                    tracing::warn!(error = %e, "modèle de conversation non rechargé en fin de tâche");
+                }
+            }
+
+            if !got_final {
                 let _ = tx
                     .send(StreamEvent::Log {
                         level: LogLevel::Warn,
-                        msg: "tool-round limit reached".into(),
+                        msg: "loop ended without a final response".into(),
                         source: "openai_tool_loop".into(),
                     })
                     .await;
             }
-        }
 
-        // La tâche s'arrête sur un outil qui avait libéré la carte : le modèle
-        // de conversation revient quand même, prêt pour le message suivant.
-        if let Some(arbitre) = &input.gpu {
-            if let Err(e) = arbitre
-                .0
-                .restore(&crate::gpu::Annonce::dans_le_journal(&tx))
-                .await
-            {
-                tracing::warn!(error = %e, "modèle de conversation non rechargé en fin de tâche");
+            if let Some(evenement) = timings.event() {
+                let _ = tx.send(evenement).await;
             }
-        }
-
-        if !got_final {
             let _ = tx
-                .send(StreamEvent::Log {
-                    level: LogLevel::Warn,
-                    msg: "loop ended without a final response".into(),
-                    source: "openai_tool_loop".into(),
+                .send(StreamEvent::MessageEnd {
+                    message_id: message_id_loop,
+                    tokens_in,
+                    tokens_out,
+                    duration_ms: start.elapsed().as_millis() as u64,
                 })
                 .await;
+        };
+        tokio::select! {
+            () = travail => {}
+            () = garde.closed() => {
+                tracing::info!("réponse abandonnée : la boucle d'outils s'arrête");
+            }
         }
-
-        if let Some(evenement) = timings.event() {
-            let _ = tx.send(evenement).await;
-        }
-        let _ = tx
-            .send(StreamEvent::MessageEnd {
-                message_id: message_id_loop,
-                tokens_in,
-                tokens_out,
-                duration_ms: start.elapsed().as_millis() as u64,
-            })
-            .await;
     });
 
     Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)))

@@ -2028,7 +2028,14 @@ async fn send_message(
             // Leave room for the new message, the answer and the system prompt.
             let budget = (fenetre * 60) / 100;
             let m = model.clone().unwrap_or_else(|| "default".into());
-            turns = compact_history(&core, &endpoint, &m, turns, budget).await;
+            turns = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    core.chat_cancels.lock().await.remove(&session_id);
+                    return Ok(());
+                }
+                t = compact_history(&core, &endpoint, &m, turns, budget) => t,
+            };
         }
         turns
     };
@@ -2220,53 +2227,59 @@ async fn send_message(
         native_chat_api: false,
     };
 
-    let mut event_stream: EventStream = if let Some(core_id) = &session_core_id {
-        // Session confiée à un noyau alternatif (OpenClaw, Hermes…). Pas de
-        // fallback silencieux vers le noyau Locaryn : si le noyau choisi ne
-        // répond pas, on le dit, et on propose l'action qui le répare.
-        match core_engines::agent_for_core(&core, core_id).await {
-            Ok((agent, token)) => {
-                input.bearer_token = token;
-                match agent.run(input.clone()).await {
-                    Ok(stream) => stream,
-                    Err(e) => {
-                        tracing::warn!(core = %core_id, error = %e, "noyau alternatif injoignable");
-                        panne_de_modele(
-                            &core,
-                            project_id,
-                            session_id,
-                            &format!(
-                                "Le noyau de cette conversation ne répond pas ({e}). \
+    // Le moteur ne répond qu'une fois la conversation lue — de longues
+    // secondes sur un gros contexte. Stop doit valoir aussi pendant cette
+    // attente : auparavant il n'était écouté qu'une fois le premier mot
+    // arrivé, et le bouton semblait ne rien faire.
+    let flux = async {
+        if let Some(core_id) = &session_core_id {
+            // Session confiée à un noyau alternatif (OpenClaw, Hermes…). Pas de
+            // fallback silencieux vers le noyau Locaryn : si le noyau choisi ne
+            // répond pas, on le dit, et on propose l'action qui le répare.
+            match core_engines::agent_for_core(&core, core_id).await {
+                Ok((agent, token)) => {
+                    input.bearer_token = token;
+                    match agent.run(input.clone()).await {
+                        Ok(stream) => stream,
+                        Err(e) => {
+                            tracing::warn!(core = %core_id, error = %e, "noyau alternatif injoignable");
+                            panne_de_modele(
+                                &core,
+                                project_id,
+                                session_id,
+                                &format!(
+                                    "Le noyau de cette conversation ne répond pas ({e}). \
                                  Ouvrez Réglages → Extensions et démarrez-le."
-                            ),
-                        )
-                        .await
+                                ),
+                            )
+                            .await
+                        }
                     }
                 }
+                Err(e) => panne_de_modele(&core, project_id, session_id, &e).await,
             }
-            Err(e) => panne_de_modele(&core, project_id, session_id, &e).await,
-        }
-    } else {
-        match &active_provider {
-            Some(p) => {
-                tracing::info!(endpoint = %p.endpoint, model = ?model, "desktop using OpenAiCompatAgent (llama-server)");
-                // Un fournisseur distant apporté par une extension paie ses
-                // jetons : sa clé est dans le trousseau du système, et c'est
-                // ici qu'elle rejoint la requête. Un moteur local n'en a pas,
-                // et l'en-tête reste absent — exactement comme avant.
-                input.bearer_token = cloud_providers::key_for_active_provider(&core, p);
-                let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
-                match agent.run(input.clone()).await {
-                    Ok(stream) => stream,
-                    // Le moteur a lu la requête et l'a refusée : ce n'est pas
-                    // une panne, sa raison suffit.
-                    Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
-                        tracing::warn!(%raison, "requête refusée par le moteur");
-                        refus_du_moteur(raison)
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
-                        panne_de_modele(&core, project_id, session_id, &match &panne_du_moteur {
+        } else {
+            match &active_provider {
+                Some(p) => {
+                    tracing::info!(endpoint = %p.endpoint, model = ?model, "desktop using OpenAiCompatAgent (llama-server)");
+                    // Un fournisseur distant apporté par une extension paie ses
+                    // jetons : sa clé est dans le trousseau du système, et c'est
+                    // ici qu'elle rejoint la requête. Un moteur local n'en a pas,
+                    // et l'en-tête reste absent — exactement comme avant.
+                    input.bearer_token = cloud_providers::key_for_active_provider(&core, p);
+                    let agent =
+                        OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
+                    match agent.run(input.clone()).await {
+                        Ok(stream) => stream,
+                        // Le moteur a lu la requête et l'a refusée : ce n'est pas
+                        // une panne, sa raison suffit.
+                        Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
+                            tracing::warn!(%raison, "requête refusée par le moteur");
+                            refus_du_moteur(raison)
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
+                            panne_de_modele(&core, project_id, session_id, &match &panne_du_moteur {
                             Some(cause) => {
                                 format!("Le moteur local n'a pas démarré : {cause}")
                             }
@@ -2276,20 +2289,30 @@ async fn send_message(
                             ),
                         })
                         .await
+                        }
                     }
                 }
-            }
-            None => {
-                tracing::warn!("no active provider configured");
-                panne_de_modele(
-                    &core,
-                    project_id,
-                    session_id,
-                    "Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.",
-                )
-                .await
+                None => {
+                    tracing::warn!("no active provider configured");
+                    panne_de_modele(
+                        &core,
+                        project_id,
+                        session_id,
+                        "Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.",
+                    )
+                    .await
+                }
             }
         }
+    };
+    let mut event_stream: EventStream = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {
+            tracing::info!("réponse arrêtée avant son premier mot");
+            core.chat_cancels.lock().await.remove(&session_id);
+            return Ok(());
+        }
+        flux = flux => flux,
     };
 
     // 4. Forward events to the frontend while collecting the assistant text.
@@ -2334,6 +2357,9 @@ async fn send_message(
         // stream so the assistant reply still gets persisted below.
         let _ = on_event.send(ev);
     }
+    // Lâcher le flux tout de suite : la boucle d'outils le voit et s'arrête
+    // — plus de requête au moteur ni d'outil lancé après Stop.
+    drop(event_stream);
     let stopped = cancel.is_cancelled();
     core.chat_cancels.lock().await.remove(&session_id);
     tokio::spawn(mcp_servers::signaler_fin_de_reponse(core.mcp.clone()));
