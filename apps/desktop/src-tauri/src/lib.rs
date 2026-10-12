@@ -26,6 +26,7 @@ mod mailbox;
 mod mcp_servers;
 mod memory;
 mod mentions;
+mod skills;
 mod model_abilities;
 mod model_recommendations;
 mod model_residency;
@@ -5969,6 +5970,12 @@ pub struct AppInfo {
     /// must fall back to opening the GitHub releases page (Linux).
     pub platform: String,
     pub arch: String,
+    /// Architecture du processeur de la machine. Diffère de `arch` quand la
+    /// version x64 tourne émulée sur un PC ARM (Snapdragon X) : l'écran « À
+    /// propos » affichait alors « x86_64 » sur une machine ARM.
+    pub host_arch: String,
+    /// Vrai quand l'application tourne sous émulation (x64 sur ARM64).
+    pub emulated: bool,
 }
 
 #[tauri::command]
@@ -5985,6 +5992,8 @@ async fn app_info(core: State<'_, Core>) -> Result<AppInfo, String> {
         models_dir: locaryn_config::models_dir().to_string_lossy().to_string(),
         platform: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
+        host_arch: locaryn_llmfit::hardware::host_arch().to_string(),
+        emulated: locaryn_llmfit::hardware::running_emulated(),
     })
 }
 
@@ -6981,6 +6990,7 @@ pub fn run() {
             core_engines::core_start,
             core_engines::core_stop,
             core_engines::core_skills,
+            skills::list_skills,
             core_engines::core_install_skill,
             extensions::install_extension,
             extensions::update_extension,

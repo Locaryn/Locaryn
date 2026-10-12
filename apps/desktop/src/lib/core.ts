@@ -171,8 +171,13 @@ export interface AppInfo {
   models_dir: string;
   /** OS of the running build: "windows", "macos" or "linux". */
   platform: string;
-  /** CPU architecture, e.g. "x86_64", "aarch64", "x86". */
+  /** CPU architecture of the build, e.g. "x86_64", "aarch64", "x86". */
   arch: string;
+  /** CPU architecture of the machine itself — differs from `arch` when the
+   *  x64 build runs emulated on an ARM PC (Snapdragon X). */
+  host_arch?: string;
+  /** True when the app runs under emulation (x64 build on ARM64). */
+  emulated?: boolean;
 }
 
 /** Persistent identity of the local account shown in the desktop profile. */
@@ -923,6 +928,15 @@ export interface RelayChoice {
 }
 
 /** An MCP server registered in `mcp.json`. */
+/** Un skill qu'on peut imposer au modèle avec « @nom » : intégré (documents
+ *  Word, PDF, Excel, PowerPoint) ou apporté par une extension activée. */
+export interface SkillInfo {
+  name: string;
+  description: string | null;
+  /** « Locaryn » pour un skill intégré, sinon le nom de l'extension. */
+  source: string;
+}
+
 export interface McpServerInfo {
   name: string;
   transport: "stdio" | "http";
@@ -2030,6 +2044,8 @@ export interface CoreApi {
   /** L'interface a de quoi s'afficher : la fenêtre principale peut paraître. */
   appReady(): Promise<void>;
   listMcpServers(): Promise<McpServerInfo[]>;
+  /** Les skills qu'une mention « @nom » impose au modèle. */
+  listSkills(): Promise<SkillInfo[]>;
   /** Les outils qu'un connecteur démarré annonce, avec leur état. */
   listMcpTools(name: string): Promise<McpToolInfo[]>;
   /** Remplacer la liste des outils interdits au modèle pour un connecteur. */
@@ -2518,6 +2534,7 @@ const tauriCore: CoreApi = {
 
   appReady: () => invoke<void>("app_ready"),
   listMcpServers: () => invoke<McpServerInfo[]>("list_mcp_servers"),
+  listSkills: () => invoke<SkillInfo[]>("list_skills"),
   listMcpTools: (name) => invoke<McpToolInfo[]>("list_mcp_tools", { name }),
   setMcpDisabledTools: (name, disabled) =>
     invoke<void>("set_mcp_disabled_tools", { name, disabled }),
@@ -4825,6 +4842,25 @@ Contenu de démonstration.
   toggleModelDebridage: async () => [],
   microModel: async () => ({ model: null, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
   setMicroModel: async (model) => ({ model, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
+
+  listSkills: async () => [
+    {
+      name: "docx",
+      description: "Créer, lire ou modifier un document Word (.docx).",
+      source: "Locaryn",
+    },
+    {
+      name: "pdf",
+      description: "Lire, extraire, créer, fusionner ou remplir des PDF.",
+      source: "Locaryn",
+    },
+    {
+      name: "pptx",
+      description: "Créer, lire ou modifier une présentation PowerPoint.",
+      source: "Locaryn",
+    },
+    { name: "xlsx", description: "Créer, lire ou modifier un classeur Excel.", source: "Locaryn" },
+  ],
 
   // Un connecteur d'exemple : de quoi voir les écrans et la mention « @ ».
   listMcpServers: async () => [

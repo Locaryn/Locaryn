@@ -35,6 +35,7 @@ import {
   type ModelAbilities,
   type ReasoningLevel,
   type Session,
+  type SkillInfo,
   type StreamEvent,
   type ToolApprovalDecision,
   type ToolApprovalRequest,
@@ -221,7 +222,7 @@ type MentionItem = {
   name: string;
   label: string;
   hint: string;
-  icon: "plugs-connected" | "extensions";
+  icon: "plugs-connected" | "extensions" | "sparkle";
 };
 
 /** Durée de l'appui sur la jauge qui déclenche la compression. Assez longue
@@ -569,6 +570,8 @@ export function ChatPanel({
   const [mention, setMention] = useState<{ query: string; items: MentionItem[] } | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const connecteursRef = useRef<McpServerInfo[] | null>(null);
+  /** Skills intégrés et d'extension, lus au premier « @ ». */
+  const skillsRef = useRef<SkillInfo[] | null>(null);
   /** Set by /plan: the next message is executed as a step-by-step plan. */
   const [planNext, setPlanNext] = useState(false);
   /**
@@ -2163,8 +2166,23 @@ ${preview}`,
         connecteursRef.current = [];
       }
     }
+    if (skillsRef.current === null) {
+      try {
+        skillsRef.current = await core.listSkills();
+      } catch (e) {
+        console.warn("skills illisibles :", e);
+        skillsRef.current = [];
+      }
+    }
     const q = m[1].toLowerCase();
     const candidats: MentionItem[] = [
+      // Les skills d'abord : c'est ce qu'on impose le plus souvent (« @pdf »).
+      ...skillsRef.current.map((s) => ({
+        name: s.name,
+        label: s.name,
+        hint: `Skill · ${s.source}${s.description ? ` — ${s.description}` : ""}`,
+        icon: "sparkle" as const,
+      })),
       ...connecteursRef.current.map((c) => ({
         name: c.name,
         label: c.name,
@@ -2183,7 +2201,15 @@ ${preview}`,
         })),
     ];
     const items = candidats
-      .filter((c) => !q || c.name.toLowerCase().includes(q) || c.label.toLowerCase().includes(q))
+      // La description compte aussi : « @excel » trouve le skill xlsx,
+      // « @powerpoint » le skill pptx.
+      .filter(
+        (c) =>
+          !q ||
+          c.name.toLowerCase().includes(q) ||
+          c.label.toLowerCase().includes(q) ||
+          c.hint.toLowerCase().includes(q),
+      )
       .slice(0, 8);
     setMention(items.length ? { query: m[1], items } : null);
     setMentionIndex(0);
@@ -2604,11 +2630,11 @@ ${preview}`,
           <div
             className="locaryn-slash"
             role="listbox"
-            aria-label="Connecteurs et extensions"
+            aria-label="Skills, connecteurs et extensions"
             tabIndex={-1}
           >
             <div className="locaryn-slash-head">
-              <Icon name="plugs" size={14} /> Désigner les outils à utiliser pour cette demande
+              <Icon name="plugs" size={14} /> Imposer un skill ou un outil pour cette demande
             </div>
             <div className="locaryn-slash-liste">
               {mention.items.map((m, i) => (
