@@ -394,6 +394,15 @@ fn probe_gpu() -> Option<Gpu> {
     if let Some(gpu) = probe_apple() {
         return Some(gpu);
     }
+    // Windows : ni `nvidia-smi` ni `rocm-smi` ne sont présents sur une machine
+    // grand public — ROCm ne couvre pas les cartes Polaris comme la RX 570, et
+    // n'est même pas distribué sous Windows. La carte y restait donc invisible :
+    // « 0 Go de VRAM » dans l'analyse matérielle, et des modèles refusés ou
+    // relégués au processeur. Le pilote, lui, publie la taille réelle.
+    #[cfg(target_os = "windows")]
+    if let Some(gpu) = probe_windows_adapters() {
+        return Some(gpu);
+    }
     probe_amd()
 }
 
@@ -445,6 +454,259 @@ fn probe_amd() -> Option<Gpu> {
         total_vram_gb: total_bytes / (1024.0 * 1024.0 * 1024.0),
         backend: Backend::Rocm,
     })
+}
+
+/// Sous Windows, la carte que le pilote déclare — lue dans le registre.
+///
+/// `Win32_VideoController` ne convient pas : son `AdapterRAM` est un entier
+/// 32 bits que Windows plafonne à 4 Go — une carte de 8 Go s'y annonce à 4,
+/// voire à 0 selon le pilote. `HardwareInformation.qwMemorySize`, publié par
+/// le pilote dans sa clé de classe, est un entier 64 bits : la seule source
+/// fiable et sans dépendance qui couvre AMD comme Intel.
+#[cfg(target_os = "windows")]
+fn probe_windows_adapters() -> Option<Gpu> {
+    choisir_meilleure_carte(lire_cartes_registre())
+}
+
+/// Retenir la carte qui compte : celle qui a le plus de mémoire.
+///
+/// Un poste de bureau en déclare souvent deux — un processeur graphique
+/// intégré et la carte dédiée. C'est la dédiée, la plus large, sur laquelle un
+/// modèle tiendra ; prendre la première clé du registre choisirait au hasard.
+/// Les pilotes logiciels (`Microsoft Basic Display Adapter`) n'ont pas de
+/// mémoire propre et sont écartés.
+#[cfg(any(target_os = "windows", test))]
+fn choisir_meilleure_carte(cartes: Vec<(String, f64)>) -> Option<Gpu> {
+    cartes
+        .into_iter()
+        .filter(|(_, go)| *go >= 0.5)
+        .filter(|(nom, _)| {
+            let bas = nom.to_ascii_lowercase();
+            !bas.contains("basic display") && !bas.contains("render only")
+        })
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(name, total_vram_gb)| Gpu {
+            backend: backend_pour_nom(&name),
+            name,
+            total_vram_gb,
+        })
+}
+
+/// Le moteur qu'un nom de carte désigne sous Windows.
+///
+/// AMD et Intel n'ont pas d'autre voie : le runtime intégré embarque
+/// `ggml-vulkan.dll`, qui les sert tous les deux. Une carte NVIDIA trouvée ici
+/// (et non par `nvidia-smi`) a un pilote qui n'a pas répondu au sondage ; ce
+/// libellé est informatif — il ne décide pas du lancement — mais il ne doit pas
+/// annoncer « ROCm » sur une machine Windows où ROCm n'existe pas.
+#[cfg(any(target_os = "windows", test))]
+fn backend_pour_nom(nom: &str) -> Backend {
+    let bas = nom.to_ascii_lowercase();
+    if bas.contains("nvidia") || bas.contains("geforce") || bas.contains("quadro") {
+        Backend::Cuda
+    } else {
+        Backend::Vulkan
+    }
+}
+
+/// Les cartes installées, `(nom, Go)` : chaque sous-clé de la classe des cartes
+/// d'affichage est une carte, `DriverDesc` son nom et
+/// `HardwareInformation.qwMemorySize` sa mémoire dédiée en octets.
+#[cfg(target_os = "windows")]
+fn lire_cartes_registre() -> Vec<(String, f64)> {
+    let racine = registre_wide(
+        r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}",
+    );
+    let mut racine_cle: isize = 0;
+    // SAFETY : la clé est celle que l'API attend ; le tampon vit le temps de
+    // l'appel et la clé est refermée avant de rendre la main.
+    if unsafe {
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            racine.as_ptr(),
+            0,
+            KEY_READ,
+            &mut racine_cle,
+        )
+    } != ERROR_SUCCESS
+    {
+        return Vec::new();
+    }
+
+    let mut cartes = Vec::new();
+    let mut index = 0u32;
+    loop {
+        let mut sous_nom = [0u16; 256];
+        let mut sous_nom_len = sous_nom.len() as u32;
+        // SAFETY : tampons vivants, longueurs annoncées.
+        let code = unsafe {
+            RegEnumKeyExW(
+                racine_cle,
+                index,
+                sous_nom.as_mut_ptr(),
+                &mut sous_nom_len,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if code != ERROR_SUCCESS {
+            break;
+        }
+        index += 1;
+
+        let mut carte_cle: isize = 0;
+        let sous_chemin = registre_wide(&String::from_utf16_lossy(
+            &sous_nom[..sous_nom_len as usize],
+        ));
+        // SAFETY : la sous-clé est celle qu'on vient d'énumérer.
+        if unsafe {
+            RegOpenKeyExW(
+                racine_cle,
+                sous_chemin.as_ptr(),
+                0,
+                KEY_READ,
+                &mut carte_cle,
+            )
+        } != ERROR_SUCCESS
+        {
+            continue;
+        }
+        let nom = registre_chaine(carte_cle, "DriverDesc");
+        let octets = registre_entier(carte_cle, "HardwareInformation.qwMemorySize")
+            .or_else(|| registre_entier(carte_cle, "HardwareInformation.MemorySize"));
+        // SAFETY : clé précédemment ouverte.
+        unsafe { RegCloseKey(carte_cle) };
+
+        if let (Some(nom), Some(octets)) = (nom, octets) {
+            if octets > 0 {
+                cartes.push((nom, octets as f64 / (1024.0 * 1024.0 * 1024.0)));
+            }
+        }
+    }
+    // SAFETY : clé précédemment ouverte.
+    unsafe { RegCloseKey(racine_cle) };
+    cartes
+}
+
+/// Une chaîne UTF-16 terminée par zéro, pour les appels `…W` du registre.
+#[cfg(target_os = "windows")]
+fn registre_wide(texte: &str) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt as _;
+    std::ffi::OsStr::new(texte)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+/// La valeur chaîne d'une clé du registre, si elle existe et est bien une
+/// chaîne.
+#[cfg(target_os = "windows")]
+fn registre_chaine(cle: isize, nom: &str) -> Option<String> {
+    let nom_w = registre_wide(nom);
+    let mut tampon = [0u16; 512];
+    let mut taille = (tampon.len() * std::mem::size_of::<u16>()) as u32;
+    let mut kind = 0u32;
+    // SAFETY : le tampon et la taille annoncée correspondent ; l'appel n'écrit
+    // que dans le tampon, jamais au-delà de la taille qu'on lui donne.
+    let code = unsafe {
+        RegQueryValueExW(
+            cle,
+            nom_w.as_ptr(),
+            std::ptr::null_mut(),
+            &mut kind,
+            tampon.as_mut_ptr() as *mut u8,
+            &mut taille,
+        )
+    };
+    if code != ERROR_SUCCESS || kind != REG_SZ {
+        return None;
+    }
+    let longueur = ((taille as usize) / std::mem::size_of::<u16>()).min(tampon.len());
+    let fin = tampon[..longueur]
+        .iter()
+        .position(|c| *c == 0)
+        .unwrap_or(longueur);
+    Some(String::from_utf16_lossy(&tampon[..fin]))
+}
+
+/// La valeur entière d'une clé du registre, qu'elle soit publiée en 32 ou en
+/// 64 bits.
+#[cfg(target_os = "windows")]
+fn registre_entier(cle: isize, nom: &str) -> Option<u64> {
+    let nom_w = registre_wide(nom);
+    let mut tampon = [0u8; 16];
+    let mut taille = tampon.len() as u32;
+    let mut kind = 0u32;
+    // SAFETY : idem — écriture bornée par `taille`.
+    let code = unsafe {
+        RegQueryValueExW(
+            cle,
+            nom_w.as_ptr(),
+            std::ptr::null_mut(),
+            &mut kind,
+            tampon.as_mut_ptr(),
+            &mut taille,
+        )
+    };
+    if code != ERROR_SUCCESS {
+        return None;
+    }
+    match kind {
+        REG_QWORD if taille >= 8 => Some(u64::from_le_bytes(tampon[..8].try_into().ok()?)),
+        REG_DWORD if taille >= 4 => Some(u32::from_le_bytes(tampon[..4].try_into().ok()?) as u64),
+        // Certains pilotes publient `MemorySize` en binaire brut de 4 octets.
+        REG_BINARY if taille >= 4 => Some(u32::from_le_bytes(tampon[..4].try_into().ok()?) as u64),
+        _ => None,
+    }
+}
+
+/// Les constantes et appels du registre Windows, sans dépendance externe.
+#[cfg(target_os = "windows")]
+const HKEY_LOCAL_MACHINE: isize = 0x8000_0002u32 as i32 as isize;
+#[cfg(target_os = "windows")]
+const KEY_READ: u32 = 0x2_0019;
+#[cfg(target_os = "windows")]
+const ERROR_SUCCESS: i32 = 0;
+#[cfg(target_os = "windows")]
+const REG_SZ: u32 = 1;
+#[cfg(target_os = "windows")]
+const REG_BINARY: u32 = 3;
+#[cfg(target_os = "windows")]
+const REG_DWORD: u32 = 4;
+#[cfg(target_os = "windows")]
+const REG_QWORD: u32 = 11;
+
+#[cfg(target_os = "windows")]
+#[link(name = "advapi32")]
+extern "system" {
+    fn RegOpenKeyExW(
+        hkey: isize,
+        sub_key: *const u16,
+        options: u32,
+        sam: u32,
+        result: *mut isize,
+    ) -> i32;
+    fn RegEnumKeyExW(
+        hkey: isize,
+        index: u32,
+        name: *mut u16,
+        name_len: *mut u32,
+        reserved: *mut u32,
+        class: *mut u16,
+        class_len: *mut u32,
+        last_write: *mut core::ffi::c_void,
+    ) -> i32;
+    fn RegQueryValueExW(
+        hkey: isize,
+        value_name: *const u16,
+        reserved: *mut u32,
+        kind: *mut u32,
+        data: *mut u8,
+        data_len: *mut u32,
+    ) -> i32;
+    fn RegCloseKey(hkey: isize) -> i32;
 }
 
 #[cfg(target_os = "macos")]
@@ -518,6 +780,22 @@ fn gpu_bandwidth(name: Option<&str>, total_vram_gb: f64) -> f64 {
         ("6700", 384.0),
         ("arc a770", 560.0),
         ("arc b580", 456.0),
+        // Polaris, Vega et Navi : les cartes AMD qu'on croise encore. Le repli
+        // « mémoire × 45 » les surestimait largement — une RX 570 de 8 Go lit à
+        // 224 Go/s, pas à 360. Les 5700 sont listées avant les 570 : « rx 570 »
+        // est un préfixe de « rx 5700 », et l'ordre de cette table décide.
+        ("rx 5700 xt", 448.0),
+        ("rx 5700", 448.0),
+        ("rx 5600", 336.0),
+        ("rx 5500", 224.0),
+        ("rx 590", 256.0),
+        ("rx 580", 256.0),
+        ("rx 570", 224.0),
+        ("rx 480", 256.0),
+        ("rx 470", 211.0),
+        ("radeon vii", 1024.0),
+        ("vega 64", 484.0),
+        ("vega 56", 410.0),
     ];
     for (needle, bandwidth) in table {
         if lower.contains(needle) {
@@ -658,6 +936,46 @@ mod tests {
             "le second appel ne doit pas re-sonder la machine"
         );
         assert_eq!(premier.free_ram_gb, second.free_ram_gb);
+    }
+
+    /// Une machine qui déclare un processeur graphique intégré et une carte
+    /// dédiée doit retenir la seconde : c'est la seule sur laquelle un modèle
+    /// tient, et l'ancien sondage `rocm-smi` n'en trouvait aucune des deux.
+    #[test]
+    fn la_carte_la_plus_large_est_retenue() {
+        let cartes = vec![
+            ("Intel(R) UHD Graphics 630".to_string(), 1.0),
+            ("AMD Radeon RX 570 Series".to_string(), 8.0),
+        ];
+        let gpu = choisir_meilleure_carte(cartes).expect("une carte");
+        assert_eq!(gpu.total_vram_gb, 8.0);
+        assert_eq!(gpu.backend, Backend::Vulkan);
+        assert!(gpu.name.contains("RX 570"));
+    }
+
+    /// Un adaptateur logiciel sans mémoire propre ne doit pas devenir « le GPU »
+    /// de la machine.
+    #[test]
+    fn l_adaptateur_logiciel_n_est_pas_un_gpu() {
+        let cartes = vec![
+            ("Microsoft Basic Display Adapter".to_string(), 0.0),
+            ("AMD Radeon RX 570 Series".to_string(), 8.0),
+        ];
+        assert!(choisir_meilleure_carte(cartes).is_some_and(|g| g.total_vram_gb == 8.0));
+        assert!(choisir_meilleure_carte(vec![(
+            "Microsoft Basic Display Adapter".to_string(),
+            0.0
+        )])
+        .is_none());
+    }
+
+    /// Une RX 570 annonce sa vraie bande passante (~224 Go/s), pas le repli
+    /// générique qui la surestimerait de 60 %.
+    #[test]
+    fn la_bande_passante_d_une_polaris_est_connue() {
+        assert_eq!(gpu_bandwidth(Some("AMD Radeon RX 570 Series"), 8.0), 224.0);
+        // « RX 5700 » ne doit pas être prise pour la « RX 570 ».
+        assert_eq!(gpu_bandwidth(Some("AMD Radeon RX 5700 XT"), 8.0), 448.0);
     }
 
     /// Une carte connue doit sortir sa vraie bande passante, une inconnue un
