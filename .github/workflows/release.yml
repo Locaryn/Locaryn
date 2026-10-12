@@ -28,6 +28,11 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    # Une branche `release/v0.4.3` permet de couper une release sans pousser de
+    # tag à la main : la version vient alors de `Cargo.toml`, et le tag est créé
+    # par l'étape de publication elle-même. Pousser un tag `v0.4.3` reste le
+    # chemin habituel et donne exactement le même résultat.
+    branches: ["release/v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -86,7 +91,16 @@ jobs:
       - name: Déterminer la version
         shell: bash
         run: |
-          ver="${GITHUB_REF_NAME#v}"
+          # Un tag `v0.4.3` porte sa version. Une branche `release/v0.4.3` n'en
+          # porte pas : la version est alors celle du dépôt — source unique —
+          # pour que le nom des artefacts et le tag créé à la publication
+          # s'accordent.
+          ref="${GITHUB_REF_NAME}"
+          if [ "${ref#v}" != "$ref" ]; then
+            ver="${ref#v}"
+          else
+            ver="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          fi
           [ -n "$ver" ] || ver="0.1.0"
           echo "VER=$ver" >> "$GITHUB_ENV"
 
@@ -223,7 +237,16 @@ jobs:
       - name: Déterminer la version
         shell: bash
         run: |
-          ver="${GITHUB_REF_NAME#v}"
+          # Un tag `v0.4.3` porte sa version. Une branche `release/v0.4.3` n'en
+          # porte pas : la version est alors celle du dépôt — source unique —
+          # pour que le nom des artefacts et le tag créé à la publication
+          # s'accordent.
+          ref="${GITHUB_REF_NAME}"
+          if [ "${ref#v}" != "$ref" ]; then
+            ver="${ref#v}"
+          else
+            ver="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          fi
           [ -n "$ver" ] || ver="0.1.0"
           echo "VER=$ver" >> "$GITHUB_ENV"
 
@@ -403,7 +426,16 @@ jobs:
       - name: Déterminer la version
         shell: bash
         run: |
-          ver="${GITHUB_REF_NAME#v}"
+          # Un tag `v0.4.3` porte sa version. Une branche `release/v0.4.3` n'en
+          # porte pas : la version est alors celle du dépôt — source unique —
+          # pour que le nom des artefacts et le tag créé à la publication
+          # s'accordent.
+          ref="${GITHUB_REF_NAME}"
+          if [ "${ref#v}" != "$ref" ]; then
+            ver="${ref#v}"
+          else
+            ver="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          fi
           [ -n "$ver" ] || ver="0.1.0"
           echo "VER=$ver" >> "$GITHUB_ENV"
 
@@ -472,7 +504,7 @@ jobs:
     # L'Android est dans les dépendances : sans lui, la release partait
     # systématiquement sans le client mobile.
     needs: [server, desktop, android]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/v')
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -484,7 +516,16 @@ jobs:
       - name: Déterminer la version
         shell: bash
         run: |
-          ver="${GITHUB_REF_NAME#v}"
+          # Un tag `v0.4.3` porte sa version. Une branche `release/v0.4.3` n'en
+          # porte pas : la version est alors celle du dépôt — source unique —
+          # pour que le nom des artefacts et le tag créé à la publication
+          # s'accordent.
+          ref="${GITHUB_REF_NAME}"
+          if [ "${ref#v}" != "$ref" ]; then
+            ver="${ref#v}"
+          else
+            ver="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          fi
           [ -n "$ver" ] || ver="0.1.0"
           echo "VER=$ver" >> "$GITHUB_ENV"
 
@@ -623,6 +664,11 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           draft: false
+          # Le tag n'existe pas encore quand la publication part d'une branche
+          # `release/*` : l'action le crée au commit publié. Sur un push de tag,
+          # cette valeur désigne déjà ce tag — identique, donc sans effet.
+          tag_name: v${{ env.VER }}
+          target_commitish: ${{ github.sha }}
           name: "Locaryn v${{ env.VER }}"
           files: artifacts/**/*
           generate_release_notes: true
