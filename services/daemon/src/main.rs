@@ -1385,6 +1385,8 @@ async fn send_message(
         trim_tools: locaryn_config::load(None)
             .map(|c| c.assistance.trim_tools)
             .unwrap_or(false),
+        forced_tools: Vec::new(),
+        require_tool_call: false,
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
         // Le dialecte natif n'existait que pour Ollama : plus aucun moteur

@@ -267,9 +267,15 @@ const FORCED_SHARE: f64 = 0.8;
 /// converser ; au-delà de [`FORCED_SHARE`], l'allègement s'impose et le dit.
 /// `alleger` vrai : l'allègement s'applique dès [`CONTEXT_SHARE`] (petits
 /// modèles, petits contextes).
-pub fn fit_selon(specs: Vec<ToolSpec>, ctx: usize, request: &str, alleger: bool) -> Fit {
+pub fn fit_selon(
+    specs: Vec<ToolSpec>,
+    ctx: usize,
+    request: &str,
+    alleger: bool,
+    imposes: &[String],
+) -> Fit {
     if alleger {
-        return fit(specs, ctx, request);
+        return fit(specs, ctx, request, imposes);
     }
     // `fit` reçoit la liste d'origine : c'est en voyant les doublons préfixés
     // (`mcp__serveur__outil`) qu'il sait quels noms courts viennent d'un
@@ -287,13 +293,30 @@ pub fn fit_selon(specs: Vec<ToolSpec>, ctx: usize, request: &str, alleger: bool)
     }
     Fit {
         forced: true,
-        ..fit(specs, ctx, request)
+        ..fit(specs, ctx, request, imposes)
     }
+}
+
+/// Un outil imposé par la personne (`@connecteur`), sous son nom préfixé
+/// (`mcp__serveur__outil`) ou sous le nom court qui le remplace une fois les
+/// doublons retirés.
+fn est_impose(spec: &ToolSpec, server_of: &HashMap<String, String>, imposes: &[String]) -> bool {
+    imposes.iter().any(|i| {
+        i == &spec.name
+            || server_of
+                .get(&spec.name)
+                .is_some_and(|srv| *i == format!("{MCP_PREFIX}{srv}__{}", spec.name))
+    })
 }
 
 /// Faire tenir `specs` dans `ctx` jetons de contexte. `request` est la demande de
 /// la personne : elle départage les outils quand il faut en retirer.
-pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
+///
+/// `imposes` : les outils que la personne a désignés. Comme les outils
+/// intégrés, ils sont allégés au besoin mais jamais différés — sinon un petit
+/// contexte les cachait derrière `charger_outils`, et un petit modèle ne
+/// comprenait pas qu'il pouvait s'en servir.
+pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str, imposes: &[String]) -> Fit {
     let budget = budget_for(ctx);
     if total_tokens(&specs) <= budget {
         return Fit {
@@ -343,7 +366,7 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str) -> Fit {
     let request_words = words(request);
     let (fixed, mut optional): (Vec<ToolSpec>, Vec<ToolSpec>) = specs
         .into_iter()
-        .partition(|s| is_builtin_like(s, &server_of));
+        .partition(|s| is_builtin_like(s, &server_of) || est_impose(s, &server_of, imposes));
     let fixed_len = fixed.len();
     let mut used = total_tokens(&fixed);
     optional.sort_by_key(|s| {
@@ -523,7 +546,7 @@ mod tests {
             spec("mcp__s__b", "Court."),
             spec("b", "Court."),
         ];
-        let r = fit(specs.clone(), 32_768, "peu importe");
+        let r = fit(specs.clone(), 32_768, "peu importe", &[]);
         assert_eq!(r.specs.len(), 3);
         assert_eq!(r.dropped, 0);
         assert!(!r.compacted);
@@ -537,6 +560,7 @@ mod tests {
             beaucoup_d_outils(),
             8192,
             "utilise studio_outil_3 de Roblox Studio",
+            &[],
         );
         assert!(
             total_tokens(&r.specs) <= budget_for(8192),
@@ -552,7 +576,7 @@ mod tests {
 
     #[test]
     fn la_demande_departage_les_connecteurs() {
-        let r = fit(beaucoup_d_outils(), 8192, "montre l'état du cluster");
+        let r = fit(beaucoup_d_outils(), 8192, "montre l'état du cluster", &[]);
         let cluster = r
             .specs
             .iter()
@@ -568,9 +592,9 @@ mod tests {
         // défaut les garde tous tant qu'ils restent sous 80 % de la fenêtre.
         let outils = beaucoup_d_outils();
         let tous = outils.len();
-        let leger = fit_selon(outils.clone(), 8192, "x", true);
+        let leger = fit_selon(outils.clone(), 8192, "x", true, &[]);
         assert!(leger.dropped > 0 || leger.compacted);
-        let large = fit_selon(outils.clone(), 200_000, "x", false);
+        let large = fit_selon(outils.clone(), 200_000, "x", false, &[]);
         assert_eq!(large.dropped, 0);
         assert!(!large.compacted && !large.forced);
         assert!(
@@ -578,22 +602,61 @@ mod tests {
             "seuls les doublons de noms partent"
         );
         // Des outils plus gros que la fenêtre : l'allègement s'impose et le dit.
-        let force = fit_selon(outils, 1024, "x", false);
+        let force = fit_selon(outils, 1024, "x", false, &[]);
         assert!(force.forced);
+    }
+
+    /// Un connecteur désigné par la personne ne disparaît jamais derrière
+    /// `charger_outils`, même quand le contexte ne porte pas tous les outils :
+    /// c'est ce qui faisait dire à un petit modèle qu'il n'avait pas accès à
+    /// Roblox Studio.
+    #[test]
+    fn un_outil_impose_n_est_jamais_differe() {
+        let outils = beaucoup_d_outils();
+        let libre = fit_selon(outils.clone(), 2048, "x", false, &[]);
+        let differe = libre
+            .deferred
+            .first()
+            .expect("à 2 048, des outils sont différés")
+            .name
+            .clone();
+        // Imposé sous son nom préfixé, comme le produit une mention « @ ».
+        let impose = if differe.starts_with("mcp__") {
+            differe.clone()
+        } else {
+            outils
+                .iter()
+                .map(|s| s.name.clone())
+                .find(|n| n.starts_with("mcp__") && n.ends_with(&format!("__{differe}")))
+                .unwrap_or(differe.clone())
+        };
+        let r = fit_selon(outils, 2048, "x", false, std::slice::from_ref(&impose));
+        assert!(
+            r.specs
+                .iter()
+                .any(|s| s.name == differe || s.name == impose),
+            "l'outil imposé doit être offert"
+        );
+        assert!(
+            r.deferred
+                .iter()
+                .all(|s| s.name != differe && s.name != impose),
+            "l'outil imposé ne doit pas être différé"
+        );
     }
 
     #[test]
     fn l_allegement_impose_retire_bien_des_outils_de_connecteur() {
         // Outils de connecteur offerts sous deux noms, comme en vrai : le
         // repli imposé doit pouvoir en retirer.
-        let r = fit_selon(beaucoup_d_outils(), 2048, "x", false);
+        let r = fit_selon(beaucoup_d_outils(), 2048, "x", false, &[]);
         assert!(r.forced);
         assert!(r.dropped > 0, "des outils de connecteur doivent partir");
     }
 
     #[test]
     fn un_outil_qui_ne_tient_pas_est_differe_puis_chargeable() {
-        let mut r = fit_selon(beaucoup_d_outils(), 2048, "x", false);
+        let mut r = fit_selon(beaucoup_d_outils(), 2048, "x", false, &[]);
         assert_eq!(r.deferred.len(), r.dropped);
         let chargeur = r
             .specs
@@ -627,7 +690,7 @@ mod tests {
         }
         let un_nom = total_tokens(&specs) / 2;
         let ctx = (un_nom as f64 / CONTEXT_SHARE).ceil() as usize + 8;
-        let r = fit(specs, ctx, "x");
+        let r = fit(specs, ctx, "x", &[]);
         assert_eq!(r.specs.len(), 10);
         assert!(r.specs.iter().all(|s| !s.name.starts_with("mcp__")));
         assert!(!r.compacted);

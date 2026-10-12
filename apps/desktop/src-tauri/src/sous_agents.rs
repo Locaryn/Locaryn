@@ -213,6 +213,8 @@ pub async fn lancer(
         // d'autres sous-agents, ni n'installe d'extension.
         host_tools: None,
         trim_tools: false,
+        forced_tools: Vec::new(),
+        require_tool_call: false,
         trust_source: Some(locaryn_agent_runtime::trust_source::TrustSourceHandle::new(
             crate::trust_source::SessionTrustSource::new(app.clone(), parent),
         )),

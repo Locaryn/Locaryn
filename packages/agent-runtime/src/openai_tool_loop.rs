@@ -176,8 +176,13 @@ pub async fn run_openai_tool_loop(
             // L'échelle mesurée sur un refus précédent : l'estimation en octets
             // sous-évalue ce que le gabarit du modèle fait des outils.
             let ctx_estime = (ctx as f64 / echelle_connue()) as usize;
-            let fit =
-                crate::tool_budget::fit_selon(all_tools, ctx_estime, &demande, input.trim_tools);
+            let fit = crate::tool_budget::fit_selon(
+                all_tools,
+                ctx_estime,
+                &demande,
+                input.trim_tools,
+                &input.forced_tools,
+            );
             // Rien n'est écarté : ce qui ne tient pas est différé, et le modèle
             // le charge quand il en a besoin (`charger_outils`). L'ancien avis
             // « N outils laissés de côté » annonçait une décision que la
@@ -196,6 +201,19 @@ pub async fn run_openai_tool_loop(
         }
         _ => all_tools,
     };
+    // Le premier tour doit appeler un outil quand des outils sont imposés et
+    // effectivement offerts : une consigne dans le message ne suffisait pas à
+    // un petit modèle. Les tours suivants restent libres, pour qu'il puisse
+    // répondre une fois l'outil revenu.
+    // Un outil imposé se retrouve sous son nom préfixé ou sous son nom court.
+    let exige_outil = input.require_tool_call
+        && !input.native_chat_api
+        && all_tools.iter().any(|t| {
+            input
+                .forced_tools
+                .iter()
+                .any(|f| f == &t.name || f.ends_with(&format!("__{}", t.name)))
+        });
     let mut tools_json = if all_tools.is_empty() {
         None
     } else {
@@ -340,7 +358,10 @@ pub async fn run_openai_tool_loop(
     let bearer = input.bearer_token.clone();
     let native_url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
     let first_body = make_body(&messages, &tools_json);
-    let (openai_body, native_body) = first_body;
+    let (mut openai_body, native_body) = first_body;
+    if exige_outil {
+        openai_body["tool_choice"] = serde_json::json!("required");
+    }
     let (first_url, first_payload) = if native_ollama {
         (native_url.clone(), native_body)
     } else {
@@ -379,7 +400,12 @@ pub async fn run_openai_tool_loop(
                 let echelle = (reelle as f64 / estimee.max(1) as f64).max(1.0);
                 retenir_echelle(echelle);
                 let ctx_recale = (ctx as f64 / echelle) as usize;
-                let refit = crate::tool_budget::fit(outils_complets.clone(), ctx_recale, &demande);
+                let refit = crate::tool_budget::fit(
+                    outils_complets.clone(),
+                    ctx_recale,
+                    &demande,
+                    &input.forced_tools,
+                );
                 let outils: usize = refit
                     .specs
                     .iter()
@@ -420,7 +446,10 @@ pub async fn run_openai_tool_loop(
                 }
             }
         }
-        let (openai_body, native_body) = make_body(&messages, &tools_json);
+        let (mut openai_body, native_body) = make_body(&messages, &tools_json);
+        if exige_outil {
+            openai_body["tool_choice"] = serde_json::json!("required");
+        }
         let payload = if native_ollama {
             native_body
         } else {

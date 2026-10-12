@@ -2262,7 +2262,7 @@ ${preview}`,
         .map((x) => ({
           name: x.name,
           label: x.display_name || x.name,
-          hint: "Extension",
+          hint: "Morph · ses connecteurs et skills, imposés au modèle",
           icon: "extensions" as const,
         })),
     ];

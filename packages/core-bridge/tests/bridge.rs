@@ -89,6 +89,8 @@ fn input(session: uuid::Uuid, message: &str) -> AgentInput {
         mailbox: None,
         gpu: None,
         trim_tools: false,
+        forced_tools: Vec::new(),
+        require_tool_call: false,
         bearer_token: None,
         native_chat_api: false,
     }

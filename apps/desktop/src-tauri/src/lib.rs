@@ -2047,7 +2047,8 @@ async fn send_message(
     };
     // `@Roblox_Studio …` : les outils désignés par la personne, rendus
     // explicites pour le modèle (le message enregistré reste tel quel).
-    let agent_message = match mentions::precisions(core.clone(), &content).await {
+    let mentions = mentions::precisions(core.clone(), &content).await;
+    let agent_message = match &mentions.ajout {
         Some(p) => format!("{agent_message}{p}"),
         None => agent_message,
     };
@@ -2164,6 +2165,10 @@ async fn send_message(
         capabilities: extensions::active_capabilities(&core).await,
         // Les outils que la figure de cette conversation autorise.
         tools: figure_tools,
+        // Les connecteurs et morphs désignés par « @ » : leurs outils sont
+        // toujours offerts, et le premier tour doit en appeler un.
+        forced_tools: mentions.outils,
+        require_tool_call: mentions.exiger,
         // Sans elle, tout appel exigeant un accord serait refusé faute
         // d'interlocuteur — le comportement voulu pour un service sans
         // interface, pas pour l'application de bureau.
