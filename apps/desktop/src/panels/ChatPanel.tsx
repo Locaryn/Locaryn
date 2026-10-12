@@ -1450,13 +1450,14 @@ ${d.texte}`
     const text = mods.rest;
     const imposeWorkflow = forceWorkflow || mods.force;
     const objectif = goalNext || mods.goal;
+    const planifier = planNext || mods.plan;
     const reprises = mods.loops ?? loopCount;
     const imgs = attachOverride ?? attachments;
 
     if (!text && imgs.length === 0) {
       // Des modificateurs sans demande : le dire, sinon la palette parait
       // avoir avale le message.
-      if (mods.force || mods.loops !== null || mods.goal) {
+      if (mods.force || mods.loops !== null || mods.goal || mods.plan) {
         setItems((prev) => [
           ...prev,
           {
@@ -1611,7 +1612,9 @@ ${d.texte}`
     arretSuiviRef.current = false;
 
     // /objectif → enchaîner les tours jusqu'à ce que le juge dise « atteint ».
-    if (objectif) {
+    // Combiné à /plan, c'est le plan qui mène (plus bas) : écrire le plan
+    // puis s'arrêter n'était pas ce qu'on demandait.
+    if (objectif && !planifier) {
       setGoalNext(false);
       setItems((prev) => [
         ...prev,
@@ -1671,8 +1674,9 @@ ${d.texte}`
     }
 
     // /plan → decompose and execute step by step, with a verification loop.
-    if (planNext || imposeWorkflow || reprises !== null) {
+    if (planifier || imposeWorkflow || reprises !== null) {
       setPlanNext(false);
+      setGoalNext(false);
       setForceWorkflow(false);
       setLoopCount(null);
       try {
@@ -1721,7 +1725,12 @@ ${d.texte}`
           // Les modificateurs de la demande arrivent jusqu'ici. Sans eux,
           // `/workflow` et `/loop` etaient analyses, consommes, puis perdus :
           // la commande paraissait marcher et ne changeait rien.
-          { force: imposeWorkflow, loops: reprises },
+          // `/plan /objectif` : le plan est imposé, exécuté jusqu'au bout,
+          // vérifié, et repris tant que la vérification échoue.
+          {
+            force: imposeWorkflow || objectif,
+            loops: objectif ? (reprises ?? 5) : reprises,
+          },
         );
         if (ran) {
           if (runRef.current === run) runSessionRef.current = null;

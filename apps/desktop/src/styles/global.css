@@ -13445,7 +13445,7 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 .locaryn-suivi-tete {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 28px 1fr auto auto;
   align-items: center;
   gap: var(--space-3);
 }
@@ -13526,6 +13526,37 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 .locaryn-suivi-etapes li.is-fait .locaryn-suivi-texte {
   color: var(--text-faint);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-faint) 60%, transparent);
+}
+.locaryn-suivi-replier {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: transform var(--dur-fast, 0.15s) ease;
+}
+.locaryn-suivi-replier:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.locaryn-suivi-replier.is-replie {
+  transform: rotate(-90deg);
+}
+.locaryn-suivi-replier:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-suivi-courante {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 .locaryn-suivi-puce {
   display: grid;
@@ -13955,4 +13986,63 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 .lo-autre-pc-info {
   color: var(--accent);
+}
+
+/* Résumé d'un plan, ouvert depuis le centre de tâches. */
+.lo-resume {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.lo-resume-tete {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.lo-resume-titre {
+  margin: 0;
+  font-size: var(--text-md, 15px);
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.lo-resume-etat {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+.lo-resume-etat.is-done {
+  color: var(--accent);
+}
+.lo-resume-etat.is-error {
+  color: var(--warn);
+}
+.lo-resume-faits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+.lo-resume-faits div {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.lo-resume-faits dt {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.lo-resume-faits dd {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.lo-resume-courante {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
 }

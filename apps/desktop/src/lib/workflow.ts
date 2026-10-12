@@ -27,6 +27,12 @@ export interface WorkflowHooks {
 /** Reprises par defaut quand l'etape de verification echoue. */
 const MAX_ATTEMPTS = 3;
 
+/** Source de l'avis d'un tour fini sans reponse (limite d'actions atteinte). */
+const TOUR_INACHEVE = "tour_inacheve";
+
+/** Relances d'une etape coupee par la limite d'actions avant de la dire ratee. */
+const SUITES_PAR_ETAPE = 3;
+
 /** Ce que la personne a impose devant sa demande. */
 export interface WorkflowOptions {
   /**
@@ -119,19 +125,37 @@ export async function runWorkflow(
         : step;
 
       let answer = "";
+      // Une etape coupee par la limite d'actions n'est pas faite : elle
+      // passait pour terminee, et le plan avancait sur un travail a moitie
+      // fait. Elle reprend la ou elle s'est arretee, quelques fois.
+      let coupe = false;
+      let suites = 0;
+      let message = instruction;
       try {
-        await core.sendMessage(
-          sessionId,
-          instruction,
-          (ev) => {
-            if (ev.type === "token") answer += ev.text;
-            hooks.onEvent(ev);
-          },
-          undefined,
-          null,
-          null,
-        );
+        for (;;) {
+          coupe = false;
+          await core.sendMessage(
+            sessionId,
+            message,
+            (ev) => {
+              if (ev.type === "token") answer += ev.text;
+              if (ev.type === "log" && ev.source === TOUR_INACHEVE) coupe = true;
+              hooks.onEvent(ev);
+            },
+            undefined,
+            null,
+            null,
+          );
+          if (!coupe || suites >= SUITES_PAR_ETAPE || hooks.arret?.()) break;
+          suites += 1;
+          message = `Continue cette étape là où tu t'es arrêté, sans recommencer ce qui est fait : ${step}`;
+        }
       } catch {
+        hooks.onStepEnd?.(i, false);
+        failed = true;
+        break;
+      }
+      if (coupe) {
         hooks.onStepEnd?.(i, false);
         failed = true;
         break;

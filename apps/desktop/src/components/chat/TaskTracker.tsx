@@ -1,4 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
+import { useState } from "react";
 
 /** L'état d'une étape d'un plan, ou d'un tour d'objectif. */
 export type EtatEtape = "attente" | "cours" | "fait" | "echec";
@@ -33,6 +34,10 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
   const faites = suivi.etapes.filter((e) => e.etat === "fait").length;
   const total = suivi.etapes.length;
   const enCours = suivi.etat === "cours";
+  // Repliée, la carte garde son compte et sa barre : on voit où en est le
+  // travail sans que la liste pousse la conversation vers le haut.
+  const [replie, setReplie] = useState(false);
+  const courante = suivi.etapes.findIndex((e) => e.etat === "cours");
   return (
     <section
       className={`locaryn-suivi is-${suivi.etat}`}
@@ -49,6 +54,18 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
         <span className="locaryn-suivi-compte" aria-live="polite">
           {suivi.genre === "plan" ? `${faites}/${total}` : `tour ${total}`}
         </span>
+        {total > 0 && (
+          <button
+            type="button"
+            className={`locaryn-suivi-replier${replie ? " is-replie" : ""}`}
+            onClick={() => setReplie((r) => !r)}
+            aria-expanded={!replie}
+            aria-label={replie ? "Afficher les étapes" : "Masquer les étapes"}
+            title={replie ? "Afficher les étapes" : "Masquer les étapes"}
+          >
+            <Icon name="caret-down" size={14} />
+          </button>
+        )}
       </header>
 
       {suivi.genre === "plan" && total > 0 && (
@@ -60,7 +77,13 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
         </div>
       )}
 
-      <ol className="locaryn-suivi-etapes">
+      {replie && courante >= 0 && (
+        <p className="locaryn-suivi-courante">
+          Étape {courante + 1}/{total} : {suivi.etapes[courante].texte}
+        </p>
+      )}
+
+      <ol className="locaryn-suivi-etapes" hidden={replie}>
         {suivi.etapes.map((e, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: une étape n'a pas d'autre identité que son rang.
           <li key={i} className={`is-${e.etat}`}>
@@ -71,9 +94,7 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
                 <Icon name="close" size={12} />
               ) : e.etat === "cours" ? (
                 <span className="locaryn-suivi-pouls" />
-              ) : (
-                i + 1
-              )}
+              ) : null}
             </span>
             <span className="locaryn-suivi-texte">{e.texte}</span>
           </li>

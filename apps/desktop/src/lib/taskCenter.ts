@@ -43,6 +43,10 @@ export interface AppTask {
   /** Retry counter — shown as "essai N" when the final check fails and the
    *  workflow is relaunched. 1 on the first run. */
   attempt?: number;
+  /** Début de l'essai en cours, et de l'étape en cours (ms) : de quoi dire
+   *  depuis combien de temps on y est, et estimer ce qui reste. */
+  planStartedAt?: number;
+  stepStartedAt?: number;
 
   // ── Sous-agents only ─────────────────────────────────────────────────────
   /** La conversation qui l'a lancé. */
@@ -241,16 +245,32 @@ export const taskCenter = {
     };
     tasks = [t, ...tasks].slice(0, MAX_TASKS);
     emit();
+    refleterDansLaBarre();
     return id;
   },
-  /** Attach the LLM-generated plan (variable number of steps). */
+  /** Attach the LLM-generated plan (variable number of steps). La barre des
+   *  tâches suit alors les étapes : faites / total. */
   setPlan(id: string, steps: string[]) {
-    this.update(id, { steps, stepIndex: 0 });
+    const debut = now();
+    this.update(id, {
+      steps,
+      stepIndex: 0,
+      progress: 0,
+      planStartedAt: debut,
+      stepStartedAt: debut,
+    });
   },
   /** Mark the current step done and move to the next. */
   advanceStep(id: string) {
     const t = tasks.find((x) => x.id === id);
-    if (t) this.update(id, { stepIndex: Math.min((t.stepIndex ?? 0) + 1, t.steps?.length ?? 0) });
+    if (!t) return;
+    const total = t.steps?.length ?? 0;
+    const index = Math.min((t.stepIndex ?? 0) + 1, total);
+    this.update(id, {
+      stepIndex: index,
+      progress: total > 0 ? Math.round((index / total) * 100) : undefined,
+      stepStartedAt: now(),
+    });
   },
   /** Final check failed → relaunch: bump the attempt counter, reset progress. */
   retryWorkflow(id: string) {
@@ -259,6 +279,9 @@ export const taskCenter = {
       this.update(id, {
         attempt: (t.attempt ?? 1) + 1,
         stepIndex: 0,
+        progress: 0,
+        planStartedAt: now(),
+        stepStartedAt: now(),
         status: "running",
         error: undefined,
       });
@@ -290,6 +313,21 @@ export const taskCenter = {
     return () => listeners.delete(l);
   },
 };
+
+/**
+ * Secondes qu'il reste, estimées sur le rythme des étapes déjà faites de
+ * l'essai en cours. `null` tant qu'aucune n'est finie : une estimation
+ * inventée ferait pire que rien.
+ */
+export function estimationRestante(t: AppTask, maintenant = Date.now()): number | null {
+  const total = t.steps?.length ?? 0;
+  const faites = t.stepIndex ?? 0;
+  if (t.status !== "running" || !t.planStartedAt || !t.stepStartedAt || faites === 0) return null;
+  if (faites >= total) return 0;
+  const parEtape = (t.stepStartedAt - t.planStartedAt) / faites;
+  const restant = parEtape * (total - faites) - (maintenant - t.stepStartedAt);
+  return Math.max(0, Math.round(restant / 1000));
+}
 
 /** React hook: re-renders on any task change. */
 export function useTasks(): AppTask[] {
