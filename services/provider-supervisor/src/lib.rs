@@ -94,6 +94,8 @@ pub enum SupervisorError {
     BinaryNotFound(String),
     #[error("moteur inconnu : {0} — l'extension qui l'apportait n'est plus installée ou active")]
     UnknownEngine(String),
+    #[error("le chargement du moteur {0:?} a été interrompu : le modèle a changé entre-temps")]
+    Interrompu(ProviderEngine),
     #[error("storage error: {0}")]
     Storage(#[from] locaryn_storage::StorageError),
     #[error("io error: {0}")]
@@ -156,10 +158,12 @@ struct SupervisorInner {
     storage: Storage,
     http: reqwest::Client,
     spawn_lock: Mutex<()>,
-    /// Le moteur est tombé au démarrage avec son GPU, et a tenu sans : les
-    /// lancements suivants de la session passent directement au processeur
-    /// plutôt que de rejouer l'échec.
-    gpu_failed: std::sync::atomic::AtomicBool,
+    /// Les modèles qui ont fait tomber le moteur au démarrage avec le GPU, et
+    /// ont tenu sans : leurs lancements suivants passent directement au
+    /// processeur plutôt que de rejouer l'échec. Par modèle : un modèle trop
+    /// gros pour la carte envoyait auparavant tous les suivants de la session
+    /// sur le processeur, sans un octet de VRAM.
+    gpu_failed: std::sync::Mutex<std::collections::HashSet<String>>,
     /// Moteurs apportés par les extensions installées, par identifiant.
     ///
     /// L'hôte remplit ce registre depuis le registre d'extensions et le
@@ -183,7 +187,7 @@ impl Supervisor {
                 storage,
                 http,
                 spawn_lock: Mutex::new(()),
-                gpu_failed: std::sync::atomic::AtomicBool::new(false),
+                gpu_failed: std::sync::Mutex::new(std::collections::HashSet::new()),
                 extension_engines: Mutex::new(HashMap::new()),
             }),
         }
@@ -273,6 +277,21 @@ impl Supervisor {
     ///
     /// Returns the endpoint URL on success.
     pub async fn ensure_running(&self, engine: &ProviderEngine) -> Result<String, SupervisorError> {
+        // Un changement de modèle arrête le moteur en plein chargement : ce
+        // chargement-là est abandonné, et on recommence avec le modèle choisi.
+        for _ in 0..3 {
+            match self.ensure_running_une_fois(engine).await {
+                Err(SupervisorError::Interrompu(_)) => continue,
+                autre => return autre,
+            }
+        }
+        Err(SupervisorError::Interrompu(engine.clone()))
+    }
+
+    async fn ensure_running_une_fois(
+        &self,
+        engine: &ProviderEngine,
+    ) -> Result<String, SupervisorError> {
         let _spawn_guard = self.inner.spawn_lock.lock().await;
         let spec = self.extension_engine_spec(engine).await;
         let endpoint = match &spec {
@@ -387,10 +406,12 @@ impl Supervisor {
         // dans cette session ; second essai sur le processeur si le moteur
         // meurt au démarrage. Un pilote OpenCL/Vulkan défaillant ne doit pas
         // rendre la conversation impossible.
+        let cle_gpu = active_model.clone().unwrap_or_default();
         let mut cpu_only = self
             .inner
             .gpu_failed
-            .load(std::sync::atomic::Ordering::Relaxed);
+            .lock()
+            .is_ok_and(|m| m.contains(&cle_gpu));
         'attempt: loop {
             // Spawn the runtime process: llama-server, the AirLLM Python server,
             // or le serveur décrit par une extension.
@@ -410,6 +431,7 @@ impl Supervisor {
                 }
             };
 
+            let pid_lance = child.id();
             {
                 let mut states = self.inner.states.lock().await;
                 // A restart must not silently unpin: if the user pinned this
@@ -449,11 +471,31 @@ impl Supervisor {
                         .await;
                     tracing::info!(%endpoint, moteur = %engine.as_token(), cpu_only, "moteur en marche");
                     if cpu_only {
-                        self.inner
-                            .gpu_failed
-                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        if let Ok(mut m) = self.inner.gpu_failed.lock() {
+                            m.insert(cle_gpu.clone());
+                        }
                     }
                     return Ok(endpoint);
+                }
+
+                // Le moteur lancé ici a été arrêté — changement de modèle —
+                // ou remplacé. L'attendre jusqu'au délai gardait le verrou de
+                // lancement jusqu'à trois minutes : aucun autre modèle ne
+                // pouvait se charger, ni depuis la conversation ni depuis le
+                // menu des modèles.
+                let toujours_le_notre = {
+                    let states = self.inner.states.lock().await;
+                    states
+                        .get(engine)
+                        .and_then(|s| s.child.as_ref())
+                        .is_some_and(|c| c.id() == pid_lance || c.id().is_none())
+                };
+                if !toujours_le_notre {
+                    tracing::info!(
+                        ?engine,
+                        "chargement abandonné : le moteur a été arrêté entre-temps"
+                    );
+                    return Err(SupervisorError::Interrompu(engine.clone()));
                 }
 
                 // Détecter un arrêt immédiat du processus (ex: modèle corrompu ou arguments invalides)

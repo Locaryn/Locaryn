@@ -2016,7 +2016,11 @@ async fn send_message(
             let endpoint = active_provider
                 .as_ref()
                 .map(|p| p.endpoint.clone())
-                .unwrap_or_else(|| "http://127.0.0.1:8080".into());
+                .unwrap_or_else(|| {
+                    locaryn_provider_supervisor::default_endpoint(&ProviderEngine::LlamaCpp)
+                        .unwrap_or("http://127.0.0.1:8080")
+                        .into()
+                });
             // En automatique, aucune fenêtre n'est réglée : c'est celle que le
             // moteur a choisie qui compte.
             let fenetre = match cfg.context_length {

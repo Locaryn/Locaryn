@@ -352,7 +352,11 @@ async fn moteur_pour(core: &Core, model: &str) -> Result<(ProviderEngine, String
             .flatten()
             .filter(|p| p.engine == ProviderEngine::LlamaCpp)
             .map(|p| p.endpoint)
-            .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
+            .unwrap_or_else(|| {
+                locaryn_provider_supervisor::default_endpoint(&ProviderEngine::LlamaCpp)
+                    .unwrap_or("http://127.0.0.1:8080")
+                    .to_string()
+            });
         return Ok((ProviderEngine::LlamaCpp, endpoint));
     }
     for spec in core.supervisor.extension_engines().await {
@@ -477,8 +481,11 @@ pub async fn load_chat_model(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Un moteur déjà en route tient l'ancien modèle : il faut le relancer.
-    if core.supervisor.is_healthy(&engine).await {
+    // Un moteur prêt garde son modèle s'il est déjà le bon : `ensure_running`
+    // ne relance que s'il en sert un autre. Un moteur encore en chargement,
+    // lui, charge l'ancien : on l'arrête, et ce chargement est abandonné au
+    // lieu de tenir le verrou de lancement jusqu'à son délai.
+    if !core.supervisor.is_healthy(&engine).await {
         let _ = core.supervisor.shutdown(&engine).await;
     }
 
@@ -504,7 +511,11 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
     let endpoint = active
         .as_ref()
         .map(|p| p.endpoint.clone())
-        .unwrap_or_else(|| "http://127.0.0.1:8080".to_string());
+        .unwrap_or_else(|| {
+            locaryn_provider_supervisor::default_endpoint(&ProviderEngine::LlamaCpp)
+                .unwrap_or("http://127.0.0.1:8080")
+                .to_string()
+        });
 
     // 1. Décharger le moteur supervisé (LlamaCpp, AirLLM, etc.)
     // Le moteur actif, les runtimes intégrés, et tous ceux qu'apportent des
