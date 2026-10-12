@@ -313,6 +313,7 @@ impl Supervisor {
             let model_matches = if matches!(engine, ProviderEngine::LlamaCpp) {
                 is_llama_server_model_match(&self.inner.http, &endpoint, active_model.as_deref())
                     .await
+                    && self.llama_adoptable(engine, &endpoint).await
             } else {
                 true
             };
@@ -536,6 +537,32 @@ impl Supervisor {
                     ));
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+    }
+
+    /// Un llama-server qui répond sur le port peut-il servir tel quel ?
+    ///
+    /// Oui s'il est le nôtre (lancé par ce superviseur), ou s'il annonce la
+    /// build épinglée. Sinon c'est un moteur étranger ou ancien — un orphelin
+    /// d'une version précédente, parfois sans GPU : l'adopter faisait tourner
+    /// le modèle sur le processeur, sans un octet de VRAM, pendant que
+    /// l'application annonçait « chargement du modèle en mémoire ».
+    async fn llama_adoptable(&self, engine: &ProviderEngine, endpoint: &str) -> bool {
+        let ours = {
+            let mut states = self.inner.states.lock().await;
+            states
+                .get_mut(engine)
+                .is_some_and(|s| s.owned && s.is_running())
+        };
+        if ours {
+            return true;
+        }
+        match llama_build_info(&self.inner.http, endpoint).await {
+            Some(build) if build_is_pinned(&build) => true,
+            other => {
+                tracing::warn!(%endpoint, build = ?other, attendu = LLAMA_BUILD, "llama-server étranger ou ancien sur le port — remplacé par le moteur géré");
+                false
             }
         }
     }
@@ -1204,6 +1231,26 @@ pub async fn llama_port_state(http: &reqwest::Client, endpoint: &str) -> LlamaPo
     } else {
         LlamaPortState::Other
     }
+}
+
+/// La build d'un llama-server, d'après `/props` (`build_info`, par exemple
+/// `b11003-7d6f5d02b` — vérifié sur le binaire b11003).
+pub async fn llama_build_info(http: &reqwest::Client, endpoint: &str) -> Option<String> {
+    let val: serde_json::Value = http
+        .get(format!("{endpoint}/props"))
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    val.get("build_info")?.as_str().map(str::to_string)
+}
+
+/// La build annoncée est-elle celle que l'application installe ?
+fn build_is_pinned(build: &str) -> bool {
+    build == LLAMA_BUILD || build.starts_with(&format!("{LLAMA_BUILD}-"))
 }
 
 /// Le port d'une adresse `http://127.0.0.1:8080`.
@@ -1972,6 +2019,15 @@ mod tests {
         // Mémoire unifiée ou pas de carte : la marge de llama.cpp.
         assert_eq!(fit_margin_mib(16.0, true), None);
         assert_eq!(fit_margin_mib(0.0, false), None);
+    }
+
+    /// Un moteur qui n'annonce pas la build épinglée n'est pas adopté.
+    #[test]
+    fn seule_la_build_epinglee_est_adoptee() {
+        assert!(build_is_pinned("b11003-7d6f5d02b"));
+        assert!(build_is_pinned("b11003"));
+        assert!(!build_is_pinned("b10088-1234abc"));
+        assert!(!build_is_pinned("b110031-x"));
     }
 
     #[test]
