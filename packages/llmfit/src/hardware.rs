@@ -187,8 +187,9 @@ fn live_memory(base: &StaticProbe) -> (f64, f64) {
     }
     let ram = free_ram_gb().unwrap_or(base.total_ram_gb * 0.5);
     let vram = if base.unified_memory {
-        // Mémoire unifiée : ce qui est libre pour le système l'est pour le GPU.
-        ram
+        // Mémoire unifiée : ce qui est libre pour le système l'est pour le GPU,
+        // dans la limite de la part que le système lui accorde.
+        ram.min(base.total_vram_gb)
     } else {
         free_vram_gb().unwrap_or(base.total_vram_gb * 0.9)
     };
@@ -236,13 +237,36 @@ fn probe_static() -> StaticProbe {
         cpu_cores,
         total_ram_gb,
         gpu_name,
-        total_vram_gb: if unified { total_ram_gb } else { total_vram_gb },
+        total_vram_gb: if unified {
+            unified_gpu_budget_gb(total_ram_gb, backend)
+        } else {
+            total_vram_gb
+        },
         backend,
         ram_bandwidth_gbps: measured_bw,
         ram_bandwidth_measured: measured,
         vram_bandwidth_gbps,
         unified_memory: unified,
     }
+}
+
+/// La part de la mémoire unifiée que le GPU peut réellement occuper.
+///
+/// Annoncer toute la RAM comme « VRAM » faisait proposer sur GPU des modèles
+/// qui n'y tiennent pas : le système garde sa part, et le pilote plafonne
+/// celle du GPU.
+///
+/// - Windows (Adreno des Snapdragon X) : la « mémoire GPU partagée » que
+///   montre le Gestionnaire des tâches vaut la moitié de la RAM.
+/// - macOS (Metal) : `recommendedMaxWorkingSetSize` vaut environ les deux
+///   tiers de la mémoire, les trois quarts au-delà de 36 Go.
+fn unified_gpu_budget_gb(total_ram_gb: f64, backend: Backend) -> f64 {
+    let part = match backend {
+        Backend::Metal if total_ram_gb > 36.0 => 0.75,
+        Backend::Metal => 0.67,
+        _ => 0.5,
+    };
+    total_ram_gb * part
 }
 
 /// Empêcher une console noire d'apparaître derrière chaque sonde sous Windows.
@@ -511,10 +535,26 @@ fn probe_windows_adapters() -> Option<Gpu> {
         });
     }
 
+    // 2 bis. Le registre ne dit rien d'exploitable (pilote ancien, valeur
+    //    absente ou tronquée) : DXGI, la source du Gestionnaire des tâches,
+    //    donne la mémoire dédiée de chaque carte.
+    if let Some((name, total_vram_gb)) = meilleure_carte_dxgi() {
+        return Some(Gpu {
+            backend: backend_pour_nom(&name),
+            name,
+            total_vram_gb,
+            unified: false,
+        });
+    }
+
     // 3. Aucune mémoire propre déclarée. Sous Windows ARM, un GPU intégré sans
     //    `qwMemorySize` reste un GPU : le compter pour « aucun GPU » affichait
     //    0 Go de VRAM sur une machine qui sait en charger.
-    #[cfg(target_arch = "aarch64")]
+    //    L'architecture testée est celle de la machine : la version x64 de
+    //    l'application tourne aussi sur Snapdragon, sous émulation.
+    if !host_is_arm64() {
+        return None;
+    }
     if let Some(name) = premiere_carte_integree(&cartes) {
         return Some(Gpu {
             name,
@@ -540,7 +580,7 @@ fn meilleure_carte_dediee(cartes: &[(String, Option<f64>)]) -> Option<(String, f
 
 /// La première carte intégrée — un GPU sans mémoire propre, qui lit celle du
 /// système. C'est le cas de l'Adreno des Snapdragon X.
-#[cfg(any(all(target_os = "windows", target_arch = "aarch64"), test))]
+#[cfg(any(target_os = "windows", test))]
 fn premiere_carte_integree(cartes: &[(String, Option<f64>)]) -> Option<String> {
     cartes
         .iter()
@@ -670,6 +710,100 @@ fn lire_cartes_registre() -> Vec<(String, Option<f64>)> {
     cartes
 }
 
+/// La carte dédiée la plus large selon DXGI : `(nom, Go de mémoire dédiée)`.
+///
+/// Appels COM bruts, sans dépendance : `CreateDXGIFactory1`, puis
+/// `EnumAdapters1` et `GetDesc1` par leur rang dans la table virtuelle
+/// (IUnknown 3 + IDXGIObject 4 + IDXGIFactory 5 → `EnumAdapters1` = 12 ;
+/// IUnknown 3 + IDXGIObject 4 + IDXGIAdapter 3 → `GetDesc1` = 10).
+/// Les cartes logicielles (WARP, « Basic Render Driver ») sont écartées, et
+/// une mémoire dédiée sous 0,5 Go n'est pas une carte sur laquelle charger.
+#[cfg(target_os = "windows")]
+fn meilleure_carte_dxgi() -> Option<(String, f64)> {
+    #[repr(C)]
+    struct Guid(u32, u16, u16, [u8; 8]);
+    #[repr(C)]
+    struct AdapterDesc1 {
+        description: [u16; 128],
+        vendor_id: u32,
+        device_id: u32,
+        sub_sys_id: u32,
+        revision: u32,
+        dedicated_video_memory: usize,
+        dedicated_system_memory: usize,
+        shared_system_memory: usize,
+        luid_low: u32,
+        luid_high: i32,
+        flags: u32,
+    }
+    type Release = unsafe extern "system" fn(*mut core::ffi::c_void) -> u32;
+    type EnumAdapters1 =
+        unsafe extern "system" fn(*mut core::ffi::c_void, u32, *mut *mut core::ffi::c_void) -> i32;
+    type GetDesc1 = unsafe extern "system" fn(*mut core::ffi::c_void, *mut AdapterDesc1) -> i32;
+    #[link(name = "dxgi")]
+    extern "system" {
+        fn CreateDXGIFactory1(riid: *const Guid, factory: *mut *mut core::ffi::c_void) -> i32;
+    }
+    const IID_IDXGI_FACTORY1: Guid = Guid(
+        0x770a_ae78,
+        0xf26f,
+        0x4dba,
+        [0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87],
+    );
+    const DXGI_ADAPTER_FLAG_SOFTWARE: u32 = 2;
+
+    /// L'entrée `rang` de la table virtuelle d'un objet COM.
+    unsafe fn methode(objet: *mut core::ffi::c_void, rang: usize) -> *const core::ffi::c_void {
+        let table = *(objet as *const *const *const core::ffi::c_void);
+        *table.add(rang)
+    }
+
+    let mut meilleure: Option<(String, f64)> = None;
+    // SAFETY : chaque pointeur d'interface vient d'un appel qui a réussi
+    // (HRESULT ≥ 0) et est relâché une fois lu ; les rangs de la table
+    // virtuelle sont ceux des interfaces documentées, et la structure de
+    // description suit `DXGI_ADAPTER_DESC1`.
+    unsafe {
+        let mut usine: *mut core::ffi::c_void = std::ptr::null_mut();
+        if CreateDXGIFactory1(&IID_IDXGI_FACTORY1, &mut usine) < 0 || usine.is_null() {
+            return None;
+        }
+        let enumerer: EnumAdapters1 = std::mem::transmute(methode(usine, 12));
+        let mut index = 0u32;
+        loop {
+            let mut carte: *mut core::ffi::c_void = std::ptr::null_mut();
+            if enumerer(usine, index, &mut carte) < 0 || carte.is_null() {
+                break;
+            }
+            index += 1;
+            let decrire: GetDesc1 = std::mem::transmute(methode(carte, 10));
+            let mut desc: AdapterDesc1 = std::mem::zeroed();
+            let lu = decrire(carte, &mut desc) >= 0;
+            let relacher: Release = std::mem::transmute(methode(carte, 2));
+            relacher(carte);
+            if !lu || desc.flags & DXGI_ADAPTER_FLAG_SOFTWARE != 0 {
+                continue;
+            }
+            let fin = desc
+                .description
+                .iter()
+                .position(|c| *c == 0)
+                .unwrap_or(desc.description.len());
+            let nom = String::from_utf16_lossy(&desc.description[..fin]);
+            let go = desc.dedicated_video_memory as f64 / (1024.0 * 1024.0 * 1024.0);
+            if go >= 0.5
+                && !carte_logicielle(&nom)
+                && meilleure.as_ref().is_none_or(|(_, m)| go > *m)
+            {
+                meilleure = Some((nom, go));
+            }
+        }
+        let relacher: Release = std::mem::transmute(methode(usine, 2));
+        relacher(usine);
+    }
+    meilleure
+}
+
 /// Une chaîne UTF-16 terminée par zéro, pour les appels `…W` du registre.
 #[cfg(target_os = "windows")]
 fn registre_wide(texte: &str) -> Vec<u16> {
@@ -736,7 +870,11 @@ fn registre_entier(cle: isize, nom: &str) -> Option<u64> {
     match kind {
         REG_QWORD if taille >= 8 => Some(u64::from_le_bytes(tampon[..8].try_into().ok()?)),
         REG_DWORD if taille >= 4 => Some(u32::from_le_bytes(tampon[..4].try_into().ok()?) as u64),
-        // Certains pilotes publient `MemorySize` en binaire brut de 4 octets.
+        // Certains pilotes publient la taille en binaire brut : 8 octets pour
+        // `qwMemorySize`, 4 pour `MemorySize`. Lire 8 octets sur 4 rendait 0
+        // pour une carte de 8 Go (0x2_0000_0000) — une RX 570 passait alors
+        // pour « aucun GPU ».
+        REG_BINARY if taille >= 8 => Some(u64::from_le_bytes(tampon[..8].try_into().ok()?)),
         REG_BINARY if taille >= 4 => Some(u32::from_le_bytes(tampon[..4].try_into().ok()?) as u64),
         _ => None,
     }
@@ -787,6 +925,101 @@ extern "system" {
         data_len: *mut u32,
     ) -> i32;
     fn RegCloseKey(hkey: isize) -> i32;
+}
+
+// ── Architecture réelle de la machine ──────────────────────────────────────
+
+/// L'architecture du processeur de la machine — pas celle de l'application.
+///
+/// `std::env::consts::ARCH` décrit le binaire. Or la version x64 de
+/// l'application s'installe et tourne très bien sur un Snapdragon X, sous
+/// l'émulation de Windows (Prism) : elle s'y croyait sur un PC x86_64,
+/// téléchargeait le moteur x64 (émulé lui aussi, et sans accès à l'Adreno) et
+/// ignorait tout le code prévu pour ARM. Même chose pour un binaire Intel sous
+/// Rosetta sur un Mac Apple Silicon.
+///
+/// Rend `"aarch64"` ou `"x86_64"` (ou l'architecture du binaire ailleurs).
+pub fn host_arch() -> &'static str {
+    static HOTE: OnceLock<&'static str> = OnceLock::new();
+    HOTE.get_or_init(|| {
+        if host_is_arm64_probe() {
+            "aarch64"
+        } else {
+            std::env::consts::ARCH
+        }
+    })
+}
+
+/// Vrai quand la machine elle-même est ARM64, quelle que soit l'architecture
+/// de l'application qui pose la question.
+pub fn host_is_arm64() -> bool {
+    host_arch() == "aarch64"
+}
+
+/// Vrai quand l'application tourne sous émulation : binaire x86_64 sur une
+/// machine ARM64.
+pub fn running_emulated() -> bool {
+    host_is_arm64() && std::env::consts::ARCH != "aarch64"
+}
+
+#[cfg(target_arch = "aarch64")]
+fn host_is_arm64_probe() -> bool {
+    true
+}
+
+/// Windows : `IsWow64Process2` donne la machine native même à un processus
+/// émulé. Cherchée dynamiquement — elle n'existe que depuis Windows 10 1709,
+/// et un import statique empêcherait l'application de démarrer avant. Repli :
+/// la variable système du registre, qui porte l'architecture native.
+#[cfg(all(target_os = "windows", not(target_arch = "aarch64")))]
+fn host_is_arm64_probe() -> bool {
+    const IMAGE_FILE_MACHINE_ARM64: u16 = 0xAA64;
+    type IsWow64Process2 = unsafe extern "system" fn(isize, *mut u16, *mut u16) -> i32;
+    extern "system" {
+        fn GetModuleHandleW(name: *const u16) -> isize;
+        fn GetProcAddress(module: isize, name: *const u8) -> *const core::ffi::c_void;
+        fn GetCurrentProcess() -> isize;
+    }
+    let kernel32 = registre_wide("kernel32.dll");
+    // SAFETY : chaînes terminées par zéro ; le pointeur de fonction n'est
+    // utilisé que s'il est non nul, avec la signature documentée.
+    unsafe {
+        let module = GetModuleHandleW(kernel32.as_ptr());
+        if module != 0 {
+            let f = GetProcAddress(module, c"IsWow64Process2".as_ptr().cast());
+            if !f.is_null() {
+                let f: IsWow64Process2 = std::mem::transmute(f);
+                let (mut processus, mut natif) = (0u16, 0u16);
+                if f(GetCurrentProcess(), &mut processus, &mut natif) != 0 {
+                    return natif == IMAGE_FILE_MACHINE_ARM64;
+                }
+            }
+        }
+    }
+    let mut cle: isize = 0;
+    let chemin = registre_wide(r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment");
+    // SAFETY : clé ouverte puis refermée ici.
+    if unsafe { RegOpenKeyExW(HKEY_LOCAL_MACHINE, chemin.as_ptr(), 0, KEY_READ, &mut cle) }
+        != ERROR_SUCCESS
+    {
+        return false;
+    }
+    let arch = registre_chaine(cle, "PROCESSOR_ARCHITECTURE");
+    // SAFETY : clé précédemment ouverte.
+    unsafe { RegCloseKey(cle) };
+    arch.is_some_and(|a| a.eq_ignore_ascii_case("ARM64"))
+}
+
+/// macOS : un binaire Intel sous Rosetta lit quand même
+/// `hw.optional.arm64 = 1`.
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+fn host_is_arm64_probe() -> bool {
+    sysctl(&["-n", "hw.optional.arm64"]).is_some_and(|t| t.trim() == "1")
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_os = "windows", target_os = "macos")))]
+fn host_is_arm64_probe() -> bool {
+    false
 }
 
 /// Le nom de la puce Apple, d'après ce que le système publie. `None` sur un
@@ -991,6 +1224,26 @@ pub fn sample_ram_bandwidth_gbps() -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn la_part_gpu_de_la_memoire_unifiee_suit_le_systeme() {
+        // Windows (Adreno) : la moitié, comme la « mémoire GPU partagée ».
+        assert!((unified_gpu_budget_gb(16.0, Backend::Vulkan) - 8.0).abs() < 1e-9);
+        // macOS : deux tiers, trois quarts sur les grosses configurations.
+        assert!((unified_gpu_budget_gb(16.0, Backend::Metal) - 10.72).abs() < 1e-9);
+        assert!((unified_gpu_budget_gb(64.0, Backend::Metal) - 48.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn l_architecture_de_la_machine_est_connue() {
+        let arch = host_arch();
+        assert!(!arch.is_empty());
+        // Un binaire ARM ne peut tourner que sur une machine ARM.
+        if cfg!(target_arch = "aarch64") {
+            assert!(host_is_arm64());
+            assert!(!running_emulated());
+        }
+    }
     use super::*;
 
     /// La mémoire se lit par l'appel système, sans PowerShell : une valeur

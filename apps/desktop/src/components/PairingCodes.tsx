@@ -9,6 +9,7 @@ import {
   type ServerStatus,
   core,
 } from "../lib/core";
+import { ecrirePressePapiers } from "../lib/pressePapiers";
 import {
   LOCAL_STEPS,
   PairingCheckerboard,
@@ -432,8 +433,7 @@ export function PairingCodes() {
                   type="button"
                   className="locaryn-btn-ghost"
                   onClick={() =>
-                    void navigator.clipboard
-                      .writeText(code.url)
+                    void ecrirePressePapiers(code.url)
                       .then(() => {
                         setCopied(true);
                         window.setTimeout(() => setCopied(false), 1500);

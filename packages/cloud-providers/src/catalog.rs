@@ -126,7 +126,7 @@ pub async fn models(
 /// Lire la liste chez le fournisseur.
 async fn fetch(host: &Host<'_>, p: &DeclaredProvider) -> Result<Vec<CloudModel>, String> {
     let url = p.manifest.effective_models_url();
-    let mut req = host.http.get(&url);
+    let mut req = crate::http_for(host, p).get(&url);
     // La clé n'est pas toujours nécessaire pour lire un catalogue ; quand elle
     // l'est, l'absence se voit sur un 401 explicite plutôt que sur une liste
     // vide.

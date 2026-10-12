@@ -10,8 +10,10 @@ import {
   type InstalledExtension,
   PERMISSION_LABELS,
   core,
+  isTauri,
 } from "../lib/core";
 import { pickAnyFile, pickFolder } from "../lib/dialog";
+import { lirePressePapiers } from "../lib/pressePapiers";
 import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
 
 type Props = {
@@ -238,14 +240,14 @@ export function ExtensionInstallDialog({
                     className="locaryn-btn-ghost"
                     style={{ fontSize: 12 }}
                     onClick={async () => {
-                      if (!navigator.clipboard?.readText) {
+                      if (!isTauri && !navigator.clipboard?.readText) {
                         setDialogError(
                           "Presse-papiers inaccessible — collez le lien à la main (Ctrl+V).",
                         );
                         return;
                       }
                       try {
-                        const text = await navigator.clipboard.readText();
+                        const text = await lirePressePapiers();
                         if (text.trim()) {
                           setSpec(text.trim());
                           setDialogError(null);

@@ -51,6 +51,13 @@ impl OpenAiCompatAgent {
             model.unwrap_or(DEFAULT_MODEL),
         )
     }
+
+    /// Parler au serveur avec ce client : celui d'un autre PC Locaryn croit
+    /// l'autorité qui a émis son certificat.
+    pub fn with_client(mut self, client: reqwest::Client) -> Self {
+        self.client = client;
+        self
+    }
 }
 
 #[async_trait::async_trait]

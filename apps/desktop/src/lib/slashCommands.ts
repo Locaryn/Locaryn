@@ -22,7 +22,9 @@ export type SlashAction =
   | "aide"
   | "clear"
   /** Commande apportee par un plugin : le corps est resolu par le backend. */
-  | "extension";
+  | "extension"
+  /** Un skill : choisi, il s'insere en « @nom », que le backend impose au modele. */
+  | "skill";
 
 /** Values a command accepts after a space (Tab/Enter completes them). */
 export interface SlashArg {
@@ -328,6 +330,19 @@ export function matchSlashInput(
   }
   const items = matchSlash(input, extra, activeCapabilities) ?? [];
   return items.length ? { kind: "commands", items } : null;
+}
+
+/**
+ * Le « /mot » en cours de frappe a la fin d'un texte qui ne commence pas par
+ * « / » : « explique ce code /g » → « g ». Comme dans Claude Code ou Codex, la
+ * palette s'ouvre aussi au milieu d'un message, pas seulement au debut.
+ * `null` quand le texte commence par « / » (cas de `matchSlashInput`) ou ne
+ * finit pas par un tel mot.
+ */
+export function slashEnFin(input: string): string | null {
+  if (input.startsWith("/")) return null;
+  const m = /(?:^|\s)\/([\w:.-]*)$/.exec(input);
+  return m ? m[1] : null;
 }
 
 /**

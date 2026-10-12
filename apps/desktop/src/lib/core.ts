@@ -141,6 +141,15 @@ export interface CloudProviderStatus {
 }
 
 /** Un modèle du catalogue distant. */
+/** Un autre PC Locaryn dont ce poste emprunte le modèle (voir `serveurs.rs`). */
+export interface ServeurModeles {
+  /** Identifiant de catalogue (« pc-bureau ») : préfixe des modèles. */
+  id: string;
+  /** Nom de la machine. */
+  nom: string;
+  url: string;
+}
+
 export interface CloudModel {
   id: string;
   name: string;
@@ -171,8 +180,13 @@ export interface AppInfo {
   models_dir: string;
   /** OS of the running build: "windows", "macos" or "linux". */
   platform: string;
-  /** CPU architecture, e.g. "x86_64", "aarch64", "x86". */
+  /** CPU architecture of the build, e.g. "x86_64", "aarch64", "x86". */
   arch: string;
+  /** CPU architecture of the machine itself — differs from `arch` when the
+   *  x64 build runs emulated on an ARM PC (Snapdragon X). */
+  host_arch?: string;
+  /** True when the app runs under emulation (x64 build on ARM64). */
+  emulated?: boolean;
 }
 
 /** Persistent identity of the local account shown in the desktop profile. */
@@ -923,6 +937,15 @@ export interface RelayChoice {
 }
 
 /** An MCP server registered in `mcp.json`. */
+/** Un skill qu'on peut imposer au modèle avec « @nom » : intégré (documents
+ *  Word, PDF, Excel, PowerPoint) ou apporté par une extension activée. */
+export interface SkillInfo {
+  name: string;
+  description: string | null;
+  /** « Locaryn » pour un skill intégré, sinon le nom de l'extension. */
+  source: string;
+}
+
 export interface McpServerInfo {
   name: string;
   transport: "stdio" | "http";
@@ -936,6 +959,9 @@ export interface McpServerInfo {
   tools: string[];
   /** Outils que la personne a interdits au modèle. */
   disabled_tools?: string[];
+  /** Le logiciel que ce connecteur pilote (Roblox Studio…) et s'il est
+   *  ouvert : le serveur MCP répond même quand il est fermé. */
+  companion?: { name: string; running: boolean } | null;
 }
 
 /** La page du navigateur intégré. */
@@ -1179,6 +1205,10 @@ export interface LlamaRuntimeStatus {
   up_to_date: boolean;
   pinned: string;
   path: string;
+  /** GPUs the engine itself sees (`llama-server --list-devices`), e.g.
+   *  "Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)". Empty: CPU
+   *  only. Null/absent: the engine did not answer. */
+  devices?: string[] | null;
 }
 
 /** One honest snapshot of everything the local runtime can do. */
@@ -2030,6 +2060,8 @@ export interface CoreApi {
   /** L'interface a de quoi s'afficher : la fenêtre principale peut paraître. */
   appReady(): Promise<void>;
   listMcpServers(): Promise<McpServerInfo[]>;
+  /** Les skills qu'une mention « @nom » impose au modèle. */
+  listSkills(): Promise<SkillInfo[]>;
   /** Les outils qu'un connecteur démarré annonce, avec leur état. */
   listMcpTools(name: string): Promise<McpToolInfo[]>;
   /** Remplacer la liste des outils interdits au modèle pour un connecteur. */
@@ -2128,10 +2160,22 @@ export interface CoreApi {
 
   /** Ce qui est actuellement en mémoire, et si le minuteur peut y toucher. */
   modelResidency(): Promise<ResidencyStatus>;
+  /** La personne se sert de l'application : le modèle reste en mémoire. */
+  signalerActivite(): Promise<void>;
   /** Ce que donnerait le chargement de ce modèle, sans rien charger. */
   checkModelFit(model: string): Promise<ModelFit>;
   /** Les catalogues distants qu'apportent les extensions actives. */
   cloudProviders(): Promise<CloudProvider[]>;
+  /** Les autres PC Locaryn dont ce poste emprunte le modèle. */
+  serveursModeles(): Promise<ServeurModeles[]>;
+  /** Ajouter un autre PC avec un compte qui y existe. Le mot de passe sert
+   *  une fois, à créer une clé propre à ce poste. */
+  serveurModelesAjouter(
+    adresse: string,
+    identifiant: string,
+    motDePasse: string,
+  ): Promise<ServeurModeles>;
+  serveurModelesRetirer(id: string): Promise<void>;
   /** Enregistrer une clé dans le trousseau du système. Elle n'en ressort pas. */
   cloudProviderSetKey(provider: string, key: string): Promise<void>;
   /** Oublier la clé d'un fournisseur. */
@@ -2192,13 +2236,22 @@ export function getHfToken(): string {
 
 /** Persist (or clear, when empty) the HuggingFace access token. */
 export function setHfToken(token: string): void {
+  const t = token.trim();
   try {
-    const t = token.trim();
     if (t) localStorage.setItem(HF_TOKEN_KEY, t);
     else localStorage.removeItem(HF_TOKEN_KEY);
   } catch {
     // localStorage unavailable — the token just won't persist.
   }
+  partagerJetonHf(t);
+}
+
+/** Le serveur de cette machine (installations lancées depuis le téléphone)
+ *  lit le jeton à côté de ses données : il ne voit pas celui de l'interface. */
+export function partagerJetonHf(token: string = getHfToken()): void {
+  invoke<void>("set_hf_token_machine", { token }).catch(() => {
+    // Hors de l'application (aperçu web) : rien à partager.
+  });
 }
 
 const tauriCore: CoreApi = {
@@ -2518,6 +2571,7 @@ const tauriCore: CoreApi = {
 
   appReady: () => invoke<void>("app_ready"),
   listMcpServers: () => invoke<McpServerInfo[]>("list_mcp_servers"),
+  listSkills: () => invoke<SkillInfo[]>("list_skills"),
   listMcpTools: (name) => invoke<McpToolInfo[]>("list_mcp_tools", { name }),
   setMcpDisabledTools: (name, disabled) =>
     invoke<void>("set_mcp_disabled_tools", { name, disabled }),
@@ -2629,8 +2683,13 @@ const tauriCore: CoreApi = {
   checkHardware: () => invoke("check_hardware"),
 
   modelResidency: () => invoke<ResidencyStatus>("model_residency"),
+  signalerActivite: () => invoke<void>("signaler_activite"),
   checkModelFit: (model) => invoke<ModelFit>("check_model_fit", { model }),
   cloudProviders: () => invoke<CloudProvider[]>("cloud_providers"),
+  serveursModeles: () => invoke<ServeurModeles[]>("serveurs_modeles"),
+  serveurModelesAjouter: (adresse, identifiant, motDePasse) =>
+    invoke<ServeurModeles>("serveur_modeles_ajouter", { adresse, identifiant, motDePasse }),
+  serveurModelesRetirer: (id) => invoke<void>("serveur_modeles_retirer", { id }),
   cloudProviderSetKey: (provider, key) => invoke<void>("cloud_provider_set_key", { provider, key }),
   cloudProviderClearKey: (provider) => invoke<void>("cloud_provider_clear_key", { provider }),
   cloudProviderModels: (provider, refresh) =>
@@ -4826,6 +4885,25 @@ Contenu de démonstration.
   microModel: async () => ({ model: null, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
   setMicroModel: async (model) => ({ model, available: ["Qwen3-1.7B-Q4_K_M.gguf"] }),
 
+  listSkills: async () => [
+    {
+      name: "docx",
+      description: "Créer, lire ou modifier un document Word (.docx).",
+      source: "Locaryn",
+    },
+    {
+      name: "pdf",
+      description: "Lire, extraire, créer, fusionner ou remplir des PDF.",
+      source: "Locaryn",
+    },
+    {
+      name: "pptx",
+      description: "Créer, lire ou modifier une présentation PowerPoint.",
+      source: "Locaryn",
+    },
+    { name: "xlsx", description: "Créer, lire ou modifier un classeur Excel.", source: "Locaryn" },
+  ],
+
   // Un connecteur d'exemple : de quoi voir les écrans et la mention « @ ».
   listMcpServers: async () => [
     {
@@ -5032,12 +5110,20 @@ Contenu de démonstration.
       path: "C:/Users/you/.locaryn/data/bin/llama",
     };
   },
+  async signalerActivite() {},
   async modelResidency() {
     return demoResidencyStatus();
   },
   async checkModelFit(model) {
     return demoFit(model, demoCaution);
   },
+  async serveursModeles() {
+    return [];
+  },
+  async serveurModelesAjouter(): Promise<ServeurModeles> {
+    throw new Error("Disponible dans l'application de bureau.");
+  },
+  async serveurModelesRetirer() {},
   async cloudProviders() {
     return demoCloudProviders.map((p) => ({
       ...p,

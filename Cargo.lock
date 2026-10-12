@@ -192,6 +192,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "arboard"
+version = "3.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0348a1c054491f4bfe6ab86a7b6ab1e44e45d899005de92f58b3df180b36ddaf"
+dependencies = [
+ "clipboard-win",
+ "log",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "parking_lot",
+ "percent-encoding",
+ "windows-sys 0.60.2",
+ "x11rb",
+]
+
+[[package]]
 name = "arc-swap"
 version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -985,6 +1002,15 @@ name = "clap_lex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
+
+[[package]]
+name = "clipboard-win"
+version = "5.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bde03770d3df201d4fb868f2c9c59e66a3e4e2bd06692a0fe701e7103c7e84d4"
+dependencies = [
+ "error-code",
+]
 
 [[package]]
 name = "cmake"
@@ -1921,6 +1947,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "error-code"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7"
+
+[[package]]
 name = "etcetera"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2345,6 +2377,16 @@ dependencies = [
  "generic-array 0.14.7",
  "rustversion",
  "typenum",
+]
+
+[[package]]
+name = "gethostname"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
+dependencies = [
+ "rustix",
+ "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -3461,7 +3503,7 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
 name = "locaryn-agent-runtime"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "async-trait",
  "axum",
@@ -3487,7 +3529,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-auth"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "argon2",
  "chrono",
@@ -3505,7 +3547,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-cli"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -3529,7 +3571,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-cloud-providers"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "chrono",
  "locaryn-auth",
@@ -3547,7 +3589,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-command-runtime"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3559,7 +3601,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-config"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
@@ -3573,7 +3615,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-core-bridge"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "async-trait",
  "axum",
@@ -3596,7 +3638,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-daemon"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3641,9 +3683,10 @@ dependencies = [
 
 [[package]]
 name = "locaryn-desktop"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "anyhow",
+ "arboard",
  "async-trait",
  "base64 0.22.1",
  "chrono",
@@ -3663,6 +3706,7 @@ dependencies = [
  "locaryn-provider-supervisor",
  "locaryn-sdk",
  "locaryn-shared-types",
+ "locaryn-skill-runtime",
  "locaryn-storage",
  "locaryn-travel",
  "reqwest 0.12.28",
@@ -3689,7 +3733,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-enterprise"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3705,7 +3749,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-events"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "bytes",
  "futures",
@@ -3719,7 +3763,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-extensions"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "chrono",
  "locaryn-command-runtime",
@@ -3744,7 +3788,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-hook-runtime"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3756,7 +3800,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-llmfit"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "serde",
  "tracing",
@@ -3764,7 +3808,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-lsp-adapters"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "async-trait",
  "locaryn-shared-types",
@@ -3777,7 +3821,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-mcp"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3795,7 +3839,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-media"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "locaryn-config",
  "serde",
@@ -3806,7 +3850,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-mobile"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "futures",
  "jni 0.21.1",
@@ -3829,7 +3873,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-plugin-sdk"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "async-trait",
  "locaryn-extensions",
@@ -3841,7 +3885,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-preview"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "chrono",
  "locaryn-shared-types",
@@ -3853,7 +3897,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-provider-supervisor"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3880,7 +3924,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-remote-server"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "anyhow",
  "axum",
@@ -3908,7 +3952,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-rules-runtime"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "locaryn-config",
  "locaryn-shared-types",
@@ -3918,7 +3962,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-sdk"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3937,7 +3981,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-shared-types"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "chrono",
  "serde",
@@ -3947,7 +3991,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-skill-runtime"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "locaryn-shared-types",
  "serde",
@@ -3958,7 +4002,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-ssh"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "anyhow",
  "russh",
@@ -3969,7 +4013,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-storage"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "chrono",
  "locaryn-auth",
@@ -3985,7 +4029,7 @@ dependencies = [
 
 [[package]]
 name = "locaryn-travel"
-version = "0.4.5"
+version = "0.4.9"
 dependencies = [
  "locaryn-config",
  "qrcode",
@@ -4484,6 +4528,7 @@ dependencies = [
  "block2",
  "objc2",
  "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation",
 ]
 
@@ -9288,6 +9333,23 @@ dependencies = [
  "once_cell",
  "pkg-config",
 ]
+
+[[package]]
+name = "x11rb"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9993aa5be5a26815fe2c3eacfc1fde061fc1a1f094bf1ad2a18bf9c495dd7414"
+dependencies = [
+ "gethostname",
+ "rustix",
+ "x11rb-protocol",
+]
+
+[[package]]
+name = "x11rb-protocol"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 
 [[package]]
 name = "x509-parser"

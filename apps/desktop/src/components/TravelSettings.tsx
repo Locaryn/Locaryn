@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { type RelayChoice, type TravelStatus, core } from "../lib/core";
+import { ecrirePressePapiers } from "../lib/pressePapiers";
 
 /**
  * Configuration du plugin Remote.
@@ -113,8 +114,7 @@ export function TravelSettings() {
             type="button"
             className="locaryn-btn-ghost"
             onClick={() =>
-              void navigator.clipboard
-                .writeText(status.link!)
+              void ecrirePressePapiers(status.link!)
                 .then(() => {
                   setCopied(true);
                   window.setTimeout(() => setCopied(false), 1500);

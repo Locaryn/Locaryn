@@ -33,8 +33,15 @@ pub fn relance(reste: &str) -> String {
 }
 
 /// Juger la dernière réponse contre l'objectif.
+///
+/// `client` et `cle` : ceux du fournisseur actif — un catalogue distant ou
+/// un autre PC Locaryn demande sa clé, et le second son autorité. Le juge
+/// parlait au fournisseur sans l'une ni l'autre : refusé, il arrêtait
+/// l'objectif sur « juge indisponible ».
 pub async fn juger(
+    client: Option<&reqwest::Client>,
     endpoint: &str,
+    cle: Option<&str>,
     model: &str,
     objectif: &str,
     reponse: &str,
@@ -66,13 +73,25 @@ pub async fn juger(
         "chat_template_kwargs": { "enable_thinking": false }
     });
     let url = format!("{}/v1/chat/completions", endpoint.trim_end_matches('/'));
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let resp = client
+    let par_defaut;
+    let client = match client {
+        Some(c) => c,
+        None => {
+            par_defaut = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(60))
+                .build()
+                .map_err(|e| e.to_string())?;
+            &par_defaut
+        }
+    };
+    let mut req = client
         .post(&url)
-        .json(&corps)
+        .timeout(std::time::Duration::from_secs(60))
+        .json(&corps);
+    if let Some(cle) = cle {
+        req = req.bearer_auth(cle);
+    }
+    let resp = req
         .send()
         .await
         .map_err(|e| format!("le juge n'a pas pu être joint : {e}"))?;

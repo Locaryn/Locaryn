@@ -1366,6 +1366,55 @@ body.locaryn-resizing .locaryn-resizer::after {
   padding: var(--space-2) 0;
   max-width: 320px;
 }
+/* Sous-agents lancés par la conversation, tant qu'ils travaillent. */
+.locaryn-sous-agents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.locaryn-sous-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 520px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.locaryn-sous-agent-tete {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.locaryn-sous-agent-nom {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-sous-agent-modele {
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-sous-agent-duree {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.locaryn-sous-agent-activite {
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
 .locaryn-chargement-label {
   font-size: 12.5px;
   color: var(--text-faint);
@@ -7710,6 +7759,13 @@ pre.md-code {
   flex: 0 1 280px;
   min-width: 0;
 }
+/* En colonne, la base de 280px s'appliquait à la hauteur : chaque réglage
+   (décodage spéculatif, experts MoE, RPC…) laissait un grand vide sous son
+   titre. Le texte prend la hauteur qu'il lui faut. */
+.perf-row-col > .perf-row-left {
+  flex: 0 0 auto;
+  width: 100%;
+}
 /* Une ligne de réglage passe sur deux rangées quand la fenêtre se resserre,
    au lieu d'écraser son texte d'aide. */
 .perf-row {
@@ -13778,4 +13834,125 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   .locaryn-depot {
     animation: none;
   }
+}
+
+/* Compte rendu d'un sous-agent : envoyé au modèle par l'application, pas
+   écrit par la personne — il ne prend donc pas l'apparence de ses messages. */
+.locaryn-subagent-report {
+  max-width: 100%;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text-muted, var(--text));
+  background: transparent;
+}
+.locaryn-subagent-report-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 6px;
+  opacity: 0.8;
+}
+.locaryn-subagent-report .locaryn-msg-text {
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+
+/* Modèle d'un autre PC (Réglages → Serveur & fonctions). */
+.lo-autre-pc-schema {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  color: var(--text-faint);
+}
+.lo-autre-pc-cote {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.lo-autre-pc-titre {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+.lo-autre-pc-carte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.lo-autre-pc-entete {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.lo-autre-pc-nom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--text);
+}
+.lo-autre-pc-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-fill);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+}
+.lo-autre-pc-url {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+.lo-autre-pc-choix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.lo-autre-pc-choix .locaryn-select {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.lo-autre-pc-ajout {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.lo-autre-pc-identifiants {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+@media (max-width: 520px) {
+  .lo-autre-pc-schema {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lo-autre-pc-identifiants {
+    grid-template-columns: 1fr;
+  }
+}
+.lo-autre-pc-info {
+  color: var(--accent);
 }

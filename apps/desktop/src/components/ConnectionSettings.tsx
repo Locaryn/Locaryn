@@ -123,8 +123,9 @@ export function ConnectionSettings() {
     <div className="locaryn-field" style={{ marginTop: 28 }}>
       <div className="locaryn-field-label">Se connecter à un serveur</div>
       <p className="locaryn-field-hint">
-        Quand les modèles tournent sur une autre machine. La connexion est établie au démarrage ; ce
-        qui suit permet de la changer.
+        Tout passe alors par l'autre machine : conversations, projets, fichiers, et les outils
+        (terminal, MCP). Pour n'emprunter que son modèle en gardant les outils ici, utilisez «
+        Modèle d'un autre PC » ci-dessus.
       </p>
 
       {session ? (

@@ -135,6 +135,13 @@ pub struct AgentInput {
     /// « Alléger les outils », pour les petits modèles). Faux par défaut :
     /// le modèle reçoit tous les outils de ses connecteurs.
     pub trim_tools: bool,
+    /// Outils garantis : toujours offerts, allégés au besoin mais jamais
+    /// différés derrière `charger_outils` — ceux d'un connecteur désigné par
+    /// `@` ou simplement nommé dans la demande. Vide : rien n'est garanti.
+    pub forced_tools: Vec<String>,
+    /// Le premier tour doit appeler un de ces outils (`tool_choice:
+    /// "required"`) : vrai quand la personne les a imposés par `@`.
+    pub require_tool_call: bool,
     /// Jeton Bearer envoyé à l'endpoint (noyaux alternatifs : OpenClaw,
     /// Hermes…). `None` = pas d'en-tête d'authentification.
     pub bearer_token: Option<String>,

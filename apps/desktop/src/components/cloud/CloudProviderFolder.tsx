@@ -7,6 +7,7 @@ import {
   type InstalledExtension,
   core,
 } from "../../lib/core";
+import { ecrirePressePapiers } from "../../lib/pressePapiers";
 import { DynamicPluginWidget } from "../extensions/DynamicPluginWidget";
 import { getSlotContributions } from "../extensions/SlotRegistry";
 
@@ -297,7 +298,7 @@ export function CloudGatewayCard({
   async function copyPassword() {
     if (!password) return;
     try {
-      await navigator.clipboard.writeText(password);
+      await ecrirePressePapiers(password);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch (e) {

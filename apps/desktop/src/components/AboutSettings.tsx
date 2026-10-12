@@ -100,7 +100,15 @@ export function AboutSettings() {
             </span>
             {info && (
               <span className="locaryn-update-detail">
-                v{info.version} · {info.platform} · {info.arch}
+                v{info.version} · {info.platform} · {info.host_arch ?? info.arch}
+                {info.emulated ? ` (application ${info.arch} émulée)` : ""}
+              </span>
+            )}
+            {info?.emulated && info.platform === "windows" && (
+              <span className="locaryn-update-status">
+                Cette machine est ARM64 : la version x64 tourne sous émulation, plus lentement.
+                Installez la version Windows ARM64 (<code>_arm64-setup.exe</code>) depuis GitHub. Le
+                moteur de conversation, lui, est déjà natif ARM64 et utilise le GPU Adreno.
               </span>
             )}
           </div>
@@ -233,6 +241,22 @@ export function AboutSettings() {
             stable-diffusion.cpp
           </span>
         </div>
+        {runtime?.installed && (
+          <div className="locaryn-kv">
+            {/* Ce que le moteur voit, pas ce que l'application détecte : une
+                carte que le pilote Vulkan n'expose pas reste inutilisée. */}
+            <span className="locaryn-kv-key">GPU du moteur</span>
+            <span className="locaryn-kv-val">
+              {runtime.devices == null
+                ? "le moteur n'a pas répondu"
+                : runtime.devices.length > 0
+                  ? runtime.devices.join(" · ")
+                  : "aucun — le moteur tourne sur le processeur. Mettez à jour le pilote graphique (Vulkan), puis relancez Locaryn."}
+              {runtime.up_to_date === false &&
+                " · moteur à mettre à niveau (au prochain démarrage)"}
+            </span>
+          </div>
+        )}
         <div className="locaryn-kv">
           <span className="locaryn-kv-key">Architecture</span>
           <span className="locaryn-kv-val">Rust + Tauri v2 + React (cœur in-process)</span>

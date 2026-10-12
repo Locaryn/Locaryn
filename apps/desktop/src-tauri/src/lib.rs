@@ -30,8 +30,10 @@ mod model_abilities;
 mod model_recommendations;
 mod model_residency;
 mod notifications;
+mod presse_papiers;
 mod project_context;
 mod reveler;
+mod skills;
 mod snippets;
 mod sous_agents;
 mod trust_source;
@@ -320,7 +322,12 @@ async fn init_core() -> anyhow::Result<Core> {
         tracing::info!("seeding default llama-server provider");
         if let Err(e) = storage
             .providers
-            .upsert_local(&ProviderEngine::LlamaCpp, "http://127.0.0.1:8080", None)
+            .upsert_local(
+                &ProviderEngine::LlamaCpp,
+                locaryn_provider_supervisor::default_endpoint(&ProviderEngine::LlamaCpp)
+                    .unwrap_or("http://127.0.0.1:8080"),
+                None,
+            )
             .await
         {
             tracing::warn!(error = %e, "failed to seed default provider");
@@ -333,13 +340,20 @@ async fn init_core() -> anyhow::Result<Core> {
             .into_iter()
             .filter(|p| p.engine == ProviderEngine::LlamaCpp && p.endpoint.contains(":11434"))
         {
-            let fixed = p.endpoint.replace(":11434", ":8080");
+            let fixed = p.endpoint.replace(
+                ":11434",
+                &format!(":{}", locaryn_provider_supervisor::llama_port()),
+            );
             tracing::warn!(old = %p.endpoint, new = %fixed, "repairing llama.cpp endpoint (was Ollama's port)");
             if let Err(e) = storage.providers.set_endpoint(p.id, &fixed).await {
                 tracing::warn!(error = %e, "endpoint repair failed");
             }
         }
     }
+    // Le port de llama-server n'est plus fixe : 8080 pris par un autre
+    // programme, il en choisit un autre. L'adresse enregistrée suit, sinon le
+    // chat parlerait à l'autre programme.
+    realigner_endpoints_llama(&storage).await;
 
     // Un modèle actif dont les poids ne sont plus là ne doit pas rester
     // affiché comme installé. Le cas arrive après un téléchargement interrompu
@@ -1100,7 +1114,24 @@ async fn judge_goal(
         .flatten()
         .ok_or("aucun modèle actif")?;
     let model = provider.model.clone().unwrap_or_else(|| "default".into());
-    locaryn_agent_runtime::objectif::juger(&provider.endpoint, &model, &goal, &answer).await
+    // Le moteur local a pu être libéré entre deux tours.
+    if moteur_supervise(&provider.engine) {
+        core.supervisor
+            .ensure_running(&provider.engine)
+            .await
+            .map_err(|e| format!("le moteur n'a pas démarré : {e}"))?;
+    }
+    let cle = cloud_providers::key_for_active_provider(&core, &provider);
+    let http = cloud_providers::http_for_active_provider(&core, &provider).await;
+    locaryn_agent_runtime::objectif::juger(
+        http.as_ref(),
+        &provider.endpoint,
+        cle.as_deref(),
+        &model,
+        &goal,
+        &answer,
+    )
+    .await
 }
 
 /// « Modifier » le dernier message : il part de la conversation avec tout ce qui
@@ -2003,7 +2034,11 @@ async fn send_message(
             let endpoint = active_provider
                 .as_ref()
                 .map(|p| p.endpoint.clone())
-                .unwrap_or_else(|| "http://127.0.0.1:8080".into());
+                .unwrap_or_else(|| {
+                    locaryn_provider_supervisor::default_endpoint(&ProviderEngine::LlamaCpp)
+                        .unwrap_or("http://127.0.0.1:8080")
+                        .into()
+                });
             // En automatique, aucune fenêtre n'est réglée : c'est celle que le
             // moteur a choisie qui compte.
             let fenetre = match cfg.context_length {
@@ -2015,7 +2050,14 @@ async fn send_message(
             // Leave room for the new message, the answer and the system prompt.
             let budget = (fenetre * 60) / 100;
             let m = model.clone().unwrap_or_else(|| "default".into());
-            turns = compact_history(&core, &endpoint, &m, turns, budget).await;
+            turns = tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    core.chat_cancels.lock().await.remove(&session_id);
+                    return Ok(());
+                }
+                t = compact_history(&core, &endpoint, &m, turns, budget) => t,
+            };
         }
         turns
     };
@@ -2046,7 +2088,8 @@ async fn send_message(
     };
     // `@Roblox_Studio …` : les outils désignés par la personne, rendus
     // explicites pour le modèle (le message enregistré reste tel quel).
-    let agent_message = match mentions::precisions(core.clone(), &content).await {
+    let mentions = mentions::precisions(core.clone(), &content).await;
+    let agent_message = match &mentions.ajout {
         Some(p) => format!("{agent_message}{p}"),
         None => agent_message,
     };
@@ -2163,6 +2206,10 @@ async fn send_message(
         capabilities: extensions::active_capabilities(&core).await,
         // Les outils que la figure de cette conversation autorise.
         tools: figure_tools,
+        // Les connecteurs et morphs désignés par « @ » : leurs outils sont
+        // toujours offerts, et le premier tour doit en appeler un.
+        forced_tools: mentions.outils,
+        require_tool_call: mentions.exiger,
         // Sans elle, tout appel exigeant un accord serait refusé faute
         // d'interlocuteur — le comportement voulu pour un service sans
         // interface, pas pour l'application de bureau.
@@ -2202,53 +2249,64 @@ async fn send_message(
         native_chat_api: false,
     };
 
-    let mut event_stream: EventStream = if let Some(core_id) = &session_core_id {
-        // Session confiée à un noyau alternatif (OpenClaw, Hermes…). Pas de
-        // fallback silencieux vers le noyau Locaryn : si le noyau choisi ne
-        // répond pas, on le dit, et on propose l'action qui le répare.
-        match core_engines::agent_for_core(&core, core_id).await {
-            Ok((agent, token)) => {
-                input.bearer_token = token;
-                match agent.run(input.clone()).await {
-                    Ok(stream) => stream,
-                    Err(e) => {
-                        tracing::warn!(core = %core_id, error = %e, "noyau alternatif injoignable");
-                        panne_de_modele(
-                            &core,
-                            project_id,
-                            session_id,
-                            &format!(
-                                "Le noyau de cette conversation ne répond pas ({e}). \
+    // Le moteur ne répond qu'une fois la conversation lue — de longues
+    // secondes sur un gros contexte. Stop doit valoir aussi pendant cette
+    // attente : auparavant il n'était écouté qu'une fois le premier mot
+    // arrivé, et le bouton semblait ne rien faire.
+    let flux = async {
+        if let Some(core_id) = &session_core_id {
+            // Session confiée à un noyau alternatif (OpenClaw, Hermes…). Pas de
+            // fallback silencieux vers le noyau Locaryn : si le noyau choisi ne
+            // répond pas, on le dit, et on propose l'action qui le répare.
+            match core_engines::agent_for_core(&core, core_id).await {
+                Ok((agent, token)) => {
+                    input.bearer_token = token;
+                    match agent.run(input.clone()).await {
+                        Ok(stream) => stream,
+                        Err(e) => {
+                            tracing::warn!(core = %core_id, error = %e, "noyau alternatif injoignable");
+                            panne_de_modele(
+                                &core,
+                                project_id,
+                                session_id,
+                                &format!(
+                                    "Le noyau de cette conversation ne répond pas ({e}). \
                                  Ouvrez Réglages → Extensions et démarrez-le."
-                            ),
-                        )
-                        .await
+                                ),
+                            )
+                            .await
+                        }
                     }
                 }
+                Err(e) => panne_de_modele(&core, project_id, session_id, &e).await,
             }
-            Err(e) => panne_de_modele(&core, project_id, session_id, &e).await,
-        }
-    } else {
-        match &active_provider {
-            Some(p) => {
-                tracing::info!(endpoint = %p.endpoint, model = ?model, "desktop using OpenAiCompatAgent (llama-server)");
-                // Un fournisseur distant apporté par une extension paie ses
-                // jetons : sa clé est dans le trousseau du système, et c'est
-                // ici qu'elle rejoint la requête. Un moteur local n'en a pas,
-                // et l'en-tête reste absent — exactement comme avant.
-                input.bearer_token = cloud_providers::key_for_active_provider(&core, p);
-                let agent = OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
-                match agent.run(input.clone()).await {
-                    Ok(stream) => stream,
-                    // Le moteur a lu la requête et l'a refusée : ce n'est pas
-                    // une panne, sa raison suffit.
-                    Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
-                        tracing::warn!(%raison, "requête refusée par le moteur");
-                        refus_du_moteur(raison)
+        } else {
+            match &active_provider {
+                Some(p) => {
+                    tracing::info!(endpoint = %p.endpoint, model = ?model, "desktop using OpenAiCompatAgent (llama-server)");
+                    // Un fournisseur distant apporté par une extension paie ses
+                    // jetons : sa clé est dans le trousseau du système, et c'est
+                    // ici qu'elle rejoint la requête. Un moteur local n'en a pas,
+                    // et l'en-tête reste absent — exactement comme avant.
+                    input.bearer_token = cloud_providers::key_for_active_provider(&core, p);
+                    let mut agent =
+                        OpenAiCompatAgent::with_defaults(Some(&p.endpoint), model.as_deref());
+                    // Un autre PC Locaryn : son certificat vient de sa propre
+                    // autorité, que le client ordinaire refuserait.
+                    if let Some(http) = cloud_providers::http_for_active_provider(&core, p).await {
+                        agent = agent.with_client(http);
                     }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
-                        panne_de_modele(&core, project_id, session_id, &match &panne_du_moteur {
+                    match agent.run(input.clone()).await {
+                        Ok(stream) => stream,
+                        // Le moteur a lu la requête et l'a refusée : ce n'est pas
+                        // une panne, sa raison suffit.
+                        Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
+                            tracing::warn!(%raison, "requête refusée par le moteur");
+                            refus_du_moteur(raison)
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
+                            panne_de_modele(&core, project_id, session_id, &match &panne_du_moteur {
                             Some(cause) => {
                                 format!("Le moteur local n'a pas démarré : {cause}")
                             }
@@ -2258,20 +2316,30 @@ async fn send_message(
                             ),
                         })
                         .await
+                        }
                     }
                 }
-            }
-            None => {
-                tracing::warn!("no active provider configured");
-                panne_de_modele(
-                    &core,
-                    project_id,
-                    session_id,
-                    "Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.",
-                )
-                .await
+                None => {
+                    tracing::warn!("no active provider configured");
+                    panne_de_modele(
+                        &core,
+                        project_id,
+                        session_id,
+                        "Aucun modèle actif. Ouvrez le Marketplace et installez un modèle.",
+                    )
+                    .await
+                }
             }
         }
+    };
+    let mut event_stream: EventStream = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {
+            tracing::info!("réponse arrêtée avant son premier mot");
+            core.chat_cancels.lock().await.remove(&session_id);
+            return Ok(());
+        }
+        flux = flux => flux,
     };
 
     // 4. Forward events to the frontend while collecting the assistant text.
@@ -2315,6 +2383,17 @@ async fn send_message(
         // If the channel is gone (webview navigated away), keep draining the
         // stream so the assistant reply still gets persisted below.
         let _ = on_event.send(ev);
+    }
+    // Lâcher le flux tout de suite : la boucle d'outils le voit et s'arrête
+    // — plus de requête au moteur ni d'outil lancé après Stop.
+    drop(event_stream);
+    // La fin d'une réponse est une utilisation : le délai d'inactivité court
+    // d'ici, pas du moment où la question est partie.
+    if let Some(p) = active_provider
+        .as_ref()
+        .filter(|p| moteur_supervise(&p.engine))
+    {
+        core.supervisor.note_activity(&p.engine).await;
     }
     let stopped = cancel.is_cancelled();
     core.chat_cancels.lock().await.remove(&session_id);
@@ -3718,29 +3797,34 @@ fn hf_candidate_variant(path: &str, quantization: Option<&str>) -> String {
     stem.trim_end_matches(['-', '_', '.', '/']).to_string()
 }
 
-/// Ce qu'une réponse refusée de Hugging Face veut dire, en clair. « HTTP 401 »
-/// laissait croire que rien ne s'installait sans jeton, alors que seuls les
-/// dépôts verrouillés en demandent un.
-fn hf_refus(statut: u16, url: &str, avec_jeton: bool) -> String {
-    let depot = url
-        .strip_prefix("https://huggingface.co/")
-        .map(|reste| {
-            let reste = reste.strip_prefix("api/models/").unwrap_or(reste);
-            reste.split('/').take(2).collect::<Vec<_>>().join("/")
-        })
-        .filter(|d| d.contains('/'));
-    match (statut, depot) {
-        (401 | 403, Some(d)) if avec_jeton => format!(
-            "Hugging Face refuse l'accès à {d} avec votre jeton : acceptez la licence du modèle sur https://huggingface.co/{d} (même compte que le jeton), ou vérifiez que le jeton est encore valide."
-        ),
-        (401 | 403, Some(d)) => format!(
-            "{d} est un dépôt verrouillé sur Hugging Face : acceptez sa licence sur https://huggingface.co/{d}, puis ajoutez un jeton dans Réglages → Hugging Face. Les autres modèles s'installent sans jeton."
-        ),
-        (404, Some(d)) => format!(
-            "Fichier introuvable sur Hugging Face ({d}) : il a été renommé ou retiré du dépôt. Adresse demandée : {url}"
-        ),
-        _ => format!("HTTP {statut} pour {url}"),
-    }
+use locaryn_shared_types::model_source::hf_refus;
+
+/// `https://huggingface.co/<auteur>/<dépôt>/resolve/<révision>/<chemin>` →
+/// `(auteur/dépôt, chemin)`. `None` pour toute autre adresse.
+fn hf_resolve_parts(url: &str) -> Option<(String, String)> {
+    let reste = url.strip_prefix("https://huggingface.co/")?;
+    let reste = reste.split(['?', '#']).next()?;
+    let mut parts = reste.splitn(5, '/');
+    let (auteur, depot, resolve, _rev, chemin) = (
+        parts.next()?,
+        parts.next()?,
+        parts.next()?,
+        parts.next()?,
+        parts.next()?,
+    );
+    (resolve == "resolve" && !chemin.is_empty())
+        .then(|| (format!("{auteur}/{depot}"), chemin.to_string()))
+}
+
+/// Le fichier du dépôt qui porte ce chemin à la casse près, s'il est unique
+/// et différent de celui demandé.
+fn hf_corrige_chemin(chemin: &str, fichiers: &[(String, u64)]) -> Option<String> {
+    let mut trouves = fichiers
+        .iter()
+        .map(|(p, _)| p)
+        .filter(|p| p.eq_ignore_ascii_case(chemin) && p.as_str() != chemin);
+    let premier = trouves.next()?;
+    trouves.next().is_none().then(|| premier.clone())
 }
 
 async fn fetch_hf_tree(
@@ -4525,21 +4609,46 @@ async fn do_pull_with_aggregate(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let mut req = client.get(url);
-    if offset > 0 {
-        req = req.header("Range", format!("bytes={offset}-"));
-    }
-    // Gated HuggingFace repos (kyutai/pocket-tts, Qwen3-TTS, …) answer 401
-    // without an access token. Send it only to huggingface.co, never to any
-    // other host this function might be pointed at.
-    if !hf_token.is_empty() && url.starts_with("https://huggingface.co/") {
-        req = req.header("Authorization", format!("Bearer {hf_token}"));
-    }
+    let requete = |url: &str| {
+        let mut req = client.get(url);
+        if offset > 0 {
+            req = req.header("Range", format!("bytes={offset}-"));
+        }
+        // Gated HuggingFace repos (kyutai/pocket-tts, Qwen3-TTS, …) answer 401
+        // without an access token. Send it only to huggingface.co, never to any
+        // other host this function might be pointed at.
+        if !hf_token.is_empty() && url.starts_with("https://huggingface.co/") {
+            req = req.header("Authorization", format!("Bearer {hf_token}"));
+        }
+        req
+    };
 
-    let resp = req
+    let mut resp = requete(url)
         .send()
         .await
         .map_err(|e| format!("download error: {e}"))?;
+
+    // Hugging Face distingue les majuscules : `Qwen3.5-4B-q4_K_M.gguf` n'est
+    // pas `Qwen3.5-4B-Q4_K_M.gguf`, et une étiquette de quantisation recopiée
+    // dans la mauvaise casse donnait « fichier introuvable » sur un fichier
+    // bien présent. Sur un 404, la liste réelle du dépôt tranche.
+    let mut url_corrigee = None;
+    if resp.status().as_u16() == 404 {
+        if let Some((depot, chemin)) = hf_resolve_parts(url) {
+            if let Ok(fichiers) = fetch_hf_tree(&client, &depot, hf_token).await {
+                if let Some(vrai) = hf_corrige_chemin(&chemin, &fichiers) {
+                    let nouvelle = format!("https://huggingface.co/{depot}/resolve/main/{vrai}");
+                    tracing::info!(demande = %url, trouve = %nouvelle, "fichier Hugging Face retrouvé à la casse près");
+                    resp = requete(&nouvelle)
+                        .send()
+                        .await
+                        .map_err(|e| format!("download error: {e}"))?;
+                    url_corrigee = Some(nouvelle);
+                }
+            }
+        }
+    }
+    let url = url_corrigee.as_deref().unwrap_or(url);
 
     if !resp.status().is_success() && resp.status().as_u16() != 206 {
         return Err(hf_refus(resp.status().as_u16(), url, !hf_token.is_empty()));
@@ -4854,6 +4963,13 @@ async fn stop_generation(core: State<'_, Core>, session_id: Uuid) -> Result<(), 
         }
         None => Err("aucune generation en cours pour cette session".into()),
     }
+}
+
+/// Le jeton Hugging Face des réglages, partagé avec le serveur de la machine :
+/// sans lui, un modèle verrouillé installé depuis le téléphone échouait.
+#[tauri::command]
+fn set_hf_token_machine(token: String) -> Result<(), String> {
+    locaryn_config::set_hf_token(&token).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -5969,6 +6085,12 @@ pub struct AppInfo {
     /// must fall back to opening the GitHub releases page (Linux).
     pub platform: String,
     pub arch: String,
+    /// Architecture du processeur de la machine. Diffère de `arch` quand la
+    /// version x64 tourne émulée sur un PC ARM (Snapdragon X) : l'écran « À
+    /// propos » affichait alors « x86_64 » sur une machine ARM.
+    pub host_arch: String,
+    /// Vrai quand l'application tourne sous émulation (x64 sur ARM64).
+    pub emulated: bool,
 }
 
 #[tauri::command]
@@ -5985,6 +6107,8 @@ async fn app_info(core: State<'_, Core>) -> Result<AppInfo, String> {
         models_dir: locaryn_config::models_dir().to_string_lossy().to_string(),
         platform: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
+        host_arch: locaryn_llmfit::hardware::host_arch().to_string(),
+        emulated: locaryn_llmfit::hardware::running_emulated(),
     })
 }
 
@@ -6434,6 +6558,9 @@ pub struct LlamaRuntimeStatus {
     pub up_to_date: bool,
     pub pinned: String,
     pub path: String,
+    /// Les GPU que le moteur voit réellement (`--list-devices`). Vide : il ne
+    /// voit que le processeur. `None` : le moteur n'a pas répondu.
+    pub devices: Option<Vec<String>>,
 }
 
 #[tauri::command]
@@ -6443,10 +6570,17 @@ async fn llama_runtime_status(_core: State<'_, Core>) -> Result<LlamaRuntimeStat
     // dur. Il annonçait donc « non installé » là où le moteur démarrait très
     // bien, et l'inverse ailleurs.
     let found = locaryn_provider_supervisor::llama_server_path();
+    let devices = match &found {
+        Some(bin) => locaryn_provider_supervisor::llama_devices(bin).await,
+        None => None,
+    };
     Ok(LlamaRuntimeStatus {
         installed: found.is_some(),
         version: None,
-        up_to_date: true,
+        // Faux pour une build d'avant le pin, ou la build CPU posée sur un
+        // Snapdragon : le prochain démarrage du moteur la remplacera.
+        up_to_date: locaryn_provider_supervisor::runtime_install::installed_variant_is_current(),
+        devices,
         pinned: locaryn_provider_supervisor::LLAMA_BUILD.to_string(),
         path: found
             .unwrap_or_else(|| locaryn_config::bin_dir().join("llama").join("llama-server"))
@@ -6479,12 +6613,14 @@ async fn setup_llama_runtime(
         total: 100,
         percentage: 100.0,
     });
+    let devices = locaryn_provider_supervisor::llama_devices(&bin).await;
     Ok(LlamaRuntimeStatus {
         installed: true,
         version: Some(locaryn_provider_supervisor::LLAMA_BUILD.to_string()),
-        up_to_date: true,
+        up_to_date: locaryn_provider_supervisor::runtime_install::installed_variant_is_current(),
         pinned: locaryn_provider_supervisor::LLAMA_BUILD.to_string(),
         path: bin.to_string_lossy().to_string(),
+        devices,
     })
 }
 
@@ -6870,6 +7006,7 @@ pub fn run() {
             storage_root::clean_temp,
             pull_model,
             cancel_pull_model,
+            set_hf_token_machine,
             delete_model_cmd,
             approve_tool_call,
             update_provider_model_params,
@@ -6913,6 +7050,11 @@ pub fn run() {
             cloud_providers::cloud_provider_clear_key,
             cloud_providers::cloud_provider_models,
             cloud_providers::cloud_provider_select,
+            cloud_providers::serveurs_modeles,
+            presse_papiers::lire_presse_papiers,
+            presse_papiers::ecrire_presse_papiers,
+            cloud_providers::serveur_modeles_ajouter,
+            cloud_providers::serveur_modeles_retirer,
             cloud_providers::cloud_provider_status,
             cloud_providers::cloud_provider_start,
             cloud_providers::cloud_provider_open_dashboard,
@@ -6922,6 +7064,7 @@ pub fn run() {
             model_residency::llmfit_catalog,
             model_residency::load_chat_model,
             model_residency::eject_chat_model,
+            model_residency::signaler_activite,
             model_residency::caution_level,
             model_residency::set_caution_level,
             open_models_folder,
@@ -6981,6 +7124,7 @@ pub fn run() {
             core_engines::core_start,
             core_engines::core_stop,
             core_engines::core_skills,
+            skills::list_skills,
             core_engines::core_install_skill,
             extensions::install_extension,
             extensions::update_extension,
@@ -7103,6 +7247,35 @@ mod suppression_modele_tests {
 
 #[cfg(test)]
 mod tests {
+    /// Le cas du rapport : l'étiquette `q4_K_M` recopiée dans l'URL d'un
+    /// dépôt unsloth, dont le fichier s'appelle `Q4_K_M`.
+    #[test]
+    fn un_fichier_hugging_face_se_retrouve_a_la_casse_pres() {
+        let url =
+            "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-q4_K_M.gguf";
+        let (depot, chemin) = super::hf_resolve_parts(url).unwrap();
+        assert_eq!(depot, "unsloth/Qwen3.5-4B-GGUF");
+        assert_eq!(chemin, "Qwen3.5-4B-q4_K_M.gguf");
+        let fichiers = vec![
+            ("Qwen3.5-4B-Q4_K_M.gguf".to_string(), 1),
+            ("Qwen3.5-4B-Q4_K_S.gguf".to_string(), 1),
+        ];
+        assert_eq!(
+            super::hf_corrige_chemin(&chemin, &fichiers).as_deref(),
+            Some("Qwen3.5-4B-Q4_K_M.gguf")
+        );
+        // Rien à corriger quand le nom est déjà le bon, ou absent.
+        assert_eq!(
+            super::hf_corrige_chemin("Qwen3.5-4B-Q4_K_M.gguf", &fichiers),
+            None
+        );
+        assert_eq!(super::hf_corrige_chemin("autre.gguf", &fichiers), None);
+        assert_eq!(
+            super::hf_resolve_parts("https://example.com/a/b/resolve/main/x"),
+            None
+        );
+    }
+
     #[test]
     fn un_refus_de_hugging_face_dit_quoi_faire() {
         let verrou = super::hf_refus(
@@ -7416,5 +7589,24 @@ ligne utile B
             ),
             "erreur inconnue (aucune sortie)"
         );
+    }
+}
+
+/// Les adresses locales de llama-server enregistrées suivent le port choisi
+/// par le superviseur (voir `locaryn_provider_supervisor::llama_port`).
+pub(crate) async fn realigner_endpoints_llama(storage: &Storage) {
+    let Ok(list) = storage.providers.list().await else {
+        return;
+    };
+    for p in list
+        .into_iter()
+        .filter(|p| p.engine == ProviderEngine::LlamaCpp)
+    {
+        if let Some(nouvelle) = locaryn_provider_supervisor::realigner_endpoint_llama(&p.endpoint) {
+            tracing::warn!(ancienne = %p.endpoint, %nouvelle, "adresse de llama-server alignée sur le port choisi");
+            if let Err(e) = storage.providers.set_endpoint(p.id, &nouvelle).await {
+                tracing::warn!(error = %e, "alignement de l'adresse impossible");
+            }
+        }
     }
 }

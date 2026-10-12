@@ -31,9 +31,7 @@
   fill: none;
   stroke-linecap: butt;
   cursor: pointer;
-  transition:
-    opacity 0.18s ease,
-    stroke-width 0.18s ease;
+  transition: opacity 0.18s ease, stroke-width 0.18s ease;
   animation: lo-ring-trace 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 

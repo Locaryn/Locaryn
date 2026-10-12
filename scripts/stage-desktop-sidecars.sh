@@ -14,6 +14,8 @@
 #   bash scripts/stage-desktop-sidecars.sh              # release, cible hôte
 #   PROFILE=debug bash scripts/stage-desktop-sidecars.sh
 #   UNIVERSAL=1 bash scripts/stage-desktop-sidecars.sh  # macOS, bundle universel
+#   TARGET=aarch64-pc-windows-msvc bash scripts/stage-desktop-sidecars.sh
+#                                                       # compilation croisée
 
 set -euo pipefail
 
@@ -60,6 +62,13 @@ if [ "${UNIVERSAL:-0}" = "1" ]; then
       "$cible/aarch64-apple-darwin/$subdir/$bin" \
       -output "$out/$bin-universal-apple-darwin"
     chmod +x "$out/$bin-universal-apple-darwin"
+  done
+elif [ -n "${TARGET:-}" ]; then
+  # Compilation croisée (Windows ARM64 depuis un runner x64) : Tauri réclame
+  # les compagnons sous le triplet de la cible, pas celui de l'hôte.
+  cargo build "${flags[@]}" --target "$TARGET" -p locaryn-daemon -p locaryn-cli
+  for bin in locaryn-daemon locaryn; do
+    cp "$cible/$TARGET/$subdir/$bin$ext" "$out/$bin-$TARGET$ext"
   done
 else
   cargo build "${flags[@]}" -p locaryn-daemon -p locaryn-cli

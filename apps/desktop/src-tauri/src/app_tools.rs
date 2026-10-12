@@ -71,136 +71,141 @@ fn erreur(output: impl Into<String>) -> ToolResult {
     }
 }
 
+/// Les outils de l'application, tels que le modèle les reçoit.
+pub(crate) fn specs_app() -> Vec<ToolSpec> {
+    vec![
+        spec(
+            "app_list_connectors",
+            "Liste les connecteurs MCP configurés dans Locaryn : nom, transport, commande ou adresse, démarré ou non.",
+            json!({ "type": "object", "properties": {} }),
+            Risk::Low,
+        ),
+        spec(
+            "app_add_connector",
+            "Ajoute un connecteur MCP à Locaryn et le démarre. `config` est la configuration JSON telle que la documentation d'un logiciel la donne : un bloc {\"mcpServers\": {...}}, ou un seul serveur {\"command\", \"args\", \"env\"} ou {\"url\"}. Rend les outils que le connecteur expose.",
+            json!({
+                "type": "object",
+                "required": ["config"],
+                "properties": {
+                    "config": { "description": "Configuration JSON du serveur MCP (texte ou objet)." },
+                    "name": { "type": "string", "description": "Nom du connecteur quand `config` décrit un seul serveur sans nom." }
+                }
+            }),
+            Risk::Medium,
+        ),
+        spec(
+            "app_list_extensions",
+            "Liste les extensions installées dans Locaryn (morphs, skills, connecteurs fournis) : nom, version, active ou non, ce qu'elles apportent.",
+            json!({ "type": "object", "properties": {} }),
+            Risk::Low,
+        ),
+        spec(
+            "app_search_extensions",
+            "Cherche des extensions (morphs, skills, plugins) dans les catalogues de Locaryn. Rend nom, description et `install_source` à passer à app_install_extension.",
+            json!({
+                "type": "object",
+                "required": ["query"],
+                "properties": { "query": { "type": "string", "description": "Mots recherchés." } }
+            }),
+            Risk::Low,
+        ),
+        spec(
+            "app_install_extension",
+            "Installe et active une extension (morph, skill ou plugin) dans Locaryn, avec les permissions qu'elle demande. `source` : un `install_source` rendu par app_search_extensions, un dépôt « propriétaire/dépôt » ou une adresse git. Ses skills et ses outils sont disponibles au message suivant.",
+            json!({
+                "type": "object",
+                "required": ["source"],
+                "properties": { "source": { "type": "string" } }
+            }),
+            Risk::High,
+        ),
+        spec(
+            "browser_open",
+            "Ouvre une adresse (ou une recherche) dans le navigateur intégré de Locaryn, visible par la personne dans l'espace de travail, attend la page et la rend : titre, adresse, texte visible, et les éléments sur lesquels agir, numérotés.",
+            json!({
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                    "url": { "type": "string", "description": "Adresse (https://…, exemple.fr) ou texte à chercher." }
+                }
+            }),
+            Risk::Medium,
+        ),
+        spec(
+            "browser_read",
+            "Relit la page ouverte dans le navigateur intégré : titre, adresse, texte visible, éléments numérotés. Les numéros changent à chaque lecture.",
+            json!({ "type": "object", "properties": {} }),
+            Risk::Low,
+        ),
+        spec(
+            "browser_click",
+            "Clique sur l'élément numéro `ref` de la dernière lecture de la page, attend ce qu'il déclenche et rend la page.",
+            json!({
+                "type": "object",
+                "required": ["ref"],
+                "properties": { "ref": { "type": "integer", "description": "Numéro de l'élément dans la dernière lecture." } }
+            }),
+            Risk::Medium,
+        ),
+        spec(
+            "browser_type",
+            "Remplit le champ numéro `ref` de la dernière lecture avec `text` ; `submit` envoie ensuite le formulaire (comme Entrée). Rend la page.",
+            json!({
+                "type": "object",
+                "required": ["ref", "text"],
+                "properties": {
+                    "ref": { "type": "integer" },
+                    "text": { "type": "string" },
+                    "submit": { "type": "boolean", "description": "Envoyer après la saisie (défaut : non)." }
+                }
+            }),
+            Risk::Medium,
+        ),
+        spec(
+            "browser_scroll",
+            "Fait défiler la page du navigateur intégré d'un écran (`down`, `up`) ou jusqu'au début ou à la fin (`top`, `bottom`), et rend la position et le texte maintenant visible.",
+            json!({
+                "type": "object",
+                "required": ["direction"],
+                "properties": {
+                    "direction": { "type": "string", "enum": ["down", "up", "top", "bottom"] }
+                }
+            }),
+            Risk::Low,
+        ),
+        spec(
+            "lister_modeles",
+            "Liste les modèles qu'un sous-agent peut utiliser : `local` (celui de cette machine) et ceux des catalogues qu'apportent les morphs, avec ceux qui savent appeler des outils et ceux qui sont gratuits.",
+            json!({ "type": "object", "properties": {} }),
+            Risk::Low,
+        ),
+        spec(
+            "lancer_sous_agent",
+            "Confie une tâche à un sous-agent qui travaille en arrière-plan avec ses propres outils, pendant que la conversation continue. Rend aussitôt la main ; son compte rendu arrive dans la conversation quand il a fini. Plusieurs sous-agents peuvent tourner en même temps.",
+            json!({
+                "type": "object",
+                "required": ["tache"],
+                "properties": {
+                    "tache": { "type": "string", "description": "Ce que le sous-agent doit faire, complet : il ne voit pas la conversation." },
+                    "modele": { "type": "string", "description": "`local` (défaut) ou `<catalogue>:<modèle>` rendu par lister_modeles." },
+                    "nom": { "type": "string", "description": "Un nom court pour le reconnaître." }
+                }
+            }),
+            Risk::Low,
+        ),
+        spec(
+            "browser_back",
+            "Revient à la page précédente du navigateur intégré et la rend.",
+            json!({ "type": "object", "properties": {} }),
+            Risk::Low,
+        ),
+    ]
+}
+
 #[async_trait::async_trait]
 impl HostTools for AppTools {
     fn specs(&self) -> Vec<ToolSpec> {
-        vec![
-            spec(
-                "app_list_connectors",
-                "Liste les connecteurs MCP configurés dans Locaryn : nom, transport, commande ou adresse, démarré ou non.",
-                json!({ "type": "object", "properties": {} }),
-                Risk::Low,
-            ),
-            spec(
-                "app_add_connector",
-                "Ajoute un connecteur MCP à Locaryn et le démarre. `config` est la configuration JSON telle que la documentation d'un logiciel la donne : un bloc {\"mcpServers\": {...}}, ou un seul serveur {\"command\", \"args\", \"env\"} ou {\"url\"}. Rend les outils que le connecteur expose.",
-                json!({
-                    "type": "object",
-                    "required": ["config"],
-                    "properties": {
-                        "config": { "description": "Configuration JSON du serveur MCP (texte ou objet)." },
-                        "name": { "type": "string", "description": "Nom du connecteur quand `config` décrit un seul serveur sans nom." }
-                    }
-                }),
-                Risk::Medium,
-            ),
-            spec(
-                "app_list_extensions",
-                "Liste les extensions installées dans Locaryn (morphs, skills, connecteurs fournis) : nom, version, active ou non, ce qu'elles apportent.",
-                json!({ "type": "object", "properties": {} }),
-                Risk::Low,
-            ),
-            spec(
-                "app_search_extensions",
-                "Cherche des extensions (morphs, skills, plugins) dans les catalogues de Locaryn. Rend nom, description et `install_source` à passer à app_install_extension.",
-                json!({
-                    "type": "object",
-                    "required": ["query"],
-                    "properties": { "query": { "type": "string", "description": "Mots recherchés." } }
-                }),
-                Risk::Low,
-            ),
-            spec(
-                "app_install_extension",
-                "Installe et active une extension (morph, skill ou plugin) dans Locaryn, avec les permissions qu'elle demande. `source` : un `install_source` rendu par app_search_extensions, un dépôt « propriétaire/dépôt » ou une adresse git. Ses skills et ses outils sont disponibles au message suivant.",
-                json!({
-                    "type": "object",
-                    "required": ["source"],
-                    "properties": { "source": { "type": "string" } }
-                }),
-                Risk::High,
-            ),
-            spec(
-                "browser_open",
-                "Ouvre une adresse (ou une recherche) dans le navigateur intégré de Locaryn, visible par la personne dans l'espace de travail, attend la page et la rend : titre, adresse, texte visible, et les éléments sur lesquels agir, numérotés.",
-                json!({
-                    "type": "object",
-                    "required": ["url"],
-                    "properties": {
-                        "url": { "type": "string", "description": "Adresse (https://…, exemple.fr) ou texte à chercher." }
-                    }
-                }),
-                Risk::Medium,
-            ),
-            spec(
-                "browser_read",
-                "Relit la page ouverte dans le navigateur intégré : titre, adresse, texte visible, éléments numérotés. Les numéros changent à chaque lecture.",
-                json!({ "type": "object", "properties": {} }),
-                Risk::Low,
-            ),
-            spec(
-                "browser_click",
-                "Clique sur l'élément numéro `ref` de la dernière lecture de la page, attend ce qu'il déclenche et rend la page.",
-                json!({
-                    "type": "object",
-                    "required": ["ref"],
-                    "properties": { "ref": { "type": "integer", "description": "Numéro de l'élément dans la dernière lecture." } }
-                }),
-                Risk::Medium,
-            ),
-            spec(
-                "browser_type",
-                "Remplit le champ numéro `ref` de la dernière lecture avec `text` ; `submit` envoie ensuite le formulaire (comme Entrée). Rend la page.",
-                json!({
-                    "type": "object",
-                    "required": ["ref", "text"],
-                    "properties": {
-                        "ref": { "type": "integer" },
-                        "text": { "type": "string" },
-                        "submit": { "type": "boolean", "description": "Envoyer après la saisie (défaut : non)." }
-                    }
-                }),
-                Risk::Medium,
-            ),
-            spec(
-                "browser_scroll",
-                "Fait défiler la page du navigateur intégré d'un écran (`down`, `up`) ou jusqu'au début ou à la fin (`top`, `bottom`), et rend la position et le texte maintenant visible.",
-                json!({
-                    "type": "object",
-                    "required": ["direction"],
-                    "properties": {
-                        "direction": { "type": "string", "enum": ["down", "up", "top", "bottom"] }
-                    }
-                }),
-                Risk::Low,
-            ),
-            spec(
-                "lister_modeles",
-                "Liste les modèles qu'un sous-agent peut utiliser : `local` (celui de cette machine) et ceux des catalogues qu'apportent les morphs, avec ceux qui savent appeler des outils et ceux qui sont gratuits.",
-                json!({ "type": "object", "properties": {} }),
-                Risk::Low,
-            ),
-            spec(
-                "lancer_sous_agent",
-                "Confie une tâche à un sous-agent qui travaille en arrière-plan avec ses propres outils, pendant que la conversation continue. Rend aussitôt la main ; son compte rendu arrive dans la conversation quand il a fini. Plusieurs sous-agents peuvent tourner en même temps.",
-                json!({
-                    "type": "object",
-                    "required": ["tache"],
-                    "properties": {
-                        "tache": { "type": "string", "description": "Ce que le sous-agent doit faire, complet : il ne voit pas la conversation." },
-                        "modele": { "type": "string", "description": "`local` (défaut) ou `<catalogue>:<modèle>` rendu par lister_modeles." },
-                        "nom": { "type": "string", "description": "Un nom court pour le reconnaître." }
-                    }
-                }),
-                Risk::Low,
-            ),
-            spec(
-                "browser_back",
-                "Revient à la page précédente du navigateur intégré et la rend.",
-                json!({ "type": "object", "properties": {} }),
-                Risk::Low,
-            ),
-        ]
+        specs_app()
     }
 
     async fn call(&self, tool: &str, args: &Value) -> ToolResult {

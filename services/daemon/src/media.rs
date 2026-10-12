@@ -1045,14 +1045,38 @@ impl PullProgress {
     }
 }
 
+/// Le jeton Hugging Face de la machine, joint aux requêtes vers huggingface.co
+/// seulement : les dépôts verrouillés s'installaient depuis le bureau, jamais
+/// depuis le téléphone.
+fn avec_jeton_hf(req: reqwest::RequestBuilder, url: &str) -> reqwest::RequestBuilder {
+    match locaryn_config::hf_token() {
+        Some(jeton) if url.starts_with("https://huggingface.co/") => {
+            req.header("Authorization", format!("Bearer {jeton}"))
+        }
+        _ => req,
+    }
+}
+
+/// Un refus du serveur, en clair : un dépôt verrouillé dit quoi faire.
+fn refus_http(status: reqwest::StatusCode, url: &str) -> String {
+    if url.starts_with("https://huggingface.co/") {
+        locaryn_shared_types::model_source::hf_refus(
+            status.as_u16(),
+            url,
+            locaryn_config::hf_token().is_some(),
+        )
+    } else {
+        format!("le serveur a répondu {status}.")
+    }
+}
+
 /// La taille qu'annonce le serveur pour un fichier, sans le télécharger.
 ///
 /// Absente quand le serveur ne l'annonce pas (ou répond autre chose qu'un
 /// succès : une page de redirection n'est pas une taille) : la barre devient
 /// indéterminée, ce qui vaut mieux qu'un pourcentage inventé.
 async fn head_length(client: &reqwest::Client, url: &str) -> Option<u64> {
-    client
-        .head(url)
+    avec_jeton_hf(client.head(url), url)
         .send()
         .await
         .ok()
@@ -1227,14 +1251,13 @@ async fn download_to(
     progress: &PullProgress,
 ) -> Result<u64, String> {
     let mut partial_cleanup = PartialDownloadGuard::new(part);
-    let resp = client
-        .get(url)
+    let resp = avec_jeton_hf(client.get(url), url)
         .send()
         .await
         .map_err(|e| format!("téléchargement impossible : {e}"))?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(format!("le serveur a répondu {status}."));
+        return Err(refus_http(status, url));
     }
     // Le HEAD n'a pas toujours donné la taille : la réponse du GET, elle, la
     // connaît presque toujours. Dès qu'on l'apprend, la barre devient exacte.
@@ -1284,16 +1307,12 @@ async fn list_repo_files(
     }
 
     let tree_url = format!("https://huggingface.co/api/models/{repo_id}/tree/main?recursive=true");
-    let resp = client
-        .get(&tree_url)
+    let resp = avec_jeton_hf(client.get(&tree_url), &tree_url)
         .send()
         .await
         .map_err(|e| format!("liste des fichiers : {e}"))?;
     if !resp.status().is_success() {
-        return Err(format!(
-            "Impossible de lister les fichiers du dépôt {repo_id} (HTTP {}).",
-            resp.status()
-        ));
+        return Err(refus_http(resp.status(), &tree_url));
     }
     let entries: Vec<serde_json::Value> = resp
         .json()

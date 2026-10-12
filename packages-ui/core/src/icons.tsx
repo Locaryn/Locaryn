@@ -60,6 +60,7 @@ import {
   HelpCircle,
   Hierarchy,
   Hourglass,
+  type IconComponent,
   InfoCircle,
   Key,
   Laptop,
@@ -130,7 +131,6 @@ import {
   Wifi,
   Wind,
   X,
-  type IconComponent,
 } from "reicon-react";
 
 /** Les dessins, par nom de l'application. */

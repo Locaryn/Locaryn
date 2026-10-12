@@ -18,6 +18,10 @@ allow = [
     # Le paquet de certificats racines de Mozilla (webpki-roots). Le CDLA
     # permissif autorise usage et redistribution sans contrepartie.
     "CDLA-Permissive-2.0",
+    # Boost Software License : permissive, sans contrepartie à la
+    # redistribution d'un binaire. Arrive par clipboard-win et error-code,
+    # qu'apporte arboard (le presse-papiers du système, sous Windows).
+    "BSL-1.0",
 ]
 confidence-threshold = 0.93
 

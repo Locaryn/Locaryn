@@ -568,13 +568,18 @@ async fn main() -> anyhow::Result<()> {
         // Unknown API paths keep answering JSON — never the SPA — while every
         // other path falls back to the web client (single-page application:
         // an unknown route serves index.html, and the page decides).
-        .route("/v1/*rest", get(api_not_found))
-        // `fallback` (not `not_found_service`, which would force a 404) serves
-        // index.html with its own 200 status: that is what makes the single-
-        // page app work on any route.
-        .fallback_service(
+        .route("/v1/*rest", get(api_not_found));
+    // `fallback` (not `not_found_service`, which would force a 404) serves
+    // index.html with its own 200 status: that is what makes the single-page
+    // app work on any route. Sans client web installé — le cas de
+    // l'application de bureau —, une page dit que le serveur marche.
+    let app = if web_dir.join("index.html").is_file() {
+        app.fallback_service(
             ServeDir::new(&web_dir).fallback(ServeFile::new(web_dir.join("index.html"))),
-        );
+        )
+    } else {
+        app.fallback(page_accueil)
+    };
 
     // Loopback stays plain HTTP: the traffic never leaves the machine, and a
     // certificate there would only add a warning for no gain. Exposed, the
@@ -765,6 +770,49 @@ async fn seed_default_provider(storage: &Storage) {
             tracing::warn!(error = %e, "failed to seed default provider");
         }
     }
+    // Le port de llama-server est choisi au démarrage (8080 s'il est libre) :
+    // l'adresse enregistrée du moteur local le suit.
+    if let Ok(list) = storage.providers.list().await {
+        for p in list
+            .into_iter()
+            .filter(|p| p.engine == ProviderEngine::LlamaCpp)
+        {
+            if let Some(nouvelle) =
+                locaryn_provider_supervisor::realigner_endpoint_llama(&p.endpoint)
+            {
+                tracing::warn!(ancienne = %p.endpoint, %nouvelle, "adresse de llama-server alignée sur le port choisi");
+                let _ = storage.providers.set_endpoint(p.id, &nouvelle).await;
+            }
+        }
+    }
+}
+
+/// Ce qu'un navigateur voit à l'adresse du serveur quand le client web n'est
+/// pas installé. Copiée depuis les réglages et collée dans un navigateur,
+/// elle donnait « HTTP ERROR 404 » : on aurait dit un serveur en panne. La
+/// page dit qu'il marche, et à quoi sert l'adresse.
+async fn page_accueil(headers: axum::http::HeaderMap) -> axum::response::Html<String> {
+    let machine = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .ok()
+        .filter(|h| !h.trim().is_empty())
+        .unwrap_or_else(|| "ce PC".to_string());
+    let adresse = headers
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .map(|h| format!("https://{h}"))
+        .unwrap_or_else(|| "l'adresse de ce serveur".to_string());
+    let echapper = |t: &str| {
+        t.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    };
+    axum::response::Html(
+        include_str!("pages/accueil.html")
+            .replace("{{MACHINE}}", &echapper(&machine))
+            .replace("{{ADRESSE}}", &echapper(&adresse)),
+    )
 }
 
 /// JSON 404 for unknown `/v1/*` paths, so an API consumer never receives the
@@ -797,6 +845,12 @@ async fn info(State(s): State<Arc<DaemonState>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "name": "locaryn-daemon",
         "version": env!("CARGO_PKG_VERSION"),
+        // Le nom de la machine : un autre PC qui s'en sert comme fournisseur
+        // de modèle l'affiche sous ce nom plutôt que sous une adresse IP.
+        "machine": std::env::var("COMPUTERNAME")
+            .or_else(|_| std::env::var("HOSTNAME"))
+            .ok()
+            .filter(|h| !h.trim().is_empty()),
         "capabilities": ["sessions", "projects", "tasks", "artifacts", "extensions", "mcp", "media"],
         // Sur la boucle locale, le service sert l'API sans jeton : la personne
         // au clavier est déjà celle que le système a authentifiée. Le client web
@@ -1385,6 +1439,8 @@ async fn send_message(
         trim_tools: locaryn_config::load(None)
             .map(|c| c.assistance.trim_tools)
             .unwrap_or(false),
+        forced_tools: Vec::new(),
+        require_tool_call: false,
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
         // Le dialecte natif n'existait que pour Ollama : plus aucun moteur

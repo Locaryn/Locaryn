@@ -472,8 +472,12 @@ fn budgets_utilisables(
     let ram = hardware.usable_ram_gb(reserve_ram);
     if hardware.unified_memory {
         // Une seule mémoire, donc une seule réserve utile : la plus forte des
-        // deux, celle du client le plus exigeant.
-        (vram.min(ram), 0.0)
+        // deux, celle du client le plus exigeant. Le GPU n'en reçoit qu'une
+        // part (la moitié sous Windows, deux tiers à trois quarts sous macOS —
+        // voir `hardware::unified_gpu_budget_gb`) ; le reste du même pool peut
+        // garder des couches côté processeur, comme llama.cpp le fait. Ce que
+        // le GPU y prend en est retiré dans `estimate`, jamais additionné.
+        (vram.min(ram), ram)
     } else {
         (vram, ram)
     }
@@ -491,6 +495,16 @@ pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptio
     let total_bytes = spec.weights_bytes + kv_bytes + compute + overhead;
 
     let split = plan_split(spec, kv_bytes, compute, usable_vram, hardware);
+    // Mémoire unifiée : les couches posées « sur le GPU » occupent la même RAM
+    // que celles laissées au processeur. Ce qui reste pour ces dernières est
+    // ce que le GPU n'a pas déjà pris — compter les deux mémoires comme
+    // distinctes doublait la capacité d'un Snapdragon ou d'un Mac.
+    let pool_ram = usable_ram;
+    let usable_ram = if hardware.unified_memory {
+        (usable_ram - gib(split.gpu_bytes + split.gpu_kv_bytes)).max(0.0)
+    } else {
+        usable_ram
+    };
     let (verdict, placement, overridable) = judge(
         &split,
         total_bytes,
@@ -503,7 +517,11 @@ pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptio
     let prompt_speed = prompt_throughput(spec, &split, hardware);
 
     let max_gpu_context = largest_context_within(spec, options, usable_vram);
-    let max_context = largest_context_within(spec, options, usable_vram + usable_ram);
+    let max_context = if hardware.unified_memory {
+        largest_context_within(spec, options, pool_ram.max(usable_vram))
+    } else {
+        largest_context_within(spec, options, usable_vram + usable_ram)
+    };
     let suggested_quant = if matches!(verdict, Verdict::Confortable) {
         None
     } else {
@@ -961,6 +979,48 @@ mod tests {
         assert!((m.with_reclaimed_vram(40.0).free_vram_gb - 6.0).abs() < 1e-9);
     }
 
+    /// Un Snapdragon X de 16 Go : le GPU lit la RAM, la moitié lui revient.
+    fn snapdragon(ram_gb: f64) -> HardwareProfile {
+        HardwareProfile {
+            cpu_cores: 12,
+            total_ram_gb: ram_gb,
+            free_ram_gb: ram_gb * 0.75,
+            gpu_name: Some("Qualcomm(R) Adreno(TM) X1-85 GPU".into()),
+            total_vram_gb: ram_gb * 0.5,
+            free_vram_gb: ram_gb * 0.5,
+            backend: Backend::Vulkan,
+            ram_bandwidth_gbps: 120.0,
+            vram_bandwidth_gbps: 120.0,
+            ram_bandwidth_measured: true,
+            unified_memory: true,
+        }
+    }
+
+    /// La RAM et la « VRAM » d'une machine unifiée sont une seule mémoire :
+    /// les additionner promettait un contexte deux fois trop grand.
+    #[test]
+    fn la_memoire_unifiee_n_est_pas_comptee_deux_fois() {
+        let m = snapdragon(16.0);
+        let report = estimate(&modele(14.0), &m, &RunOptions::default());
+        let mut separee = m.clone();
+        separee.unified_memory = false;
+        let double = estimate(&modele(14.0), &separee, &RunOptions::default());
+        assert!(
+            report.max_context < double.max_context,
+            "unifiée {} vs séparée {}",
+            report.max_context,
+            double.max_context
+        );
+    }
+
+    /// Un modèle trop gros pour la part GPU mais qui tient dans la RAM reste
+    /// partagé — pas refusé, pas annoncé tout sur GPU.
+    #[test]
+    fn un_snapdragon_partage_un_modele_qui_deborde_la_part_gpu() {
+        let report = estimate(&modele(14.0), &snapdragon(32.0), &RunOptions::default());
+        assert_ne!(report.verdict, Verdict::Refuse, "{}", report.message);
+    }
+
     /// Une machine à mémoire unifiée — un Mac Apple Silicon, un Snapdragon X :
     /// son GPU n'a pas de mémoire à lui, il lit celle du système.
     fn unifie(ram_gb: f64) -> HardwareProfile {
@@ -990,11 +1050,17 @@ mod tests {
         assert!((vram - 11.0).abs() < 1e-9);
         assert!((ram - 10.0).abs() < 1e-9);
 
-        // La même mémoire des deux côtés : un seul pool, et rien à côté.
+        // La même mémoire des deux côtés : un seul pool. La part du GPU ne
+        // dépasse jamais ce pool, et le pool n'est pas ajouté à la part du
+        // GPU — `estimate` en retire ce que le GPU occupe.
         m.unified_memory = true;
         let (vram, ram) = budgets_utilisables(&m, 1.0, 2.0);
-        assert_eq!(ram, 0.0, "rien ne reste « en RAM » à côté du GPU");
+        assert!((ram - 10.0).abs() < 1e-9, "pool : {ram}");
         assert!((vram - 10.0).abs() < 1e-9, "obtenu {vram}");
+        m.free_vram_gb = 6.0; // la part GPU d'un Snapdragon de 12 Go libres
+        let (vram, ram) = budgets_utilisables(&m, 1.0, 2.0);
+        assert!((vram - 5.0).abs() < 1e-9, "part GPU : {vram}");
+        assert!((ram - 10.0).abs() < 1e-9, "pool : {ram}");
     }
 
     /// Un modèle qui tient dans la mémoire unifiée est bien placé sur le GPU.

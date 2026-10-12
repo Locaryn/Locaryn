@@ -94,6 +94,8 @@ pub enum SupervisorError {
     BinaryNotFound(String),
     #[error("moteur inconnu : {0} — l'extension qui l'apportait n'est plus installée ou active")]
     UnknownEngine(String),
+    #[error("le chargement du moteur {0:?} a été interrompu : le modèle a changé entre-temps")]
+    Interrompu(ProviderEngine),
     #[error("storage error: {0}")]
     Storage(#[from] locaryn_storage::StorageError),
     #[error("io error: {0}")]
@@ -156,6 +158,12 @@ struct SupervisorInner {
     storage: Storage,
     http: reqwest::Client,
     spawn_lock: Mutex<()>,
+    /// Les modèles qui ont fait tomber le moteur au démarrage avec le GPU, et
+    /// ont tenu sans : leurs lancements suivants passent directement au
+    /// processeur plutôt que de rejouer l'échec. Par modèle : un modèle trop
+    /// gros pour la carte envoyait auparavant tous les suivants de la session
+    /// sur le processeur, sans un octet de VRAM.
+    gpu_failed: std::sync::Mutex<std::collections::HashSet<String>>,
     /// Moteurs apportés par les extensions installées, par identifiant.
     ///
     /// L'hôte remplit ce registre depuis le registre d'extensions et le
@@ -179,6 +187,7 @@ impl Supervisor {
                 storage,
                 http,
                 spawn_lock: Mutex::new(()),
+                gpu_failed: std::sync::Mutex::new(std::collections::HashSet::new()),
                 extension_engines: Mutex::new(HashMap::new()),
             }),
         }
@@ -268,6 +277,21 @@ impl Supervisor {
     ///
     /// Returns the endpoint URL on success.
     pub async fn ensure_running(&self, engine: &ProviderEngine) -> Result<String, SupervisorError> {
+        // Un changement de modèle arrête le moteur en plein chargement : ce
+        // chargement-là est abandonné, et on recommence avec le modèle choisi.
+        for _ in 0..3 {
+            match self.ensure_running_une_fois(engine).await {
+                Err(SupervisorError::Interrompu(_)) => continue,
+                autre => return autre,
+            }
+        }
+        Err(SupervisorError::Interrompu(engine.clone()))
+    }
+
+    async fn ensure_running_une_fois(
+        &self,
+        engine: &ProviderEngine,
+    ) -> Result<String, SupervisorError> {
         let _spawn_guard = self.inner.spawn_lock.lock().await;
         let spec = self.extension_engine_spec(engine).await;
         let endpoint = match &spec {
@@ -280,12 +304,35 @@ impl Supervisor {
         let p = self.inner.storage.providers.active().await.unwrap_or(None);
         let active_model = p.and_then(|p| p.model);
 
+        // Un llama-server déjà là mais qui charge encore son modèle (gros
+        // modèle, disque lent, compilation des shaders Vulkan) : l'attendre.
+        // Le prendre pour absent faisait lancer un second moteur, qui
+        // échouait sur le port tenu par le premier — avec la VRAM déjà
+        // occupée et le message « port déjà utilisé ».
+        if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) {
+            let deadline = Instant::now() + self.inner.cfg.startup_timeout;
+            while llama_port_state(&self.inner.http, &endpoint).await == LlamaPortState::Loading {
+                if Instant::now() >= deadline {
+                    break;
+                }
+                let _ = self
+                    .inner
+                    .storage
+                    .providers
+                    .set_status_by_engine(engine, ProviderStatus::Starting)
+                    .await;
+                tracing::info!(%endpoint, "llama-server en cours de chargement — attente");
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+
         // Fast path: already healthy and serving the expected model?
         let is_healthy = self.probe(&endpoint, spec.as_ref()).await;
         if is_healthy {
             let model_matches = if matches!(engine, ProviderEngine::LlamaCpp) {
                 is_llama_server_model_match(&self.inner.http, &endpoint, active_model.as_deref())
                     .await
+                    && self.llama_adoptable(engine, &endpoint).await
             } else {
                 true
             };
@@ -302,25 +349,10 @@ impl Supervisor {
             } else {
                 tracing::info!(?engine, %endpoint, "llama-server running different model — restarting with active model");
                 self.kill_owned(engine).await;
-                #[cfg(windows)]
-                {
-                    // CREATE_NO_WINDOW : sans ce drapeau, chaque redémarrage
-                    // faisait clignoter une console taskkill par-dessus
-                    // l'application — visible et sans rapport avec elle.
-                    let _ = tokio::process::Command::new("taskkill")
-                        .args(["/F", "/IM", "llama-server.exe"])
-                        .creation_flags(0x0800_0000)
-                        .output()
-                        .await;
+                kill_stray_llama_servers().await;
+                if let Some(port) = endpoint_port(&endpoint) {
+                    let _ = wait_port_free(port, Duration::from_secs(10)).await;
                 }
-                #[cfg(unix)]
-                {
-                    let _ = tokio::process::Command::new("pkill")
-                        .args(["-9", "-f", "llama-server"])
-                        .output()
-                        .await;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
             }
         }
 
@@ -349,127 +381,256 @@ impl Supervisor {
             .set_status_by_engine(engine, ProviderStatus::Starting)
             .await;
 
-        // Spawn the runtime process: llama-server, the AirLLM Python server,
-        // or le serveur décrit par une extension.
-        let child = match (&spec, engine) {
-            (Some(spec), _) => extension_engine::spawn(spec, active_model.as_deref()).await?,
-            (None, ProviderEngine::AirLlm) => {
-                spawn_airllm_server(&self.inner.cfg, active_model.as_deref()).await?
+        // Le port est encore tenu par un llama-server qui ne répond pas — un
+        // orphelin d'une session précédente qui a planté, figé en chargement.
+        // L'attendre ne suffit plus : on l'arrête, comme pour un moteur qui
+        // sert un autre modèle, au lieu d'échouer sur « port occupé » à
+        // chaque message.
+        if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) {
+            if let Some(port) = endpoint_port(&endpoint) {
+                if ensure_port_free(port).is_err()
+                    && matches!(
+                        llama_port_state(&self.inner.http, &endpoint).await,
+                        LlamaPortState::Loading | LlamaPortState::Ready
+                    )
+                {
+                    tracing::warn!(%endpoint, "llama-server orphelin sur le port — arrêt avant relance");
+                    self.kill_owned(engine).await;
+                    kill_stray_llama_servers().await;
+                    let _ = wait_port_free(port, Duration::from_secs(10)).await;
+                }
             }
-            (None, _) => {
-                spawn_llama_server(&self.inner.cfg, active_model.as_deref(), &self.inner.http)
-                    .await?
-            }
-        };
-
-        {
-            let mut states = self.inner.states.lock().await;
-            // A restart must not silently unpin: if the user pinned this
-            // engine and the process died, it comes back pinned.
-            let pinned = states.get(engine).is_some_and(|s| s.pinned);
-            states.insert(
-                engine.clone(),
-                EngineState {
-                    child: Some(child),
-                    last_activity: Instant::now(),
-                    endpoint: endpoint.clone(),
-                    owned: true,
-                    pinned,
-                },
-            );
         }
 
-        // Wait for it to become healthy (poll until startup_timeout). AirLLM's
-        // first load converts the layers and can take 10+ minutes, so it gets
-        // a much longer startup budget than llama-server.
-        // Un premier chargement peut convertir des poids : AirLLM et les
-        // moteurs d'extension annoncent leur propre budget, le reste garde
-        // celui de la configuration.
-        let startup_budget = match (&spec, engine) {
-            (Some(spec), _) => spec.startup_timeout(),
-            (None, ProviderEngine::AirLlm) => Duration::from_secs(30 * 60),
-            (None, _) => self.inner.cfg.startup_timeout,
-        };
-        let deadline = Instant::now() + startup_budget;
-        loop {
-            if self.probe(&endpoint, spec.as_ref()).await {
-                let _ = self
-                    .inner
-                    .storage
-                    .providers
-                    .set_status_by_engine(engine, ProviderStatus::Healthy)
-                    .await;
-                tracing::info!(%endpoint, moteur = %engine.as_token(), "moteur en marche");
-                return Ok(endpoint);
-            }
+        // Premier essai avec le GPU, sauf s'il a déjà fait tomber le moteur
+        // dans cette session ; second essai sur le processeur si le moteur
+        // meurt au démarrage. Un pilote OpenCL/Vulkan défaillant ne doit pas
+        // rendre la conversation impossible.
+        let cle_gpu = active_model.clone().unwrap_or_default();
+        let mut cpu_only = self
+            .inner
+            .gpu_failed
+            .lock()
+            .is_ok_and(|m| m.contains(&cle_gpu));
+        'attempt: loop {
+            // Spawn the runtime process: llama-server, the AirLLM Python server,
+            // or le serveur décrit par une extension.
+            let child = match (&spec, engine) {
+                (Some(spec), _) => extension_engine::spawn(spec, active_model.as_deref()).await?,
+                (None, ProviderEngine::AirLlm) => {
+                    spawn_airllm_server(&self.inner.cfg, active_model.as_deref()).await?
+                }
+                (None, _) => {
+                    spawn_llama_server(
+                        &self.inner.cfg,
+                        active_model.as_deref(),
+                        &self.inner.http,
+                        cpu_only,
+                    )
+                    .await?
+                }
+            };
 
-            // Détecter un arrêt immédiat du processus (ex: modèle corrompu ou arguments invalides)
+            let pid_lance = child.id();
             {
                 let mut states = self.inner.states.lock().await;
-                if let Some(state) = states.get_mut(engine) {
-                    if let Some(ref mut child) = state.child {
-                        match child.try_wait() {
-                            Ok(Some(status)) => {
-                                tracing::warn!(?engine, %status, "le processus du moteur s'est arrêté prématurément");
-                                drop(states);
-                                self.kill_owned(engine).await;
-                                let _ = self
-                                    .inner
-                                    .storage
-                                    .providers
-                                    .set_status_by_engine(engine, ProviderStatus::Unhealthy)
-                                    .await;
+                // A restart must not silently unpin: if the user pinned this
+                // engine and the process died, it comes back pinned.
+                let pinned = states.get(engine).is_some_and(|s| s.pinned);
+                states.insert(
+                    engine.clone(),
+                    EngineState {
+                        child: Some(child),
+                        last_activity: Instant::now(),
+                        endpoint: endpoint.clone(),
+                        owned: true,
+                        pinned,
+                    },
+                );
+            }
 
-                                // Tenter d'extraire la cause exacte depuis le fichier journal
-                                let log_detail = if matches!(engine, ProviderEngine::LlamaCpp) {
-                                    let log_path =
-                                        locaryn_config::default_data_dir().join("llama-server.log");
-                                    std::fs::read_to_string(&log_path).ok().and_then(|content| {
-                                        content
-                                            .lines()
-                                            .rev()
-                                            .find(|l| {
-                                                l.contains("error")
-                                                    || l.contains("failed")
-                                                    || l.contains("ERROR")
-                                            })
-                                            .map(|l| l.trim().to_string())
-                                    })
-                                } else {
-                                    None
-                                };
+            // Wait for it to become healthy (poll until startup_timeout). AirLLM's
+            // first load converts the layers and can take 10+ minutes, so it gets
+            // a much longer startup budget than llama-server.
+            // Un premier chargement peut convertir des poids : AirLLM et les
+            // moteurs d'extension annoncent leur propre budget, le reste garde
+            // celui de la configuration.
+            let startup_budget = match (&spec, engine) {
+                (Some(spec), _) => spec.startup_timeout(),
+                (None, ProviderEngine::AirLlm) => Duration::from_secs(30 * 60),
+                (None, _) => self.inner.cfg.startup_timeout,
+            };
+            let deadline = Instant::now() + startup_budget;
+            // Au-delà du délai, un llama-server vivant qui répond « loading »
+            // charge encore — disque lent, pilote Vulkan qui compile ses
+            // shaders, antivirus qui lit les poids. Le tuer à 180 s faisait
+            // échouer le chargement au hasard et le relancer de zéro : sur une
+            // RX 570, cinq à dix minutes pour un modèle qui finissait par
+            // tenir. On le laisse finir, dans cette limite.
+            let limite_absolue = Instant::now() + startup_budget.max(Duration::from_secs(20 * 60));
+            let mut prolonge = false;
+            loop {
+                if self.probe(&endpoint, spec.as_ref()).await {
+                    let _ = self
+                        .inner
+                        .storage
+                        .providers
+                        .set_status_by_engine(engine, ProviderStatus::Healthy)
+                        .await;
+                    tracing::info!(%endpoint, moteur = %engine.as_token(), cpu_only, "moteur en marche");
+                    if cpu_only {
+                        if let Ok(mut m) = self.inner.gpu_failed.lock() {
+                            m.insert(cle_gpu.clone());
+                        }
+                    }
+                    return Ok(endpoint);
+                }
 
-                                let msg = match log_detail {
-                                    Some(detail) => format!("{status} ({detail})"),
-                                    None => status.to_string(),
-                                };
+                // Le moteur lancé ici a été arrêté — changement de modèle —
+                // ou remplacé. L'attendre jusqu'au délai gardait le verrou de
+                // lancement jusqu'à trois minutes : aucun autre modèle ne
+                // pouvait se charger, ni depuis la conversation ni depuis le
+                // menu des modèles.
+                let toujours_le_notre = {
+                    let states = self.inner.states.lock().await;
+                    states
+                        .get(engine)
+                        .and_then(|s| s.child.as_ref())
+                        .is_some_and(|c| c.id() == pid_lance || c.id().is_none())
+                };
+                if !toujours_le_notre {
+                    tracing::info!(
+                        ?engine,
+                        "chargement abandonné : le moteur a été arrêté entre-temps"
+                    );
+                    return Err(SupervisorError::Interrompu(engine.clone()));
+                }
 
-                                return Err(SupervisorError::ProcessExited(engine.clone(), msg));
-                            }
-                            Ok(None) => {}
-                            Err(e) => {
-                                tracing::debug!(?engine, error = %e, "impossible de vérifier l'état du processus");
+                // Détecter un arrêt immédiat du processus (ex: modèle corrompu ou arguments invalides)
+                {
+                    let mut states = self.inner.states.lock().await;
+                    if let Some(state) = states.get_mut(engine) {
+                        if let Some(ref mut child) = state.child {
+                            match child.try_wait() {
+                                Ok(Some(status)) => {
+                                    tracing::warn!(?engine, %status, "le processus du moteur s'est arrêté prématurément");
+                                    drop(states);
+                                    self.kill_owned(engine).await;
+                                    let _ = self
+                                        .inner
+                                        .storage
+                                        .providers
+                                        .set_status_by_engine(engine, ProviderStatus::Unhealthy)
+                                        .await;
+
+                                    // Tenter d'extraire la cause exacte depuis le fichier journal
+                                    let log_detail = if matches!(engine, ProviderEngine::LlamaCpp) {
+                                        let log_path = locaryn_config::default_data_dir()
+                                            .join("llama-server.log");
+                                        std::fs::read_to_string(&log_path).ok().and_then(
+                                            |content| {
+                                                content
+                                                    .lines()
+                                                    .rev()
+                                                    .find(|l| {
+                                                        l.contains("error")
+                                                            || l.contains("failed")
+                                                            || l.contains("ERROR")
+                                                    })
+                                                    .map(|l| l.trim().to_string())
+                                            },
+                                        )
+                                    } else {
+                                        None
+                                    };
+
+                                    let msg = match log_detail {
+                                        Some(detail) => format!("{status} ({detail})"),
+                                        None => status.to_string(),
+                                    };
+
+                                    if spec.is_none()
+                                        && matches!(engine, ProviderEngine::LlamaCpp)
+                                        && !cpu_only
+                                    {
+                                        tracing::warn!(cause = %msg, "llama-server est tombé au démarrage avec le GPU — nouvel essai sur le processeur");
+                                        cpu_only = true;
+                                        continue 'attempt;
+                                    }
+
+                                    return Err(SupervisorError::ProcessExited(
+                                        engine.clone(),
+                                        msg,
+                                    ));
+                                }
+                                Ok(None) => {}
+                                Err(e) => {
+                                    tracing::debug!(?engine, error = %e, "impossible de vérifier l'état du processus");
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            if Instant::now() >= deadline {
-                // Clean up the dead child.
-                self.kill_owned(engine).await;
-                let _ = self
-                    .inner
-                    .storage
-                    .providers
-                    .set_status_by_engine(engine, ProviderStatus::Unhealthy)
-                    .await;
-                return Err(SupervisorError::StartupTimeout(
-                    engine.clone(),
-                    startup_budget,
-                ));
+                if Instant::now() >= deadline
+                    && Instant::now() < limite_absolue
+                    && spec.is_none()
+                    && matches!(engine, ProviderEngine::LlamaCpp)
+                    && llama_port_state(&self.inner.http, &endpoint).await
+                        == LlamaPortState::Loading
+                {
+                    if !prolonge {
+                        prolonge = true;
+                        tracing::warn!(
+                            ?startup_budget,
+                            "llama-server charge encore au-delà du délai — on le laisse finir"
+                        );
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    continue;
+                }
+                if Instant::now() >= deadline {
+                    // Clean up the dead child.
+                    self.kill_owned(engine).await;
+                    let _ = self
+                        .inner
+                        .storage
+                        .providers
+                        .set_status_by_engine(engine, ProviderStatus::Unhealthy)
+                        .await;
+                    return Err(SupervisorError::StartupTimeout(
+                        engine.clone(),
+                        startup_budget,
+                    ));
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
             }
-            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+
+    /// Un llama-server qui répond sur le port peut-il servir tel quel ?
+    ///
+    /// Oui s'il est le nôtre (lancé par ce superviseur), ou s'il annonce la
+    /// build épinglée. Sinon c'est un moteur étranger ou ancien — un orphelin
+    /// d'une version précédente, parfois sans GPU : l'adopter faisait tourner
+    /// le modèle sur le processeur, sans un octet de VRAM, pendant que
+    /// l'application annonçait « chargement du modèle en mémoire ».
+    async fn llama_adoptable(&self, engine: &ProviderEngine, endpoint: &str) -> bool {
+        let ours = {
+            let mut states = self.inner.states.lock().await;
+            states
+                .get_mut(engine)
+                .is_some_and(|s| s.owned && s.is_running())
+        };
+        if ours {
+            return true;
+        }
+        match llama_build_info(&self.inner.http, endpoint).await {
+            Some(build) if build_is_pinned(&build) => true,
+            other => {
+                tracing::warn!(%endpoint, build = ?other, attendu = LLAMA_BUILD, "llama-server étranger ou ancien sur le port — remplacé par le moteur géré");
+                false
+            }
         }
     }
 
@@ -674,6 +835,16 @@ impl Supervisor {
                         continue;
                     }
                     let idle = Instant::now().duration_since(state.last_activity);
+                    // Un moteur en pleine génération n'est pas inactif, même
+                    // si la requête a commencé il y a plus que le délai : une
+                    // longue tâche d'agent était coupée en plein travail.
+                    if idle >= idle_timeout
+                        && !extension_specs.contains_key(engine.as_token().as_str())
+                        && llama_occupe(&self.inner.http, &state.endpoint).await
+                    {
+                        state.last_activity = Instant::now();
+                        continue;
+                    }
                     if idle >= idle_timeout {
                         tracing::info!(
                             ?engine,
@@ -708,22 +879,12 @@ impl Supervisor {
     /// the model.
     pub async fn restart_requested(&self, engine: &ProviderEngine) {
         self.kill_owned(engine).await;
-        #[cfg(windows)]
-        {
-            let _ = tokio::process::Command::new("taskkill")
-                .args(["/F", "/IM", "llama-server.exe"])
-                .creation_flags(0x0800_0000)
-                .output()
-                .await;
+        kill_stray_llama_servers().await;
+        if matches!(engine, ProviderEngine::LlamaCpp) {
+            let _ = wait_port_free(llama_port(), Duration::from_secs(10)).await;
+        } else {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         }
-        #[cfg(unix)]
-        {
-            let _ = tokio::process::Command::new("pkill")
-                .args(["-9", "-f", "llama-server"])
-                .output()
-                .await;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
 
     /// Kill a spawned child process (owned only). Removes the entry from the
@@ -790,15 +951,101 @@ pub struct EngineSnapshot {
 // Free functions
 // ============================================================================
 
-/// Port de `llama-server`. 8080 par défaut, mais c'est aussi le port de la
-/// moitié des services qu'on trouve sur un serveur : `LOCARYN_LLAMA_PORT`
-/// permet de s'en écarter sans toucher au reste de la configuration.
+/// Port de `llama-server`, choisi une fois par processus.
+///
+/// 8080 est aussi le port de la moitié des services qu'on trouve sur une
+/// machine. Imposé, il suffisait qu'un autre programme l'occupe pour que le
+/// moteur meure au démarrage (« couldn't bind HTTP server socket ») : le
+/// modèle ne chargeait jamais, la VRAM ne bougeait pas, et l'application
+/// attendait un chargement qui n'aurait pas lieu. Le port est donc le premier
+/// de 8080 à 8099 qui soit libre — ou déjà tenu par un llama-server, celui de
+/// l'application ou de son service —, à défaut un port donné par le système.
+/// `LOCARYN_LLAMA_PORT` l'impose toujours.
 pub fn llama_port() -> u16 {
-    std::env::var("LOCARYN_LLAMA_PORT")
-        .ok()
-        .and_then(|v| v.trim().parse::<u16>().ok())
-        .filter(|p| *p != 0)
+    static PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
+    *PORT.get_or_init(|| {
+        if let Some(p) = std::env::var("LOCARYN_LLAMA_PORT")
+            .ok()
+            .and_then(|v| v.trim().parse::<u16>().ok())
+            .filter(|p| *p != 0)
+        {
+            return p;
+        }
+        let choisi = choisir_port_llama(8080..=8099);
+        if choisi != 8080 {
+            tracing::warn!(
+                port = choisi,
+                "port 8080 occupé par un autre programme — llama-server écoutera ailleurs"
+            );
+        }
+        choisi
+    })
+}
+
+/// Le premier port de `candidats` utilisable par llama-server.
+fn choisir_port_llama(candidats: std::ops::RangeInclusive<u16>) -> u16 {
+    for p in candidats {
+        if port_libre(p) || llama_ecoute(p) {
+            return p;
+        }
+    }
+    std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
         .unwrap_or(8080)
+}
+
+/// Personne n'écoute sur ce port, et llama-server pourra l'ouvrir.
+///
+/// Le seul `bind` sur 127.0.0.1 ne suffit pas : sous Windows, il réussit
+/// quand un autre programme écoute sur toutes les adresses (0.0.0.0), alors
+/// que llama-server, qui demande le port en exclusivité, sera refusé. Une
+/// connexion qui aboutit dit qu'il est pris, quelle que soit l'adresse
+/// d'écoute — sans rien ouvrir vers l'extérieur.
+fn port_libre(port: u16) -> bool {
+    let adresse = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    if std::net::TcpStream::connect_timeout(&adresse, Duration::from_millis(200)).is_ok() {
+        return false;
+    }
+    std::net::TcpListener::bind(adresse).is_ok()
+}
+
+/// Un llama-server répond-il sur ce port ? (`/props` porte `build_info`.)
+/// Lecture HTTP minimale et bloquante : elle sert au choix du port, avant
+/// tout runtime asynchrone.
+fn llama_ecoute(port: u16) -> bool {
+    use std::io::{Read as _, Write as _};
+    let adresse = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut flux) = std::net::TcpStream::connect_timeout(&adresse, Duration::from_millis(200))
+    else {
+        return false;
+    };
+    let _ = flux.set_read_timeout(Some(Duration::from_millis(800)));
+    let _ = flux.set_write_timeout(Some(Duration::from_millis(800)));
+    if flux
+        .write_all(b"GET /props HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n")
+        .is_err()
+    {
+        return false;
+    }
+    let mut corps = Vec::new();
+    let _ = flux.take(256 * 1024).read_to_end(&mut corps);
+    String::from_utf8_lossy(&corps).contains("\"build_info\"")
+}
+
+/// L'adresse locale de llama-server enregistrée ailleurs (base, réglages)
+/// doit suivre le port choisi. `Some(nouvelle)` quand `actuelle` désigne le
+/// moteur local sur un autre port ; une adresse vers une autre machine n'est
+/// jamais touchée.
+pub fn realigner_endpoint_llama(actuelle: &str) -> Option<String> {
+    let reste = actuelle.trim_end_matches('/').strip_prefix("http://")?;
+    let (hote, port) = reste.rsplit_once(':')?;
+    if !matches!(hote, "127.0.0.1" | "localhost") {
+        return None;
+    }
+    let port: u16 = port.parse().ok()?;
+    let voulu = llama_port();
+    (port != voulu).then(|| format!("http://127.0.0.1:{voulu}"))
 }
 
 fn llama_endpoint() -> &'static str {
@@ -944,6 +1191,56 @@ pub fn llama_server_path() -> Option<PathBuf> {
     which("llama-server")
 }
 
+/// Les périphériques de calcul que llama-server voit réellement, d'après
+/// `--list-devices` : `["Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)"]`,
+/// ou une liste vide quand il ne voit que le processeur.
+///
+/// C'est la seule réponse qui compte quand une carte « n'est pas utilisée » :
+/// la détection de l'application peut voir la carte, si le pilote Vulkan (ou
+/// OpenCL sur Snapdragon) ne l'expose pas au moteur, tout part sur le
+/// processeur. `None` quand le moteur n'a pas pu répondre.
+pub async fn llama_devices(bin: &std::path::Path) -> Option<Vec<String>> {
+    let mut cmd = Command::new(bin);
+    cmd.arg("--list-devices")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(dir) = bin.parent() {
+        cmd.current_dir(dir);
+    }
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    let out = tokio::time::timeout(Duration::from_secs(30), cmd.output())
+        .await
+        .ok()?
+        .ok()?;
+    let mut texte = String::from_utf8_lossy(&out.stdout).into_owned();
+    texte.push_str(&String::from_utf8_lossy(&out.stderr));
+    parse_list_devices(&texte)
+}
+
+/// Lit la sortie de `llama-server --list-devices` (b11003) :
+///
+/// ```text
+/// Available devices:
+///   Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)
+/// ```
+///
+/// `(none)` quand seul le processeur est disponible.
+fn parse_list_devices(texte: &str) -> Option<Vec<String>> {
+    let debut = texte.find("Available devices:")?;
+    Some(
+        texte[debut..]
+            .lines()
+            .skip(1)
+            .take_while(|l| l.starts_with(' ') || l.starts_with('\t'))
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && *l != "(none)" && l.contains(':'))
+            .map(str::to_string)
+            .collect(),
+    )
+}
+
 /// La version de llama.cpp que l'application connaît — le pin unique du
 /// runtime géré (l'écran de réglages l'affiche, l'installateur le télécharge).
 pub const LLAMA_BUILD: &str = "b11003";
@@ -955,6 +1252,16 @@ pub const LLAMA_BUILD: &str = "b11003";
 /// de réglages revient à livrer une application qui ne marche pas au premier
 /// lancement. Il arrive donc avec le reste, au moment où il sert.
 pub async fn provision_llama_server(_http: &reqwest::Client) -> Result<PathBuf, SupervisorError> {
+    // Le moteur géré, s'il n'est pas celui qui convient à cette machine
+    // (build CPU posée sur un Snapdragon, ancienne build d'avant le pin), est
+    // mis à niveau. Sans réseau, l'installation existante reste en service.
+    let managed = runtime_install::managed_llama_path();
+    if managed.is_file() {
+        if runtime_install::installed_variant_is_current() {
+            return Ok(managed);
+        }
+        return runtime_install::install_llama_runtime(None).await;
+    }
     if let Some(existant) = llama_server_path() {
         return Ok(existant);
     }
@@ -979,13 +1286,174 @@ pub fn ollama_options_hint() -> serde_json::Value {
 /// place au vrai serveur. Message nommé, plutôt qu'un `bind()` raté côté
 /// llama-server dont la sortie peut ne jamais atteindre le disque.
 fn ensure_port_free(port: u16) -> Result<(), String> {
-    std::net::TcpListener::bind(("127.0.0.1", port))
+    // Une connexion qui aboutit : quelqu'un écoute, peut-être sur toutes les
+    // adresses — cas que le seul `bind` sur 127.0.0.1 laissait passer.
+    let adresse = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    if std::net::TcpStream::connect_timeout(&adresse, Duration::from_millis(200)).is_ok() {
+        return Err(port_error_message(
+            port,
+            &std::io::Error::from(std::io::ErrorKind::AddrInUse),
+        ));
+    }
+    std::net::TcpListener::bind(adresse)
         .map(|_| ())
-        .map_err(|e| {
-            format!(
-                "port {port} déjà utilisé par un autre programme sur cette machine ({e}) — fermez-le ou libérez le port avant de relancer le moteur"
-            )
+        .map_err(|e| port_error_message(port, &e))
+}
+
+/// Le message d'un port inutilisable, selon ce que le système a répondu.
+///
+/// Sous Windows, `llama-server` ouvre son port en `SO_EXCLUSIVEADDRUSE` : un
+/// second `bind` y reçoit `WSAEACCES` (10013, « accès interdit ») et non
+/// « adresse utilisée ». L'ancien message affirmait alors qu'un *autre
+/// programme* tenait le port — c'était en réalité, presque toujours, un
+/// llama-server encore en vie (souvent celui qui occupait la VRAM). Le même
+/// code sort aussi quand Windows a réservé le port (plages exclues de
+/// Hyper-V/WSL).
+fn port_error_message(port: u16, e: &std::io::Error) -> String {
+    match e.kind() {
+        std::io::ErrorKind::PermissionDenied => format!(
+            "le port {port} est tenu en exclusivité par un autre processus — le plus souvent un \
+             llama-server resté ouvert (vérifiez le Gestionnaire des tâches) — ou réservé par \
+             Windows (`netsh interface ipv4 show excludedportrange protocol=tcp`). Fermez ce \
+             processus, ou choisissez un autre port avec la variable LOCARYN_LLAMA_PORT ({e})"
+        ),
+        _ => format!(
+            "port {port} déjà utilisé par un autre programme sur cette machine ({e}) — fermez-le \
+             ou libérez le port avant de relancer le moteur"
+        ),
+    }
+}
+
+/// Arrêter tout `llama-server` de la machine : celui d'une session
+/// précédente, orphelin, n'appartient à aucun superviseur vivant et garde
+/// pourtant le port et la VRAM.
+async fn kill_stray_llama_servers() {
+    #[cfg(windows)]
+    {
+        // CREATE_NO_WINDOW : sans ce drapeau, chaque redémarrage faisait
+        // clignoter une console taskkill par-dessus l'application.
+        let _ = tokio::process::Command::new("taskkill")
+            .args(["/F", "/IM", "llama-server.exe"])
+            .creation_flags(0x0800_0000)
+            .output()
+            .await;
+    }
+    #[cfg(unix)]
+    {
+        let _ = tokio::process::Command::new("pkill")
+            .args(["-9", "-f", "llama-server"])
+            .output()
+            .await;
+    }
+}
+
+/// Attendre que le port se libère : un moteur qu'on vient d'arrêter le garde
+/// encore quelques instants (Windows libère le socket après la fin du
+/// processus). Relancer aussitôt échouait sur « port occupé ».
+async fn wait_port_free(port: u16, budget: Duration) -> Result<(), String> {
+    let deadline = Instant::now() + budget;
+    loop {
+        match ensure_port_free(port) {
+            Ok(()) => return Ok(()),
+            Err(e) if Instant::now() >= deadline => return Err(e),
+            Err(_) => tokio::time::sleep(Duration::from_millis(250)).await,
+        }
+    }
+}
+
+/// Ce qui répond sur le port de llama-server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlamaPortState {
+    /// Un llama-server prêt à répondre.
+    Ready,
+    /// Un llama-server vivant qui charge encore son modèle : `/health` répond
+    /// 503. Le modèle est déjà (en partie) en VRAM.
+    Loading,
+    /// Quelque chose répond, qui n'est pas un llama-server reconnaissable.
+    Other,
+    /// Personne n'écoute.
+    Absent,
+}
+
+/// Sonde `/health`, la seule route que llama-server sert pendant le
+/// chargement. `/v1/models` répond 503 tant que le modèle n'est pas prêt :
+/// s'y fier faisait prendre un moteur en plein chargement pour un moteur
+/// absent, en relancer un second… qui se heurtait au port du premier.
+pub async fn llama_port_state(http: &reqwest::Client, endpoint: &str) -> LlamaPortState {
+    let resp = http
+        .get(format!("{endpoint}/health"))
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await;
+    let resp = match resp {
+        Ok(r) => r,
+        Err(e) if e.is_connect() => return LlamaPortState::Absent,
+        // Un serveur qui ne répond pas dans les temps est occupé (chargement
+        // d'un gros modèle depuis un disque lent) : c'est un moteur vivant.
+        Err(e) if e.is_timeout() => return LlamaPortState::Loading,
+        Err(_) => return LlamaPortState::Other,
+    };
+    let status = resp.status();
+    if status.is_success() {
+        return LlamaPortState::Ready;
+    }
+    let body = resp.text().await.unwrap_or_default().to_ascii_lowercase();
+    if status.as_u16() == 503 && body.contains("loading") {
+        LlamaPortState::Loading
+    } else {
+        LlamaPortState::Other
+    }
+}
+
+/// Un llama-server est-il en train de traiter une requête ? (`/slots` :
+/// `is_processing`.) Faux s'il ne répond pas ou n'expose pas ses slots.
+async fn llama_occupe(http: &reqwest::Client, endpoint: &str) -> bool {
+    let Ok(resp) = http
+        .get(format!("{endpoint}/slots"))
+        .timeout(Duration::from_secs(3))
+        .send()
+        .await
+    else {
+        return false;
+    };
+    resp.json::<serde_json::Value>()
+        .await
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .is_some_and(|slots| {
+            slots
+                .iter()
+                .any(|s| s.get("is_processing").and_then(|b| b.as_bool()) == Some(true))
         })
+}
+
+/// La build d'un llama-server, d'après `/props` (`build_info`, par exemple
+/// `b11003-7d6f5d02b` — vérifié sur le binaire b11003).
+pub async fn llama_build_info(http: &reqwest::Client, endpoint: &str) -> Option<String> {
+    let val: serde_json::Value = http
+        .get(format!("{endpoint}/props"))
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    val.get("build_info")?.as_str().map(str::to_string)
+}
+
+/// La build annoncée est-elle celle que l'application installe ?
+fn build_is_pinned(build: &str) -> bool {
+    build == LLAMA_BUILD || build.starts_with(&format!("{LLAMA_BUILD}-"))
+}
+
+/// Le port d'une adresse `http://127.0.0.1:8080`.
+fn endpoint_port(endpoint: &str) -> Option<u16> {
+    endpoint
+        .trim_end_matches('/')
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.parse().ok())
 }
 
 /// Fichier (dans le dossier de données) où le lanceur note la mémoire vidéo
@@ -996,6 +1464,16 @@ pub const VRAM_AVANT_MOTEUR: &str = "llama_vram_before.json";
 /// les outils d'un connecteur ne tiennent plus avec la conversation : mieux
 /// vaut déporter une couche que d'offrir 4 096 jetons.
 pub const AUTO_FIT_MIN_CTX: u32 = 8192;
+
+/// La marge (Mio) que `--fit` doit laisser libre sur une carte dédiée : 5 % de
+/// sa mémoire, entre 256 et 512 Mio. `None` : on garde celle de llama.cpp
+/// (mémoire unifiée, ou aucune carte connue).
+pub fn fit_margin_mib(total_vram_gb: f64, unified: bool) -> Option<u64> {
+    if unified || total_vram_gb <= 0.0 {
+        return None;
+    }
+    Some(((total_vram_gb * 1024.0 * 0.05) as u64).clamp(256, 512))
+}
 
 /// Le profil automatique : toutes les couches demandées et aucun contexte fixé.
 /// llama.cpp choisit alors les deux d'après la mémoire libre.
@@ -1013,6 +1491,7 @@ async fn spawn_llama_server(
     _cfg: &SupervisorConfig,
     active_model: Option<&str>,
     http: &reqwest::Client,
+    cpu_only: bool,
 ) -> Result<Child, SupervisorError> {
     let data_dir = locaryn_config::default_data_dir();
 
@@ -1090,7 +1569,8 @@ async fn spawn_llama_server(
     // ligne par ligne d'un terminal. Le journal reste alors vide et
     // l'application n'a plus rien à montrer qu'un chargement qui ne finit
     // jamais. Sonder le port nous-mêmes donne un message net et immédiat.
-    ensure_port_free(llama_port())
+    wait_port_free(llama_port(), Duration::from_secs(10))
+        .await
         .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e))?;
 
     // La mémoire vidéo libre juste avant de charger : ce que le moteur prendra
@@ -1159,8 +1639,27 @@ async fn spawn_llama_server(
     if ctx == 0 {
         cmd.arg("--fit-ctx").arg(AUTO_FIT_MIN_CTX.to_string());
     }
-    // En automatique, `--fit` place les couches.
-    if !auto {
+    // La marge que `--fit` laisse libre sur la carte : 1 024 Mio par défaut
+    // (vérifié sur le --help de b11003). Sur une carte de 6 Go, c'était
+    // 0,7 Go jamais utilisé, alors qu'il aurait fait du contexte. Une carte
+    // dédiée garde 5 % (256 à 512 Mio) ; la mémoire unifiée garde la marge de
+    // llama.cpp, puisqu'elle est aussi celle du système.
+    if !cpu_only {
+        let marge = inference_cfg["fit_margin_mb"].as_u64().or_else(|| {
+            let p = locaryn_llmfit::profile();
+            fit_margin_mib(p.total_vram_gb, p.unified_memory)
+        });
+        if let Some(marge) = marge {
+            cmd.arg("--fit-target").arg(marge.to_string());
+        }
+    }
+    // Repli processeur : le pilote GPU a fait tomber le moteur au démarrage
+    // (OpenCL d'un Snapdragon, Vulkan d'une vieille carte). `--device none`
+    // n'initialise aucun périphérique — vérifié sur le `--help` de b11003.
+    if cpu_only {
+        cmd.arg("--device").arg("none");
+    } else if !auto {
+        // En automatique, `--fit` place les couches.
         let couches = match gpu_layers {
             -1 => "999".to_string(),
             n => n.to_string(),
@@ -1673,6 +2172,166 @@ mod tests {
     /// journal, et l'application restait bloquée sur « chargement du modèle »
     /// indéfiniment, sans message. `ensure_port_free` doit détecter ce cas
     /// avant même de lancer le moteur.
+    /// Sous Windows, le port d'un llama-server vivant répond 10013
+    /// (`PermissionDenied`) : le message ne doit plus accuser un « autre
+    /// programme », mais nommer la vraie piste.
+    #[test]
+    fn un_port_tenu_en_exclusivite_n_est_pas_decrit_comme_un_autre_programme() {
+        let refus = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let msg = port_error_message(8080, &refus);
+        assert!(msg.contains("llama-server"), "{msg}");
+        assert!(msg.contains("LOCARYN_LLAMA_PORT"), "{msg}");
+
+        let pris = std::io::Error::from(std::io::ErrorKind::AddrInUse);
+        assert!(port_error_message(8080, &pris).contains("déjà utilisé"));
+    }
+
+    #[test]
+    fn les_peripheriques_du_moteur_se_lisent() {
+        let vulkan = "load_backend: loaded Vulkan backend\nAvailable devices:\n  Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)\n";
+        assert_eq!(
+            parse_list_devices(vulkan),
+            Some(vec![
+                "Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)".to_string()
+            ])
+        );
+        // Sortie réelle de la build CPU b11003 : aucun GPU.
+        assert_eq!(
+            parse_list_devices("Available devices:\n  (none)\n"),
+            Some(vec![])
+        );
+        assert_eq!(parse_list_devices("erreur"), None);
+    }
+
+    /// Une carte de 6 Go gardait 1 Go libre (marge par défaut de `--fit`) :
+    /// 0,7 Go jamais utilisés pour le contexte.
+    #[test]
+    fn la_marge_de_fit_suit_la_carte() {
+        assert_eq!(fit_margin_mib(6.0, false), Some(307));
+        assert_eq!(fit_margin_mib(4.0, false), Some(256));
+        assert_eq!(fit_margin_mib(24.0, false), Some(512));
+        // Mémoire unifiée ou pas de carte : la marge de llama.cpp.
+        assert_eq!(fit_margin_mib(16.0, true), None);
+        assert_eq!(fit_margin_mib(0.0, false), None);
+    }
+
+    /// Un moteur qui n'annonce pas la build épinglée n'est pas adopté.
+    #[test]
+    fn seule_la_build_epinglee_est_adoptee() {
+        assert!(build_is_pinned("b11003-7d6f5d02b"));
+        assert!(build_is_pinned("b11003"));
+        assert!(!build_is_pinned("b10088-1234abc"));
+        assert!(!build_is_pinned("b110031-x"));
+    }
+
+    /// Le cas du rapport : un autre programme écoute sur le port. Le choix
+    /// passe au suivant au lieu de laisser llama-server mourir au démarrage.
+    #[test]
+    fn un_port_occupe_par_un_autre_programme_est_evite() {
+        let occupant = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let pris = occupant.local_addr().unwrap().port();
+        assert!(!port_libre(pris), "un port écouté n'est pas libre");
+        assert!(!llama_ecoute(pris), "l'occupant n'est pas un llama-server");
+        let choisi = choisir_port_llama(pris..=pris);
+        assert_ne!(choisi, pris, "le port occupé ne doit pas être choisi");
+        assert!(ensure_port_free(pris).is_err());
+        drop(occupant);
+    }
+
+    /// Une adresse locale suit le port choisi ; une adresse distante, jamais.
+    #[test]
+    fn l_adresse_locale_du_moteur_suit_le_port() {
+        let voulu = llama_port();
+        let autre = if voulu == 8080 { 8099 } else { 8080 };
+        assert_eq!(
+            realigner_endpoint_llama(&format!("http://127.0.0.1:{autre}")),
+            Some(format!("http://127.0.0.1:{voulu}"))
+        );
+        assert_eq!(
+            realigner_endpoint_llama(&format!("http://localhost:{autre}/")),
+            Some(format!("http://127.0.0.1:{voulu}"))
+        );
+        assert_eq!(
+            realigner_endpoint_llama(&format!("http://127.0.0.1:{voulu}")),
+            None
+        );
+        assert_eq!(realigner_endpoint_llama("http://192.168.1.20:8080"), None);
+        assert_eq!(realigner_endpoint_llama("https://api.exemple.fr"), None);
+    }
+
+    #[test]
+    fn le_port_se_lit_dans_l_adresse_du_moteur() {
+        assert_eq!(endpoint_port("http://127.0.0.1:8080"), Some(8080));
+        assert_eq!(endpoint_port("http://127.0.0.1:9001/"), Some(9001));
+        assert_eq!(endpoint_port("http://localhost"), None);
+    }
+
+    /// Un faux llama-server qui répond toujours la même chose à `/health`.
+    async fn faux_moteur(statut: &'static str, corps: &'static str) -> String {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut tampon = [0u8; 1024];
+                let _ = sock.read(&mut tampon).await;
+                let reponse = format!(
+                    "HTTP/1.1 {statut}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{corps}",
+                    corps.len()
+                );
+                let _ = sock.write_all(reponse.as_bytes()).await;
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
+    /// Le cas du rapport : la VRAM est occupée, le moteur charge encore, et
+    /// l'application le prenait pour absent.
+    #[tokio::test]
+    async fn un_moteur_qui_charge_est_reconnu_comme_vivant() {
+        let http = reqwest::Client::new();
+        let charge = faux_moteur(
+            "503 Service Unavailable",
+            r#"{"error":{"code":503,"message":"Loading model","type":"unavailable_error"}}"#,
+        )
+        .await;
+        assert_eq!(
+            llama_port_state(&http, &charge).await,
+            LlamaPortState::Loading
+        );
+
+        let pret = faux_moteur("200 OK", r#"{"status":"ok"}"#).await;
+        assert_eq!(llama_port_state(&http, &pret).await, LlamaPortState::Ready);
+
+        let autre = faux_moteur("404 Not Found", "nope").await;
+        assert_eq!(llama_port_state(&http, &autre).await, LlamaPortState::Other);
+
+        // Un port où personne n'écoute.
+        let libre = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = libre.local_addr().unwrap().port();
+        drop(libre);
+        assert_eq!(
+            llama_port_state(&http, &format!("http://127.0.0.1:{port}")).await,
+            LlamaPortState::Absent
+        );
+    }
+
+    /// Un port relâché peu après doit être attendu, pas refusé.
+    #[tokio::test]
+    async fn le_port_d_un_moteur_arrete_est_attendu() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            drop(listener);
+        });
+        wait_port_free(port, Duration::from_secs(5))
+            .await
+            .expect("le port se libère pendant l'attente");
+    }
+
     #[test]
     fn refuse_de_lancer_le_moteur_si_le_port_est_deja_pris() {
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();

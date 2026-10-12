@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { attachTerminalText } from "../lib/attachText";
 import { core, isTauri } from "../lib/core";
+import { ecrirePressePapiers, lirePressePapiers } from "../lib/pressePapiers";
 import { openTab } from "../lib/workspace";
 
 /**
@@ -24,7 +25,7 @@ const EDITABLE =
 /** Copier `texte` ; repli sur une zone cachée quand l'API refuse. */
 async function copier(texte: string) {
   try {
-    await navigator.clipboard.writeText(texte);
+    await ecrirePressePapiers(texte);
   } catch (e) {
     console.warn("presse-papier refusé, repli :", e);
     const zone = document.createElement("textarea");
@@ -60,7 +61,7 @@ function actionsPour(cible: HTMLElement): Action[] {
         run: async () => {
           champ.focus();
           try {
-            const texte = await navigator.clipboard.readText();
+            const texte = await lirePressePapiers();
             document.execCommand("insertText", false, texte);
           } catch (e) {
             console.warn("lecture du presse-papier refusée :", e);

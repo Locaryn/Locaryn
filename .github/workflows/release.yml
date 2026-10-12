@@ -349,6 +349,94 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # ── Windows ARM64 (Snapdragon X) ───────────────────────────────────────
+  # Compilé en croisé depuis le runner x64 : MSVC y embarque les outils ARM64,
+  # et aucun runner ARM n'est nécessaire. Job séparé et non bloquant : si cette
+  # cible casse, la release part quand même — la version x64 tourne sous
+  # émulation sur Snapdragon et télécharge de toute façon le moteur ARM64
+  # natif (OpenCL Adreno), puisque le choix du moteur suit l'architecture
+  # réelle de la machine et non celle de l'application.
+  desktop-arm64:
+    name: Bureau (windows-arm64)
+    runs-on: windows-2022
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88
+      - name: Ajouter la cible ARM64
+        run: rustup target add aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-windows-arm64
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Déterminer la version
+        shell: bash
+        run: |
+          ref="${GITHUB_REF_NAME}"
+          if [ "${ref#v}" != "$ref" ]; then
+            ver="${ref#v}"
+          elif [ "${ref#release/v}" != "$ref" ]; then
+            ver="${ref#release/v}"
+          else
+            ver="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml 2>/dev/null | head -1 || true)"
+          fi
+          [ -n "$ver" ] || ver="0.1.0"
+          echo "VER=$ver" >> "$GITHUB_ENV"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Embarquer le service et la CLI (ARM64)
+        shell: bash
+        env:
+          TARGET: aarch64-pc-windows-msvc
+        run: bash scripts/stage-desktop-sidecars.sh
+
+      # NSIS seul : c'est le seul installeur Windows que publie le bureau, et
+      # celui que Tauri sait produire pour ARM64 depuis un hôte x64.
+      - name: Construire l'application (ARM64)
+        run: pnpm --dir apps/desktop tauri build --target aarch64-pc-windows-msvc --bundles nsis
+
+      - name: Rassembler l'installeur et les archives
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $bundle = "target/aarch64-pc-windows-msvc/release/bundle"
+          Get-ChildItem -Recurse $bundle -Include *-setup.exe,*-setup.exe.sig | Copy-Item -Destination dist
+          if (-not (Get-ChildItem dist -Filter *-setup.exe)) { throw "aucun installeur ARM64 produit" }
+
+          # Portable bureau : l'application et ses compagnons, comme en x64.
+          $out = "dist/locaryn-portable"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn-desktop.exe" $out
+          Copy-Item "apps/desktop/src-tauri/binaries/locaryn-daemon-aarch64-pc-windows-msvc.exe" "$out/locaryn-daemon.exe"
+          Copy-Item "apps/desktop/src-tauri/binaries/locaryn-aarch64-pc-windows-msvc.exe" "$out/locaryn.exe"
+          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-desktop-windows-arm64-portable.zip" -Force
+          Remove-Item $out -Recurse -Force
+
+          # Serveur sans interface : les mêmes binaires, déjà compilés.
+          $srv = "dist/locaryn-server-portable"
+          New-Item -ItemType Directory -Force $srv | Out-Null
+          Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn-daemon.exe" $srv
+          Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn.exe" $srv
+          Copy-Item "README.md","LICENSE*" $srv -EA SilentlyContinue
+          Compress-Archive -Path "$srv/*" -DestinationPath "dist/locaryn-$env:VER-server-windows-arm64.zip" -Force
+          Remove-Item $srv -Recurse -Force
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-arm64
+          path: dist/*
+          if-no-files-found: error
+
   # ── Client Android ─────────────────────────────────────────────────────
   android:
     name: APK Android
@@ -509,8 +597,15 @@ jobs:
     name: Publication de la release
     # L'Android est dans les dépendances : sans lui, la release partait
     # systématiquement sans le client mobile.
-    needs: [server, desktop, android]
-    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/v')
+    # Windows ARM64 est attendu mais pas exigé : son échec ne doit pas priver
+    # toutes les autres plateformes de leur release (voir `desktop-arm64`).
+    needs: [server, desktop, android, desktop-arm64]
+    if: >-
+      !cancelled()
+      && needs.server.result == 'success'
+      && needs.desktop.result == 'success'
+      && needs.android.result == 'success'
+      && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/v'))
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -615,6 +710,16 @@ jobs:
                   "signature": sig(hit[0]),
               }
 
+          # Windows ARM64 (Snapdragon X) — l'application native, quand son job
+          # a abouti. Sans elle, ces machines restent sur la version x64.
+          hit = glob.glob(f"artifacts/desktop-windows-arm64/Locaryn_{ver}_arm64-setup.exe.sig")
+          if hit:
+              asset = os.path.basename(hit[0])[:-4]
+              platforms["windows-aarch64"] = {
+                  "url": f"{base}/{asset}",
+                  "signature": sig(hit[0]),
+              }
+
           # macOS — un seul bundle universel (Intel + Apple Silicon), servi
           # sous les deux architectures demandées par le client.
           hit = glob.glob("artifacts/desktop-macos-universal/*.app.tar.gz.sig")
@@ -694,6 +799,8 @@ jobs:
             |---|---|---|
             | Windows x64 | `Locaryn_${{ env.VER }}_x64-setup.exe` | installeur moderne NSIS (gestion automatique des dossiers) |
             | Windows x64 | `locaryn-${{ env.VER }}-desktop-windows-x64-portable.zip` | portable, sans auto-update |
+            | Windows ARM64 (Snapdragon X) | `Locaryn_${{ env.VER }}_arm64-setup.exe` | natif ARM64, GPU Adreno via OpenCL |
+            | Windows ARM64 (Snapdragon X) | `locaryn-${{ env.VER }}-desktop-windows-arm64-portable.zip` | portable, sans auto-update |
             | macOS | `Locaryn_${{ env.VER }}_universal.dmg` | universel, Intel et Apple Silicon |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.AppImage` | portable, sans installation |

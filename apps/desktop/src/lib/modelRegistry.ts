@@ -656,9 +656,24 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
       );
     }
 
+    // `gated` n'est renvoyé que s'il est demandé, et `expand` remplace alors
+    // toute la liste des champs par défaut : sans lui, le filtre des dépôts
+    // verrouillés ne voyait jamais rien, et ces modèles échouaient à
+    // l'installation faute de jeton.
+    const champs = [
+      "gated",
+      "downloads",
+      "likes",
+      "lastModified",
+      "createdAt",
+      "tags",
+      "pipeline_tag",
+    ]
+      .map((c) => `&expand%5B%5D=${c}`)
+      .join("");
     const responses = await Promise.allSettled(
       urls.map((u) =>
-        fetch(u)
+        fetch(`${u}${champs}`)
           .then((r) => (r.ok ? r.json() : []))
           .catch(() => []),
       ),
@@ -690,7 +705,8 @@ export async function fetchHuggingFaceModels(query = "gguf"): Promise<ModelFamil
     const familyMap: Record<string, ModelFamily> = {};
 
     for (const item of rawItems) {
-      if (item.gated === "true" || item.gated === true) continue;
+      // `false`, ou le mode d'accès : "auto", "manual".
+      if (item.gated && item.gated !== "false") continue;
       const parts = item.id.split("/");
       const author = parts[0] || "HuggingFace";
       const repoName = parts[1] || item.id;

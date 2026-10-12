@@ -96,6 +96,8 @@ fn entree(model: &str) -> AgentInput {
         mailbox: None,
         gpu: None,
         trim_tools: false,
+        forced_tools: Vec::new(),
+        require_tool_call: false,
         bearer_token: Some("cle-de-passerelle".into()),
         native_chat_api: false,
     }
@@ -280,4 +282,158 @@ async fn sans_mesure_du_moteur_aucune_vitesse_n_est_inventee() {
     assert!(evts
         .iter()
         .any(|e| matches!(e, StreamEvent::MessageEnd { .. })));
+}
+
+/// « @connecteur » impose ses outils : le premier tour part avec
+/// `tool_choice: "required"`, et l'outil imposé est dans la liste offerte.
+/// Sans outil imposé, rien ne change — le modèle reste libre.
+#[tokio::test]
+async fn un_outil_impose_exige_un_appel_au_premier_tour() {
+    let client = reqwest::Client::new();
+
+    let (base, vu) = fausse_passerelle().await;
+    let libre = entree("qwen3-4b.gguf");
+    let _ = vider(
+        run_openai_tool_loop(&base, &client, &libre)
+            .await
+            .expect("le flux doit s'ouvrir"),
+    )
+    .await;
+    let corps = vu
+        .lock()
+        .expect("verrou")
+        .body
+        .clone()
+        .expect("un corps JSON");
+    assert!(
+        corps.get("tool_choice").is_none(),
+        "sans mention, le modèle choisit librement : {corps}"
+    );
+    let premier_outil = corps
+        .get("tools")
+        .and_then(|t| t.as_array())
+        .and_then(|t| t.first())
+        .and_then(|t| t.pointer("/function/name"))
+        .and_then(|n| n.as_str())
+        .expect("la boucle offre au moins un outil sans projet")
+        .to_string();
+
+    let (base, vu) = fausse_passerelle().await;
+    let mut impose = entree("qwen3-4b.gguf");
+    impose.forced_tools = vec![premier_outil.clone()];
+    impose.require_tool_call = true;
+    let _ = vider(
+        run_openai_tool_loop(&base, &client, &impose)
+            .await
+            .expect("le flux doit s'ouvrir"),
+    )
+    .await;
+    let corps = vu
+        .lock()
+        .expect("verrou")
+        .body
+        .clone()
+        .expect("un corps JSON");
+    assert_eq!(
+        corps.get("tool_choice").and_then(|c| c.as_str()),
+        Some("required"),
+        "un outil imposé doit être appelé"
+    );
+    let offerts: Vec<&str> = corps["tools"]
+        .as_array()
+        .expect("des outils")
+        .iter()
+        .filter_map(|t| t.pointer("/function/name").and_then(|n| n.as_str()))
+        .collect();
+    assert!(offerts.contains(&premier_outil.as_str()), "{offerts:?}");
+
+    // Un outil imposé qui n'existe pas (connecteur arrêté entre-temps)
+    // n'exige rien : forcer un appel sans outil correspondant bloquerait.
+    let (base, vu) = fausse_passerelle().await;
+    let mut fantome = entree("qwen3-4b.gguf");
+    fantome.forced_tools = vec!["mcp__absent__outil".into()];
+    fantome.require_tool_call = true;
+    let _ = vider(
+        run_openai_tool_loop(&base, &client, &fantome)
+            .await
+            .expect("le flux doit s'ouvrir"),
+    )
+    .await;
+    let corps = vu
+        .lock()
+        .expect("verrou")
+        .body
+        .clone()
+        .expect("un corps JSON");
+    assert!(corps.get("tool_choice").is_none(), "{corps}");
+
+    // Garanti sans être exigé (connecteur nommé sans « @ ») : offert, mais
+    // le modèle reste libre de ne pas l'appeler.
+    let (base, vu) = fausse_passerelle().await;
+    let mut garanti = entree("qwen3-4b.gguf");
+    garanti.forced_tools = vec![premier_outil.clone()];
+    let _ = vider(
+        run_openai_tool_loop(&base, &client, &garanti)
+            .await
+            .expect("le flux doit s'ouvrir"),
+    )
+    .await;
+    let corps = vu
+        .lock()
+        .expect("verrou")
+        .body
+        .clone()
+        .expect("un corps JSON");
+    assert!(corps.get("tool_choice").is_none(), "{corps}");
+}
+
+/// Un moteur qui refuse la grammaire des outils au premier envoi (llama-server :
+/// « failed to parse grammar ») : la boucle renvoie une fois, et la réponse
+/// arrive au lieu d'une erreur affichée à la personne.
+#[tokio::test]
+async fn une_grammaire_refusee_est_retentee_une_fois() {
+    let appels = Arc::new(Mutex::new(0u32));
+    let app = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(|State(appels): State<Arc<Mutex<u32>>>| async move {
+                let n = {
+                    let mut a = appels.lock().expect("verrou");
+                    *a += 1;
+                    *a
+                };
+                if n == 1 {
+                    return axum::response::Response::builder()
+                        .status(400)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(
+                            r#"{"error":{"code":400,"message":"Failed to initialize samplers: failed to parse grammar"}}"#,
+                        ))
+                        .expect("réponse");
+                }
+                axum::response::Response::builder()
+                    .header("content-type", "text/event-stream")
+                    .body(axum::body::Body::from(
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"salut\"},\"finish_reason\":null}]}\n\n\
+                         data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+                         data: [DONE]\n\n",
+                    ))
+                    .expect("réponse")
+            }),
+        )
+        .with_state(appels.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("port libre");
+    let addr = listener.local_addr().expect("adresse");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let client = reqwest::Client::new();
+    let flux = run_openai_tool_loop(&format!("http://{addr}"), &client, &entree("qwen3-4b.gguf"))
+        .await
+        .expect("le second envoi doit aboutir");
+    assert_eq!(vider(flux).await, "salut");
+    assert_eq!(*appels.lock().expect("verrou"), 2, "un seul nouvel essai");
 }
