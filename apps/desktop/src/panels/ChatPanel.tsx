@@ -46,7 +46,7 @@ import {
 } from "../lib/core";
 import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
-import { runGoal } from "../lib/goal";
+import { DUREE_MAX_MS, runGoal } from "../lib/goal";
 import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
 import { notifierSysteme } from "../lib/osNotify";
@@ -1610,9 +1610,26 @@ ${d.texte}`
     });
     arretSuiviRef.current = false;
 
-    // /objectif → enchaîner les tours jusqu'à ce que le juge dise « atteint ».
+    // /objectif → un plan d'abord, puis ses tâches, puis la vérification qui
+    // peut renvoyer à la tâche fautive.
     if (objectif) {
       setGoalNext(false);
+      // « /plan » ou « /loop » demandés avec un objectif : l'objectif établit
+      // déjà son plan et se vérifie. Les drapeaux restaient armés et
+      // s'appliquaient en silence au message suivant.
+      if (planNext || imposeWorkflow || reprises !== null) {
+        setPlanNext(false);
+        setForceWorkflow(false);
+        setLoopCount(null);
+        setItems((prev) => [
+          ...prev,
+          {
+            id: nextId("log"),
+            kind: "log" as const,
+            text: "« /plan » ou « /loop » avec « /objectif » : l'objectif établit lui-même son plan, l'exécute et le vérifie. Pour un plan seul, envoyez « /plan » sans objectif.",
+          },
+        ]);
+      }
       setItems((prev) => [
         ...prev,
         {
@@ -1625,32 +1642,41 @@ ${d.texte}`
             essai: 1,
             maxEssais: 1,
             etat: "cours",
+            note: "le plan se prépare…",
           },
         },
       ]);
       try {
         const atteint = await runGoal(sid, text, {
           onEvent: surEvenement,
-          onTour: (tour) =>
+          // Le plan : les tâches remplacent les tours dans la carte.
+          onPlan: (taches, parties) =>
             majSuivi((s) => ({
               ...s,
-              etapes: [
-                ...s.etapes.map((e) => (e.etat === "cours" ? { ...e, etat: "echec" as const } : e)),
-                { texte: tour === 1 ? "Premier tour" : `Tour ${tour}`, etat: "cours" },
-              ],
+              etapes: taches.map((t) => ({ texte: t.titre, etat: "attente" as const })),
+              note: `${taches.length} tâche${taches.length > 1 ? "s" : ""} en ${parties} partie${parties > 1 ? "s" : ""} — budget ${DUREE_MAX_MS / 3_600_000} h`,
             })),
-          onVerdict: (tour, ok, reste) =>
+          onTache: (i) => majSuivi((s) => poserEtape(s, i, "cours")),
+          onTacheFin: (i, etat, reste) =>
             majSuivi((s) => ({
-              ...poserEtape(s, tour - 1, ok ? "fait" : "echec"),
+              ...poserEtape(s, i, etat),
+              // Ce qui a bloqué est écrit dans l'étape : au matin, on lit d'un
+              // coup d'œil laquelle n'a pas tenu, et pourquoi.
               etapes: s.etapes.map((e, j) =>
-                j === tour - 1
-                  ? {
-                      texte: ok ? e.texte : `${e.texte} — reste : ${reste}`,
-                      etat: ok ? "fait" : "echec",
-                    }
-                  : e,
+                j === i && etat === "echec" && reste ? { ...e, texte: `${e.texte} — ${reste}` } : e,
               ),
-              note: ok ? undefined : reste,
+              note: reste,
+            })),
+          // La vérification désigne la tâche à reprendre : la carte la remet en
+          // attente, avec la suite, et dit qui a été renvoyé.
+          // Aucun plafond de reprises : la carte montre la tâche reprise, pas un
+          // compteur borné — la personne arrête elle-même si c'est trop long.
+          onRenvoi: (i, raison, essai) =>
+            majSuivi((s) => ({
+              ...s,
+              essai,
+              note: `vérification : reprise de la tâche ${i + 1} — ${raison}`,
+              etapes: s.etapes.map((e, j) => (j >= i ? { ...e, etat: "attente" as const } : e)),
             })),
           arret: () => arretSuiviRef.current || runRef.current !== run,
         });
