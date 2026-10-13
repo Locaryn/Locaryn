@@ -46,7 +46,7 @@ import {
 } from "../lib/core";
 import { pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
-import { DUREE_MAX_MS, runGoal } from "../lib/goal";
+import { runGoal } from "../lib/goal";
 import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
 import { notifierSysteme } from "../lib/osNotify";
@@ -1654,7 +1654,7 @@ ${d.texte}`
             majSuivi((s) => ({
               ...s,
               etapes: taches.map((t) => ({ texte: t.titre, etat: "attente" as const })),
-              note: `${taches.length} tâche${taches.length > 1 ? "s" : ""} en ${parties} partie${parties > 1 ? "s" : ""} — budget ${DUREE_MAX_MS / 3_600_000} h`,
+              note: `${taches.length} tâche${taches.length > 1 ? "s" : ""} en ${parties} partie${parties > 1 ? "s" : ""} — sans limite de temps`,
             })),
           onTache: (i) => majSuivi((s) => poserEtape(s, i, "cours")),
           onTacheFin: (i, etat, reste) =>

@@ -9,19 +9,15 @@
 // celle-là et la suite, au lieu de tout recommencer — c'est ce qui distingue un
 // objectif d'une boucle de tours.
 //
-// Ni le nombre de tours ni le nombre de reprises ne bornent une tâche : elle
-// continue tant qu'elle n'est pas finie, et c'est la personne qui arrête quand
-// c'est trop long (le budget de temps, huit heures par défaut, garde la nuit
-// d'un emballement). Deux choses seulement coupent : l'arrêt demandé, et la
+// Ni le nombre de tours, ni le nombre de reprises, ni le temps ne bornent une
+// tâche : elle continue tant qu'elle n'est pas finie, et c'est la personne qui
+// arrête quand c'est trop long. Une seule chose coupe automatiquement : la
 // vraie boucle — le modèle qui redit la même réponse sans agir. Celle-là
 // n'abandonne pas la tâche : elle la coupe et la relance avec l'ordre de
 // changer de méthode.
 
 import { type StreamEvent, core } from "./core";
 import { taskCenter } from "./taskCenter";
-
-/** Durée au-delà de laquelle l'objectif rend la main, même inachevé. */
-export const DUREE_MAX_MS = 8 * 60 * 60 * 1000;
 
 /** Tâches au plus après découpage : un plan qui explose n'est pas un plan. */
 const TACHES_MAX = 24;
@@ -31,9 +27,9 @@ const TACHES_MAX = 24;
  * réellement en rond.
  *
  * C'est la seule coupure automatique d'une tâche : ni le nombre de tours ni le
- * nombre de reprises ne la bornent — elle continue tant qu'elle n'est pas
- * finie. La personne arrête quand c'est trop long, et le budget de temps garde
- * la nuit d'un emballement.
+ * nombre de reprises ne la bornent, et aucun délai ne l'arrête — elle continue
+ * tant qu'elle n'est pas finie, et c'est la personne qui arrête quand c'est
+ * trop long.
  */
 const REDITES_BOUCLE = 2;
 
@@ -95,11 +91,6 @@ export interface GoalHooks {
   onRenvoi?: (index: number, raison: string, essai: number) => void;
   /** Vrai quand la personne a demandé l'arrêt. */
   arret: () => boolean;
-}
-
-export interface GoalOptions {
-  /** Budget de temps de l'objectif, en millisecondes (8 h par défaut). */
-  dureeMaxMs?: number;
 }
 
 /** La première ligne d'une sortie d'outil, bornée : un compte rendu se lit. */
@@ -344,18 +335,10 @@ async function etablirPlan(
 }
 
 /** L'objectif est-il mené à son terme ? `false` quand il a été arrêté. */
-export async function runGoal(
-  sessionId: string,
-  goal: string,
-  hooks: GoalHooks,
-  options: GoalOptions = {},
-): Promise<boolean> {
-  const dureeMax = options.dureeMaxMs ?? DUREE_MAX_MS;
+export async function runGoal(sessionId: string, goal: string, hooks: GoalHooks): Promise<boolean> {
   const tacheCentre = taskCenter.addWorkflow(
     `Objectif : ${goal.slice(0, 40)}${goal.length > 40 ? "…" : ""}`,
   );
-  const debut = Date.now();
-  const expire = () => Date.now() - debut >= dureeMax;
 
   const { parties, taches, planifie } = await etablirPlan(goal);
   hooks.onPlan(taches, parties);
@@ -414,11 +397,10 @@ export async function runGoal(
    * appeler le moindre outil (`REDITES_BOUCLE` fois), la tentative est coupée et
    * la tâche relancée avec l'ordre de changer de méthode, jamais abandonnée.
    *
-   * `interrompu` n'est ni un succès ni un échec : la personne a arrêté, ou le
-   * budget est épuisé.
+   * `interrompu` n'est ni un succès ni un échec : la personne a arrêté.
    */
   const menerTache = async (index: number): Promise<"fait" | "interrompu"> => {
-    if (hooks.arret() || expire()) return "interrompu";
+    if (hooks.arret()) return "interrompu";
     const t = taches[index];
     t.etat = "en_cours";
     hooks.onTache(index);
@@ -426,9 +408,9 @@ export async function runGoal(
     let redites = 0;
     let message = consigneTache(goal, taches, index);
     for (;;) {
-      if (hooks.arret() || expire()) return "interrompu";
+      if (hooks.arret()) return "interrompu";
       const rep = await envoyer(message);
-      if (hooks.arret() || expire()) return "interrompu";
+      if (hooks.arret()) return "interrompu";
       // Un tour coupé par la limite d'actions : le travail était en cours, pas
       // en boucle — on reprend là où il s'est arrêté.
       if (rep.coupe) {
@@ -494,9 +476,9 @@ export async function runGoal(
     let redites = 0;
     let message = consigneVerification(goal, taches, index);
     for (;;) {
-      if (hooks.arret() || expire()) return { atteint: false, renvoi: null, reste: "" };
+      if (hooks.arret()) return { atteint: false, renvoi: null, reste: "" };
       const rep = await envoyer(message);
-      if (hooks.arret() || expire()) return { atteint: false, renvoi: null, reste: "" };
+      if (hooks.arret()) return { atteint: false, renvoi: null, reste: "" };
       const renvoi = rep.ecrit ? lireRenvoi(rep.ecrit, taches.length) : null;
       const verdict = rep.ecrit
         ? await core.judgeGoal(goal, rep.ecrit)
@@ -572,9 +554,7 @@ export async function runGoal(
       for (let i = depart; i < taches.length - 1; i++) {
         const etat = await menerTache(i);
         if (etat === "interrompu") {
-          const raison = hooks.arret() ? "arrêté par la personne" : "budget de temps épuisé";
-          if (!hooks.arret()) await bilan(raison);
-          taskCenter.fail(tacheCentre, hooks.arret() ? "arrêté" : "budget épuisé");
+          taskCenter.fail(tacheCentre, "arrêté");
           return false;
         }
       }
@@ -606,11 +586,9 @@ export async function runGoal(
         }
         continue;
       }
-      // La vérification s'est interrompue (la personne a arrêté, ou le budget
-      // est épuisé) : c'est le seul cas où elle ne désigne pas de tâche.
-      const raison = hooks.arret() ? "arrêté par la personne" : "budget de temps épuisé";
-      if (!hooks.arret()) await bilan(raison);
-      taskCenter.fail(tacheCentre, hooks.arret() ? "arrêté" : "budget épuisé");
+      // La vérification s'est interrompue (la personne a arrêté) : c'est le
+      // seul cas où elle ne désigne pas de tâche.
+      taskCenter.fail(tacheCentre, "arrêté");
       return false;
     }
   } catch (e) {
