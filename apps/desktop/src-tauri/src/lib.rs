@@ -1736,7 +1736,10 @@ async fn bootstrap(core: State<'_, Core>) -> Result<Bootstrap, String> {
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct JointDocumentIn {
     pub name: String,
+    #[serde(default)]
     pub text: String,
+    #[serde(default)]
+    pub base64: Option<String>,
 }
 
 /// Send a user message and stream the agent's reply. Mirrors the daemon's
@@ -2066,25 +2069,73 @@ async fn send_message(
     // leur contenu est une donnee, et un fichier ne doit pas pouvoir donner des
     // ordres a la place de l'utilisateur. Le message *enregistre* reste celui
     // qui a ete tape — meme regle que le contexte RAG ci-dessous.
-    let joints: Vec<locaryn_shared_types::joint_document::JointDocument> = documents
-        .unwrap_or_default()
-        .into_iter()
-        .map(|d| locaryn_shared_types::joint_document::JointDocument {
-            name: d.name,
-            text: d.text,
-        })
-        .collect();
-    let avec_documents = locaryn_shared_types::joint_document::compose_message(&content, &joints);
+    let mut mentions_fichiers_deposes = Vec::new();
+    let mut joints_texte = Vec::new();
+
+    if let Some(docs) = documents {
+        for doc in docs {
+            let safe_name = std::path::Path::new(&doc.name)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("fichier_joint")
+                .to_string();
+
+            // 1. Écriture physique sur disque dans l'espace de travail du projet ou du free_chat
+            if let Some(ref root) = project_path {
+                let octets = doc.base64.as_deref().and_then(|b64| {
+                    use base64::Engine as _;
+                    base64::engine::general_purpose::STANDARD.decode(b64.trim()).ok()
+                });
+
+                if let Some(bytes) = octets {
+                    let cible = root.join(&safe_name);
+                    if let Err(e) = tokio::fs::write(&cible, &bytes).await {
+                        tracing::warn!(error = %e, ?cible, "impossible d'écrire la pièce jointe binaire dans l'espace de travail");
+                    } else {
+                        mentions_fichiers_deposes.push(format!(
+                            "- `{safe_name}` ({} octets, chemin : `{}`)",
+                            bytes.len(),
+                            cible.display()
+                        ));
+                    }
+                } else if !doc.text.is_empty() {
+                    let cible = root.join(&safe_name);
+                    if !cible.exists() {
+                        let _ = tokio::fs::write(&cible, doc.text.as_bytes()).await;
+                    }
+                }
+            }
+
+            // 2. Inclusion dans l'enveloppe textuelle si le document porte du texte
+            if !doc.text.trim().is_empty() {
+                joints_texte.push(locaryn_shared_types::joint_document::JointDocument {
+                    name: safe_name,
+                    text: doc.text,
+                });
+            }
+        }
+    }
+
+    let avec_documents = locaryn_shared_types::joint_document::compose_message(&content, &joints_texte);
+
+    let avec_depots = if !mentions_fichiers_deposes.is_empty() {
+        let liste = mentions_fichiers_deposes.join("\n");
+        format!(
+            "{avec_documents}\n\n[Fichiers joints déposés dans votre dossier de travail actuel :\n{liste}\nVous pouvez les explorer, les lire ou les analyser directement avec vos outils (commandes shell, python, scripts, read_file, etc.)]"
+        )
+    } else {
+        avec_documents
+    };
 
     // RAG: if this project has an index, retrieve relevant chunks and prepend
     // them to the message the model sees. La recherche porte sur ce que
     // l'utilisateur a demande, pas sur le contenu des documents joints.
     let agent_message = match project_id {
         Some(pid) => match build_rag_context(&core, &pid.to_string(), &content).await {
-            Some(ctx) => format!("{ctx}{avec_documents}"),
-            None => avec_documents,
+            Some(ctx) => format!("{ctx}{avec_depots}"),
+            None => avec_depots,
         },
-        None => avec_documents,
+        None => avec_depots,
     };
     // `@Roblox_Studio …` : les outils désignés par la personne, rendus
     // explicites pour le modèle (le message enregistré reste tel quel).

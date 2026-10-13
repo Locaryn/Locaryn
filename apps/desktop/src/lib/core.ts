@@ -1544,7 +1544,8 @@ export interface Capability {
 /** Un document joint : lu cote interface, mis sous enveloppe cote coeur. */
 export interface JointDocument {
   name: string;
-  text: string;
+  text?: string;
+  base64?: string | null;
 }
 
 /**

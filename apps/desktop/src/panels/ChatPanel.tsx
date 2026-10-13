@@ -440,9 +440,10 @@ async function readFile(file: File, vision: boolean): Promise<Lecture> {
   }
 
   // Audio et vidéo se lisent dans la conversation. Le modèle, lui, ne les reçoit
-  // pas : ils partent comme les autres binaires, en simples fichiers joints.
+  // pas directement : ils partent comme les autres binaires, écrits dans le dossier de travail.
   const media = natureMedia(file);
   if (media) {
+    const octetsMedia = await file.arrayBuffer();
     return {
       ok: true,
       piece: {
@@ -450,6 +451,7 @@ async function readFile(file: File, vision: boolean): Promise<Lecture> {
         kind: media,
         name: file.name,
         objectUrl: URL.createObjectURL(file),
+        base64: enBase64(octetsMedia),
       },
     };
   }
@@ -459,18 +461,31 @@ async function readFile(file: File, vision: boolean): Promise<Lecture> {
   if (!porteDuTexte(octets) && /\.pdf$/i.test(file.name)) {
     try {
       const { texte } = await core.extractDocument(file.name, enBase64(octets));
-      return { ok: true, piece: { id: nextId("att"), kind: "text", text: texte, name: file.name } };
+      return {
+        ok: true,
+        piece: {
+          id: nextId("att"),
+          kind: "text",
+          text: texte,
+          base64: enBase64(octets),
+          name: file.name,
+        },
+      };
     } catch (e) {
       return { ok: false, nom: file.name, raison: String(e) };
     }
   }
   if (!porteDuTexte(octets)) {
-    // Le modele ne peut rien lire dans un binaire, mais refuser le joint
-    // empechait de simplement l'attacher a la conversation (a montrer, a
-    // deplacer plus tard) pour la seule raison qu'il n'est pas du texte.
+    // Les binaires (.pcap, archives, binaires, etc.) sont emballés en base64 pour être déposés
+    // physiquement dans le dossier de travail de la session par le backend.
     return {
       ok: true,
-      piece: { id: nextId("att"), kind: "other", name: file.name },
+      piece: {
+        id: nextId("att"),
+        kind: "other",
+        name: file.name,
+        base64: enBase64(octets),
+      },
     };
   }
 
@@ -482,7 +497,16 @@ async function readFile(file: File, vision: boolean): Promise<Lecture> {
   if (texte.length > MAX_TEXTE_OCTETS) {
     texte = `${texte.slice(0, MAX_TEXTE_OCTETS)}\n\n[Document tronqué : seuls les ${MAX_TEXTE_OCTETS} premiers caractères ont été joints.]`;
   }
-  return { ok: true, piece: { id: nextId("att"), kind: "text", text: texte, name: file.name } };
+  return {
+    ok: true,
+    piece: {
+      id: nextId("att"),
+      kind: "text",
+      text: texte,
+      base64: enBase64(octets),
+      name: file.name,
+    },
+  };
 }
 
 export function ChatPanel({
@@ -1741,8 +1765,12 @@ ${d.texte}`
         .filter((a) => a.kind === "image" && a.base64)
         .map((a) => a.base64 as string);
       const documents = imgs
-        .filter((a) => a.kind === "text" && a.text)
-        .map((a) => ({ name: a.name, text: a.text as string }));
+        .filter((a) => a.kind !== "image")
+        .map((a) => ({
+          name: a.name,
+          text: a.text ?? "",
+          base64: a.base64 ?? null,
+        }));
       await core.sendMessage(
         sid,
         text,

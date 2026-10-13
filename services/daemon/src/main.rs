@@ -1375,10 +1375,66 @@ async fn send_message(
         None => None,
     };
 
+    let mut mentions_fichiers_deposes = Vec::new();
+    let mut joints_texte = Vec::new();
+
+    if let Some(docs) = body.documents {
+        for doc in docs {
+            let safe_name = std::path::Path::new(&doc.name)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("fichier_joint")
+                .to_string();
+
+            if let Some(ref root) = project_path {
+                let octets = doc.base64.as_deref().and_then(|b64| {
+                    use base64::Engine as _;
+                    base64::engine::general_purpose::STANDARD.decode(b64.trim()).ok()
+                });
+
+                if let Some(bytes) = octets {
+                    let cible = root.join(&safe_name);
+                    if let Err(e) = tokio::fs::write(&cible, &bytes).await {
+                        tracing::warn!(error = %e, ?cible, "impossible d'écrire la pièce jointe binaire dans l'espace de travail");
+                    } else {
+                        mentions_fichiers_deposes.push(format!(
+                            "- `{safe_name}` ({} octets, chemin : `{}`)",
+                            bytes.len(),
+                            cible.display()
+                        ));
+                    }
+                } else if !doc.text.is_empty() {
+                    let cible = root.join(&safe_name);
+                    if !cible.exists() {
+                        let _ = tokio::fs::write(&cible, doc.text.as_bytes()).await;
+                    }
+                }
+            }
+
+            if !doc.text.trim().is_empty() {
+                joints_texte.push(locaryn_shared_types::joint_document::JointDocument {
+                    name: safe_name,
+                    text: doc.text,
+                });
+            }
+        }
+    }
+
+    let avec_documents = locaryn_shared_types::joint_document::compose_message(&body.content, &joints_texte);
+
+    let avec_depots = if !mentions_fichiers_deposes.is_empty() {
+        let liste = mentions_fichiers_deposes.join("\n");
+        format!(
+            "{avec_documents}\n\n[Fichiers joints déposés dans votre dossier de travail actuel :\n{liste}\nVous pouvez les explorer, les lire ou les analyser directement avec vos outils (commandes shell, python, scripts, read_file, etc.)]"
+        )
+    } else {
+        avec_documents
+    };
+
     let mut input = AgentInput {
         system_override: consigne_choisie,
         session_id: session_uuid,
-        message: body.content,
+        message: avec_depots,
         mode: s.mode,
         model: model.clone(),
         agent: None,
@@ -1690,11 +1746,22 @@ async fn send_message(
     Sse::new(sse_stream).keep_alive(KeepAlive::default())
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct JointDocumentIn {
+    pub name: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub base64: Option<String>,
+}
+
 #[derive(serde::Deserialize)]
 struct SendMessageBody {
     content: String,
     #[serde(default)]
     images: Option<Vec<String>>,
+    #[serde(default)]
+    documents: Option<Vec<JointDocumentIn>>,
 }
 
 /// Réponse rendue quand aucun modèle de conversation n'est joignable.
