@@ -155,9 +155,16 @@ pub struct AgentInput {
 
 /// Ce qu'il faut dire au modèle pour qu'il se serve correctement des outils.
 ///
-/// Uniquement de la mécanique : aller lire un fichier plutôt qu'en deviner le
-/// contenu, ne pas affirmer qu'on ne sait pas faire ce dont l'outil existe.
-/// Rien sur ce dont il peut parler, ni sur qui il est.
+/// Non pas une liste d'interdits, mais la façon de **choisir** : les méthodes
+/// possibles sont rangées selon ce qui répond réellement à la demande, puis
+/// selon ce qu'elles coûtent ; la meilleure est prise. Un interdit ne couvre
+/// que le cas qui l'a fait écrire (« n'ouvre pas VS Code ») ; un critère de
+/// choix couvre ceux qu'on n'a pas vus. Les deux exemples portés par le texte
+/// — produire du code, tester comme un humain — sont là comme raisonnements,
+/// pas comme règles : dans l'un la méthode la moins chère gagne, dans l'autre
+/// c'est la plus lourde, et c'est le même critère qui tranche.
+///
+/// Rien sur ce dont le modèle peut parler, ni sur qui il est.
 ///
 /// L'application ne pose **aucune** consigne de comportement. Une version
 /// antérieure ouvrait chaque conversation par « You are Locaryn, an AI coding
@@ -177,16 +184,53 @@ pub fn tool_discipline_prompt() -> String {
     // sûrement qu'une consigne de refus. On dit donc d'abord que rien ne
     // restreint le sujet, puis que les outils ne servent que quand la demande
     // porte vraiment sur des fichiers.
+    //
+    // Mesuré aussi, à l'inverse : une consigne qui se contentait d'interdire
+    // (« never open an editor ») laissait le modèle ouvrir VS Code dès que la
+    // demande sortait du cas prévu. D'où le critère de choix ci-dessous, qui
+    // laisse le modèle arbitrer — y compris pour aller vers la méthode la plus
+    // lourde quand c'est elle qui répond, comme un test qui doit « voir ».
     "You are running on the user's own machine and answer whatever they ask, as the model \
      you are. Nothing here restricts your subject matter or your tone.\n\n\
-     Some tools may be available to read or change files in a project. Use them only when the \
-     request is actually about files or code:\n\
-     - When you do use a tool: never guess a file's contents — call `read_file`; never assume \
-       the layout — call `search`; use paths relative to the project root. If a file is \
-       missing, the tool says so — do not invent it. Never claim you cannot do something a \
-       listed tool does — call it.\n\
-     - When the request is not about files or code, answer it directly. Do not turn an \
-       ordinary question into a file operation, and do not mention the tools."
+     Some tools may be available: to read and change files, to run commands, and — through \
+     extensions — to drive a browser, a screen or another application. Which one you use is \
+     a decision you make for each request, not a rule glued to a tool. Before acting on \
+     anything that touches the machine, consider the ways the request could be carried out \
+     and rank them, in this order:\n\
+     - Does the method really do what was asked, or does it only look like it? First and \
+       above all, the method must be able to reach the answer the person wants. One that \
+       cannot is not a cheap method, it is the wrong one — a command showing that a service \
+       is running is not a test of what a person sees in that service.\n\
+     - Then the least energy, least time and least of the user's own machine: keeping their \
+       hands free, running faster, staying reversible and checkable beats taking over their \
+       screen and cursor. Cost never outranks the point above — but among methods that all \
+       truly answer, take the cheapest and quickest.\n\
+     Take the method that wins on both. When none clearly wins, take the first of the ladder \
+     below that can answer, and go down a step only when the one above genuinely cannot.\n\
+     1. The file tools. `read_file` to see what exists, `write_file` to create or replace, \
+     `search` to find your way — paths relative to the working directory. This is how code, \
+     pages and documents get made: the file itself is the deliverable, so do not open an \
+     editor or an IDE to type it by hand, and do not hand back snippets for the person to \
+     paste, which returns to them the work they asked you to do. Never guess a file's \
+     contents or the layout of a project: read. If a file is missing, the tool says so — do \
+     not invent it.\n\
+     2. `run_command`, to build, run and check what you wrote, and to ask the machine what \
+     the files cannot tell you.\n\
+     3. Tools that drive a browser, a screen or another application — for what only looking \
+     can answer: what the page you built really renders, how it behaves on a narrow screen, \
+     what a running program does when a button is clicked.\n\
+     Step 3 is the right answer whenever the request itself means seeing and using the thing. \
+     \"Test this site the way a human would, end to end, responsive included\" is not answered \
+     by commands showing the server is up: that is the method that cannot reach the answer, \
+     however cheap it looks. For a desktop application the equivalent is driving the machine. \
+     Skill is choosing the heaviest option exactly when it is the only one that fulfils the \
+     request — and never when a lighter one does the job better.\n\
+     What you write goes to the conversation's working directory. One always exists: when no \
+     project is open, the application creates a folder for this conversation and keeps your \
+     files there, so the person can find them afterwards.\n\
+     Never claim you cannot do something a listed tool does — call it. And when the request \
+     is not about files, code or the machine, answer it directly: do not turn an ordinary \
+     question into an operation, and do not mention the tools."
         .to_string()
 }
 
@@ -271,6 +315,35 @@ mod prompt_tests {
     #[test]
     fn rien_de_pose_quand_rien_n_est_demande() {
         assert!(super::compose_system_prompt("", None).is_empty());
+    }
+
+    /// Le choix de méthode se raisonne, il ne se récite pas : la consigne doit
+    /// dire de ranger les méthodes sur ce qui répond à la demande **puis** sur
+    /// ce qu'elles coûtent, et porter les deux cas extrêmes — produire du code
+    /// (la méthode la plus légère gagne) et tester comme un humain (la plus
+    /// lourde gagne). Une liste d'interdits ne couvrirait que le cas qui l'a
+    /// fait écrire ; c'est exactement ce qui laissait le modèle ouvrir un IDE
+    /// dès que la demande sortait du prévu.
+    #[test]
+    fn la_methode_se_choisit_par_le_ratio_pas_par_un_interdit() {
+        let regles = super::tool_discipline_prompt().to_lowercase();
+        // Le critère, dans l'ordre : pouvoir répondre, puis coûter le moins.
+        assert!(regles.contains("rank them"));
+        assert!(regles.contains("reach the answer"));
+        assert!(regles.contains("least energy"));
+        assert!(regles.contains("decision you make for each request"));
+        // Cas 1 : du code s'écrit dans le fichier — pas à la main dans un IDE,
+        // pas en extraits recopiés par la personne.
+        assert!(regles.contains("write_file"));
+        assert!(regles.contains("an ide"));
+        assert!(regles.contains("snippets"));
+        assert!(regles.contains("working directory"));
+        // Cas 2 : « tester comme un humain » — ici la méthode lourde est la
+        // bonne, et la consigne doit le dire, sinon le modèle teste le service
+        // en ligne de commande et croit avoir répondu.
+        assert!(regles.contains("the way a human would"));
+        assert!(regles.contains("step 3 is the right answer"));
+        assert!(regles.contains("driving the machine"));
     }
 
     /// La mécanique des outils ne parle que de mécanique : elle n'a pas à

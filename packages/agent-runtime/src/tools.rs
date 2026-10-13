@@ -119,7 +119,7 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "write_file".into(),
-            description: "Create or overwrite a file in the project workspace with new content. You must provide the full, complete file content.".into(),
+            description: "Create or overwrite a file in the project workspace with new content. You must provide the full, complete file content. This is how code is produced: writing the file is the cheapest and most direct route, so do not open an editor or drive the screen to create it.".into(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
