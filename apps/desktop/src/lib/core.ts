@@ -2162,6 +2162,13 @@ export interface CoreApi {
   modelResidency(): Promise<ResidencyStatus>;
   /** La personne se sert de l'application : le modèle reste en mémoire. */
   signalerActivite(): Promise<void>;
+  /**
+   * Garder le modèle en mémoire, ou le rendre au délai d'inactivité.
+   *
+   * L'épinglage est un choix : il n'est plus la conséquence automatique d'un
+   * chargement depuis la barre d'état.
+   */
+  setModelPinned(pinned: boolean): Promise<ResidencyStatus>;
   /** Ce que donnerait le chargement de ce modèle, sans rien charger. */
   checkModelFit(model: string): Promise<ModelFit>;
   /** Les catalogues distants qu'apportent les extensions actives. */
@@ -2684,6 +2691,7 @@ const tauriCore: CoreApi = {
 
   modelResidency: () => invoke<ResidencyStatus>("model_residency"),
   signalerActivite: () => invoke<void>("signaler_activite"),
+  setModelPinned: (pinned) => invoke<ResidencyStatus>("set_model_pinned", { pinned }),
   checkModelFit: (model) => invoke<ModelFit>("check_model_fit", { model }),
   cloudProviders: () => invoke<CloudProvider[]>("cloud_providers"),
   serveursModeles: () => invoke<ServeurModeles[]>("serveurs_modeles"),
@@ -2837,6 +2845,9 @@ const demoHealth: Health = {
 
 /** Démo de `/objectif` : nombre de tours jugés. */
 const demoTours = { current: 0 };
+
+/** La démo compte les découpages : l'objectif en demande un par partie. */
+const demoPlans = { n: 0 };
 const demoStreaming = { current: false };
 let demoProviders: Provider[] = [
   {
@@ -3782,16 +3793,29 @@ Contenu de démonstration.
   appendAssistantMessage: async () => {},
   // `force` compte aussi dans la demo : le vrai back-end impose alors un plan,
   // et un `/workflow` sans effet ici donnerait une fausse impression de bug.
-  planTask: async (request, force) => ({
-    needs_plan:
-      force === true || /cr[ée]e|d[ée]veloppe|impl[ée]mente|corrige|refactor/i.test(request),
-    needs_loop: /corrige|fix|marche pas|bug/i.test(request),
-    steps: [
-      "Analyser le code existant",
-      "Appliquer la modification",
-      "Vérifier que tout fonctionne",
-    ],
-  }),
+  planTask: async (request, force) => {
+    const objet = request.trim().replace(/\s+/g, " ").slice(0, 60);
+    // `/objectif` découpe deux fois : les parties de l'objectif, puis les tâches
+    // de chaque partie. La démo nomme les secondes d'après la partie, pour que
+    // la carte montre des tâches au lieu de trois fois les mêmes mots.
+    if (demoPlans.n++ > 0) {
+      return {
+        needs_plan: true,
+        needs_loop: false,
+        steps: [`Préparer — ${objet}`, `Mener à bien — ${objet}`],
+      };
+    }
+    return {
+      needs_plan:
+        force === true || /cr[ée]e|d[ée]veloppe|impl[ée]mente|corrige|refactor/i.test(request),
+      needs_loop: /corrige|fix|marche pas|bug/i.test(request),
+      steps: [
+        "Analyser le code existant",
+        "Appliquer la modification",
+        "Vérifier que tout fonctionne",
+      ],
+    };
+  },
   rewindLastMessage: async () => null,
   goalConsigne: async (goal) => `${goal}
 
@@ -5242,7 +5266,11 @@ Contenu de démonstration.
     if (fit.verdict === "refuse" && !force) throw new Error(fit.message);
     // Un chargement instantané cacherait l'animation qu'on cherche à vérifier.
     await new Promise((r) => setTimeout(r, 1400));
-    demoResident = { model, pinned: true, since: Date.now() };
+    demoResident = { model, pinned: false, since: Date.now() };
+    return demoResidencyStatus();
+  },
+  async setModelPinned(pinned) {
+    demoResident = { ...demoResident, pinned };
     return demoResidencyStatus();
   },
   async ejectChatModel() {

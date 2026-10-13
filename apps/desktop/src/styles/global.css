@@ -7225,6 +7225,32 @@ pre.md-code {
   line-height: 1.6;
 }
 
+/* Garder le modèle est un choix, et il se voit : la case, puis la phrase qui
+   dit ce qui se passe si on ne la coche pas. */
+.locaryn-res-keep {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: var(--space-2);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.locaryn-res-keep input {
+  margin: 0;
+}
+.locaryn-res-keep-why {
+  margin: 2px 0 0;
+  color: var(--text-faint);
+  line-height: 1.5;
+  white-space: normal;
+}
+
+/* Le bouton « Garder » de la barre : discret, mais allumé quand il l'est. */
+.locaryn-res-pin.garde {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .locaryn-res-actions {
   display: flex;
   gap: var(--space-2);

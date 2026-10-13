@@ -392,6 +392,22 @@ async fn init_core() -> anyhow::Result<Core> {
     );
     let _hc = supervisor.spawn_healthcheck_loop();
 
+    // Un moteur resté d'une exécution précédente n'appartient à personne dans
+    // cette session : on le reprend sous surveillance pour qu'il ait, comme
+    // les autres, un délai d'inactivité. Sans cela il n'a aucun minuteur — il
+    // garde la mémoire indéfiniment, même si on ne s'en sert pas.
+    {
+        let veille = supervisor.clone();
+        tokio::spawn(async move {
+            veille
+                .adopter_le_moteur_existant(&ProviderEngine::LlamaCpp)
+                .await;
+            veille
+                .adopter_le_moteur_existant(&ProviderEngine::AirLlm)
+                .await;
+        });
+    }
+
     tokio::spawn(async move {
         // Resolves the engine dir itself: it follows the storage root, which
         // the user can move independently of the database.
@@ -7063,6 +7079,7 @@ pub fn run() {
             cloud_providers::cloud_provider_dashboard_password,
             model_residency::llmfit_catalog,
             model_residency::load_chat_model,
+            model_residency::set_model_pinned,
             model_residency::eject_chat_model,
             model_residency::signaler_activite,
             model_residency::caution_level,
@@ -7181,11 +7198,19 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Locaryn desktop")
-        .run(|_app, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 // Covers shutdown paths other than the tray menu as well. The
                 // child is killed before the desktop process disappears.
                 server_mode::stop_daemon();
+                // Et les moteurs : les quitter sans les arrêter laissait le
+                // modèle en VRAM, sans personne pour le rendre — ni cette
+                // session, ni la suivante, qui n'a pas lancé ce processus.
+                if let Some(core) = app.try_state::<Core>() {
+                    tauri::async_runtime::block_on(model_residency::arreter_les_moteurs_au_depart(
+                        core.inner(),
+                    ));
+                }
             }
         });
 }

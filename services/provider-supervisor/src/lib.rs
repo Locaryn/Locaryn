@@ -110,12 +110,19 @@ pub enum SupervisorError {
 #[derive(Debug)]
 struct EngineState {
     child: Option<Child>,
+    /// Le pid du moteur quand cette session ne l'a pas lancé : un
+    /// `llama-server` resté d'une exécution précédente est repris tel quel
+    /// plutôt que relancé, mais on n'a pas de poignée d'enfant sur lui. Sans
+    /// ce pid, « rendre la mémoire » n'avait aucune prise — le moteur gardait
+    /// la VRAM avec, pour seul recours, un redémarrage de la machine.
+    pid: Option<u32>,
     last_activity: Instant,
     /// The endpoint we spawned for (e.g. http://127.0.0.1:11434).
     endpoint: String,
-    /// Set to true when we spawned the process ourselves (so we are allowed
-    /// to kill it). If the runtime was already running externally, we do NOT
-    /// own it and must not kill it.
+    /// Set to true when we are allowed to stop this runtime: a process we
+    /// spawned, or one we adopted (a llama-server of our own build, left by a
+    /// previous run). False for a runtime running here that is not ours — we
+    /// must not kill it.
     owned: bool,
     /// The user asked for this model to stay in memory. The idle timer keeps
     /// running and is still reported, but it no longer kills anything: a
@@ -132,7 +139,9 @@ impl EngineState {
                 // `try_wait()` returns Ok(Some(status)) if exited.
                 c.try_wait().ok().flatten().is_none()
             }
-            None => false,
+            // Un moteur repris n'a pas de poignée d'enfant : son pid est ce
+            // qui dit qu'il tourne encore.
+            None => self.pid.is_some(),
         }
     }
 }
@@ -338,6 +347,14 @@ impl Supervisor {
             };
 
             if model_matches {
+                // Un moteur déjà en marche — resté d'une exécution précédente
+                // de l'application — est repris tel quel : on ne repaie pas le
+                // chargement. Mais repris veut dire surveillé. Sans entrée
+                // d'état, le superviseur ne le voyait pas du tout : aucun
+                // minuteur d'inactivité ne s'appliquait, et le modèle restait
+                // en mémoire toute la nuit pendant que l'écran affichait
+                // « en mémoire, déchargement automatique ».
+                self.adopter(engine, &endpoint).await;
                 // Mark healthy in storage and return.
                 let _ = self
                     .inner
@@ -441,6 +458,7 @@ impl Supervisor {
                     engine.clone(),
                     EngineState {
                         child: Some(child),
+                        pid: None,
                         last_activity: Instant::now(),
                         endpoint: endpoint.clone(),
                         owned: true,
@@ -632,6 +650,111 @@ impl Supervisor {
                 false
             }
         }
+    }
+
+    /// Reprendre le moteur déjà en marche sur son adresse habituelle.
+    ///
+    /// Appelé au démarrage : un moteur resté d'une exécution précédente
+    /// n'appartient à personne dans cette session. Sans cette reprise, rien ne
+    /// le surveille — il n'a donc aucun délai d'inactivité — et il garde la
+    /// mémoire indéfiniment, même quand personne ne s'en sert.
+    ///
+    /// On ne reprend que ce qui est à nous : le moteur doit répondre, servir
+    /// le modèle que l'application a enregistré, et annoncer notre build.
+    /// Reprendre le moteur d'un autre reviendrait à s'autoriser à l'arrêter.
+    pub async fn adopter_le_moteur_existant(&self, engine: &ProviderEngine) {
+        let Some(endpoint) = default_endpoint(engine).map(str::to_string) else {
+            return;
+        };
+        if !self.is_healthy(engine).await {
+            return;
+        }
+        if !self.moteur_encore_a_nous(engine, &endpoint).await {
+            return;
+        }
+        if matches!(engine, ProviderEngine::LlamaCpp) {
+            let actif = self
+                .inner
+                .storage
+                .providers
+                .active()
+                .await
+                .ok()
+                .flatten()
+                .filter(|p| p.engine == *engine)
+                .and_then(|p| p.model);
+            if !is_llama_server_model_match(&self.inner.http, &endpoint, actif.as_deref()).await {
+                return;
+            }
+        }
+        self.adopter(engine, &endpoint).await;
+    }
+
+    /// Reprendre un moteur que cette session n'a pas lancé.
+    ///
+    /// L'entrée d'état n'existait pas : le moteur répondait, la barre d'état
+    /// le montrait « en mémoire, déchargement automatique », et pourtant aucun
+    /// minuteur ne le surveillait — il n'y avait donc rien qui le rende
+    /// jamais. On l'inscrit, avec le pid qui tient son port, pour que son
+    /// délai d'inactivité s'applique et que « rendre la mémoire » ait une
+    /// prise sur lui.
+    async fn adopter(&self, engine: &ProviderEngine, endpoint: &str) {
+        {
+            let states = self.inner.states.lock().await;
+            if states.contains_key(engine) {
+                return;
+            }
+        }
+        let Some(port) = endpoint_port(endpoint) else {
+            return;
+        };
+        let Some(pid) = pid_du_port(port).await else {
+            tracing::warn!(
+                ?engine,
+                %endpoint,
+                "moteur déjà en marche mais pid introuvable : il n'est pas repris sous surveillance — son délai d'inactivité ne s'appliquera pas"
+            );
+            return;
+        };
+        let mut states = self.inner.states.lock().await;
+        if states.contains_key(engine) {
+            return;
+        }
+        tracing::info!(
+            ?engine,
+            %endpoint,
+            ?pid,
+            "moteur déjà en marche repris sous surveillance — son délai d'inactivité s'applique"
+        );
+        states.insert(
+            engine.clone(),
+            EngineState {
+                child: None,
+                pid: Some(pid),
+                last_activity: Instant::now(),
+                endpoint: endpoint.to_string(),
+                owned: true,
+                pinned: false,
+            },
+        );
+    }
+
+    /// Le moteur repris sert-il toujours, et est-ce bien le nôtre ?
+    ///
+    /// Le pid vient du port : entre la reprise et l'échéance du délai, le
+    /// moteur a pu mourir et un autre programme prendre le port. Le tuer sur
+    /// la seule foi d'un pid aurait arrêté ce programme-là.
+    async fn moteur_encore_a_nous(&self, engine: &ProviderEngine, endpoint: &str) -> bool {
+        let spec = self.extension_engine_spec(engine).await;
+        if !self.probe(endpoint, spec.as_ref()).await {
+            return false;
+        }
+        if matches!(engine, ProviderEngine::LlamaCpp) {
+            return llama_build_info(&self.inner.http, endpoint)
+                .await
+                .is_some_and(|build| build_is_pinned(&build));
+        }
+        true
     }
 
     /// Record that the agent used this engine (resets the idle timer).
@@ -892,7 +1015,35 @@ impl Supervisor {
     pub async fn kill_owned(&self, engine: &ProviderEngine) {
         let mut states = self.inner.states.lock().await;
         if let Some(mut state) = states.remove(engine) {
-            if state.owned {
+            if !state.owned {
+                return;
+            }
+            if state.child.is_none() {
+                // Moteur repris : la seule prise qu'on ait est son pid.
+                let (Some(pid), Some(port)) = (state.pid, endpoint_port(&state.endpoint)) else {
+                    return;
+                };
+                let endpoint = state.endpoint.clone();
+                drop(states);
+                if self.moteur_encore_a_nous(engine, &endpoint).await {
+                    arreter_pid(pid, port).await;
+                    tracing::info!(
+                        ?engine,
+                        pid,
+                        %endpoint,
+                        "moteur repris arrêté — mémoire rendue"
+                    );
+                } else {
+                    tracing::info!(
+                        ?engine,
+                        pid,
+                        %endpoint,
+                        "moteur repris déjà parti — rien à arrêter"
+                    );
+                }
+                return;
+            }
+            {
                 if let Some(child) = state.child.as_mut() {
                     // Try graceful kill first (SIGTERM on Unix, Kill on Win).
                     #[cfg(unix)]
@@ -1344,6 +1495,105 @@ async fn kill_stray_llama_servers() {
             .args(["-9", "-f", "llama-server"])
             .output()
             .await;
+    }
+}
+
+/// Le pid du processus qui écoute sur ce port local.
+///
+/// C'est la seule prise sur un moteur que cette session n'a pas lancé : le
+/// port dit qui l'occupe, et le pid permet de rendre la mémoire. `netstat`
+/// sous Windows, `lsof` puis `ss` sous Unix.
+pub async fn pid_du_port(port: u16) -> Option<u32> {
+    #[cfg(windows)]
+    {
+        // CREATE_NO_WINDOW : pas de console qui clignote sur l'application.
+        let sortie = tokio::process::Command::new("netstat")
+            .args(["-ano", "-p", "TCP"])
+            .creation_flags(0x0800_0000)
+            .output()
+            .await
+            .ok()?;
+        let texte = String::from_utf8_lossy(&sortie.stdout);
+        let cherche = format!(":{port}");
+        texte.lines().find_map(|ligne| {
+            let colonnes: Vec<&str> = ligne.split_whitespace().collect();
+            // Proto · adresse locale · adresse distante · état · pid
+            if colonnes.len() < 5 || colonnes[3] != "LISTENING" {
+                return None;
+            }
+            if !colonnes[1].ends_with(&cherche) {
+                return None;
+            }
+            colonnes[4].parse::<u32>().ok()
+        })
+    }
+    #[cfg(unix)]
+    {
+        let lsof = tokio::process::Command::new("lsof")
+            .args(["-t", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])
+            .output()
+            .await;
+        if let Ok(sortie) = lsof {
+            if let Some(pid) = String::from_utf8_lossy(&sortie.stdout)
+                .lines()
+                .find_map(|l| l.trim().parse::<u32>().ok())
+            {
+                return Some(pid);
+            }
+        }
+        // lsof n'est installé nulle part par défaut sur Linux : `ss` le
+        // remplace (iproute2, présent partout).
+        let ss = tokio::process::Command::new("ss")
+            .args(["-ltnpH"])
+            .output()
+            .await
+            .ok()?;
+        let texte = String::from_utf8_lossy(&ss.stdout);
+        let cherche = format!(":{port} ");
+        texte.lines().find_map(|ligne| {
+            if !ligne.contains(&cherche) {
+                return None;
+            }
+            let apres = ligne.split("pid=").nth(1)?;
+            apres
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+                .parse::<u32>()
+                .ok()
+        })
+    }
+}
+
+/// Arrêter un moteur repris, par son pid.
+///
+/// L'arrêt doux d'abord — un moteur a le temps de relâcher sa VRAM et son
+/// port —, la force ensuite : au-delà, c'est de la mémoire qu'on rend à la
+/// machine, et un moteur récalcitrant ne doit pas garder le poste occupé.
+async fn arreter_pid(pid: u32, port: u16) {
+    #[cfg(windows)]
+    {
+        let _ = tokio::process::Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .creation_flags(0x0800_0000)
+            .output()
+            .await;
+        let _ = wait_port_free(port, Duration::from_secs(5)).await;
+    }
+    #[cfg(unix)]
+    {
+        let _ = tokio::process::Command::new("kill")
+            .arg(pid.to_string())
+            .output()
+            .await;
+        if wait_port_free(port, Duration::from_secs(5)).await.is_ok() {
+            return;
+        }
+        let _ = tokio::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output()
+            .await;
+        let _ = wait_port_free(port, Duration::from_secs(3)).await;
     }
 }
 
@@ -2345,5 +2595,177 @@ mod tests {
 
         drop(listener);
         ensure_port_free(port).expect("le port est libre une fois le listener relâché");
+    }
+    /// Un faux llama-server qui répond par chemin : la santé, les modèles, la
+    /// build et les slots. De quoi faire prendre au superviseur son chemin
+    /// rapide (« ce moteur est déjà là et sert le bon modèle ») et voir ce
+    /// qu'il en fait ensuite.
+    async fn faux_llama_par_chemin(port: u16, build: &'static str, modele: &'static str) -> String {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+            .await
+            .unwrap_or_else(|e| panic!("le faux moteur doit écouter sur {port} : {e}"));
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut tampon = vec![0u8; 8192];
+                let n = sock.read(&mut tampon).await.unwrap_or(0);
+                let requete = String::from_utf8_lossy(&tampon[..n]).to_string();
+                let chemin = requete.split_whitespace().nth(1).unwrap_or("/").to_string();
+                let corps = if chemin.starts_with("/v1/models") {
+                    format!(r#"{{"object":"list","data":[{{"id":"{modele}","object":"model"}}]}}"#)
+                } else if chemin.starts_with("/props") {
+                    format!(
+                        r#"{{"build_info":"{build}","model_path":"{modele}","model_alias":"{modele}","default_generation_settings":{{"model":"{modele}"}}}}"#
+                    )
+                } else if chemin.starts_with("/slots") {
+                    r#"[{"is_processing":false}]"#.to_string()
+                } else {
+                    r#"{"status":"ok"}"#.to_string()
+                };
+                let reponse = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{corps}",
+                    corps.len()
+                );
+                let _ = sock.write_all(reponse.as_bytes()).await;
+            }
+        });
+        format!("http://127.0.0.1:{port}")
+    }
+
+    async fn superviseur_de_test(
+        intervalle: Duration,
+        delai: Duration,
+    ) -> (Supervisor, locaryn_storage::Storage) {
+        let pool = locaryn_storage::open_in_memory()
+            .await
+            .expect("base en mémoire");
+        let storage = locaryn_storage::Storage::new(pool);
+        let sup = Supervisor::new(
+            SupervisorConfig {
+                healthcheck_interval: intervalle,
+                idle_timeout: delai,
+                ..SupervisorConfig::default()
+            },
+            storage.clone(),
+        );
+        (sup, storage)
+    }
+
+    /// Le cas rapporté : un moteur posé en mémoire, plus personne ne s'en sert,
+    /// et il reste là toute la nuit. Le délai doit le rendre.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn un_moteur_inactif_est_rendu_apres_le_delai() {
+        let (sup, _storage) =
+            superviseur_de_test(Duration::from_millis(40), Duration::from_millis(120)).await;
+        // Le moteur de ce scénario est celui qu'on vient de poser : son
+        // adresse n'a pas d'importance, seule compte l'horloge d'inactivité.
+        let endpoint = faux_moteur("200 OK", r#"{"status":"ok"}"#).await;
+        let enfant = tokio::process::Command::new("sleep")
+            .arg("300")
+            .spawn()
+            .expect("processus enfant de test");
+        sup.inner.states.lock().await.insert(
+            ProviderEngine::LlamaCpp,
+            EngineState {
+                child: Some(enfant),
+                pid: None,
+                last_activity: Instant::now() - Duration::from_secs(3600),
+                endpoint,
+                owned: true,
+                pinned: false,
+            },
+        );
+
+        let boucle = sup.spawn_healthcheck_loop();
+        let echeance = Instant::now() + Duration::from_secs(10);
+        while sup
+            .inner
+            .states
+            .lock()
+            .await
+            .contains_key(&ProviderEngine::LlamaCpp)
+        {
+            assert!(
+                Instant::now() < echeance,
+                "un moteur inactif non épinglé doit être arrêté par le superviseur"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        boucle.abort();
+    }
+
+    /// Le pid qui écoute un port : la prise sur un moteur qu'on n'a pas lancé.
+    #[tokio::test]
+    async fn le_pid_du_port_est_retrouve() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert_eq!(
+            pid_du_port(port).await,
+            Some(std::process::id()),
+            "le processus qui écoute ce port doit être retrouvé"
+        );
+
+        // Un port que personne n'écoute n'a pas de pid : on ne tue pas un
+        // voisin au hasard.
+        let libre = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port_libre = libre.local_addr().unwrap().port();
+        drop(libre);
+        assert_eq!(pid_du_port(port_libre).await, None);
+    }
+
+    /// Un moteur repris doit se rendre pour de vrai : c'est tout l'intérêt de
+    /// son pid.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn un_moteur_repris_est_arrete_par_son_pid() {
+        let mut enfant = tokio::process::Command::new("sleep")
+            .arg("300")
+            .spawn()
+            .expect("processus de test");
+        let pid = enfant.id().expect("pid de l'enfant");
+        let libre = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = libre.local_addr().unwrap().port();
+        drop(libre);
+
+        arreter_pid(pid, port).await;
+
+        let echeance = Instant::now() + Duration::from_secs(5);
+        while enfant.try_wait().unwrap().is_none() {
+            assert!(
+                Instant::now() < echeance,
+                "un moteur repris doit être arrêté par son pid"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// Un moteur déjà en marche — reliquat d'une session précédente — doit
+    /// compter comme les autres : sans minuteur, rien ne le rend jamais.
+    #[tokio::test]
+    async fn un_moteur_deja_en_marche_garde_un_minuteur() {
+        let (sup, storage) =
+            superviseur_de_test(Duration::from_secs(60), Duration::from_secs(60)).await;
+        let endpoint = faux_llama_par_chemin(llama_port(), LLAMA_BUILD, "qwen.gguf").await;
+        storage
+            .providers
+            .upsert_local(
+                &ProviderEngine::LlamaCpp,
+                &endpoint,
+                Some("qwen.gguf".into()),
+            )
+            .await
+            .expect("le modèle actif est enregistré");
+
+        sup.ensure_running(&ProviderEngine::LlamaCpp)
+            .await
+            .expect("le moteur déjà prêt est repris tel quel");
+
+        assert!(
+            sup.residency(&ProviderEngine::LlamaCpp).await.is_some(),
+            "un moteur repris d'une session précédente doit avoir un minuteur d'inactivité, sinon rien ne le rend jamais"
+        );
     }
 }

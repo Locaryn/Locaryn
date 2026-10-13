@@ -4,8 +4,12 @@
 // Le moteur garde les poids résidents tant qu'il tourne — parler au modèle ne
 // le recharge pas. Ce qui manquait, c'est la visibilité et le contrôle : sans
 // épinglage, le superviseur décharge après un temps d'inactivité, et on repaie
-// le chargement en revenant. Un modèle chargé ici est épinglé : il reste
-// jusqu'à ce qu'on l'éjecte.
+// le chargement en revenant.
+//
+// Charger n'épingle donc plus. Un modèle choisi ici repart après le délai
+// d'inactivité, et revient au message suivant ; « garder » est un bouton, pas
+// la conséquence cachée d'un choix de modèle — sinon un modèle chargé un soir
+// tenait encore la VRAM le lendemain matin.
 //
 // Le garde-fou mémoire s'affiche *avant* le chargement, jamais après. Un
 // avertissement qui arrive quand la machine rame déjà n'est pas un
@@ -19,6 +23,7 @@ import {
   type ResidencyStatus,
   core,
 } from "../lib/core";
+import { notifierSysteme } from "../lib/osNotify";
 import { findMetric, formatRate, formatSpeed } from "./SpeedBadge";
 
 /** Le point de l'indicateur : couleur et libellé disent la même chose, pour
@@ -99,8 +104,12 @@ export function ModelResidency() {
   const [models, setModels] = useState<string[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
   const [fit, setFit] = useState<ModelFit | null>(null);
-  const [busy, setBusy] = useState<null | "fit" | "load" | "eject">(null);
+  const [busy, setBusy] = useState<null | "fit" | "load" | "eject" | "pin">(null);
   const [error, setError] = useState<string | null>(null);
+  /** La case du panneau : garder le modèle n'est pas le défaut. */
+  const [garder, setGarder] = useState(false);
+  /** Le dernier état lu : il dit si le délai vient de rendre le modèle. */
+  const dernier = useRef<ResidencyStatus | null>(null);
   /* La quantification, le débit et le contexte accompagnent le nom du modèle
      dans la barre d'état : trois chiffres en mono, lus d'un coup d'œil. */
   const [metrics, setMetrics] = useState<ModelMetric[]>([]);
@@ -122,14 +131,38 @@ export function ModelResidency() {
       : null;
   const boxRef = useRef<HTMLDivElement>(null);
 
+  /** Le même état à deux endroits : l'écran, et la mémoire du dernier lu. */
+  const majStatus = useCallback((suivant: ResidencyStatus) => {
+    dernier.current = suivant;
+    setStatus(suivant);
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
-      setStatus(await core.modelResidency());
+      const suivant = await core.modelResidency();
+      const avant = dernier.current;
+      majStatus(suivant);
+      // Le délai d'inactivité vient de rendre le modèle : le dire, puisque
+      // c'est la seule trace d'un déchargement qui s'est décidé sans nous. Le
+      // contrôle du temps d'inactivité évite d'annoncer « longue inactivité »
+      // pour un arrêt demandé à la main quelques secondes plus tôt.
+      const renduParLeDelai =
+        avant?.loaded === true &&
+        avant.idle_timeout_seconds > 0 &&
+        avant.idle_seconds >= avant.idle_timeout_seconds - 60;
+      if (renduParLeDelai && !suivant.loaded && avant.model) {
+        void notifierSysteme(
+          "Modèle libéré",
+          `${avant.model} a quitté la mémoire après une longue inactivité.`,
+          "model_lifecycle",
+          avant.idle_timeout_seconds * 1000,
+        );
+      }
     } catch {
       // Une barre d'état qui hurle parce qu'un sondage a raté serait pire que
       // le silence : on garde le dernier état connu.
     }
-  }, []);
+  }, [majStatus]);
 
   useEffect(() => {
     void refresh();
@@ -219,8 +252,25 @@ export function ModelResidency() {
     setBusy("load");
     setError(null);
     try {
-      setStatus(await core.loadChatModel(picked, force));
+      let res = await core.loadChatModel(picked, force);
+      // La case n'épingle qu'à la demande : le chargement seul laisse le délai
+      // d'inactivité faire son travail.
+      if (garder) res = await core.setModelPinned(true);
+      majStatus(res);
       setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function basculerEpinglage() {
+    if (!status) return;
+    setBusy("pin");
+    setError(null);
+    try {
+      majStatus(await core.setModelPinned(!status.pinned));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -233,7 +283,7 @@ export function ModelResidency() {
     setError(null);
     try {
       const res = await core.ejectChatModel();
-      setStatus(res);
+      majStatus(res);
       window.dispatchEvent(new Event("locaryn:model-ejected"));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -304,6 +354,28 @@ export function ModelResidency() {
             libéré dans {minutes(resteAvantLiberation)} sans utilisation
           </span>
         )}
+
+      {loaded && (
+        <button
+          type="button"
+          className={`locaryn-res-eject locaryn-res-pin${status?.pinned ? " garde" : ""}`}
+          onClick={() => void basculerEpinglage()}
+          disabled={busy !== null}
+          title={
+            status?.pinned
+              ? "Le modèle reste en mémoire jusqu'à ce que vous l'éjectiez. Cliquez pour le rendre au délai d'inactivité."
+              : "Empêcher le déchargement automatique après une longue inactivité."
+          }
+        >
+          {busy === "pin" ? "…" : status?.pinned ? "Gardé" : "Garder"}
+        </button>
+      )}
+
+      {error && !open && (
+        <span className="locaryn-res-hint" title={error}>
+          échec : {error}
+        </span>
+      )}
 
       {loaded && (
         <button
@@ -386,6 +458,20 @@ export function ModelResidency() {
                   </ul>
                 </details>
               )}
+              <label className="locaryn-res-keep">
+                <input
+                  type="checkbox"
+                  checked={garder}
+                  onChange={(e) => setGarder(e.target.checked)}
+                />
+                Garder en mémoire jusqu'à ce que je l'éjecte
+              </label>
+              <p className="locaryn-res-keep-why">
+                Sans cette case, le modèle quitte la mémoire après{" "}
+                {minutes(status?.idle_timeout_seconds || 1800)} sans utilisation — un message, ou
+                n'importe quelle action dans l'application, repart le délai.
+              </p>
+
               <div className="locaryn-res-actions">
                 {fit.verdict === "refuse" ? (
                   fit.overridable && (
@@ -405,7 +491,11 @@ export function ModelResidency() {
                     onClick={() => void confirmLoad(false)}
                     disabled={busy !== null}
                   >
-                    {busy === "load" ? "Chargement…" : "Charger et garder en mémoire"}
+                    {busy === "load"
+                      ? "Chargement…"
+                      : garder
+                        ? "Charger et garder en mémoire"
+                        : "Charger"}
                   </button>
                 )}
               </div>

@@ -466,7 +466,14 @@ pub async fn llmfit_catalog(
         .collect())
 }
 
-/// Charger un modèle et l'épingler en mémoire.
+/// Charger un modèle en mémoire, prêt à servir.
+///
+/// Le chargement n'épingle plus. L'épinglage automatique faisait d'un choix de
+/// modèle un choix pour toujours : la personne chargeait son modèle un soir,
+/// et la VRAM était encore prise le lendemain matin — précisément ce que le
+/// délai d'inactivité devait empêcher. Le délai s'applique donc à ce que cette
+/// commande charge ; `set_model_pinned` est désormais le seul moyen de garder
+/// un modèle exprès.
 ///
 /// `force` passe outre un refus, et n'a d'effet que si l'utilisateur l'a
 /// explicitement demandé après avoir lu le message : un refus silencieusement
@@ -509,11 +516,59 @@ pub async fn load_chat_model(
         .ensure_running(&engine)
         .await
         .map_err(|e| e.to_string())?;
-    core.supervisor.set_pinned(&engine, true).await;
     crate::refresh_mcp_runtime_env(&core).await;
 
-    tracing::info!(%model, moteur = %engine.as_token(), "modèle de chat chargé et épinglé");
+    tracing::info!(
+        %model,
+        moteur = %engine.as_token(),
+        "modèle de chat chargé — son délai d'inactivité s'applique"
+    );
     model_residency(core).await
+}
+
+/// Garder le modèle en mémoire, ou le rendre au délai d'inactivité.
+///
+/// L'épinglage redevient ce qu'il aurait toujours dû être : un choix explicite.
+/// Un moteur épinglé n'est jamais déchargé pour inactivité ; un moteur qui ne
+/// l'est pas repart après le délai, puis se recharge au message suivant.
+#[tauri::command]
+pub async fn set_model_pinned(
+    core: State<'_, Core>,
+    pinned: bool,
+) -> Result<ResidencyStatus, String> {
+    let active = core.storage.providers.active().await.ok().flatten();
+    let engine = active
+        .as_ref()
+        .map(|p| p.engine.clone())
+        .unwrap_or(ProviderEngine::LlamaCpp);
+    core.supervisor.set_pinned(&engine, pinned).await;
+    tracing::info!(
+        moteur = %engine.as_token(),
+        pinned,
+        "résidence du modèle de chat réglée à la main"
+    );
+    model_residency(core).await
+}
+
+/// Arrêter les moteurs que l'application a lancés, au moment où elle part.
+///
+/// Les laisser derrière soi, c'est laisser des gigaoctets de VRAM que plus
+/// personne ne peut rendre : l'application n'est plus là, et la session
+/// suivante n'a pas lancé ces processus — elle ne les connaît même pas. Le
+/// `kill_on_drop` des enfants ne suffit pas ici : à la sortie du processus,
+/// plus rien ne déroule les destructeurs.
+pub(crate) async fn arreter_les_moteurs_au_depart(core: &Core) {
+    let mut moteurs = vec![ProviderEngine::LlamaCpp, ProviderEngine::AirLlm];
+    for spec in core.supervisor.extension_engines().await {
+        moteurs.push(spec.engine());
+    }
+    moteurs.dedup();
+    for moteur in moteurs {
+        // Épingler n'a plus de sens quand on part : on rend la mémoire.
+        core.supervisor.set_pinned(&moteur, false).await;
+        let _ = core.supervisor.shutdown(&moteur).await;
+    }
+    tracing::info!("moteurs locaux arrêtés — mémoire rendue à la machine");
 }
 
 /// Décharger le modèle et rendre la mémoire.
