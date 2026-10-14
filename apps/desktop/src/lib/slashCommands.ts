@@ -80,6 +80,8 @@ export interface SlashModifiers {
   loops: number | null;
   /** `/objectif` : enchainer jusqu'a ce que les conditions soient remplies. */
   goal: boolean;
+  /** `/plan` : decomposer et executer etape par etape. */
+  plan: boolean;
   /** Ce qui reste de la demande, les modificateurs retires. */
   rest: string;
 }
@@ -307,6 +309,7 @@ export function parseModifiers(input: string): SlashModifiers {
   let force = false;
   let loops: number | null = null;
   let goal = false;
+  let plan = false;
 
   const motif = /(?:^|\s)\/([\p{L}]+)/gu;
   let rest = "";
@@ -316,7 +319,8 @@ export function parseModifiers(input: string): SlashModifiers {
     const but = motsDeLaction("goal").has(nom);
     const orchestre = motsDeLaction("workflow").has(nom);
     const boucle = motsDeLaction("loop").has(nom);
-    if (!but && !orchestre && !boucle) continue;
+    const planifie = motsDeLaction("plan").has(nom);
+    if (!but && !orchestre && !boucle && !planifie) continue;
     rest += input.slice(curseur, m.index);
     curseur = m.index + m[0].length;
     // La ponctuation collee au mot part avec lui : « continue /goal. » ne doit
@@ -328,6 +332,10 @@ export function parseModifiers(input: string): SlashModifiers {
     }
     if (orchestre) {
       force = true;
+      continue;
+    }
+    if (planifie) {
+      plan = true;
       continue;
     }
     // Le nombre qui suit `/loop` est avale seulement s'il en est un.
@@ -347,6 +355,7 @@ export function parseModifiers(input: string): SlashModifiers {
     force,
     loops,
     goal,
+    plan,
     // Les trous laisses par les mots retires se referment : « continue  et
     // verifie » redevient lisible. Les sauts de ligne et l'indentation d'un
     // extrait colle dans la demande sont conserves.
@@ -397,14 +406,15 @@ export function matchSlashInput(
 }
 
 /**
- * Le « /mot » en cours de frappe a la fin d'un texte qui ne commence pas par
- * « / » : « explique ce code /g » → « g ». Comme dans Claude Code ou Codex, la
- * palette s'ouvre aussi au milieu d'un message, pas seulement au debut.
- * `null` quand le texte commence par « / » (cas de `matchSlashInput`) ou ne
- * finit pas par un tel mot.
+ * Le « /mot » en cours de frappe à la fin du texte, qu'il soit au début
+ * du message ou au milieu/à la fin (après un espace ou une autre commande) :
+ * « /g » → « g »
+ * « /goal /p » → « p »
+ * « /goal / » → « »
+ * « explique ce code /plan » → « plan »
+ * `null` quand le texte ne finit pas par un slash en cours de frappe.
  */
 export function slashEnFin(input: string): string | null {
-  if (input.startsWith("/")) return null;
   const m = /(?:^|\s)\/([\w:.-]*)$/.exec(input);
   return m ? m[1] : null;
 }

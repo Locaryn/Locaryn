@@ -1474,19 +1474,20 @@ ${d.texte}`
     const text = mods.rest;
     const imposeWorkflow = forceWorkflow || mods.force;
     const objectif = goalNext || mods.goal;
+    const planifie = planNext || mods.plan;
     const reprises = mods.loops ?? loopCount;
     const imgs = attachOverride ?? attachments;
 
     if (!text && imgs.length === 0) {
       // Des modificateurs sans demande : le dire, sinon la palette parait
       // avoir avale le message.
-      if (mods.force || mods.loops !== null || mods.goal) {
+      if (mods.force || mods.loops !== null || mods.goal || mods.plan) {
         setItems((prev) => [
           ...prev,
           {
             id: nextId("log"),
             kind: "log",
-            text: "Ces commandes modifient une demande : écrivez-la à la suite, par exemple « /workflow répare le parseur ».",
+            text: "Ces commandes modifient une demande : écrivez-la à la suite, par exemple « /plan répare le parseur ».",
           },
         ]);
       }
@@ -1699,7 +1700,7 @@ ${d.texte}`
     }
 
     // /plan → decompose and execute step by step, with a verification loop.
-    if (planNext || imposeWorkflow || reprises !== null) {
+    if (planifie || imposeWorkflow || reprises !== null) {
       setPlanNext(false);
       setForceWorkflow(false);
       setLoopCount(null);
@@ -2097,40 +2098,43 @@ ${preview}`,
     };
   }, []);
 
-  /** La palette « / » pour ce texte : en tête de message, ou « /mot » à la fin. */
+  /** La palette « / » pour ce texte : au début, au milieu ou à la fin d'un message. */
   function calculerSlash(texte: string) {
     const pool = [...extCommands, ...skillCommands];
+
+    // 1. Un « /mot » est-il en cours de frappe à la fin du texte ?
+    // Fonctionne au tout début (« /p »), après d'autres commandes (« /goal /p »)
+    // ou n'importe où dans un texte (« fais ceci /p »).
+    const mot = slashEnFin(texte);
+    if (mot !== null) {
+      const items = matchSlash(`/${mot}`, pool, activeCapabilities) ?? [];
+      setSlashInline(true);
+      setSlash(items.length ? { kind: "commands", items } : null);
+      return;
+    }
+
+    // 2. Sinon, est-ce une complétion d'arguments pour une commande déjà tapée (ex: /loop, /image) ?
     const debut = matchSlashInput(texte, pool, activeCapabilities);
-    if (debut) {
+    if (debut && debut.kind === "args") {
       setSlashInline(false);
       setSlash(debut);
       return;
     }
-    const mot = slashEnFin(texte);
-    const items = mot === null ? [] : (matchSlash(`/${mot}`, pool, activeCapabilities) ?? []);
-    setSlashInline(items.length > 0);
-    setSlash(items.length ? { kind: "commands", items } : null);
+
+    setSlash(null);
+    setSlashInline(false);
   }
 
-  /** Choisir une commande de la palette (clic ou Tab).
+  /** Choisir une commande de la palette (clic, Tab ou Entrée).
    *
    * Un skill s'insère en « @nom » ; toute autre commande s'insère en
-   * « /nom » dans le champ de saisie : l'utilisateur peut compléter avec
-   * des arguments puis appuyer sur Entrée pour envoyer. On ne doit jamais
-   * exécuter ni vider le champ ici — c'est confus et irréversible au clic.
-   *
-   * L'exécution directe reste possible via Entrée sur la palette
-   * (`handleComposerKeyDown`) ou en appuyant sur Entrée depuis le champ. */
+   * « /nom » dans le champ de saisie à l'endroit du slash en cours de frappe.
+   * On remplace le token « /mot » courant sans effacer le reste du message. */
   function choisirSlash(cmd: SlashCommand) {
     const insertion =
       cmd.action === "skill" ? `@${cmd.name} ` : `/${commandName(cmd, lang)} `;
-    if (slashInline) {
-      // Remplacement inline : « écris du code /plan » → « écris du code /plan »
-      setInput((t) => t.replace(/(^|\s)\/[\w:.-]*$/, `$1${insertion}`));
-    } else {
-      // Début de ligne : remplacer tout le slash partiel tapé par la commande.
-      setInput(insertion);
-    }
+    // Remplacement du dernier token slash tapé (en début de ligne, après espace, ou après une autre commande)
+    setInput((t) => t.replace(/(^|\s)\/[\w:.-]*$/, `$1${insertion}`));
     setSlash(null);
     setSlashInline(false);
     inputRef.current?.focus();
@@ -2371,25 +2375,13 @@ ${preview}`,
         const idx = Math.min(slashIndex, n - 1);
         if (slash.kind === "commands") {
           const cmd = slash.items[idx];
-          if (e.key === "Tab") {
-            // Tab complète toujours l'input, sans exécuter.
-            choisirSlash(cmd);
-            return;
-          }
-          // Enter : compléter si la commande attend des arguments,
-          // exécuter directement si elle n'en a pas.
-          if (cmd.args && cmd.args.length) {
-            const next = `/${commandName(cmd, lang)} `;
-            setInput(next);
-            setSlash(matchSlashInput(next, extCommands, activeCapabilities));
-            setSlashIndex(0);
-          } else {
-            runSlash(cmd);
-          }
+          // Tab et Entrée complètent toujours la commande dans le champ, sans effacer le prompt.
+          choisirSlash(cmd);
+          return;
         } else {
           runSlash(slash.command, argToSize(slash.items[idx].value));
+          return;
         }
-        return;
       }
       if (e.key === "Escape") {
         e.preventDefault();
