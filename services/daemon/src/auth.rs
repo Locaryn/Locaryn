@@ -33,6 +33,11 @@ fn is_public(path: &str) -> bool {
         // l'autorité publique du déploiement. Il doit donc être demandable par
         // le desktop lui-même avant qu'il ait pu obtenir un jeton utilisateur.
         || path == "/v1/pairing"
+        // L'état de l'appairage et le rejet : consultés par l'hôte en boucle
+        // locale pour afficher le code à 6 chiffres quand un appareil frappe.
+        // Protégés en interne par `sur_cette_machine` (réservé à l'hôte).
+        || path == "/v1/pairing/state"
+        || path == "/v1/pairing/reject"
         // Le confirm d'appairage EST le second facteur : il porte un code
         // affiché à l'écran de l'hôte, pas un secret stocké. Il doit donc
         // être joignable par un appareil qui n'a pas encore de token.
@@ -46,6 +51,13 @@ fn is_public(path: &str) -> bool {
         // de l'hôte, valable 90 s, une seule fois. L'appareil qui l'échange
         // n'a pas encore de jeton.
         || path == "/v1/auth/login-code"
+        // Le QR de connexion d'un compte (code temporaire) : demandé par l'hôte
+        // depuis l'écran des réglages pour afficher le QR de connexion d'un compte.
+        // Protégé en interne par `sur_cette_machine` ou administrateur authentifié.
+        || (path.starts_with("/v1/users/") && path.ends_with("/login-qr"))
+        // État et contrôle du mode voyage : consultés par l'hôte en local.
+        || path == "/v1/travel"
+        || path == "/v1/travel/home"
         // Les téléchargements d'appairage. L'autorité est publique par
         // construction ; le paquet client, lui, est un secret — mais il
         // vérifie ses propres identifiants Basic dans son handler, et exiger

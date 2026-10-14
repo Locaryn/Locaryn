@@ -382,11 +382,13 @@ pub async fn pairing_code(mode: String, url: Option<String>) -> Result<PairingCo
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(body
+        let msg = body
             .pointer("/error/message")
+            .or_else(|| body.pointer("/detail"))
+            .or_else(|| body.pointer("/error"))
             .and_then(|m| m.as_str())
-            .unwrap_or("Le service a refusé de produire un code.")
-            .to_string());
+            .unwrap_or("Le service a refusé de produire un code.");
+        return Err(msg.to_string());
     }
     Ok(PairingCode {
         mode: body["mode"].as_str().unwrap_or(&mode).to_string(),
@@ -417,11 +419,13 @@ pub async fn user_login_qr(user_id: String) -> Result<LoginQr, String> {
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(body
+        let msg = body
             .pointer("/error/message")
+            .or_else(|| body.pointer("/detail"))
+            .or_else(|| body.pointer("/error"))
             .and_then(|m| m.as_str())
-            .unwrap_or("Le service a refusé de produire le QR de connexion.")
-            .to_string());
+            .unwrap_or("Le service a refusé de produire le QR de connexion.");
+        return Err(msg.to_string());
     }
     Ok(LoginQr {
         code: body["code"].as_str().unwrap_or_default().to_string(),

@@ -1606,7 +1606,11 @@ ${d.texte}`
         id: nextId("msg"),
         kind: "msg",
         role: "user",
-        text,
+        // Afficher ce que l'utilisateur a tapé (slash compris) dans la bulle :
+        // `text` est ce qui part au modèle (sans les /goal, /workflow…),
+        // `brut` est ce qui était dans le champ. L'afficher complet évite que
+        // « /goal fais X » devienne mystérieusement « fais X » dans l'historique.
+        text: brut,
         images: imgs.filter((a) => a.kind === "image" && a.dataUrl).map((a) => a.dataUrl as string),
         attachments: imgs
           .filter((a) => a.kind !== "image")
@@ -2108,19 +2112,28 @@ ${preview}`,
     setSlash(items.length ? { kind: "commands", items } : null);
   }
 
-  /** Choisir une commande de la palette. Un skill s'insère en « @nom » ; une
-   *  commande tapée au milieu d'un texte s'insère aussi, sans rien exécuter ni
-   *  effacer ; en tête de message, elle s'exécute comme avant. */
+  /** Choisir une commande de la palette (clic ou Tab).
+   *
+   * Un skill s'insère en « @nom » ; toute autre commande s'insère en
+   * « /nom » dans le champ de saisie : l'utilisateur peut compléter avec
+   * des arguments puis appuyer sur Entrée pour envoyer. On ne doit jamais
+   * exécuter ni vider le champ ici — c'est confus et irréversible au clic.
+   *
+   * L'exécution directe reste possible via Entrée sur la palette
+   * (`handleComposerKeyDown`) ou en appuyant sur Entrée depuis le champ. */
   function choisirSlash(cmd: SlashCommand) {
-    if (cmd.action === "skill" || slashInline) {
-      const insertion = cmd.action === "skill" ? `@${cmd.name} ` : `/${commandName(cmd, lang)} `;
+    const insertion =
+      cmd.action === "skill" ? `@${cmd.name} ` : `/${commandName(cmd, lang)} `;
+    if (slashInline) {
+      // Remplacement inline : « écris du code /plan » → « écris du code /plan »
       setInput((t) => t.replace(/(^|\s)\/[\w:.-]*$/, `$1${insertion}`));
-      setSlash(null);
-      setSlashInline(false);
-      inputRef.current?.focus();
-      return;
+    } else {
+      // Début de ligne : remplacer tout le slash partiel tapé par la commande.
+      setInput(insertion);
     }
-    runSlash(cmd);
+    setSlash(null);
+    setSlashInline(false);
+    inputRef.current?.focus();
   }
 
   function runSlash(cmd: SlashCommand, size?: number | null) {
@@ -2358,16 +2371,21 @@ ${preview}`,
         const idx = Math.min(slashIndex, n - 1);
         if (slash.kind === "commands") {
           const cmd = slash.items[idx];
-          // A command that takes arguments: Tab completes to "/cmd " so its
-          // values show up instead of running with an unknown quality.
-          if (e.key === "Tab" && !slashInline && cmd.args && cmd.args.length) {
+          if (e.key === "Tab") {
+            // Tab complète toujours l'input, sans exécuter.
+            choisirSlash(cmd);
+            return;
+          }
+          // Enter : compléter si la commande attend des arguments,
+          // exécuter directement si elle n'en a pas.
+          if (cmd.args && cmd.args.length) {
             const next = `/${commandName(cmd, lang)} `;
             setInput(next);
             setSlash(matchSlashInput(next, extCommands, activeCapabilities));
             setSlashIndex(0);
-            return;
+          } else {
+            runSlash(cmd);
           }
-          choisirSlash(cmd);
         } else {
           runSlash(slash.command, argToSize(slash.items[idx].value));
         }
