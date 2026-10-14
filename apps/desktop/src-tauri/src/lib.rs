@@ -2084,7 +2084,9 @@ async fn send_message(
             if let Some(ref root) = project_path {
                 let octets = doc.base64.as_deref().and_then(|b64| {
                     use base64::Engine as _;
-                    base64::engine::general_purpose::STANDARD.decode(b64.trim()).ok()
+                    base64::engine::general_purpose::STANDARD
+                        .decode(b64.trim())
+                        .ok()
                 });
 
                 if let Some(bytes) = octets {
@@ -2116,7 +2118,8 @@ async fn send_message(
         }
     }
 
-    let avec_documents = locaryn_shared_types::joint_document::compose_message(&content, &joints_texte);
+    let avec_documents =
+        locaryn_shared_types::joint_document::compose_message(&content, &joints_texte);
 
     let avec_depots = if !mentions_fichiers_deposes.is_empty() {
         let liste = mentions_fichiers_deposes.join("\n");

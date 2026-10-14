@@ -335,26 +335,36 @@ impl Supervisor {
         let is_healthy = self.probe(&endpoint, spec.as_ref()).await;
         if is_healthy {
             let model_matches = if matches!(engine, ProviderEngine::LlamaCpp) {
-                let same_model = is_llama_server_model_match(&self.inner.http, &endpoint, active_model.as_deref()).await;
+                let same_model = is_llama_server_model_match(
+                    &self.inner.http,
+                    &endpoint,
+                    active_model.as_deref(),
+                )
+                .await;
                 let adoptable = self.llama_adoptable(engine, &endpoint).await;
 
                 // Vérifier si la configuration d'inférence (fenêtre de contexte, etc.) a changé
                 let data_dir = locaryn_config::default_data_dir();
-                let config_matches = match std::fs::read_to_string(data_dir.join("active_llama_settings.json")) {
-                    Ok(raw) => {
-                        let active: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
-                        let wanted_cfg = std::fs::read_to_string(data_dir.join("inference_config.json"))
-                            .ok()
-                            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-                            .unwrap_or_default();
-                        let wanted_ctx = wanted_cfg["context_length"].as_u64().unwrap_or(0);
-                        let active_ctx = active["ctx"].as_u64().unwrap_or(0);
-                        // Si l'utilisateur a changé la fenêtre de contexte, redémarrer pour l'appliquer
-                        wanted_ctx == active_ctx
-                    }
-                    // Aucun réglage actif enregistré : force le redémarrage pour appliquer les paramètres
-                    Err(_) => false,
-                };
+                let config_matches =
+                    match std::fs::read_to_string(data_dir.join("active_llama_settings.json")) {
+                        Ok(raw) => {
+                            let active: serde_json::Value =
+                                serde_json::from_str(&raw).unwrap_or_default();
+                            let wanted_cfg =
+                                std::fs::read_to_string(data_dir.join("inference_config.json"))
+                                    .ok()
+                                    .and_then(|s| {
+                                        serde_json::from_str::<serde_json::Value>(&s).ok()
+                                    })
+                                    .unwrap_or_default();
+                            let wanted_ctx = wanted_cfg["context_length"].as_u64().unwrap_or(0);
+                            let active_ctx = active["ctx"].as_u64().unwrap_or(0);
+                            // Si l'utilisateur a changé la fenêtre de contexte, redémarrer pour l'appliquer
+                            wanted_ctx == active_ctx
+                        }
+                        // Aucun réglage actif enregistré : force le redémarrage pour appliquer les paramètres
+                        Err(_) => false,
+                    };
 
                 same_model && adoptable && config_matches
             } else {
@@ -1897,7 +1907,9 @@ async fn spawn_llama_server(
     };
     let batch = inference_cfg["batch_size"].as_u64().unwrap_or(512);
     cmd.arg("-b").arg(batch.to_string());
-    let ubatch = inference_cfg["ubatch_size"].as_u64().unwrap_or(default_ubatch);
+    let ubatch = inference_cfg["ubatch_size"]
+        .as_u64()
+        .unwrap_or(default_ubatch);
     cmd.arg("-ub").arg(ubatch.to_string());
 
     // mmap : « --no-mmap » n'existe plus depuis ~b11000 (l'option mmap est
@@ -1961,7 +1973,10 @@ async fn spawn_llama_server(
         "fa": if flash_attention_active { "on" } else { "off" },
         "cpu_only": cpu_only,
     });
-    let _ = std::fs::write(data_dir.join("active_llama_settings.json"), settings_record.to_string());
+    let _ = std::fs::write(
+        data_dir.join("active_llama_settings.json"),
+        settings_record.to_string(),
+    );
 
     cmd.spawn()
         .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e.to_string()))

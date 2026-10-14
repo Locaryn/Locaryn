@@ -1257,9 +1257,7 @@ fn server_error_message(status: u16, body: &str) -> String {
                 modèle, ou repartez d'une nouvelle conversation."
             .into();
     }
-    if detail
-        .to_lowercase()
-        .contains("errordevicelost")
+    if detail.to_lowercase().contains("errordevicelost")
         || detail.to_lowercase().contains("vk::queue::submit")
     {
         return "Le pilote graphique de votre carte (Vulkan) a dépassé le délai de réponse Windows (TDR) \
