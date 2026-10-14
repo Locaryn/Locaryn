@@ -1248,6 +1248,16 @@ fn server_error_message(status: u16, body: &str) -> String {
     }
     if detail
         .to_lowercase()
+        .contains("errordevicelost")
+        || detail.to_lowercase().contains("vk::queue::submit")
+    {
+        return "Le pilote graphique de votre carte (Vulkan) a dépassé le délai de réponse Windows (TDR) \
+                et a été réinitialisé par le système. Un micro-batch trop lourd ou un contexte très étendu \
+                en est la cause. Redémarrez le modèle pour réinitialiser le moteur."
+            .into();
+    }
+    if detail
+        .to_lowercase()
         .contains("failed to parse tool call arguments")
     {
         return "L'appel d'outil du modèle est arrivé incomplet, le plus souvent parce que la \

@@ -1787,9 +1787,18 @@ async fn spawn_llama_server(
         cmd.arg("-t").arg(default_threads.to_string());
     }
 
-    // Batch size.
+    // Batch size & micro-batch (ubatch) size.
+    // Sur Vulkan (notamment les cartes AMD Polaris comme la RX 570/580), un ubatch
+    // de 512 par défaut fait durer un seul dispatch de calcul plus de 2 secondes
+    // sur des prompts longs (outils MCP, grand contexte), ce qui déclenche le TDR
+    // (Timeout Detection and Recovery) de Windows et tue le périphérique Vulkan
+    // avec `vk::Queue::submit: ErrorDeviceLost`.
+    // Fixer `-ub 128` découpe l'évaluation en tranches rapides (~150 ms), ce qui
+    // élimine tout risque de déclenchement du TDR Windows.
     let batch = inference_cfg["batch_size"].as_u64().unwrap_or(512);
     cmd.arg("-b").arg(batch.to_string());
+    let ubatch = inference_cfg["ubatch_size"].as_u64().unwrap_or(128);
+    cmd.arg("-ub").arg(ubatch.to_string());
 
     // mmap : « --no-mmap » n'existe plus depuis ~b11000 (l'option mmap est
     // devenue à valeurs) — la forme actuelle est le mode de chargement
