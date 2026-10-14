@@ -509,10 +509,14 @@ pub async fn load_chat_model(
         .ensure_running(&engine)
         .await
         .map_err(|e| e.to_string())?;
-    core.supervisor.set_pinned(&engine, true).await;
+    // L'épinglage permanent bloquait l'éjection automatique après 30 min
+    // d'inactivité : le moteur n'était jamais libéré même après 3 h. On
+    // s'assure ici que le moteur n'est PAS épinglé (ensure_running ne le
+    // touche pas, mais un rechargement précédent aurait pu le laisser épinglé).
+    core.supervisor.set_pinned(&engine, false).await;
     crate::refresh_mcp_runtime_env(&core).await;
 
-    tracing::info!(%model, moteur = %engine.as_token(), "modèle de chat chargé et épinglé");
+    tracing::info!(%model, moteur = %engine.as_token(), "modèle de chat chargé");
     model_residency(core).await
 }
 

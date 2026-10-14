@@ -180,14 +180,26 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
     }, 500);
   }
 
-  /** Décharger le modèle : llama-server se relance au prochain message, avec la
-   *  fenêtre réglée. Le contexte est dimensionné au chargement, pas à la volée. */
+  /** Éjecter puis recharger le modèle avec la nouvelle fenêtre de contexte.
+   *  Le bouton n'est visible que quand un modèle tourne déjà avec une fenêtre
+   *  différente de celle réglée : on sait donc quel modèle relancer. */
   async function reloadModel() {
     setReloading(true);
     setError(null);
     try {
+      // Mémoriser le modèle chargé avant l'éjection.
+      const residency = await core.modelResidency();
+      const activeModel = residency.model;
+
       await core.ejectChatModel();
       window.dispatchEvent(new Event("locaryn:model-ejected"));
+
+      // Relancer immédiatement avec le même modèle : le superviseur lira
+      // inference_config.json à neuf, la nouvelle fenêtre sera prise en compte.
+      if (activeModel) {
+        await core.loadChatModel(activeModel);
+      }
+
       await refreshContext();
     } catch (e) {
       setError(String(e).replace(/^Error:\s*/, ""));
@@ -384,7 +396,7 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
               disabled={reloading}
               onClick={() => void reloadModel()}
             >
-              {reloading ? "Déchargement…" : "Recharger le modèle maintenant"}
+              {reloading ? "Rechargement…" : "Recharger le modèle maintenant"}
             </button>
           </div>
         )}

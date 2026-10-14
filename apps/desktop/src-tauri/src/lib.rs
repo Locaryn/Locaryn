@@ -7232,11 +7232,19 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Locaryn desktop")
-        .run(|_app, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 // Covers shutdown paths other than the tray menu as well. The
                 // child is killed before the desktop process disappears.
                 server_mode::stop_daemon();
+                // Libérer la VRAM : tuer tous les moteurs d'inférence supervisés
+                // (llama-server et consorts). Sans ceci, ils restent en mémoire
+                // après la fermeture de l'application.
+                let core = app.state::<Core>();
+                let sup = core.supervisor.clone();
+                tauri::async_runtime::block_on(async move {
+                    sup.kill_all_engines().await;
+                });
             }
         });
 }

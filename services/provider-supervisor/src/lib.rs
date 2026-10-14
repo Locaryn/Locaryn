@@ -709,6 +709,28 @@ impl Supervisor {
         Ok(())
     }
 
+    /// Arrêter tous les moteurs supervisés et tuer les llama-server orphelins.
+    ///
+    /// Appelé à la fermeture de l'application pour libérer la VRAM avant
+    /// que le processus ne disparaisse. Non bloquant sur les erreurs :
+    /// l'application quitte dans tous les cas.
+    pub async fn kill_all_engines(&self) {
+        let engines: Vec<ProviderEngine> = {
+            let states = self.inner.states.lock().await;
+            states.keys().cloned().collect()
+        };
+        for engine in &engines {
+            self.kill_owned(engine).await;
+            let _ = self
+                .inner
+                .storage
+                .providers
+                .set_status_by_engine(engine, ProviderStatus::Unknown)
+                .await;
+        }
+        kill_stray_llama_servers().await;
+    }
+
     /// Spawn the background healthcheck + idle-shutdown loop. Returns a
     /// `JoinHandle` that the caller can await (or just drop to detach).
     ///
