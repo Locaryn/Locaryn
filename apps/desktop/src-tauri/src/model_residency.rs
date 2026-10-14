@@ -553,16 +553,18 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
     for moteur in &a_liberer {
         core.supervisor.set_pinned(moteur, false).await;
         let _ = core.supervisor.shutdown(moteur).await;
-        // Un moteur que l'application n'a pas lancé elle-même (ou dont la
-        // fermeture précédente l'a orphelin) ne répond pas à un arrêt : le
-        // dire dans le journal plutôt que de renvoyer un état « déchargé »
-        // silencieusement faux, la VRAM restant occupée pour de vrai.
+        if matches!(moteur, ProviderEngine::LlamaCpp) {
+            locaryn_provider_supervisor::kill_stray_llama_servers().await;
+            let _ = std::fs::remove_file(core.data_dir.join("active_llama_settings.json"));
+        }
         if core.supervisor.is_healthy(moteur).await {
             tracing::warn!(
                 moteur = %moteur.as_token(),
-                "toujours en marche après la demande d'arrêt — probablement un processus que \
-                 cette application n'a pas lancé elle-même"
+                "toujours en marche après la demande d'arrêt — tentative d'arrêt forcé"
             );
+            if matches!(moteur, ProviderEngine::LlamaCpp) {
+                locaryn_provider_supervisor::kill_stray_llama_servers().await;
+            }
         }
     }
 

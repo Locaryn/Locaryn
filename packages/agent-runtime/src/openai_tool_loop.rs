@@ -692,10 +692,21 @@ pub async fn run_openai_tool_loop(
                 let round_result = match stream_one_round(resp, &tx).await {
                     Ok(r) => r,
                     Err(e) => {
+                        let e_lower = e.to_lowercase();
+                        let is_tdr_or_crash = e_lower.contains("error decoding response body")
+                            || e_lower.contains("connection closed")
+                            || e_lower.contains("broken pipe")
+                            || e_lower.contains("reset by peer")
+                            || e_lower.contains("errordevicelost");
+                        let user_msg = if is_tdr_or_crash {
+                            "Le moteur d'inférence (llama-server) a été interrompu ou le pilote graphique (Vulkan) a dépassé le délai Windows (TDR). Le modèle est nettoyé et redémarrera automatiquement au prochain message avec les micro-batchs allégés (-ub 32).".to_string()
+                        } else {
+                            format!("stream error: {e}")
+                        };
                         let _ = tx
                             .send(StreamEvent::Log {
                                 level: LogLevel::Warn,
-                                msg: format!("stream error: {e}"),
+                                msg: user_msg,
                                 source: "openai_tool_loop".into(),
                             })
                             .await;

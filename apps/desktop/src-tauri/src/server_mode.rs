@@ -22,6 +22,20 @@ pub fn stop_daemon() {
             let _ = child.wait();
         }
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "llama-server.exe"])
+            .creation_flags(0x0800_0000)
+            .output();
+    }
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-f", "llama-server"])
+            .output();
+    }
 }
 
 /// The supervised daemon, if we started one.

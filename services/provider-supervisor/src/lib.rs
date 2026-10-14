@@ -122,10 +122,15 @@ struct EngineState {
     /// deliberate choice outranks a timeout. Crash recovery still applies —
     /// pinning means "do not evict", not "never restart".
     pinned: bool,
+    /// Vrai quand l'instance tournait déjà et a été adoptée sous supervision.
+    adopted: bool,
 }
 
 impl EngineState {
     fn is_running(&mut self) -> bool {
+        if self.adopted {
+            return true;
+        }
         match &mut self.child {
             Some(c) => {
                 // Poll the child's exit status without awaiting.
@@ -330,14 +335,46 @@ impl Supervisor {
         let is_healthy = self.probe(&endpoint, spec.as_ref()).await;
         if is_healthy {
             let model_matches = if matches!(engine, ProviderEngine::LlamaCpp) {
-                is_llama_server_model_match(&self.inner.http, &endpoint, active_model.as_deref())
-                    .await
-                    && self.llama_adoptable(engine, &endpoint).await
+                let same_model = is_llama_server_model_match(&self.inner.http, &endpoint, active_model.as_deref()).await;
+                let adoptable = self.llama_adoptable(engine, &endpoint).await;
+
+                // Vérifier si la configuration d'inférence (fenêtre de contexte, etc.) a changé
+                let data_dir = locaryn_config::default_data_dir();
+                let config_matches = match std::fs::read_to_string(data_dir.join("active_llama_settings.json")) {
+                    Ok(raw) => {
+                        let active: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+                        let wanted_cfg = std::fs::read_to_string(data_dir.join("inference_config.json"))
+                            .ok()
+                            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                            .unwrap_or_default();
+                        let wanted_ctx = wanted_cfg["context_length"].as_u64().unwrap_or(0);
+                        let active_ctx = active["ctx"].as_u64().unwrap_or(0);
+                        // Si l'utilisateur a changé la fenêtre de contexte, redémarrer pour l'appliquer
+                        wanted_ctx == active_ctx
+                    }
+                    // Aucun réglage actif enregistré : force le redémarrage pour appliquer les paramètres
+                    Err(_) => false,
+                };
+
+                same_model && adoptable && config_matches
             } else {
                 true
             };
 
             if model_matches {
+                // Enregistrer le moteur dans les états du superviseur pour qu'il bénéficie
+                // de l'idle-shutdown (extinction automatique après inactivité) et d'un arrêt propre.
+                let mut states = self.inner.states.lock().await;
+                states.entry(engine.clone()).or_insert_with(|| EngineState {
+                    endpoint: endpoint.clone(),
+                    child: None,
+                    last_activity: Instant::now(),
+                    pinned: false,
+                    owned: true,
+                    adopted: true,
+                });
+                drop(states);
+
                 // Mark healthy in storage and return.
                 let _ = self
                     .inner
@@ -347,7 +384,7 @@ impl Supervisor {
                     .await;
                 return Ok(endpoint);
             } else {
-                tracing::info!(?engine, %endpoint, "llama-server running different model — restarting with active model");
+                tracing::info!(?engine, %endpoint, "llama-server needs restart (model or config changed) — restarting with active parameters");
                 self.kill_owned(engine).await;
                 kill_stray_llama_servers().await;
                 if let Some(port) = endpoint_port(&endpoint) {
@@ -445,6 +482,7 @@ impl Supervisor {
                         endpoint: endpoint.clone(),
                         owned: true,
                         pinned,
+                        adopted: false,
                     },
                 );
             }
@@ -700,6 +738,14 @@ impl Supervisor {
     /// Manually stop a runtime we own. No-op if we don't own it.
     pub async fn shutdown(&self, engine: &ProviderEngine) -> Result<(), SupervisorError> {
         self.kill_owned(engine).await;
+        if matches!(engine, ProviderEngine::LlamaCpp) {
+            kill_stray_llama_servers().await;
+            if let Some(endpoint) = default_endpoint(engine) {
+                if let Some(port) = endpoint_port(endpoint) {
+                    let _ = wait_port_free(port, Duration::from_secs(5)).await;
+                }
+            }
+        }
         let _ = self
             .inner
             .storage
@@ -915,6 +961,9 @@ impl Supervisor {
         let mut states = self.inner.states.lock().await;
         if let Some(mut state) = states.remove(engine) {
             if state.owned {
+                if state.adopted && matches!(engine, ProviderEngine::LlamaCpp) {
+                    kill_stray_llama_servers().await;
+                }
                 if let Some(child) = state.child.as_mut() {
                     // Try graceful kill first (SIGTERM on Unix, Kill on Win).
                     #[cfg(unix)]
@@ -1349,7 +1398,7 @@ fn port_error_message(port: u16, e: &std::io::Error) -> String {
 /// Arrêter tout `llama-server` de la machine : celui d'une session
 /// précédente, orphelin, n'appartient à aucun superviseur vivant et garde
 /// pourtant le port et la VRAM.
-async fn kill_stray_llama_servers() {
+pub async fn kill_stray_llama_servers() {
     #[cfg(windows)]
     {
         // CREATE_NO_WINDOW : sans ce drapeau, chaque redémarrage faisait
@@ -1723,16 +1772,34 @@ async fn spawn_llama_server(
         }
     }
 
+    let profile = locaryn_llmfit::profile();
+    let is_vulkan = profile.backend == locaryn_llmfit::Backend::Vulkan;
+    let is_polaris_or_legacy = profile.gpu_name.as_deref().is_some_and(|name| {
+        let n = name.to_lowercase();
+        n.contains("570")
+            || n.contains("580")
+            || n.contains("470")
+            || n.contains("480")
+            || n.contains("590")
+            || n.contains("560")
+            || n.contains("550")
+            || n.contains("polaris")
+            || n.contains("ellesmere")
+            || n.contains("baffin")
+    });
+
     // Flash attention takes a value (on|off|auto). If the user disabled it, pass
-    // off. Otherwise, when the KV cache is quantized we force it on, because a
-    // quantized V cache requires Flash Attention in llama.cpp; else leave auto.
+    // off.
+    // Flash Attention sous Vulkan (en particulier les GPU AMD Polaris comme RX 570/580)
+    // déclenche des dépassements de registres et le TDR Windows (VK_ERROR_DEVICE_LOST).
+    // On le désactive obligatoirement sur Polaris / cartes anciennes, et on ne le force jamais sur Vulkan.
     let kv_is_quantized = matches!(
         kv_type,
         "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl"
     );
-    if !inference_cfg["flash_attention"].as_bool().unwrap_or(true) {
+    if is_polaris_or_legacy || !inference_cfg["flash_attention"].as_bool().unwrap_or(true) {
         cmd.arg("-fa").arg("off");
-    } else if kv_is_quantized {
+    } else if kv_is_quantized && !is_vulkan {
         cmd.arg("-fa").arg("on");
     }
 
@@ -1789,15 +1856,20 @@ async fn spawn_llama_server(
 
     // Batch size & micro-batch (ubatch) size.
     // Sur Vulkan (notamment les cartes AMD Polaris comme la RX 570/580), un ubatch
-    // de 512 par défaut fait durer un seul dispatch de calcul plus de 2 secondes
-    // sur des prompts longs (outils MCP, grand contexte), ce qui déclenche le TDR
-    // (Timeout Detection and Recovery) de Windows et tue le périphérique Vulkan
-    // avec `vk::Queue::submit: ErrorDeviceLost`.
-    // Fixer `-ub 128` découpe l'évaluation en tranches rapides (~150 ms), ce qui
-    // élimine tout risque de déclenchement du TDR Windows.
+    // trop élevé sur un modèle 8B/9B fait durer un seul dispatch de calcul plus de 2 secondes
+    // sur des prompts longs (outils MCP Roblox, multi-tours), ce qui déclenche le TDR Windows (2000 ms).
+    // Sur Polaris / Vulkan, un micro-batch de 32 (ou 64) garantit que chaque dispatch de calcul
+    // prend moins de 400ms, éliminant tout risque de TDR ou de crash `ErrorDeviceLost`.
+    let default_ubatch = if is_polaris_or_legacy {
+        32
+    } else if is_vulkan {
+        64
+    } else {
+        128
+    };
     let batch = inference_cfg["batch_size"].as_u64().unwrap_or(512);
     cmd.arg("-b").arg(batch.to_string());
-    let ubatch = inference_cfg["ubatch_size"].as_u64().unwrap_or(128);
+    let ubatch = inference_cfg["ubatch_size"].as_u64().unwrap_or(default_ubatch);
     cmd.arg("-ub").arg(ubatch.to_string());
 
     // mmap : « --no-mmap » n'existe plus depuis ~b11000 (l'option mmap est
@@ -1852,6 +1924,16 @@ async fn spawn_llama_server(
     // sa table d'états repartant vide — ne pouvait plus jamais l'éteindre
     // (« éjecter » n'avait alors aucune prise sur lui).
     cmd.kill_on_drop(true);
+
+    let settings_record = serde_json::json!({
+        "model": full_model_path.to_string_lossy(),
+        "ctx": ctx,
+        "ubatch": ubatch,
+        "batch": batch,
+        "fa": if is_polaris_or_legacy || !inference_cfg["flash_attention"].as_bool().unwrap_or(true) { "off" } else if kv_is_quantized && !is_vulkan { "on" } else { "auto" },
+        "cpu_only": cpu_only,
+    });
+    let _ = std::fs::write(data_dir.join("active_llama_settings.json"), settings_record.to_string());
 
     cmd.spawn()
         .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e.to_string()))
