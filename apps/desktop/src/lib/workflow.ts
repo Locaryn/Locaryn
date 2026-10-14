@@ -159,6 +159,7 @@ export async function runWorkflow(
   taskCenter.setPlan(taskId, steps);
 
   let globalOk = true;
+  const mentions = (request.match(/@[\w.-]+/g) ?? []).join(" ");
 
   // Boucle sur les étapes : `i` avance, mais peut être décrémenté si
   // l'insertion de sous-étapes le demande. C'est une boucle while car la
@@ -172,6 +173,7 @@ export async function runWorkflow(
 
     let stepRetry = 0;
     let stepOk = false;
+    let lastReste = "";
 
     // En goalMode : on retente la même étape si elle échoue, jusqu'à
     // MAX_STEP_RETRIES. Sans goalMode, on exécute une seule fois.
@@ -184,12 +186,24 @@ export async function runWorkflow(
       const step = steps[i];
       hooks.onStepStart?.(i, steps.length, step, stepRetry + 1);
 
+      const stepPrompt = [
+        mentions ? `${mentions}` : "",
+        `[Étape ${i + 1}/${steps.length} du plan] : ${step}`,
+        `Demande globale : ${request}`,
+        stepRetry > 0 && lastReste
+          ? `[Correction / Ce qui reste à faire pour valider cette étape] : ${lastReste}`
+          : "",
+        `Consigne impérative : Réalise cette étape de manière concrète et autonome en utilisant directement tes outils. Ne pose pas de question d'attente à l'utilisateur, ne t'arrête pas en chemin et ne demande pas de confirmation : accomplis le travail requis pour cette étape.`,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
       let answer = "";
       let stepError = false;
       try {
         await core.sendMessage(
           sessionId,
-          step,
+          stepPrompt,
           (ev) => {
             if (ev.type === "token") answer += ev.text;
             hooks.onEvent(ev);
@@ -206,6 +220,7 @@ export async function runWorkflow(
       if (stepError) {
         if (goalMode && stepRetry < MAX_STEP_RETRIES) {
           stepRetry++;
+          lastReste = "Une erreur technique s'est produite lors de l'exécution : réessaye l'étape.";
           continue; // retenter l'étape
         }
         globalOk = false;
@@ -225,31 +240,25 @@ export async function runWorkflow(
         continue;
       }
 
-      // Validation en goalMode.
+      // Validation discrète en goalMode via le juge d'objectif.
       if (goalMode) {
-        let verdict = "";
+        let reached = true;
+        let reste = "";
         try {
-          await core.sendMessage(
-            sessionId,
-            `${step}\n\nVérifie si cette étape est complètement accomplie. Termine ta réponse par une ligne "ok: true" si oui, ou "ok: false" si non.`,
-            (ev) => {
-              if (ev.type === "token") verdict += ev.text;
-              hooks.onEvent(ev);
-            },
-            undefined,
-            null,
-            null,
-          );
+          const verdict = await core.judgeGoal(step, answer);
+          reached = verdict.atteint;
+          reste = verdict.reste;
         } catch {
-          // Vérification impossible → on admet la réussite pour ne pas bloquer.
-          verdict = "ok: true";
+          // Si le juge est momentanément indisponible, on valide pour ne pas bloquer.
+          reached = true;
         }
 
-        if (verificationFailed(verdict)) {
+        if (!reached) {
           hooks.onStepEnd?.(i, false);
           if (stepRetry < MAX_STEP_RETRIES) {
             stepRetry++;
-            continue; // retenter la même étape
+            lastReste = reste || "Poursuis et finalise les actions concrètes nécessaires pour valider cette étape.";
+            continue; // retenter la même étape avec les indications du juge
           }
           // Max retries atteint : l'étape est marquée échouée, on arrête.
           globalOk = false;

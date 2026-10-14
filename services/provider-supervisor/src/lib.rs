@@ -1777,22 +1777,27 @@ async fn spawn_llama_server(
     } else if gpu_layers >= 0 {
         cmd.arg("-ngl").arg(gpu_layers.to_string());
     } else {
-        // En mode auto (-1), laisser `--fit` placer un maximum de couches dans la
-        // mémoire vidéo disponible. Forcer 999 faisait échouer common_fit_params
-        // avec abort ("n_gpu_layers already set by user to 999, abort") sur les
-        // cartes à mémoire limitée comme la RX 570 (8 Go) avec un long contexte.
-        cmd.arg("-fit").arg("on");
+        // En mode auto (-1), décharger l'intégralité des couches du modèle sur la VRAM GPU.
+        // Laisser unset ou passer -fit seul laissait les couches en RAM système (14 Go de RAM, CPU à 100%).
+        // 99 couches couvre tous les modèles 3B/7B/8B/9B/14B (qui en ont entre 24 et 48).
+        cmd.arg("-ngl").arg("99");
     }
 
-    // Flash Attention sous Vulkan (en particulier les GPU AMD Polaris comme RX 570/580)
-    // ou en repli processeur ne doit pas être activé.
+    // Flash Attention : supporté de manière fiable uniquement sur CUDA/ROCm/Metal avec `-fa on`.
+    // Vulkan, OpenCL/Adreno (ARM), CPU et GPU Polaris/legacy ne supportent pas Flash Attention de façon stable.
+    // Et dans llama.cpp : "quantized V cache requires flash_attn to be enabled".
+    // Si `-fa on` n'est pas passé, passer `-ctv` provoque un crash immédiat du chargement :
+    // "exiting due to model loading error: quantized V cache requires flash_attn to be enabled".
+    let is_arm = cfg!(target_arch = "aarch64") || std::env::consts::ARCH == "aarch64";
     let flash_attention_active = !is_polaris_or_legacy
         && !cpu_only
+        && !is_vulkan
+        && !is_arm
         && inference_cfg["flash_attention"].as_bool().unwrap_or(true);
 
     if !flash_attention_active {
         cmd.arg("-fa").arg("off");
-    } else if !is_vulkan {
+    } else {
         cmd.arg("-fa").arg("on");
     }
 
@@ -1802,7 +1807,7 @@ async fn spawn_llama_server(
     // map it to the real maximal compression (4-bit q4_0).
     //
     // ATTENTION CRITIQUE : Dans llama.cpp, "quantized V cache requires flash_attn to be enabled".
-    // Si flash attention est inactif (Polaris, processeur, ou désactivé par l'utilisateur),
+    // Si flash attention est inactif (Polaris, processeur, ARM, Vulkan, ou désactivé par l'utilisateur),
     // passer `-ctv` provoque un crash immédiat :
     // "llama_init_from_model: quantized V cache requires flash_attn to be enabled"
     // "srv llama_server: exiting due to model loading error".

@@ -13515,12 +13515,23 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-suivi-barre .is-echec {
   background: var(--warn);
 }
+.locaryn-suivi-dock {
+  margin-bottom: var(--space-2);
+  width: 100%;
+}
+.locaryn-suivi-dock .locaryn-suivi {
+  margin: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
 .locaryn-suivi-etapes {
   display: grid;
   gap: var(--space-1);
   margin: var(--space-2) 0 0;
-  padding: 0;
+  padding: 0 4px 0 0;
   list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .locaryn-suivi-etapes li {
   display: grid;

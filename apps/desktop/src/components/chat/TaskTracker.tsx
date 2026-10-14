@@ -29,7 +29,15 @@ const LIBELLE_ETAT: Record<Suivi["etat"], string> = {
  * combien d'étapes, lesquelles sont faites, laquelle tourne. Il remplace les
  * lignes de journal « Étape 2/5 » qui se perdaient entre les réponses.
  */
-export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: () => void }) {
+export function TaskTracker({
+  suivi,
+  onArreter,
+  onFermer,
+}: {
+  suivi: Suivi;
+  onArreter?: () => void;
+  onFermer?: () => void;
+}) {
   const faites = suivi.etapes.filter((e) => e.etat === "fait").length;
   const total = suivi.etapes.length;
   const enCours = suivi.etat === "cours";
@@ -46,9 +54,31 @@ export function TaskTracker({ suivi, onArreter }: { suivi: Suivi; onArreter?: ()
           <strong>{suivi.genre === "plan" ? "Plan" : "Objectif"}</strong>
           <span>{suivi.titre}</span>
         </span>
-        <span className="locaryn-suivi-compte" aria-live="polite">
-          {suivi.genre === "plan" ? `${faites}/${total}` : `tour ${total}`}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span className="locaryn-suivi-compte" aria-live="polite">
+            {suivi.genre === "plan" ? `${faites}/${total}` : `tour ${total}`}
+          </span>
+          {onFermer && !enCours && (
+            <button
+              type="button"
+              className="locaryn-suivi-fermer"
+              onClick={onFermer}
+              title="Fermer ce suivi"
+              aria-label="Fermer ce suivi"
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px 4px",
+                color: "var(--text-faint)",
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          )}
+        </div>
       </header>
 
       {suivi.genre === "plan" && total > 0 && (

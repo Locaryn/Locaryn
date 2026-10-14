@@ -632,6 +632,10 @@ export function ChatPanel({
   const connecteursRef = useRef<McpServerInfo[] | null>(null);
   /** Skills intégrés et d'extension, lus au premier « @ ». */
   const skillsRef = useRef<SkillInfo[] | null>(null);
+  /** Cache synchronisé des mentions pour éliminer toute latence lors de la frappe de « @ ». */
+  const mentionsCacheRef = useRef<MentionItem[] | null>(null);
+  const mentionsFetchingRef = useRef<boolean>(false);
+  const mentionsTimestampRef = useRef<number>(0);
   /** Set by /plan: the next message is executed as a step-by-step plan. */
   const [planNext, setPlanNext] = useState(false);
   /**
@@ -647,6 +651,8 @@ export function ChatPanel({
   /** L'arrêt demandé sur la carte d'un plan ou d'un objectif en cours. */
   const arretSuiviRef = useRef(false);
   const [loopCount, setLoopCount] = useState<number | null>(null);
+  /** Suivi masqué par l'utilisateur (fermeture de la fenêtre au-dessus de la saisie). */
+  const [suiviMasque, setSuiviMasque] = useState<string | null>(null);
 
   const streamRef = useRef<HTMLDivElement>(null);
   /** Le fil suit-il le dernier message ? Faux dès que la personne remonte lire,
@@ -705,7 +711,17 @@ export function ChatPanel({
   useEffect(() => {
     setCtxUsage(null);
     setCtxDetails(false);
+    setSuiviMasque(null);
   }, [sessionId]);
+
+  /** Le dernier suivi (plan ou objectif) attaché à cette conversation. */
+  const latestSuivi = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.kind === "suivi") return it;
+    }
+    return null;
+  }, [items]);
 
   // Une autre conversation à l'écran : la réponse en cours ailleurs est
   // détachée, et celle-ci est libre d'envoyer tout de suite.
@@ -1667,83 +1683,15 @@ ${d.texte}`
     });
     arretSuiviRef.current = false;
 
-    // /objectif seul (sans /plan) → boucle tour-par-tour avec juge.
-    if (objectif && !planifie && !imposeWorkflow) {
-      setGoalNext(false);
-      setItems((prev) => [
-        ...prev,
-        {
-          id: suiviId,
-          kind: "suivi",
-          suivi: {
-            genre: "objectif",
-            titre: text,
-            etapes: [],
-            essai: 1,
-            maxEssais: 1,
-            etat: "cours",
-          },
-        },
-      ]);
-      try {
-        const atteint = await runGoal(sid, text, {
-          onEvent: surEvenement,
-          onTour: (tour) =>
-            majSuivi((s) => ({
-              ...s,
-              etapes: [
-                ...s.etapes.map((e) => (e.etat === "cours" ? { ...e, etat: "echec" as const } : e)),
-                { texte: tour === 1 ? "Premier tour" : `Tour ${tour}`, etat: "cours" },
-              ],
-            })),
-          onVerdict: (tour, ok, reste) =>
-            majSuivi((s) => ({
-              ...poserEtape(s, tour - 1, ok ? "fait" : "echec"),
-              etapes: s.etapes.map((e, j) =>
-                j === tour - 1
-                  ? {
-                      texte: ok ? e.texte : `${e.texte} — reste : ${reste}`,
-                      etat: ok ? "fait" : "echec",
-                    }
-                  : e,
-              ),
-              note: ok ? undefined : reste,
-            })),
-          arret: () => arretSuiviRef.current || runRef.current !== run,
-        });
-        const finalEtat: Suivi["etat"] = atteint ? "fait" : arretSuiviRef.current ? "arrete" : "echec";
-        majSuivi((s) => {
-          const fin = {
-            ...s,
-            etat: finalEtat,
-            note: atteint ? undefined : s.note,
-          };
-          void core.appendChatMessage(sid, "assistant", `<!--locaryn-suivi:${JSON.stringify(fin)}-->`);
-          return fin;
-        });
-      } catch (e) {
-        majSuivi((s) => {
-          const fin = { ...s, etat: "echec" as const, note: String(e) };
-          void core.appendChatMessage(sid, "assistant", `<!--locaryn-suivi:${JSON.stringify(fin)}-->`);
-          return fin;
-        });
-      }
-      if (runRef.current === run) {
-        runSessionRef.current = null;
-        setStreaming(false);
-        setAttente(null);
-      }
-      return;
-    }
-
-    // /plan (seul ou combiné avec /goal) → décomposer à l'avance et exécuter étape par étape.
-    // Quand couplé à /goal (/plan /goal ou /goal /plan), chaque étape bénéficie de
-    // la validation et du retry ciblé sans relancer tout le plan depuis le début.
+    // /plan et /goal : décomposer à l'avance et exécuter étape par étape.
+    // Quand /goal est activé (seul ou avec /plan), chaque étape bénéficie de
+    // la validation autonome avec conditions sans tourner en boucle dans le vide.
     if (planifie || imposeWorkflow || reprises !== null || objectif) {
       setPlanNext(false);
       setForceWorkflow(false);
       setGoalNext(false);
       setLoopCount(null);
+      void core.appendChatMessage(sid, "user", brut);
       try {
         const ran = await runWorkflow(
           sid,
@@ -2298,81 +2246,105 @@ ${preview}`,
     }
   }
 
-  /** Le « @mot » en cours de frappe à la fin du texte, s'il y en a un. */
-  async function suivreMention(texte: string) {
-    const m = /(?:^|\s)@([\w.-]*)$/.exec(texte);
+  /** Rafraîchir en arrière-plan les connecteurs MCP et les skills sans bloquer la saisie. */
+  const rafraichirMentions = async () => {
+    if (mentionsFetchingRef.current) return;
+    mentionsFetchingRef.current = true;
+    try {
+      const [mcp, sk] = await Promise.all([
+        core.listMcpServers().catch(() => [] as McpServerInfo[]),
+        core.listSkills().catch(() => [] as SkillInfo[]),
+      ]);
+      connecteursRef.current = mcp;
+      skillsRef.current = sk;
+      const liste: MentionItem[] = [
+        ...sk.map((s) => ({
+          name: s.name,
+          label: s.name,
+          hint: `Skill · ${s.source}${s.description ? ` — ${s.description}` : ""}`,
+          icon: "sparkle" as const,
+        })),
+        ...mcp.map((c) => ({
+          name: c.name,
+          label: c.name,
+          hint: !c.running
+            ? "Connecteur MCP · arrêté"
+            : c.companion && !c.companion.running
+              ? `Connecteur MCP · ${c.companion.name} n'est pas ouvert`
+              : `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`,
+          icon: "plugs-connected" as const,
+        })),
+        ...extensions
+          .filter((x) => x.enabled)
+          .map((x) => ({
+            name: x.name,
+            label: x.display_name || x.name,
+            hint: "Morph · ses connecteurs et skills, imposés au modèle",
+            icon: "extensions" as const,
+          })),
+      ];
+      mentionsCacheRef.current = liste;
+      mentionsTimestampRef.current = Date.now();
+    } finally {
+      mentionsFetchingRef.current = false;
+    }
+  };
+
+  /** Le « @mot » en cours de frappe (au curseur ou en fin de texte), filtré instantanément sans latence. */
+  function suivreMention(texte: string, cursor?: number) {
+    const pos = cursor ?? inputRef.current?.selectionStart ?? texte.length;
+    const avant = texte.slice(0, pos);
+    const m = /(?:^|\s)@([\w.-]*)$/.exec(avant);
     if (!m) {
       setMention(null);
-      // Relire au prochain « @ » : un connecteur arrêté ou un logiciel fermé
-      // entre-temps ne doit pas rester affiché « prêt ».
-      connecteursRef.current = null;
-      skillsRef.current = null;
       return;
     }
-    if (connecteursRef.current === null) {
-      try {
-        connecteursRef.current = await core.listMcpServers();
-      } catch (e) {
-        console.warn("connecteurs illisibles :", e);
-        connecteursRef.current = [];
-      }
-    }
-    if (skillsRef.current === null) {
-      try {
-        skillsRef.current = await core.listSkills();
-      } catch (e) {
-        console.warn("skills illisibles :", e);
-        skillsRef.current = [];
-      }
-    }
+
     const q = m[1].toLowerCase();
-    const candidats: MentionItem[] = [
-      // Les skills d'abord : c'est ce qu'on impose le plus souvent (« @pdf »).
-      ...skillsRef.current.map((s) => ({
-        name: s.name,
-        label: s.name,
-        hint: `Skill · ${s.source}${s.description ? ` — ${s.description}` : ""}`,
-        icon: "sparkle" as const,
-      })),
-      ...connecteursRef.current.map((c) => ({
-        name: c.name,
-        label: c.name,
-        hint: !c.running
-          ? "Connecteur MCP · arrêté"
-          : c.companion && !c.companion.running
-            ? `Connecteur MCP · ${c.companion.name} n'est pas ouvert`
-            : `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`,
-        icon: "plugs-connected" as const,
-      })),
-      ...extensions
-        .filter((x) => x.enabled)
-        .map((x) => ({
-          name: x.name,
-          label: x.display_name || x.name,
-          hint: "Morph · ses connecteurs et skills, imposés au modèle",
-          icon: "extensions" as const,
-        })),
-    ];
-    const items = candidats
-      // La description compte aussi : « @excel » trouve le skill xlsx,
-      // « @powerpoint » le skill pptx.
-      .filter(
-        (c) =>
-          !q ||
-          c.name.toLowerCase().includes(q) ||
-          c.label.toLowerCase().includes(q) ||
-          c.hint.toLowerCase().includes(q),
-      )
-      .slice(0, 8);
-    setMention(items.length ? { query: m[1], items } : null);
-    setMentionIndex(0);
+    const filtrerEtAfficher = (pool: MentionItem[]) => {
+      const items = pool
+        .filter(
+          (c) =>
+            !q ||
+            c.name.toLowerCase().includes(q) ||
+            c.label.toLowerCase().includes(q) ||
+            c.hint.toLowerCase().includes(q),
+        )
+        .slice(0, 8);
+      setMention(items.length ? { query: m[1], items } : null);
+      setMentionIndex(0);
+    };
+
+    if (mentionsCacheRef.current && mentionsCacheRef.current.length > 0) {
+      filtrerEtAfficher(mentionsCacheRef.current);
+      if (Date.now() - mentionsTimestampRef.current > 30000) {
+        void rafraichirMentions().then(() => {
+          if (mentionsCacheRef.current) filtrerEtAfficher(mentionsCacheRef.current);
+        });
+      }
+    } else {
+      void rafraichirMentions().then(() => {
+        if (mentionsCacheRef.current) filtrerEtAfficher(mentionsCacheRef.current);
+      });
+    }
   }
 
-  /** Remplacer le « @mot » tapé par la mention choisie. */
+  /** Remplacer le « @mot » tapé par la mention choisie, à la position exacte du curseur. */
   function choisirMention(item: MentionItem) {
-    setInput((t) => t.replace(/@([\w.-]*)$/, `@${item.name} `));
+    const el = inputRef.current;
+    const pos = el?.selectionStart ?? input.length;
+    const avant = input.slice(0, pos);
+    const apres = input.slice(pos);
+    const nouveauAvant = avant.replace(/(^|\s)@[\w.-]*$/, (match, prefix) => `${prefix}@${item.name} `);
+    setInput(nouveauAvant + apres);
     setMention(null);
-    inputRef.current?.focus();
+    setTimeout(() => {
+      if (el) {
+        el.focus();
+        const newPos = nouveauAvant.length;
+        el.setSelectionRange(newPos, newPos);
+      }
+    }, 0);
   }
 
   function handleComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -2694,16 +2666,9 @@ ${preview}`,
                 );
               }
               if (it.kind === "suivi") {
-                return (
-                  <TaskTracker
-                    key={it.id}
-                    suivi={it.suivi}
-                    onArreter={() => {
-                      arretSuiviRef.current = true;
-                      void stopGeneration();
-                    }}
-                  />
-                );
+                // Le suivi d'un plan ou d'un objectif s'affiche dans une fenêtre dédiée au-dessus du champ de texte,
+                // et non plus directement dans le fil des messages.
+                return null;
               }
               // Les appels d'outils sont deja partis dans les blocs groupes ;
               // ce qui reste ici est une ligne de journal.
@@ -3075,6 +3040,20 @@ ${preview}`,
           </section>
         )}
 
+        {/* Fenêtre de suivi (Plan / Objectif) affichée juste au-dessus du champ de texte */}
+        {latestSuivi && suiviMasque !== latestSuivi.id && (
+          <div className="locaryn-suivi-dock">
+            <TaskTracker
+              suivi={latestSuivi.suivi}
+              onArreter={() => {
+                arretSuiviRef.current = true;
+                void stopGeneration();
+              }}
+              onFermer={() => setSuiviMasque(latestSuivi.id)}
+            />
+          </div>
+        )}
+
         <div className="locaryn-composer-card">
           {attachments.length > 0 && (
             <div className="locaryn-attach-strip">
@@ -3140,11 +3119,13 @@ ${preview}`,
             value={input}
             disabled={!canCompose}
             onChange={(e) => {
-              setInput(e.target.value);
+              const val = e.target.value;
+              const cursor = e.target.selectionStart;
+              setInput(val);
               autoGrow();
-              calculerSlash(e.target.value);
+              calculerSlash(val);
               setSlashIndex(0);
-              void suivreMention(e.target.value);
+              suivreMention(val, cursor);
             }}
             onKeyDown={handleComposerKeyDown}
           />
