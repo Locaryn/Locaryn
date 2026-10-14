@@ -279,6 +279,26 @@ function splitInlineImages(content: string): {
   return sources.length ? { text, images: sources, imagePaths: paths } : { text: content };
 }
 
+/** Les cartes de suivi d'un plan ou d'un objectif sont conservées comme commentaires HTML
+ *  transparents, ce qui permet de les réafficher à l'identique au rechargement de la conversation. */
+function splitInlineSuivi(content: string): { text: string; suivi: Suivi | null } {
+  let suivi: Suivi | null = null;
+  const text = content
+    .replace(/<!--locaryn-suivi:([\s\S]*?)-->/g, (_m, encoded: string) => {
+      try {
+        const parsed = JSON.parse(encoded) as unknown;
+        if (parsed && typeof parsed === "object" && "genre" in parsed && "etapes" in parsed) {
+          suivi = parsed as Suivi;
+        }
+      } catch {
+        // Ignorer un marqueur corrompu
+      }
+      return "";
+    })
+    .trim();
+  return { text, suivi };
+}
+
 /** Audio artifacts are persisted as transparent HTML comments so a session
  *  can restore the playable note without showing a filesystem path to the
  *  model or the user. */
@@ -299,9 +319,17 @@ function splitInlineAudio(content: string): { text: string; paths: string[] } {
 }
 
 function storedMessageItems(m: { id: string; role: string; content: string }): ChatItem[] {
-  const audio = splitInlineAudio(m.content);
+  const avecSuivi = splitInlineSuivi(m.content);
+  const audio = splitInlineAudio(avecSuivi.text);
   const parsed = splitInlineImages(audio.text);
   const result: ChatItem[] = [];
+  if (avecSuivi.suivi) {
+    result.push({
+      id: `${m.id}:suivi`,
+      kind: "suivi",
+      suivi: avecSuivi.suivi,
+    });
+  }
   if (parsed.text || parsed.images?.length) {
     result.push({
       id: m.id,
@@ -1639,8 +1667,8 @@ ${d.texte}`
     });
     arretSuiviRef.current = false;
 
-    // /objectif → enchaîner les tours jusqu'à ce que le juge dise « atteint ».
-    if (objectif) {
+    // /objectif seul (sans /plan) → boucle tour-par-tour avec juge.
+    if (objectif && !planifie && !imposeWorkflow) {
       setGoalNext(false);
       setItems((prev) => [
         ...prev,
@@ -1683,13 +1711,22 @@ ${d.texte}`
             })),
           arret: () => arretSuiviRef.current || runRef.current !== run,
         });
-        majSuivi((s) => ({
-          ...s,
-          etat: atteint ? "fait" : arretSuiviRef.current ? "arrete" : "echec",
-          note: atteint ? undefined : s.note,
-        }));
+        const finalEtat: Suivi["etat"] = atteint ? "fait" : arretSuiviRef.current ? "arrete" : "echec";
+        majSuivi((s) => {
+          const fin = {
+            ...s,
+            etat: finalEtat,
+            note: atteint ? undefined : s.note,
+          };
+          void core.appendChatMessage(sid, "assistant", `<!--locaryn-suivi:${JSON.stringify(fin)}-->`);
+          return fin;
+        });
       } catch (e) {
-        majSuivi((s) => ({ ...s, etat: "echec", note: String(e) }));
+        majSuivi((s) => {
+          const fin = { ...s, etat: "echec" as const, note: String(e) };
+          void core.appendChatMessage(sid, "assistant", `<!--locaryn-suivi:${JSON.stringify(fin)}-->`);
+          return fin;
+        });
       }
       if (runRef.current === run) {
         runSessionRef.current = null;
@@ -1699,10 +1736,13 @@ ${d.texte}`
       return;
     }
 
-    // /plan → decompose and execute step by step, with a verification loop.
-    if (planifie || imposeWorkflow || reprises !== null) {
+    // /plan (seul ou combiné avec /goal) → décomposer à l'avance et exécuter étape par étape.
+    // Quand couplé à /goal (/plan /goal ou /goal /plan), chaque étape bénéficie de
+    // la validation et du retry ciblé sans relancer tout le plan depuis le début.
+    if (planifie || imposeWorkflow || reprises !== null || objectif) {
       setPlanNext(false);
       setForceWorkflow(false);
+      setGoalNext(false);
       setLoopCount(null);
       try {
         const ran = await runWorkflow(
@@ -1728,29 +1768,27 @@ ${d.texte}`
               ]),
             onStepStart: (i, _total, _step, attempt) =>
               majSuivi((s) => {
-                // Un nouvel essai repart de zéro : toutes les étapes reviennent en attente.
-                const base =
-                  attempt !== s.essai
-                    ? {
-                        ...s,
-                        essai: attempt,
-                        etapes: s.etapes.map((e) => ({ ...e, etat: "attente" as const })),
-                      }
-                    : s;
+                const base = { ...s, essai: attempt };
                 return poserEtape(base, i, "cours");
               }),
             onStepEnd: (i, ok) => majSuivi((s) => poserEtape(s, i, ok ? "fait" : "echec")),
-            onDone: (ok) =>
+            onPlanUpdated: (newSteps) =>
               majSuivi((s) => ({
                 ...s,
-                etat: ok ? "fait" : arretSuiviRef.current ? "arrete" : "echec",
+                etapes: newSteps.map((texte, idx) => s.etapes[idx] ?? { texte, etat: "attente" as const }),
               })),
+            onDone: (ok) =>
+              majSuivi((s) => {
+                const fin = {
+                  ...s,
+                  etat: (ok ? "fait" : arretSuiviRef.current ? "arrete" : "echec") as Suivi["etat"],
+                };
+                void core.appendChatMessage(sid, "assistant", `<!--locaryn-suivi:${JSON.stringify(fin)}-->`);
+                return fin;
+              }),
             arret: () => arretSuiviRef.current || runRef.current !== run,
           },
-          // Les modificateurs de la demande arrivent jusqu'ici. Sans eux,
-          // `/workflow` et `/loop` etaient analyses, consommes, puis perdus :
-          // la commande paraissait marcher et ne changeait rien.
-          { force: imposeWorkflow, loops: reprises },
+          { force: imposeWorkflow || planifie || objectif, goalMode: objectif, loops: reprises },
         );
         if (ran) {
           if (runRef.current === run) runSessionRef.current = null;

@@ -1697,6 +1697,24 @@ async fn spawn_llama_server(
         cmd.arg("--mmproj").arg(mmproj);
     }
 
+    // Détection du GPU et du backend : utilisée pour la flash attention, le
+    // plafonnement du contexte et le micro-batch.
+    let profile = locaryn_llmfit::profile();
+    let is_vulkan = profile.backend == locaryn_llmfit::Backend::Vulkan;
+    let is_polaris_or_legacy = profile.gpu_name.as_deref().is_some_and(|name| {
+        let n = name.to_lowercase();
+        n.contains("570")
+            || n.contains("580")
+            || n.contains("470")
+            || n.contains("480")
+            || n.contains("590")
+            || n.contains("560")
+            || n.contains("550")
+            || n.contains("polaris")
+            || n.contains("ellesmere")
+            || n.contains("baffin")
+    });
+
     // Profil automatique (contexte 0, toutes les couches) : ni `-ngl` ni `-c`.
     // llama.cpp les ajuste alors lui-même à la mémoire libre (`--fit`, actif
     // par défaut) : il garde toutes les couches sur la carte, raccourcit le
@@ -1705,9 +1723,26 @@ async fn spawn_llama_server(
     // contexte. Mesuré avec llama-fit-params (b11003) : le contexte descend
     // d'abord à son minimum, les couches ne partent qu'ensuite.
     let gpu_layers = inference_cfg["gpu_layers"].as_i64().unwrap_or(-1);
-    let ctx = inference_cfg["context_length"].as_u64().unwrap_or(8192);
+    let mut ctx = inference_cfg["context_length"].as_u64().unwrap_or(8192);
+    // Sur les cartes Polaris (RX 570/580, ≤ 8 Go VRAM), un contexte fixe élevé
+    // (14k+) en q8_0 fait que le KV cache + poids dépassent la VRAM et cause
+    // "model loading error" au démarrage. On plafonne à 8192 pour ces cartes et
+    // on active --fit-ctx pour que llama.cpp ajuste le contexte à la mémoire
+    // disponible au lieu d'abandonner.
+    if is_polaris_or_legacy && ctx > 8192 {
+        tracing::info!(
+            ctx_demande = ctx,
+            ctx_plafonne = 8192,
+            "contexte plafonné pour Polaris/legacy (VRAM limitée)"
+        );
+        ctx = 8192;
+    }
     let auto = is_auto_fit(gpu_layers, ctx);
-    if ctx == 0 {
+    if ctx == 0 || (is_polaris_or_legacy && !auto) {
+        // En auto (ctx==0), --fit-ctx laisse llama.cpp choisir. Sur Polaris
+        // même avec un contexte fixe, on active --fit-ctx comme filet de
+        // sécurité : si le modèle + KV cache ne tient pas, llama.cpp réduit
+        // le contexte au lieu de refuser de démarrer.
         cmd.arg("--fit-ctx").arg(AUTO_FIT_MIN_CTX.to_string());
     }
     // La marge que `--fit` laisse libre sur la carte : 1 024 Mio par défaut
@@ -1729,19 +1764,40 @@ async fn spawn_llama_server(
     // n'initialise aucun périphérique — vérifié sur le `--help` de b11003.
     if cpu_only {
         cmd.arg("--device").arg("none");
-    } else if !auto {
-        // En automatique, `--fit` place les couches.
-        let couches = match gpu_layers {
-            -1 => "999".to_string(),
-            n => n.to_string(),
-        };
-        cmd.arg("-ngl").arg(couches);
+    } else if gpu_layers >= 0 {
+        cmd.arg("-ngl").arg(gpu_layers.to_string());
+    } else {
+        // En mode auto (-1), laisser `--fit` placer un maximum de couches dans la
+        // mémoire vidéo disponible. Forcer 999 faisait échouer common_fit_params
+        // avec abort ("n_gpu_layers already set by user to 999, abort") sur les
+        // cartes à mémoire limitée comme la RX 570 (8 Go) avec un long contexte.
+        cmd.arg("-fit").arg("on");
+    }
+
+    // Flash Attention sous Vulkan (en particulier les GPU AMD Polaris comme RX 570/580)
+    // ou en repli processeur ne doit pas être activé.
+    let flash_attention_active = !is_polaris_or_legacy
+        && !cpu_only
+        && inference_cfg["flash_attention"].as_bool().unwrap_or(true);
+
+    if !flash_attention_active {
+        cmd.arg("-fa").arg("off");
+    } else if !is_vulkan {
+        cmd.arg("-fa").arg("on");
     }
 
     // KV cache quantization: the real flags are -ctk/-ctv (NOT --kv-cache-type,
     // which does not exist and would abort startup). "turbo3" is a legacy label
     // from a fake "3-bit TurboQuant" — mainline llama.cpp has no 3-bit KV, so we
     // map it to the real maximal compression (4-bit q4_0).
+    //
+    // ATTENTION CRITIQUE : Dans llama.cpp, "quantized V cache requires flash_attn to be enabled".
+    // Si flash attention est inactif (Polaris, processeur, ou désactivé par l'utilisateur),
+    // passer `-ctv` provoque un crash immédiat :
+    // "llama_init_from_model: quantized V cache requires flash_attn to be enabled"
+    // "srv llama_server: exiting due to model loading error".
+    // On quantifie donc uniquement la clé (-ctk) dans ce cas, et la valeur (-ctv)
+    // reste en f16 par défaut.
     let kv_type = match inference_cfg["kv_cache_type"].as_str().unwrap_or("f16") {
         "turbo3" | "turboquant" => "q4_0",
         other => other,
@@ -1750,7 +1806,10 @@ async fn spawn_llama_server(
         kv_type,
         "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl"
     ) {
-        cmd.arg("-ctk").arg(kv_type).arg("-ctv").arg(kv_type);
+        cmd.arg("-ctk").arg(kv_type);
+        if flash_attention_active {
+            cmd.arg("-ctv").arg(kv_type);
+        }
     }
 
     // Context length. 0 : llama.cpp l'ajuste à la mémoire libre, y compris
@@ -1770,37 +1829,6 @@ async fn spawn_llama_server(
                 format!("{{\"max_ctx\":{cap}}}"),
             );
         }
-    }
-
-    let profile = locaryn_llmfit::profile();
-    let is_vulkan = profile.backend == locaryn_llmfit::Backend::Vulkan;
-    let is_polaris_or_legacy = profile.gpu_name.as_deref().is_some_and(|name| {
-        let n = name.to_lowercase();
-        n.contains("570")
-            || n.contains("580")
-            || n.contains("470")
-            || n.contains("480")
-            || n.contains("590")
-            || n.contains("560")
-            || n.contains("550")
-            || n.contains("polaris")
-            || n.contains("ellesmere")
-            || n.contains("baffin")
-    });
-
-    // Flash attention takes a value (on|off|auto). If the user disabled it, pass
-    // off.
-    // Flash Attention sous Vulkan (en particulier les GPU AMD Polaris comme RX 570/580)
-    // déclenche des dépassements de registres et le TDR Windows (VK_ERROR_DEVICE_LOST).
-    // On le désactive obligatoirement sur Polaris / cartes anciennes, et on ne le force jamais sur Vulkan.
-    let kv_is_quantized = matches!(
-        kv_type,
-        "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl"
-    );
-    if is_polaris_or_legacy || !inference_cfg["flash_attention"].as_bool().unwrap_or(true) {
-        cmd.arg("-fa").arg("off");
-    } else if kv_is_quantized && !is_vulkan {
-        cmd.arg("-fa").arg("on");
     }
 
     // MoE expert offload to CPU: run very large Mixture-of-Experts models on a
@@ -1930,7 +1958,7 @@ async fn spawn_llama_server(
         "ctx": ctx,
         "ubatch": ubatch,
         "batch": batch,
-        "fa": if is_polaris_or_legacy || !inference_cfg["flash_attention"].as_bool().unwrap_or(true) { "off" } else if kv_is_quantized && !is_vulkan { "on" } else { "auto" },
+        "fa": if flash_attention_active { "on" } else { "off" },
         "cpu_only": cpu_only,
     });
     let _ = std::fs::write(data_dir.join("active_llama_settings.json"), settings_record.to_string());
