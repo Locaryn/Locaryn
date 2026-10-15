@@ -12,6 +12,8 @@ use clap::{Parser, Subcommand};
 use locaryn_sdk::LocarynClient;
 use std::io::BufRead;
 
+mod user_path;
+
 #[derive(Parser)]
 #[command(
     name = "locaryn",
@@ -296,6 +298,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .with_target(false)
         .init();
+
+    // Appelé par l'installeur Windows, avant tout le reste (pas de daemon).
+    if let Some(code) = user_path::depuis_les_arguments() {
+        std::process::exit(code);
+    }
 
     let cli = Cli::parse();
 
