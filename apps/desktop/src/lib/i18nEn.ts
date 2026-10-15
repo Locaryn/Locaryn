@@ -8,6 +8,19 @@
 // (`Téléchargement de ${nom}`) : chaque « {} » est une valeur gardée telle quelle.
 
 export const EN_EXACT: Record<string, string> = {
+  "NPU Snapdragon (Hexagon)": "Snapdragon NPU (Hexagon)",
+  "Le NPU lit les prompts bien plus vite que le processeur, sans occuper le GPU. Il accélère les modèles en Q4_0, Q8_0, IQ4_NL ou MXFP4 : choisissez de préférence ces versions.":
+    "The NPU reads prompts much faster than the CPU, without tying up the GPU. It accelerates models in Q4_0, Q8_0, IQ4_NL or MXFP4: prefer those versions.",
+  "Coupé : le GPU Adreno est utilisé.": "Off: the Adreno GPU is used.",
+  "Le NPU n'a pas démarré : le GPU Adreno est utilisé à la place.":
+    "The NPU did not start: the Adreno GPU is used instead.",
+  "Actif : les modèles se chargent sur le NPU.": "Active: models load on the NPU.",
+  "Prêt : le moteur NPU se télécharge au prochain chargement d'un modèle.":
+    "Ready: the NPU engine downloads the next time a model loads.",
+  "Couper le NPU": "Turn off the NPU",
+  "Utiliser le NPU": "Use the NPU",
+  "Ouvrir le dossier du moteur": "Open the engine folder",
+  "Réessayer le NPU": "Retry the NPU",
   "Décisions rapides des morphs": "Fast decisions for morphs",
   "Un petit modèle local aide le contrôle du bureau et du navigateur à choisir où cliquer et à vérifier le résultat, en une fraction de seconde, sans occuper le modèle de conversation. Il s'installe tout seul avec ces morphs (environ 1,3 Go, sur le disque de vos modèles).":
     "A small local model helps desktop and browser control choose where to click and check the result in a fraction of a second, without tying up the chat model. It installs itself with those morphs (about 1.3 GB, on your models drive).",
@@ -2479,6 +2492,7 @@ export const EN_EXACT: Record<string, string> = {
 };
 
 export const EN_PATTERNS: Record<string, string> = {
+  "Raison : {}": "Reason: {}",
   "Écriture de {}…": "Writing {}…",
   "Préparation de {}…": "Preparing {}…",
   "{} caractères": "{} characters",

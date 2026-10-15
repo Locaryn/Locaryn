@@ -433,6 +433,85 @@ fn promote_siblings(found: &Path, dir: &Path) -> Result<(), SupervisorError> {
     Ok(())
 }
 
+// ============================================================================
+// Moteur Snapdragon (NPU Hexagon + GPU Adreno)
+// ============================================================================
+
+/// La build Snapdragon de Locaryn : llama.cpp avec le backend Hexagon (NPU),
+/// absent des releases officielles, compilé et signé par Locaryn/llama-snapdragon.
+pub const NPU_RELEASE: &str = "b11003-locaryn.1";
+const NPU_ASSET: &str = "llama-b11003-bin-win-snapdragon-arm64.zip";
+
+/// Le dossier du moteur NPU, à côté du moteur géré (qui reste le repli).
+pub fn npu_llama_dir() -> PathBuf {
+    managed_llama_dir().with_file_name("llama-snapdragon")
+}
+
+pub fn npu_llama_path() -> PathBuf {
+    npu_llama_dir().join(llama_server_name())
+}
+
+/// Installe le moteur NPU si besoin et rend son chemin. L'archive est
+/// vérifiée contre l'empreinte publiée avec la release.
+pub async fn install_npu_runtime() -> Result<PathBuf, SupervisorError> {
+    let dir = npu_llama_dir();
+    let cible = npu_llama_path();
+    if cible.is_file()
+        && std::fs::read_to_string(dir.join(VARIANT_FILE)).is_ok_and(|v| v.trim() == NPU_RELEASE)
+    {
+        return Ok(cible);
+    }
+    let base =
+        format!("https://github.com/Locaryn/llama-snapdragon/releases/download/{NPU_RELEASE}");
+    let attente = dir.with_extension("new");
+    let _ = std::fs::remove_dir_all(&attente);
+    std::fs::create_dir_all(&attente)?;
+    let archive = attente.join(NPU_ASSET);
+    download(&format!("{base}/{NPU_ASSET}"), &archive, None).await?;
+
+    let sommes = attente.join("SHA256SUMS.txt");
+    download(&format!("{base}/SHA256SUMS.txt"), &sommes, None).await?;
+    let attendu = std::fs::read_to_string(&sommes)?
+        .lines()
+        .find(|l| l.contains(NPU_ASSET))
+        .and_then(|l| l.split_whitespace().next().map(str::to_lowercase))
+        .unwrap_or_default();
+    let calcule = {
+        use sha2::Digest;
+        let octets = std::fs::read(&archive)?;
+        hex_minuscule(&sha2::Sha256::digest(&octets))
+    };
+    if attendu.is_empty() || attendu != calcule {
+        let _ = std::fs::remove_dir_all(&attente);
+        return Err(SupervisorError::BinaryNotFound(
+            "empreinte du moteur NPU invalide : téléchargement refusé".into(),
+        ));
+    }
+    extract_zip(&archive, &attente)?;
+    let _ = std::fs::remove_file(&archive);
+    let _ = std::fs::remove_file(&sommes);
+    let exe = attente.join(llama_server_name());
+    if !exe.is_file() {
+        if let Some(trouve) = find_file(&attente, llama_server_name(), 4) {
+            promote_siblings(&trouve, &attente)?;
+        }
+    }
+    if !exe.is_file() {
+        let _ = std::fs::remove_dir_all(&attente);
+        return Err(SupervisorError::BinaryNotFound(
+            "le moteur NPU extrait ne contient pas llama-server".into(),
+        ));
+    }
+    std::fs::write(attente.join(VARIANT_FILE), NPU_RELEASE)?;
+    swap_into_place(&attente, &dir)?;
+    tracing::info!(path = %cible.display(), "moteur NPU installé");
+    Ok(cible)
+}
+
+fn hex_minuscule(octets: &[u8]) -> String {
+    octets.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

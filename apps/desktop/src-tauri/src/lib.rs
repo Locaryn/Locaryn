@@ -21,6 +21,7 @@ mod gpu_arbiter;
 mod hooks;
 mod inference_engines;
 mod laya_runtime;
+mod npu_cmd;
 mod live_watch;
 mod local_profile;
 mod mailbox;
@@ -7150,6 +7151,9 @@ pub fn run() {
             configure_provider,
             airllm::airllm_status,
             laya_runtime::laya_etat,
+            npu_cmd::npu_etat,
+            npu_cmd::npu_regler,
+            npu_cmd::npu_reessayer,
             laya_runtime::laya_installer,
             airllm::airllm_setup,
             airllm::airllm_install,

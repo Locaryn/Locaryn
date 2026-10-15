@@ -139,9 +139,10 @@ jobs:
           rm -rf "$out"
 
       # ── Installeurs ────────────────────────────────────────────────────
-      # macOS n'en reçoit pas : signer et notariser exige un compte Apple
-      # Developer et des secrets que ce dépôt n'a pas. Une archive honnête
-      # vaut mieux qu'un .pkg que Gatekeeper refusera d'ouvrir.
+      # macOS reçoit un .pkg comme Windows un .msi et Linux un .deb. Il n'est
+      # ni signé ni notarisé (il faudrait un compte Apple Developer) : à la
+      # première ouverture, clic droit → Ouvrir, ou Réglages Système →
+      # Confidentialité et sécurité → « Ouvrir quand même ».
       - name: Installeur .msi (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -180,6 +181,23 @@ jobs:
           # libdbus-sys, dépendance Linux du trousseau, dont le build.rs abandonne
           # quand pkg-config ne trouve pas dbus.
           cargo deb -p locaryn-daemon --no-build --target ${{ matrix.target }} --output "dist/locaryn-${VER}-server-linux-x64.deb"
+
+      - name: Installeur .pkg (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Le démon et la CLI dans /usr/local/bin, déjà sur le PATH de macOS :
+          # `locaryn` répond dans tout nouveau terminal.
+          racine=pkgroot
+          mkdir -p "$racine/usr/local/bin"
+          cp target/${{ matrix.target }}/release/locaryn-daemon "$racine/usr/local/bin/"
+          cp target/${{ matrix.target }}/release/locaryn "$racine/usr/local/bin/"
+          chmod 755 "$racine/usr/local/bin/"*
+          pkgbuild --root "$racine" \
+            --identifier dev.locaryn.server \
+            --version "$VER" \
+            --install-location / \
+            "dist/locaryn-${VER}-server-${{ matrix.label }}.pkg"
+          rm -rf "$racine"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -342,6 +360,18 @@ jobs:
           cp "apps/desktop/src-tauri/binaries/locaryn-$triple" "$out/locaryn"
           tar -C "$out" -czf "dist/locaryn-${VER}-desktop-linux-x64-portable.tar.gz" .
           rm -rf "$out"
+
+      - name: Archive portable (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # L'application telle quelle, zippée par ditto (qui garde les liens
+          # et attributs du paquet .app) : à glisser où l'on veut, sans
+          # l'installeur .dmg.
+          app=$(find target/universal-apple-darwin/release/bundle/macos target/release/bundle/macos \
+                  -maxdepth 1 -name '*.app' -type d 2>/dev/null | head -1)
+          [ -n "$app" ] || { echo "::error::aucune application .app produite"; exit 1; }
+          ditto -c -k --sequesterRsrc --keepParent "$app" \
+            "dist/locaryn-${VER}-desktop-macos-universal-portable.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -801,7 +831,8 @@ jobs:
             | Windows x64 | `locaryn-${{ env.VER }}-desktop-windows-x64-portable.zip` | portable, sans auto-update |
             | Windows ARM64 (Snapdragon X) | `Locaryn_${{ env.VER }}_arm64-setup.exe` | natif ARM64, GPU Adreno via OpenCL |
             | Windows ARM64 (Snapdragon X) | `locaryn-${{ env.VER }}-desktop-windows-arm64-portable.zip` | portable, sans auto-update |
-            | macOS | `Locaryn_${{ env.VER }}_universal.dmg` | universel, Intel et Apple Silicon |
+            | macOS Apple Silicon (M1–M5) et Intel | `Locaryn_${{ env.VER }}_universal.dmg` | installeur, natif sur les deux puces (Metal sur Apple Silicon) |
+            | macOS Apple Silicon (M1–M5) et Intel | `locaryn-${{ env.VER }}-desktop-macos-universal-portable.zip` | portable, sans auto-update |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.AppImage` | portable, sans installation |
             | Linux x64 | `locaryn-${{ env.VER }}-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
@@ -824,8 +855,10 @@ jobs:
             | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.zip` | portable, sans auto-update |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.deb` | Debian / Ubuntu |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.tar.gz` | portable, sans auto-update |
-            | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.tar.gz` | portable |
+            | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.pkg` | installe le démon **et** la CLI dans `/usr/local/bin` |
             | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.tar.gz` | portable |
+            | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.pkg` | installe le démon **et** la CLI dans `/usr/local/bin` |
+            | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.tar.gz` | portable |
 
             ### Mises à jour
 
@@ -838,7 +871,8 @@ jobs:
             Cette signature est celle de l'updater, pas une signature d'éditeur : les binaires
             Windows ne sont **pas signés Authenticode** (SmartScreen affichera un avertissement)
             et les binaires macOS ne sont **pas notarisés** (première ouverture : clic droit →
-            Ouvrir).
+            Ouvrir ; si macOS dit que l'application est endommagée :
+            `xattr -dr com.apple.quarantine /Applications/Locaryn.app`).
 
             ### Android
 

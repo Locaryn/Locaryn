@@ -10,6 +10,7 @@ import { EngineSettings } from "../components/EngineSettings";
 import { ExtensionsSettings } from "../components/ExtensionsSettings";
 import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
 import { ModeleAutrePc } from "../components/ModeleAutrePc";
+import { NpuSettings } from "../components/NpuSettings";
 import { PairingCodes } from "../components/PairingCodes";
 import { PerformancePanel } from "../components/PerformancePanel";
 import { ServerSettings } from "../components/ServerSettings";
@@ -468,6 +469,7 @@ export function SettingsView({
             <>
               <PerformancePanel />
               <CautionSettings />
+              <NpuSettings />
               <DecisionSettings />
             </>
           )}

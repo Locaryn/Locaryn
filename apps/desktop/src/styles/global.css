@@ -14630,3 +14630,11 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-decisions-etat.is-ok {
   color: var(--accent);
 }
+
+.locaryn-npu-aide {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}

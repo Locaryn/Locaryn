@@ -1353,6 +1353,15 @@ export interface HardwareSpec {
 /** Jusqu'où l'application accepte de remplir la mémoire avant de charger. */
 export type CautionLevel = "prudent" | "equilibre" | "risque";
 
+/** Le NPU Hexagon d'un PC Snapdragon. */
+export type EtatNpu = {
+  snapdragon: boolean;
+  voulu: boolean;
+  installe: boolean;
+  echec: string | null;
+  dossier: string;
+};
+
 /** Le modèle de décision local partagé par les morphs de contrôle. */
 export type EtatDecisions = {
   installe: boolean;
@@ -2285,6 +2294,10 @@ export interface CoreApi {
   /** Les réserves de mémoire de chaque niveau, sur cette machine. */
   cautionReserves(): Promise<CautionReserves>;
   decisionsEtat(): Promise<EtatDecisions>;
+  npuEtat(): Promise<EtatNpu>;
+  npuRegler(actif: boolean): Promise<EtatNpu>;
+  npuReessayer(): Promise<EtatNpu>;
+  ouvrirChemin(chemin: string, action: "explorer" | "terminal" | "vscode"): Promise<void>;
   decisionsInstaller(): Promise<EtatDecisions>;
   /** Les limites de l'abonnement du modèle actif, `null` s'il n'en a pas. */
   cloudUsage(): Promise<CloudUsage | null>;
@@ -2803,6 +2816,10 @@ const tauriCore: CoreApi = {
   cautionLevel: () => invoke<CautionLevel>("caution_level"),
   cautionReserves: () => invoke<CautionReserves>("caution_reserves"),
   decisionsEtat: () => invoke<EtatDecisions>("laya_etat"),
+  npuEtat: () => invoke<EtatNpu>("npu_etat"),
+  npuRegler: (actif) => invoke<EtatNpu>("npu_regler", { actif }),
+  npuReessayer: () => invoke<EtatNpu>("npu_reessayer"),
+  ouvrirChemin: (chemin, action) => invoke<void>("open_path_with", { chemin, action }),
   decisionsInstaller: () => invoke<EtatDecisions>("laya_installer"),
   cloudUsage: () => invoke<CloudUsage | null>("cloud_usage"),
   setCautionLevel: (level) => invoke<void>("set_caution_level", { level }),
@@ -5364,6 +5381,16 @@ Contenu de démonstration, avec **du gras** et une liste :
   async cloudUsage() {
     return null;
   },
+  async npuEtat() {
+    return { snapdragon: false, voulu: true, installe: false, echec: null, dossier: "" };
+  },
+  async npuRegler() {
+    return { snapdragon: false, voulu: true, installe: false, echec: null, dossier: "" };
+  },
+  async npuReessayer() {
+    return { snapdragon: false, voulu: true, installe: false, echec: null, dossier: "" };
+  },
+  async ouvrirChemin() {},
   async decisionsEtat() {
     return { installe: false, en_cours: false, dossier: "", appareil: null, version: null };
   },
