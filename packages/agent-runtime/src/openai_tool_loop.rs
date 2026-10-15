@@ -181,33 +181,48 @@ pub async fn run_openai_tool_loop(
     // de captures d'écran. Ils restent chargeables à la demande
     // (`charger_outils`), et leurs définitions — des milliers de jetons — ne
     // pèsent plus sur chaque message.
-    let mut ecran = crate::tool_budget::outils_ecran(&mcp_tools);
-    // Le navigateur intégré de l'application suit la même règle que celui
-    // d'un morph : offert quand la personne le demande, chargeable sinon.
-    ecran.extend(
-        all_tools
+    let ecran = crate::tool_budget::outils_ecran(&mcp_tools, &all_tools);
+    // Le message en cours décide d'abord ; sinon les deux derniers de la
+    // personne ; sinon ce qui était déjà offert dans la conversation (les
+    // retirer changerait le début du prompt, relu alors en entier).
+    let recents: Vec<crate::tool_budget::DemandeEcran> =
+        std::iter::once(crate::tool_budget::demande_ecran(&input.message))
+            .chain(
+                input
+                    .history
+                    .iter()
+                    .rev()
+                    .filter(|t| t.role == "user")
+                    .take(2)
+                    .map(|t| crate::tool_budget::demande_ecran(&t.content)),
+            )
+            .collect();
+    let (nav_avant, bureau_avant) = crate::outils_stables::ecran_deja_offert(input.session_id);
+    let impose = |noms: &std::collections::HashSet<String>| {
+        input.forced_tools.iter().any(|f| noms.contains(f))
+    };
+    let veut_navigateur =
+        recents.iter().any(|d| d.navigateur) || nav_avant || impose(&ecran.navigateur);
+    // Le bureau : le dernier avis exprimé l'emporte (« n'utilise pas desktop »
+    // le retire), et une page web ne l'appelle pas.
+    let veut_bureau = impose(&ecran.bureau)
+        || recents
             .iter()
-            .filter(|t| t.name.starts_with("browser_"))
-            .map(|t| t.name.clone()),
-    );
-    let demande_ecran = crate::tool_budget::demande_l_ecran(&input.message)
-        || input
-            .history
-            .iter()
-            .rev()
-            .filter(|t| t.role == "user")
-            .take(2)
-            .any(|t| crate::tool_budget::demande_l_ecran(&t.content))
-        || input.forced_tools.iter().any(|f| ecran.contains(f))
-        // Une fois offerts dans la conversation, ils le restent : les retirer
-        // au message suivant changerait le début du prompt, relu en entier.
-        || crate::outils_stables::ecran_deja_offert(input.session_id);
-    let (all_tools, ecran_differes): (Vec<_>, Vec<_>) = if demande_ecran || ecran.is_empty() {
+            .find_map(|d| d.bureau)
+            .unwrap_or(bureau_avant);
+    let mut caches = std::collections::HashSet::new();
+    if !veut_navigateur {
+        caches.extend(ecran.navigateur.iter().cloned());
+    }
+    if !veut_bureau {
+        caches.extend(ecran.bureau.iter().cloned());
+    }
+    let (all_tools, ecran_differes): (Vec<_>, Vec<_>) = if caches.is_empty() {
         (all_tools, Vec::new())
     } else {
         all_tools
             .into_iter()
-            .partition(|t| !ecran.contains(&t.name))
+            .partition(|t| !caches.contains(&t.name))
     };
     // Gardée pour recaler l'allègement si le moteur refuse la requête.
     let outils_complets = all_tools.clone();
@@ -265,7 +280,8 @@ pub async fn run_openai_tool_loop(
     crate::outils_stables::ordonner_et_retenir(
         input.session_id,
         &mut all_tools,
-        demande_ecran && !ecran.is_empty(),
+        veut_navigateur,
+        veut_bureau,
     );
     // Le premier tour doit appeler un outil quand des outils sont imposés et
     // effectivement offerts : une consigne dans le message ne suffisait pas à

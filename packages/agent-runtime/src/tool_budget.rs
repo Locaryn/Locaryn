@@ -451,68 +451,125 @@ pub fn fit_avec(
 /// elle-même, jamais envoyé à un connecteur.
 pub const CHARGER_OUTILS: &str = "charger_outils";
 
-/// Les outils qui pilotent l'écran ou le navigateur intégré (morphs
-/// `morph-browser` et `morph-desktop`), sous leurs noms préfixés et courts.
-pub fn outils_ecran(mcp_tools: &[ToolSpec]) -> std::collections::HashSet<String> {
-    let mut noms = std::collections::HashSet::new();
+/// Les outils qui pilotent l'écran, rangés par sorte : ceux du navigateur
+/// (`morph-browser`, et le navigateur intégré `browser_*`) et ceux du bureau
+/// (`morph-desktop`), sous leurs noms préfixés et courts.
+#[derive(Debug, Default)]
+pub struct OutilsEcran {
+    pub navigateur: HashSet<String>,
+    pub bureau: HashSet<String>,
+}
+
+impl OutilsEcran {
+    pub fn tous(&self) -> HashSet<String> {
+        self.navigateur.union(&self.bureau).cloned().collect()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.navigateur.is_empty() && self.bureau.is_empty()
+    }
+}
+
+pub fn outils_ecran(mcp_tools: &[ToolSpec], integres: &[ToolSpec]) -> OutilsEcran {
+    let mut o = OutilsEcran::default();
     for t in mcp_tools {
         let Some(reste) = t.name.strip_prefix(crate::mcp_tools::MCP_PREFIX) else {
             continue;
         };
         let serveur = reste.rsplit_once("__").map(|(s, _)| s).unwrap_or(reste);
         let s = serveur.to_ascii_lowercase();
-        if s.contains("morph-browser") || s.contains("morph-desktop") {
-            noms.insert(t.name.clone());
-            if let Some((_, court)) = reste.rsplit_once("__") {
-                noms.insert(court.to_string());
-            }
+        let cible = if s.contains("morph-browser") {
+            &mut o.navigateur
+        } else if s.contains("morph-desktop") {
+            &mut o.bureau
+        } else {
+            continue;
+        };
+        cible.insert(t.name.clone());
+        if let Some((_, court)) = reste.rsplit_once("__") {
+            cible.insert(court.to_string());
         }
     }
-    noms
+    o.navigateur.extend(
+        integres
+            .iter()
+            .filter(|t| t.name.starts_with("browser_"))
+            .map(|t| t.name.clone()),
+    );
+    o
+}
+
+/// Ce que la personne demande de l'écran dans un message.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct DemandeEcran {
+    pub navigateur: bool,
+    /// `Some(false)` : elle refuse explicitement le contrôle du bureau
+    /// (« n'utilise pas desktop »).
+    pub bureau: Option<bool>,
+}
+
+const MOTS_NAVIGATEUR: &[&str] = &[
+    "navigateur",
+    "browser",
+    "onglet",
+    "chrome",
+    "firefox",
+    "edge ",
+    "opera",
+    "site web",
+    "page web",
+    "@morph-browser",
+];
+
+const MOTS_BUREAU: &[&str] = &[
+    "écran",
+    "ecran",
+    "screen",
+    "capture d'",
+    "screenshot",
+    "souris",
+    "mouse",
+    "clavier",
+    "keyboard",
+    "bureau windows",
+    "le bureau",
+    "desktop",
+    "fenêtre",
+    "window",
+    "prends le contrôle",
+    "prendre le contrôle",
+    "contrôle de l'ordinateur",
+    "contrôle mon",
+    "contrôler mon",
+    "take control",
+    "@morph-desktop",
+];
+
+/// Ce que demande ce message : le navigateur, le bureau, ou le refus du
+/// bureau. Une page web se joue dans le navigateur : « joue aux échecs dans
+/// le navigateur intégré » n'offre plus le contrôle du bureau, que le modèle
+/// préférait alors.
+pub fn demande_ecran(texte: &str) -> DemandeEcran {
+    let t = texte.to_lowercase();
+    let navigateur = MOTS_NAVIGATEUR.iter().any(|m| t.contains(m));
+    let refus = regex::Regex::new(
+        r"(n'utilise pas|n.utilise pas|pas de|pas le|pas par|sans|jamais|don't use|do not use|not the|without)\s+(\S+\s+){0,2}(le |la |l')?(desktop|bureau|souris|clavier|contrôle|controle|screen|écran|ecran)",
+    )
+    .map(|r| r.is_match(&t))
+    .unwrap_or(false);
+    let bureau = if refus {
+        Some(false)
+    } else if MOTS_BUREAU.iter().any(|m| t.contains(m)) {
+        Some(true)
+    } else {
+        None
+    };
+    DemandeEcran { navigateur, bureau }
 }
 
 /// La personne demande-t-elle le navigateur ou le contrôle de l'ordinateur ?
-///
-/// Des mots qui ne laissent pas de doute : « cherche sur le web » n'en fait
-/// pas partie (une recherche se fait sans navigateur), « ouvre le
-/// navigateur » si.
 pub fn demande_l_ecran(texte: &str) -> bool {
-    let t = texte.to_lowercase();
-    const MOTS: &[&str] = &[
-        "navigateur",
-        "browser",
-        "onglet",
-        "chrome",
-        "firefox",
-        "edge ",
-        "opera",
-        "écran",
-        "ecran",
-        "screen",
-        "capture d'",
-        "screenshot",
-        "souris",
-        "mouse",
-        "clavier",
-        "keyboard",
-        "clique",
-        "cliquer",
-        "click",
-        "bureau windows",
-        "le bureau",
-        "desktop",
-        "fenêtre",
-        "window",
-        "prends le contrôle",
-        "prendre le contrôle",
-        "contrôle de l'ordinateur",
-        "contrôle mon",
-        "contrôler mon",
-        "take control",
-        "@morph-browser",
-        "@morph-desktop",
-    ];
-    MOTS.iter().any(|m| t.contains(m))
+    let d = demande_ecran(texte);
+    d.navigateur || d.bureau == Some(true)
 }
 
 fn cout_dans_l_index(spec: &ToolSpec) -> usize {
@@ -893,5 +950,21 @@ mod tests {
         let d = short_description(&"mot ".repeat(200));
         assert!(d.chars().count() <= SHORT_DESCRIPTION);
         assert!(d.ends_with('…'));
+    }
+
+    #[test]
+    fn une_page_web_n_appelle_pas_le_bureau() {
+        let d = demande_ecran("joue au echec dans le navigateur integrer");
+        assert!(d.navigateur);
+        assert_eq!(d.bureau, None);
+    }
+
+    #[test]
+    fn un_refus_du_bureau_est_entendu() {
+        let d = demande_ecran("nan utilise pas desktop et joue dans le navigateur intégré !");
+        assert!(d.navigateur);
+        assert_eq!(d.bureau, Some(false));
+        let d = demande_ecran("prends le contrôle de mon ordinateur");
+        assert_eq!(d.bureau, Some(true));
     }
 }

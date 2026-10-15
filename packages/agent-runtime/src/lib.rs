@@ -198,8 +198,11 @@ pub fn tool_discipline_prompt() -> String {
        `run_command` to check the result (run it, compile it, lint it). Never drive the mouse, \
        keyboard or screen (desktop control tools) to write code or edit files; use them only \
        when the user explicitly asks you to control the computer or a graphical application.\n\
+     - Anything that happens inside a web page (a site, a web app, an online game) goes \
+       through the built-in browser tools (`browser_*`), never through desktop control: they \
+       read the page directly and are much faster than screenshots.\n\
      - If the user names a tool or a method (\"use the browser\", \"take control of my \
-       screen\"), do what they ask."
+       screen\"), do what they ask; if they rule one out (\"don't use desktop\"), never use it."
         .to_string()
 }
 

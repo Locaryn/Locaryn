@@ -313,7 +313,7 @@ async fn attendre_chargement(avant: u64, delai: Duration) {
         let e = etat();
         if e.chargements > avant && !e.loading {
             // Laisser une application de page dessiner ce qu'elle charge.
-            tokio::time::sleep(Duration::from_millis(400)).await;
+            tokio::time::sleep(Duration::from_millis(250)).await;
             return;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -405,7 +405,10 @@ pub async fn ouvrir(app: &AppHandle, saisie: &str) -> Result<String, String> {
 
 /// Après une action : si elle a lancé un chargement, l'attendre, puis relire.
 async fn apres_action(app: &AppHandle, avant: u64) -> Result<String, String> {
-    tokio::time::sleep(Duration::from_millis(700)).await;
+    // Le temps qu'un clic lance un chargement ou redessine la page. Chaque
+    // action en attendait 1,2 s fixes avec le glissement du curseur : sur un
+    // jeu ou un formulaire, c'était la moitié de la durée d'un coup.
+    tokio::time::sleep(Duration::from_millis(350)).await;
     if etat().loading || etat().chargements > avant {
         attendre_chargement(avant, ATTENTE_CHARGEMENT).await;
     }
@@ -421,7 +424,7 @@ const CURSEUR_JS: &str = r##"(() => { try {
   const style = document.createElement("style");
   style.textContent = `
     #locaryn-curseur { position: fixed; left: 0; top: 0; z-index: 2147483647; pointer-events: none;
-      transform: translate(-100px, -100px); transition: transform 450ms cubic-bezier(.22,1,.36,1), opacity 300ms ease;
+      transform: translate(-100px, -100px); transition: transform 200ms cubic-bezier(.22,1,.36,1), opacity 300ms ease;
       opacity: 0; will-change: transform; }
     #locaryn-curseur.visible { opacity: 1; }
     #locaryn-curseur svg { display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,.35));
@@ -474,7 +477,7 @@ const CURSEUR_JS: &str = r##"(() => { try {
 } catch (_) { /* le curseur est un plus : son échec ne doit jamais bloquer l'action */ } })();"##;
 
 /// Délai laissé au curseur pour glisser jusqu'à sa cible.
-const GLISSEMENT_CURSEUR: Duration = Duration::from_millis(480);
+const GLISSEMENT_CURSEUR: Duration = Duration::from_millis(220);
 
 /// Amener le curseur de l'IA sur l'élément `reference`, la page défilée pour
 /// qu'il soit visible.

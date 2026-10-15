@@ -20,7 +20,8 @@ use std::sync::{LazyLock, Mutex};
 #[derive(Default)]
 struct Memo {
     offerts: Vec<String>,
-    ecran: bool,
+    navigateur: bool,
+    bureau: bool,
 }
 
 static MEMO: LazyLock<Mutex<HashMap<uuid::Uuid, Memo>>> = LazyLock::new(Default::default);
@@ -41,14 +42,24 @@ pub fn precedents(session: uuid::Uuid) -> Vec<String> {
     })
 }
 
-/// Les outils d'écran ont déjà été offerts dans cette conversation : ils le
-/// restent, au lieu d'apparaître et disparaître au gré des messages.
-pub fn ecran_deja_offert(session: uuid::Uuid) -> bool {
-    memo(|m| m.get(&session).is_some_and(|x| x.ecran))
+/// Les outils du navigateur et du bureau déjà offerts dans cette
+/// conversation : ils le restent, au lieu d'apparaître et disparaître au gré
+/// des messages.
+pub fn ecran_deja_offert(session: uuid::Uuid) -> (bool, bool) {
+    memo(|m| {
+        m.get(&session)
+            .map(|x| (x.navigateur, x.bureau))
+            .unwrap_or_default()
+    })
 }
 
 /// Range `specs` dans l'ordre du tour précédent, puis retient ce tour.
-pub fn ordonner_et_retenir(session: uuid::Uuid, specs: &mut [ToolSpec], ecran: bool) {
+pub fn ordonner_et_retenir(
+    session: uuid::Uuid,
+    specs: &mut [ToolSpec],
+    navigateur: bool,
+    bureau: bool,
+) {
     let avant = precedents(session);
     ordonner(&avant, specs);
     let noms = specs.iter().map(|s| s.name.clone()).collect();
@@ -60,7 +71,8 @@ pub fn ordonner_et_retenir(session: uuid::Uuid, specs: &mut [ToolSpec], ecran: b
         }
         let e = m.entry(session).or_default();
         e.offerts = noms;
-        e.ecran |= ecran;
+        e.navigateur = navigateur;
+        e.bureau = bureau;
     });
 }
 
@@ -121,12 +133,12 @@ mod tests {
     fn une_conversation_retient_ses_outils() {
         let s = uuid::Uuid::new_v4();
         let mut v = vec![outil("x"), outil("y")];
-        ordonner_et_retenir(s, &mut v, false);
-        assert!(!ecran_deja_offert(s));
+        ordonner_et_retenir(s, &mut v, false, false);
+        assert_eq!(ecran_deja_offert(s), (false, false));
         let mut w = vec![outil("z"), outil("y"), outil("x")];
-        ordonner_et_retenir(s, &mut w, true);
+        ordonner_et_retenir(s, &mut w, true, false);
         assert_eq!(noms(&w), ["x", "y", "z"]);
-        assert!(ecran_deja_offert(s));
+        assert_eq!(ecran_deja_offert(s), (true, false));
         assert_eq!(precedents(s), ["x", "y", "z"]);
     }
 }
