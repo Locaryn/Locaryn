@@ -748,6 +748,13 @@ fn lire_cartes_registre() -> Vec<(String, Option<f64>)> {
 /// une mémoire dédiée sous 0,5 Go n'est pas une carte sur laquelle charger.
 #[cfg(target_os = "windows")]
 fn meilleure_carte_dxgi() -> Option<(String, f64)> {
+    carte_dxgi_et_luid().map(|(nom, go, _)| (nom, go))
+}
+
+/// La meilleure carte, avec son identifiant (LUID, `bas`, `haut`) : c'est par
+/// lui que les compteurs de performance de Windows la désignent.
+#[cfg(target_os = "windows")]
+fn carte_dxgi_et_luid() -> Option<(String, f64, (u32, i32))> {
     #[repr(C)]
     struct Guid(u32, u16, u16, [u8; 8]);
     #[repr(C)]
@@ -786,7 +793,7 @@ fn meilleure_carte_dxgi() -> Option<(String, f64)> {
         *table.add(rang)
     }
 
-    let mut meilleure: Option<(String, f64)> = None;
+    let mut meilleure: Option<(String, f64, (u32, i32))> = None;
     // SAFETY : chaque pointeur d'interface vient d'un appel qui a réussi
     // (HRESULT ≥ 0) et est relâché une fois lu ; les rangs de la table
     // virtuelle sont ceux des interfaces documentées, et la structure de
@@ -821,9 +828,9 @@ fn meilleure_carte_dxgi() -> Option<(String, f64)> {
             let go = desc.dedicated_video_memory as f64 / (1024.0 * 1024.0 * 1024.0);
             if go >= 0.5
                 && !carte_logicielle(&nom)
-                && meilleure.as_ref().is_none_or(|(_, m)| go > *m)
+                && meilleure.as_ref().is_none_or(|(_, m, _)| go > *m)
             {
-                meilleure = Some((nom, go));
+                meilleure = Some((nom, go, (desc.luid_low, desc.luid_high)));
             }
         }
         let relacher: Release = std::mem::transmute(methode(usine, 2));
@@ -1082,14 +1089,144 @@ fn probe_apple() -> Option<Gpu> {
     })
 }
 
-/// Mémoire graphique libre, en Go. Seul NVIDIA la publie de façon fiable.
+/// Mémoire graphique libre, en Go, mesurée maintenant.
+///
+/// NVIDIA la publie par `nvidia-smi`. Pour les autres cartes sous Windows
+/// (AMD, Intel), elle se lit dans les compteurs de performance du système
+/// (« GPU Adapter Memory → Dedicated Usage ») : sans cela, la carte était
+/// supposée libre à 90 % en permanence, et la prudence choisie ne protégeait
+/// de rien — un 9B avec 135 000 jetons de contexte sur une RX 570 laissait
+/// bien moins que la marge annoncée, jusqu'à l'écran noir.
 pub fn free_vram_gb() -> Option<f64> {
-    let text = run(
+    if let Some(text) = run(
         "nvidia-smi",
         &["--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-    )?;
-    let mib: f64 = text.lines().next()?.trim().parse().ok()?;
-    Some(mib / 1024.0)
+    ) {
+        if let Some(mib) = text
+            .lines()
+            .next()
+            .and_then(|l| l.trim().parse::<f64>().ok())
+        {
+            return Some(mib / 1024.0);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let (_, total, luid) = carte_dxgi_et_luid()?;
+        let utilise = vram_dediee_utilisee_go(luid)?;
+        return Some((total - utilise).max(0.0));
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// Le nom d'instance que donnent les compteurs de Windows à une carte.
+#[cfg(any(target_os = "windows", test))]
+fn instance_pdh(luid: (u32, i32)) -> String {
+    format!("luid_0x{:08x}_0x{:08x}_", luid.1 as u32, luid.0)
+}
+
+/// La mémoire dédiée occupée sur la carte `luid`, par tout le système, en Go.
+#[cfg(target_os = "windows")]
+fn vram_dediee_utilisee_go(luid: (u32, i32)) -> Option<f64> {
+    #[repr(C)]
+    struct Valeur {
+        statut: u32,
+        _bourrage: u32,
+        grand: i64,
+    }
+    #[repr(C)]
+    struct Element {
+        nom: *const u16,
+        valeur: Valeur,
+    }
+    #[link(name = "pdh")]
+    extern "system" {
+        fn PdhOpenQueryW(source: *const u16, donnee: usize, requete: *mut isize) -> u32;
+        fn PdhAddEnglishCounterW(
+            requete: isize,
+            chemin: *const u16,
+            donnee: usize,
+            compteur: *mut isize,
+        ) -> u32;
+        fn PdhCollectQueryData(requete: isize) -> u32;
+        fn PdhGetFormattedCounterArrayW(
+            compteur: isize,
+            format: u32,
+            taille: *mut u32,
+            nombre: *mut u32,
+            elements: *mut Element,
+        ) -> u32;
+        fn PdhCloseQuery(requete: isize) -> u32;
+    }
+    const PDH_FMT_LARGE: u32 = 0x0000_0400;
+    const PDH_MORE_DATA: u32 = 0x8000_07D2;
+
+    let chemin = registre_wide(r"\GPU Adapter Memory(*)\Dedicated Usage");
+    let prefixe = instance_pdh(luid);
+    // SAFETY : la requête n'est utilisée qu'après une ouverture réussie et
+    // fermée dans tous les cas ; le tampon des éléments a la taille annoncée
+    // par le premier appel (en octets, alignée sur `Element`), et les noms
+    // pointent dans ce même tampon, lus avant sa libération.
+    unsafe {
+        let mut requete: isize = 0;
+        if PdhOpenQueryW(std::ptr::null(), 0, &mut requete) != 0 {
+            return None;
+        }
+        let mut compteur: isize = 0;
+        let resultat = (|| {
+            if PdhAddEnglishCounterW(requete, chemin.as_ptr(), 0, &mut compteur) != 0 {
+                return None;
+            }
+            if PdhCollectQueryData(requete) != 0 {
+                return None;
+            }
+            let mut taille = 0u32;
+            let mut nombre = 0u32;
+            let code = PdhGetFormattedCounterArrayW(
+                compteur,
+                PDH_FMT_LARGE,
+                &mut taille,
+                &mut nombre,
+                std::ptr::null_mut(),
+            );
+            if code != PDH_MORE_DATA || taille == 0 {
+                return None;
+            }
+            let n = (taille as usize).div_ceil(std::mem::size_of::<Element>());
+            let mut tampon: Vec<Element> = Vec::with_capacity(n);
+            let code = PdhGetFormattedCounterArrayW(
+                compteur,
+                PDH_FMT_LARGE,
+                &mut taille,
+                &mut nombre,
+                tampon.as_mut_ptr(),
+            );
+            if code != 0 {
+                return None;
+            }
+            tampon.set_len((nombre as usize).min(n));
+            let mut octets: i64 = 0;
+            let mut trouve = false;
+            for e in &tampon {
+                if e.nom.is_null() || e.valeur.statut > 1 {
+                    continue;
+                }
+                let mut fin = 0;
+                while *e.nom.add(fin) != 0 {
+                    fin += 1;
+                }
+                let nom = String::from_utf16_lossy(std::slice::from_raw_parts(e.nom, fin));
+                if nom.to_ascii_lowercase().starts_with(&prefixe) {
+                    octets += e.valeur.grand.max(0);
+                    trouve = true;
+                }
+            }
+            trouve.then(|| octets as f64 / (1024.0 * 1024.0 * 1024.0))
+        })();
+        PdhCloseQuery(requete);
+        resultat
+    }
 }
 
 // ── Bande passante ─────────────────────────────────────────────────────────
@@ -1252,6 +1389,13 @@ pub fn sample_ram_bandwidth_gbps() -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn le_nom_d_instance_des_compteurs_suit_le_luid() {
+        assert_eq!(
+            super::instance_pdh((0x0000_d2c6, 0)),
+            "luid_0x00000000_0x0000d2c6_"
+        );
+    }
 
     #[test]
     fn la_part_gpu_de_la_memoire_unifiee_suit_le_systeme() {

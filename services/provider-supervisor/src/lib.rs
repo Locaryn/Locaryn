@@ -535,6 +535,8 @@ impl Supervisor {
             .gpu_failed
             .lock()
             .is_ok_and(|m| m.contains(&cle_gpu));
+        // Rechargements pour tenir la marge de prudence (deux au plus).
+        let mut corrections_de_marge = 0u8;
         // Snapdragon : le NPU d'abord, tant qu'il n'a pas échoué.
         let mut sur_npu = spec.is_none()
             && matches!(engine, ProviderEngine::LlamaCpp)
@@ -654,6 +656,34 @@ impl Supervisor {
                         npu::oublier_actif();
                     }
                     tracing::info!(%endpoint, moteur = %engine.as_token(), cpu_only, sur_npu, "moteur en marche");
+                    // La prudence choisie, vérifiée sur la VRAM réellement
+                    // libre : sinon le contexte est réduit et le modèle
+                    // rechargé avec lui.
+                    if spec.is_none()
+                        && matches!(engine, ProviderEngine::LlamaCpp)
+                        && !cpu_only
+                        && !sur_npu
+                        && corrections_de_marge < 2
+                    {
+                        let n_ctx = llama_n_ctx(&self.inner.http, &endpoint).await;
+                        if let Some((_, memo)) = n_ctx.and_then(contexte_pour_la_marge) {
+                            corrections_de_marge += 1;
+                            let libre_avant = memo.libre_gb;
+                            if let Ok(texte) = serde_json::to_string(&memo) {
+                                let _ = std::fs::write(
+                                    locaryn_config::default_data_dir().join(FIT_MEMORISE),
+                                    texte,
+                                );
+                            }
+                            FIT_EN_COURS
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .take();
+                            self.kill_owned(engine).await;
+                            attendre_vram_rendue(libre_avant).await;
+                            continue 'attempt;
+                        }
+                    }
                     if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) && !cpu_only {
                         enregistrer_fit(&self.inner.http, &endpoint).await;
                     }
@@ -1796,6 +1826,21 @@ fn fit_memorise(data_dir: &std::path::Path, cle: &FitCle, libre_gb: f64) -> Opti
         .then_some(m.n_ctx)
 }
 
+/// La fenêtre que le moteur applique (`/props`).
+async fn llama_n_ctx(http: &reqwest::Client, endpoint: &str) -> Option<u64> {
+    let v: serde_json::Value = http
+        .get(format!("{endpoint}/props"))
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    v.pointer("/default_generation_settings/n_ctx")
+        .and_then(|n| n.as_u64())
+}
+
 /// Le moteur répond : noter le contexte que `--fit` a trouvé, pour les
 /// chargements suivants.
 async fn enregistrer_fit(http: &reqwest::Client, endpoint: &str) {
@@ -1833,6 +1878,72 @@ async fn enregistrer_fit(http: &reqwest::Client, endpoint: &str) {
     if let Ok(texte) = serde_json::to_string(&m) {
         let _ = std::fs::write(data_dir.join(FIT_MEMORISE), texte);
         tracing::info!(contexte = n_ctx, "contexte choisi par --fit mémorisé");
+    }
+}
+
+/// Ce que la génération ajoute en VRAM au-delà de ce que `--fit` compte
+/// (mesuré sur RX 570, Qwen3.5-9B, 135 000 jetons : 1,20 Go libres une fois
+/// chargé, 0,82 Go après les premiers jetons), selon la taille de la carte.
+fn marge_generation_gb() -> f64 {
+    locaryn_llmfit::estimate::marge_generation_gb(locaryn_llmfit::profile().total_vram_gb)
+}
+
+/// Le contexte à viser pour que la prudence choisie soit tenue, mesure faite.
+///
+/// `--fit` (et le contexte qu'il avait trouvé, réutilisé tel quel) promettait
+/// la marge du niveau choisi ; mesuré une fois chargé, il en restait bien
+/// moins — 1,2 Go puis 0,8 Go au lieu de 1,5 en prudent, jusqu'à l'écran noir.
+/// Rend le contexte réduit et la mémorisation qui le portera au prochain
+/// chargement, ou `None` si la marge est tenue (ou ne peut pas se mesurer).
+fn contexte_pour_la_marge(n_ctx: u64) -> Option<(u64, FitMemorise)> {
+    let (cle, libre_avant, _) = FIT_EN_COURS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()?;
+    if cle.marge_mib == 0 || n_ctx <= AUTO_FIT_MIN_CTX as u64 {
+        return None;
+    }
+    let libre = locaryn_llmfit::hardware::free_vram_gb()?;
+    let cible = cle.marge_mib as f64 / 1024.0 + marge_generation_gb();
+    if libre >= cible {
+        return None;
+    }
+    let go = 1024.0 * 1024.0 * 1024.0;
+    // Ce que le contexte occupe : tout ce que le moteur a pris, moins ses
+    // poids et un socle de tampons.
+    let pris = (libre_avant - libre).max(0.0);
+    let poids = cle.taille as f64 / go + 0.35;
+    let par_jeton = ((pris - poids) / n_ctx as f64).max(1.0e-6);
+    let retirer = ((cible - libre) / par_jeton).ceil() as u64;
+    let nouveau = (n_ctx.saturating_sub(retirer) / 1024 * 1024).max(AUTO_FIT_MIN_CTX as u64);
+    if nouveau >= n_ctx {
+        return None;
+    }
+    tracing::warn!(
+        libre_go = libre,
+        cible_go = cible,
+        contexte = n_ctx,
+        nouveau,
+        "marge de prudence non tenue une fois chargé — contexte réduit"
+    );
+    Some((
+        nouveau,
+        FitMemorise {
+            cle,
+            n_ctx: nouveau,
+            libre_gb: libre_avant,
+        },
+    ))
+}
+
+/// Attendre que la carte ait rendu la mémoire d'un moteur arrêté (jusqu'à 8 s).
+async fn attendre_vram_rendue(libre_attendu: f64) {
+    for _ in 0..16 {
+        match locaryn_llmfit::hardware::free_vram_gb() {
+            Some(l) if l + 0.3 >= libre_attendu => return,
+            None => return,
+            _ => tokio::time::sleep(Duration::from_millis(500)).await,
+        }
     }
 }
 
@@ -1966,7 +2077,9 @@ async fn spawn_llama_server(
     // se lit ensuite par différence. Windows ne dit pas ce qu'occupe un
     // processus (`nvidia-smi` répond « N/A »), et l'estimation des autres
     // modèles doit savoir ce que ce moteur rendra en se déchargeant.
-    let libre_avant = locaryn_llmfit::profile().free_vram_gb;
+    // Mesurée maintenant (le profil garde une mesure quelques secondes).
+    let libre_avant = locaryn_llmfit::hardware::free_vram_gb()
+        .unwrap_or_else(|| locaryn_llmfit::profile().free_vram_gb);
     if let Err(e) = std::fs::write(
         data_dir.join(VRAM_AVANT_MOTEUR),
         format!("{{\"free_vram_gb\":{libre_avant}}}"),
@@ -2129,7 +2242,7 @@ async fn spawn_llama_server(
     let slots = inference_cfg["parallel_slots"].as_u64().unwrap_or(1).max(1);
 
     // La marge que `--fit` laisse libre : celle du niveau de prudence choisi
-    // (1 Go sur 8 Go en prudent, 0,5 en équilibré, 0,2 en risqué). La prudence
+    // (1,5 Go sur 8 Go en prudent, 0,8 en équilibré, 0,32 en risqué). La prudence
     // vaut alors au chargement, pas seulement dans l'estimation.
     let marge_mib = if cpu_only {
         None
@@ -2192,7 +2305,11 @@ async fn spawn_llama_server(
             cmd.arg("--fit-ctx").arg(AUTO_FIT_MIN_CTX.to_string());
         }
         if let Some(marge) = marge_mib {
-            cmd.arg("--fit-target").arg(marge.to_string());
+            // La marge du niveau, plus ce que la génération ajoute ensuite
+            // (non compté par --fit) : la vérification après chargement n'a
+            // alors presque jamais à recharger.
+            let avec_generation = marge + (marge_generation_gb() * 1024.0).round() as u64;
+            cmd.arg("--fit-target").arg(avec_generation.to_string());
         }
     }
     // Repli processeur : le pilote GPU a fait tomber le moteur au démarrage

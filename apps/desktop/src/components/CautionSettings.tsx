@@ -87,10 +87,10 @@ export function CautionSettings() {
                 return (
                   <span className="locaryn-caution-reserve">
                     {reserves.total_vram_gb > 0 && !reserves.unified_memory
-                      ? `Garde ${go(r.vram_gb)} de VRAM libres pour le système (carte de ${go(reserves.total_vram_gb)})`
+                      ? `Garde ${go(r.vram_gb)} de VRAM libres sur ${go(reserves.total_vram_gb)}, même pendant la génération`
                       : `Laisse ${go(r.ram_gb)} de mémoire libres sur ${go(reserves.total_ram_gb)}`}
                     {reserves.total_vram_gb > 0 && !reserves.unified_memory
-                      ? ` · ${go(r.ram_gb)} de RAM`
+                      ? ` · et ${go(r.ram_gb)} de RAM pour Windows et vos applications`
                       : ""}
                   </span>
                 );

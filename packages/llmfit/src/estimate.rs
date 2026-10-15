@@ -103,21 +103,26 @@ impl Headroom {
     /// C'est aussi la marge que le moteur garde (`--fit-target`) quand il
     /// choisit lui-même le contexte : la prudence choisie vaut au chargement,
     /// pas seulement dans l'estimation.
+    ///
+    /// Une part de la carte, pas un nombre fixe : 1,5 Go sur 8 Go en prudent,
+    /// 0,75 sur 4, 0,5 sur 2 — le plancher (ce que le bureau de Windows prend
+    /// au minimum) ne réserve jamais plus du tiers d'une petite carte.
     pub fn vram_reserve_gb(self, total_vram_gb: f64) -> f64 {
         let (part, plancher) = match self {
-            Headroom::Prudent => (0.1875, 1.0),
-            Headroom::Equilibre => (0.10, 0.6),
-            Headroom::Risque => (0.04, 0.25),
+            Headroom::Prudent => (0.1875, 0.5),
+            Headroom::Equilibre => (0.10, 0.35),
+            Headroom::Risque => (0.04, 0.2),
         };
         if total_vram_gb <= 0.0 {
             return 0.0;
         }
         (total_vram_gb * part)
             .max(plancher)
-            .min(total_vram_gb * 0.5)
+            .min(total_vram_gb / 3.0)
     }
 
-    /// Mémoire système laissée libre, en Go.
+    /// Mémoire système laissée libre, en Go (pour Windows, le navigateur et
+    /// les applications ouvertes — c'est le « 3 Go de RAM » du niveau prudent).
     ///
     /// La RAM garde plus que la VRAM : le système y fait tourner tout le
     /// reste, là où la carte n'a guère d'autre client qu'un bureau graphique.
@@ -494,6 +499,17 @@ fn compute_bytes(spec: &ModelSpec, context: u32, options: &RunOptions) -> u64 {
     (total as u64).max(128 * 1024 * 1024)
 }
 
+/// Ce que la génération ajoute en VRAM une fois le modèle chargé, en Go :
+/// tampons que le pilote n'alloue qu'aux premiers jetons. Mesuré sur RX 570
+/// (8 Go, Qwen3.5-9B) : 0,4 Go de plus entre « chargé » et « en train de
+/// répondre ». Proportionnel à la carte, entre 0,15 et 0,45 Go.
+pub fn marge_generation_gb(total_vram_gb: f64) -> f64 {
+    if total_vram_gb <= 0.0 {
+        return 0.0;
+    }
+    (total_vram_gb * 0.055).clamp(0.15, 0.45)
+}
+
 /// Ce qui reste utilisable, réserve déduite, côté VRAM et côté RAM.
 ///
 /// Sur mémoire unifiée — Apple Silicon, Snapdragon X — les deux ne sont qu'un
@@ -527,7 +543,15 @@ fn budgets_utilisables(
 pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptions) -> FitReport {
     let context = resolve_context(spec, options);
     let (reserve_vram, reserve_ram) = options.headroom.reserves(hardware.total_vram_gb);
-    let (usable_vram, usable_ram) = budgets_utilisables(hardware, reserve_vram, reserve_ram);
+    // Sur une carte dédiée, la réserve doit rester libre *pendant* la
+    // génération, pas seulement une fois chargé.
+    let marge_generation = if hardware.unified_memory {
+        0.0
+    } else {
+        marge_generation_gb(hardware.total_vram_gb)
+    };
+    let (usable_vram, usable_ram) =
+        budgets_utilisables(hardware, reserve_vram + marge_generation, reserve_ram);
 
     let kv_bytes = kv_cache_bytes(spec, context, options.kv_type);
     let compute = compute_bytes(spec, context, options);
@@ -955,10 +979,15 @@ fn phrase(report: &FitReport, hardware: &HardwareProfile) -> String {
         ),
         Verdict::Refuse if report.placement == Placement::Partage => {
             let mut text = format!(
-                "Trop de VRAM déjà utilisée pour charger ce modèle : {:.1} Go à poser sur la                  carte, {:.1} Go libres en ce moment, dont {:.1} Go restent réservés au                  système par la prudence choisie. Fermez une application qui utilise la carte                  graphique (jeu, logiciel 3D…), ou choisissez une version plus légère.",
+                "Trop de VRAM déjà utilisée pour charger ce modèle : {:.1} Go à poser sur la \
+                 carte, {:.1} Go libres en ce moment, dont {:.1} Go restent réservés au \
+                 système par la prudence choisie (et {:.1} Go pour la génération). Fermez une \
+                 application qui utilise la carte graphique (jeu, logiciel 3D…), ou choisissez \
+                 une version plus légère.",
                 report.weights_gb + report.kv_cache_gb + report.compute_gb,
                 report.free_vram_gb,
-                report.vram_reserve_gb
+                report.vram_reserve_gb,
+                marge_generation_gb(hardware.total_vram_gb)
             );
             if let Some(quant) = &report.suggested_quant {
                 text.push_str(&format!(" La version {quant} tiendrait."));
@@ -1235,6 +1264,18 @@ mod tests {
         assert!((Headroom::Prudent.vram_reserve_gb(8.0) - 1.5).abs() < 1e-9);
         assert!((Headroom::Equilibre.vram_reserve_gb(8.0) - 0.8).abs() < 1e-9);
         assert!((Headroom::Risque.vram_reserve_gb(8.0) - 0.32).abs() < 1e-9);
+    }
+
+    /// Une petite carte ne se fait pas confisquer la moitié de sa mémoire.
+    #[test]
+    fn les_reserves_suivent_la_taille_de_la_carte() {
+        assert!((Headroom::Prudent.vram_reserve_gb(2.0) - 0.5).abs() < 1e-9);
+        assert!((Headroom::Prudent.vram_reserve_gb(4.0) - 0.75).abs() < 1e-9);
+        assert!((Headroom::Prudent.vram_reserve_gb(16.0) - 3.0).abs() < 1e-9);
+        assert!((Headroom::Prudent.vram_reserve_gb(1.0) - 1.0 / 3.0).abs() < 1e-9);
+        assert!((Headroom::Equilibre.vram_reserve_gb(2.0) - 0.35).abs() < 1e-9);
+        assert!((super::marge_generation_gb(8.0) - 0.44).abs() < 1e-9);
+        assert!((super::marge_generation_gb(2.0) - 0.15).abs() < 1e-9);
     }
 
     /// Le cache d'attention doit croître avec le contexte : c'est tout
