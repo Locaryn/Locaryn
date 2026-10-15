@@ -460,6 +460,13 @@ pub async fn run_openai_tool_loop(
             if let Some(serde_json::Value::Object(p)) = &params {
                 let mut options = serde_json::Map::new();
                 for (k, v) in p {
+                    // Une réponse JSON imposée et des outils ne vont pas
+                    // ensemble : llama-server fusionne les deux grammaires et
+                    // refuse tout (« failed to parse grammar »). Avec des
+                    // outils, le modèle écrit son JSON sans contrainte.
+                    if k == "response_format" && tools_json.is_some() {
+                        continue;
+                    }
                     body[k.clone()] = v.clone();
                     if k == "num_ctx" {
                         options.insert("num_ctx".into(), v.clone());
@@ -631,11 +638,51 @@ pub async fn run_openai_tool_loop(
                 AgentError::ProviderUnavailable
             })?;
     }
-    if !first_resp.status().is_success() {
+    // La grammaire refusée encore, schémas MCP simplifiés : le schéma fautif
+    // n'est pas celui d'un connecteur. Tous les outils réduits aux noms de
+    // leurs arguments, puis, en dernier recours, une réponse sans outils —
+    // plutôt qu'une conversation arrêtée sur « failed to parse grammar ».
+    let mut repli_grammaire = 0u8;
+    while !first_resp.status().is_success() {
         let status = first_resp.status();
         let body_text = first_resp.text().await.unwrap_or_default();
-        tracing::warn!(%status, body = %body_text, "openai-compat returned non-2xx");
-        return Err(refus(status.as_u16(), &body_text));
+        if !(erreur_de_grammaire(&body_text) && tools_json.is_some() && repli_grammaire < 2) {
+            tracing::warn!(%status, body = %body_text, "openai-compat returned non-2xx");
+            return Err(refus(status.as_u16(), &body_text));
+        }
+        repli_grammaire += 1;
+        if repli_grammaire == 1 {
+            tracing::warn!(body = %body_text, "grammaire encore refusée — tous les schémas d'outils simplifiés");
+            for t in all_tools.iter_mut() {
+                t.input_schema = crate::mcp_tools::schema_permissif(&t.input_schema);
+            }
+            tools_json = Some(ollama_tools_json(&all_tools));
+        } else {
+            tracing::warn!(body = %body_text, "grammaire toujours refusée — réponse sans outils");
+            all_tools.clear();
+            differes.clear();
+            tools_json = None;
+            annonce_contexte = Some(
+                "Le moteur refusait la description des outils (« failed to parse grammar ») : \
+                 cette réponse est écrite sans outils."
+                    .into(),
+            );
+        }
+        let (mut openai_body, native_body) = make_body(&messages, &tools_json);
+        if exige_outil && tools_json.is_some() {
+            openai_body["tool_choice"] = serde_json::json!("required");
+        }
+        let payload = if native_ollama {
+            native_body
+        } else {
+            openai_body
+        };
+        first_resp = post_json(client, &first_url, &payload, bearer.as_deref())
+            .await
+            .map_err(|e| {
+                tracing::warn!(error = %e, "openai-compat connection failed");
+                AgentError::ProviderUnavailable
+            })?;
     }
     let first_resp = if native_ollama {
         convert_native_to_openai_stream(first_resp)

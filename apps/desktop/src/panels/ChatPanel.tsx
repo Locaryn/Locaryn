@@ -253,9 +253,15 @@ const SUGGESTIONS = [
   "Cherche les commentaires FIXME et TODO",
 ];
 
-/** In "auto" mode, force JSON only when the prompt actually asks for it. */
+/** En « auto », une réponse JSON imposée seulement quand la demande le dit
+ *  en toutes lettres (« réponds en JSON », « au format JSON », « as JSON »).
+ *  « structure », « schéma » ou le simple mot « json » l'activaient : « la
+ *  structure du projet » ou un cahier des charges imposait du JSON, et avec
+ *  les outils llama-server refusait la requête (« failed to parse grammar »). */
 function wantsJson(prompt: string): boolean {
-  return /\b(json|structur\w+|sch[ée]ma|format\w*\s+json|cl[ée]s?\/valeurs?)\b/i.test(prompt);
+  return /\b((r[ée]ponds?|r[ée]ponse|uniquement|seulement|sortie|renvoie|rends?|donne)\s+(\w+\s+){0,2}en\s+json|(au|en)\s+format\s+json|json\s+(uniquement|seulement|only|valide)|(as|in)\s+(valid\s+)?json|only\s+json|respond\s+(\w+\s+){0,2}json)\b/i.test(
+    prompt,
+  );
 }
 
 /** Pull inline images and generic artifact markers out of a stored message

@@ -152,8 +152,19 @@ fn entry(key: &str, label: &str, path: PathBuf, root: &Path) -> StorageEntry {
     }
 }
 
+/// L'état du stockage, hors du fil de la fenêtre : mesurer les dossiers
+/// parcourt chaque fichier (49 000 fichiers et 41 Go de modèles : 5 s à
+/// chaud, bien plus sur un disque dur froid). Commande synchrone, Tauri
+/// l'exécutait sur le fil principal et l'application ne répondait plus dès
+/// l'ouverture de Réglages → Stockage.
 #[tauri::command]
-pub fn storage_info() -> Result<StorageInfo, String> {
+pub async fn storage_info() -> Result<StorageInfo, String> {
+    tauri::async_runtime::spawn_blocking(lire_stockage)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn lire_stockage() -> Result<StorageInfo, String> {
     let root = locaryn_config::storage_root();
     let entries = vec![
         entry(
@@ -366,7 +377,7 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
     let old_free_chats = locaryn_config::free_chats_dir();
 
     if new_root == old_root {
-        return storage_info();
+        return lire_stockage();
     }
     // Nesting the new root inside the old one (or vice versa) makes the move
     // recursive and would copy files into themselves.
@@ -388,7 +399,7 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
     if !args.move_data {
         locaryn_config::set_storage_root(Some(&new_root))
             .map_err(|e| format!("enregistrement du réglage: {e}"))?;
-        return storage_info();
+        return lire_stockage();
     }
 
     let app2 = app.clone();
@@ -491,7 +502,7 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
                     error: None,
                 },
             );
-            storage_info().map(|mut info| {
+            lire_stockage().map(|mut info| {
                 info.cleanup_warnings = warnings;
                 info
             })
@@ -517,8 +528,15 @@ pub async fn set_storage_root(app: AppHandle, args: SetRootArgs) -> Result<Stora
 ///
 /// Only touches Locaryn's own temp directory and the `locaryn_*` leftovers it
 /// wrote to the OS temp dir in earlier versions — never the OS temp dir itself.
+/// Vider les fichiers temporaires, hors du fil de la fenêtre lui aussi.
 #[tauri::command]
-pub fn clean_temp() -> Result<u64, String> {
+pub async fn clean_temp() -> Result<u64, String> {
+    tauri::async_runtime::spawn_blocking(vider_temporaires)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn vider_temporaires() -> Result<u64, String> {
     let mut freed = 0u64;
 
     let own = locaryn_config::temp_dir();
@@ -742,7 +760,7 @@ mod tests {
     /// host and that every reported path is coherent. Read-only.
     #[test]
     fn storage_info_reports_a_coherent_picture_of_this_machine() {
-        let info = storage_info().expect("storage_info must not fail");
+        let info = lire_stockage().expect("storage_info must not fail");
 
         assert!(!info.root.is_empty());
         assert!(!info.db_path.is_empty());
