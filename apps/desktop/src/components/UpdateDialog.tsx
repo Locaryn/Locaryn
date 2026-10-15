@@ -4,11 +4,33 @@ import { type Update, check } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { core, coreMode } from "../lib/core";
+import { notifierSysteme } from "../lib/osNotify";
 
 const RELEASES_URL = "https://github.com/Locaryn/Locaryn/releases";
 
 /** L'evenement qu'un autre ecran envoie pour demander une verification. */
 export const CHECK_UPDATE_EVENT = "locaryn:verifier-mise-a-jour";
+
+/** La dernière version annoncée par une notification du système. */
+const VERSION_ANNONCEE = "locaryn:maj-annoncee";
+
+/** Une notification Windows (ou macOS) quand une version sort pendant que
+ *  l'application tourne, souvent réduite dans la zone de notification : la
+ *  fenêtre de mise à jour, seule, n'était vue que de qui l'avait ouverte.
+ *  Une seule fois par version. */
+function annoncerMiseAJour(version: string) {
+  try {
+    if (localStorage.getItem(VERSION_ANNONCEE) === version) return;
+    localStorage.setItem(VERSION_ANNONCEE, version);
+  } catch {
+    // Sans stockage local, on annonce quand même : au pire deux fois.
+  }
+  void notifierSysteme(
+    "Mise à jour de Locaryn disponible",
+    `La version ${version} est prête. Ouvrez Locaryn pour l'installer.`,
+    "maintenance",
+  );
+}
 
 /** Demander une verification depuis n'importe quel ecran. */
 export function demanderVerification() {
@@ -173,6 +195,7 @@ export function UpdateDialog() {
         return;
       }
       setEtat({ sorte: "trouvee", update });
+      if (!visible) annoncerMiseAJour(update.version);
     } catch (e) {
       setEtat(visible ? { sorte: "erreur", message: updateErrorMessage(e) } : { sorte: "ferme" });
     }
@@ -205,7 +228,8 @@ export function UpdateDialog() {
   }, [verifier]);
 
   // Une application qui reste ouverte des jours apprend aussi qu'une version
-  // est sortie : nouvelle vérification discrète toutes les six heures.
+  // est sortie : nouvelle vérification discrète toutes les trois heures, et
+  // une notification du système si une version est trouvée.
   const etatRef = useRef(etat);
   etatRef.current = etat;
   useEffect(() => {
@@ -215,7 +239,7 @@ export function UpdateDialog() {
         // Jamais par-dessus un téléchargement ou une fenêtre déjà ouverte.
         if (etatRef.current.sorte === "ferme") void verifier(false);
       },
-      6 * 60 * 60 * 1000,
+      3 * 60 * 60 * 1000,
     );
     return () => clearInterval(t);
   }, [supporte, verifier]);
