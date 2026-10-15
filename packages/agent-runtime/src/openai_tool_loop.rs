@@ -198,7 +198,10 @@ pub async fn run_openai_tool_loop(
             .filter(|t| t.role == "user")
             .take(2)
             .any(|t| crate::tool_budget::demande_l_ecran(&t.content))
-        || input.forced_tools.iter().any(|f| ecran.contains(f));
+        || input.forced_tools.iter().any(|f| ecran.contains(f))
+        // Une fois offerts dans la conversation, ils le restent : les retirer
+        // au message suivant changerait le début du prompt, relu en entier.
+        || crate::outils_stables::ecran_deja_offert(input.session_id);
     let (all_tools, ecran_differes): (Vec<_>, Vec<_>) = if demande_ecran || ecran.is_empty() {
         (all_tools, Vec::new())
     } else {
@@ -222,12 +225,16 @@ pub async fn run_openai_tool_loop(
             // les plus pertinents restent et les autres se chargent à la
             // demande (`charger_outils`).
             let ctx_estime = crate::tool_budget::plafonner_pour_outils(ctx_estime, &all_tools);
-            let fit = crate::tool_budget::fit_selon(
+            let deja = crate::outils_stables::ensemble(&crate::outils_stables::precedents(
+                input.session_id,
+            ));
+            let fit = crate::tool_budget::fit_selon_avec(
                 all_tools,
                 ctx_estime,
                 &demande,
                 input.trim_tools,
                 &input.forced_tools,
+                &deja,
             );
             // Rien n'est écarté : ce qui ne tient pas est différé, et le modèle
             // le charge quand il en a besoin (`charger_outils`). L'ancien avis
@@ -253,6 +260,13 @@ pub async fn run_openai_tool_loop(
         all_tools.retain(|t| t.name != crate::tool_budget::CHARGER_OUTILS);
         all_tools.push(crate::tool_budget::outil_de_chargement(&differes));
     }
+    // Même ordre qu'au tour précédent : le moteur reprend son cache au lieu
+    // de relire tout le prompt.
+    crate::outils_stables::ordonner_et_retenir(
+        input.session_id,
+        &mut all_tools,
+        demande_ecran && !ecran.is_empty(),
+    );
     // Le premier tour doit appeler un outil quand des outils sont imposés et
     // effectivement offerts : une consigne dans le message ne suffisait pas à
     // un petit modèle. Les tours suivants restent libres, pour qu'il puisse

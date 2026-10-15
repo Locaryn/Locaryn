@@ -14587,3 +14587,30 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   color: var(--text);
   mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
 }
+
+/* ── Suivi de plan replié ── */
+.locaryn-suivi-replier {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.locaryn-suivi-replier:hover {
+  color: var(--text);
+}
+.locaryn-suivi-replier.is-replie {
+  transform: rotate(-90deg);
+}
+.locaryn-suivi-courante {
+  margin: 4px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,4 +1,15 @@
 import { Icon } from "@locaryn/ui-core";
+import { useState } from "react";
+
+const CLE_REPLI = "locaryn.suivi.replie";
+
+function lireRepli(): boolean {
+  try {
+    return localStorage.getItem(CLE_REPLI) === "1";
+  } catch {
+    return false;
+  }
+}
 
 /** L'état d'une étape d'un plan, ou d'un tour d'objectif. */
 export type EtatEtape = "attente" | "cours" | "fait" | "echec";
@@ -38,7 +49,21 @@ export function TaskTracker({
   onArreter?: () => void;
   onFermer?: () => void;
 }) {
+  // Replié, le suivi ne garde que sa tête et l'étape en cours : il ne cache
+  // plus la conversation. Le choix est retenu d'un plan à l'autre.
+  const [replie, setReplie] = useState(lireRepli);
+  const basculer = () => {
+    setReplie((r) => {
+      try {
+        localStorage.setItem(CLE_REPLI, r ? "0" : "1");
+      } catch {
+        // Stockage indisponible : le choix vaut pour cette fenêtre.
+      }
+      return !r;
+    });
+  };
   const faites = suivi.etapes.filter((e) => e.etat === "fait").length;
+  const courante = suivi.etapes.find((e) => e.etat === "cours");
   const total = suivi.etapes.length;
   const enCours = suivi.etat === "cours";
   return (
@@ -58,6 +83,16 @@ export function TaskTracker({
           <span className="locaryn-suivi-compte" aria-live="polite">
             {suivi.genre === "plan" ? `${faites}/${total}` : `tour ${total}`}
           </span>
+          <button
+            type="button"
+            className={`locaryn-suivi-replier${replie ? " is-replie" : ""}`}
+            onClick={basculer}
+            title={replie ? "Déplier le suivi" : "Replier le suivi"}
+            aria-label={replie ? "Déplier le suivi" : "Replier le suivi"}
+            aria-expanded={!replie}
+          >
+            <Icon name="caret-down" size={14} />
+          </button>
           {onFermer && !enCours && (
             <button
               type="button"
@@ -81,6 +116,8 @@ export function TaskTracker({
         </div>
       </header>
 
+      {replie && courante && <p className="locaryn-suivi-courante">{courante.texte}</p>}
+
       {suivi.genre === "plan" && total > 0 && (
         <div className="locaryn-suivi-barre" aria-hidden>
           {suivi.etapes.map((e, i) => (
@@ -90,7 +127,7 @@ export function TaskTracker({
         </div>
       )}
 
-      <ol className="locaryn-suivi-etapes">
+      <ol className="locaryn-suivi-etapes" hidden={replie}>
         {suivi.etapes.map((e, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: une étape n'a pas d'autre identité que son rang.
           <li key={i} className={`is-${e.etat}`}>
@@ -117,7 +154,7 @@ export function TaskTracker({
             suivi.maxEssais > 1 &&
             ` · essai ${suivi.essai}/${suivi.maxEssais}`}
         </span>
-        {suivi.note && <span className="locaryn-suivi-note">{suivi.note}</span>}
+        {suivi.note && !replie && <span className="locaryn-suivi-note">{suivi.note}</span>}
         {enCours && onArreter && (
           <button type="button" className="locaryn-suivi-arreter" onClick={onArreter}>
             Arrêter

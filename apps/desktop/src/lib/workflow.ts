@@ -14,6 +14,7 @@
 // Orchestration lives in the frontend: each step is a normal streamed turn.
 
 import { type StreamEvent, type TaskPlan, core } from "./core";
+import { sansReflexion } from "./goal";
 import { taskCenter } from "./taskCenter";
 
 export interface WorkflowHooks {
@@ -94,6 +95,24 @@ function extractSplit(answer: string): string[] | null {
 }
 
 /**
+ * Le modèle a-t-il seulement annoncé ce qu'il allait faire ?
+ *
+ * Un petit modèle local répond volontiers « Je vais d'abord vérifier le
+ * chemin du fichier… » et rend la main sans appeler d'outil. Ce n'est ni un
+ * échec ni une étape faite : on lui demande de le faire, sans compter d'essai.
+ */
+export function simpleAnnonce(reponse: string, outilsAppeles: number): boolean {
+  if (outilsAppeles > 0) return false;
+  const texte = sansReflexion(reponse).trim();
+  if (texte.length === 0 || texte.length > 700) return texte.length === 0;
+  return (
+    /(?:^|[^\p{L}])(je vais|je dois|je m'apprête|commençons|je commence|laisse-moi|d'abord|let me|i will|i'll|first,)/iu.test(
+      texte,
+    ) || /[:：]\s*$/.test(texte)
+  );
+}
+
+/**
  * Le verdict de vérification a-t-il signalé un échec ?
  *
  * Le verdict explicite `ok: true` / `ok: false` a la priorité. Les mots-clés
@@ -151,7 +170,9 @@ export async function runWorkflow(
   // Copie mutable des étapes — le plan peut s'allonger par scission.
   const steps = [...plan.steps];
 
-  hooks.onPlan?.(steps, goalMode ? MAX_STEP_RETRIES : 1);
+  // Le nombre d'essais affiché : le premier, plus les reprises. Passer les
+  // seules reprises faisait lire « essai 4/3 ».
+  hooks.onPlan?.(steps, goalMode ? MAX_STEP_RETRIES + 1 : 1);
 
   const taskId = taskCenter.addWorkflow(
     `Plan : ${request.slice(0, 40)}${request.length > 40 ? "…" : ""}`,
@@ -174,6 +195,9 @@ export async function runWorkflow(
     let stepRetry = 0;
     let stepOk = false;
     let lastReste = "";
+    // Relances après une simple annonce, sans compter d'essai (bornées).
+    let relances = 0;
+    let relanceEnCours = false;
 
     // En goalMode : on retente la même étape si elle échoue, jusqu'à
     // MAX_STEP_RETRIES. Sans goalMode, on exécute une seule fois.
@@ -190,7 +214,7 @@ export async function runWorkflow(
         mentions ? `${mentions}` : "",
         `[Étape ${i + 1}/${steps.length} du plan] : ${step}`,
         `Demande globale : ${request}`,
-        stepRetry > 0 && lastReste
+        (stepRetry > 0 || relanceEnCours) && lastReste
           ? `[Correction / Ce qui reste à faire pour valider cette étape] : ${lastReste}`
           : "",
         `Consigne impérative : Réalise cette étape de manière concrète et autonome en utilisant directement tes outils. Ne pose pas de question d'attente à l'utilisateur, ne t'arrête pas en chemin et ne demande pas de confirmation : accomplis le travail requis pour cette étape.`,
@@ -199,6 +223,7 @@ export async function runWorkflow(
         .join("\n\n");
 
       let answer = "";
+      let outilsAppeles = 0;
       let stepError = false;
       try {
         await core.sendMessage(
@@ -206,6 +231,7 @@ export async function runWorkflow(
           stepPrompt,
           (ev) => {
             if (ev.type === "token") answer += ev.text;
+            if (ev.type === "tool_call") outilsAppeles++;
             hooks.onEvent(ev);
           },
           undefined,
@@ -226,6 +252,15 @@ export async function runWorkflow(
         globalOk = false;
         break;
       }
+
+      if (simpleAnnonce(answer, outilsAppeles) && relances < 2 && !hooks.arret?.()) {
+        relances++;
+        lastReste =
+          "Tu as annoncé ce que tu allais faire sans le faire. Fais-le maintenant, directement avec tes outils, puis rends compte du résultat.";
+        relanceEnCours = true;
+        continue;
+      }
+      relanceEnCours = false;
 
       // Scission dynamique : le modèle peut signaler que l'étape doit être
       // découpée en sous-étapes. Si c'est le cas, on remplace l'étape

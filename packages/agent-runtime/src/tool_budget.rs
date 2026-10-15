@@ -289,8 +289,20 @@ pub fn fit_selon(
     alleger: bool,
     imposes: &[String],
 ) -> Fit {
+    fit_selon_avec(specs, ctx, request, alleger, imposes, &HashSet::new())
+}
+
+/// `fit_selon` avec les outils offerts au tour précédent (voir `fit_avec`).
+pub fn fit_selon_avec(
+    specs: Vec<ToolSpec>,
+    ctx: usize,
+    request: &str,
+    alleger: bool,
+    imposes: &[String],
+    deja: &HashSet<String>,
+) -> Fit {
     if alleger {
-        return fit(specs, ctx, request, imposes);
+        return fit_avec(specs, ctx, request, imposes, deja);
     }
     // `fit` reçoit la liste d'origine : c'est en voyant les doublons préfixés
     // (`mcp__serveur__outil`) qu'il sait quels noms courts viennent d'un
@@ -308,7 +320,7 @@ pub fn fit_selon(
     }
     Fit {
         forced: true,
-        ..fit(specs, ctx, request, imposes)
+        ..fit_avec(specs, ctx, request, imposes, deja)
     }
 }
 
@@ -332,6 +344,19 @@ fn est_impose(spec: &ToolSpec, server_of: &HashMap<String, String>, imposes: &[S
 /// contexte les cachait derrière `charger_outils`, et un petit modèle ne
 /// comprenait pas qu'il pouvait s'en servir.
 pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str, imposes: &[String]) -> Fit {
+    fit_avec(specs, ctx, request, imposes, &HashSet::new())
+}
+
+/// `fit`, où les outils `deja` offerts au tour précédent passent devant les
+/// autres : la sélection reste la même d'un message à l'autre, et le moteur
+/// n'a pas à relire tout le prompt (voir `outils_stables`).
+pub fn fit_avec(
+    specs: Vec<ToolSpec>,
+    ctx: usize,
+    request: &str,
+    imposes: &[String],
+    deja: &HashSet<String>,
+) -> Fit {
     let budget = budget_for(ctx);
     if total_tokens(&specs) <= budget {
         return Fit {
@@ -389,7 +414,10 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str, imposes: &[String]) 
             .get(&s.name)
             .map(String::as_str)
             .or_else(|| split_prefixed(&s.name).map(|(srv, _)| srv));
-        std::cmp::Reverse(relevance(&request_words, s, server))
+        (
+            !deja.contains(&s.name),
+            std::cmp::Reverse(relevance(&request_words, s, server)),
+        )
     });
     // L'index des outils différés (leurs noms, dans l'outil de chargement) prend
     // lui aussi de la place : on la réserve d'avance, au pire cas.

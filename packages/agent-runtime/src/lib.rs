@@ -24,6 +24,7 @@ pub mod mcp_tools;
 pub mod objectif;
 pub mod openai_compat;
 pub mod openai_tool_loop;
+pub mod outils_stables;
 pub mod profile;
 pub mod question;
 pub mod titling;
