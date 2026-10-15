@@ -51,8 +51,9 @@ pub async fn cloud_provider_account(
     core: State<'_, Core>,
     provider: String,
     action: String,
+    code: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    cloud::account(&host(&core), &provider, &action).await
+    cloud::account(&host(&core), &provider, &action, code.as_deref()).await
 }
 
 /// Les limites d'utilisation du compte du fournisseur actif (Claude, Codex…),

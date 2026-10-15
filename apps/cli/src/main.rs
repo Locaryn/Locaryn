@@ -307,6 +307,9 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let cfg = locaryn_config::load(None)?;
+    // La cible est ce poste quand rien d'autre n'est désigné : le service
+    // local peut alors être démarré à la volée.
+    let cible_locale = cli.server.is_none() && LocarynClient::stored_session().is_none();
     let (base_url, token) = if let Some(server) = cli.server {
         (server, cli.token)
     } else if let Some(stored) = LocarynClient::stored_session() {
@@ -336,6 +339,14 @@ async fn main() -> anyhow::Result<()> {
                 | McpCmd::Discover { .. }
         })
     );
+    // `locaryn` tapé dans un terminal doit ouvrir l'agent, pas expliquer
+    // comment démarrer un service : sur ce poste, on le démarre.
+    if needs_daemon && cible_locale && client.health().await.is_err() && daemon_binary().is_some() {
+        eprintln!("Démarrage du service Locaryn local…");
+        if let Err(e) = daemon_start(&client, &base_url).await {
+            eprintln!("{e}");
+        }
+    }
     if needs_daemon && client.health().await.is_err() {
         anyhow::bail!(
             "Aucun service Locaryn n'écoute sur {base_url}.\n\

@@ -1,4 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
+import { open as ouvrirLien } from "@tauri-apps/plugin-shell";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type CloudModel,
@@ -433,6 +434,186 @@ export function CloudGatewayCard({
 }
 
 // ============================================================================
+// Le compte (Claude Code, Codex, Freebuff…)
+// ============================================================================
+
+type EtatCompte = {
+  installed?: boolean;
+  logged_in?: boolean;
+  account?: string | null;
+  detail?: string;
+};
+
+/**
+ * Se connecter au compte du fournisseur depuis Locaryn, sans terminal.
+ *
+ * « Se connecter » ouvre la page de connexion officielle dans le navigateur ;
+ * quand elle affiche un code (Claude), on le colle ici. Le CLI officiel garde
+ * la connexion : Locaryn ne voit jamais d'identifiant.
+ */
+export function CloudAccountCard({ provider }: { provider: CloudProvider }) {
+  const [etat, setEtat] = useState<EtatCompte | null>(null);
+  const [lien, setLien] = useState<string | null>(null);
+  const [attendCode, setAttendCode] = useState(false);
+  const [code, setCode] = useState("");
+  const [occupe, setOccupe] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const lire = useCallback(async () => {
+    try {
+      setEtat((await core.cloudProviderAccount(provider.id, "status")) as EtatCompte);
+    } catch {
+      setEtat(null);
+    }
+  }, [provider.id]);
+
+  useEffect(() => {
+    void lire();
+    // Codex termine sa connexion seul, dans le navigateur : la carte le voit.
+    const t = window.setInterval(() => void lire(), 6000);
+    return () => window.clearInterval(t);
+  }, [lire]);
+
+  async function seConnecter() {
+    setOccupe(true);
+    setErreur(null);
+    setMessage(null);
+    try {
+      const r = (await core.cloudProviderAccount(provider.id, "login")) as {
+        ok?: boolean;
+        url?: string | null;
+        needs_code?: boolean;
+        detail?: string;
+      };
+      if (r.ok === false) throw new Error(r.detail ?? "La connexion n'a pas démarré.");
+      setLien(r.url ?? null);
+      setAttendCode(r.needs_code === true);
+      setMessage(r.detail ?? null);
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOccupe(false);
+    }
+  }
+
+  async function validerCode() {
+    if (!code.trim()) return;
+    setOccupe(true);
+    setErreur(null);
+    try {
+      const r = (await core.cloudProviderAccount(provider.id, "code", code.trim())) as {
+        ok?: boolean;
+        detail?: string;
+      };
+      if (r.ok === false) throw new Error(r.detail ?? "Code refusé.");
+      setAttendCode(false);
+      setLien(null);
+      setCode("");
+      setMessage("Connecté.");
+      await lire();
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOccupe(false);
+    }
+  }
+
+  async function seDeconnecter() {
+    setOccupe(true);
+    setErreur(null);
+    try {
+      await core.cloudProviderAccount(provider.id, "logout");
+      setMessage(null);
+      await lire();
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOccupe(false);
+    }
+  }
+
+  // Une passerelle sans compte à gérer (ou éteinte) : rien à montrer.
+  if (!etat || etat.installed === undefined) return null;
+  const connecte = etat.logged_in === true;
+  return (
+    <div className="locaryn-card locaryn-cloud-account">
+      <div className="locaryn-field-head" style={{ marginBottom: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 13 }}>Votre compte {provider.label}</h3>
+        <span className={`locaryn-tag${connecte ? " locaryn-tag-installed" : ""}`}>
+          {connecte ? "Connecté" : "Non connecté"}
+        </span>
+      </div>
+      <p className="locaryn-cloud-help">
+        {connecte
+          ? `Connecté${etat.account ? ` en tant que ${etat.account}` : ""} : vos modèles utilisent votre abonnement.`
+          : "Connectez votre abonnement pour utiliser ses modèles. La page de connexion officielle s'ouvre dans votre navigateur."}
+      </p>
+      <div className="locaryn-cloud-key-row">
+        {!connecte && (
+          <button
+            type="button"
+            className="locaryn-btn-primary"
+            disabled={occupe}
+            onClick={() => void seConnecter()}
+          >
+            {occupe && !attendCode ? "Ouverture…" : "Se connecter"}
+          </button>
+        )}
+        {!connecte && lien && (
+          <button
+            type="button"
+            className="locaryn-chip"
+            onClick={() => void ouvrirLien(lien).catch(() => {})}
+            title="Si la page ne s'est pas ouverte"
+          >
+            Ouvrir la page de connexion
+          </button>
+        )}
+        {connecte && (
+          <button
+            type="button"
+            className="locaryn-chip"
+            disabled={occupe}
+            onClick={() => void seDeconnecter()}
+          >
+            Se déconnecter
+          </button>
+        )}
+      </div>
+      {attendCode && !connecte && (
+        <form
+          className="locaryn-cloud-key-row"
+          style={{ marginTop: 10 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void validerCode();
+          }}
+        >
+          <input
+            className="locaryn-input"
+            placeholder="Collez le code affiché après la connexion"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button type="submit" className="locaryn-btn-primary" disabled={occupe || !code.trim()}>
+            {occupe ? "Vérification…" : "Valider"}
+          </button>
+        </form>
+      )}
+      {message && !erreur && <p className="locaryn-cloud-help">{message}</p>}
+      {erreur && (
+        <div className="locaryn-cloud-error" style={{ marginTop: 10 }}>
+          {erreur}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // Le tableau de bord de secours
 // ============================================================================
 
@@ -553,6 +734,9 @@ export function CloudProviderDashboard({
           void loadModels(false);
         }}
       />
+
+      {/* Le compte : se connecter à son abonnement, sans terminal. */}
+      <CloudAccountCard provider={provider} />
 
       {/* La clé ensuite : sans elle, le choix d'un modèle est refusé. */}
       <div className="locaryn-card locaryn-cloud-key">

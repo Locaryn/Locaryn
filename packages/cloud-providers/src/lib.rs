@@ -354,8 +354,11 @@ pub async fn account(
     host: &Host<'_>,
     provider_id: &str,
     action: &str,
+    code: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    if !matches!(action, "status" | "login" | "logout") {
+    // `code` : celui que la page de connexion affiche, collé dans Locaryn —
+    // la connexion se fait sans terminal.
+    if !matches!(action, "status" | "login" | "logout" | "code") {
         return Err(format!("action de compte inconnue : {action}"));
     }
     let p = find(host, provider_id).await?;
@@ -367,13 +370,18 @@ pub async fn account(
         return Err("seule une passerelle sur la boucle locale gère un compte ici".into());
     }
     let url = format!("{base}/auth/{action}");
-    let req = if action == "status" {
-        host.http.get(&url)
-    } else {
-        host.http.post(&url)
+    let req = match action {
+        "status" => host.http.get(&url),
+        "code" => host
+            .http
+            .post(&url)
+            .json(&serde_json::json!({ "code": code.unwrap_or_default() })),
+        _ => host.http.post(&url),
     };
+    // Le code attend la fin de la connexion côté CLI (jusqu'à une minute).
+    let delai = if action == "code" { 75 } else { 20 };
     let resp = req
-        .timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(delai))
         .send()
         .await
         .map_err(|_| format!("{} ne répond pas : démarrez-la d'abord.", p.label()))?;

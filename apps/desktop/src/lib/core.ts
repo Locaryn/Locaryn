@@ -2254,7 +2254,8 @@ export interface CoreApi {
   /** Le compte d'un fournisseur local : état, connexion, déconnexion. */
   cloudProviderAccount(
     provider: string,
-    action: "status" | "login" | "logout",
+    action: "status" | "login" | "logout" | "code",
+    code?: string,
   ): Promise<Record<string, unknown>>;
   /** La passerelle locale répond-elle ? */
   cloudProviderStatus(provider: string): Promise<CloudProviderStatus>;
@@ -2780,8 +2781,12 @@ const tauriCore: CoreApi = {
     invoke<void>("cloud_provider_select", { provider, model }),
   cloudProviderStatus: (provider) =>
     invoke<CloudProviderStatus>("cloud_provider_status", { provider }),
-  cloudProviderAccount: (provider, action) =>
-    invoke<Record<string, unknown>>("cloud_provider_account", { provider, action }),
+  cloudProviderAccount: (provider, action, code) =>
+    invoke<Record<string, unknown>>("cloud_provider_account", {
+      provider,
+      action,
+      code: code ?? null,
+    }),
   cloudProviderStart: (provider) =>
     invoke<CloudProviderStatus>("cloud_provider_start", { provider }),
   cloudProviderInstall: (provider) => invoke<string>("cloud_provider_install", { provider }),
