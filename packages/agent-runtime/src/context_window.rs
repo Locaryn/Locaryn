@@ -60,10 +60,54 @@ impl Squeeze {
     }
 }
 
+/// Ce qu'une image coûte au modèle : le projecteur vision la ramène à
+/// 1 024 jetons au plus (`--image-max-tokens`), plus son encadrement.
+const JETONS_PAR_IMAGE: usize = 1_100;
+
+/// Une image transportée en texte : une URL `data:image/…;base64,` ou une
+/// longue chaîne base64 rendue par un outil (capture d'écran).
+fn est_une_image(texte: &str) -> bool {
+    if texte.starts_with("data:") && texte.contains(";base64,") {
+        return true;
+    }
+    if texte.len() <= 4_000 {
+        return false;
+    }
+    // Du base64 : rien que son alphabet, et les trois sortes de caractères
+    // mêlées (une longue suite de « x » ou de chiffres n'en est pas).
+    let debut = &texte.as_bytes()[..4_000];
+    debut
+        .iter()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
+        && debut.iter().any(u8::is_ascii_uppercase)
+        && debut.iter().any(u8::is_ascii_lowercase)
+        && debut.iter().any(u8::is_ascii_digit)
+}
+
+/// La taille du JSON tel qu'il part, une image comptée pour ce que le modèle
+/// en lit et non pour son base64 : une capture de 1 Mo valait des centaines
+/// de milliers de « jetons », et la conversation était vidée de ses anciens
+/// échanges bien avant la limite (135 000 annoncés, ramenés à ~4 000).
+fn octets(v: &Value) -> usize {
+    match v {
+        Value::String(t) if est_une_image(t) => {
+            (JETONS_PAR_IMAGE as f64 * BYTES_PER_TOKEN) as usize
+        }
+        Value::String(t) => t.len() + 2,
+        Value::Array(a) => 2 + a.iter().map(|x| octets(x) + 1).sum::<usize>(),
+        Value::Object(o) => {
+            2 + o
+                .iter()
+                .map(|(k, x)| k.len() + 4 + octets(x))
+                .sum::<usize>()
+        }
+        autre => autre.to_string().len(),
+    }
+}
+
 /// Jetons estimés des messages tels qu'ils partent dans la requête.
 pub fn estimate_tokens(messages: &Value) -> usize {
-    let bytes = serde_json::to_string(messages).map_or(0, |s| s.len());
-    (bytes as f64 / BYTES_PER_TOKEN).ceil() as usize
+    (octets(messages) as f64 / BYTES_PER_TOKEN).ceil() as usize
 }
 
 /// Ce que la conversation peut occuper : la fenêtre, moins les outils et la
@@ -174,6 +218,25 @@ pub fn fit(messages: &mut Value, budget: usize) -> Squeeze {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn une_image_compte_pour_ce_que_le_modele_en_lit() {
+        let base64 = "iVBORw0KGgoAAAANSUhEUg".repeat(64_000);
+        let messages = serde_json::json!([
+            { "role": "user", "content": [
+                { "type": "text", "text": "Que vois-tu ?" },
+                { "type": "image_url", "image_url": { "url": format!("data:image/jpeg;base64,{base64}") } }
+            ]}
+        ]);
+        let n = super::estimate_tokens(&messages);
+        assert!((1_100..1_300).contains(&n), "{n}");
+        // Une capture rendue par un outil, en base64 brut.
+        let outil = serde_json::json!([{ "role": "tool", "content": base64 }]);
+        assert!(super::estimate_tokens(&outil) < 1_300);
+        // Le texte ordinaire garde son estimation.
+        let texte = serde_json::json!([{ "role": "user", "content": "x".repeat(3_000) }]);
+        assert!((1_000..1_020).contains(&super::estimate_tokens(&texte)));
+    }
+
     use super::*;
     use serde_json::json;
 
