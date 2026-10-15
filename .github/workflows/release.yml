@@ -47,6 +47,9 @@ jobs:
   server:
     name: Serveur (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
+    # Une nouvelle plateforme (Linux ARM64) ne bloque pas la publication des
+    # autres tant qu'elle n'a pas fait ses preuves.
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +60,12 @@ jobs:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             label: linux-x64
+          # Linux ARM64 (Raspberry Pi 5, serveurs Ampere/Graviton, PC ARM) :
+          # compilé nativement sur les runners ARM de GitHub.
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            label: linux-arm64
+            experimental: true
           - os: macos-14
             target: aarch64-apple-darwin
             label: macos-arm64
@@ -180,7 +189,7 @@ jobs:
           # compilation lui faisait reprendre l'arbre entier — et échouer sur
           # libdbus-sys, dépendance Linux du trousseau, dont le build.rs abandonne
           # quand pkg-config ne trouve pas dbus.
-          cargo deb -p locaryn-daemon --no-build --target ${{ matrix.target }} --output "dist/locaryn-${VER}-server-linux-x64.deb"
+          cargo deb -p locaryn-daemon --no-build --target ${{ matrix.target }} --output "dist/locaryn-${VER}-server-${{ matrix.label }}.deb"
 
       - name: Installeur .pkg (macOS)
         if: runner.os == 'macOS'
@@ -209,6 +218,7 @@ jobs:
   desktop:
     name: Bureau (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -219,6 +229,10 @@ jobs:
           - os: ubuntu-22.04
             label: linux-x64
             args: ""
+          - os: ubuntu-22.04-arm
+            label: linux-arm64
+            args: ""
+            experimental: true
           # Un seul artefact macOS qui tourne sur les deux architectures :
           # plus simple à publier, et personne n'a à deviner sa puce.
           - os: macos-14
@@ -361,7 +375,7 @@ jobs:
           triple=$(rustc -vV | sed -n 's/^host: //p')
           cp "apps/desktop/src-tauri/binaries/locaryn-daemon-$triple" "$out/locaryn-daemon"
           cp "apps/desktop/src-tauri/binaries/locaryn-$triple" "$out/locaryn"
-          tar -C "$out" -czf "dist/locaryn-${VER}-desktop-linux-x64-portable.tar.gz" .
+          tar -C "$out" -czf "dist/locaryn-${VER}-desktop-${{ matrix.label }}-portable.tar.gz" .
           rm -rf "$out"
 
       - name: Archive portable (macOS)
@@ -842,6 +856,9 @@ jobs:
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.deb` | Debian / Ubuntu |
             | Linux x64 | `Locaryn_${{ env.VER }}_amd64.AppImage` | portable, sans installation |
             | Linux x64 | `locaryn-${{ env.VER }}-desktop-linux-x64-portable.tar.gz` | portable, sans auto-update |
+            | Linux ARM64 | `Locaryn_${{ env.VER }}_arm64.deb` | Debian / Ubuntu (Raspberry Pi 5, PC ARM) |
+            | Linux ARM64 | `Locaryn_${{ env.VER }}_aarch64.AppImage` | portable, sans installation |
+            | Linux ARM64 | `locaryn-${{ env.VER }}-desktop-linux-arm64-portable.tar.gz` | portable, sans auto-update |
             | Android | `${{ env.APK }}` | ${{ env.APK_NOTE }} |
 
             L'application de bureau emporte le service Locaryn et la commande `locaryn` :
@@ -861,6 +878,9 @@ jobs:
             | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.zip` | portable, sans auto-update |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.deb` | Debian / Ubuntu |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.tar.gz` | portable, sans auto-update |
+            | Linux ARM64 | `locaryn-${{ env.VER }}-server-linux-arm64.deb` | Debian / Ubuntu (Raspberry Pi 5, serveurs ARM) |
+            | Linux ARM64 | `locaryn-${{ env.VER }}-server-linux-arm64.tar.gz` | portable, sans auto-update |
+            | Windows ARM64 | `locaryn-${{ env.VER }}-server-windows-arm64.zip` | portable |
             | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.pkg` | installe le démon **et** la CLI dans `/usr/local/bin` |
             | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.tar.gz` | portable |
             | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.pkg` | installe le démon **et** la CLI dans `/usr/local/bin` |
