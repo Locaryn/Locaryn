@@ -1934,6 +1934,18 @@ async fn spawn_llama_server(
         // gardent une image nette (Qwen en demande 1 024 au minimum).
         cmd.arg("--image-max-tokens").arg("2048");
     }
+    // Sur une carte de 8 Go ou moins, le projecteur vision reste côté
+    // processeur : ses 0,9 Go de VRAM manquaient au modèle et aux autres
+    // applications, pour des images qu'on n'envoie qu'occasionnellement.
+    let profil_carte = locaryn_llmfit::profile();
+    if mmproj.is_some()
+        && !cpu_only
+        && !profil_carte.unified_memory
+        && profil_carte.total_vram_gb > 0.0
+        && profil_carte.total_vram_gb <= 8.5
+    {
+        cmd.arg("--no-mmproj-offload");
+    }
 
     // Détection du GPU et du backend : utilisée pour la flash attention, le
     // micro-batch et la marge laissée libre.

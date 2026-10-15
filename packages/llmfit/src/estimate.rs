@@ -95,15 +95,19 @@ impl Headroom {
     ///
     /// Une part de la carte plutôt qu'un chiffre fixe : 1,5 Go sur une carte
     /// de 4 Go en prenait plus d'un tiers, et rien sur une carte de 24 Go.
-    /// Sur 8 Go : 1 Go en prudent, 0,5 Go en équilibré, 0,2 Go en risqué.
+    /// Sur 8 Go : 1,5 Go en prudent, 0,8 Go en équilibré, 0,3 Go en risqué.
+    /// Mesuré sur une RX 570 qui affiche aussi le bureau : avec 1 Go laissé,
+    /// le navigateur, Blender ou la WebView de l'application en redemandaient,
+    /// Windows déplaçait alors le cache du modèle en mémoire système, et la
+    /// lecture du prompt tombait de 75 à 10 jetons/s.
     /// C'est aussi la marge que le moteur garde (`--fit-target`) quand il
     /// choisit lui-même le contexte : la prudence choisie vaut au chargement,
     /// pas seulement dans l'estimation.
     pub fn vram_reserve_gb(self, total_vram_gb: f64) -> f64 {
         let (part, plancher) = match self {
-            Headroom::Prudent => (0.125, 0.75),
-            Headroom::Equilibre => (0.0625, 0.4),
-            Headroom::Risque => (0.025, 0.2),
+            Headroom::Prudent => (0.1875, 1.0),
+            Headroom::Equilibre => (0.10, 0.6),
+            Headroom::Risque => (0.04, 0.25),
         };
         if total_vram_gb <= 0.0 {
             return 0.0;

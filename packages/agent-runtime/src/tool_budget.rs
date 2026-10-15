@@ -63,6 +63,21 @@ fn total_tokens(specs: &[ToolSpec]) -> usize {
 }
 
 /// Le budget d'outils pour un contexte de `ctx` jetons.
+/// Au-delà, les définitions d'outils sont triées par pertinence et le reste
+/// est différé : environ 6 000 jetons, relus à chaque nouvelle conversation.
+pub const PLAFOND_JETONS_OUTILS: usize = 6_000;
+
+/// Le contexte à donner au tri des outils pour qu'ils ne dépassent pas
+/// [`PLAFOND_JETONS_OUTILS`], même quand la fenêtre du modèle en accepterait
+/// bien plus. Inchangé quand les outils tiennent déjà sous le plafond.
+pub fn plafonner_pour_outils(ctx: usize, specs: &[ToolSpec]) -> usize {
+    let (dedoublonnes, _) = one_name_per_tool(specs.to_vec());
+    if total_tokens(&dedoublonnes) <= PLAFOND_JETONS_OUTILS {
+        return ctx;
+    }
+    ctx.min((PLAFOND_JETONS_OUTILS as f64 / CONTEXT_SHARE) as usize)
+}
+
 pub fn budget_for(ctx: usize) -> usize {
     (ctx as f64 * CONTEXT_SHARE) as usize
 }
@@ -583,6 +598,22 @@ mod tests {
             risk: Risk::Medium,
             required_permissions: Vec::new(),
         }
+    }
+
+    /// Un grand contexte ne laisse plus passer des milliers de jetons d'outils :
+    /// au-delà du plafond, le tri reçoit un contexte réduit.
+    #[test]
+    fn les_outils_sont_plafonnes_meme_avec_un_grand_contexte() {
+        let peu = vec![spec("read_file", "Lit un fichier.")];
+        assert_eq!(plafonner_pour_outils(100_000, &peu), 100_000);
+        let beaucoup: Vec<ToolSpec> = (0..200)
+            .map(|i| spec(&format!("mcp__srv__outil{i}"), &"Une longue description. ".repeat(20)))
+            .collect();
+        let ctx = plafonner_pour_outils(100_000, &beaucoup);
+        assert!(budget_for(ctx) <= PLAFOND_JETONS_OUTILS + 1, "{ctx}");
+        let fit = fit_selon(beaucoup, ctx, "lis un fichier", false, &[]);
+        assert!(total_tokens(&fit.specs) <= PLAFOND_JETONS_OUTILS + 200);
+        assert!(!fit.deferred.is_empty());
     }
 
     /// Les 28 outils d'un connecteur « Roblox_Studio », sous leurs deux noms, plus

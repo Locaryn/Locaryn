@@ -181,7 +181,15 @@ pub async fn run_openai_tool_loop(
     // de captures d'écran. Ils restent chargeables à la demande
     // (`charger_outils`), et leurs définitions — des milliers de jetons — ne
     // pèsent plus sur chaque message.
-    let ecran = crate::tool_budget::outils_ecran(&mcp_tools);
+    let mut ecran = crate::tool_budget::outils_ecran(&mcp_tools);
+    // Le navigateur intégré de l'application suit la même règle que celui
+    // d'un morph : offert quand la personne le demande, chargeable sinon.
+    ecran.extend(
+        all_tools
+            .iter()
+            .filter(|t| t.name.starts_with("browser_"))
+            .map(|t| t.name.clone()),
+    );
     let demande_ecran = crate::tool_budget::demande_l_ecran(&input.message)
         || input
             .history
@@ -206,6 +214,14 @@ pub async fn run_openai_tool_loop(
             // L'échelle mesurée sur un refus précédent : l'estimation en octets
             // sous-évalue ce que le gabarit du modèle fait des outils.
             let ctx_estime = (ctx as f64 / echelle_connue()) as usize;
+            // Le coût des outils ne se mesure pas qu'en place : chaque jeton de
+            // définition est relu à chaque nouvelle conversation. Avec un grand
+            // contexte, 50 outils passaient tous — 18 000 jetons, plus de quatre
+            // minutes de lecture sur une RX 570 avant le premier mot pour
+            // « quelle est la capitale de la France ? ». Au-delà d'un plafond,
+            // les plus pertinents restent et les autres se chargent à la
+            // demande (`charger_outils`).
+            let ctx_estime = crate::tool_budget::plafonner_pour_outils(ctx_estime, &all_tools);
             let fit = crate::tool_budget::fit_selon(
                 all_tools,
                 ctx_estime,
@@ -293,6 +309,15 @@ pub async fn run_openai_tool_loop(
     tracing::info!(
         octets = system_prompt.len(),
         outils = all_tools.len(),
+        jetons_outils = all_tools
+            .iter()
+            .map(crate::tool_budget::estimate_tokens)
+            .sum::<usize>(),
+        noms = %all_tools
+            .iter()
+            .map(|t| format!("{}~{}", t.name, crate::tool_budget::estimate_tokens(t)))
+            .collect::<Vec<_>>()
+            .join(","),
         "message système posé devant le modèle"
     );
 

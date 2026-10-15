@@ -601,7 +601,30 @@ export function ChatPanel({
    * charge, la reponse arrive — quelques centaines de millisecondes, ou un
    * curseur suffit. `null` : le texte coule, il se montre tout seul.
    */
-  const [attente, setAttente] = useState<"charge" | "attend" | null>(null);
+  const [attente, setAttente] = useState<"charge" | "lit" | "attend" | null>(null);
+  // Une fois le modèle en mémoire, l'attente qui reste est la lecture de la
+  // conversation (outils, historique) : la dire, plutôt que d'annoncer un
+  // chargement déjà fini. Une attente sans premier mot au-delà de trois
+  // secondes est elle aussi une lecture.
+  useEffect(() => {
+    if (attente === "attend") {
+      const t = window.setTimeout(
+        () => setAttente((a) => (a === "attend" ? "lit" : a)),
+        3000,
+      );
+      return () => window.clearTimeout(t);
+    }
+    if (attente !== "charge") return;
+    const t = window.setInterval(() => {
+      core
+        .modelResidency()
+        .then((r) => {
+          if (r.loaded) setAttente((a) => (a === "charge" ? "lit" : a));
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => window.clearInterval(t);
+  }, [attente]);
   const [activeModel, setActiveModel] = useState<string>("");
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [quickModelOpen, setQuickModelOpen] = useState(false);
@@ -2729,10 +2752,14 @@ ${preview}`,
                 une onde indeterminee — sans coche — quand il faut d'abord
                 monter le modele en memoire, la seule attente assez longue pour
                 meriter d'etre annoncee. */}
-            {attente === "charge" && (
+            {(attente === "charge" || attente === "lit") && (
               <div className="locaryn-chargement" aria-live="polite">
                 <LoProgress value={null} />
-                <span className="locaryn-chargement-label">Chargement du modèle en mémoire…</span>
+                <span className="locaryn-chargement-label">
+                  {attente === "charge"
+                    ? "Chargement du modèle en mémoire…"
+                    : "Lecture de la conversation…"}
+                </span>
               </div>
             )}
             {attente === "attend" && (
