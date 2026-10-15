@@ -2241,9 +2241,10 @@ async fn spawn_llama_server(
     // (mesuré : 4,7 s au lieu de 60 s).
     let slots = inference_cfg["parallel_slots"].as_u64().unwrap_or(1).max(1);
 
-    // La marge que `--fit` laisse libre : celle du niveau de prudence choisi
-    // (1,5 Go sur 8 Go en prudent, 0,8 en équilibré, 0,32 en risqué). La prudence
-    // vaut alors au chargement, pas seulement dans l'estimation.
+    // La marge que `--fit` laisse libre : celle du niveau de prudence choisi,
+    // calculée sur la VRAM libre avant le chargement (1,5 Go sur 7 Go libres
+    // en prudent, 0,85 en équilibré, 0,53 en risqué). Arrondie au huitième de
+    // Go : le contexte mémorisé reste valable d'un chargement à l'autre.
     let marge_mib = if cpu_only {
         None
     } else {
@@ -2251,8 +2252,8 @@ async fn spawn_llama_server(
             if profile.unified_memory || profile.total_vram_gb <= 0.0 {
                 return None;
             }
-            let reserve = caution_headroom().vram_reserve_gb(profile.total_vram_gb);
-            Some((reserve * 1024.0).round() as u64)
+            let reserve = caution_headroom().vram_reserve_gb(libre_avant);
+            Some(((reserve * 8.0).round() / 8.0 * 1024.0).round() as u64)
         })
     };
 

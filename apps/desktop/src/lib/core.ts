@@ -1391,6 +1391,9 @@ export interface CautionReserve {
 export interface CautionReserves {
   total_vram_gb: number;
   total_ram_gb: number;
+  /** Libres en ce moment : les réserves se calculent sur elles. */
+  free_vram_gb: number;
+  free_ram_gb: number;
   unified_memory: boolean;
   levels: CautionReserve[];
 }
@@ -5486,11 +5489,13 @@ Contenu de démonstration, avec **du gras** et une liste :
     return {
       total_vram_gb: 8,
       total_ram_gb: 16,
+      free_vram_gb: 7,
+      free_ram_gb: 9,
       unified_memory: false,
       levels: [
-        { level: "prudent" as CautionLevel, vram_gb: 1, ram_gb: 3 },
-        { level: "equilibre" as CautionLevel, vram_gb: 0.5, ram_gb: 1.5 },
-        { level: "risque" as CautionLevel, vram_gb: 0.2, ram_gb: 0.5 },
+        { level: "prudent" as CautionLevel, vram_gb: 1.48, ram_gb: 1.68 },
+        { level: "equilibre" as CautionLevel, vram_gb: 0.85, ram_gb: 0.96 },
+        { level: "risque" as CautionLevel, vram_gb: 0.53, ram_gb: 0.6 },
       ],
     };
   },

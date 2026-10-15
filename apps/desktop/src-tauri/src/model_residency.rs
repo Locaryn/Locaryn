@@ -390,14 +390,18 @@ pub struct CautionReserve {
 pub struct CautionReserves {
     pub total_vram_gb: f64,
     pub total_ram_gb: f64,
+    /// Libres en ce moment (la mémoire de notre moteur comptée comme rendue) :
+    /// c'est sur elles que les réserves se calculent.
+    pub free_vram_gb: f64,
+    pub free_ram_gb: f64,
     pub unified_memory: bool,
     pub levels: Vec<CautionReserve>,
 }
 
 /// Les réserves des trois niveaux, en Go, pour les montrer à côté du choix.
 #[tauri::command]
-pub fn caution_reserves() -> CautionReserves {
-    let p = llmfit::profile();
+pub async fn caution_reserves(core: State<'_, Core>) -> Result<CautionReserves, String> {
+    let p = machine_pour_charger(&core).await;
     let levels = [
         CautionLevel::Prudent,
         CautionLevel::Equilibre,
@@ -406,16 +410,18 @@ pub fn caution_reserves() -> CautionReserves {
     .into_iter()
     .map(|level| CautionReserve {
         level,
-        vram_gb: level.headroom().vram_reserve_gb(p.total_vram_gb),
-        ram_gb: level.headroom().ram_reserve_gb(p.total_ram_gb),
+        vram_gb: level.headroom().vram_reserve_gb(p.free_vram_gb),
+        ram_gb: level.headroom().ram_reserve_gb(p.free_ram_gb),
     })
     .collect();
-    CautionReserves {
+    Ok(CautionReserves {
         total_vram_gb: p.total_vram_gb,
         total_ram_gb: p.total_ram_gb,
+        free_vram_gb: p.free_vram_gb,
+        free_ram_gb: p.free_ram_gb,
         unified_memory: p.unified_memory,
         levels,
-    }
+    })
 }
 
 /// Le chargement de ce modèle respecte-t-il la prudence choisie ? `Some` :

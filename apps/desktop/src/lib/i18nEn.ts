@@ -2511,8 +2511,8 @@ export const EN_EXACT: Record<string, string> = {
     "Minimal reserve: almost all free VRAM goes to the model. Avoid if other apps use the card.",
   "En mode risqué, si une autre application réclame de la VRAM pendant que le modèle tourne, Windows déplace une partie du modèle en mémoire système : les réponses ralentissent fortement.":
     "In risky mode, if another app claims VRAM while the model runs, Windows moves part of the model to system memory: answers slow down a lot.",
-  "Au moment du chargement, Locaryn regarde la VRAM libre à cet instant — pas la VRAM totale de la carte. Le modèle doit y tenir en laissant libre la réserve du niveau choisi ; sinon il n'est pas chargé, à tous les niveaux, et une fenêtre explique pourquoi (un jeu ouvert, par exemple). Le contexte s'ajuste ensuite à la VRAM qui reste.":
-    "When loading, Locaryn looks at the VRAM free at that moment — not the card's total VRAM. The model must fit in it while leaving the chosen level's reserve free; otherwise it is not loaded, at every level, and a window explains why (a game running, for example). The context then adjusts to the VRAM left.",
+  "Au moment du chargement, Locaryn regarde la VRAM libre à cet instant — pas la VRAM totale de la carte — et la réserve se calcule sur elle : elle grandit avec la mémoire libre, mais de moins en moins vite. Le modèle doit y tenir en laissant libre cette réserve ; sinon il n'est pas chargé, à tous les niveaux, et une fenêtre explique pourquoi (un jeu ouvert, par exemple). Le contexte s'ajuste ensuite à la VRAM qui reste.":
+    "When loading, Locaryn looks at the VRAM free at that moment — not the card's total VRAM — and the reserve is computed from it: it grows with free memory, but more and more slowly. The model must fit in it while leaving that reserve free; otherwise it is not loaded, at every level, and a window explains why (a game running, for example). The context then adjusts to the VRAM left.",
 };
 
 export const EN_PATTERNS: Record<string, string> = {
@@ -2538,8 +2538,10 @@ export const EN_PATTERNS: Record<string, string> = {
   "Rechercher « {} »": "Search “{}”",
   "Laisse {} de VRAM libres sur {} ({} %)": "Keeps {} of VRAM free out of {} ({} %)",
   "Laisse {} de mémoire libres sur {}": "Keeps {} of memory free out of {}",
-  "Garde {} de VRAM libres sur {} pendant la génération, et {} de RAM sur {} pour le système et vos applications":
-    "Keeps {} of VRAM free out of {} while generating, and {} of RAM out of {} for the system and your apps",
+  "Garde {} des {} de VRAM libres pendant la génération, et {} des {} de RAM libres pour le système et vos applications":
+    "Keeps {} of the {} of free VRAM while generating, and {} of the {} of free RAM for the system and your apps",
+  "Garde {} des {} de mémoire libres pour le système et vos applications":
+    "Keeps {} of the {} of free memory for the system and your apps",
   "Outils différés ({})": "Deferred tools ({})",
   "▶ Exécuter ({})": "▶ Run ({})",
   "{} jetons écrits à {} par seconde ; le prompt a été lu à {} par seconde. Mesuré par le moteur.":

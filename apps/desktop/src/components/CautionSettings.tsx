@@ -64,9 +64,10 @@ export function CautionSettings() {
         <legend className="locaryn-field-label">Prudence au chargement d'un modèle</legend>
         <p className="locaryn-field-hint">
           Au moment du chargement, Locaryn regarde la VRAM libre à cet instant — pas la VRAM totale
-          de la carte. Le modèle doit y tenir en laissant libre la réserve du niveau choisi ; sinon
-          il n'est pas chargé, à tous les niveaux, et une fenêtre explique pourquoi (un jeu ouvert,
-          par exemple). Le contexte s'ajuste ensuite à la VRAM qui reste.
+          de la carte — et la réserve se calcule sur elle : elle grandit avec la mémoire libre, mais
+          de moins en moins vite. Le modèle doit y tenir en laissant libre cette réserve ; sinon il
+          n'est pas chargé, à tous les niveaux, et une fenêtre explique pourquoi (un jeu ouvert, par
+          exemple). Le contexte s'ajuste ensuite à la VRAM qui reste.
         </p>
 
         <div className="locaryn-caution-choices">
@@ -87,8 +88,8 @@ export function CautionSettings() {
                 return (
                   <span className="locaryn-caution-reserve">
                     {reserves.total_vram_gb > 0 && !reserves.unified_memory
-                      ? `Garde ${go(r.vram_gb)} de VRAM libres sur ${go(reserves.total_vram_gb)} pendant la génération, et ${go(r.ram_gb)} de RAM sur ${go(reserves.total_ram_gb)} pour le système et vos applications`
-                      : `Laisse ${go(r.ram_gb)} de mémoire libres sur ${go(reserves.total_ram_gb)}`}
+                      ? `Garde ${go(r.vram_gb)} des ${go(reserves.free_vram_gb)} de VRAM libres pendant la génération, et ${go(r.ram_gb)} des ${go(reserves.free_ram_gb)} de RAM libres pour le système et vos applications`
+                      : `Garde ${go(r.ram_gb)} des ${go(reserves.free_ram_gb)} de mémoire libres pour le système et vos applications`}
                   </span>
                 );
               })()}
