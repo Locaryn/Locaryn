@@ -13,10 +13,10 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20Web-purple.svg)](https://github.com/Locaryn/locaryn/releases)
 [![Stars](https://img.shields.io/github/stars/Locaryn/locaryn?style=flat&color=yellow)](https://github.com/Locaryn/locaryn)
 
-[✨ Points Forts](#-pourquoi-locaryn--points-forts-et-avantages-clés) •
+[✨ Points Forts](#-pourquoi-locaryn---points-forts-et-avantages-clés) •
 [🏛 Architecture](#-architecture-unifiée) •
-[🧩 Extensions & Noyau](#-écosystème-dextensions--plugins-qui-modifient-le-noyau) •
-[🧠 Modèles & Oblitération](#-studio-de-modèles-entraînement--oblitération-repe) •
+[🧩 Extensions & Noyau](#-écosystème-dextensions-morphs) •
+[🧠 Natif ou Morph ?](#-studio-de-modèles--natif-et-morph-pour-lentraînement) •
 [🚀 Démarrage Rapide](#-démarrage-rapide) •
 [📥 Téléchargements](#-téléchargements--releases)
 
@@ -26,7 +26,7 @@
 
 ## 📖 Présentation
 
-**Locaryn** est une plateforme complète d'intelligence artificielle locale et distribuée, conçue pour unifier le développement assisté par IA, la gestion et modification de modèles (GGUF, Ollama, API distantes), l'orchestration multi-agents et la collaboration multi-appareils.
+**Locaryn** est une plateforme complète d'intelligence artificielle locale et distribuée, conçue pour unifier le développement assisté par IA, la gestion et modification de modèles (GGUF, HuggingFace, registre Ollama, APIs distantes), l'orchestration multi-agents et la collaboration multi-appareils.
 
 Bâtie autour d'un **noyau partagé 100% Rust**, Locaryn combine une application de bureau native ultra-rapide (Tauri v2 + React), une CLI ergonomique, un serveur sécurisé (daemon headless) et une application mobile compagne (Android/iOS).
 
@@ -38,20 +38,20 @@ Contrairement aux solutions cloisonnées ou dépendantes du cloud propriétaire,
 
 ### 1. 🔄 Rôle Dual Client ⇄ Serveur Universel
 - **Chaque client peut être serveur, et chaque serveur peut être client** : Utilisez votre PC fixe équipé d'un GPU comme serveur local ou distant, et pilotez-le en toute transparence depuis votre PC portable, votre tablette ou votre smartphone.
-- **Appairage Instantané et Sécurisé** : Rejoignez une machine en scannant un QR code ou via le **Mode Découverte** sur le réseau local Wi-Fi, avec chiffrement de bout en bout (mTLS avec certificats auto-générés ou tunnels distants chiffrés).
+- **Appairage Instantané et Sécurisé** : Rejoignez une machine en scannant un QR code ou via le **Mode Découverte** sur le réseau local Wi-Fi, avec chiffrement de bout en bout (mTLS avec certificats auto-générés). Ces deux modes sont **natifs** ; ouvrir la machine de l'extérieur du réseau — port exposé ou tunnel sortant (Cloudflare, ngrok, devtunnel) — est, lui, **apporté par un morph** (capacité `travel-tunnel`).
 - **Mode Éphémère & Vie Privée** : Vos échanges et sessions peuvent être basculés en mode éphémère d'un clic pour garantir une confidentialité totale sans enregistrement résiduel.
 
 ### 2. 🧩 Extensibilité Totale du Noyau (Core Extensibility)
-- Les plugins dans Locaryn ne sont pas de simples gadgets : ils ont la capacité de **modifier le comportement même du noyau (core runtime)**, d'enregistrer des serveurs MCP natifs, d'intercepter les événements du système (hooks) et d'injecter des **vues et menus complets dans l'interface graphique** (ex: *Figures Académiques*, *Studio de Création*, *Fine-tuning & Oblitération*).
-- **Compatibilité Universelle Cross-Écosystème** : Locaryn exécute et adapte nativement les extensions et skills provenant de **Locaryn**, **Claude Code**, **Gemini CLI**, **OpenCode** et du **Model Context Protocol (MCP)**. Un simple lien GitHub (`github:owner/repo`) installe n'importe quel plugin ou skill en un clic.
+- Les morphs dans Locaryn ne sont pas de simples gadgets : ils ont la capacité de **modifier le comportement même du noyau (core runtime)**, d'enregistrer des serveurs MCP natifs, d'intercepter les événements du système (hooks) et d'injecter des **vues et menus complets dans l'interface graphique** (ex: *Figures Académiques*, *Studio de Création*, *Fine-tuning & Oblitération*).
+- **Compatibilité Universelle Cross-Écosystème** : Locaryn exécute et adapte nativement les extensions et skills provenant de **Locaryn**, **Claude Code**, **Gemini CLI**, **OpenCode** et du **Model Context Protocol (MCP)**. Un simple lien GitHub (`github:owner/repo`) installe n'importe quel morph ou skill en un clic.
 
 ### 3. 🧠 Du Débutant au Chercheur / Power-User
-- **Pour tous les utilisateurs** : Une interface moderne, épurée et réactive avec auto-détection des modèles locaux (GGUF, Ollama, vLLM, LM Studio) et des clés API (Claude, OpenAI, Gemini, DeepSeek, Mistral, OpenRouter).
-- **Pour les créateurs et chercheurs** :
-  - **Fine-Tuning & LoRA** : Entraînement et adaptation de modèles locaux.
-  - **Oblitération RepE (Representation Engineering)** : Analyse et ablation directionnelle des couches de refus pour tester et dé-aligner les modèles de recherche en toute souveraineté (avec avertissement explicite de responsabilité).
-  - **Figures & Visualisation** : Génération de diagrammes académiques et figures scientifiques de haute qualité.
-  - **Espaces de travail distants (SSH)** : Connexion à des clusters et serveurs distants directement depuis vos conversations.
+- **Pour tous les utilisateurs** : Une interface moderne, épurée et réactive, moteur local **llama.cpp embarqué** (LM Studio et vLLM sont utilisés lorsqu'ils tournent déjà), catalogue de modèles HuggingFace / registre Ollama, et fournisseurs distants compatibles OpenAI (OpenRouter…) apportés par les morphs — les clés restent dans le trousseau du système.
+- **Pour les créateurs et chercheurs** — chacune de ces fonctions est **apportée par un morph**, le socle ne les contient pas :
+  - **Fine-Tuning & LoRA** : [`morph-model-training`](https://github.com/Locaryn/morph-model-training) (capacité `model-training`). llama.cpp ne fait que de l'inférence : l'entraînement reste une pile Python (Unsloth / PEFT), dont l'export GGUF se recharge ici.
+  - **Oblitération RepE (Representation Engineering)** : même morph — analyse et ablation directionnelle des couches de refus, avec avertissement explicite de responsabilité.
+  - **Figures & Visualisation** : stockage et écran natifs, contenu (`figures/*.md`) importé avec le morph [`morph-figures`](https://github.com/Locaryn/morph-figures) (capacité `figures`) : sans lui, l'entrée n'apparaît pas.
+  - **Espaces de travail distants (SSH)** : les cibles sont déclarées par un morph (`ssh-remote-exec`, [`morph-ssh`](https://github.com/Locaryn/morph-ssh)) ; l'application ne connaît aucun hôte à l'avance.
 
 ### 4. 🚀 Performance & Sobriété
 - **100% Rust** : Zéro surcharge Electron, empreinte mémoire minimale, démarrage instantané et zéro télémétrie non sollicitée.
@@ -63,13 +63,14 @@ Contrairement aux solutions cloisonnées ou dépendantes du cloud propriétaire,
 | Fonctionnalité | Locaryn | LM Studio / Ollama | Claude Desktop | Cursor / OpenCode |
 | :--- | :---: | :---: | :---: | :---: |
 | **Noyau Natif Rust ultra-léger** | ✅ Oui | ❌ Non / Partiel | ❌ Non (Electron) | ❌ Non |
-| **Client ⇄ Serveur Interchangeable** | ✅ Oui (Desktop/Mobile/CLI) | ⚠️ Serveur local seul | ❌ Non | ❌ Non |
+| **Client ⇄ Serveur Interchangeable** | ✅ Oui (Desktop/Mobile/CLI/Web) | ⚠️ Serveur local seul | ❌ Non | ❌ Non |
 | **Appairage Mobile (QR / Découverte Wi-Fi)** | ✅ Oui | ❌ Non | ❌ Non | ❌ Non |
-| **Plugins modifiant l'UI & le Noyau** | ✅ Oui (Deep Extensibility) | ❌ Non | ⚠️ MCP seul | ⚠️ Extensions limitées |
+| **Morphs modifiant l'UI & le Noyau** | ✅ Oui (Deep Extensibility) | ❌ Non | ⚠️ MCP seul | ⚠️ Extensions limitées |
 | **Compatibilité Claude / Gemini / MCP / OpenCode** | ✅ 100% universel | ❌ Non | ⚠️ MCP seul | ⚠️ Partiel |
-| **Fine-Tuning & Oblitération RepE intégrée** | ✅ Oui (via plugin) | ❌ Non | ❌ Non | ❌ Non |
-| **Génération Multimédia (Image, TTS, 3D, Figures)** | ✅ Oui (Plugins dédiés) | ❌ Non | ❌ Non | ❌ Non |
-| **Mode Éphémère instantané** | ✅ Oui | ❌ Non | ❌ Non | ❌ Non |
+| **Fine-Tuning & Oblitération RepE** | ✅ Oui (via morph `model-training`) | ❌ Non | ❌ Non | ❌ Non |
+| **Génération Multimédia (Image, TTS, 3D, Figures)** | ✅ Oui (via morphs dédiés) | ❌ Non | ❌ Non | ❌ Non |
+
+> Les lignes marquées « via morph » ne s'affichent qu'une fois l'extension correspondante installée et activée : le socle ne contient ni écran, ni outil, ni réglage propre à ces fonctions, et les retire avec le morph.
 
 ---
 
@@ -89,13 +90,18 @@ Contrairement aux solutions cloisonnées ou dépendantes du cloud propriétaire,
 │ ┌──────────────────────┐ ┌─────────────────────┐ ┌───────────────────┐  │
 │ │ locaryn-skill-runtime│ │ locaryn-hook-runtime│ │ locaryn-travel    │  │
 │ └──────────────────────┘ └─────────────────────┘ └───────────────────┘  │
+│ ┌──────────────────────┐ ┌─────────────────────┐ ┌───────────────────┐  │
+│ │ locaryn-core-bridge  │ │ locaryn-storage     │ │ locaryn-llmfit    │  │
+│ └──────────────────────┘ └─────────────────────┘ └───────────────────┘  │
 └────────────────────────────────────┬────────────────────────────────────┘
                                      │
 ┌────────────────────────────────────▼────────────────────────────────────┐
 │                      MOTEURS & FOURNISSEURS IA                          │
-│   GGUF / Llama.cpp │ Ollama │ LM Studio │ Claude │ OpenAI │ Gemini │ SSH │
+│   llama.cpp │ LM Studio │ vLLM │ APIs compatibles OpenAI │ HuggingFace  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+> `llama.cpp` est le seul moteur **embarqué** ; LM Studio et vLLM sont pilotés lorsqu'ils tournent déjà. Les sources de modèles (HuggingFace, registre Ollama) et les fournisseurs distants compatibles OpenAI viennent, eux, des morphs — de même que tout ce qui n'apparaît pas dans le schéma : images, voix, figures, SSH, tunnels… et **entraînement**. Le cœur compte une trentaine de crates (`command-runtime`, `rules-runtime`, `lsp-adapters`, `media`, `preview`, `auth`, `cloud-providers`…), liste complète dans [`Cargo.toml`](Cargo.toml).
 
 ---
 
@@ -108,6 +114,24 @@ n'existe que s'il est installé et activé, et disparaît avec lui.
 Les morphs officiels sont les dépôts
 [`morph-*` de l'organisation](https://github.com/orgs/Locaryn/repositories?q=morph-) ;
 le catalogue de l'application les relève tout seul, avec leurs versions.
+
+### 🧭 Ce qui est natif, ce qui vient d'un morph
+
+Le socle ne livre que ce qui marche sans rien installer ; tout le reste est déclaré par un manifeste `morph.json`.
+
+| Ce que vous utilisez | Origine |
+| :--- | :--- |
+| Chat agentique, conversations, projets, outils fichiers & commandes, sous-agents | **Natif** |
+| Catalogue de modèles, téléchargement, choix de quantification, résidence des poids | **Natif** |
+| Moteur llama.cpp : adaptateurs LoRA à chaud, cache KV compressé, offload, décodage spéculatif | **Natif** |
+| Appairage local (QR, mDNS, mTLS), conversations éphémères, preview d'artefacts | **Natif** |
+| Entrées de menu, onglets du Studio, écran Figures, Batch API | **Morphs** (capacités `figures`, `batch-api` et contributions `nav_items` / `studio_tabs`) |
+| Entraînement LoRA / QLoRA, distillation, oblitération RepE | **Morph** [`morph-model-training`](https://github.com/Locaryn/morph-model-training) (capacité `model-training`) |
+| Images, voix, musique, vidéo, 3D, OCR, traduction, RAG | **Morphs** dédiés |
+| Cibles SSH, tunnel d'accès distant, fournisseurs cloud et leurs clés | **Morphs** (`ssh-remote-exec`, `travel-tunnel`, section `cloud_provider`) |
+| Catégories et modèles du Marketplace | **Morphs** actifs |
+
+Retirez le morph : son écran, ses réglages, ses outils et ses capacités disparaissent avec lui, sur l'ordinateur comme sur le téléphone.
 
 ### 🛠 Écrire la vôtre
 
@@ -127,9 +151,21 @@ quel [morph officiel](https://github.com/orgs/Locaryn/repositories?q=morph-).
 
 ---
 
-## 🧠 Studio de Modèles : Entraînement & Oblitération RepE
+## 🧠 Studio de Modèles : Natif, et Morph pour l'Entraînement
 
-Le plugin **`plugin-model-training`** intègre une suite d'outils avancés pour les ingénieurs et chercheurs :
+Le socle ne fait que charger un modèle et l'optimiser pour la machine qui l'accueille. L'écran **« Édition & optimisation de modèle »**, ouvert depuis le catalogue de modèles, énumère ce qui marche réellement ici — rien n'est simulé :
+
+| Disponible dans l'application | Ce que cela change |
+| :--- | :--- |
+| **Adaptateurs LoRA** | Charger des `.gguf` et régler leur intensité à chaud, sans redémarrage |
+| **Quantification** | Choisir la précision (Q4/Q5/Q6/Q8) au téléchargement |
+| **Compression du cache KV** | Cache 4/8-bit : plus de contexte à VRAM égale |
+| **Offload RAM / experts MoE** | Des modèles plus gros que la VRAM disponible |
+| **Décodage spéculatif** | Un petit modèle draft accélère la génération |
+
+### L'entraînement vient d'un morph
+
+`llama.cpp` ne fait que de l'inférence : pas de rétropropagation, pas de distillation, pas de chirurgie des poids. Ces opérations demandent une pile Python (Unsloth, PEFT, transformer-lens), et c'est le morph **[`morph-model-training`](https://github.com/Locaryn/morph-model-training)** (capacité `model-training`) qui apporte le studio :
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -141,6 +177,8 @@ Le plugin **`plugin-model-training`** intègre une suite d'outils avancés pour 
 │ • Merge & Export GGUF immédiat     │ • Dé-alignement de recherche       │
 └────────────────────────────────────┴────────────────────────────────────┘
 ```
+
+Installé, le morph ajoute son entrée de menu, son onglet « Entraînement & LoRA » dans le Studio et son catalogue d'adaptateurs ; retiré, tout disparaît. La version publiée expose aujourd'hui l'API d'entraînement **sans moteur embarqué** : les appels échouent explicitement au lieu de fabriquer un résultat — l'application ne simule jamais une opération.
 
 > [!IMPORTANT]
 > **Avertissement de responsabilité** : L'oblitération de refus est destinée aux chercheurs et praticiens en IA pour étudier l'alignement des modèles. Une modale de consentement explicite rappelle que l'utilisateur est seul responsable de l'usage des poids modifiés.
@@ -184,17 +222,17 @@ Retrouvez tous les paquets précompilés sur la page **[GitHub Releases](https:/
 
 | Plateforme | Format | Description |
 | :--- | :--- | :--- |
-| **Windows x64** | `Locaryn_0.3.12_x64-setup.exe` | Installeur NSIS (Recommandé avec auto-update) |
-| **Linux x64** | `Locaryn_0.3.12_amd64.deb` / `.AppImage` | Paquets Debian, Ubuntu et exécutable autonome |
-| **macOS** | `Locaryn_0.3.12_universal.dmg` | Binaire universel (Apple Silicon M1/M2/M3 & Intel) |
-| **Android** | `Locaryn_0.3.12_android.apk` | Application mobile compagne |
-| **Serveur Headless** | `locaryn-daemon` & `locaryn-cli` | Démon et CLI pour serveurs Linux/Windows |
+| **Windows x64 / arm64** | `Locaryn_<version>_x64-setup.exe` / `_arm64-setup.exe` | Installeur NSIS (signé, avec auto-update) |
+| **Linux x64** | `Locaryn_<version>_amd64.deb` / `.AppImage` | Paquets Debian, Ubuntu et exécutable autonome |
+| **macOS** | `Locaryn_<version>_universal.dmg` | Binaire universel (Apple Silicon & Intel) |
+| **Android** | `locaryn-<version>-android.apk` | Application mobile compagne |
+| **Serveur Headless** | `locaryn-<version>-server-*` (`locaryn-daemon`, `locaryn-cli`) | Démon, CLI et serveur distant (Windows / macOS / Linux) |
 
 ---
 
 ## 🤝 Contribution & Communauté
 
-Les contributions sont les bienvenues ! Pour proposer une fonctionnalité, un plugin ou un correctif :
+Les contributions sont les bienvenues ! Pour proposer une fonctionnalité, un morph, un skill ou un correctif :
 1. Forkez le dépôt.
 2. Créez votre branche (`git checkout -b feature/ma-fonctionnalite`).
 3. Vérifiez la qualité avec `pnpm format && cargo test --workspace`.
