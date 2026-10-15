@@ -45,6 +45,7 @@ mod trust_source;
 mod workspace;
 mod wsl_cmd;
 use locaryn_sdk::secure_client;
+mod api_fournisseur;
 mod server_history;
 mod server_mode;
 mod startup;
@@ -7266,6 +7267,11 @@ pub fn run() {
             client_cert::announce_pairing,
             client_cert::confirm_pairing,
             server_mode::server_status,
+            api_fournisseur::provider_api_status,
+            api_fournisseur::set_provider_api,
+            api_fournisseur::list_api_keys,
+            api_fournisseur::create_api_key,
+            api_fournisseur::revoke_api_key,
             server_mode::set_server_mode,
             server_mode::restart_server,
             server_mode::provisioning,

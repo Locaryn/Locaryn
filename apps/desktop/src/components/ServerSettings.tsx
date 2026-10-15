@@ -30,6 +30,12 @@ export function ServerSettings() {
   const [userError, setUserError] = useState<string | null>(null);
   const [userBusy, setUserBusy] = useState(false);
   const [autoStartAfterUser, setAutoStartAfterUser] = useState(false);
+  // Le premier compte est forcément administrateur (un serveur en a besoin) ;
+  // les suivants sont membres, sauf choix contraire.
+  const aucunAdmin = !users.some((u) => u.role === "admin");
+  useEffect(() => {
+    if (showAddUser) setIsAdmin(aucunAdmin);
+  }, [showAddUser, aucunAdmin]);
 
   const refreshUsers = useCallback(async () => {
     try {
@@ -97,7 +103,7 @@ export function ServerSettings() {
 
     setUserBusy(true);
     try {
-      const newStatus = await core.createServerUser(trimmedUser, password, isAdmin);
+      const newStatus = await core.createServerUser(trimmedUser, password, isAdmin || aucunAdmin);
       setStatus(newStatus);
       await refreshUsers();
       setShowAddUser(false);
@@ -260,12 +266,18 @@ export function ServerSettings() {
               >
                 <input
                   type="checkbox"
-                  checked={isAdmin}
+                  checked={isAdmin || aucunAdmin}
+                  disabled={aucunAdmin}
                   onChange={(e) => setIsAdmin(e.target.checked)}
                 />
-                <span>Droits Administrateur</span>
+                <span>Droits administrateur</span>
               </label>
             </div>
+            <p className="locaryn-field-hint" style={{ margin: 0 }}>
+              {aucunAdmin
+                ? "Le premier compte est administrateur : c'est lui qui gère le serveur."
+                : "Un administrateur gère les comptes et crée les clés de l'API fournisseur. Un membre utilise Locaryn, sans plus."}
+            </p>
 
             {userError && <div className="locaryn-vp-error">{userError}</div>}
 

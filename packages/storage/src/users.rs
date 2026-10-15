@@ -124,6 +124,7 @@ struct TokenRow {
     user_id: String,
     token_hash: String,
     expires_at: Option<String>,
+    kind: Option<String>,
 }
 
 #[derive(FromRow)]
@@ -444,12 +445,21 @@ impl UserRepo {
 
     /// Resolve a bearer token to its owner, or `None` if it is not valid.
     pub async fn user_for_token(&self, plaintext: &str) -> Result<Option<User>, StorageError> {
+        Ok(self.token_owner(plaintext).await?.map(|(u, _)| u))
+    }
+
+    /// Le propriétaire d'un jeton et sa sorte : une clé d'API (pour un éditeur,
+    /// un agent tiers) n'ouvre pas les mêmes portes qu'une session d'appareil.
+    pub async fn token_owner(
+        &self,
+        plaintext: &str,
+    ) -> Result<Option<(User, TokenKind)>, StorageError> {
         if plaintext.trim().is_empty() {
             return Ok(None);
         }
         let now = Utc::now().to_rfc3339();
         let rows = sqlx::query_as::<_, TokenRow>(
-            "SELECT id, user_id, token_hash, expires_at FROM auth_tokens \
+            "SELECT id, user_id, token_hash, expires_at, kind FROM auth_tokens \
              WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
         )
         .bind(&now)
@@ -478,9 +488,10 @@ impl UserRepo {
             .bind(&t.user_id)
             .fetch_optional(&self.pool)
             .await?;
+            let kind = TokenKind::parse(t.kind.as_deref().unwrap_or("session"));
             return match user {
                 // A disabled account's tokens stop working immediately.
-                Some(u) if u.disabled_at.is_none() => Ok(Some(u.to_user()?)),
+                Some(u) if u.disabled_at.is_none() => Ok(Some((u.to_user()?, kind))),
                 _ => Ok(None),
             };
         }

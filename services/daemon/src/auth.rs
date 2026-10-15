@@ -14,7 +14,8 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use locaryn_storage::users::{Role, User, UserRepo};
+use locaryn_config::api_fournisseur;
+use locaryn_storage::users::{Role, TokenKind, User, UserRepo};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -79,6 +80,19 @@ pub struct AuthState {
     pub users: UserRepo,
     /// False on loopback: the local user is already trusted by the OS.
     pub required: bool,
+    /// L'API fournisseur est-elle allumée ? Relu à chaque requête (le réglage
+    /// change sans redémarrer le service) ; remplaçable dans les tests.
+    pub api_active: fn() -> bool,
+}
+
+impl AuthState {
+    pub fn new(users: UserRepo, required: bool) -> Self {
+        AuthState {
+            users,
+            required,
+            api_active: api_fournisseur::active,
+        }
+    }
 }
 
 /// Le bureau de cette machine suit en direct une réponse servie ici (lancée
@@ -95,18 +109,49 @@ fn suivi_depuis_cette_machine(req: &Request<Body>) -> bool {
             .is_some_and(|c| c.0.ip().to_canonical().is_loopback())
 }
 
-/// Extract a bearer token from the `Authorization` header.
+/// Extract a bearer token from the `Authorization` header — or from
+/// `x-api-key`, where the Anthropic dialect (Claude Code) puts its key.
 fn bearer(req: &Request<Body>) -> Option<String> {
-    let raw = req
-        .headers()
-        .get(axum::http::header::AUTHORIZATION)?
-        .to_str()
-        .ok()?;
-    let rest = raw
-        .strip_prefix("Bearer ")
-        .or_else(|| raw.strip_prefix("bearer "))?;
-    let t = rest.trim();
-    (!t.is_empty()).then(|| t.to_string())
+    let entete = |nom| {
+        req.headers()
+            .get(nom)
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    };
+    if let Some(raw) = entete(axum::http::header::AUTHORIZATION.as_str()) {
+        let rest = raw
+            .strip_prefix("Bearer ")
+            .or_else(|| raw.strip_prefix("bearer "))?;
+        let t = rest.trim();
+        return (!t.is_empty()).then(|| t.to_string());
+    }
+    entete("x-api-key").map(str::to_string)
+}
+
+/// Les routes des modèles, celles que l'API fournisseur ouvre aux autres
+/// applications.
+fn route_des_modeles(chemin: &str) -> bool {
+    matches!(
+        chemin,
+        "/v1/models" | "/v1/chat/completions" | "/v1/messages"
+    )
+}
+
+fn interdit(code: &str, detail: &str) -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(serde_json::json!({ "error": code, "detail": detail })),
+    )
+        .into_response()
+}
+
+fn api_eteinte() -> Response {
+    interdit(
+        "provider_api_disabled",
+        "L'API fournisseur de ce Locaryn est désactivée. Un administrateur peut l'allumer \
+         dans Réglages → Serveur → API fournisseur.",
+    )
 }
 
 fn unauthorised(detail: &str) -> Response {
@@ -123,7 +168,17 @@ pub async fn require_token(
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
-    if !state.required || is_public(req.uri().path()) || suivi_depuis_cette_machine(&req) {
+    let chemin = req.uri().path().to_string();
+    if is_public(&chemin) || suivi_depuis_cette_machine(&req) {
+        return next.run(req).await;
+    }
+    // Service local, sans compte exigé : seule la personne au clavier peut
+    // appeler. Les routes des modèles restent fermées aux autres
+    // applications tant que l'API fournisseur est éteinte.
+    if !state.required {
+        if route_des_modeles(&chemin) && !(state.api_active)() {
+            return api_eteinte();
+        }
         return next.run(req).await;
     }
 
@@ -134,8 +189,23 @@ pub async fn require_token(
         );
     };
 
-    match state.users.user_for_token(&token).await {
-        Ok(Some(user)) => {
+    match state.users.token_owner(&token).await {
+        Ok(Some((user, kind))) => {
+            if kind == TokenKind::Api {
+                // Une clé d'API ne sert que les modèles : confiée à un
+                // éditeur, elle n'ouvre ni les conversations, ni les
+                // fichiers, ni les comptes.
+                if !api_fournisseur::est_route_api(&chemin) && chemin != "/v1/auth/me" {
+                    return interdit(
+                        "api_key_scope",
+                        "Une clé d'API ne donne accès qu'aux modèles : /v1/models, \
+                         /v1/chat/completions et /v1/messages.",
+                    );
+                }
+                if route_des_modeles(&chemin) && !(state.api_active)() {
+                    return api_eteinte();
+                }
+            }
             // Downstream handlers can scope work to the caller — which is what
             // will keep one user's distributed tasks off another user's machines.
             req.extensions_mut().insert(user);
@@ -351,6 +421,18 @@ pub async fn create_api_token(
         )
             .into_response();
     };
+    // Les clés d'API se créent par un administrateur, une fois l'API
+    // fournisseur allumée : un membre n'ouvre pas les modèles de la machine à
+    // d'autres applications.
+    if u.role != Role::Admin {
+        return interdit(
+            "admin_required",
+            "Seul un administrateur peut créer une clé d'API.",
+        );
+    }
+    if !(state.api_active)() {
+        return api_eteinte();
+    }
     let label = body.label.as_deref().filter(|l| !l.trim().is_empty());
     let expires_days = body.expires_in_days.filter(|d| *d > 0);
     match state.users.issue_api_token(u.id, label, expires_days).await {
@@ -546,10 +628,7 @@ mod tests {
             .create("Marie", "un-mot-de-passe-solide", Role::Admin)
             .await
             .unwrap();
-        let state = Arc::new(AuthState {
-            users: repo.clone(),
-            required: true,
-        });
+        let state = Arc::new(AuthState::new(repo.clone(), true));
 
         // Mauvais mot de passe actuel : 403, et le compte n'a pas bougé.
         let resp = change_password(
@@ -584,6 +663,134 @@ mod tests {
             .await
             .unwrap()
             .is_some());
+    }
+
+    /// Le service, une route de modèles et une route ordinaire derrière
+    /// l'authentification, l'API fournisseur allumée ou non.
+    fn routeur(state: Arc<AuthState>) -> axum::Router {
+        axum::Router::new()
+            .route("/v1/models", axum::routing::get(|| async { "modeles" }))
+            .route("/v1/sessions", axum::routing::get(|| async { "sessions" }))
+            .layer(axum::middleware::from_fn_with_state(state, require_token))
+    }
+
+    async fn appeler(
+        app: &axum::Router,
+        chemin: &str,
+        entete: Option<(&str, String)>,
+    ) -> StatusCode {
+        use tower::ServiceExt as _;
+        let mut req = Request::builder().uri(chemin);
+        if let Some((nom, valeur)) = entete {
+            req = req.header(nom, valeur);
+        }
+        app.clone()
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status()
+    }
+
+    #[tokio::test]
+    async fn une_cle_d_api_ne_sert_que_les_modeles_et_seulement_api_allumee() {
+        let pool = locaryn_storage::open_in_memory().await.unwrap();
+        let repo = UserRepo::new(pool);
+        let admin = repo
+            .create("Admin", "un-mot-de-passe-solide", Role::Admin)
+            .await
+            .unwrap();
+        let cle = repo
+            .issue_api_token(admin.id, Some("Cursor"), None)
+            .await
+            .unwrap()
+            .plaintext;
+        let session = repo
+            .issue_token(admin.id, Some("téléphone"), 30)
+            .await
+            .unwrap()
+            .plaintext;
+
+        let mut etat = AuthState::new(repo.clone(), true);
+        etat.api_active = || true;
+        let allumee = routeur(Arc::new(etat.clone()));
+        let bearer = |t: &str| Some(("authorization", format!("Bearer {t}")));
+        assert_eq!(
+            appeler(&allumee, "/v1/models", bearer(&cle)).await,
+            StatusCode::OK
+        );
+        // La forme d'Anthropic (Claude Code) : `x-api-key`.
+        assert_eq!(
+            appeler(&allumee, "/v1/models", Some(("x-api-key", cle.clone()))).await,
+            StatusCode::OK
+        );
+        // Une clé d'API n'ouvre pas le reste du compte.
+        assert_eq!(
+            appeler(&allumee, "/v1/sessions", bearer(&cle)).await,
+            StatusCode::FORBIDDEN
+        );
+        // Une session d'appareil, si.
+        assert_eq!(
+            appeler(&allumee, "/v1/sessions", bearer(&session)).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            appeler(&allumee, "/v1/models", None).await,
+            StatusCode::UNAUTHORIZED
+        );
+
+        etat.api_active = || false;
+        let eteinte = routeur(Arc::new(etat));
+        assert_eq!(
+            appeler(&eteinte, "/v1/models", bearer(&cle)).await,
+            StatusCode::FORBIDDEN
+        );
+        // Les clients de Locaryn gardent leurs routes.
+        assert_eq!(
+            appeler(&eteinte, "/v1/models", bearer(&session)).await,
+            StatusCode::OK
+        );
+
+        // Service local sans compte : les modèles restent fermés, API éteinte.
+        let mut local = AuthState::new(repo, false);
+        local.api_active = || false;
+        let local = routeur(Arc::new(local));
+        assert_eq!(
+            appeler(&local, "/v1/models", None).await,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(appeler(&local, "/v1/sessions", None).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn seul_un_administrateur_cree_une_cle_d_api() {
+        let pool = locaryn_storage::open_in_memory().await.unwrap();
+        let repo = UserRepo::new(pool);
+        let membre = repo
+            .create("Membre", "un-mot-de-passe-solide", Role::Member)
+            .await
+            .unwrap();
+        let admin = repo
+            .create("Admin", "un-autre-mot-de-passe", Role::Admin)
+            .await
+            .unwrap();
+        let mut etat = AuthState::new(repo, true);
+        etat.api_active = || true;
+        let etat = Arc::new(etat);
+        let corps = || {
+            Json(CreateApiTokenBody {
+                label: Some("Cursor".into()),
+                expires_in_days: None,
+            })
+        };
+        let r = create_api_token(
+            State(etat.clone()),
+            Some(axum::extract::Extension(membre)),
+            corps(),
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::FORBIDDEN);
+        let r = create_api_token(State(etat), Some(axum::extract::Extension(admin)), corps()).await;
+        assert_eq!(r.status(), StatusCode::CREATED);
     }
 
     #[test]

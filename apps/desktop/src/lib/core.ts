@@ -805,6 +805,36 @@ export interface ServerStatus {
   blocker: string | null;
 }
 
+/** L'API fournisseur : les modèles de cette machine servis aux autres
+ *  applications (Cursor, VS Code, Claude Code, OpenCode…). */
+export interface ProviderApiStatus {
+  enabled: boolean;
+  server_running: boolean;
+  /** Pour les applications de cette machine (HTTP, 127.0.0.1). */
+  local_url: string;
+  /** Pour les autres appareils du réseau (HTTPS). */
+  network_url: string;
+  admin: string | null;
+  blocker: string | null;
+}
+
+/** Une clé d'API : jamais la clé elle-même, seulement de quoi la reconnaître. */
+export interface ApiKeyInfo {
+  id: string;
+  label: string | null;
+  hint: string;
+  created_at: string | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+}
+
+/** Une clé tout juste créée : `token` n'est montré qu'une fois. */
+export interface ApiKeyCreated {
+  id: string;
+  token: string;
+  expires_at: string | null;
+}
+
 /** Le QR de connexion d'un compte (code temporaire qui se renouvelle). */
 export interface UserLoginQr {
   code: string;
@@ -1998,6 +2028,11 @@ export interface CoreApi {
   watchLiveSession(sessionId: string, onEvent: (ev: StreamEvent) => void): Promise<boolean>;
   createServerUser(username: string, password: string, isAdmin?: boolean): Promise<ServerStatus>;
   deleteServerUser(userId: string): Promise<ServerStatus>;
+  providerApiStatus(): Promise<ProviderApiStatus>;
+  setProviderApi(enabled: boolean): Promise<ProviderApiStatus>;
+  listApiKeys(): Promise<ApiKeyInfo[]>;
+  createApiKey(label: string, expiresInDays: number | null): Promise<ApiKeyCreated>;
+  revokeApiKey(id: string): Promise<void>;
   /** Deployment settings dropped next to the installer, if any. */
   provisioning(): Promise<Provisioning | null>;
 
@@ -2579,6 +2614,12 @@ const tauriCore: CoreApi = {
       args: { username, password, isAdmin },
     }),
   deleteServerUser: (userId) => invoke<ServerStatus>("delete_server_user", { userId }),
+  providerApiStatus: () => invoke<ProviderApiStatus>("provider_api_status"),
+  setProviderApi: (enabled) => invoke<ProviderApiStatus>("set_provider_api", { enabled }),
+  listApiKeys: () => invoke<ApiKeyInfo[]>("list_api_keys"),
+  createApiKey: (label, expiresInDays) =>
+    invoke<ApiKeyCreated>("create_api_key", { label, expiresInDays }),
+  revokeApiKey: (id) => invoke<void>("revoke_api_key", { id }),
   provisioning: () => invoke<Provisioning | null>("provisioning"),
 
   signIn: (serverUrl, username, password) =>
@@ -3779,6 +3820,17 @@ let demoUserMemory: MemoryEntry[] = [
   ]),
 ];
 
+/** L'API fournisseur de démonstration. */
+let demoApi: ProviderApiStatus = {
+  enabled: false,
+  server_running: true,
+  local_url: "http://127.0.0.1:7475/v1",
+  network_url: "https://192.168.1.20:7474/v1",
+  admin: "admin",
+  blocker: null,
+};
+let demoCles: ApiKeyInfo[] = [];
+
 /** L'etat du serveur de demonstration, modifie par l'interrupteur. */
 let demoServeur: ServerStatus = {
   running: false,
@@ -4585,6 +4637,30 @@ Contenu de démonstration, avec **du gras** et une liste :
     fingerprint: null,
     blocker: "Aucun compte n'existe.",
   }),
+  providerApiStatus: async () => ({ ...demoApi }),
+  setProviderApi: async (enabled) => {
+    demoApi = { ...demoApi, enabled };
+    return { ...demoApi };
+  },
+  listApiKeys: async () => [...demoCles],
+  createApiKey: async (label) => {
+    const id = `cle-${demoCles.length + 1}`;
+    demoCles = [
+      ...demoCles,
+      {
+        id,
+        label: label || null,
+        hint: "_a1b2c",
+        created_at: new Date().toISOString(),
+        last_used_at: null,
+        expires_at: null,
+      },
+    ];
+    return { id, token: "locaryn_demo_0123456789abcdef", expires_at: null };
+  },
+  revokeApiKey: async (id) => {
+    demoCles = demoCles.filter((c) => c.id !== id);
+  },
   provisioning: async () => null,
 
   signIn: async (serverUrl, username) => ({

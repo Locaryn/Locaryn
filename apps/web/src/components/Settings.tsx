@@ -62,6 +62,13 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
   // Les permissions par defaut des nouvelles conversations libres.
   const [defaultTrust, setDefaultTrust] = useState<TrustLevel | null>(null);
   const [freshToken, setFreshToken] = useState<string | null>(null);
+  // L'API fournisseur : sans elle (ou sans droits d'administrateur), la
+  // section des clés n'a rien à proposer et ne s'affiche pas.
+  const [apiFournisseur, setApiFournisseur] = useState<{
+    enabled: boolean;
+    local_url: string;
+    network_url: string | null;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const reload = useCallback(async () => {
@@ -76,6 +83,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
       setDevices(tokens.filter((t) => t.kind === "session"));
     } catch {
       // Pas de compte : les listes restent vides, les sections ne s'affichent pas.
+    }
+    try {
+      setApiFournisseur(await api.providerApi());
+    } catch {
+      setApiFournisseur(null);
     }
     try {
       setDefaultTrust(await api.defaultTrust());
@@ -251,13 +263,19 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
       </section>
 
       {/* ---- Circuit A : clés API développeur ---------------------------- */}
-      {status.signed_in && me && !me.local && (
+      {status.signed_in && me && !me.local && me.role === "admin" && apiFournisseur?.enabled && (
         <section className="lo-section">
-          <h2 className="lo-section-title">Clés API / Développeur</h2>
+          <h2 className="lo-section-title">Clés d'API</h2>
           <p className="lo-hint">
-            Pour les extensions d'IDE, scripts et intégrations tierces. La clé ne s'affiche qu'une
-            fois à sa création — copiez-la immédiatement.
+            Une clé par application qui utilise les modèles de ce serveur (Cursor, VS Code, Claude
+            Code, OpenCode, un script). Elle ne donne accès qu'aux modèles. La clé ne s'affiche
+            qu'une fois à sa création — copiez-la immédiatement.
           </p>
+          {apiFournisseur.network_url && (
+            <p className="lo-hint">
+              Adresse à donner (compatible OpenAI) : <code>{apiFournisseur.network_url}</code>
+            </p>
+          )}
 
           {freshToken && (
             <div className="lo-stack" style={{ margin: "12px 0" }}>

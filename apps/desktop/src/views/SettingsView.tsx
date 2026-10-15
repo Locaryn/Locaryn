@@ -1,6 +1,7 @@
 import { Icon, type IconName, type ThemeMode } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { AboutSettings } from "../components/AboutSettings";
+import { ApiKeysSettings } from "../components/ApiKeysSettings";
 import { CautionSettings } from "../components/CautionSettings";
 import { ConnectionSettings } from "../components/ConnectionSettings";
 import { ConnectorsSettings } from "../components/ConnectorsSettings";
@@ -13,6 +14,11 @@ import { ModeleAutrePc } from "../components/ModeleAutrePc";
 import { NpuSettings } from "../components/NpuSettings";
 import { PairingCodes } from "../components/PairingCodes";
 import { PerformancePanel } from "../components/PerformancePanel";
+import {
+  API_FOURNISSEUR_EVENT,
+  OUVRIR_CLES_API_EVENT,
+  ProviderApiSettings,
+} from "../components/ProviderApiSettings";
 import { ServerSettings } from "../components/ServerSettings";
 import { StorageSettings } from "../components/StorageSettings";
 import { TravelSettings } from "../components/TravelSettings";
@@ -80,7 +86,16 @@ const ACCOUNT_SECTIONS: { id: AccountSection; label: string; desc: string; icon:
 const SLOT_COMPTE = "settings.account";
 
 /** Une sous-section du compte : native, ou apportée par une extension. */
-type AccountPane = AccountSection | `ext:${string}`;
+type AccountPane = AccountSection | `ext:${string}` | "api-keys";
+
+/** Le volet des clés d'API : listé seulement quand l'API fournisseur est
+ *  allumée — éteinte, il n'a rien à proposer et encombrerait la liste. */
+const VOLET_CLES_API = {
+  id: "api-keys" as const,
+  label: "Clés d'API",
+  desc: "Accès des autres applications aux modèles",
+  icon: "key" as IconName,
+};
 
 type AccountExtra = {
   key: `ext:${string}`;
@@ -308,10 +323,45 @@ export function SettingsView({
     if (accountSection.startsWith("ext:") && !extra) setAccountSection("profile");
   }, [accountSection, extra]);
 
+  // L'API fournisseur allumée fait apparaître le volet des clés.
+  const [apiActive, setApiActive] = useState(false);
+  useEffect(() => {
+    let annule = false;
+    const lire = () => {
+      core
+        .providerApiStatus()
+        .then((e) => {
+          if (!annule) setApiActive(e.enabled);
+        })
+        .catch(() => {});
+    };
+    const ouvrirCles = () => {
+      setApiActive(true);
+      setSection("account");
+      setRailLevel("account");
+      setAccountSection("api-keys");
+      setPaneOpen(true);
+    };
+    lire();
+    window.addEventListener(API_FOURNISSEUR_EVENT, lire);
+    window.addEventListener(OUVRIR_CLES_API_EVENT, ouvrirCles);
+    return () => {
+      annule = true;
+      window.removeEventListener(API_FOURNISSEUR_EVENT, lire);
+      window.removeEventListener(OUVRIR_CLES_API_EVENT, ouvrirCles);
+    };
+  }, []);
+  useEffect(() => {
+    if (accountSection === "api-keys" && !apiActive) setAccountSection("profile");
+  }, [accountSection, apiActive]);
+
   const current = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
   // Dans le compte, le volet porte le nom de la sous-section : le titre doit
   // dire ce qu'on regarde, pas la famille dont ça vient.
-  const currentAccount = ACCOUNT_SECTIONS.find((a) => a.id === accountSection) ?? extra;
+  const currentAccount =
+    accountSection === "api-keys"
+      ? VOLET_CLES_API
+      : (ACCOUNT_SECTIONS.find((a) => a.id === accountSection) ?? extra);
   const currentTitle =
     section === "account" && currentAccount
       ? { icon: currentAccount.icon, label: currentAccount.label }
@@ -372,6 +422,24 @@ export function SettingsView({
                       </span>
                     </button>
                   ))}
+                  {apiActive && (
+                    <button
+                      type="button"
+                      className={`locaryn-settings-full-item${accountSection === VOLET_CLES_API.id ? " locaryn-active" : ""}`}
+                      onClick={() => {
+                        setAccountSection(VOLET_CLES_API.id);
+                        setPaneOpen(true);
+                      }}
+                    >
+                      <span className="locaryn-settings-full-icon">
+                        <Icon name={VOLET_CLES_API.icon} />
+                      </span>
+                      <span className="locaryn-settings-full-text">
+                        <span className="locaryn-settings-full-label">{VOLET_CLES_API.label}</span>
+                        <span className="locaryn-settings-full-desc">{VOLET_CLES_API.desc}</span>
+                      </span>
+                    </button>
+                  )}
                   {extras.map((x) => (
                     <button
                       key={x.key}
@@ -452,18 +520,21 @@ export function SettingsView({
           {section === "account" && extra?.pending && (
             <DeviceCompanionCard extension={extra.pending} />
           )}
-          {section === "account" && !accountSection.startsWith("ext:") && (
-            <AccountView
-              embedded
-              section={accountSection as AccountSection}
-              onSectionChange={setAccountSection}
-              activeCapabilities={activeCapabilities}
-              projects={projects}
-              sessionsByProject={sessionsByProject}
-              standaloneSessions={standaloneSessions}
-              onOpenSession={(session) => onOpenSession?.(session)}
-            />
-          )}
+          {section === "account" && accountSection === "api-keys" && <ApiKeysSettings />}
+          {section === "account" &&
+            !accountSection.startsWith("ext:") &&
+            accountSection !== "api-keys" && (
+              <AccountView
+                embedded
+                section={accountSection as AccountSection}
+                onSectionChange={setAccountSection}
+                activeCapabilities={activeCapabilities}
+                projects={projects}
+                sessionsByProject={sessionsByProject}
+                standaloneSessions={standaloneSessions}
+                onOpenSession={(session) => onOpenSession?.(session)}
+              />
+            )}
           {section === "engine" && <EngineSettings activeCapabilities={activeCapabilities} />}
           {section === "performance" && (
             <>
@@ -551,6 +622,7 @@ export function SettingsView({
             <div className="locaryn-network-layout">
               <div className="locaryn-network-config">
                 <ServerSettings />
+                <ProviderApiSettings />
                 {remoteEnabled && <TravelSettings />}
                 <ModeleAutrePc />
                 <ConnectionSettings />

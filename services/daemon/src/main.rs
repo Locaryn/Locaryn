@@ -307,10 +307,34 @@ async fn main() -> anyhow::Result<()> {
             addr.ip()
         );
     }
-    let auth_state = std::sync::Arc::new(auth::AuthState {
-        users: users.clone(),
-        required: exposed,
-    });
+    let auth_state = std::sync::Arc::new(auth::AuthState::new(users.clone(), exposed));
+
+    // L'API fournisseur en HTTP simple sur 127.0.0.1 : un éditeur de cette
+    // machine (Cursor, VS Code, Claude Code) n'accepte pas le certificat
+    // auto-signé du mode serveur. Seules les routes des modèles y sont, et
+    // une clé d'API y est exigée comme ailleurs.
+    let api_locale = Router::new()
+        .route(
+            "/v1/models",
+            get(routes::openai::list_models).options(routes::openai::cors_preflight),
+        )
+        .route(
+            "/v1/chat/completions",
+            post(routes::openai::chat_completions).options(routes::openai::cors_preflight),
+        )
+        .route(
+            "/v1/messages",
+            post(routes::openai::messages).options(routes::openai::cors_preflight),
+        )
+        .route("/v1/provider-api", get(provider_api_status))
+        .route("/health", get(health))
+        .with_state(state.clone())
+        .layer(axum::extract::DefaultBodyLimit::max(TAILLE_REQUETE_MAX))
+        .layer(tower_http::catch_panic::CatchPanicLayer::new())
+        .layer(axum::middleware::from_fn_with_state(
+            auth_state.clone(),
+            auth::require_token,
+        ));
 
     let app = Router::new()
         .route("/health", get(health))
@@ -557,6 +581,7 @@ async fn main() -> anyhow::Result<()> {
             "/v1/messages",
             axum::routing::options(routes::openai::cors_preflight),
         )
+        .route("/v1/provider-api", get(provider_api_status))
         .route("/v1/providers", get(list_providers))
         .route("/v1/supervisor/status", get(supervisor_status))
         .route("/v1/supervisor/start", post(supervisor_start))
@@ -732,6 +757,30 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
+        let port_api = locaryn_config::api_fournisseur::port_local(port);
+        match TcpListener::bind(("127.0.0.1", port_api)).await {
+            Ok(ecoute) => {
+                tracing::info!(
+                    "API fournisseur pour cette machine sur http://127.0.0.1:{port_api}/v1"
+                );
+                tokio::spawn(async move {
+                    if let Err(e) = axum::serve(
+                        ecoute,
+                        api_locale.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                    )
+                    .await
+                    {
+                        tracing::warn!(erreur = %e, "API fournisseur locale arrêtée");
+                    }
+                });
+            }
+            Err(e) => tracing::warn!(
+                erreur = %e,
+                port = port_api,
+                "API fournisseur locale indisponible (port déjà pris)"
+            ),
+        }
+
         axum_server::bind_rustls(addr, config)
             // `with_connect_info` : sans elle, aucun gestionnaire ne peut
             // savoir d'ou vient l'appel — or le code de confirmation ne doit
@@ -745,6 +794,9 @@ async fn main() -> anyhow::Result<()> {
             port_forward::close(port).await;
         }
     } else {
+        // Service local : il sert déjà en HTTP sur cette machine, l'API
+        // fournisseur passe par la même porte.
+        drop(api_locale);
         let listener = TcpListener::bind(addr).await?;
         if cfg.daemon.require_client_cert {
             // Otherwise the setting reads as active while nothing enforces it:
@@ -866,6 +918,23 @@ async fn health(State(s): State<Arc<DaemonState>>) -> Json<Health> {
         mode: s.mode,
         active_provider: provider_summary,
     })
+}
+
+/// L'état de l'API fournisseur et les adresses à donner aux applications.
+async fn provider_api_status(State(s): State<Arc<DaemonState>>) -> Json<serde_json::Value> {
+    let locale = if s.auth_required {
+        format!(
+            "http://127.0.0.1:{}/v1",
+            locaryn_config::api_fournisseur::port_local(s.port)
+        )
+    } else {
+        format!("http://127.0.0.1:{}/v1", s.port)
+    };
+    Json(serde_json::json!({
+        "enabled": locaryn_config::api_fournisseur::active(),
+        "local_url": locale,
+        "network_url": if s.auth_required { Some(format!("{}/v1", s.local_url)) } else { None },
+    }))
 }
 
 async fn info(State(s): State<Arc<DaemonState>>) -> Json<serde_json::Value> {

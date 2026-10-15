@@ -7,6 +7,7 @@
 //! V1 skeleton uses JSON-ish parsing via serde_json to avoid a toml dep in
 //! the MVP. V1.1 switches to `toml`.
 
+pub mod api_fournisseur;
 pub mod mtls;
 pub mod provision;
 

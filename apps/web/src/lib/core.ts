@@ -433,6 +433,16 @@ export const api = {
     await http("/v1/auth/password", { method: "POST", body: { current, nouveau } });
   },
 
+  /** L'API fournisseur du serveur : allumée ou non, et les adresses à donner
+   *  aux applications (Cursor, VS Code, Claude Code…). */
+  async providerApi(): Promise<{
+    enabled: boolean;
+    local_url: string;
+    network_url: string | null;
+  }> {
+    return http("/v1/provider-api");
+  },
+
   /** Les clés API et les sessions d'appareils de l'utilisateur courant. */
   async listTokens(): Promise<TokenInfo[]> {
     return http("/v1/auth/tokens");

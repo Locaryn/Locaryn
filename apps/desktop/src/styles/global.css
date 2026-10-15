@@ -10030,6 +10030,109 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   border-radius: 999px;
   padding: 1px 8px;
 }
+.locaryn-api-bloc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  background: var(--surface);
+}
+.locaryn-api-nouvelle {
+  border-color: var(--accent);
+}
+.locaryn-api-ligne {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.locaryn-api-libelle {
+  min-width: 130px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.locaryn-api-copiable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.locaryn-api-copiable code {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.locaryn-api-copiable .locaryn-btn-ghost {
+  padding: 4px 6px;
+}
+.locaryn-api-exemples summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.locaryn-api-exemple {
+  margin-top: var(--space-2);
+}
+.locaryn-api-exemple pre {
+  margin: 4px 0 0;
+  padding: var(--space-2);
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: var(--text-xs);
+  overflow-x: auto;
+  white-space: pre;
+}
+.locaryn-api-creation {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  flex-wrap: wrap;
+}
+.locaryn-api-creation .locaryn-input:first-child {
+  flex: 1 1 240px;
+}
+.locaryn-api-creation select.locaryn-input {
+  flex: 0 0 auto;
+  width: auto;
+}
+.locaryn-api-creation .locaryn-btn {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.locaryn-api-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.locaryn-api-cle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+}
+.locaryn-api-cle-texte {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.locaryn-api-cle-nom {
+  font-weight: 600;
+  color: var(--text);
+}
 .locaryn-srv-fingerprint {
   margin-top: var(--space-2);
   padding: var(--space-3);
