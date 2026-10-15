@@ -84,13 +84,84 @@ fn modifier(app: &AppHandle, f: impl FnOnce(&mut EtatNavigateur)) {
     }
 }
 
+/// Les dossiers dont le navigateur peut afficher les fichiers : ceux des pages
+/// locales ouvertes exprès (un site que le modèle vient d'écrire). Une page
+/// web ne mène jamais d'elle-même vers un fichier du disque.
+static DOSSIERS_LOCAUX: Mutex<Vec<std::path::PathBuf>> = Mutex::new(Vec::new());
+
+/// Un fichier local à afficher : `C:\…\index.html`, `file:///…`, ou un
+/// dossier (son `index.html`). Seules les pages et images s'ouvrent ainsi.
+fn fichier_local(s: &str) -> Option<Result<Url, String>> {
+    let chemin = if s.to_ascii_lowercase().starts_with("file:") {
+        Url::parse(s).ok()?.to_file_path().ok()?
+    } else {
+        let p = std::path::PathBuf::from(s);
+        if !p.is_absolute() {
+            return None;
+        }
+        p
+    };
+    let chemin = if chemin.is_dir() {
+        chemin.join("index.html")
+    } else {
+        chemin
+    };
+    if !chemin.is_file() {
+        return Some(Err(format!(
+            "Fichier introuvable : {}. Donne le chemin complet d'un fichier .html existant.",
+            chemin.display()
+        )));
+    }
+    let ext = chemin
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(
+        ext.as_str(),
+        "html" | "htm" | "svg" | "png" | "jpg" | "jpeg" | "gif" | "webp" | "pdf" | "txt"
+    ) {
+        return Some(Err(format!(
+            "Le navigateur intégré n'affiche que des pages (.html), images ou PDF, pas « .{ext} »."
+        )));
+    }
+    let chemin = chemin.canonicalize().unwrap_or(chemin);
+    if let (Some(dossier), Ok(mut d)) = (chemin.parent(), DOSSIERS_LOCAUX.lock()) {
+        if !d.iter().any(|x| x == dossier) {
+            d.push(dossier.to_path_buf());
+        }
+    }
+    Some(
+        Url::from_file_path(&chemin)
+            .map_err(|_| format!("Chemin illisible : {}", chemin.display())),
+    )
+}
+
+/// Une navigation vers un fichier local reste dans un dossier ouvert exprès.
+fn fichier_permis(url: &Url) -> bool {
+    let Ok(chemin) = url.to_file_path() else {
+        return false;
+    };
+    let chemin = chemin.canonicalize().unwrap_or(chemin);
+    DOSSIERS_LOCAUX
+        .lock()
+        .map(|d| d.iter().any(|dossier| chemin.starts_with(dossier)))
+        .unwrap_or(false)
+}
+
 /// Ce que la personne ou le modèle a tapé, en adresse : `exemple.fr` devient
-/// `https://exemple.fr`, le reste une recherche. Seuls http et https passent :
-/// ni fichier local, ni `javascript:`, ni schéma de l'application.
+/// `https://exemple.fr`, un chemin de fichier `.html` s'ouvre tel quel (un site
+/// écrit dans le projet), le reste est une recherche. Ni `javascript:`, ni
+/// schéma de l'application.
 pub fn normaliser(saisie: &str) -> Result<Url, String> {
     let s = saisie.trim();
     if s.is_empty() {
         return Err("Adresse vide.".into());
+    }
+    // Un site écrit sur le disque : le modèle le testait ailleurs, faute de
+    // pouvoir l'ouvrir ici, jusqu'à prendre le contrôle du bureau.
+    if let Some(local) = fichier_local(s) {
+        return local;
     }
     // « localhost:3000 » se lirait comme un schéma « localhost » : seul ce qui
     // porte « :// » ou un schéma connu est pris tel quel.
@@ -124,8 +195,43 @@ fn vue(app: &AppHandle) -> Option<Webview> {
     app.get_webview(LABEL)
 }
 
-/// Créer la vue, cachée : l'interface la montre à sa place.
+/// Une seule création à la fois. L'outil `browser_open` demande à
+/// l'interface d'ouvrir l'onglet du navigateur (qui crée la vue) et crée la
+/// vue lui-même s'il ne la trouve pas : les deux couraient l'une contre
+/// l'autre sous le même nom, et WebView2 refusait la seconde
+/// (« Paramètre incorrect »).
+static CREATION: Mutex<()> = Mutex::new(());
+
+/// Créer la vue (ou rendre celle qu'un autre appel vient de créer), avec un
+/// second essai sur une page vide si WebView2 refuse la première fois.
 fn creer(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Webview, String> {
+    let _garde = CREATION.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(v) = vue(app) {
+        // Créée entre-temps par l'autre appel : la page vide de l'interface
+        // ne remplace pas celle que le modèle vient d'ouvrir.
+        if url.as_str() != "about:blank" {
+            v.navigate(url).map_err(|e| e.to_string())?;
+        }
+        return Ok(v);
+    }
+    match creer_une_fois(app, url.clone(), cadre) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            tracing::warn!(erreur = %e, adresse = %url, "navigateur intégré non créé — second essai");
+            std::thread::sleep(Duration::from_millis(600));
+            if let Some(v) = vue(app) {
+                v.navigate(url).map_err(|e| e.to_string())?;
+                return Ok(v);
+            }
+            let vide = Url::parse("about:blank").map_err(|e| e.to_string())?;
+            let v = creer_une_fois(app, vide, cadre)?;
+            v.navigate(url).map_err(|e| e.to_string())?;
+            Ok(v)
+        }
+    }
+}
+
+fn creer_une_fois(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Webview, String> {
     let fenetre = app
         .get_window("main")
         .ok_or("fenêtre principale introuvable")?;
@@ -151,7 +257,13 @@ fn creer(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Webview, Str
     let constructeur = WebviewBuilder::new(LABEL, WebviewUrl::External(url))
         // Une page ne mène qu'à d'autres pages web : un lien `file:` ou vers un
         // schéma d'application n'est pas suivi.
-        .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about" | "blob" | "data"))
+        .on_navigation(|url| match url.scheme() {
+            "http" | "https" | "about" | "blob" | "data" => true,
+            // Un fichier, seulement dans un dossier ouvert exprès par
+            // `browser_open` (les liens d'un site local entre ses pages).
+            "file" => fichier_permis(url),
+            _ => false,
+        })
         .on_page_load(move |_vue, charge| {
             let url = charge.url().to_string();
             let fini = matches!(charge.event(), PageLoadEvent::Finished);
@@ -396,7 +508,15 @@ pub async fn ouvrir(app: &AppHandle, saisie: &str) -> Result<String, String> {
         tracing::warn!(erreur = %e, "onglet du navigateur non ouvert dans l'interface");
     }
     let avant = etat().chargements;
-    aller(app, saisie)?;
+    // L'échec dit quoi faire : sans cela, le modèle concluait que « le
+    // navigateur s'est fermé » et passait au contrôle du bureau.
+    aller(app, saisie).map_err(|e| {
+        format!(
+            "Le navigateur intégré n'a pas pu ouvrir « {saisie} » : {e}. Réessaie browser_open \
+             une fois ; s'il échoue encore, dis-le à la personne. Ne passe pas au contrôle du \
+             bureau ni au navigateur de la personne sans qu'elle le demande."
+        )
+    })?;
     attendre_chargement(avant, ATTENTE_CHARGEMENT).await;
     // Une page lue en entier remplissait une fenêtre de 8 192 jetons en deux
     // lectures : le modèle perdait ses observations et tournait en rond.

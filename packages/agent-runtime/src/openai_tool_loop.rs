@@ -34,6 +34,49 @@ const RELANCE_REFLEXION_SEULE: &str = "Ta réponse ne contenait que ta réflexio
 n'a été appelé et aucune réponse n'a été donnée. Un appel écrit dans la réflexion n'est pas \
 exécuté. Appelle l'outil maintenant si tu voulais le faire, sinon donne ta réponse.";
 
+/// Relance d'une réponse qui annonce une action sans la faire.
+const RELANCE_ANNONCE: &str = "Tu as annoncé ce que tu allais faire, sans appeler d'outil : rien n'a été fait. Fais-le maintenant en appelant l'outil qu'il faut (image_search pour des images, web_search pour une recherche, browser_open pour voir une page). Si tout est déjà fait, dis-le.";
+
+/// La réponse se termine-t-elle sur une action annoncée et pas faite
+/// (« Laissez-moi commencer par trouver des images… ») ? Un petit modèle
+/// s'arrêtait là, et la personne attendait un travail qui ne venait pas.
+fn annonce_sans_agir(texte: &str) -> bool {
+    let t = texte.trim();
+    if t.is_empty() || t.ends_with('?') {
+        return false;
+    }
+    let fin: String = t
+        .chars()
+        .rev()
+        .take(320)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>()
+        .to_lowercase();
+    // La dernière phrase seulement : une réponse complète qui finit par « je
+    // vais vous expliquer » au milieu ne compte pas.
+    let derniere = fin
+        .trim_end_matches(['.', '!', '…', ':', ' ', '\n'])
+        .rsplit(['.', '!', '\n'])
+        .next()
+        .unwrap_or("");
+    [
+        "je vais ",
+        "laissez-moi",
+        "laisse-moi",
+        "commençons",
+        "je commence",
+        "allons-y",
+        "let me ",
+        "i'll ",
+        "i will ",
+        "let's ",
+    ]
+    .iter()
+    .any(|m| derniere.contains(m))
+}
+
 /// A fully assembled tool call, reconstructed from streamed fragments.
 #[derive(Debug, Clone)]
 struct AssembledCall {
@@ -210,13 +253,30 @@ pub async fn run_openai_tool_loop(
             .iter()
             .find_map(|d| d.bureau)
             .unwrap_or(bureau_avant);
+    // Le navigateur de la personne (extension morph-browser) ne passe
+    // qu'après le navigateur intégré : offert seulement si elle le nomme
+    // (Chrome, Opera, « mon navigateur »), sinon chargeable à la demande.
+    let veut_externe = recents.iter().any(|d| d.navigateur_externe)
+        || impose(&ecran.navigateur_externe)
+        || !ecran.navigateur_integre;
     let mut caches = std::collections::HashSet::new();
     if !veut_navigateur {
         caches.extend(ecran.navigateur.iter().cloned());
+    } else if !veut_externe {
+        caches.extend(ecran.navigateur_externe.iter().cloned());
     }
-    if !veut_bureau {
-        caches.extend(ecran.bureau.iter().cloned());
-    }
+    // Le contrôle du bureau, dernier recours : seulement quand la personne le
+    // demande. Il n'est même plus chargeable sans elle — un modèle qui ne
+    // trouvait pas son navigateur prenait la souris et le clavier du PC.
+    let retires: std::collections::HashSet<String> = if veut_bureau {
+        std::collections::HashSet::new()
+    } else {
+        ecran.bureau.clone()
+    };
+    let all_tools: Vec<_> = all_tools
+        .into_iter()
+        .filter(|t| !retires.contains(&t.name))
+        .collect();
     let (all_tools, ecran_differes): (Vec<_>, Vec<_>) = if caches.is_empty() {
         (all_tools, Vec::new())
     } else {
@@ -843,6 +903,25 @@ pub async fn run_openai_tool_loop(
                         messages.as_array_mut().unwrap().push(serde_json::json!({
                             "role": "user",
                             "content": RELANCE_REFLEXION_SEULE,
+                        }));
+                        continue;
+                    }
+                    // Une action annoncée et pas faite : une relance aussi, la
+                    // réponse déjà écrite gardée dans l'échange.
+                    if !relance_faite
+                        && !tools_for_dispatch.is_empty()
+                        && annonce_sans_agir(&round_result.content)
+                        && round + 1 < MAX_TOOL_ROUNDS
+                    {
+                        relance_faite = true;
+                        let liste = messages.as_array_mut().unwrap();
+                        liste.push(serde_json::json!({
+                            "role": "assistant",
+                            "content": round_result.content,
+                        }));
+                        liste.push(serde_json::json!({
+                            "role": "user",
+                            "content": RELANCE_ANNONCE,
                         }));
                         continue;
                     }
@@ -1578,6 +1657,28 @@ async fn stream_one_round(
         });
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests_annonce {
+    #[test]
+    fn une_action_annoncee_sans_appel_est_reconnue() {
+        assert!(super::annonce_sans_agir(
+            "Vous avez tout à fait raison ! Je vais utiliser le navigateur intégré. Laissez-moi commencer par trouver des images de haute qualité sur Internet pour enrichir le site."
+        ));
+        assert!(super::annonce_sans_agir(
+            "Parfait. Let me search for that now."
+        ));
+        assert!(!super::annonce_sans_agir(
+            "La capitale de la France est Paris."
+        ));
+        assert!(!super::annonce_sans_agir(
+            "Je vais le faire : veux-tu des photos ou des dessins ?"
+        ));
+        assert!(!super::annonce_sans_agir(
+            "Je vais vous expliquer. Le site contient trois sections et tout fonctionne."
+        ));
+    }
 }
 
 #[cfg(test)]

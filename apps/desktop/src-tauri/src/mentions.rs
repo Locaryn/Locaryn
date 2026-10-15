@@ -93,6 +93,10 @@ fn mots_reperes(nom: &str) -> Vec<String> {
         "connecteur",
         "client",
         "bridge",
+        // Tous les morphs s'appellent « morph-… » : « morph » ne désigne
+        // aucun d'eux en particulier.
+        "morph",
+        "morphs",
     ];
     nom.split(|c: char| !c.is_alphanumeric())
         .map(str::to_lowercase)
@@ -100,11 +104,30 @@ fn mots_reperes(nom: &str) -> Vec<String> {
         .collect()
 }
 
+/// Les mots qui, juste avant un nom, le refusent : « pas le morph desktop »,
+/// « sans Roblox », « don't use chrome ».
+const NEGATIONS: &[&str] = &[
+    "pas", "sans", "jamais", "ni", "not", "without", "never", "t",
+];
+
 /// Le connecteur est-il nommé en clair dans la demande (sans « @ ») ?
+///
+/// Pas quand la phrase le refuse : « utilise le navigateur intégré, pas le
+/// morph desktop » imposait justement les outils de contrôle du bureau, et le
+/// modèle prenait la main sur le PC au moment où on le lui interdisait.
 fn nomme_en_clair(texte: &str, nom: &str) -> bool {
     let bas = texte.to_lowercase();
-    let mots: Vec<&str> = bas.split(|c: char| !c.is_alphanumeric()).collect();
-    mots_reperes(nom).iter().any(|m| mots.contains(&m.as_str()))
+    let mots: Vec<&str> = bas
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|m| !m.is_empty())
+        .collect();
+    let reperes = mots_reperes(nom);
+    mots.iter().enumerate().any(|(i, mot)| {
+        reperes.iter().any(|r| r == mot)
+            && !mots[i.saturating_sub(4)..i]
+                .iter()
+                .any(|avant| NEGATIONS.contains(avant))
+    })
 }
 
 /// Ce que `texte` désigne : connecteurs MCP, morphs (extensions) et skills.
@@ -320,6 +343,28 @@ mod tests {
         assert!(!super::nomme_en_clair(
             "parle-moi de robloxien",
             "Roblox_Studio"
+        ));
+        // Refusé dans la phrase : pas désigné.
+        assert!(!super::nomme_en_clair(
+            "Je t'ai dit d'utiliser le moteur intégré, pas le morph desktop qui permet de contrôler le PC.",
+            "morph-desktop__desktop"
+        ));
+        assert!(!super::nomme_en_clair(
+            "fais-le sans Roblox",
+            "Roblox_Studio"
+        ));
+        assert!(!super::nomme_en_clair(
+            "don't use the desktop",
+            "morph-desktop__desktop"
+        ));
+        assert!(super::nomme_en_clair(
+            "prends le contrôle avec desktop",
+            "morph-desktop__desktop"
+        ));
+        // « morph » seul ne désigne aucun morph.
+        assert!(!super::nomme_en_clair(
+            "installe un morph",
+            "morph-browser__browser"
         ));
         // Un skill se désigne aussi par « /nom », jamais au milieu d'un chemin.
         assert!(super::designe("fais un rapport /docx stp", '/', "docx"));

@@ -121,12 +121,12 @@ pub(crate) fn specs_app() -> Vec<ToolSpec> {
         ),
         spec(
             "browser_open",
-            "Ouvre une adresse (ou une recherche) dans le navigateur intégré de Locaryn, visible par la personne dans l'espace de travail, attend la page et la rend : titre, adresse, texte visible, et les éléments sur lesquels agir, numérotés.",
+            "Ouvre une adresse, une recherche ou un fichier local (.html d'un site écrit sur le disque, chemin complet) dans le navigateur intégré de Locaryn, visible par la personne dans l'espace de travail, attend la page et la rend : titre, adresse, texte visible, et les éléments sur lesquels agir, numérotés. Premier choix pour voir, tester ou parcourir une page ou un site : avant le navigateur de la personne (morph-browser) et avant le contrôle du bureau.",
             json!({
                 "type": "object",
                 "required": ["url"],
                 "properties": {
-                    "url": { "type": "string", "description": "Adresse (https://…, exemple.fr) ou texte à chercher." }
+                    "url": { "type": "string", "description": "Adresse (https://…, exemple.fr), chemin complet d'un fichier .html (C:\\…\\index.html), ou texte à chercher." }
                 }
             }),
             Risk::Medium,

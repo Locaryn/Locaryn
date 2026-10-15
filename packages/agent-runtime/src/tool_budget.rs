@@ -112,30 +112,71 @@ fn split_known<'a>(name: &'a str, clean: &HashSet<String>) -> Option<(&'a str, &
     None
 }
 
+/// Le nom court d'un outil de connecteur (sans préfixe, mais apporté par un
+/// serveur MCP), par opposition à un outil intégré.
+fn is_mcp_alias(spec: &ToolSpec) -> bool {
+    !is_mcp(spec)
+        && spec
+            .required_permissions
+            .contains(&locaryn_shared_types::Permission::Mcp)
+}
+
 /// Un seul nom par outil MCP : le court quand il est offert, le préfixé sinon
 /// (deux connecteurs qui annoncent le même nom, ou un nom pris par un outil
 /// intégré). Rend aussi, pour chaque nom court, le serveur d'où il vient : il
 /// aide à reconnaître ce que la demande désigne.
+///
+/// Un nom court déjà pris par un outil intégré part : le navigateur intégré
+/// (`browser_click`, `browser_type`…) et morph-browser, qui pilote Chrome,
+/// s'offraient sous les mêmes noms avec deux descriptions différentes. Le
+/// modèle confondait les deux navigateurs, lisait « extension non
+/// connectée » et finissait par prendre le contrôle du bureau. L'outil du
+/// connecteur reste offert sous son nom préfixé.
 pub fn one_name_per_tool(specs: Vec<ToolSpec>) -> (Vec<ToolSpec>, HashMap<String, String>) {
-    let clean: HashSet<String> = specs
+    let integres: HashSet<String> = specs
+        .iter()
+        .filter(|s| !is_mcp(s) && !is_mcp_alias(s))
+        .map(|s| s.name.clone())
+        .collect();
+    // Les noms courts écartés : leur outil garde son nom préfixé.
+    let mut ecartes: HashSet<String> = HashSet::new();
+    let mut vus: HashSet<String> = HashSet::new();
+    let mut specs_gardees = Vec::with_capacity(specs.len());
+    for spec in specs {
+        if !is_mcp(&spec) {
+            let pris = if is_mcp_alias(&spec) {
+                integres.contains(&spec.name) || vus.contains(&spec.name)
+            } else {
+                vus.contains(&spec.name)
+            };
+            if pris {
+                ecartes.insert(spec.name.clone());
+                continue;
+            }
+            vus.insert(spec.name.clone());
+        }
+        specs_gardees.push(spec);
+    }
+    let clean: HashSet<String> = specs_gardees
         .iter()
         .filter(|s| !is_mcp(s))
         .map(|s| s.name.clone())
         .collect();
     let mut server_of: HashMap<String, String> = HashMap::new();
-    let mut kept = Vec::with_capacity(specs.len());
-    for spec in specs {
+    let mut kept = Vec::with_capacity(specs_gardees.len());
+    for spec in specs_gardees {
         if !is_mcp(&spec) {
             kept.push(spec);
             continue;
         }
-        // Le court existe : il suffit, et on retient son serveur. Sinon on garde
-        // le préfixé, seul moyen de distinguer deux connecteurs au même outil.
+        // Le court existe et c'est bien le sien : il suffit, et on retient son
+        // serveur. Sinon on garde le préfixé, seul moyen de distinguer deux
+        // connecteurs au même outil, ou un connecteur d'un outil intégré.
         match split_known(&spec.name, &clean) {
-            Some((server, tool)) => {
+            Some((server, tool)) if !ecartes.contains(tool) => {
                 server_of.insert(tool.to_string(), server.to_string());
             }
-            None => kept.push(spec),
+            _ => kept.push(spec),
         }
     }
     (kept, server_of)
@@ -454,9 +495,22 @@ pub const CHARGER_OUTILS: &str = "charger_outils";
 /// Les outils qui pilotent l'écran, rangés par sorte : ceux du navigateur
 /// (`morph-browser`, et le navigateur intégré `browser_*`) et ceux du bureau
 /// (`morph-desktop`), sous leurs noms préfixés et courts.
+///
+/// Du plus simple au plus lourd, pour voir ou tester une page :
+/// 1. le navigateur intégré (`browser_*` de l'application) : rien à
+///    installer, la personne voit ce que fait le modèle ;
+/// 2. le navigateur de la personne par l'extension de `morph-browser`
+///    (Chrome, Opera…) : seulement si elle le demande, et si l'extension est
+///    connectée ;
+/// 3. le contrôle du bureau (`morph-desktop`) : seulement si elle le demande.
 #[derive(Debug, Default)]
 pub struct OutilsEcran {
     pub navigateur: HashSet<String>,
+    /// Parmi `navigateur`, ceux de `morph-browser` (le navigateur de la
+    /// personne, par son extension).
+    pub navigateur_externe: HashSet<String>,
+    /// Le navigateur intégré de l'application est offert.
+    pub navigateur_integre: bool,
     pub bureau: HashSet<String>,
 }
 
@@ -477,7 +531,8 @@ pub fn outils_ecran(mcp_tools: &[ToolSpec], integres: &[ToolSpec]) -> OutilsEcra
         };
         let serveur = reste.rsplit_once("__").map(|(s, _)| s).unwrap_or(reste);
         let s = serveur.to_ascii_lowercase();
-        let cible = if s.contains("morph-browser") {
+        let externe = s.contains("morph-browser");
+        let cible = if externe {
             &mut o.navigateur
         } else if s.contains("morph-desktop") {
             &mut o.bureau
@@ -485,16 +540,35 @@ pub fn outils_ecran(mcp_tools: &[ToolSpec], integres: &[ToolSpec]) -> OutilsEcra
             continue;
         };
         cible.insert(t.name.clone());
-        if let Some((_, court)) = reste.rsplit_once("__") {
-            cible.insert(court.to_string());
+        let court = reste.rsplit_once("__").map(|(_, c)| c.to_string());
+        if let Some(c) = &court {
+            cible.insert(c.clone());
+        }
+        if externe {
+            o.navigateur_externe.insert(t.name.clone());
+            // Le nom court n'est à morph-browser que si le navigateur intégré
+            // ne le porte pas déjà (`browser_click` est aux deux).
+            if let Some(c) = court {
+                if !integres.iter().any(|i| {
+                    i.name == c
+                        && !i.name.starts_with(crate::mcp_tools::MCP_PREFIX)
+                        && !is_mcp_alias(i)
+                }) {
+                    o.navigateur_externe.insert(c);
+                }
+            }
         }
     }
-    o.navigateur.extend(
-        integres
-            .iter()
-            .filter(|t| t.name.starts_with("browser_"))
-            .map(|t| t.name.clone()),
-    );
+    let integre: Vec<String> = integres
+        .iter()
+        .filter(|t| t.name.starts_with("browser_") && !is_mcp_alias(t))
+        .map(|t| t.name.clone())
+        .collect();
+    o.navigateur_integre = integre.iter().any(|n| n == "browser_open");
+    for n in &integre {
+        o.navigateur_externe.remove(n);
+    }
+    o.navigateur.extend(integre);
     o
 }
 
@@ -502,6 +576,9 @@ pub fn outils_ecran(mcp_tools: &[ToolSpec], integres: &[ToolSpec]) -> OutilsEcra
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct DemandeEcran {
     pub navigateur: bool,
+    /// Son propre navigateur (Chrome, Opera…, par l'extension de
+    /// morph-browser), pas le navigateur intégré.
+    pub navigateur_externe: bool,
     /// `Some(false)` : elle refuse explicitement le contrôle du bureau
     /// (« n'utilise pas desktop »).
     pub bureau: Option<bool>,
@@ -518,6 +595,19 @@ const MOTS_NAVIGATEUR: &[&str] = &[
     "site web",
     "page web",
     "@morph-browser",
+];
+
+/// Le navigateur de la personne, pas celui de l'application.
+const MOTS_NAVIGATEUR_EXTERNE: &[&str] = &[
+    "chrome",
+    "firefox",
+    "edge ",
+    "opera",
+    "brave",
+    "safari",
+    "mon navigateur",
+    "extension",
+    "morph-browser",
 ];
 
 const MOTS_BUREAU: &[&str] = &[
@@ -551,6 +641,10 @@ const MOTS_BUREAU: &[&str] = &[
 pub fn demande_ecran(texte: &str) -> DemandeEcran {
     let t = texte.to_lowercase();
     let navigateur = MOTS_NAVIGATEUR.iter().any(|m| t.contains(m));
+    let navigateur_externe = MOTS_NAVIGATEUR_EXTERNE.iter().any(|m| t.contains(m))
+        && !t.contains("intégré")
+        && !t.contains("integre")
+        && !t.contains("integré");
     let refus = regex::Regex::new(
         r"(n'utilise pas|n.utilise pas|pas de|pas le|pas par|sans|jamais|don't use|do not use|not the|without)\s+(\S+\s+){0,2}(le |la |l')?(desktop|bureau|souris|clavier|contrôle|controle|screen|écran|ecran)",
     )
@@ -563,7 +657,11 @@ pub fn demande_ecran(texte: &str) -> DemandeEcran {
     } else {
         None
     };
-    DemandeEcran { navigateur, bureau }
+    DemandeEcran {
+        navigateur,
+        navigateur_externe,
+        bureau,
+    }
 }
 
 /// La personne demande-t-elle le navigateur ou le contrôle de l'ordinateur ?
@@ -891,6 +989,63 @@ mod tests {
     }
 
     #[test]
+    fn un_connecteur_ne_prend_pas_le_nom_d_un_outil_integre() {
+        let mut alias = spec("browser_click", "Chrome.");
+        alias.required_permissions = vec![locaryn_shared_types::Permission::Mcp];
+        let specs = vec![
+            spec("browser_click", "Navigateur intégré."),
+            spec("mcp__morph-browser__browser__browser_click", "Chrome."),
+            alias,
+            spec("mcp__morph-browser__browser__browser_status", "Chrome."),
+            spec("browser_status", "Chrome."),
+        ];
+        let (kept, server_of) = one_name_per_tool(specs);
+        let noms: Vec<&str> = kept.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(
+            noms,
+            [
+                "browser_click",
+                "mcp__morph-browser__browser__browser_click",
+                "browser_status"
+            ]
+        );
+        assert_eq!(kept[0].description, "Navigateur intégré.");
+        assert!(!server_of.contains_key("browser_click"));
+        assert_eq!(server_of["browser_status"], "morph-browser__browser");
+    }
+
+    #[test]
+    fn le_navigateur_integre_passe_avant_celui_de_l_extension() {
+        let mut alias = spec("browser_click", "Chrome.");
+        alias.required_permissions = vec![locaryn_shared_types::Permission::Mcp];
+        let mut statut = spec("browser_status", "Chrome.");
+        statut.required_permissions = vec![locaryn_shared_types::Permission::Mcp];
+        let mcp = vec![
+            spec("mcp__morph-browser__browser__browser_click", "Chrome."),
+            spec("mcp__morph-browser__browser__browser_status", "Chrome."),
+            spec("mcp__morph-desktop__desktop__desktop_click", "Bureau."),
+        ];
+        let tous = vec![
+            spec("browser_open", "Intégré."),
+            spec("browser_click", "Intégré."),
+            alias,
+            statut,
+        ];
+        let o = outils_ecran(&mcp, &tous);
+        assert!(o.navigateur_integre);
+        assert!(o.navigateur_externe.contains("browser_status"));
+        assert!(o
+            .navigateur_externe
+            .contains("mcp__morph-browser__browser__browser_click"));
+        assert!(
+            !o.navigateur_externe.contains("browser_click"),
+            "c'est l'intégré"
+        );
+        assert!(!o.navigateur_externe.contains("browser_open"));
+        assert!(o.bureau.contains("desktop_click"));
+    }
+
+    #[test]
     fn deux_connecteurs_au_meme_nom_sans_nom_court_gardent_leur_nom_prefixe() {
         let specs = vec![spec("mcp__a__ouvrir", "x"), spec("mcp__b__ouvrir", "x")];
         let (kept, _) = one_name_per_tool(specs);
@@ -964,6 +1119,10 @@ mod tests {
         let d = demande_ecran("nan utilise pas desktop et joue dans le navigateur intégré !");
         assert!(d.navigateur);
         assert_eq!(d.bureau, Some(false));
+        let d = demande_ecran("teste le site dans le navigateur intégré");
+        assert!(d.navigateur && !d.navigateur_externe);
+        let d = demande_ecran("ouvre-le dans mon Chrome");
+        assert!(d.navigateur_externe);
         let d = demande_ecran("prends le contrôle de mon ordinateur");
         assert_eq!(d.bureau, Some(true));
     }

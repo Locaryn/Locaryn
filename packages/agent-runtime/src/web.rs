@@ -7,6 +7,12 @@
 //! Brave, Bing, Google, Yandex) et rend titres, adresses et extraits ;
 //! `web_fetch` rend le texte d'une page.
 //!
+//! Pour les images, `image_search` rend des adresses d'images directes
+//! (Brave Images ; Wikimedia Commons et Openverse pour des images sous
+//! licence libre ; Bing Images) et `image_download` en enregistre une dans le projet. Sans eux, un
+//! modèle qui devait illustrer un site partait chercher Google Images dans un
+//! navigateur, et finissait par prendre le contrôle du bureau.
+//!
 //! Le navigateur reste là pour ce qui en a vraiment besoin : une page qui se
 //! construit en JavaScript, une connexion, un formulaire — ou quand la
 //! personne le demande.
@@ -16,13 +22,18 @@ use std::time::Duration;
 
 pub const WEB_SEARCH: &str = "web_search";
 pub const WEB_FETCH: &str = "web_fetch";
+pub const IMAGE_SEARCH: &str = "image_search";
+pub const IMAGE_DOWNLOAD: &str = "image_download";
+
+/// Taille maximale d'une image téléchargée.
+const IMAGE_MAX_OCTETS: usize = 25 * 1024 * 1024;
 
 /// Un navigateur ordinaire : certains moteurs servent une page vide ou un
 /// défi à un client qui ne se présente pas.
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
                           (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 
-/// Les deux outils web, offerts dans toute conversation.
+/// Les outils web, offerts dans toute conversation.
 pub fn web_tools() -> Vec<ToolSpec> {
     vec![
         ToolSpec {
@@ -66,11 +77,56 @@ pub fn web_tools() -> Vec<ToolSpec> {
             risk: Risk::Low,
             required_permissions: Vec::new(),
         },
+        ToolSpec {
+            name: IMAGE_SEARCH.into(),
+            description: "Cherche des images sur le web et rend leurs adresses directes \
+                          (utilisables dans <img src>), avec taille, titre et page d'origine. \
+                          Un seul appel, rapide : à préférer à tout navigateur pour trouver des \
+                          images. `free_license` : seulement des images sous licence libre \
+                          (Wikimedia Commons, Openverse), avec licence et auteur — mots-clés en \
+                          anglais. Enchaîne avec image_download pour les enregistrer dans le \
+                          projet."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Ce que montre l'image (« forêt alpine au lever du soleil »)." },
+                    "engine": {
+                        "type": "string",
+                        "enum": ["auto", "brave", "commons", "openverse", "bing"],
+                        "description": "« auto » essaie Brave, puis Wikimedia Commons et Openverse."
+                    },
+                    "free_license": { "type": "boolean", "description": "Images sous licence libre seulement." },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": 30 }
+                },
+                "required": ["query"]
+            }),
+            risk: Risk::Low,
+            required_permissions: Vec::new(),
+        },
+        ToolSpec {
+            name: IMAGE_DOWNLOAD.into(),
+            description: "Télécharge une image (adresse http/https, par exemple rendue par \
+                          image_search) et l'enregistre dans le projet, au chemin donné \
+                          (« images/foret.jpg »). Rend le chemin et la taille, à mettre dans \
+                          <img src>."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "url": { "type": "string", "description": "L'adresse directe de l'image." },
+                    "path": { "type": "string", "description": "Où l'enregistrer, relatif au projet. L'extension est ajoutée si elle manque." }
+                },
+                "required": ["url", "path"]
+            }),
+            risk: Risk::Medium,
+            required_permissions: Vec::new(),
+        },
     ]
 }
 
 pub fn is_web_tool(name: &str) -> bool {
-    name == WEB_SEARCH || name == WEB_FETCH
+    matches!(name, WEB_SEARCH | WEB_FETCH | IMAGE_SEARCH | IMAGE_DOWNLOAD)
 }
 
 fn client() -> reqwest::Client {
@@ -90,11 +146,535 @@ fn erreur(msg: impl Into<String>) -> ToolResult {
     }
 }
 
-pub async fn exec(tool: &str, args: &serde_json::Value) -> ToolResult {
+pub async fn exec(tool: &str, args: &serde_json::Value, projet: &std::path::Path) -> ToolResult {
     match tool {
         WEB_SEARCH => exec_search(args).await,
         WEB_FETCH => exec_fetch(args).await,
+        IMAGE_SEARCH => exec_image_search(args).await,
+        IMAGE_DOWNLOAD => exec_image_download(args, projet).await,
         _ => erreur(format!("outil web inconnu : {tool}")),
+    }
+}
+
+// ── Images ─────────────────────────────────────────────────────────────────
+
+/// Une image trouvée.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Image {
+    pub url: String,
+    pub titre: String,
+    pub page: String,
+    pub largeur: u64,
+    pub hauteur: u64,
+    /// Licence et auteur, quand le moteur les donne (Openverse).
+    pub licence: String,
+}
+
+async fn exec_image_search(args: &serde_json::Value) -> ToolResult {
+    let Some(query) = args
+        .get("query")
+        .and_then(|q| q.as_str())
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+    else {
+        return erreur("il manque la recherche (« query »)");
+    };
+    let max = args
+        .get("max_results")
+        .and_then(|n| n.as_u64())
+        .unwrap_or(10)
+        .clamp(1, 30) as usize;
+    let libre = args
+        .get("free_license")
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false);
+    let demande = args
+        .get("engine")
+        .and_then(|e| e.as_str())
+        .unwrap_or("auto")
+        .to_ascii_lowercase();
+    let ordre: Vec<&str> = if libre {
+        vec!["commons", "openverse"]
+    } else {
+        // Mesuré : Brave rend 200 images pertinentes en moins d'une seconde ;
+        // Commons répond en 0,8 s, Openverse parfois en 20 s ; DuckDuckGo exige
+        // un défi JavaScript, Google aussi, Bing ne sert qu'une image.
+        match demande.as_str() {
+            // Bing, seulement demandé : sans JavaScript, il rend des images
+            // sans rapport avec la recherche.
+            "commons" => vec!["commons", "brave", "openverse"],
+            "openverse" => vec!["openverse", "brave", "commons"],
+            "bing" => vec!["bing", "brave", "commons", "openverse"],
+            _ => vec!["brave", "commons", "openverse"],
+        }
+    };
+    let http = client();
+    let mut echecs = Vec::new();
+    for moteur in ordre {
+        let r = match moteur {
+            "brave" => images_brave(&http, query).await,
+            "commons" => images_commons(&http, query).await,
+            "bing" => images_bing(&http, query).await,
+            _ => images_openverse(&http, query).await,
+        };
+        match r {
+            Ok(mut images) if !images.is_empty() => {
+                images.truncate(max);
+                let mut out = format!("Images {moteur} pour « {query} » :\n");
+                for (i, im) in images.iter().enumerate() {
+                    out.push_str(&format!(
+                        "\n{}. {}\n   image : {}\n",
+                        i + 1,
+                        im.titre,
+                        im.url
+                    ));
+                    if im.largeur > 0 && im.hauteur > 0 {
+                        out.push_str(&format!("   taille : {}×{}\n", im.largeur, im.hauteur));
+                    }
+                    if !im.page.is_empty() {
+                        out.push_str(&format!("   page : {}\n", im.page));
+                    }
+                    if !im.licence.is_empty() {
+                        out.push_str(&format!("   licence : {}\n", im.licence));
+                    }
+                }
+                out.push_str(
+                    "\nPour un site : image_download enregistre une image dans le projet \
+                     (plus sûr qu'un lien vers un autre site, qui peut disparaître).",
+                );
+                return ToolResult {
+                    ok: true,
+                    output: out,
+                    artifact: None,
+                };
+            }
+            Ok(_) => echecs.push(format!("{moteur} : aucune image lisible")),
+            Err(e) => echecs.push(format!("{moteur} : {e}")),
+        }
+    }
+    erreur(format!(
+        "aucun moteur d'images n'a répondu ({}). Réessaie avec d'autres mots.",
+        echecs.join(" ; ")
+    ))
+}
+
+/// Brave Images : la page porte ses résultats dans un objet JavaScript —
+/// pour chacun, le titre, la page d'origine, l'image originale et sa taille.
+async fn images_brave(http: &reqwest::Client, q: &str) -> Result<Vec<Image>, String> {
+    let (finale, html) = telecharger(
+        http,
+        &format!("https://search.brave.com/images?q={}", encoder(q)),
+    )
+    .await?;
+    if finale.contains("captcha") {
+        return Err("le moteur demande une vérification humaine".into());
+    }
+    Ok(lire_images_brave(&html))
+}
+
+/// Une chaîne JavaScript : `\u002F` et `\/` redeviennent `/`.
+fn chaine_js(s: &str) -> String {
+    let re = regex::Regex::new(r"\\u([0-9a-fA-F]{4})").expect("motif valide");
+    re.replace_all(s, |c: &regex::Captures| {
+        u32::from_str_radix(&c[1], 16)
+            .ok()
+            .and_then(char::from_u32)
+            .map(String::from)
+            .unwrap_or_default()
+    })
+    .replace("\\/", "/")
+}
+
+pub fn lire_images_brave(html: &str) -> Vec<Image> {
+    let original = regex::Regex::new(r#"original:"([^"]+)""#).expect("motif valide");
+    let page = regex::Regex::new(r#"^\{?title:"[^"]*",url:"([^"]+)""#).expect("motif valide");
+    let titre = regex::Regex::new(r#"^\{?title:"((?:[^"\\]|\\.)*)""#).expect("motif valide");
+    let taille =
+        regex::Regex::new(r"properties:\{[^}]*?height:(\d+),width:(\d+)").expect("motif valide");
+    // L'image originale se lit aussi dans l'adresse des images semblables,
+    // quand l'objet la désigne par une variable (`url:x`).
+    let semblable = regex::Regex::new(r#"similar_images_api_url:"[^"]*?[?&]url=([^&"]+)"#)
+        .expect("motif valide");
+    let mut out: Vec<Image> = Vec::new();
+    for morceau in html.split("{title:\"").skip(1) {
+        let m = format!("title:\"{morceau}");
+        let url = original
+            .captures(&m)
+            .map(|c| chaine_js(&c[1]))
+            .filter(|u| u.starts_with("http"))
+            .or_else(|| {
+                semblable
+                    .captures(&m)
+                    .map(|c| decoder_pourcent(&c[1]))
+                    .filter(|u| u.starts_with("http"))
+            });
+        let Some(url) = url else {
+            continue;
+        };
+        if out.iter().any(|x| x.url == url) {
+            continue;
+        }
+        let (largeur, hauteur) = taille
+            .captures(&m)
+            .map(|c| (c[2].parse().unwrap_or(0), c[1].parse().unwrap_or(0)))
+            .unwrap_or((0, 0));
+        out.push(Image {
+            url,
+            titre: couper(
+                &entites(&chaine_js(
+                    &titre
+                        .captures(&m)
+                        .map(|c| c[1].to_string())
+                        .unwrap_or_default(),
+                )),
+                140,
+            ),
+            page: page
+                .captures(&m)
+                .map(|c| chaine_js(&c[1]))
+                .unwrap_or_default(),
+            largeur,
+            hauteur,
+            licence: String::new(),
+        });
+    }
+    out
+}
+
+/// Bing Images : chaque vignette porte, dans son attribut `m`, le JSON de
+/// l'image (`murl` l'image, `purl` sa page, `t` son titre).
+async fn images_bing(http: &reqwest::Client, q: &str) -> Result<Vec<Image>, String> {
+    let qe = encoder(q);
+    let (finale, html) = telecharger(
+        http,
+        &format!("https://www.bing.com/images/search?q={qe}&form=HDRSC2&first=1"),
+    )
+    .await?;
+    if finale.contains("captcha") {
+        return Err("le moteur demande une vérification humaine".into());
+    }
+    Ok(lire_images_bing(&html))
+}
+
+pub fn lire_images_bing(html: &str) -> Vec<Image> {
+    let re = regex::Regex::new(r#"\bm="(\{[^"]*\})""#).expect("motif valide");
+    let mut out: Vec<Image> = Vec::new();
+    for c in re.captures_iter(html) {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&entites(&c[1])) else {
+            continue;
+        };
+        let url = v["murl"].as_str().unwrap_or("").to_string();
+        if !url.starts_with("http") || out.iter().any(|x| x.url == url) {
+            continue;
+        }
+        out.push(Image {
+            url,
+            titre: couper(&texte(v["t"].as_str().unwrap_or("")), 140),
+            page: v["purl"].as_str().unwrap_or("").to_string(),
+            ..Image::default()
+        });
+    }
+    out
+}
+
+/// Openverse : des images sous licence libre (Creative Commons, domaine
+/// public), par une API ouverte et sans clé.
+async fn images_openverse(http: &reqwest::Client, q: &str) -> Result<Vec<Image>, String> {
+    let (_, corps) = telecharger_accept(
+        http,
+        &format!(
+            "https://api.openverse.org/v1/images/?q={}&page_size=20",
+            encoder(q)
+        ),
+        "application/json",
+    )
+    .await?;
+    let v: serde_json::Value = serde_json::from_str(&corps).map_err(|e| e.to_string())?;
+    Ok(lire_images_openverse(&v))
+}
+
+/// Wikimedia Commons : des millions de photos sous licence libre, par l'API
+/// de MediaWiki. Une phrase entière ne trouve souvent rien (tous les mots
+/// sont exigés) : on réessaie alors avec ses mots les plus longs.
+async fn images_commons(http: &reqwest::Client, q: &str) -> Result<Vec<Image>, String> {
+    let mut essais = vec![q.to_string()];
+    let mut mots: Vec<&str> = q
+        .split_whitespace()
+        .filter(|m| m.chars().count() > 3)
+        .collect();
+    if mots.len() > 2 {
+        mots.sort_by_key(|m| std::cmp::Reverse(m.chars().count()));
+        essais.push(mots[..2].join(" "));
+    }
+    for essai in essais {
+        let url = format!(
+            "https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search\
+             &gsrnamespace=6&gsrlimit=20&gsrsearch={}%20filetype%3Abitmap&prop=imageinfo\
+             &iiprop=url%7Csize%7Cextmetadata&iiurlwidth=1600\
+             &iiextmetadatafilter=LicenseShortName%7CArtist%7CObjectName",
+            encoder(&essai).replace('+', "%20")
+        );
+        let (_, corps) = telecharger_accept(http, &url, "application/json").await?;
+        let v: serde_json::Value = serde_json::from_str(&corps).map_err(|e| e.to_string())?;
+        let images = lire_images_commons(&v);
+        if !images.is_empty() {
+            return Ok(images);
+        }
+    }
+    Ok(Vec::new())
+}
+
+pub fn lire_images_commons(v: &serde_json::Value) -> Vec<Image> {
+    let mut pages: Vec<&serde_json::Value> = v["query"]["pages"]
+        .as_object()
+        .map(|o| o.values().collect())
+        .unwrap_or_default();
+    pages.sort_by_key(|p| p["index"].as_u64().unwrap_or(u64::MAX));
+    let mut out = Vec::new();
+    for p in pages {
+        let info = &p["imageinfo"][0];
+        // La version réduite à 1 600 px quand l'original est plus grand : une
+        // photo de 6 000 px pèse 15 Mo pour un site.
+        let url = info["thumburl"]
+            .as_str()
+            .or_else(|| info["url"].as_str())
+            .unwrap_or("")
+            .to_string();
+        if !url.starts_with("http") {
+            continue;
+        }
+        let meta = &info["extmetadata"];
+        let auteur = texte(meta["Artist"]["value"].as_str().unwrap_or(""));
+        let licence = meta["LicenseShortName"]["value"].as_str().unwrap_or("");
+        let titre = p["title"]
+            .as_str()
+            .unwrap_or("")
+            .trim_start_matches("File:")
+            .to_string();
+        out.push(Image {
+            url,
+            titre: couper(&titre, 140),
+            page: info["descriptionurl"].as_str().unwrap_or("").to_string(),
+            largeur: info["thumbwidth"]
+                .as_u64()
+                .or_else(|| info["width"].as_u64())
+                .unwrap_or(0),
+            hauteur: info["thumbheight"]
+                .as_u64()
+                .or_else(|| info["height"].as_u64())
+                .unwrap_or(0),
+            licence: if auteur.is_empty() {
+                licence.to_string()
+            } else {
+                couper(&format!("{licence}, par {auteur}"), 120)
+            },
+        });
+    }
+    out
+}
+
+pub fn lire_images_openverse(v: &serde_json::Value) -> Vec<Image> {
+    let mut out: Vec<Image> = Vec::new();
+    for r in v["results"].as_array().into_iter().flatten() {
+        let url = r["url"].as_str().unwrap_or("").to_string();
+        if !url.starts_with("http") || out.iter().any(|x| x.url == url) {
+            continue;
+        }
+        let licence = format!(
+            "{} {}{}",
+            r["license"].as_str().unwrap_or("").to_uppercase(),
+            r["license_version"].as_str().unwrap_or(""),
+            r["creator"]
+                .as_str()
+                .map(|c| format!(", par {c}"))
+                .unwrap_or_default()
+        );
+        out.push(Image {
+            url,
+            titre: couper(r["title"].as_str().unwrap_or(""), 140),
+            page: r["foreign_landing_url"].as_str().unwrap_or("").to_string(),
+            largeur: r["width"].as_u64().unwrap_or(0),
+            hauteur: r["height"].as_u64().unwrap_or(0),
+            licence: licence.trim().to_string(),
+        });
+    }
+    out
+}
+
+/// L'extension d'un type d'image, ou `None` si ce n'en est pas une.
+fn extension_image(type_mime: &str, debut: &[u8]) -> Option<&'static str> {
+    let t = type_mime.to_ascii_lowercase();
+    let par_type = if t.contains("jpeg") || t.contains("jpg") {
+        Some("jpg")
+    } else if t.contains("png") {
+        Some("png")
+    } else if t.contains("webp") {
+        Some("webp")
+    } else if t.contains("gif") {
+        Some("gif")
+    } else if t.contains("svg") {
+        Some("svg")
+    } else if t.contains("avif") {
+        Some("avif")
+    } else {
+        None
+    };
+    // Le contenu d'abord : bien des serveurs disent « octet-stream ».
+    match debut {
+        [0xFF, 0xD8, 0xFF, ..] => Some("jpg"),
+        [0x89, b'P', b'N', b'G', ..] => Some("png"),
+        [b'G', b'I', b'F', b'8', ..] => Some("gif"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("webp"),
+        _ => par_type,
+    }
+}
+
+async fn exec_image_download(args: &serde_json::Value, projet: &std::path::Path) -> ToolResult {
+    let url = args
+        .get("url")
+        .and_then(|u| u.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    let chemin = args
+        .get("path")
+        .and_then(|u| u.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return erreur("il faut l'adresse http/https de l'image (« url »)");
+    }
+    if chemin.is_empty() {
+        return erreur("il faut le chemin où l'enregistrer dans le projet (« path »)");
+    }
+    if projet.as_os_str().is_empty() {
+        return erreur("aucun dossier de projet : rien où enregistrer l'image");
+    }
+    let mut cible = match crate::tools::resolve_path(projet, chemin) {
+        Ok(p) => p,
+        Err(e) => return erreur(e.to_string()),
+    };
+    let (type_mime, octets) = match image_par_curl(url).await {
+        Ok(r) => r,
+        Err(_) => match image_par_client(url).await {
+            Ok(r) => r,
+            Err(e) => return erreur(e),
+        },
+    };
+    enregistrer_image(url, &type_mime, &octets, &mut cible, projet).await
+}
+
+/// L'image par curl : le type se lit à la fin de la sortie.
+async fn image_par_curl(url: &str) -> Result<(String, Vec<u8>), String> {
+    let mut commande = std::process::Command::new("curl");
+    locaryn_config::hide_console(&mut commande);
+    let sortie = tokio::process::Command::from(commande)
+        .args([
+            "-sL",
+            "--max-time",
+            "30",
+            "--max-filesize",
+            &IMAGE_MAX_OCTETS.to_string(),
+            "-A",
+            USER_AGENT,
+            "-H",
+            "Accept: image/avif,image/webp,image/*,*/*;q=0.8",
+            "-w",
+            &format!("{FIN_CURL}%{{content_type}}\u{1}%{{http_code}}"),
+            url,
+        ])
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|e| format!("curl absent : {e}"))?;
+    let marque = FIN_CURL.as_bytes();
+    let pos = sortie
+        .stdout
+        .windows(marque.len())
+        .rposition(|w| w == marque)
+        .ok_or("curl : sortie illisible")?;
+    let fin = String::from_utf8_lossy(&sortie.stdout[pos + marque.len()..]).into_owned();
+    let (type_mime, code) = fin.split_once('\u{1}').unwrap_or(("", "0"));
+    let code: u16 = code.trim().parse().unwrap_or(0);
+    if !(200..300).contains(&code) {
+        return Err(format!(
+            "HTTP {code} : le site refuse l'image, essaie une autre adresse de image_search"
+        ));
+    }
+    let mut octets = sortie.stdout;
+    octets.truncate(pos);
+    Ok((type_mime.to_string(), octets))
+}
+
+async fn image_par_client(url: &str) -> Result<(String, Vec<u8>), String> {
+    let http = client();
+    let resp = match http
+        .get(url)
+        .header("Accept", "image/avif,image/webp,image/*,*/*;q=0.8")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return Err(format!("réseau : {e}")),
+    };
+    if !resp.status().is_success() {
+        return Err(format!(
+            "HTTP {} : le site refuse l'image, essaie une autre adresse de image_search",
+            resp.status().as_u16()
+        ));
+    }
+    let type_mime = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let octets = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("téléchargement interrompu : {e}"))?;
+    Ok((type_mime, octets.to_vec()))
+}
+
+async fn enregistrer_image(
+    url: &str,
+    type_mime: &str,
+    octets: &[u8],
+    cible: &mut std::path::PathBuf,
+    projet: &std::path::Path,
+) -> ToolResult {
+    let _ = url;
+    if octets.len() > IMAGE_MAX_OCTETS {
+        return erreur("image trop lourde (plus de 25 Mo)");
+    }
+    let Some(ext) = extension_image(type_mime, &octets[..octets.len().min(16)]) else {
+        return erreur(format!(
+            "ce n'est pas une image (type « {type_mime} ») : c'est sans doute la page qui la \
+             montre. Prends l'adresse « image : » de image_search."
+        ));
+    };
+    if cible.extension().is_none() {
+        cible.set_extension(ext);
+    }
+    if let Some(dossier) = cible.parent() {
+        if let Err(e) = tokio::fs::create_dir_all(dossier).await {
+            return erreur(format!("dossier impossible à créer : {e}"));
+        }
+    }
+    if let Err(e) = tokio::fs::write(&*cible, octets).await {
+        return erreur(format!("image non enregistrée : {e}"));
+    }
+    let relatif = cible
+        .strip_prefix(projet)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| cible.to_string_lossy().into_owned());
+    ToolResult {
+        ok: true,
+        output: format!(
+            "Image enregistrée : {relatif} ({} Ko, {ext}). Dans une page à la racine du projet : \
+             <img src=\"{relatif}\" alt=\"…\">",
+            octets.len() / 1024
+        ),
+        artifact: None,
     }
 }
 
@@ -171,14 +751,73 @@ async fn exec_search(args: &serde_json::Value) -> ToolResult {
     ))
 }
 
+/// Marque qui sépare la page de ce que curl dit d'elle (adresse finale, code).
+const FIN_CURL: &str = "\n\u{1}LOCARYN\u{1}";
+
+/// Télécharger par le `curl` du système (présent sur Windows 10+, macOS,
+/// Linux). Brave, Openverse et bien des sites derrière Cloudflare refusent
+/// le client HTTP de l'application à sa signature TLS (429 à chaque requête,
+/// ou 20 s d'attente) et répondent à curl en moins d'une seconde.
+async fn telecharger_curl(url: &str, accept: &str) -> Result<(String, String), String> {
+    let mut commande = std::process::Command::new("curl");
+    locaryn_config::hide_console(&mut commande);
+    let sortie = tokio::process::Command::from(commande)
+        .args([
+            "-sL",
+            "--compressed",
+            "--max-time",
+            "20",
+            "--max-redirs",
+            "6",
+            "-A",
+            USER_AGENT,
+            "-H",
+            "Accept-Language: fr-FR,fr;q=0.9,en;q=0.8",
+            "-H",
+            &format!("Accept: {accept}"),
+            "-w",
+            &format!("{FIN_CURL}%{{url_effective}}\u{1}%{{http_code}}"),
+            url,
+        ])
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|e| format!("curl absent : {e}"))?;
+    let texte = String::from_utf8_lossy(&sortie.stdout).into_owned();
+    let (corps, fin) = texte
+        .rsplit_once(FIN_CURL)
+        .ok_or_else(|| format!("curl : {}", String::from_utf8_lossy(&sortie.stderr).trim()))?;
+    let (finale, code) = fin.split_once('\u{1}').unwrap_or((url, "0"));
+    let code: u16 = code.trim().parse().unwrap_or(0);
+    if !(200..300).contains(&code) {
+        return Err(format!("HTTP {code}"));
+    }
+    Ok((finale.to_string(), corps.to_string()))
+}
+
 async fn telecharger(http: &reqwest::Client, url: &str) -> Result<(String, String), String> {
+    telecharger_accept(
+        http,
+        url,
+        "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+    )
+    .await
+}
+
+/// Par curl d'abord, par le client de l'application s'il manque ou échoue.
+async fn telecharger_accept(
+    http: &reqwest::Client,
+    url: &str,
+    accept: &str,
+) -> Result<(String, String), String> {
+    match telecharger_curl(url, accept).await {
+        Ok(r) => return Ok(r),
+        Err(e) => tracing::debug!(erreur = %e, %url, "curl n'a pas abouti — client intégré"),
+    }
     let resp = http
         .get(url)
         .header("Accept-Language", "fr-FR,fr;q=0.9,en;q=0.8")
-        .header(
-            "Accept",
-            "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
-        )
+        .header("Accept", accept)
         .send()
         .await
         .map_err(|e| format!("réseau : {e}"))?;
@@ -579,6 +1218,71 @@ mod tests {
 }
 
 #[cfg(test)]
+mod images_hors_ligne {
+    #[test]
+    fn bing_rend_l_adresse_de_l_image() {
+        let html = r#"<a class="iusc" m="{&quot;purl&quot;:&quot;https://exemple.fr/page&quot;,&quot;murl&quot;:&quot;https://exemple.fr/foret.jpg&quot;,&quot;t&quot;:&quot;For&#234;t &lt;b&gt;alpine&lt;/b&gt;&quot;}" href="/images">x</a>"#;
+        let r = super::lire_images_bing(html);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].url, "https://exemple.fr/foret.jpg");
+        assert_eq!(r[0].page, "https://exemple.fr/page");
+        assert_eq!(r[0].titre, "Forêt alpine");
+    }
+
+    #[test]
+    fn brave_rend_l_original_sa_page_et_sa_taille() {
+        let html = r#"x,{title:"Forêt \u002F alpine",url:"https://exemple.fr/page",is_source_local:false,thumbnail:{src:"https://imgs.search.brave.com/a",height:250,width:250,original:"https://exemple.fr/foret.webp",resized:null},properties:{url:"https://exemple.fr/foret.webp",resized:"r",placeholder:"p",height:1112,width:960,format:null},meta_url:{}},{title:"Deux",url:"https://b.fr",thumbnail:{src:"t"},properties:{url:x,height:10,width:20},similar_images_api_url:"/api/images/similar?q=a&url=https%3A%2F%2Fb.fr%2Fdeux.jpg&safesearch=moderate"},{title:"Sans image",url:"https://c.fr"}"#;
+        let r = super::lire_images_brave(html);
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!(r[0].url, "https://exemple.fr/foret.webp");
+        assert_eq!(r[0].page, "https://exemple.fr/page");
+        assert_eq!(r[0].titre, "Forêt / alpine");
+        assert_eq!((r[0].largeur, r[0].hauteur), (960, 1112));
+        assert_eq!(r[1].url, "https://b.fr/deux.jpg");
+    }
+
+    #[test]
+    fn commons_rend_la_version_reduite_et_la_licence() {
+        let v = serde_json::json!({"query": {"pages": {
+            "2": {"index": 2, "title": "File:B.jpg", "imageinfo": [{"url": "https://u.org/b.jpg", "width": 800, "height": 600, "descriptionurl": "https://c.org/B"}]},
+            "1": {"index": 1, "title": "File:A.jpg", "imageinfo": [{"url": "https://u.org/a.jpg", "thumburl": "https://u.org/1600px-a.jpg", "thumbwidth": 1600, "thumbheight": 900, "width": 6000,
+                  "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"}, "Artist": {"value": "<a href=\"x\">Ana</a>"}}}]}
+        }}});
+        let r = super::lire_images_commons(&v);
+        assert_eq!(r[0].url, "https://u.org/1600px-a.jpg");
+        assert_eq!(r[0].titre, "A.jpg");
+        assert_eq!((r[0].largeur, r[0].hauteur), (1600, 900));
+        assert_eq!(r[0].licence, "CC BY-SA 4.0, par Ana");
+        assert_eq!(r[1].url, "https://u.org/b.jpg");
+    }
+
+    #[test]
+    fn openverse_rend_la_licence() {
+        let v = serde_json::json!({"results": [
+            {"url": "https://o.org/a.jpg", "title": "A", "license": "by", "license_version": "4.0", "creator": "Ana", "foreign_landing_url": "https://flickr.com/a"}
+        ]});
+        let r = super::lire_images_openverse(&v);
+        assert_eq!(r[0].licence, "BY 4.0, par Ana");
+    }
+
+    #[test]
+    fn le_contenu_dit_si_c_est_une_image() {
+        assert_eq!(
+            super::extension_image("application/octet-stream", &[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some("jpg")
+        );
+        assert_eq!(
+            super::extension_image("image/webp", b"RIFF1234WEBPVP8"),
+            Some("webp")
+        );
+        assert_eq!(
+            super::extension_image("text/html", b"<!doctype html>"),
+            None
+        );
+    }
+}
+
+#[cfg(test)]
 mod reel {
     /// Contre les vrais moteurs : `cargo test -p locaryn-agent-runtime web::reel -- --ignored --nocapture`.
     #[tokio::test]
@@ -588,6 +1292,7 @@ mod reel {
             let r = super::exec(
                 super::WEB_SEARCH,
                 &serde_json::json!({"query": "nvidia rtx spark", "engine": moteur, "max_results": 3}),
+                std::path::Path::new(""),
             )
             .await;
             println!("=== {moteur} ok={}\n{}\n", r.ok, r.output);
@@ -595,8 +1300,48 @@ mod reel {
         let p = super::exec(
             super::WEB_FETCH,
             &serde_json::json!({"url": "https://en.wikipedia.org/wiki/Nvidia_RTX_Spark", "max_chars": 600}),
+            std::path::Path::new(""),
         )
         .await;
         println!("=== fetch ok={}\n{}", p.ok, p.output);
+    }
+
+    /// `cargo test -p locaryn-agent-runtime web::reel::images -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore]
+    async fn images() {
+        let dossier = std::env::temp_dir().join("locaryn-images-essai");
+        let _ = std::fs::create_dir_all(&dossier);
+        for moteur in ["brave", "commons", "openverse", "bing"] {
+            let debut = std::time::Instant::now();
+            let r = super::exec(
+                super::IMAGE_SEARCH,
+                &serde_json::json!({"query": "forêt alpine lever du soleil", "engine": moteur, "max_results": 3}),
+                &dossier,
+            )
+            .await;
+            println!(
+                "=== {moteur} ok={} en {:?}\n{}\n",
+                r.ok,
+                debut.elapsed(),
+                r.output
+            );
+            if moteur != "brave" {
+                continue;
+            }
+            let url = r
+                .output
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("image : "))
+                .unwrap_or("")
+                .to_string();
+            let d = super::exec(
+                super::IMAGE_DOWNLOAD,
+                &serde_json::json!({"url": url, "path": "images/foret"}),
+                &dossier,
+            )
+            .await;
+            println!("=== téléchargement ok={}\n{}", d.ok, d.output);
+        }
     }
 }
