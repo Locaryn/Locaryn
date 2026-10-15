@@ -215,7 +215,10 @@ fn ouvrir_avec(cible: &Path, action: &str) -> Result<(), String> {
     let dossier = if cible.is_dir() {
         cible.to_path_buf()
     } else {
-        cible.parent().map(Path::to_path_buf).unwrap_or_else(|| cible.to_path_buf())
+        cible
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| cible.to_path_buf())
     };
     match action {
         "explorer" => crate::reveler::ouvrir(&crate::reveler::cible(cible, &dossier)),
@@ -237,7 +240,8 @@ fn lancer_vscode(cible: &Path) -> Result<(), String> {
             return Ok(());
         }
         if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            let exe = PathBuf::from(local).join("Programs")
+            let exe = PathBuf::from(local)
+                .join("Programs")
                 .join("Microsoft VS Code")
                 .join("Code.exe");
             if exe.exists() {
@@ -248,11 +252,18 @@ fn lancer_vscode(cible: &Path) -> Result<(), String> {
                     .map_err(|e| e.to_string());
             }
         }
-        Err("VS Code est introuvable : installez-le, ou ajoutez la commande « code » au PATH.".into())
+        Err(
+            "VS Code est introuvable : installez-le, ou ajoutez la commande « code » au PATH."
+                .into(),
+        )
     }
     #[cfg(target_os = "macos")]
     {
-        if std::process::Command::new("code").arg(cible).spawn().is_ok() {
+        if std::process::Command::new("code")
+            .arg(cible)
+            .spawn()
+            .is_ok()
+        {
             return Ok(());
         }
         std::process::Command::new("open")

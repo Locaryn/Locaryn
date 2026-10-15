@@ -108,7 +108,9 @@ impl Headroom {
         if total_vram_gb <= 0.0 {
             return 0.0;
         }
-        (total_vram_gb * part).max(plancher).min(total_vram_gb * 0.5)
+        (total_vram_gb * part)
+            .max(plancher)
+            .min(total_vram_gb * 0.5)
     }
 
     /// Mémoire système laissée libre, en Go.

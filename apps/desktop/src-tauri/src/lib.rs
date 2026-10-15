@@ -115,8 +115,7 @@ struct Core {
     /// ne retire que *son* jeton, jamais celui de la réponse suivante déjà
     /// partie (enchaînements /plan, /goal, file d'attente) — sans quoi Stop
     /// ne trouvait plus rien à arrêter.
-    chat_cancels:
-        Arc<tokio::sync::Mutex<HashMap<uuid::Uuid, Vec<(u64, tokio_util::sync::CancellationToken)>>>>,
+    chat_cancels: Arc<tokio::sync::Mutex<JetonsDAnnulation>>,
     /// Le travail d'arrière-plan sur le modèle (tri de la mémoire) : arrêté
     /// net dès qu'une personne envoie un message.
     arriere_plan_stop: Arc<memory_gardener::Interrupteur>,
@@ -1752,13 +1751,16 @@ pub struct JointDocumentIn {
     pub base64: Option<String>,
 }
 
+/// Les générations en cours, par conversation : numéro et jeton d'annulation.
+type JetonsDAnnulation = HashMap<Uuid, Vec<(u64, tokio_util::sync::CancellationToken)>>;
+
 /// Numéro croissant de chaque génération lancée, pour reconnaître son jeton
 /// d'annulation parmi ceux des réponses suivantes.
 static NUMERO_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// Retire le jeton d'annulation de *cette* génération, et seulement lui.
 async fn liberer_annulation(
-    cancels: &tokio::sync::Mutex<HashMap<Uuid, Vec<(u64, tokio_util::sync::CancellationToken)>>>,
+    cancels: &tokio::sync::Mutex<JetonsDAnnulation>,
     session_id: Uuid,
     generation: u64,
 ) {
@@ -1951,7 +1953,10 @@ async fn send_message(
             }
         }
     }
-    if let Some(ref p) = active_provider.as_ref().filter(|_| panne_du_moteur.is_none()) {
+    if let Some(p) = active_provider
+        .as_ref()
+        .filter(|_| panne_du_moteur.is_none())
+    {
         if moteur_supervise(&p.engine) {
             tokio::select! {
                 res = core.supervisor.ensure_running(&p.engine) => {
@@ -2297,7 +2302,8 @@ async fn send_message(
         // nothing is enabled, so the prompt is unchanged for everyone else.
         extra_system: {
             let rt = core.extensions.read().await;
-            let extensions = (!rt.system_prompt.trim().is_empty()).then(|| rt.system_prompt.clone());
+            let extensions =
+                (!rt.system_prompt.trim().is_empty()).then(|| rt.system_prompt.clone());
             drop(rt);
             // Ce que Locaryn a retenu de la personne, sauf dans une
             // conversation éphémère ou pour une figure qui travaille à part.
@@ -2315,22 +2321,41 @@ async fn send_message(
             let memoire = if session_ephemere || figure_sans_memoire {
                 None
             } else {
-                core.storage.memory.as_system_block(None).await.ok().flatten()
+                core.storage
+                    .memory
+                    .as_system_block(None)
+                    .await
+                    .ok()
+                    .flatten()
             };
             let morceaux: Vec<String> = [
-                extensions.map(|e| format!("# Extensions
+                extensions.map(|e| {
+                    format!(
+                        "# Extensions
 
-{}", e.trim())),
-                memoire.map(|m| format!("# Mémoire
+{}",
+                        e.trim()
+                    )
+                }),
+                memoire.map(|m| {
+                    format!(
+                        "# Mémoire
 
-{}", m.trim())),
+{}",
+                        m.trim()
+                    )
+                }),
             ]
             .into_iter()
             .flatten()
             .collect();
-            (!morceaux.is_empty()).then(|| morceaux.join("
+            (!morceaux.is_empty()).then(|| {
+                morceaux.join(
+                    "
 
-"))
+",
+                )
+            })
         },
         // L'écran promet que Locaryn relit les fiches du projet avant de
         // répondre : c'est ici que la promesse se tient. Les portées que cette

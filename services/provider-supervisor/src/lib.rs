@@ -1649,9 +1649,11 @@ pub fn is_polaris_or_legacy(gpu_name: Option<&str>) -> bool {
     gpu_name.is_some_and(|name| {
         let n = name.to_lowercase();
         (n.contains("radeon") || n.contains("amd") || n.contains("rx "))
-            && ["rx 470", "rx 480", "rx 550", "rx 560", "rx 570", "rx 580", "rx 590"]
-                .iter()
-                .any(|m| n.contains(m))
+            && [
+                "rx 470", "rx 480", "rx 550", "rx 560", "rx 570", "rx 580", "rx 590",
+            ]
+            .iter()
+            .any(|m| n.contains(m))
             || n.contains("polaris")
             || n.contains("ellesmere")
             || n.contains("baffin")
@@ -1661,8 +1663,9 @@ pub fn is_polaris_or_legacy(gpu_name: Option<&str>) -> bool {
 /// Le niveau de prudence choisi dans les réglages (`model_caution.json`,
 /// écrit par l'application). Intermédiaire par défaut.
 pub fn caution_headroom() -> locaryn_llmfit::Headroom {
-    let raw = std::fs::read_to_string(locaryn_config::default_data_dir().join("model_caution.json"))
-        .unwrap_or_default();
+    let raw =
+        std::fs::read_to_string(locaryn_config::default_data_dir().join("model_caution.json"))
+            .unwrap_or_default();
     let level = serde_json::from_str::<serde_json::Value>(&raw)
         .ok()
         .and_then(|v| v.get("level").and_then(|l| l.as_str()).map(str::to_string))
@@ -1716,7 +1719,10 @@ fn fit_memorise(data_dir: &std::path::Path, cle: &FitCle, libre_gb: f64) -> Opti
 /// Le moteur répond : noter le contexte que `--fit` a trouvé, pour les
 /// chargements suivants.
 async fn enregistrer_fit(http: &reqwest::Client, endpoint: &str) {
-    let attente = FIT_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let attente = FIT_EN_COURS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
     let Some((cle, libre_gb, deja)) = attente else {
         return;
     };
@@ -1753,7 +1759,10 @@ async fn enregistrer_fit(http: &reqwest::Client, endpoint: &str) {
 /// Le chargement a échoué : le contexte mémorisé ne vaut plus. Vrai s'il en
 /// avait été utilisé un — on retente alors avec `--fit`, sur le GPU.
 fn oublier_fit() -> bool {
-    let attente = FIT_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let attente = FIT_EN_COURS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
     let _ = std::fs::remove_file(locaryn_config::default_data_dir().join(FIT_MEMORISE));
     attente.is_some_and(|(_, _, deja)| deja)
 }
@@ -2052,7 +2061,10 @@ async fn spawn_llama_server(
 
     let mut ctx = ctx_demande;
     if let Some(n) = ctx_memorise {
-        tracing::info!(contexte = n, "contexte trouvé au chargement précédent — sans essai");
+        tracing::info!(
+            contexte = n,
+            "contexte trouvé au chargement précédent — sans essai"
+        );
         cmd.arg("-c").arg(n.to_string()).arg("-fit").arg("off");
         ctx = 0;
     } else {

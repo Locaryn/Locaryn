@@ -1,11 +1,11 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { ConversationHistorySettings } from "../components/ConversationHistorySettings";
-import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import { DefaultPermissionsSettings } from "../components/DefaultPermissionsSettings";
 import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
 import { NotificationSettings } from "../components/NotificationSettings";
+import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import { type LocalProfile, type Project, type Session, core } from "../lib/core";
 import { pickImageFile } from "../lib/dialog";
 import { toMediaUrl } from "../lib/media";

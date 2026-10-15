@@ -49,7 +49,11 @@ export function ModeleTropLourd({ onOpenSettings }: { onOpenSettings?: () => voi
             Ouvrir les réglages
           </button>
         )}
-        <button type="button" className="locaryn-btn locaryn-btn-primary" onClick={() => setRaison(null)}>
+        <button
+          type="button"
+          className="locaryn-btn locaryn-btn-primary"
+          onClick={() => setRaison(null)}
+        >
           Compris
         </button>
       </div>

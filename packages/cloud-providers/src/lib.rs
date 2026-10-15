@@ -387,8 +387,15 @@ pub async fn usage_of_active(host: &Host<'_>) -> Option<serde_json::Value> {
     let active = host.storage.providers.active().await.ok().flatten()?;
     let id = ProviderRepo::cloud_provider_of(&active)?;
     let p = declared(host).await.into_iter().find(|p| p.id == id)?;
-    let url = p.manifest.usage_url.clone().filter(|u| !u.trim().is_empty())?;
-    let mut req = host.http.get(&url).timeout(std::time::Duration::from_secs(8));
+    let url = p
+        .manifest
+        .usage_url
+        .clone()
+        .filter(|u| !u.trim().is_empty())?;
+    let mut req = host
+        .http
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(8));
     if let Some(k) = stored_key(host, &id) {
         req = req.bearer_auth(k);
     }

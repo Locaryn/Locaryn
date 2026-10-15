@@ -194,7 +194,9 @@ pub async fn run_openai_tool_loop(
     let (all_tools, ecran_differes): (Vec<_>, Vec<_>) = if demande_ecran || ecran.is_empty() {
         (all_tools, Vec::new())
     } else {
-        all_tools.into_iter().partition(|t| !ecran.contains(&t.name))
+        all_tools
+            .into_iter()
+            .partition(|t| !ecran.contains(&t.name))
     };
     // Gardée pour recaler l'allègement si le moteur refuse la requête.
     let outils_complets = all_tools.clone();

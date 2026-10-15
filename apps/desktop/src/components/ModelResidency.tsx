@@ -155,9 +155,7 @@ export function ModelResidency() {
     status && status.idle_timeout_seconds > 0
       ? Math.max(
           0,
-          status.idle_timeout_seconds -
-            status.idle_seconds -
-            (Date.now() - luA.current) / 1000,
+          status.idle_timeout_seconds - status.idle_seconds - (Date.now() - luA.current) / 1000,
         )
       : null;
 

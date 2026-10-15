@@ -133,7 +133,12 @@ async fn un_passage(core: &Core) -> Result<(), String> {
     // Les échanges (question, réponse) écrits depuis le dernier passage, les
     // plus anciens d'abord.
     let mut echanges: Vec<(chrono::DateTime<chrono::Utc>, String)> = Vec::new();
-    let projets = core.storage.projects.list().await.map_err(|e| e.to_string())?;
+    let projets = core
+        .storage
+        .projects
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
     for projet in projets {
         let Ok(sessions) = core.storage.sessions.list_for_project(projet.id).await else {
             continue;

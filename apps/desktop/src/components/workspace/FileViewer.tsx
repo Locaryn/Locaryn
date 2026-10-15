@@ -161,18 +161,10 @@ export function FileViewer({ sessionId, fichier, onRetour }: Props) {
                 <button type="button" role="menuitem" onClick={() => void ouvrirAvec("vscode")}>
                   <Icon name="code" size={14} /> Ouvrir dans VS Code
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void ouvrirAvec("terminal")}
-                >
+                <button type="button" role="menuitem" onClick={() => void ouvrirAvec("terminal")}>
                   <Icon name="terminal-window" size={14} /> Ouvrir dans le terminal
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void ouvrirAvec("explorer")}
-                >
+                <button type="button" role="menuitem" onClick={() => void ouvrirAvec("explorer")}>
                   <Icon name="folder-open" size={14} /> Ouvrir l'emplacement
                 </button>
                 <button type="button" role="menuitem" onClick={() => void copierChemin()}>

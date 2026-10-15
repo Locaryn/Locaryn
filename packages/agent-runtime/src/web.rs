@@ -175,7 +175,10 @@ async fn telecharger(http: &reqwest::Client, url: &str) -> Result<(String, Strin
     let resp = http
         .get(url)
         .header("Accept-Language", "fr-FR,fr;q=0.9,en;q=0.8")
-        .header("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5")
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+        )
         .send()
         .await
         .map_err(|e| format!("réseau : {e}"))?;
@@ -230,18 +233,16 @@ fn decoder_pourcent(s: &str) -> String {
     let mut i = 0;
     while i < octets.len() {
         match octets[i] {
-            b'%' if i + 2 < octets.len() => {
-                match u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                    Ok(v) => {
-                        out.push(v);
-                        i += 3;
-                    }
-                    Err(_) => {
-                        out.push(b'%');
-                        i += 1;
-                    }
+            b'%' if i + 2 < octets.len() => match u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                Ok(v) => {
+                    out.push(v);
+                    i += 3;
                 }
-            }
+                Err(_) => {
+                    out.push(b'%');
+                    i += 1;
+                }
+            },
             b'+' => {
                 out.push(b' ');
                 i += 1;
@@ -340,7 +341,10 @@ pub fn lire_duckduckgo(html: &str) -> Vec<Resultat> {
         if url.contains("duckduckgo.com/y.js") || url.contains("ad_domain=") {
             continue;
         }
-        let ex = extrait.captures(bloc).map(|e| texte(&e[1])).unwrap_or_default();
+        let ex = extrait
+            .captures(bloc)
+            .map(|e| texte(&e[1]))
+            .unwrap_or_default();
         ajouter(&mut out, texte(&c[2]), url, ex);
     }
     out
@@ -353,10 +357,15 @@ pub fn lire_bing(html: &str) -> Vec<Resultat> {
     let mut out = Vec::new();
     for bloc in html.split("<li class=\"b_algo\"").skip(1) {
         let bloc = bloc.split("</li>").next().unwrap_or(bloc);
-        let Some(c) = titre.captures(bloc) else { continue };
+        let Some(c) = titre.captures(bloc) else {
+            continue;
+        };
         let href = entites(&c[1]);
         let url = bing_cible(&href).unwrap_or(href);
-        let ex = para.captures(bloc).map(|p| texte(&p[1])).unwrap_or_default();
+        let ex = para
+            .captures(bloc)
+            .map(|p| texte(&p[1]))
+            .unwrap_or_default();
         ajouter(&mut out, texte(&c[2]), url, ex);
     }
     out
@@ -383,17 +392,17 @@ pub fn lire_brave(html: &str) -> Vec<Resultat> {
     for bloc in html.split("data-type=\"web\"").skip(1) {
         let bloc = &bloc[..bloc.len().min(12_000)];
         let bloc = svg.replace_all(bloc, "");
-        let Some(u) = href.captures(&bloc) else { continue };
-        let Some(t) = titre.captures(&bloc) else { continue };
+        let Some(u) = href.captures(&bloc) else {
+            continue;
+        };
+        let Some(t) = titre.captures(&bloc) else {
+            continue;
+        };
         let t_txt = texte(&t[1]);
         // L'extrait : le texte qui suit le titre, sans l'adresse affichée.
         let apres = &bloc[t.get(0).map(|m| m.end()).unwrap_or(0)..];
         let ex = texte(apres);
-        let ex = ex
-            .split_whitespace()
-            .take(60)
-            .collect::<Vec<_>>()
-            .join(" ");
+        let ex = ex.split_whitespace().take(60).collect::<Vec<_>>().join(" ");
         ajouter(&mut out, t_txt, entites(&u[1]), ex);
     }
     out
@@ -505,8 +514,9 @@ pub fn page_en_texte(html: &str) -> String {
             .expect("motif valide");
         sans = re.replace_all(&sans, " ").into_owned();
     }
-    let blocs = regex::Regex::new(r"(?i)</?(p|div|br|li|h[1-6]|tr|section|article|pre|ul|ol|table)[^>]*>")
-        .expect("motif valide");
+    let blocs =
+        regex::Regex::new(r"(?i)</?(p|div|br|li|h[1-6]|tr|section|article|pre|ul|ol|table)[^>]*>")
+            .expect("motif valide");
     let avec_lignes = blocs.replace_all(&sans, "\n");
     let balises = regex::Regex::new(r"(?s)<[^>]*>").expect("motif valide");
     let brut = entites(&balises.replace_all(&avec_lignes, " "));

@@ -9,7 +9,6 @@ import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
 import { SousAgentsEnCours } from "../components/SousAgentsEnCours";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import { ContextDetails, type ContextUsage } from "../components/chat/ContextDetails";
-import { UsageGauge } from "../components/chat/UsageGauge";
 import {
   type MessageAttachment,
   MessageBubble,
@@ -21,6 +20,7 @@ import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { type EtatEtape, type Suivi, TaskTracker } from "../components/chat/TaskTracker";
 import { ToolCard } from "../components/chat/ToolCard";
 import { type ToolEntry, ToolRun } from "../components/chat/ToolRun";
+import { UsageGauge } from "../components/chat/UsageGauge";
 import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
@@ -1732,7 +1732,9 @@ ${d.texte}`
             onPlanUpdated: (newSteps) =>
               majSuivi((s) => ({
                 ...s,
-                etapes: newSteps.map((texte, idx) => s.etapes[idx] ?? { texte, etat: "attente" as const }),
+                etapes: newSteps.map(
+                  (texte, idx) => s.etapes[idx] ?? { texte, etat: "attente" as const },
+                ),
               })),
             onDone: (ok) =>
               majSuivi((s) => {
@@ -1740,7 +1742,11 @@ ${d.texte}`
                   ...s,
                   etat: (ok ? "fait" : arretSuiviRef.current ? "arrete" : "echec") as Suivi["etat"],
                 };
-                void core.appendChatMessage(sid, "assistant", `<!--locaryn-suivi:${JSON.stringify(fin)}-->`);
+                void core.appendChatMessage(
+                  sid,
+                  "assistant",
+                  `<!--locaryn-suivi:${JSON.stringify(fin)}-->`,
+                );
                 return fin;
               }),
             arret: () => arretSuiviRef.current || runRef.current !== run,
@@ -2111,7 +2117,12 @@ ${preview}`,
         matchSlashInput(texte, pool, activeCapabilities)?.kind === "args";
       if (!avecArgs) {
         slashBornesRef.current = { debut: auCurseur.debut, fin: auCurseur.fin };
-        const items = matchSlash(`/${auCurseur.mot.slice(0, cursor - auCurseur.debut - 1)}`, pool, activeCapabilities) ?? [];
+        const items =
+          matchSlash(
+            `/${auCurseur.mot.slice(0, cursor - auCurseur.debut - 1)}`,
+            pool,
+            activeCapabilities,
+          ) ?? [];
         setSlashInline(true);
         setSlash(items.length ? { kind: "commands", items } : null);
         return;
@@ -2137,8 +2148,7 @@ ${preview}`,
    * « /nom » dans le champ de saisie à l'endroit du slash en cours de frappe.
    * On remplace le token « /mot » courant sans effacer le reste du message. */
   function choisirSlash(cmd: SlashCommand) {
-    const insertion =
-      cmd.action === "skill" ? `@${cmd.name} ` : `/${commandName(cmd, lang)} `;
+    const insertion = cmd.action === "skill" ? `@${cmd.name} ` : `/${commandName(cmd, lang)} `;
     // Remplacement du token slash en cours de frappe, à sa place : le texte
     // qui le suit reste intact.
     const bornes = slashBornesRef.current;
@@ -2367,7 +2377,10 @@ ${preview}`,
     const pos = el?.selectionStart ?? input.length;
     const avant = input.slice(0, pos);
     const apres = input.slice(pos);
-    const nouveauAvant = avant.replace(/(^|\s)@[\w.-]*$/, (match, prefix) => `${prefix}@${item.name} `);
+    const nouveauAvant = avant.replace(
+      /(^|\s)@[\w.-]*$/,
+      (match, prefix) => `${prefix}@${item.name} `,
+    );
     setInput(nouveauAvant + apres);
     setMention(null);
     setTimeout(() => {

@@ -64,8 +64,8 @@ export function CautionSettings() {
         <legend className="locaryn-field-label">Prudence au chargement d'un modèle</legend>
         <p className="locaryn-field-hint">
           La mémoire libre est vérifiée avant chaque chargement, et le moteur garde la réserve
-          choisie libre quand il dimensionne le contexte. Un modèle qui ne la respecte pas n'est
-          pas chargé : une fenêtre l'explique.
+          choisie libre quand il dimensionne le contexte. Un modèle qui ne la respecte pas n'est pas
+          chargé : une fenêtre l'explique.
         </p>
 
         <div className="locaryn-caution-choices">
