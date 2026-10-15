@@ -8,6 +8,20 @@
 // (`Téléchargement de ${nom}`) : chaque « {} » est une valeur gardée telle quelle.
 
 export const EN_EXACT: Record<string, string> = {
+  "Décisions rapides des morphs": "Fast decisions for morphs",
+  "Un petit modèle local aide le contrôle du bureau et du navigateur à choisir où cliquer et à vérifier le résultat, en une fraction de seconde, sans occuper le modèle de conversation. Il s'installe tout seul avec ces morphs (environ 1,3 Go, sur le disque de vos modèles).":
+    "A small local model helps desktop and browser control choose where to click and check the result in a fraction of a second, without tying up the chat model. It installs itself with those morphs (about 1.3 GB, on your models drive).",
+  "Installé (processeur)": "Installed (CPU)",
+  "Installé (carte NVIDIA)": "Installed (NVIDIA GPU)",
+  "Non installé": "Not installed",
+  "Installation en cours…": "Installing…",
+  Réinstaller: "Reinstall",
+  "Téléchargement de l'installateur (uv)…": "Downloading the installer (uv)…",
+  "Installation de Python…": "Installing Python…",
+  "Installation de PyTorch (processeur)…": "Installing PyTorch (CPU)…",
+  "Installation de PyTorch (CUDA)…": "Installing PyTorch (CUDA)…",
+  "Installation du modèle de décision…": "Installing the decision model…",
+  "Téléchargement du modèle de décision…": "Downloading the decision model…",
   "Charger quand même": "Load anyway",
   "Prudence actuelle :": "Current caution:",
   "Fichier créé ou modifié": "File created or modified",

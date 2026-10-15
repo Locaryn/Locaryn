@@ -537,7 +537,18 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
 // ============================================================================
 
 #[tauri::command]
-pub async fn list_extensions(core: State<'_, Core>) -> Result<Vec<InstalledExtension>, String> {
+pub async fn list_extensions(
+    app: tauri::AppHandle,
+    core: State<'_, Core>,
+) -> Result<Vec<InstalledExtension>, String> {
+    // Un morph de contrôle vient peut-être d'arriver : Laya, qu'il utilise,
+    // s'installe alors en arrière-plan.
+    crate::laya_runtime::verifier(app, &core).await;
+    installed_view(&core).await
+}
+
+/// La liste des extensions installées, pour le reste du noyau.
+pub async fn liste_installees(core: State<'_, Core>) -> Result<Vec<InstalledExtension>, String> {
     installed_view(&core).await
 }
 

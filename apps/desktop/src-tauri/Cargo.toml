@@ -47,6 +47,8 @@ reqwest = { workspace = true }
 rustls = { workspace = true, features = ["std"] }
 tokio-util = { workspace = true }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
+hex = "0.4"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

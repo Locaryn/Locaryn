@@ -1353,6 +1353,15 @@ export interface HardwareSpec {
 /** Jusqu'où l'application accepte de remplir la mémoire avant de charger. */
 export type CautionLevel = "prudent" | "equilibre" | "risque";
 
+/** Le modèle de décision local partagé par les morphs de contrôle. */
+export type EtatDecisions = {
+  installe: boolean;
+  en_cours: boolean;
+  dossier: string;
+  appareil: string | null;
+  version: string | null;
+};
+
 /** Ce qu'un niveau de prudence laisse libre au système, en Go. */
 export interface CautionReserve {
   level: CautionLevel;
@@ -2274,6 +2283,8 @@ export interface CoreApi {
   cautionLevel(): Promise<CautionLevel>;
   /** Les réserves de mémoire de chaque niveau, sur cette machine. */
   cautionReserves(): Promise<CautionReserves>;
+  decisionsEtat(): Promise<EtatDecisions>;
+  decisionsInstaller(): Promise<EtatDecisions>;
   /** Les limites de l'abonnement du modèle actif, `null` s'il n'en a pas. */
   cloudUsage(): Promise<CloudUsage | null>;
   setCautionLevel(level: CautionLevel): Promise<void>;
@@ -2786,6 +2797,8 @@ const tauriCore: CoreApi = {
   ejectChatModel: () => invoke<ResidencyStatus>("eject_chat_model"),
   cautionLevel: () => invoke<CautionLevel>("caution_level"),
   cautionReserves: () => invoke<CautionReserves>("caution_reserves"),
+  decisionsEtat: () => invoke<EtatDecisions>("laya_etat"),
+  decisionsInstaller: () => invoke<EtatDecisions>("laya_installer"),
   cloudUsage: () => invoke<CloudUsage | null>("cloud_usage"),
   setCautionLevel: (level) => invoke<void>("set_caution_level", { level }),
 
@@ -5345,6 +5358,12 @@ Contenu de démonstration, avec **du gras** et une liste :
   },
   async cloudUsage() {
     return null;
+  },
+  async decisionsEtat() {
+    return { installe: false, en_cours: false, dossier: "", appareil: null, version: null };
+  },
+  async decisionsInstaller() {
+    return { installe: true, en_cours: false, dossier: "", appareil: "cpu", version: "demo" };
   },
   async cautionReserves() {
     return {

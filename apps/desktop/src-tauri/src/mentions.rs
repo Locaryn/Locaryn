@@ -110,7 +110,7 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
     let serveurs = mcp_servers::list_mcp_servers(core.clone())
         .await
         .unwrap_or_default();
-    let exts = extensions::list_extensions(core.clone())
+    let exts = extensions::liste_installees(core.clone())
         .await
         .unwrap_or_default();
     let morphs: Vec<_> = exts

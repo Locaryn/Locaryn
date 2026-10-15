@@ -469,6 +469,24 @@ pub fn workspace_config_path(project: &Path) -> PathBuf {
     project.join(".locaryn").join("config.toml")
 }
 
+/// L'environnement Python que l'application installe et partage avec les
+/// extensions (Laya pour morph-desktop et morph-browser) : à côté de la
+/// bibliothèque de modèles, sur le même volume.
+pub fn python_env_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("LOCARYN_PYTHON_VENV") {
+        let p = PathBuf::from(dir);
+        if !p.as_os_str().is_empty() {
+            return p;
+        }
+    }
+    let modeles = models_dir();
+    modeles
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(default_data_dir)
+        .join("python-env")
+}
+
 /// Where model weights live. Resolution order:
 /// 1. `LOCARYN_MODELS_DIR` env var (explicit override),
 /// 2. `<storage root>/models` when the user configured a root — an explicit

@@ -20,6 +20,7 @@ mod extensions;
 mod gpu_arbiter;
 mod hooks;
 mod inference_engines;
+mod laya_runtime;
 mod live_watch;
 mod local_profile;
 mod mailbox;
@@ -6866,6 +6867,14 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
     app.manage(core);
     // La mémoire apprend pendant que le modèle chargé attend.
     memory_gardener::lancer(app.clone());
+    // Laya, si un morph de contrôle installé en a besoin et qu'il manque.
+    {
+        let poignee = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let core = poignee.state::<Core>();
+            laya_runtime::verifier(poignee.clone(), &core).await;
+        });
+    }
 
     // Le cœur est prêt : les commandes de l'interface peuvent répondre.
     // La fenêtre principale se crée masquée et ne paraît qu'au signal
@@ -7140,6 +7149,8 @@ pub fn run() {
             set_active_provider,
             configure_provider,
             airllm::airllm_status,
+            laya_runtime::laya_etat,
+            laya_runtime::laya_installer,
             airllm::airllm_setup,
             airllm::airllm_install,
             airllm::airllm_installed,

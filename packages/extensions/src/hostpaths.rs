@@ -90,6 +90,22 @@ pub fn generic_env(name: &str, plugin_root: &Path) -> HashMap<String, String> {
     // Les caches que le socle tient hors du disque système. Une extension qui
     // les ignore écrit dans `~/.cache`, et c'est ainsi qu'un disque système se
     // remplit.
+    // Laya, installé par l'application : les morphs de contrôle (bureau,
+    // navigateur) s'en servent pour décider vite, sans demander à chacun
+    // d'installer Python. L'appareil choisi à l'installation (cpu, cuda) suit.
+    let python_env = locaryn_config::python_env_dir();
+    if let Some(appareil) = std::fs::read_to_string(python_env.join("locaryn-laya.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| {
+            v.get("appareil")
+                .and_then(|a| a.as_str())
+                .map(str::to_string)
+        })
+    {
+        put("LAYA_DEVICE", appareil);
+    }
+    put("LOCARYN_PYTHON_VENV", python_env.display().to_string());
     put(
         "LOCARYN_HF_CACHE_DIR",
         locaryn_config::hf_cache_dir().display().to_string(),

@@ -82,7 +82,7 @@ pub fn dans_catalogue(catalogue: &Value, fichier: &str) -> Option<Recommendation
 /// La recommandation pour le modèle `fichier`, cherchée dans les catalogues
 /// des extensions actives.
 pub async fn pour_le_modele(core: State<'_, Core>, fichier: &str) -> Option<Recommendation> {
-    let installees = extensions::list_extensions(core.clone()).await.ok()?;
+    let installees = extensions::liste_installees(core.clone()).await.ok()?;
     for ext in installees.iter().filter(|e| e.enabled) {
         for slot in ext
             .ui

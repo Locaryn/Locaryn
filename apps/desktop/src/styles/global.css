@@ -14614,3 +14614,19 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Décisions rapides des morphs ── */
+.locaryn-decisions-ligne {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.locaryn-decisions-etat {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+.locaryn-decisions-etat.is-ok {
+  color: var(--accent);
+}

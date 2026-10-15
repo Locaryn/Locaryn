@@ -319,7 +319,7 @@ async fn add_connector(core: tauri::State<'_, Core>, args: &Value) -> ToolResult
 }
 
 async fn list_extensions(core: tauri::State<'_, Core>) -> ToolResult {
-    match extensions::list_extensions(core).await {
+    match extensions::liste_installees(core).await {
         Ok(list) => ok(json!(list
             .iter()
             .map(|e| json!({

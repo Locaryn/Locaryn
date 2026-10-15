@@ -4,6 +4,7 @@ import { AboutSettings } from "../components/AboutSettings";
 import { CautionSettings } from "../components/CautionSettings";
 import { ConnectionSettings } from "../components/ConnectionSettings";
 import { ConnectorsSettings } from "../components/ConnectorsSettings";
+import { DecisionSettings } from "../components/DecisionSettings";
 import { DeviceCompanionCard } from "../components/DeviceCompanionCard";
 import { EngineSettings } from "../components/EngineSettings";
 import { ExtensionsSettings } from "../components/ExtensionsSettings";
@@ -467,6 +468,7 @@ export function SettingsView({
             <>
               <PerformancePanel />
               <CautionSettings />
+              <DecisionSettings />
             </>
           )}
           {section === "huggingface" && <HuggingFaceSettings />}
