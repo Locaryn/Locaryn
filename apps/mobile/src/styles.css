@@ -2845,3 +2845,109 @@ body.lo-scanning #root > *:not(.lo-scan-overlay) {
   cursor: default;
   opacity: 0.55;
 }
+
+/* ── Code coloré (réponses, aperçus Markdown, vue Source des fichiers) ── */
+:root {
+  --syn-kw: #c59cf0;
+  --syn-str: #9fd28a;
+  --syn-num: #e8b07a;
+  --syn-com: #6f7670;
+  --syn-fn: #7fb6ec;
+  --syn-type: #6fd1c6;
+  --syn-key: #85b8ea;
+  --syn-var: #e8a3a3;
+  --syn-tag: #e8907e;
+  --syn-attr: #e3c27a;
+  --syn-punct: #8b918c;
+}
+[data-theme="light"] {
+  --syn-kw: #8a3fc4;
+  --syn-str: #3f7f2a;
+  --syn-num: #b05a12;
+  --syn-com: #8a8f88;
+  --syn-fn: #2563b0;
+  --syn-type: #13807a;
+  --syn-key: #1f5f9e;
+  --syn-var: #b3423f;
+  --syn-tag: #b8432f;
+  --syn-attr: #946200;
+  --syn-punct: #7a7f79;
+}
+.tk-kw {
+  color: var(--syn-kw);
+}
+.tk-str {
+  color: var(--syn-str);
+}
+.tk-num {
+  color: var(--syn-num);
+}
+.tk-com {
+  color: var(--syn-com);
+  font-style: italic;
+}
+.tk-fn {
+  color: var(--syn-fn);
+}
+.tk-type {
+  color: var(--syn-type);
+}
+.tk-key {
+  color: var(--syn-key);
+}
+.tk-var {
+  color: var(--syn-var);
+}
+.tk-tag {
+  color: var(--syn-tag);
+}
+.tk-attr {
+  color: var(--syn-attr);
+}
+.tk-punct {
+  color: var(--syn-punct);
+}
+
+.lo-md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+.md-table {
+  margin: 0 0 10px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.md-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.md-table th,
+.md-table td {
+  padding: 5px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.md-table th {
+  font-weight: 500;
+  background: var(--surface-2);
+}
+.lo-md ul.md-tasks {
+  list-style: none;
+  padding-left: 4px;
+}
+.md-check {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  vertical-align: -1px;
+}
+.md-task-done > .md-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}

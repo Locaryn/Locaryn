@@ -4,6 +4,7 @@ import { App } from "./App";
 import { ConnectIntentModal } from "./components/ConnectIntentModal";
 import "./lib/noReload";
 import "./lib/pluginBridge";
+import "./lib/selectionScope";
 import "./styles/global.css";
 
 const root = document.getElementById("root");

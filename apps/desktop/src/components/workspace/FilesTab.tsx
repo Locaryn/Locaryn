@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type WorkspaceEntry, type WorkspaceFile, core } from "../../lib/core";
+import { OUVRIR_FICHIER, prendreFichierEnAttente } from "../../lib/workspace";
 import { FileViewer } from "./FileViewer";
 
 type Props = { sessionId: string | null; visible: boolean };
@@ -25,14 +26,16 @@ export function FilesTab({ sessionId, visible }: Props) {
   const [chargement, setChargement] = useState(false);
 
   const charger = useCallback(
-    async (chemin: string) => {
+    async (chemin: string, garderFichier = false) => {
       if (!sessionId) return;
       setChargement(true);
       setErreur(null);
       try {
         setEntrees(await core.workspaceList(sessionId, chemin));
         setDossier(chemin);
-        setFichier(null);
+        // Relire la liste en arrière-plan ne referme pas un fichier ouvert
+        // entre-temps (depuis une réponse du modèle).
+        if (!garderFichier) setFichier(null);
       } catch (e) {
         setErreur(String(e).replace(/^Error:\s*/, ""));
       } finally {
@@ -46,8 +49,22 @@ export function FilesTab({ sessionId, visible }: Props) {
   // modèle a pu écrire entre-temps.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `dossier` et `fichier` sont lus, pas suivis — naviguer passe déjà par `charger`, les suivre ferait deux lectures par clic.
   useEffect(() => {
-    if (visible && !fichier) void charger(dossier);
+    if (visible && !fichier) void charger(dossier, true);
   }, [visible, charger]);
+
+  // Un fichier cité sous une réponse du modèle : l'ouvrir directement.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `lireFichier` lit l'identifiant de session courant, déjà dans les dépendances.
+  useEffect(() => {
+    const enAttente = prendreFichierEnAttente();
+    if (enAttente) void lireFichier(enAttente);
+    const surDemande = (e: Event) => {
+      const chemin = (e as CustomEvent<string>).detail;
+      prendreFichierEnAttente();
+      if (chemin) void lireFichier(chemin);
+    };
+    window.addEventListener(OUVRIR_FICHIER, surDemande);
+    return () => window.removeEventListener(OUVRIR_FICHIER, surDemande);
+  }, [sessionId]);
 
   function ouvrir(e: WorkspaceEntry) {
     if (e.dossier) void charger(e.chemin);

@@ -7189,6 +7189,7 @@ pub fn run() {
             browser::browser_history,
             browser::browser_state,
             workspace::workspace_list,
+            workspace::workspace_recent,
             workspace::workspace_read,
             workspace::workspace_open_with,
             workspace::open_path_with,

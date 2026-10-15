@@ -62,7 +62,7 @@ export {
   type PresentationStep,
 } from "./presentation";
 
-export { renderMarkdown } from "./markdown";
+export { codeLanguage, highlightCode, languageFromPath, renderMarkdown } from "./markdown";
 export { TRUST_LEVELS, trustInfo, type TrustLevel } from "./trust";
 
 // La fenêtre de contexte en anneau : la même mesure se lit pareil partout.

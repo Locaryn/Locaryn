@@ -1763,6 +1763,8 @@ export interface CoreApi {
   browserState(): Promise<BrowserState>;
   /** Le dossier de la conversation, en lecture. */
   workspaceList(sessionId: string, dossier: string): Promise<WorkspaceEntry[]>;
+  /** Les fichiers de la conversation modifiés depuis `depuisMs`. */
+  workspaceRecent(sessionId: string, depuisMs: number): Promise<WorkspaceEntry[]>;
   workspaceRead(sessionId: string, chemin: string): Promise<WorkspaceFile>;
   /** Ouvrir un fichier de la conversation dans VS Code, un terminal ou
    *  l'explorateur de fichiers. */
@@ -2329,6 +2331,8 @@ const tauriCore: CoreApi = {
   browserNavigate: (url) => invoke("browser_navigate", { url }),
   browserHistory: (action) => invoke("browser_history", { action }),
   browserState: () => invoke<BrowserState>("browser_state"),
+  workspaceRecent: (sessionId, depuisMs) =>
+    invoke<WorkspaceEntry[]>("workspace_recent", { sessionId, depuisMs }),
   workspaceList: (sessionId, dossier) =>
     invoke<WorkspaceEntry[]>("workspace_list", { sessionId, dossier }),
   workspaceRead: (sessionId, chemin) =>
@@ -3798,6 +3802,9 @@ const demoCore: CoreApi = {
   async browserHistory() {},
   async browserState() {
     return { url: "", title: "", loading: false };
+  },
+  async workspaceRecent() {
+    return [];
   },
   async workspaceList(_sessionId, dossier) {
     if (dossier === "src") {

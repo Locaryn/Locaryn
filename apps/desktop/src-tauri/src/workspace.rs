@@ -111,6 +111,11 @@ pub async fn workspace_list(
         if meta.is_dir() && IGNORES.contains(&nom.as_str()) {
             continue;
         }
+        // Le marqueur qui relie le dossier à sa conversation est à
+        // l'application, pas à la personne : rien à y lire.
+        if nom == locaryn_agent_runtime::free_chat_dir::MARKER {
+            continue;
+        }
         entrees.push(Entree {
             chemin: relatif(&racine, &e.path()),
             nom,
@@ -178,6 +183,63 @@ pub async fn workspace_read(
         taille,
         tronque,
     })
+}
+
+/// Les fichiers du dossier de la conversation modifiés depuis `depuis_ms`
+/// (millisecondes depuis l'époque) : ce qu'une réponse vient de créer ou de
+/// changer, quel que soit l'outil qui l'a fait (`write_file`, une commande,
+/// un connecteur). Les plus récents d'abord, vingt au plus.
+#[tauri::command]
+pub async fn workspace_recent(
+    core: State<'_, Core>,
+    session_id: Uuid,
+    depuis_ms: u64,
+) -> Result<Vec<Entree>, String> {
+    let racine = racine(&core, session_id).await?;
+    let depuis = std::time::UNIX_EPOCH + Duration::from_millis(depuis_ms.saturating_sub(1500));
+    let mut trouves: Vec<(std::time::SystemTime, Entree)> = Vec::new();
+    let mut a_lire = vec![(racine.clone(), 0usize)];
+    let mut vus = 0usize;
+    while let Some((dossier, profondeur)) = a_lire.pop() {
+        let Ok(mut lecture) = tokio::fs::read_dir(&dossier).await else {
+            continue;
+        };
+        while let Ok(Some(e)) = lecture.next_entry().await {
+            vus += 1;
+            if vus > 20_000 {
+                break;
+            }
+            let nom = e.file_name().to_string_lossy().to_string();
+            let Ok(meta) = e.metadata().await else {
+                continue;
+            };
+            if meta.is_dir() {
+                if profondeur < 6 && !IGNORES.contains(&nom.as_str()) {
+                    a_lire.push((e.path(), profondeur + 1));
+                }
+                continue;
+            }
+            if nom == locaryn_agent_runtime::free_chat_dir::MARKER {
+                continue;
+            }
+            let Ok(modifie) = meta.modified() else {
+                continue;
+            };
+            if modifie >= depuis {
+                trouves.push((
+                    modifie,
+                    Entree {
+                        chemin: relatif(&racine, &e.path()),
+                        nom,
+                        dossier: false,
+                        taille: meta.len(),
+                    },
+                ));
+            }
+        }
+    }
+    trouves.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(trouves.into_iter().take(20).map(|(_, e)| e).collect())
 }
 
 /// Ouvrir un fichier du dossier de la conversation ailleurs : dans VS Code,

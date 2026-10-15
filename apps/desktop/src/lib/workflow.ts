@@ -257,7 +257,9 @@ export async function runWorkflow(
           hooks.onStepEnd?.(i, false);
           if (stepRetry < MAX_STEP_RETRIES) {
             stepRetry++;
-            lastReste = reste || "Poursuis et finalise les actions concrètes nécessaires pour valider cette étape.";
+            lastReste =
+              reste ||
+              "Poursuis et finalise les actions concrètes nécessaires pour valider cette étape.";
             continue; // retenter la même étape avec les indications du juge
           }
           // Max retries atteint : l'étape est marquée échouée, on arrête.

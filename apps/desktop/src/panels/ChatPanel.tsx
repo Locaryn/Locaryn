@@ -9,6 +9,7 @@ import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
 import { SousAgentsEnCours } from "../components/SousAgentsEnCours";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import { ContextDetails, type ContextUsage } from "../components/chat/ContextDetails";
+import { FichiersDuTour } from "../components/chat/FichiersDuTour";
 import {
   type MessageAttachment,
   MessageBubble,
@@ -41,6 +42,7 @@ import {
   type StreamEvent,
   type ToolApprovalDecision,
   type ToolApprovalRequest,
+  type WorkspaceEntry,
   core,
   isTauri,
   reasoningPayload,
@@ -106,6 +108,8 @@ type ChatItem =
       output: string;
     }
   | { id: string; kind: "log"; text: string }
+  /** Les fichiers qu'une réponse a créés ou modifiés, cliquables. */
+  | { id: string; kind: "fichiers"; fichiers: WorkspaceEntry[] }
   /** Le suivi d'un plan ou d'un objectif : étapes, essais, état. */
   | { id: string; kind: "suivi"; suivi: Suivi };
 
@@ -1824,6 +1828,16 @@ ${d.texte}`
         setStreaming(false);
         setAttente(null);
         setItems((prev) => terminerForge(prev, null, "Interrompu avant la fin."));
+        // Les fichiers que cette réponse a touchés, cités sous elle.
+        core
+          .workspaceRecent(sid, t0)
+          .then((fichiers) => {
+            if (fichiers.length === 0 || runRef.current !== run) return;
+            setItems((prev) => [...prev, { id: nextId("fichiers"), kind: "fichiers", fichiers }]);
+          })
+          .catch(() => {
+            // Pas de dossier de travail lisible : rien à citer.
+          });
       }
 
       // Update the duration estimator so it can learn how fast each model
@@ -2453,10 +2467,9 @@ ${preview}`,
           // Tab et Entrée complètent toujours la commande dans le champ, sans effacer le prompt.
           choisirSlash(cmd);
           return;
-        } else {
-          runSlash(slash.command, argToSize(slash.items[idx].value));
-          return;
         }
+        runSlash(slash.command, argToSize(slash.items[idx].value));
+        return;
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -2718,6 +2731,9 @@ ${preview}`,
                     )}
                   </div>
                 );
+              }
+              if (it.kind === "fichiers") {
+                return <FichiersDuTour key={it.id} fichiers={it.fichiers} />;
               }
               if (it.kind === "audio") {
                 return (

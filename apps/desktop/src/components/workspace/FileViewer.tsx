@@ -1,4 +1,4 @@
-import { Icon, renderMarkdown } from "@locaryn/ui-core";
+import { Icon, highlightCode, languageFromPath, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { type WorkspaceFile, core } from "../../lib/core";
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
@@ -182,14 +182,21 @@ export function FileViewer({ sessionId, fichier, onRetour }: Props) {
         {info && <span className="lw-viewer-info">{info}</span>}
       </div>
 
-      <div className="lw-viewer-body">
+      {/* Ctrl+A après un clic ici : le contenu du fichier, pas toute la fenêtre. */}
+      <div className="lw-viewer-body" data-select-scope>
         {contenu === null ? (
           <div className="lw-empty">
             <Icon name="file-text" size={22} />
             <p>Fichier binaire : il ne s'affiche pas ici.</p>
           </div>
         ) : mode === "source" || !rendu ? (
-          <pre className="lw-file-code">{contenu}</pre>
+          <pre
+            className="lw-file-code"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: highlightCode échappe chaque morceau du fichier avant de l'envelopper dans ses <span>
+            dangerouslySetInnerHTML={{
+              __html: highlightCode(contenu, languageFromPath(fichier.chemin)),
+            }}
+          />
         ) : rendu === "markdown" ? (
           <div
             className="lw-viewer-md locaryn-markdown"
