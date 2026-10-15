@@ -235,7 +235,13 @@ type MentionItem = {
   label: string;
   hint: string;
   icon: "plugs-connected" | "extensions" | "sparkle";
+  /** Une distribution WSL : choisie, elle devient `@wsl:<nom>`. */
+  distro?: string;
 };
+
+/** `@wsl ` (ou `@morph-wsl `, `@wsl:Ubu`) juste avant le curseur : la liste
+ *  propose alors les distributions installées. */
+const MENTION_WSL = /(?:^|\s)@(?:morph-)?wsl(?::([\w.-]*)|\s)$/i;
 
 /** Durée de l'appui sur la jauge qui déclenche la compression. Assez longue
  *  pour qu'un clic distrait ne compresse rien. */
@@ -2104,6 +2110,27 @@ ${d.texte}`
    *  Output goes to the side panel rather than the transcript: a build log or
    *  a stack trace inside the conversation buries the discussion it belongs to.
    *  HTML is not executed at all — it is rendered live in a sandboxed frame. */
+  /**
+   * La conversation travaille-t-elle dans WSL ? Une mention `@wsl` (ou
+   * `@wsl:Distribution`) ou un outil `wsl_*` appelé : les blocs shell de ses
+   * réponses s'exécutent alors dans cette distribution, pas sous Windows.
+   * `""` : la distribution par défaut.
+   */
+  const cibleWsl = useMemo<string | null>(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.kind === "tool" && /(^|__)wsl_/.test(it.tool)) {
+        const d = (it.args as { distro?: unknown } | null)?.distro;
+        return typeof d === "string" ? d : "";
+      }
+      if (it.kind === "msg" && it.role === "user") {
+        const m = /(?:^|\s)@(?:morph-)?wsl(?::([\w.-]+))?(?![\w-])/i.exec(it.text);
+        if (m) return m[1] ?? "";
+      }
+    }
+    return null;
+  }, [items]);
+
   async function handleRunCode(code: string, lang: string) {
     if (["html", "htm", "svg"].includes(lang)) {
       showWebRun(code, lang === "svg" ? "Aperçu SVG" : "Aperçu HTML");
@@ -2111,9 +2138,25 @@ ${d.texte}`
     }
 
     const preview = code.length > 400 ? `${code.slice(0, 400)}…` : code;
+    const linux = [
+      "bash",
+      "sh",
+      "shell",
+      "zsh",
+      "console",
+      "",
+      "python",
+      "py",
+      "js",
+      "javascript",
+      "node",
+    ].includes(lang);
+    const wsl = linux ? cibleWsl : null;
+    const ou =
+      wsl === null ? "sur votre machine" : `dans WSL (${wsl || "distribution par défaut"})`;
     if (
       !window.confirm(
-        `Exécuter ce code (${lang || "console"}) sur votre machine ?
+        `Exécuter ce code (${lang || "console"}) ${ou} ?
 
 ${preview}`,
       )
@@ -2126,19 +2169,25 @@ ${preview}`,
     // « cmd » vers Python et cassait sur la première apostrophe.
     const shell = ["bash", "sh", "shell", "zsh", "cmd", "bat", "console", ""].includes(lang);
     startTerminalRun(
-      lang || "console",
+      wsl === null ? lang || "console" : `WSL ${wsl || ""}`.trim(),
       shell ? code : `${lang} (extrait)`,
-      cwd ?? "dossier par défaut",
+      wsl === null ? (cwd ?? "dossier par défaut") : "~",
     );
     let fini = false;
     try {
-      await core.runSnippet(lang, code, cwd, (ev) => {
-        if (ev.type === "line") appendRunLine(ev.text);
-        else if (ev.type === "exit") {
-          fini = true;
-          finishTerminalRun(ev.code ?? 0);
-        }
-      });
+      await core.runSnippet(
+        lang,
+        code,
+        cwd,
+        (ev) => {
+          if (ev.type === "line") appendRunLine(ev.text);
+          else if (ev.type === "exit") {
+            fini = true;
+            finishTerminalRun(ev.code ?? 0);
+          }
+        },
+        wsl,
+      );
       if (!fini) finishTerminalRun(0);
     } catch (e) {
       appendRunLine(String(e));
@@ -2426,10 +2475,46 @@ ${preview}`,
     }
   };
 
+  /** Les distributions WSL, lues une fois puis gardées. */
+  const distribsRef = useRef<{ nom: string; defaut: boolean; etat: string }[] | null>(null);
+
+  function proposerDistributions(filtre: string) {
+    const afficher = (liste: { nom: string; defaut: boolean; etat: string }[]) => {
+      const q = filtre.toLowerCase();
+      const items: MentionItem[] = liste
+        .filter((d) => !q || d.nom.toLowerCase().includes(q))
+        .map((d) => ({
+          name: `wsl:${d.nom}`,
+          label: `WSL · ${d.nom}`,
+          hint: `Distribution${d.defaut ? " par défaut" : ""}${d.etat ? ` · ${d.etat === "Running" ? "en marche" : "arrêtée"}` : ""}`,
+          icon: "extensions" as const,
+          distro: d.nom,
+        }));
+      setMention(items.length ? { query: filtre, items } : null);
+      setMentionIndex(0);
+    };
+    if (distribsRef.current) {
+      afficher(distribsRef.current);
+      return;
+    }
+    void core
+      .wslDistributions()
+      .then((liste) => {
+        distribsRef.current = liste;
+        afficher(liste);
+      })
+      .catch(() => setMention(null));
+  }
+
   /** Le « @mot » en cours de frappe (au curseur ou en fin de texte), filtré instantanément sans latence. */
   function suivreMention(texte: string, cursor?: number) {
     const pos = cursor ?? inputRef.current?.selectionStart ?? texte.length;
     const avant = texte.slice(0, pos);
+    const wsl = MENTION_WSL.exec(avant);
+    if (wsl) {
+      proposerDistributions(wsl[1] ?? "");
+      return;
+    }
     const m = /(?:^|\s)@([\w.-]*)$/.exec(avant);
     if (!m) {
       setMention(null);
@@ -2471,10 +2556,12 @@ ${preview}`,
     const pos = el?.selectionStart ?? input.length;
     const avant = input.slice(0, pos);
     const apres = input.slice(pos);
-    const nouveauAvant = avant.replace(
-      /(^|\s)@[\w.-]*$/,
-      (match, prefix) => `${prefix}@${item.name} `,
-    );
+    const nouveauAvant = item.distro
+      ? avant.replace(
+          /(^|\s)@(?:morph-)?wsl(?::[\w.-]*)?\s?$/i,
+          (_m, prefix) => `${prefix}@wsl:${item.distro} `,
+        )
+      : avant.replace(/(^|\s)@[\w.-]*$/, (_m, prefix) => `${prefix}@${item.name} `);
     setInput(nouveauAvant + apres);
     setMention(null);
     setTimeout(() => {
@@ -2782,6 +2869,11 @@ ${preview}`,
                       canEdit={i === lastUserIdx && !streaming}
                       onEdit={() => void editLastUserMessage()}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}
+                      runTarget={
+                        it.role === "assistant" && cibleWsl !== null
+                          ? `WSL${cibleWsl ? ` · ${cibleWsl}` : ""}`
+                          : null
+                      }
                     />
                     {it.luEnCours && (
                       <div className="locaryn-msg-lu">

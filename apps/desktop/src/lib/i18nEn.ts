@@ -8,6 +8,7 @@
 // (`Téléchargement de ${nom}`) : chaque « {} » est une valeur gardée telle quelle.
 
 export const EN_EXACT: Record<string, string> = {
+  "Distribution par défaut": "Default distribution",
   "NPU Snapdragon (Hexagon)": "Snapdragon NPU (Hexagon)",
   "Le NPU lit les prompts bien plus vite que le processeur, sans occuper le GPU. Il accélère les modèles en Q4_0, Q8_0, IQ4_NL ou MXFP4 : choisissez de préférence ces versions.":
     "The NPU reads prompts much faster than the CPU, without tying up the GPU. It accelerates models in Q4_0, Q8_0, IQ4_NL or MXFP4: prefer those versions.",
@@ -2492,6 +2493,10 @@ export const EN_EXACT: Record<string, string> = {
 };
 
 export const EN_PATTERNS: Record<string, string> = {
+  "WSL · {}": "WSL · {}",
+  "Distribution par défaut · {}": "Default distribution · {}",
+  "Distribution · {}": "Distribution · {}",
+  "Exécuter ce code ({}) dans WSL ({}) ?": "Run this code ({}) in WSL ({})?",
   "Raison : {}": "Reason: {}",
   "Écriture de {}…": "Writing {}…",
   "Préparation de {}…": "Preparing {}…",

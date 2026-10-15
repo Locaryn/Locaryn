@@ -58,6 +58,9 @@ type Props = {
   onEdit?: () => void;
   /** Run a code block from the answer (the panel asks for confirmation). */
   onRunCode?: (code: string, lang: string) => void;
+  /** Où les blocs shell s'exécutent quand ce n'est pas sur Windows
+   *  (« WSL · Ubuntu ») : affiché sur le bouton. */
+  runTarget?: string | null;
   /** La vitesse mesurée pour cette réponse (assistant seulement). */
   speed?: MessageSpeed;
   /** Les fichiers joints qui ne sont pas des images (message de l'utilisateur). */
@@ -114,6 +117,7 @@ export function MessageBubble({
   canEdit,
   onEdit,
   onRunCode,
+  runTarget,
   speed,
   attachments,
   forge,
@@ -303,14 +307,16 @@ export function MessageBubble({
         const runBtn = document.createElement("button");
         runBtn.type = "button";
         runBtn.className = "md-code-btn md-code-run";
-        runBtn.textContent = `▶ Exécuter (${RUNNABLE[lang]})`;
+        const linux = ["Shell", "Python", "Node"].includes(RUNNABLE[lang]);
+        runBtn.textContent =
+          runTarget && linux ? `▶ Exécuter (${runTarget})` : `▶ Exécuter (${RUNNABLE[lang]})`;
         runBtn.onclick = () => onRunCode(code, lang);
         bar.appendChild(runBtn);
       }
 
       pre.prepend(bar);
     }
-  }, [answer, onRunCode]);
+  }, [answer, onRunCode, runTarget]);
 
   async function copy() {
     try {

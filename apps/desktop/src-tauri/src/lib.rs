@@ -41,6 +41,7 @@ mod snippets;
 mod sous_agents;
 mod trust_source;
 mod workspace;
+mod wsl_cmd;
 use locaryn_sdk::secure_client;
 mod server_history;
 mod server_mode;
@@ -2752,8 +2753,35 @@ async fn run_snippet(
     lang: String,
     code: String,
     cwd: Option<String>,
+    wsl: Option<String>,
     on_output: Channel<TerminalEvent>,
 ) -> Result<(), String> {
+    // La conversation travaille dans WSL : le bloc s'exécute dans la
+    // distribution choisie, pas sous Windows (où `cd /home/…` n'existe pas).
+    if let (Some(distribution), Some(linux)) = (wsl, wsl_cmd::interprete_linux(&lang)) {
+        let extension = match linux {
+            "python3" => "py",
+            "node" => "js",
+            _ => "sh",
+        };
+        // Fins de ligne Unix : bash refuse un `\r` en fin de commande.
+        let fichier = snippets::fichier_temporaire(extension, &code.replace("\r\n", "\n"))
+            .map_err(|e| format!("Fichier temporaire impossible : {e}"))?;
+        let mut cmd = tokio::process::Command::new("wsl.exe");
+        cmd.args(wsl_cmd::arguments(
+            &distribution,
+            linux,
+            &fichier.to_string_lossy(),
+        ))
+        .env("WSL_UTF8", "1");
+        let resultat = diffuser_processus(cmd, on_output)
+            .await
+            .map_err(|e| format!("WSL introuvable ou impossible à lancer ({e})."));
+        if let Err(e) = std::fs::remove_file(&fichier) {
+            tracing::debug!(error = %e, "extrait temporaire non supprimé");
+        }
+        return resultat;
+    }
     let interprete = snippets::pour_langage(&lang, cfg!(windows)).ok_or_else(|| {
         format!("Les blocs « {lang} » ne s'exécutent pas ici : copiez-le dans l'outil adapté.")
     })?;
@@ -7277,6 +7305,7 @@ pub fn run() {
             travel_mode::user_login_qr,
             live_watch::watch_live_session,
             run_snippet,
+            wsl_cmd::wsl_distributions,
             travel_mode::pairing_state,
             travel_mode::reject_pairing,
             travel_mode::run_composer_tool,

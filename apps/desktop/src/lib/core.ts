@@ -1930,13 +1930,17 @@ export interface CoreApi {
     cwd: string | null,
     onOutput: (ev: TerminalEvent) => void,
   ): Promise<void>;
-  /** Exécute un bloc de code d'une réponse avec l'interprète de son langage. */
+  /** Exécute un bloc de code d'une réponse avec l'interprète de son langage.
+   *  `wsl` : la distribution WSL où l'exécuter (`""` : celle par défaut). */
   runSnippet(
     lang: string,
     code: string,
     cwd: string | null,
     onOutput: (ev: TerminalEvent) => void,
+    wsl?: string | null,
   ): Promise<void>;
+  /** Les distributions WSL installées (vide hors Windows). */
+  wslDistributions(): Promise<{ nom: string; defaut: boolean; etat: string }[]>;
   listProviders(): Promise<Provider[]>;
   setActiveProvider(id: string): Promise<Provider>;
   configureProvider(endpoint: string, model: string | null): Promise<Provider>;
@@ -2477,11 +2481,13 @@ const tauriCore: CoreApi = {
     chan.onmessage = onOutput;
     return invoke("run_terminal", { command, cwd, onOutput: chan });
   },
-  runSnippet(lang, code, cwd, onOutput) {
+  runSnippet(lang, code, cwd, onOutput, wsl) {
     const chan = new Channel<TerminalEvent>();
     chan.onmessage = onOutput;
-    return invoke("run_snippet", { lang, code, cwd, onOutput: chan });
+    return invoke("run_snippet", { lang, code, cwd, wsl: wsl ?? null, onOutput: chan });
   },
+  wslDistributions: () =>
+    invoke<{ nom: string; defaut: boolean; etat: string }[]>("wsl_distributions"),
 
   listProviders: () => invoke<Provider[]>("list_providers"),
   setActiveProvider: (id) => invoke<Provider>("set_active_provider", { id }),
@@ -4340,6 +4346,9 @@ Contenu de démonstration, avec **du gras** et une liste :
     return Promise.resolve(true);
   },
 
+  async wslDistributions() {
+    return [];
+  },
   async runSnippet(lang, _code, _cwd, onOutput) {
     await sleep(150);
     onOutput({

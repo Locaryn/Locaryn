@@ -41,6 +41,25 @@ fn designe(texte: &str, prefixe: char, nom: &str) -> bool {
     false
 }
 
+/// La distribution WSL désignée par `@wsl:<distribution>` (ou
+/// `@morph-wsl:<distribution>`), si la personne en a choisi une.
+pub fn distribution_wsl(texte: &str) -> Option<String> {
+    let bas = texte.to_lowercase();
+    for prefixe in ["@morph-wsl:", "@wsl:"] {
+        if let Some(i) = bas.find(prefixe) {
+            let debut = i + prefixe.len();
+            let nom: String = texte[debut..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_'))
+                .collect();
+            if !nom.is_empty() {
+                return Some(nom);
+            }
+        }
+    }
+    None
+}
+
 /// Ce qu'une mention change à la requête : le texte ajouté au message, et
 /// les outils que le modèle doit se voir offrir — et appeler.
 #[derive(Debug, Default)]
@@ -198,6 +217,14 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
             .filter(|(source, _)| source == &e.name)
             .map(|(_, s)| s.name.as_str())
             .collect();
+        // `@wsl:Ubuntu-22.04` : la distribution à viser, pour chaque outil.
+        if e.name.contains("morph-wsl") {
+            if let Some(d) = distribution_wsl(texte) {
+                lignes.push(format!(
+                    "- la distribution WSL « {d} » : passe distro=\"{d}\" à chaque outil wsl_*, et écris les commandes à lancer pour cette distribution"
+                ));
+            }
+        }
         lignes.push(if siens.is_empty() {
             format!("- le morph « {} »", e.display_name)
         } else {
@@ -254,7 +281,21 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
 
 #[cfg(test)]
 mod tests {
-    use super::mentionne;
+    use super::{distribution_wsl, mentionne};
+
+    #[test]
+    fn la_distribution_wsl_se_lit_dans_la_mention() {
+        assert_eq!(
+            distribution_wsl("verifie @wsl:Ubuntu-22.04 le docker").as_deref(),
+            Some("Ubuntu-22.04")
+        );
+        assert_eq!(
+            distribution_wsl("@morph-wsl:Debian go").as_deref(),
+            Some("Debian")
+        );
+        assert_eq!(distribution_wsl("@wsl fais ça"), None);
+        assert!(mentionne("@wsl:Ubuntu fais", "wsl"));
+    }
 
     #[test]
     fn une_mention_est_un_mot_entier() {
