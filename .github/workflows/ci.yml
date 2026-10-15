@@ -1,9 +1,13 @@
 name: CI
 
+# Pas de déclencheur `push` sur `main` : le workflow Release construit déjà
+# tous les binaires (serveur, bureau, Android) à chaque tag, et ce workflow ne
+# faisait que rejouer ses portes à chaque poussée — en rouge sur chaque
+# commit sans rien ajouter que le build par tag ne couvre déjà. Il reste
+# disponible sur les pull request et à la demande.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
