@@ -596,12 +596,12 @@ mod tests {
         // encore de jeton, et c'est elle qui fait apparaitre le code sur
         // l'ecran de l'hote.
         assert!(is_public("/v1/auth/pair/announce"));
+        // L'etat et le refus passent sans jeton, mais leurs handlers ne
+        // repondent qu'a la boucle locale (`sur_cette_machine`) : l'hote les
+        // lit pour afficher le code avant d'avoir un jeton utilisateur.
+        assert!(is_public("/v1/pairing/state"));
+        assert!(is_public("/v1/pairing/reject"));
         for guarded in [
-            // L'etat et le refus, eux, ne sont pas publics : ils portent le
-            // code de confirmation, et se protegent en plus par l'adresse du
-            // pair.
-            "/v1/pairing/state",
-            "/v1/pairing/reject",
             "/v1/projects",
             "/v1/sessions",
             "/v1/auth/me",

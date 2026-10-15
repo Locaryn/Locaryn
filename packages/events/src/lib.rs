@@ -98,6 +98,23 @@ pub enum StreamEvent {
         width: Option<u32>,
         height: Option<u32>,
     },
+    /// Un appel d'outil en train de s'écrire. Le modèle peut mettre des
+    /// minutes à produire les arguments d'un `write_file` (tout le fichier y
+    /// passe) : sans cet événement, rien ne bougeait à l'écran et la réponse
+    /// semblait figée. Envoyé au plus quelques fois par seconde ; l'appel
+    /// complet suit par `ToolCall`.
+    ToolDraft {
+        /// Rang de l'appel dans le tour (plusieurs appels peuvent s'écrire).
+        index: u32,
+        /// Nom de l'outil, vide tant que le moteur ne l'a pas encore donné.
+        tool: String,
+        /// Le fichier visé, dès que son chemin est complet dans les arguments.
+        path: Option<String>,
+        /// Caractères du contenu écrits jusqu'ici (arguments bruts à défaut).
+        chars: u64,
+        /// La fin du contenu en cours, décodée, pour la montrer en direct.
+        tail: String,
+    },
     /// Des messages remis pendant la tâche (« Envoyer maintenant ») viennent
     /// d'être lus par le modèle : les clients les sortent de leur file et les
     /// montrent dans la conversation.
@@ -254,6 +271,7 @@ pub fn sse_event_tag(event: &StreamEvent) -> &'static str {
         StreamEvent::Log { .. } => "log",
         StreamEvent::Timings { .. } => "timings",
         StreamEvent::MediaPending { .. } => "media.pending",
+        StreamEvent::ToolDraft { .. } => "tool.draft",
         StreamEvent::MailRead { .. } => "mail.read",
         StreamEvent::ContextUsage { .. } => "context.usage",
         StreamEvent::MessageEnd { .. } => "message.end",

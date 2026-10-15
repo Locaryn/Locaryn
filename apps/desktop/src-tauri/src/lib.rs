@@ -1946,8 +1946,9 @@ async fn send_message(
     if let Some(ref p) = active_provider {
         if p.engine == ProviderEngine::LlamaCpp && !core.supervisor.is_healthy(&p.engine).await {
             if let Some(m) = p.model.as_deref() {
-                if let Some(raison) = model_residency::refus_de_chargement(&core, m).await {
-                    let _ = app.emit("locaryn://modele-trop-lourd", raison.clone());
+                if let Some(refus) = model_residency::refus_de_chargement(&core, m).await {
+                    let raison = refus.message.clone();
+                    let _ = app.emit("locaryn://modele-trop-lourd", refus);
                     panne_du_moteur = Some(raison);
                 }
             }

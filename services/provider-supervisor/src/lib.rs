@@ -1932,19 +1932,29 @@ async fn spawn_llama_server(
         // attention retombe sur le processeur et réclame plusieurs Go de RAM
         // au démarrage, pour une image que personne n'a envoyée. 2 048 jetons
         // gardent une image nette (Qwen en demande 1 024 au minimum).
-        cmd.arg("--image-max-tokens").arg("2048");
     }
     // Sur une carte de 8 Go ou moins, le projecteur vision reste côté
     // processeur : ses 0,9 Go de VRAM manquaient au modèle et aux autres
     // applications, pour des images qu'on n'envoie qu'occasionnellement.
     let profil_carte = locaryn_llmfit::profile();
-    if mmproj.is_some()
+    let vision_sur_processeur = mmproj.is_some()
         && !cpu_only
         && !profil_carte.unified_memory
         && profil_carte.total_vram_gb > 0.0
-        && profil_carte.total_vram_gb <= 8.5
-    {
+        && profil_carte.total_vram_gb <= 8.5;
+    if vision_sur_processeur {
         cmd.arg("--no-mmproj-offload");
+    }
+    if mmproj.is_some() {
+        // Encodée par le processeur, chaque capture d'écran l'occupait à 75 %
+        // (mesuré sur RX 570 pendant un contrôle du navigateur) : 1 024
+        // jetons, le minimum de Qwen-VL, divisent ce travail par deux.
+        let jetons = if vision_sur_processeur {
+            "1024"
+        } else {
+            "2048"
+        };
+        cmd.arg("--image-max-tokens").arg(jetons);
     }
 
     // Détection du GPU et du backend : utilisée pour la flash attention, le
@@ -2173,6 +2183,14 @@ async fn spawn_llama_server(
         cmd.arg("-t").arg(threads.to_string());
     } else {
         cmd.arg("-t").arg(default_threads.to_string());
+    }
+    // Modèle sur la carte : les threads du processeur n'ont presque rien à
+    // faire pendant la génération, mais par défaut ils attendent le GPU en
+    // boucle active (`--poll 50`). Sur une RX 570, llama-server occupait ainsi
+    // 75 % du processeur alors que la carte faisait le travail. Sans attente
+    // active, ils dorment entre deux lots.
+    if !cpu_only {
+        cmd.arg("--poll").arg("0");
     }
 
     cmd.arg("-b").arg(batch.to_string());

@@ -14531,3 +14531,59 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   text-overflow: ellipsis;
   max-width: 180px;
 }
+
+/* ── Appel d'outil en train de s'écrire ── */
+.locaryn-tool-draft {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+.locaryn-tool-draft-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+.locaryn-tool-draft-titre {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-tool-draft-taille {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+.locaryn-tool-draft-pulse {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: locaryn-draft-pulse 1.2s ease-in-out infinite;
+}
+@keyframes locaryn-draft-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+.locaryn-tool-draft-code {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre;
+  color: var(--text);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 28px);
+}

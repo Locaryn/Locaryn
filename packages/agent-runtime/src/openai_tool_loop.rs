@@ -1402,6 +1402,11 @@ async fn stream_one_round(
     let mut partial: std::collections::BTreeMap<u64, (String, String, String)> =
         std::collections::BTreeMap::new();
 
+    // Dernier envoi d'un brouillon, par appel : quelques nouvelles par
+    // seconde suffisent, le flux de fragments est bien plus dense.
+    let mut dernier_brouillon: std::collections::HashMap<u64, std::time::Instant> =
+        std::collections::HashMap::new();
+
     let mut byte_stream = resp.bytes_stream();
     let mut buffer = String::new();
 
@@ -1503,6 +1508,25 @@ async fn stream_one_round(
                         if let Some(args) = f.get("arguments").and_then(|v| v.as_str()) {
                             entry.2.push_str(args);
                         }
+                    }
+                    let maintenant = std::time::Instant::now();
+                    let du_nouveau = dernier_brouillon.get(&idx).is_none_or(|t| {
+                        maintenant.duration_since(*t) >= std::time::Duration::from_millis(250)
+                    });
+                    if du_nouveau && !entry.1.is_empty() {
+                        dernier_brouillon.insert(idx, maintenant);
+                        let b = crate::brouillon::lire(&entry.2);
+                        // L'interface peut être partie : le brouillon n'est
+                        // qu'un aperçu, son échec n'arrête pas la réponse.
+                        let _ = tx
+                            .send(StreamEvent::ToolDraft {
+                                index: idx as u32,
+                                tool: entry.1.clone(),
+                                path: b.chemin,
+                                chars: b.caracteres,
+                                tail: b.fin,
+                            })
+                            .await;
                     }
                 }
             }

@@ -8,6 +8,8 @@
 // (`Téléchargement de ${nom}`) : chaque « {} » est une valeur gardée telle quelle.
 
 export const EN_EXACT: Record<string, string> = {
+  "Charger quand même": "Load anyway",
+  "Prudence actuelle :": "Current caution:",
   "Fichier créé ou modifié": "File created or modified",
   "Fichiers créés ou modifiés": "Files created or modified",
   "(1 échec)": "(1 failure)",
@@ -2463,6 +2465,10 @@ export const EN_EXACT: Record<string, string> = {
 };
 
 export const EN_PATTERNS: Record<string, string> = {
+  "Écriture de {}…": "Writing {}…",
+  "Préparation de {}…": "Preparing {}…",
+  "{} caractères": "{} characters",
+  "{} k caractères": "{} k characters",
   "Ouvrir {} dans le panneau Fichiers": "Open {} in the Files panel",
   "Réunion dans « {} »": "Merged into “{}”",
   "Impossible de créer la conversation : {}": "Cannot create the conversation: {}",

@@ -412,11 +412,27 @@ pub fn caution_reserves() -> CautionReserves {
 /// Le chargement de ce modèle respecte-t-il la prudence choisie ? `Some` :
 /// la raison du refus, à montrer telle quelle. Appelé avant qu'une
 /// conversation ne démarre le moteur elle-même.
-pub async fn refus_de_chargement(core: &Core, model: &str) -> Option<String> {
+pub async fn refus_de_chargement(core: &Core, model: &str) -> Option<RefusDeChargement> {
     let level = CautionSetting::load(&core.data_dir).level;
     let machine = machine_pour_charger(core).await;
     let fit = evaluate(core, model, level, &machine);
-    (fit.verdict == FitVerdict::Refuse).then_some(fit.message)
+    (fit.verdict == FitVerdict::Refuse).then(|| RefusDeChargement {
+        message: fit.message.clone(),
+        model: model.to_string(),
+        level,
+        overridable: fit.overridable,
+    })
+}
+
+/// Un modèle que la conversation n'a pas chargé : la fenêtre dit pourquoi,
+/// sous quelle prudence, et propose de passer outre comme le menu de
+/// chargement — sans quoi l'un acceptait ce que l'autre refusait.
+#[derive(Debug, Clone, Serialize)]
+pub struct RefusDeChargement {
+    pub message: String,
+    pub model: String,
+    pub level: CautionLevel,
+    pub overridable: bool,
 }
 
 #[tauri::command]

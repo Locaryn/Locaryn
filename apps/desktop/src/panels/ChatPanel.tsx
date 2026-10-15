@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AttentionStrip } from "../components/AttentionStrip";
 import { ModalShell } from "../components/ModalShell";
+import { MODELE_FORCE } from "../components/ModeleTropLourd";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
@@ -20,6 +21,7 @@ import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { type EtatEtape, type Suivi, TaskTracker } from "../components/chat/TaskTracker";
 import { ToolCard } from "../components/chat/ToolCard";
+import { type Brouillon, ToolDraft } from "../components/chat/ToolDraft";
 import { type ToolEntry, ToolRun } from "../components/chat/ToolRun";
 import { UsageGauge } from "../components/chat/UsageGauge";
 import { VoiceNote } from "../components/chat/VoiceNote";
@@ -110,6 +112,8 @@ type ChatItem =
   | { id: string; kind: "log"; text: string }
   /** Les fichiers qu'une réponse a créés ou modifiés, cliquables. */
   | { id: string; kind: "fichiers"; fichiers: WorkspaceEntry[] }
+  /** Un appel d'outil en train de s'écrire ; remplacé par l'appel complet. */
+  | { id: string; kind: "brouillon"; brouillon: Brouillon }
   /** Le suivi d'un plan ou d'un objectif : étapes, essais, état. */
   | { id: string; kind: "suivi"; suivi: Suivi };
 
@@ -1177,8 +1181,35 @@ ${d.texte}`
   function handleEvent(ev: StreamEvent) {
     // Des que quelque chose arrive, l'attente est finie : le contenu prend le
     // relais de l'indicateur.
-    if (ev.type === "token" || ev.type === "tool_call") {
+    if (ev.type === "token" || ev.type === "tool_call" || ev.type === "tool_draft") {
       setAttente(null);
+    }
+    if (ev.type === "tool_draft") {
+      const brouillon: Brouillon = {
+        index: ev.index,
+        tool: ev.tool,
+        path: ev.path,
+        chars: ev.chars,
+        tail: ev.tail,
+      };
+      setItems((prev) => {
+        const i = prev.findIndex(
+          (it) => it.kind === "brouillon" && it.brouillon.index === ev.index,
+        );
+        if (i < 0) return [...prev, { id: nextId("brouillon"), kind: "brouillon", brouillon }];
+        const suivant = [...prev];
+        suivant[i] = { ...(prev[i] as Extract<ChatItem, { kind: "brouillon" }>), brouillon };
+        return suivant;
+      });
+      return;
+    }
+    // L'appel complet (ou la suite du texte) remplace les brouillons.
+    if (ev.type === "tool_call" || ev.type === "message_end") {
+      setItems((prev) =>
+        prev.some((it) => it.kind === "brouillon")
+          ? prev.filter((it) => it.kind !== "brouillon")
+          : prev,
+      );
     }
     if (ev.type === "token") {
       fullTextRef.current += ev.text;
@@ -1529,6 +1560,31 @@ ${d.texte}`
     if (gardees.length) setAttachments((prev) => [...prev, ...gardees]);
   }
 
+  // Le modèle refusé à l'envoi vient d'être chargé « quand même » : la
+  // demande repart, sans doubler la bulle ni garder le message d'échec.
+  const renvoyerRef = useRef<() => void>(() => {});
+  renvoyerRef.current = () => {
+    let texte: string | null = null;
+    setItems((prev) => {
+      for (let i = prev.length - 1; i >= 0; i--) {
+        const it = prev[i];
+        if (it.kind === "msg" && it.role === "user") {
+          texte = it.text;
+          return prev.slice(0, i);
+        }
+      }
+      return prev;
+    });
+    queueMicrotask(() => {
+      if (texte) void send(texte);
+    });
+  };
+  useEffect(() => {
+    const surForce = () => renvoyerRef.current();
+    window.addEventListener(MODELE_FORCE, surForce);
+    return () => window.removeEventListener(MODELE_FORCE, surForce);
+  }, []);
+
   async function send(textOverride?: string, attachOverride?: Attachment[], depuisFile = false) {
     // Envoyer, c'est vouloir lire la réponse : le fil se rattache au bas.
     followRef.current = true;
@@ -1827,7 +1883,11 @@ ${d.texte}`
       if (toujoursIci) {
         setStreaming(false);
         setAttente(null);
-        setItems((prev) => terminerForge(prev, null, "Interrompu avant la fin."));
+        setItems((prev) =>
+          terminerForge(prev, null, "Interrompu avant la fin.").filter(
+            (it) => it.kind !== "brouillon",
+          ),
+        );
         // Les fichiers que cette réponse a touchés, cités sous elle.
         core
           .workspaceRecent(sid, t0)
@@ -2731,6 +2791,9 @@ ${preview}`,
                     )}
                   </div>
                 );
+              }
+              if (it.kind === "brouillon") {
+                return <ToolDraft key={it.id} brouillon={it.brouillon} />;
               }
               if (it.kind === "fichiers") {
                 return <FichiersDuTour key={it.id} fichiers={it.fichiers} />;

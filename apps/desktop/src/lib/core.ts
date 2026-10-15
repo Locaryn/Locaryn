@@ -1285,6 +1285,15 @@ export type StreamEvent =
       width: number | null;
       height: number | null;
     }
+  /** Un appel d'outil en train de s'écrire (fichier visé, fin du contenu). */
+  | {
+      type: "tool_draft";
+      index: number;
+      tool: string;
+      path: string | null;
+      chars: number;
+      tail: string;
+    }
   | { type: "preview_update"; artifact_id: string; url: string }
   | {
       type: "provider_changed";

@@ -19,6 +19,7 @@ pub mod mailbox;
 pub mod reasoning;
 pub mod suivantes;
 
+pub mod brouillon;
 pub mod mcp_tools;
 pub mod objectif;
 pub mod openai_compat;
