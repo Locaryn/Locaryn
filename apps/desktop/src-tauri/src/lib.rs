@@ -20,6 +20,7 @@ mod extensions;
 mod gpu_arbiter;
 mod hooks;
 mod inference_engines;
+mod journaux;
 mod laya_runtime;
 mod live_watch;
 mod local_profile;
@@ -35,6 +36,7 @@ mod notifications;
 mod npu_cmd;
 mod presse_papiers;
 mod project_context;
+mod rapports;
 mod reveler;
 mod skills;
 mod snippets;
@@ -1776,15 +1778,47 @@ async fn liberer_annulation(
     }
 }
 
-/// Send a user message and stream the agent's reply. Mirrors the daemon's
-/// `send_message` handler: persist the user message, resolve project context,
-/// ensure the local runtime is up, run the OpenAI-compatible agent, and
-/// persist the assistant reply when the stream ends.
+/// Send a user message and stream the agent's reply. Une erreur part aussi
+/// en rapport, si la personne l'a accepté (`rapports`).
 #[tauri::command]
 // Tauri serialise chaque parametre par son nom : les regrouper changerait
 // l'API IPC et casserait tous les appelants.
 #[allow(clippy::too_many_arguments)]
 async fn send_message(
+    app: tauri::AppHandle,
+    core: State<'_, Core>,
+    session_id: Uuid,
+    content: String,
+    images: Option<Vec<String>>,
+    documents: Option<Vec<JointDocumentIn>>,
+    response_format: Option<serde_json::Value>,
+    reasoning: Option<serde_json::Value>,
+    on_event: Channel<StreamEvent>,
+) -> Result<(), String> {
+    let resultat = envoyer_message(
+        app,
+        core,
+        session_id,
+        content,
+        images,
+        documents,
+        response_format,
+        reasoning,
+        on_event,
+    )
+    .await;
+    if let Err(e) = &resultat {
+        rapports::signaler("Erreur de conversation", e);
+    }
+    resultat
+}
+
+/// Mirrors the daemon's `send_message` handler: persist the user message,
+/// resolve project context, ensure the local runtime is up, run the
+/// OpenAI-compatible agent, and persist the assistant reply when the stream
+/// ends.
+#[allow(clippy::too_many_arguments)]
+async fn envoyer_message(
     app: tauri::AppHandle,
     core: State<'_, Core>,
     session_id: Uuid,
@@ -6896,6 +6930,8 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
     app.manage(core);
     // La mémoire apprend pendant que le modèle chargé attend.
     memory_gardener::lancer(app.clone());
+    // Un plantage de la session précédente, si la personne envoie les rapports.
+    rapports::envoyer_en_attente();
     // Laya, si un morph de contrôle installé en a besoin et qu'il manque.
     {
         let poignee = app.clone();
@@ -7085,13 +7121,29 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
 }
 
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,locaryn=debug")),
-        )
-        .with_target(true)
-        .init();
+    // Le journal va aussi dans un fichier : sur une application installée, la
+    // console n'est visible de personne, et « À propos → Journaux » doit avoir
+    // quelque chose à montrer.
+    let filtre = || {
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,locaryn=debug"))
+    };
+    match journaux::fichier_application() {
+        Some(fichier) => {
+            use tracing_subscriber::fmt::writer::MakeWriterExt;
+            tracing_subscriber::fmt()
+                .with_env_filter(filtre())
+                .with_target(true)
+                .with_ansi(false)
+                .with_writer(std::io::stdout.and(std::sync::Mutex::new(fichier)))
+                .init();
+        }
+        None => tracing_subscriber::fmt()
+            .with_env_filter(filtre())
+            .with_target(true)
+            .init(),
+    }
+    rapports::installer_gestionnaire_de_panique();
 
     tracing::info!("Starting Locaryn desktop v{}", env!("CARGO_PKG_VERSION"));
 
@@ -7183,6 +7235,11 @@ pub fn run() {
             npu_cmd::npu_regler,
             npu_cmd::npu_reessayer,
             npu_cmd::npu_diagnostic,
+            journaux::journaux_rassembler,
+            journaux::journaux_dossier,
+            rapports::rapports_etat,
+            rapports::rapports_regler,
+            rapports::rapports_envoyer,
             npu_cmd::npu_convertir,
             laya_runtime::laya_installer,
             airllm::airllm_setup,

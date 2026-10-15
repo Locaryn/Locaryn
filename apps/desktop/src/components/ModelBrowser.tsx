@@ -175,6 +175,15 @@ function badgeIcon(name: string): IconName {
   return isIconName(name) ? name : "extensions";
 }
 
+/**
+ * Les formats de poids que le NPU Hexagon des Snapdragon calcule lui-même
+ * (backend ggml-hexagon) : avec un autre format, les calculs repartent sur le
+ * processeur et le NPU reste à zéro.
+ */
+function quantNpu(quant: string): boolean {
+  return /^(q4_0|q4_1|q8_0|iq4_nl|mxfp4|f16|fp16)$/i.test(quant.trim());
+}
+
 function getQuantTag(baseTag: string, quant: string): string {
   if (!quant || quant === "default") return baseTag;
   if (quant === "cloud") return baseTag;
@@ -659,6 +668,19 @@ export function ModelBrowser({
   const [onlyFinetunable, setOnlyFinetunable] = useState(false);
   const [riskFilter, setRiskFilter] = useState<"all" | "safe" | "uncensored" | "nsfw">("all");
   const [onlyRecommended, setOnlyRecommended] = useState(false);
+  /** Snapdragon : seulement les modèles et formats que le NPU calcule. */
+  const [onlyNpu, setOnlyNpu] = useState(false);
+  const [npuMachine, setNpuMachine] = useState<{ processeur: string | null } | null>(null);
+  useEffect(() => {
+    core
+      .npuEtat()
+      .then((e) => {
+        if (e.snapdragon) setNpuMachine({ processeur: e.processeur });
+      })
+      .catch(() => {
+        // Pas de NPU connu : pas de filtre NPU.
+      });
+  }, []);
   // AirLLM : basculer l'affichage pour afficher et exécuter les très gros modèles
   // via le moteur AirLLM (chargement des couches une par une sur petit GPU).
   const [airllmEnabled, setAirllmEnabled] = useState<boolean>(() => {
@@ -745,9 +767,9 @@ export function ModelBrowser({
   const repoInspectionOpenedAt = useRef(0);
   const [repoInspectionError, setRepoInspectionError] = useState<string | null>(null);
   const [showQuantGuideDetails, setShowQuantGuideDetails] = useState(false);
-  const [quantFilter, setQuantFilter] = useState<"all" | "recommended" | "light" | "quality">(
-    "all",
-  );
+  const [quantFilter, setQuantFilter] = useState<
+    "all" | "recommended" | "light" | "quality" | "npu"
+  >("all");
 
   const installedSet = useMemo(() => new Set(installed), [installed]);
 
@@ -918,7 +940,12 @@ export function ModelBrowser({
           return null;
         }
 
-        const matchingVariants = f.variants.filter((v) => {
+        const variantesNpu = onlyNpu
+          ? f.variants
+              .map((v) => ({ ...v, quants: v.quants.filter(quantNpu) }))
+              .filter((v) => v.quants.length > 0)
+          : f.variants;
+        const matchingVariants = variantesNpu.filter((v) => {
           if (v.quants.includes("cloud") || v.tag.includes(":cloud")) return false;
           if (bucket && !bucket.test(v.params)) return false;
           if (onlyRecommended) {
@@ -974,6 +1001,7 @@ export function ModelBrowser({
     onlyFinetunable,
     riskFilter,
     onlyRecommended,
+    onlyNpu,
     capabilityFamilies,
     visibleCategories,
     hardwareSpec,
@@ -1022,7 +1050,7 @@ export function ModelBrowser({
 
   // La signature des filtres, et non leur contenu : deux objets égaux mais
   // distincts déclencheraient une remise à zéro à chaque rendu.
-  const signatureFiltres = `${query}|${category}|${brand}|${size}|${yearFilter}|${sortBy}|${onlyFinetunable}|${riskFilter}|${onlyRecommended}`;
+  const signatureFiltres = `${query}|${category}|${brand}|${size}|${yearFilter}|${sortBy}|${onlyFinetunable}|${riskFilter}|${onlyRecommended}|${onlyNpu}`;
   const [filtresVus, setFiltresVus] = useState(signatureFiltres);
   if (filtresVus !== signatureFiltres) {
     // Ajusté pendant le rendu plutôt que dans un effet : React reprend
@@ -2200,6 +2228,22 @@ export function ModelBrowser({
                 <span className="locaryn-dot locaryn-dot-ok" /> Recommandés pour mon PC
               </button>
 
+              {npuMachine && (
+                <button
+                  type="button"
+                  className={`locaryn-chip locaryn-chip-ft${onlyNpu ? " locaryn-chip-on" : ""}`}
+                  onClick={() => {
+                    setOnlyNpu((prev) => !prev);
+                    setQuantFilter((f) => (onlyNpu ? (f === "npu" ? "all" : f) : "npu"));
+                  }}
+                  title={`Seulement les modèles et les quantisations que le NPU${
+                    npuMachine.processeur ? ` de votre ${npuMachine.processeur}` : ""
+                  } calcule lui-même (Q4_0, Q8_0, IQ4_NL, MXFP4, F16)`}
+                >
+                  <Icon name="cpu" size={15} /> Compatible NPU
+                </button>
+              )}
+
               <button
                 type="button"
                 className="locaryn-btn-ghost"
@@ -3311,6 +3355,23 @@ export function ModelBrowser({
                     >
                       Toutes ({repoInspection.candidates.length})
                     </button>
+                    {npuMachine &&
+                      repoInspection.candidates.some((c) => quantNpu(c.quantization ?? "")) && (
+                        <button
+                          type="button"
+                          className={`locaryn-chip ${quantFilter === "npu" ? "locaryn-chip-on" : ""}`}
+                          onClick={() => setQuantFilter("npu")}
+                          style={{ fontSize: "11px", padding: "4px 9px" }}
+                          title="Les formats que le NPU calcule lui-même"
+                        >
+                          NPU (
+                          {
+                            repoInspection.candidates.filter((c) => quantNpu(c.quantization ?? ""))
+                              .length
+                          }
+                          )
+                        </button>
+                      )}
                     {repoInspection.candidates.filter(
                       (c) => getQuantizationAdvice(c.quantization, c.format).isRecommended,
                     ).length > 0 && (
@@ -3370,6 +3431,7 @@ export function ModelBrowser({
                   {repoInspection.candidates
                     .filter((candidate) => {
                       if (quantFilter === "all") return true;
+                      if (quantFilter === "npu") return quantNpu(candidate.quantization ?? "");
                       const advice = getQuantizationAdvice(
                         candidate.quantization,
                         candidate.format,

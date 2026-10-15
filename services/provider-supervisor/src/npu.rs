@@ -60,7 +60,7 @@ pub fn echec() -> Option<String> {
 }
 
 pub fn noter_echec(raison: &str) {
-    tracing::warn!(%raison, "NPU indisponible — retour au moteur Adreno");
+    tracing::error!(%raison, "NPU indisponible — retour au moteur Adreno");
     let _ = std::fs::write(
         chemin_echec(),
         serde_json::json!({ "raison": raison }).to_string(),

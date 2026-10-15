@@ -8,6 +8,20 @@
 // (`Téléchargement de ${nom}`) : chaque « {} » est une valeur gardée telle quelle.
 
 export const EN_EXACT: Record<string, string> = {
+  "Journaux et rapports": "Logs and reports",
+  "En cas de problème, les journaux disent ce qui s'est passé. Votre dossier personnel, vos clés et vos jetons y sont masqués.":
+    "When something goes wrong, the logs say what happened. Your home folder, keys and tokens are masked.",
+  "Voir les journaux": "View logs",
+  "Masquer les journaux": "Hide logs",
+  "Journaux copiés : collez-les dans votre message (Discord, e-mail…).":
+    "Logs copied: paste them into your message (Discord, email…).",
+  "Envoyer à l'équipe": "Send to the team",
+  "Journaux envoyés à l'équipe Locaryn. Merci !": "Logs sent to the Locaryn team. Thank you!",
+  "Envoyer automatiquement les rapports d'erreur": "Send error reports automatically",
+  "Un plantage, un moteur qui ne démarre pas ou une conversation qui échoue envoient le résumé de l'erreur et les journaux (masqués) à l'équipe Locaryn, pour corriger plus vite. Jamais vos conversations ni vos fichiers.":
+    "A crash, an engine that won't start or a failed conversation sends the error summary and the (masked) logs to the Locaryn team so it can be fixed faster. Never your conversations or files.",
+  "Compatible NPU": "NPU compatible",
+  "Les formats que le NPU calcule lui-même": "Formats the NPU computes itself",
   "Copier le diagnostic": "Copy diagnostics",
   "Diagnostic copié : collez-le dans votre message.":
     "Diagnostics copied: paste them into your message.",
@@ -2502,6 +2516,7 @@ export const EN_EXACT: Record<string, string> = {
 };
 
 export const EN_PATTERNS: Record<string, string> = {
+  "NPU ({})": "NPU ({})",
   "Chargé : {}": "Loaded: {}",
   "WSL · {}": "WSL · {}",
   "Distribution par défaut · {}": "Default distribution · {}",

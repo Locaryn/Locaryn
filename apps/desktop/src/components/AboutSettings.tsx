@@ -10,6 +10,7 @@ import {
 } from "../lib/core";
 import { PRESENTATION_REPLAY } from "../lib/presentation";
 import { CAPS } from "./EngineSettings";
+import { JournauxSettings } from "./JournauxSettings";
 import { demanderVerification } from "./UpdateDialog";
 
 /** Page GitHub des versions — la référence pour l'installation manuelle. */
@@ -274,6 +275,8 @@ export function AboutSettings() {
           <span className="locaryn-kv-val locaryn-kv-mono">{info?.db_path ?? "—"}</span>
         </div>
       </div>
+
+      <JournauxSettings />
 
       <h3 style={{ marginTop: 24 }}>Licences open-source</h3>
       <p className="locaryn-field-hint">

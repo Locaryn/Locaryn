@@ -229,6 +229,9 @@ jobs:
       # produire des installeurs non signés quand l'updater est activé.
       # La clé privée vit dans un secret GitHub, jamais dans le dépôt.
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      # Point de collecte des rapports d'erreur (webhook Discord) : compilé dans
+      # l'application. Vide, l'option n'apparaît pas.
+      LOCARYN_RAPPORTS_URL: ${{ secrets.LOCARYN_RAPPORTS_URL }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -391,6 +394,9 @@ jobs:
     runs-on: windows-2022
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      # Point de collecte des rapports d'erreur (webhook Discord) : compilé dans
+      # l'application. Vide, l'option n'apparaît pas.
+      LOCARYN_RAPPORTS_URL: ${{ secrets.LOCARYN_RAPPORTS_URL }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:

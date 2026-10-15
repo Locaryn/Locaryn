@@ -24,6 +24,31 @@ pub struct EtatNpu {
     /// Le modèle actif, et si le NPU calcule son format de poids.
     pub modele: Option<String>,
     pub format_accelere: bool,
+    /// Le processeur, tel que Windows le nomme (« Snapdragon X2 Elite… »).
+    pub processeur: Option<String>,
+}
+
+/// Le nom du processeur, lu dans le registre de Windows.
+fn nom_processeur() -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let mut cmd = std::process::Command::new("reg");
+    cmd.args([
+        "query",
+        r"HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+        "/v",
+        "ProcessorNameString",
+    ]);
+    locaryn_config::hide_console(&mut cmd);
+    let sortie = cmd.output().ok()?;
+    let texte = String::from_utf8_lossy(&sortie.stdout);
+    texte
+        .lines()
+        .find(|l| l.contains("ProcessorNameString"))
+        .and_then(|l| l.split("REG_SZ").nth(1))
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
 }
 
 async fn etat(core: &Core) -> EtatNpu {
@@ -45,6 +70,7 @@ async fn etat(core: &Core) -> EtatNpu {
         actif: npu::actif(),
         format_accelere: modele.as_deref().is_some_and(npu::format_accelere),
         modele,
+        processeur: nom_processeur(),
     }
 }
 

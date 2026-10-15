@@ -3713,6 +3713,7 @@ dependencies = [
  "locaryn-skill-runtime",
  "locaryn-storage",
  "locaryn-travel",
+ "regex",
  "reqwest 0.12.28",
  "rustls",
  "serde",

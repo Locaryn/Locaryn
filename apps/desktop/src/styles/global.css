@@ -14638,3 +14638,22 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
+
+/* ── Journaux (À propos) ── */
+.locaryn-journaux {
+  margin-top: var(--space-2);
+}
+.locaryn-journaux-texte {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0 0 var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

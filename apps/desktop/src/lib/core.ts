@@ -1370,6 +1370,7 @@ export type EtatNpu = {
   } | null;
   modele: string | null;
   format_accelere: boolean;
+  processeur: string | null;
 };
 
 /** Le modèle de décision local partagé par les morphs de contrôle. */
@@ -2312,6 +2313,12 @@ export interface CoreApi {
   npuRegler(actif: boolean): Promise<EtatNpu>;
   npuReessayer(): Promise<EtatNpu>;
   npuDiagnostic(): Promise<string>;
+  /** Les journaux rassemblés (machine, fin de chaque journal), masqués. */
+  journauxRassembler(): Promise<string>;
+  journauxDossier(): Promise<string>;
+  rapportsEtat(): Promise<{ disponible: boolean; actif: boolean }>;
+  rapportsRegler(actif: boolean): Promise<{ disponible: boolean; actif: boolean }>;
+  rapportsEnvoyer(message: string | null): Promise<void>;
   npuConvertir(modele: string): Promise<string>;
   ouvrirChemin(chemin: string, action: "explorer" | "terminal" | "vscode"): Promise<void>;
   decisionsInstaller(): Promise<EtatDecisions>;
@@ -2838,6 +2845,12 @@ const tauriCore: CoreApi = {
   npuRegler: (actif) => invoke<EtatNpu>("npu_regler", { actif }),
   npuReessayer: () => invoke<EtatNpu>("npu_reessayer"),
   npuDiagnostic: () => invoke<string>("npu_diagnostic"),
+  journauxRassembler: () => invoke<string>("journaux_rassembler"),
+  journauxDossier: () => invoke<string>("journaux_dossier"),
+  rapportsEtat: () => invoke<{ disponible: boolean; actif: boolean }>("rapports_etat"),
+  rapportsRegler: (actif) =>
+    invoke<{ disponible: boolean; actif: boolean }>("rapports_regler", { actif }),
+  rapportsEnvoyer: (message) => invoke<void>("rapports_envoyer", { message }),
   npuConvertir: (modele) => invoke<string>("npu_convertir", { modele }),
   ouvrirChemin: (chemin, action) => invoke<void>("open_path_with", { chemin, action }),
   decisionsInstaller: () => invoke<EtatDecisions>("laya_installer"),
@@ -5414,6 +5427,7 @@ Contenu de démonstration, avec **du gras** et une liste :
       actif: null,
       modele: null,
       format_accelere: false,
+      processeur: null,
     };
   },
   async npuRegler() {
@@ -5426,6 +5440,7 @@ Contenu de démonstration, avec **du gras** et une liste :
       actif: null,
       modele: null,
       format_accelere: false,
+      processeur: null,
     };
   },
   async npuReessayer() {
@@ -5438,12 +5453,26 @@ Contenu de démonstration, avec **du gras** et une liste :
       actif: null,
       modele: null,
       format_accelere: false,
+      processeur: null,
     };
   },
   async ouvrirChemin() {},
   async npuDiagnostic() {
     return "";
   },
+  async journauxRassembler() {
+    return "Locaryn (démo) — aucun journal dans l'aperçu web.";
+  },
+  async journauxDossier() {
+    return "";
+  },
+  async rapportsEtat() {
+    return { disponible: false, actif: false };
+  },
+  async rapportsRegler(actif) {
+    return { disponible: false, actif };
+  },
+  async rapportsEnvoyer() {},
   async npuConvertir(modele) {
     return modele;
   },
