@@ -2303,17 +2303,26 @@ async fn spawn_llama_server(
     // `-lm none` (« auto | none | mmap | mlock | mmap+mlock », vérifié sur le
     // --help de b11003). C'est le seul drapeau du spawn qui a changé de forme
     // entre b10088 et b11003.
-    if !inference_cfg["use_mmap"].as_bool().unwrap_or(true) {
+    // Modèle entier sur une carte dédiée : sans mmap. Mappé, le fichier GGUF
+    // restait compté dans la RAM du moteur une fois copié dans la VRAM —
+    // mesuré sur RX 570 avec un 9B : 4,1 Go de RAM avec mmap, 0,6 Go sans, et
+    // un chargement un peu plus rapide (3,5 s au lieu de 4,3). En mémoire
+    // unifiée (Mac, Snapdragon), le mapping évite au contraire une copie.
+    let tout_sur_la_carte =
+        !cpu_only && gpu_layers < 0 && !profile.unified_memory && profile.total_vram_gb > 0.0;
+    if !inference_cfg["use_mmap"].as_bool().unwrap_or(true) || tout_sur_la_carte {
         cmd.arg("-lm").arg("none");
     }
 
     cmd.arg("-np").arg(slots.to_string());
 
     // Le cache des conversations en RAM (8 Go par défaut) : sur une machine
-    // de 16 Go ou moins, il poussait le système à la pagination. 2 Go gardent
-    // plusieurs conversations récentes.
+    // de 16 Go ou moins, il poussait le système à la pagination. 1 Go garde la
+    // conversation en cours et les requêtes annexes (titre, suggestions) ;
+    // 2 Go se remplissaient au fil des échanges et se voyaient dans la RAM
+    // du moteur.
     if profile.total_ram_gb > 0.0 && profile.total_ram_gb <= 16.5 {
-        cmd.arg("-cram").arg("2048");
+        cmd.arg("-cram").arg("1024");
     }
 
     // Speculative decoding draft model (current flag: -md).
