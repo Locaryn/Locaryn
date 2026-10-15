@@ -139,8 +139,11 @@ pub async fn run_openai_tool_loop(
         .as_ref()
         .map(|h| h.0.specs())
         .unwrap_or_default();
+    // Chercher sur le web ne demande ni projet ni navigateur : ces deux outils
+    // sont offerts partout.
     let all_tools: Vec<_> = tools
         .into_iter()
+        .chain(crate::web::web_tools())
         .chain(host_specs)
         .chain(extension_tools)
         .chain(mcp_tools.clone())
@@ -172,6 +175,27 @@ pub async fn run_openai_tool_loop(
         .chain(std::iter::once(input.message.as_str()))
         .collect::<Vec<_>>()
         .join("\n");
+    // Le navigateur intégré et le contrôle du bureau ne sont offerts que si la
+    // personne les demande (ou les désigne par « @ ») : sinon un modèle les
+    // prenait pour une simple recherche ou pour écrire du code, à grand renfort
+    // de captures d'écran. Ils restent chargeables à la demande
+    // (`charger_outils`), et leurs définitions — des milliers de jetons — ne
+    // pèsent plus sur chaque message.
+    let ecran = crate::tool_budget::outils_ecran(&mcp_tools);
+    let demande_ecran = crate::tool_budget::demande_l_ecran(&input.message)
+        || input
+            .history
+            .iter()
+            .rev()
+            .filter(|t| t.role == "user")
+            .take(2)
+            .any(|t| crate::tool_budget::demande_l_ecran(&t.content))
+        || input.forced_tools.iter().any(|f| ecran.contains(f));
+    let (all_tools, ecran_differes): (Vec<_>, Vec<_>) = if demande_ecran || ecran.is_empty() {
+        (all_tools, Vec::new())
+    } else {
+        all_tools.into_iter().partition(|t| !ecran.contains(&t.name))
+    };
     // Gardée pour recaler l'allègement si le moteur refuse la requête.
     let outils_complets = all_tools.clone();
     let mut all_tools = match contexte_serveur {
@@ -205,6 +229,12 @@ pub async fn run_openai_tool_loop(
         }
         _ => all_tools,
     };
+    if !ecran_differes.is_empty() {
+        let (dedoublonnes, _) = crate::tool_budget::one_name_per_tool(ecran_differes);
+        differes.extend(dedoublonnes);
+        all_tools.retain(|t| t.name != crate::tool_budget::CHARGER_OUTILS);
+        all_tools.push(crate::tool_budget::outil_de_chargement(&differes));
+    }
     // Le premier tour doit appeler un outil quand des outils sont imposés et
     // effectivement offerts : une consigne dans le message ne suffisait pas à
     // un petit modèle. Les tours suivants restent libres, pour qu'il puisse

@@ -110,7 +110,10 @@ tauri-plugin-barcode-scanner = { path = "vendor/tauri-plugin-barcode-scanner" }
 codegen-units = 1
 lto = "thin"
 strip = "symbols"
-panic = "abort"
+# « unwind » et non « abort » : une panique dans une seule requête tuait le
+# service entier (le daemon et ses connexions), là où le serveur HTTP sait la
+# rattraper et répondre 500.
+panic = "unwind"
 
 [profile.dist]
 inherits = "release"

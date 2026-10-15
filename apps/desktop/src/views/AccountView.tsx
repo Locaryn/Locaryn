@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { ConversationHistorySettings } from "../components/ConversationHistorySettings";
+import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import { DefaultPermissionsSettings } from "../components/DefaultPermissionsSettings";
 import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
@@ -268,6 +269,15 @@ export function AccountView({
           />
         ) : (
           <>
+            {/* Les comptes de fournisseurs (Claude, Codex…) n'existent que si
+                un morph les apporte : sans morph, rien ne s'affiche ici, et
+                les réglages restent ceux d'une installation locale. */}
+            <ExtensionSlot
+              name="account.connections"
+              className="locaryn-account-connexions"
+              itemClassName="locaryn-account-connexion"
+              style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 12 }}
+            />
             <div className="locaryn-card locaryn-account-profile-card">
               <div className="locaryn-account-profile-head">
                 <div

@@ -7,6 +7,7 @@
 // them would be meaningless and would break search.
 
 import { useSyncExternalStore } from "react";
+import { appliquerLangue, traduire } from "./autoTranslate";
 
 export type Lang = "fr" | "en";
 
@@ -134,7 +135,20 @@ export function setLang(l: Lang) {
     // Private mode / storage disabled — the choice just won't persist.
   }
   if (typeof document !== "undefined") document.documentElement.lang = l;
+  // Toute l'interface suit, pas seulement les textes passés à `t()`.
+  appliquerLangue(l);
   for (const fn of listeners) fn();
+}
+
+// La langue gardée d'une session précédente s'applique dès que l'interface
+// existe.
+if (typeof document !== "undefined" && current === "en") {
+  const lancer = () => {
+    document.documentElement.lang = "en";
+    appliquerLangue("en");
+  };
+  if (document.body) lancer();
+  else document.addEventListener("DOMContentLoaded", lancer, { once: true });
 }
 
 function subscribe(fn: () => void): () => void {
@@ -146,7 +160,7 @@ function subscribe(fn: () => void): () => void {
  *  so an untranslated label degrades to French rather than to a missing key. */
 export function t(fr: string): string {
   if (current === "fr") return fr;
-  return EN[fr] ?? fr;
+  return EN[fr] ?? traduire(fr) ?? fr;
 }
 
 /** React hook: `const { t, lang, setLang } = useI18n()`. Re-renders on change. */

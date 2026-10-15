@@ -90,17 +90,42 @@ pub enum Headroom {
 }
 
 impl Headroom {
-    /// Réserve laissée libre, en Go : d'abord la VRAM, ensuite la RAM.
+    /// Mémoire vidéo laissée libre au système, en Go, sur une carte de
+    /// `total_vram_gb`.
     ///
-    /// La VRAM garde moins que la RAM parce qu'elle n'a pas d'autre client
-    /// qu'un bureau graphique, là où le système, lui, a tout le reste à faire
-    /// tourner.
-    fn reserves(self) -> (f64, f64) {
-        match self {
-            Headroom::Prudent => (1.5, 3.0),
-            Headroom::Equilibre => (0.6, 1.5),
-            Headroom::Risque => (0.0, 0.0),
+    /// Une part de la carte plutôt qu'un chiffre fixe : 1,5 Go sur une carte
+    /// de 4 Go en prenait plus d'un tiers, et rien sur une carte de 24 Go.
+    /// Sur 8 Go : 1 Go en prudent, 0,5 Go en équilibré, 0,2 Go en risqué.
+    /// C'est aussi la marge que le moteur garde (`--fit-target`) quand il
+    /// choisit lui-même le contexte : la prudence choisie vaut au chargement,
+    /// pas seulement dans l'estimation.
+    pub fn vram_reserve_gb(self, total_vram_gb: f64) -> f64 {
+        let (part, plancher) = match self {
+            Headroom::Prudent => (0.125, 0.75),
+            Headroom::Equilibre => (0.0625, 0.4),
+            Headroom::Risque => (0.025, 0.2),
+        };
+        if total_vram_gb <= 0.0 {
+            return 0.0;
         }
+        (total_vram_gb * part).max(plancher).min(total_vram_gb * 0.5)
+    }
+
+    /// Mémoire système laissée libre, en Go.
+    ///
+    /// La RAM garde plus que la VRAM : le système y fait tourner tout le
+    /// reste, là où la carte n'a guère d'autre client qu'un bureau graphique.
+    pub fn ram_reserve_gb(self) -> f64 {
+        match self {
+            Headroom::Prudent => 3.0,
+            Headroom::Equilibre => 1.5,
+            Headroom::Risque => 0.5,
+        }
+    }
+
+    /// Réserve laissée libre, en Go : d'abord la VRAM, ensuite la RAM.
+    fn reserves(self, total_vram_gb: f64) -> (f64, f64) {
+        (self.vram_reserve_gb(total_vram_gb), self.ram_reserve_gb())
     }
 }
 
@@ -381,6 +406,10 @@ pub struct FitReport {
     pub required_gb: f64,
     pub free_vram_gb: f64,
     pub free_ram_gb: f64,
+    /// VRAM laissée libre au système au niveau de prudence choisi.
+    pub vram_reserve_gb: f64,
+    /// RAM laissée libre au système au niveau de prudence choisi.
+    pub ram_reserve_gb: f64,
 
     /// Couches placées sur le GPU, sur le total.
     pub gpu_layers: u32,
@@ -486,7 +515,7 @@ fn budgets_utilisables(
 /// L'estimation complète.
 pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptions) -> FitReport {
     let context = resolve_context(spec, options);
-    let (reserve_vram, reserve_ram) = options.headroom.reserves();
+    let (reserve_vram, reserve_ram) = options.headroom.reserves(hardware.total_vram_gb);
     let (usable_vram, usable_ram) = budgets_utilisables(hardware, reserve_vram, reserve_ram);
 
     let kv_bytes = kv_cache_bytes(spec, context, options.kv_type);
@@ -511,6 +540,7 @@ pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptio
         usable_ram,
         usable_vram,
         options.headroom,
+        hardware.total_vram_gb > 0.0,
     );
 
     let speed = throughput(spec, &split, context, options, hardware);
@@ -541,6 +571,8 @@ pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptio
         required_gb: gib(total_bytes) + reserve_ram.min(reserve_vram),
         free_vram_gb: hardware.free_vram_gb,
         free_ram_gb: hardware.free_ram_gb,
+        vram_reserve_gb: reserve_vram,
+        ram_reserve_gb: reserve_ram,
         gpu_layers: split.gpu_layers,
         total_layers: spec.n_layer,
         tokens_per_second: speed,
@@ -640,12 +672,19 @@ fn judge(
     usable_ram_gb: f64,
     usable_vram_gb: f64,
     headroom: Headroom,
+    has_gpu: bool,
 ) -> (Verdict, Placement, bool) {
     let needed_in_ram = gib(split.cpu_bytes + split.cpu_kv_bytes);
     let all_on_gpu = split.cpu_bytes == 0 && split.gpu_layers > 0;
 
     if all_on_gpu {
         return (Verdict::Confortable, Placement::Gpu, false);
+    }
+    // Prudent, avec une carte graphique : le modèle tient sur la carte en
+    // laissant la réserve choisie, ou il n'est pas chargé. Déborder sur la
+    // RAM ralentit toute la machine — exactement ce que ce niveau exclut.
+    if headroom == Headroom::Prudent && has_gpu {
+        return (Verdict::Refuse, Placement::Partage, true);
     }
     if needed_in_ram <= usable_ram_gb {
         let placement = if split.gpu_layers > 0 {
@@ -892,6 +931,24 @@ fn phrase(report: &FitReport, hardware: &HardwareProfile) -> String {
              ralentissement sévère, et l'application peut être tuée par manque de mémoire.",
             report.required_gb, report.free_ram_gb
         ),
+        Verdict::Refuse if report.placement == Placement::Partage => {
+            let mut text = format!(
+                "Trop lourd pour la VRAM au niveau « prudent » : {:.1} Go à poser sur la carte,                  {:.1} Go libres dont {:.1} Go restent réservés au système. Le modèle                  déborderait sur la RAM.",
+                report.weights_gb + report.kv_cache_gb + report.compute_gb,
+                report.free_vram_gb,
+                report.vram_reserve_gb
+            );
+            if let Some(quant) = &report.suggested_quant {
+                text.push_str(&format!(" La version {quant} tiendrait."));
+            } else if report.max_gpu_context > 0 && report.max_gpu_context < report.context {
+                text.push_str(&format!(
+                    " Avec un contexte de {} jetons, il tiendrait.",
+                    report.max_gpu_context
+                ));
+            }
+            text.push_str(" Passez en « équilibré » pour autoriser le débordement.");
+            text
+        }
         Verdict::Refuse => {
             let mut text = format!(
                 "{:.1} Go nécessaires, {:.1} Go libres en RAM et {:.1} Go en VRAM. Refusé au \

@@ -30,6 +30,7 @@ pub mod tool_budget;
 pub mod tools;
 pub mod trust_source;
 pub mod verification;
+pub mod web;
 
 pub use exec::execute_tool_call;
 pub use openai_compat::OpenAiCompatAgent;
@@ -186,7 +187,17 @@ pub fn tool_discipline_prompt() -> String {
        missing, the tool says so — do not invent it. Never claim you cannot do something a \
        listed tool does — call it.\n\
      - When the request is not about files or code, answer it directly. Do not turn an \
-       ordinary question into a file operation, and do not mention the tools."
+       ordinary question into a file operation, and do not mention the tools.\n\n\
+     Pick the lightest tool that does the job:\n\
+     - To look something up online, call `web_search`, then `web_fetch` on the pages worth \
+       reading. Use the built-in browser tools only if the user explicitly asks for the \
+       browser, or if a page needs a login, a form or JavaScript that `web_fetch` cannot run.\n\
+     - To write or fix code, work on files directly: `write_file`, `read_file`, `search`, then \
+       `run_command` to check the result (run it, compile it, lint it). Never drive the mouse, \
+       keyboard or screen (desktop control tools) to write code or edit files; use them only \
+       when the user explicitly asks you to control the computer or a graphical application.\n\
+     - If the user names a tool or a method (\"use the browser\", \"take control of my \
+       screen\"), do what they ask."
         .to_string()
 }
 
@@ -258,6 +269,15 @@ pub fn assemble_system_prompt_pour(
 /// prompt identically.
 pub fn compose_system_prompt(base: &str, extra: Option<&String>) -> String {
     match extra.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        // Un apport qui porte déjà ses titres (extensions, mémoire) passe tel
+        // quel : le coiffer de « Extensions » rangerait la mémoire parmi elles.
+        Some(extra) if extra.starts_with("# ") => {
+            if base.is_empty() {
+                extra.to_string()
+            } else {
+                format!("{base}\n\n{extra}")
+            }
+        }
         Some(extra) => format!("{base}\n\n# Extensions\n\n{extra}"),
         None => base.to_string(),
     }

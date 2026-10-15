@@ -47,6 +47,8 @@ pub struct Entree {
 #[derive(Debug, Serialize)]
 pub struct Fichier {
     pub chemin: String,
+    /// Le chemin complet sur le disque : affiché, copié, ouvert ailleurs.
+    pub absolu: String,
     /// Absent pour un fichier binaire.
     pub contenu: Option<String>,
     pub taille: u64,
@@ -171,10 +173,147 @@ pub async fn workspace_read(
     octets.truncate(LECTURE_MAX);
     Ok(Fichier {
         chemin: relatif(&racine, &cible),
+        absolu: cible.to_string_lossy().into_owned(),
         contenu: decoder(&octets),
         taille,
         tronque,
     })
+}
+
+/// Ouvrir un fichier du dossier de la conversation ailleurs : dans VS Code,
+/// dans un terminal placé à son dossier, ou montré dans l'explorateur.
+///
+/// `action` vaut `vscode`, `terminal` ou `explorer`. Le chemin est résolu
+/// dans le dossier de la conversation, comme pour la lecture.
+#[tauri::command]
+pub async fn workspace_open_with(
+    core: State<'_, Core>,
+    session_id: Uuid,
+    chemin: String,
+    action: String,
+) -> Result<(), String> {
+    let racine = racine(&core, session_id).await?;
+    let cible = if chemin.trim().is_empty() {
+        racine.clone()
+    } else {
+        resolve_path(&racine, &chemin).map_err(|e| e.to_string())?
+    };
+    ouvrir_avec(&cible, &action)
+}
+
+/// Le même geste pour un chemin déjà absolu (un artefact hors du dossier).
+#[tauri::command]
+pub async fn open_path_with(chemin: String, action: String) -> Result<(), String> {
+    let cible = crate::reveler::normaliser(&chemin, cfg!(windows));
+    if !cible.exists() {
+        return Err(format!("{} n'existe pas.", cible.display()));
+    }
+    ouvrir_avec(&cible, &action)
+}
+
+fn ouvrir_avec(cible: &Path, action: &str) -> Result<(), String> {
+    let dossier = if cible.is_dir() {
+        cible.to_path_buf()
+    } else {
+        cible.parent().map(Path::to_path_buf).unwrap_or_else(|| cible.to_path_buf())
+    };
+    match action {
+        "explorer" => crate::reveler::ouvrir(&crate::reveler::cible(cible, &dossier)),
+        "vscode" => lancer_vscode(cible),
+        "terminal" => lancer_terminal(&dossier),
+        autre => Err(format!("action inconnue : {autre}")),
+    }
+}
+
+/// VS Code s'installe avec `code` dans le PATH (un `code.cmd` sous Windows,
+/// qu'on ne lance qu'à travers `cmd`). Sans lui, on essaie l'installation par
+/// utilisateur, à son emplacement habituel.
+fn lancer_vscode(cible: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let mut c = std::process::Command::new("cmd");
+        locaryn_config::hide_console(&mut c);
+        if c.arg("/C").arg("code").arg(cible).spawn().is_ok() {
+            return Ok(());
+        }
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            let exe = PathBuf::from(local).join("Programs")
+                .join("Microsoft VS Code")
+                .join("Code.exe");
+            if exe.exists() {
+                return std::process::Command::new(exe)
+                    .arg(cible)
+                    .spawn()
+                    .map(|_| ())
+                    .map_err(|e| e.to_string());
+            }
+        }
+        Err("VS Code est introuvable : installez-le, ou ajoutez la commande « code » au PATH.".into())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if std::process::Command::new("code").arg(cible).spawn().is_ok() {
+            return Ok(());
+        }
+        std::process::Command::new("open")
+            .args(["-a", "Visual Studio Code"])
+            .arg(cible)
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "VS Code est introuvable.".to_string())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("code")
+            .arg(cible)
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| "VS Code est introuvable : la commande « code » manque.".to_string())
+    }
+}
+
+/// Un terminal ouvert dans `dossier` : Windows Terminal s'il est là, sinon
+/// une invite de commandes.
+fn lancer_terminal(dossier: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        if std::process::Command::new("wt")
+            .arg("-d")
+            .arg(dossier)
+            .spawn()
+            .is_ok()
+        {
+            return Ok(());
+        }
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "cmd", "/K", "cd", "/d"])
+            .arg(dossier)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", "Terminal"])
+            .arg(dossier)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        for t in ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"] {
+            if std::process::Command::new(t)
+                .current_dir(dossier)
+                .spawn()
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+        Err("Aucun terminal trouvé.".into())
+    }
 }
 
 /// Lancer git dans `racine`, sans fenêtre de console.

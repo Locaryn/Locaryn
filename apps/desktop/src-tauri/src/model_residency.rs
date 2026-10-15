@@ -267,6 +267,13 @@ pub struct ResidencyStatus {
     /// Au-delà, un modèle non épinglé est déchargé.
     pub idle_timeout_seconds: u64,
     pub endpoint: Option<String>,
+    /// Une réponse demandée par la personne est en cours : pas de compte à
+    /// rebours, le modèle sert.
+    pub busy: bool,
+    /// Le moteur est lancé mais charge encore ses poids.
+    pub loading: bool,
+    /// La fenêtre de contexte que le moteur applique réellement, en jetons.
+    pub context: Option<u32>,
 }
 
 #[tauri::command]
@@ -304,12 +311,30 @@ pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, S
         false
     };
 
-    let (idle_seconds, pinned) = match core.supervisor.residency(&engine).await {
-        Some((idle, pinned, _)) => (idle, pinned),
-        None => (0, false),
+    let (idle_seconds, pinned, tourne) = match core.supervisor.residency(&engine).await {
+        Some((idle, pinned, tourne)) => (idle, pinned, tourne),
+        None => (0, false, false),
+    };
+    let busy = core.supervisor.utilisateur_occupe();
+    // Pendant une réponse, une sonde qui tarde ne fait pas croire à un modèle
+    // déchargé : le processus est là, il travaille.
+    let loaded = loaded || (busy && tourne && a_un_modele);
+    let loading = !loaded && tourne && a_un_modele;
+    let context = if loaded {
+        match active.as_ref() {
+            Some(p) => locaryn_agent_runtime::tool_budget::server_context(&core.http, &p.endpoint)
+                .await
+                .map(|n| n.min(u32::MAX as usize) as u32),
+            None => None,
+        }
+    } else {
+        None
     };
 
     Ok(ResidencyStatus {
+        busy,
+        loading,
+        context,
         loaded,
         model: if loaded {
             active.as_ref().and_then(|p| p.model.clone())
@@ -337,6 +362,58 @@ pub async fn signaler_activite(core: State<'_, Core>) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Ce que chaque niveau de prudence laisse libre sur *cette* machine.
+#[derive(Debug, Clone, Serialize)]
+pub struct CautionReserve {
+    pub level: CautionLevel,
+    /// VRAM laissée au système, en Go.
+    pub vram_gb: f64,
+    /// RAM laissée au système, en Go.
+    pub ram_gb: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CautionReserves {
+    pub total_vram_gb: f64,
+    pub total_ram_gb: f64,
+    pub unified_memory: bool,
+    pub levels: Vec<CautionReserve>,
+}
+
+/// Les réserves des trois niveaux, en Go, pour les montrer à côté du choix.
+#[tauri::command]
+pub fn caution_reserves() -> CautionReserves {
+    let p = llmfit::profile();
+    let levels = [
+        CautionLevel::Prudent,
+        CautionLevel::Equilibre,
+        CautionLevel::Risque,
+    ]
+    .into_iter()
+    .map(|level| CautionReserve {
+        level,
+        vram_gb: level.headroom().vram_reserve_gb(p.total_vram_gb),
+        ram_gb: level.headroom().ram_reserve_gb(),
+    })
+    .collect();
+    CautionReserves {
+        total_vram_gb: p.total_vram_gb,
+        total_ram_gb: p.total_ram_gb,
+        unified_memory: p.unified_memory,
+        levels,
+    }
+}
+
+/// Le chargement de ce modèle respecte-t-il la prudence choisie ? `Some` :
+/// la raison du refus, à montrer telle quelle. Appelé avant qu'une
+/// conversation ne démarre le moteur elle-même.
+pub async fn refus_de_chargement(core: &Core, model: &str) -> Option<String> {
+    let level = CautionSetting::load(&core.data_dir).level;
+    let machine = machine_pour_charger(core).await;
+    let fit = evaluate(core, model, level, &machine);
+    (fit.verdict == FitVerdict::Refuse).then_some(fit.message)
 }
 
 #[tauri::command]
@@ -444,8 +521,20 @@ pub async fn llmfit_catalog(
     entries: Vec<CatalogEntry>,
 ) -> Result<Vec<ModelFit>, String> {
     let level = CautionSetting::load(&core.data_dir).level;
-    let options = run_options(&core, level);
-    let hardware = machine_pour_charger(&core).await;
+    let mut options = run_options(&core, level);
+    // Le catalogue répond « ce PC peut-il le faire tourner », au contexte
+    // minimal utile : le moteur agrandit ensuite le contexte à la mémoire qui
+    // reste. Un contexte réglé à 128k rendait presque tout « trop lourd ».
+    options.context = locaryn_provider_supervisor::AUTO_FIT_MIN_CTX;
+    // En « prudent », un modèle qui déborde un peu sur la RAM reste faisable :
+    // la pastille le montre (couches GPU), le chargement appliquera la règle.
+    if level == CautionLevel::Prudent {
+        options.headroom = llmfit::Headroom::Equilibre;
+    }
+    // La capacité de la machine, pas la mémoire libre à l'instant : la
+    // question est « ce PC peut-il le faire tourner ». Le chargement, lui,
+    // contrôle la mémoire réellement libre.
+    let hardware = machine_pour_charger(&core).await.capacite();
     Ok(entries
         .into_iter()
         .map(|entry| {

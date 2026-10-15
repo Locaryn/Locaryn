@@ -990,6 +990,8 @@ export interface WorkspaceEntry {
 
 export interface WorkspaceFile {
   chemin: string;
+  /** Le chemin complet sur le disque (absent dans la démo). */
+  absolu?: string;
   /** `null` pour un fichier binaire. */
   contenu: string | null;
   taille: number;
@@ -1342,14 +1344,45 @@ export interface HardwareSpec {
 /** Jusqu'où l'application accepte de remplir la mémoire avant de charger. */
 export type CautionLevel = "prudent" | "equilibre" | "risque";
 
+/** Ce qu'un niveau de prudence laisse libre au système, en Go. */
+export interface CautionReserve {
+  level: CautionLevel;
+  vram_gb: number;
+  ram_gb: number;
+}
+export interface CautionReserves {
+  total_vram_gb: number;
+  total_ram_gb: number;
+  unified_memory: boolean;
+  levels: CautionReserve[];
+}
+
+/** Une fenêtre de quota d'un abonnement (5 heures, semaine…). */
+export interface CloudUsageWindow {
+  id?: string;
+  label: string;
+  used_percent: number | null;
+  resets_at?: string | null;
+}
+/** Les limites d'utilisation du fournisseur actif, telles que son morph les
+ *  publie (`usage_url`). */
+export interface CloudUsage {
+  provider?: string;
+  model?: string | null;
+  plan?: string | null;
+  windows?: CloudUsageWindow[];
+  credits?: { label?: string; remaining: number | string; unit?: string } | null;
+  note?: string | null;
+}
+
 export const CAUTION_LABELS: Record<CautionLevel, { label: string; hint: string }> = {
   prudent: {
     label: "Sécurité",
-    hint: "Ne charge que si la machine a largement de quoi. Refuse tout ce qui pourrait la ralentir.",
+    hint: "Le modèle doit tenir entièrement dans la VRAM en laissant la réserve ci-dessous libre. Sinon, il n'est pas chargé.",
   },
   equilibre: {
     label: "Intermédiaire",
-    hint: "Charge avec précautions : accepte que ce soit juste, refuse ce qui déborderait.",
+    hint: "Garde une petite réserve de VRAM ; accepte qu'une partie du modèle passe par la RAM si elle a de la place.",
   },
   risque: {
     label: "Risqué",
@@ -1448,6 +1481,12 @@ export interface ResidencyStatus {
   /** Au-delà, un modèle non épinglé est déchargé. */
   idle_timeout_seconds: number;
   endpoint: string | null;
+  /** Une réponse demandée par la personne est en cours. */
+  busy?: boolean;
+  /** Le moteur charge encore ses poids. */
+  loading?: boolean;
+  /** Fenêtre de contexte réellement appliquée par le moteur, en jetons. */
+  context?: number | null;
 }
 
 export type KvCacheType = "f16" | "q8_0" | "q4_0";
@@ -1725,6 +1764,13 @@ export interface CoreApi {
   /** Le dossier de la conversation, en lecture. */
   workspaceList(sessionId: string, dossier: string): Promise<WorkspaceEntry[]>;
   workspaceRead(sessionId: string, chemin: string): Promise<WorkspaceFile>;
+  /** Ouvrir un fichier de la conversation dans VS Code, un terminal ou
+   *  l'explorateur de fichiers. */
+  workspaceOpenWith(
+    sessionId: string,
+    chemin: string,
+    action: "vscode" | "terminal" | "explorer",
+  ): Promise<void>;
   workspaceChanges(sessionId: string): Promise<WorkspaceChanges>;
   workspaceDiff(sessionId: string, chemin: string): Promise<string>;
   /** A plan the model produced for a substantial request. */
@@ -2185,6 +2231,11 @@ export interface CoreApi {
   cloudProviderModels(provider: string, refresh?: boolean): Promise<CloudModel[]>;
   /** Choisir un modèle distant : il devient le modèle actif de la conversation. */
   cloudProviderSelect(provider: string, model: string): Promise<void>;
+  /** Le compte d'un fournisseur local : état, connexion, déconnexion. */
+  cloudProviderAccount(
+    provider: string,
+    action: "status" | "login" | "logout",
+  ): Promise<Record<string, unknown>>;
   /** La passerelle locale répond-elle ? */
   cloudProviderStatus(provider: string): Promise<CloudProviderStatus>;
   /** Démarrer la passerelle avec la commande déclarée par son manifeste. */
@@ -2210,6 +2261,10 @@ export interface CoreApi {
   /** Décharge le modèle et rend la mémoire. */
   ejectChatModel(): Promise<ResidencyStatus>;
   cautionLevel(): Promise<CautionLevel>;
+  /** Les réserves de mémoire de chaque niveau, sur cette machine. */
+  cautionReserves(): Promise<CautionReserves>;
+  /** Les limites de l'abonnement du modèle actif, `null` s'il n'en a pas. */
+  cloudUsage(): Promise<CloudUsage | null>;
   setCautionLevel(level: CautionLevel): Promise<void>;
   getInferenceConfig(): Promise<InferenceConfig>;
   setInferenceConfig(config: InferenceConfig, consent?: boolean): Promise<void>;
@@ -2278,6 +2333,8 @@ const tauriCore: CoreApi = {
     invoke<WorkspaceEntry[]>("workspace_list", { sessionId, dossier }),
   workspaceRead: (sessionId, chemin) =>
     invoke<WorkspaceFile>("workspace_read", { sessionId, chemin }),
+  workspaceOpenWith: (sessionId, chemin, action) =>
+    invoke<void>("workspace_open_with", { sessionId, chemin, action }),
   workspaceChanges: (sessionId) => invoke<WorkspaceChanges>("workspace_changes", { sessionId }),
   workspaceDiff: (sessionId, chemin) => invoke<string>("workspace_diff", { sessionId, chemin }),
   suggestFollowups: (answer, question) =>
@@ -2699,6 +2756,8 @@ const tauriCore: CoreApi = {
     invoke<void>("cloud_provider_select", { provider, model }),
   cloudProviderStatus: (provider) =>
     invoke<CloudProviderStatus>("cloud_provider_status", { provider }),
+  cloudProviderAccount: (provider, action) =>
+    invoke<Record<string, unknown>>("cloud_provider_account", { provider, action }),
   cloudProviderStart: (provider) =>
     invoke<CloudProviderStatus>("cloud_provider_start", { provider }),
   cloudProviderInstall: (provider) => invoke<string>("cloud_provider_install", { provider }),
@@ -2713,6 +2772,8 @@ const tauriCore: CoreApi = {
     invoke<ResidencyStatus>("load_chat_model", { model, force: force ?? null }),
   ejectChatModel: () => invoke<ResidencyStatus>("eject_chat_model"),
   cautionLevel: () => invoke<CautionLevel>("caution_level"),
+  cautionReserves: () => invoke<CautionReserves>("caution_reserves"),
+  cloudUsage: () => invoke<CloudUsage | null>("cloud_usage"),
   setCautionLevel: (level) => invoke<void>("set_caution_level", { level }),
 
   getInferenceConfig: () => invoke<InferenceConfig>("get_inference_config"),
@@ -3752,12 +3813,24 @@ const demoCore: CoreApi = {
     ];
   },
   async workspaceRead(_sessionId, chemin) {
-    const contenu = `# ${chemin}
+    const contenu = chemin.endsWith(".html")
+      ? "<!doctype html><html><body style='font-family:sans-serif'><h1>Démo</h1><p>Page de démonstration.</p></body></html>"
+      : `# ${chemin}
 
-Contenu de démonstration.
+Contenu de démonstration, avec **du gras** et une liste :
+
+- un
+- deux
 `;
-    return { chemin, contenu, taille: contenu.length, tronque: false };
+    return {
+      chemin,
+      absolu: `/tmp/locaryn-demo/${chemin}`,
+      contenu,
+      taille: contenu.length,
+      tronque: false,
+    };
   },
+  async workspaceOpenWith() {},
   async workspaceChanges() {
     return {
       racine: "/tmp/locaryn-demo",
@@ -5149,6 +5222,9 @@ Contenu de démonstration.
     await new Promise((r) => setTimeout(r, 250));
     return demoCloudModels;
   },
+  async cloudProviderAccount() {
+    return { logged_in: false, detail: "Disponible dans l'application de bureau." };
+  },
   async cloudProviderStatus(provider) {
     const p = demoCloudProviders.find((x) => x.id === provider);
     const label = p?.label ?? provider;
@@ -5250,6 +5326,21 @@ Contenu de démonstration.
     await new Promise((r) => setTimeout(r, 300));
     demoResident = { model: null, pinned: false, since: Date.now() };
     return demoResidencyStatus();
+  },
+  async cloudUsage() {
+    return null;
+  },
+  async cautionReserves() {
+    return {
+      total_vram_gb: 8,
+      total_ram_gb: 16,
+      unified_memory: false,
+      levels: [
+        { level: "prudent" as CautionLevel, vram_gb: 1, ram_gb: 3 },
+        { level: "equilibre" as CautionLevel, vram_gb: 0.5, ram_gb: 1.5 },
+        { level: "risque" as CautionLevel, vram_gb: 0.2, ram_gb: 0.5 },
+      ],
+    };
   },
   async cautionLevel() {
     return demoCaution;

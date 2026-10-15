@@ -44,6 +44,24 @@ pub async fn http_for_active_provider(
 // Commandes
 // ============================================================================
 
+/// Le compte d'un fournisseur local (pont Claude Code, Codex…) : état,
+/// connexion, déconnexion.
+#[tauri::command]
+pub async fn cloud_provider_account(
+    core: State<'_, Core>,
+    provider: String,
+    action: String,
+) -> Result<serde_json::Value, String> {
+    cloud::account(&host(&core), &provider, &action).await
+}
+
+/// Les limites d'utilisation du compte du fournisseur actif (Claude, Codex…),
+/// pour la jauge du chat. `None` quand le modèle actif n'en a pas.
+#[tauri::command]
+pub async fn cloud_usage(core: State<'_, Core>) -> Result<Option<serde_json::Value>, String> {
+    Ok(cloud::usage_of_active(&host(&core)).await)
+}
+
 /// Les autres PC Locaryn ajoutés comme fournisseurs de modèle.
 #[tauri::command]
 pub fn serveurs_modeles(core: State<'_, Core>) -> Vec<cloud::serveurs::ServeurModeles> {

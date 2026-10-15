@@ -44,15 +44,46 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
     alive.current = true;
     void refresh();
     // Migration runs on a background thread and reports through this event.
+    // Une copie annonce chaque fichier : un rendu par annonce relançait la
+    // transition de la barre sans arrêt, et elle sautait d'avant en arrière.
+    // On ne rend que dix fois par seconde ; la fin est montrée pleine un
+    // instant avant de s'effacer, au lieu de disparaître d'un coup.
+    let dernier: MigrationProgress | null = null;
+    let minuteur: ReturnType<typeof setTimeout> | null = null;
     const un = listen<MigrationProgress>("storage-migration", (ev) => {
       if (!alive.current) return;
-      setProgress(ev.payload.done ? null : ev.payload);
+      dernier = ev.payload;
+      if (ev.payload.done) {
+        finirProgression(ev.payload);
+        return;
+      }
+      if (minuteur) return;
+      minuteur = setTimeout(() => {
+        minuteur = null;
+        if (alive.current && dernier && !dernier.done) setProgress(dernier);
+      }, 100);
     });
     return () => {
       alive.current = false;
+      if (minuteur) clearTimeout(minuteur);
       void un.then((f) => f());
     };
   }, [refresh]);
+
+  /** La barre arrive au bout, reste visible un instant, puis s'efface. */
+  const finTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function finirProgression(p: MigrationProgress | null) {
+    setProgress((avant) => {
+      const base = p ?? avant;
+      if (!base) return null;
+      const total = base.total_bytes || avant?.total_bytes || 0;
+      return { ...base, phase: "Terminé", moved_bytes: total, total_bytes: total, done: false };
+    });
+    if (finTimer.current) clearTimeout(finTimer.current);
+    finTimer.current = setTimeout(() => {
+      if (alive.current) setProgress(null);
+    }, 900);
+  }
 
   async function handleChooseFolder() {
     setError(null);
@@ -68,11 +99,25 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
 
   async function applyRoot(moveData: boolean) {
     if (!pendingRoot) return;
+    const cible = pendingRoot;
     setBusy(true);
     setError(null);
     setNotice(null);
+    // La confirmation laisse la place à la progression : les deux ensemble
+    // faisaient sauter la mise en page.
+    setPendingRoot(null);
+    if (moveData) {
+      setProgress({
+        phase: "Préparation…",
+        current_file: cible,
+        moved_bytes: 0,
+        total_bytes: info?.total_bytes ?? 0,
+        done: false,
+        error: null,
+      });
+    }
     try {
-      const next = await core.setStorageRoot(pendingRoot, moveData);
+      const next = await core.setStorageRoot(cible, moveData);
       if (!alive.current) return;
       setInfo(next);
       setPendingRoot(null);
@@ -85,11 +130,15 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
       // The engine processes hold paths resolved at startup.
       await refresh();
     } catch (e) {
-      if (alive.current) setError(String(e));
+      if (alive.current) {
+        setError(String(e));
+        setPendingRoot(cible);
+        setProgress(null);
+      }
     } finally {
       if (alive.current) {
         setBusy(false);
-        setProgress(null);
+        if (moveData) finirProgression(null);
       }
     }
   }

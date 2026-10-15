@@ -9,8 +9,9 @@ type Props = {
   onClose: () => void;
 };
 
-/** Un nouveau code toutes les 60 s ; le serveur garde le précédent 90 s. */
-const RENOUVELLEMENT_S = 60;
+/** Un nouveau code toutes les 2 min 30 ; le serveur garde le précédent
+ *  3 minutes, le temps de finir un scan commencé juste avant le changement. */
+const RENOUVELLEMENT_S = 150;
 
 /**
  * Le QR de connexion d'un compte, à la manière d'une télé qu'on relie à son

@@ -55,8 +55,9 @@ function contextLabel(tokens: number): string {
 }
 
 function minutes(seconds: number): string {
-  const m = Math.round(seconds / 60);
-  return m <= 1 ? "1 min" : `${m} min`;
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`;
+  const m = Math.ceil(seconds / 60);
+  return `${m} min`;
 }
 
 function isChatModel(name: string): boolean {
@@ -115,16 +116,15 @@ export function ModelResidency() {
     return () => window.removeEventListener("locaryn:speed", onSpeed);
   }, []);
   const [config, setConfig] = useState<InferenceConfig | null>(null);
-  /** Secondes avant que le modèle quitte la mémoire faute d'utilisation. */
-  const resteAvantLiberation =
-    status && status.idle_timeout_seconds > 0
-      ? Math.max(0, status.idle_timeout_seconds - status.idle_seconds)
-      : null;
+  /** Quand l'état affiché a été lu : le compte à rebours avance d'ici. */
+  const luA = useRef(Date.now());
   const boxRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await core.modelResidency());
+      const s = await core.modelResidency();
+      luA.current = Date.now();
+      setStatus(s);
     } catch {
       // Une barre d'état qui hurle parce qu'un sondage a raté serait pire que
       // le silence : on garde le dernier état connu.
@@ -133,9 +133,33 @@ export function ModelResidency() {
 
   useEffect(() => {
     void refresh();
-    const t = setInterval(() => void refresh(), 15_000);
-    return () => clearInterval(t);
+    const t = setInterval(() => void refresh(), 5_000);
+    // Une réponse qui commence ou finit change ce que la barre doit dire
+    // (compte à rebours masqué ou relancé) : pas besoin d'attendre le sondage.
+    const now = () => void refresh();
+    window.addEventListener("locaryn:generation", now);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("locaryn:generation", now);
+    };
   }, [refresh]);
+
+  // Entre deux sondages, le compte à rebours avance seul, seconde par seconde.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 1_000);
+    return () => clearInterval(t);
+  }, []);
+  /** Secondes avant que le modèle quitte la mémoire faute d'utilisation. */
+  const resteAvantLiberation =
+    status && status.idle_timeout_seconds > 0
+      ? Math.max(
+          0,
+          status.idle_timeout_seconds -
+            status.idle_seconds -
+            (Date.now() - luA.current) / 1000,
+        )
+      : null;
 
   // Taper ou cliquer dans l'application, c'est s'en servir : le délai
   // d'inactivité repart, au plus une fois par minute. Sans cela, seul l'envoi
@@ -242,8 +266,9 @@ export function ModelResidency() {
     }
   }
 
-  const dot = stateDot(status, busy === "load");
+  const dot = stateDot(status, busy === "load" || status?.loading === true);
   const loaded = status?.loaded === true;
+  const enService = status?.busy === true;
   // Trois faits sur le modèle chargé, chacun affiché seulement s'il existe :
   // un chiffre absent est une information, un chiffre inventé n'en est pas une.
   const facts = loaded
@@ -254,7 +279,14 @@ export function ModelResidency() {
           : status?.model
             ? debitMesure(metrics, status.model)
             : null,
-        config ? `ctx ${contextLabel(config.context_length)}` : null,
+        // La fenêtre que le moteur applique vraiment — celle de la jauge du
+        // chat. La valeur réglée pouvait différer (contexte automatique,
+        // plafond du moteur) et la barre annonçait 122K pour 8K réels.
+        status?.context
+          ? `ctx ${contextLabel(status.context)}`
+          : config && config.context_length > 0
+            ? `ctx ${contextLabel(config.context_length)}`
+            : null,
       ].filter((f): f is string => Boolean(f))
     : [];
 
@@ -279,7 +311,9 @@ export function ModelResidency() {
           ? `Chargement de ${picked ?? "…"}`
           : loaded
             ? (status?.model ?? "modèle inconnu")
-            : "Aucun modèle chargé"}
+            : status?.loading
+              ? "Chargement du modèle…"
+              : "Aucun modèle chargé"}
       </button>
 
       {facts.length > 0 && (
@@ -290,20 +324,17 @@ export function ModelResidency() {
         </span>
       )}
 
-      {/* Un compte à rebours permanent annonçait une libération à quelqu'un en
-          plein travail. Il n'apparaît qu'à l'approche de l'échéance, quand
-          l'application n'a vraiment pas servi. */}
-      {loaded &&
-        !status?.pinned &&
-        resteAvantLiberation !== null &&
-        resteAvantLiberation <= 300 && (
-          <span
-            className="locaryn-res-hint"
-            title="Le modèle quitte la mémoire après une période sans utilisation. Un message, ou n'importe quelle action dans l'application, le garde chargé."
-          >
-            libéré dans {minutes(resteAvantLiberation)} sans utilisation
-          </span>
-        )}
+      {/* Le compte à rebours d'éjection : toujours visible quand le modèle
+          attend, masqué pendant qu'il répond à la personne. Le travail
+          d'arrière-plan (tri de la mémoire) ne l'arrête pas. */}
+      {loaded && !status?.pinned && !enService && resteAvantLiberation !== null && (
+        <span
+          className={`locaryn-res-hint${resteAvantLiberation <= 300 ? " is-proche" : ""}`}
+          title="Le modèle quitte la mémoire après 30 minutes sans utilisation. Un message, ou n'importe quelle action dans l'application, relance le décompte."
+        >
+          éjection dans {minutes(resteAvantLiberation)}
+        </span>
+      )}
 
       {loaded && (
         <button

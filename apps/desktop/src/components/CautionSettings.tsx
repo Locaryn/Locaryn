@@ -8,7 +8,12 @@
 // que de laisser la machine s'effondrer.
 
 import { useEffect, useState } from "react";
-import { CAUTION_LABELS, type CautionLevel, core } from "../lib/core";
+import { CAUTION_LABELS, type CautionLevel, type CautionReserves, core } from "../lib/core";
+
+/** « 1 Go », « 0,5 Go » : une décimale au plus. */
+function go(n: number): string {
+  return `${n.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Go`;
+}
 
 const ORDER: CautionLevel[] = ["prudent", "equilibre", "risque"];
 
@@ -16,8 +21,15 @@ export function CautionSettings() {
   const [level, setLevel] = useState<CautionLevel | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reserves, setReserves] = useState<CautionReserves | null>(null);
 
   useEffect(() => {
+    core
+      .cautionReserves()
+      .then(setReserves)
+      .catch(() => {
+        // Sans mesure de la machine, les niveaux restent décrits en mots.
+      });
     void (async () => {
       try {
         setLevel(await core.cautionLevel());
@@ -51,8 +63,9 @@ export function CautionSettings() {
       <fieldset className="locaryn-caution-fieldset">
         <legend className="locaryn-field-label">Prudence au chargement d'un modèle</legend>
         <p className="locaryn-field-hint">
-          La mémoire libre est vérifiée avant chaque chargement. Ce réglage décide de la marge
-          exigée — et de ce qui est refusé plutôt que tenté.
+          La mémoire libre est vérifiée avant chaque chargement, et le moteur garde la réserve
+          choisie libre quand il dimensionne le contexte. Un modèle qui ne la respecte pas n'est
+          pas chargé : une fenêtre l'explique.
         </p>
 
         <div className="locaryn-caution-choices">
@@ -67,6 +80,20 @@ export function CautionSettings() {
             >
               <span className="locaryn-caution-name">{CAUTION_LABELS[id].label}</span>
               <span className="locaryn-caution-desc">{CAUTION_LABELS[id].hint}</span>
+              {(() => {
+                const r = reserves?.levels.find((l) => l.level === id);
+                if (!r || !reserves) return null;
+                return (
+                  <span className="locaryn-caution-reserve">
+                    {reserves.total_vram_gb > 0 && !reserves.unified_memory
+                      ? `Laisse ${go(r.vram_gb)} de VRAM libres sur ${go(reserves.total_vram_gb)} (${Math.round((r.vram_gb / reserves.total_vram_gb) * 100)} %)`
+                      : `Laisse ${go(r.ram_gb)} de mémoire libres sur ${go(reserves.total_ram_gb)}`}
+                    {reserves.total_vram_gb > 0 && !reserves.unified_memory
+                      ? ` · ${go(r.ram_gb)} de RAM`
+                      : ""}
+                  </span>
+                );
+              })()}
             </button>
           ))}
         </div>

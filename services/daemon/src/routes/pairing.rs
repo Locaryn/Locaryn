@@ -273,9 +273,9 @@ pub struct CodeConnexion {
     pub cree: std::time::Instant,
 }
 
-/// Durée de vie d'un code : l'écran en affiche un nouveau toutes les 60 s,
+/// Durée de vie d'un code : l'écran en affiche un nouveau toutes les 2 min 30,
 /// le précédent reste bon le temps de finir un scan commencé.
-pub const CODE_CONNEXION_TTL: std::time::Duration = std::time::Duration::from_secs(90);
+pub const CODE_CONNEXION_TTL: std::time::Duration = std::time::Duration::from_secs(180);
 /// Six caractères sans ambiguïté (ni 0/O ni 1/I/L) : lisibles et saisissables
 /// à la main si la caméra ne lit pas.
 const ALPHABET_CODE: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";

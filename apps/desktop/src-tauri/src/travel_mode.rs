@@ -269,8 +269,12 @@ pub struct MicroModel {
 /// Quel modèle nomme les conversations, et lesquels sont installés.
 #[tauri::command]
 pub async fn micro_model() -> Result<MicroModel, String> {
-    let cfg = locaryn_config::load(None).ok();
-    let current_model = cfg.and_then(|c| c.assistance.micro_model);
+    // Une configuration illisible ne vaut pas « Aucun » : le défaut reste le
+    // modèle déjà chargé, comme pour une installation neuve.
+    let current_model = match locaryn_config::load(None) {
+        Ok(c) => c.assistance.micro_model,
+        Err(_) => Some(locaryn_config::MICRO_MODEL_ACTIF.to_string()),
+    };
 
     // Scanner directement les modèles locaux installés
     let mut available = Vec::new();

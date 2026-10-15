@@ -93,6 +93,12 @@ export interface LocarynPluginAPI {
     stop: (provider: string) => Promise<CloudProviderStatus>;
     /** Ouvrir son tableau de bord dans le navigateur du système. */
     openDashboard: (provider: string) => Promise<string>;
+    /** Le compte de la passerelle locale : `status`, `login` ou `logout`.
+     *  L'hôte relaie vers `{api_url}/auth/{action}` sur la boucle locale. */
+    account: (
+      provider: string,
+      action: "status" | "login" | "logout",
+    ) => Promise<Record<string, unknown>>;
   };
   ui: {
     showToast: (message: string, type?: "info" | "success" | "warning" | "error") => void;
@@ -243,6 +249,8 @@ class PluginBridgeManager {
         install: (provider: string) => core.cloudProviderInstall(provider),
         stop: (provider: string) => core.cloudProviderStop(provider),
         openDashboard: (provider: string) => core.cloudProviderOpenDashboard(provider),
+        account: (provider: string, action: "status" | "login" | "logout") =>
+          core.cloudProviderAccount(provider, action),
         select: async (provider: string, model: string) => {
           await core.cloudProviderSelect(provider, model);
           // Le sélecteur de modèle du chat écoute : sans ce signal, le nom

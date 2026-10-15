@@ -75,11 +75,36 @@ pub fn gateway_dir(provider_id: &str) -> PathBuf {
     locaryn_config::gateways_dir().join(if sur.is_empty() { "_".into() } else { sur })
 }
 
+/// Le dossier du morph qui déclare chaque passerelle, par dossier de
+/// passerelle. Un morph peut ainsi lancer un script qu'il apporte lui-même
+/// (`{{morph_dir}}/bridge/server.mjs`) sans le publier sur npm.
+static DOSSIERS_DES_MORPHS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, PathBuf>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// Le dossier de la passerelle de `p`, en retenant celui de son morph.
+fn dossier_de(p: &DeclaredProvider) -> PathBuf {
+    let dir = gateway_dir(&p.id);
+    if let Ok(mut m) = DOSSIERS_DES_MORPHS.lock() {
+        m.insert(dir.clone(), p.plugin_root.clone());
+    }
+    dir
+}
+
 /// Remplacer les marqueurs d'une commande ou d'une valeur d'environnement.
 fn interpoler(texte: &str, dir: &Path) -> String {
-    texte
+    let mut t = texte
         .replace("{{gateway_dir}}", &dir.display().to_string())
-        .replace("{{data_dir}}", &dir.join("data").display().to_string())
+        .replace("{{data_dir}}", &dir.join("data").display().to_string());
+    if t.contains("{{morph_dir}}") {
+        let morph = DOSSIERS_DES_MORPHS
+            .lock()
+            .ok()
+            .and_then(|m| m.get(dir).cloned())
+            .unwrap_or_else(|| dir.to_path_buf());
+        t = t.replace("{{morph_dir}}", &morph.display().to_string());
+    }
+    t
 }
 
 /// Le script qu'expose un paquet npm installé dans `dir`.
@@ -343,7 +368,7 @@ pub async fn status(host: &Host<'_>, p: &DeclaredProvider) -> CloudProviderStatu
         };
     };
 
-    let dir = gateway_dir(&p.id);
+    let dir = dossier_de(p);
     let installed = is_installed(&dir, &local);
     let url = health_url(p, &local);
     let running = probe(host, &url, stored_key(host, &p.id).as_deref()).await;
@@ -410,7 +435,7 @@ pub async fn install(host: &Host<'_>, p: &DeclaredProvider) -> Result<String, St
         .local
         .clone()
         .ok_or_else(|| format!("{} est un service distant : rien à installer.", p.label()))?;
-    let dir = gateway_dir(&p.id);
+    let dir = dossier_de(p);
 
     if is_installed(&dir, &local) {
         return Ok(format!("{} est déjà installée.", p.label()));
@@ -544,7 +569,7 @@ fn retirer_installation_partielle(dir: &std::path::Path) {
 /// réinstallation retrouve.
 pub async fn uninstall(host: &Host<'_>, p: &DeclaredProvider) -> Result<(), String> {
     let _ = stop(host, p).await;
-    let dir = gateway_dir(&p.id);
+    let dir = dossier_de(p);
     for nom in ["node_modules", "package.json", "package-lock.json"] {
         let chemin = dir.join(nom);
         let resultat = if chemin.is_dir() {
@@ -582,7 +607,7 @@ pub async fn start(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvide
             .unwrap_or_else(|| format!("{} ne déclare aucune commande de démarrage.", p.label())));
     }
 
-    let dir = gateway_dir(&p.id);
+    let dir = dossier_de(p);
     let url = health_url(p, &local);
     if probe(host, &url, stored_key(host, &p.id).as_deref()).await {
         obtenir_cle(host, p, &local, &dir).await;
@@ -665,7 +690,7 @@ pub async fn stop(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvider
         .local
         .clone()
         .ok_or_else(|| format!("{} est un service distant : rien à arrêter.", p.label()))?;
-    let dir = gateway_dir(&p.id);
+    let dir = dossier_de(p);
     let (programme_, arguments) = resoudre(&local.stop, &local, &dir)
         .ok_or_else(|| format!("{} ne déclare pas comment s'arrêter.", p.label()))?;
     let env = environnement(host, p, &local, &dir)?;

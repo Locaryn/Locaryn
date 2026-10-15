@@ -346,6 +346,60 @@ pub fn key_for_active_provider(
 // Vue d'ensemble
 // ============================================================================
 
+/// Le compte d'un fournisseur qui tourne sur la machine (un pont vers le CLI
+/// Claude Code, Codex…) : savoir s'il est connecté, ouvrir la connexion, la
+/// fermer. L'hôte appelle `{api_url}/auth/{action}` sur la boucle locale ; le
+/// panneau du morph n'ouvre aucune connexion lui-même.
+pub async fn account(
+    host: &Host<'_>,
+    provider_id: &str,
+    action: &str,
+) -> Result<serde_json::Value, String> {
+    if !matches!(action, "status" | "login" | "logout") {
+        return Err(format!("action de compte inconnue : {action}"));
+    }
+    let p = find(host, provider_id).await?;
+    if p.manifest.local.is_none() {
+        return Err(format!("{} n'a pas de compte à gérer ici.", p.label()));
+    }
+    let base = p.manifest.api_url.trim_end_matches('/');
+    if !(base.starts_with("http://127.0.0.1") || base.starts_with("http://localhost")) {
+        return Err("seule une passerelle sur la boucle locale gère un compte ici".into());
+    }
+    let url = format!("{base}/auth/{action}");
+    let req = if action == "status" {
+        host.http.get(&url)
+    } else {
+        host.http.post(&url)
+    };
+    let resp = req
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|_| format!("{} ne répond pas : démarrez-la d'abord.", p.label()))?;
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+/// Les limites d'utilisation du fournisseur actif, telles que son morph les
+/// rapporte (`usage_url`). `None` : le modèle actif n'est pas un fournisseur
+/// qui en publie — un modèle local, ou un service payé à l'usage.
+pub async fn usage_of_active(host: &Host<'_>) -> Option<serde_json::Value> {
+    let active = host.storage.providers.active().await.ok().flatten()?;
+    let id = ProviderRepo::cloud_provider_of(&active)?;
+    let p = declared(host).await.into_iter().find(|p| p.id == id)?;
+    let url = p.manifest.usage_url.clone().filter(|u| !u.trim().is_empty())?;
+    let mut req = host.http.get(&url).timeout(std::time::Duration::from_secs(8));
+    if let Some(k) = stored_key(host, &id) {
+        req = req.bearer_auth(k);
+    }
+    let mut v: serde_json::Value = req.send().await.ok()?.json().await.ok()?;
+    if let Some(o) = v.as_object_mut() {
+        o.insert("provider".into(), serde_json::json!(p.label()));
+        o.insert("model".into(), serde_json::json!(active.model));
+    }
+    Some(v)
+}
+
 /// Faut-il une clé pour converser avec ce fournisseur ?
 ///
 /// Oui par défaut : un service distant facture. Une passerelle locale peut le

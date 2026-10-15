@@ -176,9 +176,82 @@ struct SupervisorInner {
     /// superviseur ne lit jamais le disque des extensions : il ne connaît que
     /// ce qu'on lui a donné.
     extension_engines: Mutex<HashMap<String, ExtensionEngineSpec>>,
+    /// Réponses demandées par une personne et pas encore finies. Tant qu'il y
+    /// en a, le modèle sert : aucun compte à rebours, aucune éjection.
+    occupe_utilisateur: std::sync::atomic::AtomicUsize,
+    /// Travail d'arrière-plan en cours (tri de la mémoire pendant l'inactivité).
+    /// Il ne compte pas comme une utilisation : le compte à rebours continue,
+    /// et le modèle est éjecté à l'échéance même au milieu de ce travail.
+    arriere_plan: std::sync::atomic::AtomicUsize,
+}
+
+/// Tant qu'il vit, le modèle sert quelqu'un (voir [`Supervisor::utilisation`]).
+pub struct Utilisation {
+    sup: Supervisor,
+    arriere_plan: bool,
+}
+
+impl Drop for Utilisation {
+    fn drop(&mut self) {
+        use std::sync::atomic::Ordering;
+        let compteur = if self.arriere_plan {
+            &self.sup.inner.arriere_plan
+        } else {
+            &self.sup.inner.occupe_utilisateur
+        };
+        compteur.fetch_sub(1, Ordering::SeqCst);
+        if !self.arriere_plan {
+            // La fin d'une réponse est une utilisation : le délai repart d'ici.
+            if let Ok(mut states) = self.sup.inner.states.try_lock() {
+                for s in states.values_mut() {
+                    s.last_activity = Instant::now();
+                }
+            }
+        }
+    }
 }
 
 impl Supervisor {
+    /// Une personne attend une réponse : jusqu'à ce que le garde soit lâché,
+    /// le modèle n'est pas inactif.
+    pub fn utilisation(&self) -> Utilisation {
+        self.inner
+            .occupe_utilisateur
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Utilisation {
+            sup: self.clone(),
+            arriere_plan: false,
+        }
+    }
+
+    /// Un travail d'arrière-plan se sert du modèle : il ne repousse pas
+    /// l'éjection.
+    pub fn arriere_plan(&self) -> Utilisation {
+        self.inner
+            .arriere_plan
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Utilisation {
+            sup: self.clone(),
+            arriere_plan: true,
+        }
+    }
+
+    /// Une réponse demandée par une personne est-elle en cours ?
+    pub fn utilisateur_occupe(&self) -> bool {
+        self.inner
+            .occupe_utilisateur
+            .load(std::sync::atomic::Ordering::SeqCst)
+            > 0
+    }
+
+    /// Un travail d'arrière-plan tourne-t-il ?
+    pub fn arriere_plan_actif(&self) -> bool {
+        self.inner
+            .arriere_plan
+            .load(std::sync::atomic::Ordering::SeqCst)
+            > 0
+    }
+
     /// Create a new supervisor wired to the given storage.
     pub fn new(cfg: SupervisorConfig, storage: Storage) -> Self {
         let http = reqwest::Client::builder()
@@ -194,6 +267,8 @@ impl Supervisor {
                 spawn_lock: Mutex::new(()),
                 gpu_failed: std::sync::Mutex::new(std::collections::HashSet::new()),
                 extension_engines: Mutex::new(HashMap::new()),
+                occupe_utilisateur: std::sync::atomic::AtomicUsize::new(0),
+                arriere_plan: std::sync::atomic::AtomicUsize::new(0),
             }),
         }
     }
@@ -526,6 +601,9 @@ impl Supervisor {
                         .set_status_by_engine(engine, ProviderStatus::Healthy)
                         .await;
                     tracing::info!(%endpoint, moteur = %engine.as_token(), cpu_only, "moteur en marche");
+                    if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) && !cpu_only {
+                        enregistrer_fit(&self.inner.http, &endpoint).await;
+                    }
                     if cpu_only {
                         if let Ok(mut m) = self.inner.gpu_failed.lock() {
                             m.insert(cle_gpu.clone());
@@ -597,6 +675,17 @@ impl Supervisor {
                                         None => status.to_string(),
                                     };
 
+                                    // Un contexte mémorisé qui ne tient plus (la VRAM
+                                    // a changé de main) : on l'oublie et on retente
+                                    // sur le GPU, en laissant `--fit` choisir.
+                                    if spec.is_none()
+                                        && matches!(engine, ProviderEngine::LlamaCpp)
+                                        && !cpu_only
+                                        && oublier_fit()
+                                    {
+                                        tracing::warn!(cause = %msg, "contexte mémorisé refusé — nouvel essai avec --fit");
+                                        continue 'attempt;
+                                    }
                                     if spec.is_none()
                                         && matches!(engine, ProviderEngine::LlamaCpp)
                                         && !cpu_only
@@ -913,10 +1002,19 @@ impl Supervisor {
                         continue;
                     }
                     let idle = Instant::now().duration_since(state.last_activity);
+                    // Une réponse demandée par quelqu'un n'est jamais coupée.
+                    if self.utilisateur_occupe() {
+                        state.last_activity = Instant::now();
+                        continue;
+                    }
                     // Un moteur en pleine génération n'est pas inactif, même
                     // si la requête a commencé il y a plus que le délai : une
-                    // longue tâche d'agent était coupée en plein travail.
+                    // longue tâche d'agent (lancée par le service, sans garde)
+                    // était coupée en plein travail. Le travail d'arrière-plan
+                    // de l'application, lui, ne retient pas le modèle : à
+                    // l'échéance, tant pis s'il n'a pas fini.
                     if idle >= idle_timeout
+                        && !self.arriere_plan_actif()
                         && !extension_specs.contains_key(engine.as_token().as_str())
                         && llama_occupe(&self.inner.http, &state.endpoint).await
                     {
@@ -1546,6 +1644,120 @@ pub const VRAM_AVANT_MOTEUR: &str = "llama_vram_before.json";
 /// vaut déporter une couche que d'offrir 4 096 jetons.
 pub const AUTO_FIT_MIN_CTX: u32 = 8192;
 
+/// Les cartes AMD d'avant RDNA (Polaris : RX 470 à 590) : micro-batch réduit.
+pub fn is_polaris_or_legacy(gpu_name: Option<&str>) -> bool {
+    gpu_name.is_some_and(|name| {
+        let n = name.to_lowercase();
+        (n.contains("radeon") || n.contains("amd") || n.contains("rx "))
+            && ["rx 470", "rx 480", "rx 550", "rx 560", "rx 570", "rx 580", "rx 590"]
+                .iter()
+                .any(|m| n.contains(m))
+            || n.contains("polaris")
+            || n.contains("ellesmere")
+            || n.contains("baffin")
+    })
+}
+
+/// Le niveau de prudence choisi dans les réglages (`model_caution.json`,
+/// écrit par l'application). Intermédiaire par défaut.
+pub fn caution_headroom() -> locaryn_llmfit::Headroom {
+    let raw = std::fs::read_to_string(locaryn_config::default_data_dir().join("model_caution.json"))
+        .unwrap_or_default();
+    let level = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| v.get("level").and_then(|l| l.as_str()).map(str::to_string))
+        .unwrap_or_default();
+    match level.as_str() {
+        "prudent" => locaryn_llmfit::Headroom::Prudent,
+        "risque" => locaryn_llmfit::Headroom::Risque,
+        _ => locaryn_llmfit::Headroom::Equilibre,
+    }
+}
+
+/// Ce qui décide du contexte que `--fit` trouve : le même modèle, lancé de la
+/// même façon, trouve le même contexte tant que la mémoire libre est la même.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct FitCle {
+    model: String,
+    taille: u64,
+    mmproj: bool,
+    fa: String,
+    kv: String,
+    ubatch: u64,
+    marge_mib: u64,
+    slots: u64,
+    build: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct FitMemorise {
+    cle: FitCle,
+    n_ctx: u64,
+    /// VRAM libre avant ce chargement-là, en Go.
+    libre_gb: f64,
+}
+
+const FIT_MEMORISE: &str = "llama_fit_cache.json";
+
+/// Le lancement en cours qui attend de connaître le contexte choisi par
+/// `--fit` : sa clé, la VRAM libre avant lui, et s'il a réutilisé un contexte
+/// mémorisé.
+static FIT_EN_COURS: std::sync::Mutex<Option<(FitCle, f64, bool)>> = std::sync::Mutex::new(None);
+
+/// Le contexte trouvé au dernier chargement de ce modèle, s'il vaut encore :
+/// mêmes réglages, et au moins autant de VRAM libre (à 150 Mo près).
+fn fit_memorise(data_dir: &std::path::Path, cle: &FitCle, libre_gb: f64) -> Option<u64> {
+    let raw = std::fs::read_to_string(data_dir.join(FIT_MEMORISE)).ok()?;
+    let m: FitMemorise = serde_json::from_str(&raw).ok()?;
+    (m.cle == *cle && libre_gb + 0.15 >= m.libre_gb && m.n_ctx >= AUTO_FIT_MIN_CTX as u64)
+        .then_some(m.n_ctx)
+}
+
+/// Le moteur répond : noter le contexte que `--fit` a trouvé, pour les
+/// chargements suivants.
+async fn enregistrer_fit(http: &reqwest::Client, endpoint: &str) {
+    let attente = FIT_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let Some((cle, libre_gb, deja)) = attente else {
+        return;
+    };
+    if deja {
+        return;
+    }
+    let n_ctx = async {
+        let v: serde_json::Value = http
+            .get(format!("{endpoint}/props"))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .ok()?
+            .json()
+            .await
+            .ok()?;
+        v.pointer("/default_generation_settings/n_ctx")
+            .and_then(|n| n.as_u64())
+    }
+    .await;
+    let Some(n_ctx) = n_ctx else { return };
+    let data_dir = locaryn_config::default_data_dir();
+    let m = FitMemorise {
+        cle,
+        n_ctx,
+        libre_gb,
+    };
+    if let Ok(texte) = serde_json::to_string(&m) {
+        let _ = std::fs::write(data_dir.join(FIT_MEMORISE), texte);
+        tracing::info!(contexte = n_ctx, "contexte choisi par --fit mémorisé");
+    }
+}
+
+/// Le chargement a échoué : le contexte mémorisé ne vaut plus. Vrai s'il en
+/// avait été utilisé un — on retente alors avec `--fit`, sur le GPU.
+fn oublier_fit() -> bool {
+    let attente = FIT_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let _ = std::fs::remove_file(locaryn_config::default_data_dir().join(FIT_MEMORISE));
+    attente.is_some_and(|(_, _, deja)| deja)
+}
+
 /// La marge (Mio) que `--fit` doit laisser libre sur une carte dédiée : 5 % de
 /// sa mémoire, entre 256 et 512 Mio. `None` : on garde celle de llama.cpp
 /// (mémoire unifiée, ou aucune carte connue).
@@ -1702,70 +1914,156 @@ async fn spawn_llama_server(
 
     // Vision: if a matching mmproj file sits next to the model
     // (mmproj-<model>.gguf or a single mmproj-*.gguf in the dir), load it.
-    if let Some(mmproj) = find_mmproj_for(&full_model_path) {
+    let mmproj = find_mmproj_for(&full_model_path);
+    if let Some(mmproj) = &mmproj {
         tracing::info!(mmproj = %mmproj.display(), "loading multimodal projector");
         cmd.arg("--mmproj").arg(mmproj);
+        // Les projecteurs à résolution dynamique (Qwen-VL) préparent leur
+        // tampon pour 8 464 jetons d'image : sur Vulkan, une partie de leur
+        // attention retombe sur le processeur et réclame plusieurs Go de RAM
+        // au démarrage, pour une image que personne n'a envoyée. 2 048 jetons
+        // gardent une image nette (Qwen en demande 1 024 au minimum).
+        cmd.arg("--image-max-tokens").arg("2048");
     }
 
     // Détection du GPU et du backend : utilisée pour la flash attention, le
-    // plafonnement du contexte et le micro-batch.
+    // micro-batch et la marge laissée libre.
     let profile = locaryn_llmfit::profile();
-    let is_vulkan = profile.backend == locaryn_llmfit::Backend::Vulkan;
-    let is_polaris_or_legacy = profile.gpu_name.as_deref().is_some_and(|name| {
-        let n = name.to_lowercase();
-        n.contains("570")
-            || n.contains("580")
-            || n.contains("470")
-            || n.contains("480")
-            || n.contains("590")
-            || n.contains("560")
-            || n.contains("550")
-            || n.contains("polaris")
-            || n.contains("ellesmere")
-            || n.contains("baffin")
-    });
+    let is_polaris_or_legacy = is_polaris_or_legacy(profile.gpu_name.as_deref());
+    // L'architecture de la *machine* : l'application x64 tourne émulée sur un
+    // Snapdragon, et `cfg!(target_arch)` y répond « x86_64 ». Elle forçait
+    // alors la flash attention et le cache V quantifié sur le moteur OpenCL
+    // Adreno, qui ne les tient pas : le moteur tombait au chargement.
+    let is_arm = cfg!(target_arch = "aarch64") || locaryn_llmfit::hardware::host_is_arm64();
 
-    // Profil automatique (contexte 0, toutes les couches) : ni `-ngl` ni `-c`.
-    // llama.cpp les ajuste alors lui-même à la mémoire libre (`--fit`, actif
-    // par défaut) : il garde toutes les couches sur la carte, raccourcit le
-    // contexte jusqu'à ce qu'il tienne, et ne déporte des couches vers le
-    // processeur que sous `--fit-ctx`. La mémoire vidéo restante devient du
-    // contexte. Mesuré avec llama-fit-params (b11003) : le contexte descend
-    // d'abord à son minimum, les couches ne partent qu'ensuite.
+    // Profil automatique (contexte 0, toutes les couches) : llama.cpp choisit
+    // le contexte d'après la mémoire libre (`--fit`). Ce choix coûte un
+    // chargement d'essai — 22 s sur une RX 570, la VRAM qui monte, retombe et
+    // remonte. Le contexte qu'il a trouvé est donc gardé, et les chargements
+    // suivants du même modèle le reçoivent directement (`-c`, `--fit off`).
+    //
+    // Plus de plafond à 8 192 pour les Polaris : il venait d'un cache
+    // d'attention sans flash attention, dont les tampons grossissent avec le
+    // contexte. Avec la flash attention, mesuré sur RX 570 (Qwen3.5 9B
+    // IQ3_XXS) : 129 536 jetons, aucun plantage. Pire, le plafond faisait
+    // relancer le moteur à chaque message : 124 928 demandés ≠ 8 192 actifs.
     let gpu_layers = inference_cfg["gpu_layers"].as_i64().unwrap_or(-1);
-    let mut ctx = inference_cfg["context_length"].as_u64().unwrap_or(8192);
-    // Sur les cartes Polaris (RX 570/580, ≤ 8 Go VRAM), un contexte fixe élevé
-    // (14k+) en q8_0 fait que le KV cache + poids dépassent la VRAM et cause
-    // "model loading error" au démarrage. On plafonne à 8192 pour ces cartes et
-    // on active --fit-ctx pour que llama.cpp ajuste le contexte à la mémoire
-    // disponible au lieu d'abandonner.
-    if is_polaris_or_legacy && ctx > 8192 {
-        tracing::info!(
-            ctx_demande = ctx,
-            ctx_plafonne = 8192,
-            "contexte plafonné pour Polaris/legacy (VRAM limitée)"
-        );
-        ctx = 8192;
+    let ctx_demande = inference_cfg["context_length"].as_u64().unwrap_or(0);
+    let auto = is_auto_fit(gpu_layers, ctx_demande);
+
+    // Flash attention. Sur Vulkan (AMD, Intel, NVIDIA), elle tient : tuilée,
+    // elle évite le tampon « clé × requête » qui grossit avec le contexte —
+    // c'est lui qui dépassait 2 s par dispatch (TDR Windows) et la VRAM d'une
+    // RX 570 dès 64k jetons (2,2 Go réclamés, mesuré). Elle permet aussi de
+    // quantifier le cache V. Mesuré sur RX 570, prompt de 4 096 jetons :
+    // lecture 75 au lieu de 95 jetons/s, écriture 10,9 au lieu de 8,0.
+    // ARM et processeur seul : `auto`, llama.cpp sait ce que le périphérique
+    // supporte (OpenCL/Adreno ne l'a pas) — le cache V reste alors en f16.
+    let fa_voulue = inference_cfg["flash_attention"].as_bool().unwrap_or(true);
+    let fa_mode = if !fa_voulue {
+        "off"
+    } else if cpu_only || is_arm {
+        "auto"
+    } else {
+        "on"
+    };
+    cmd.arg("-fa").arg(fa_mode);
+    let flash_attention_active = fa_mode == "on";
+
+    // KV cache quantization: -ctk/-ctv. "turbo3" is a legacy label mapped to
+    // q4_0. Un cache V quantifié exige la flash attention (sinon : « quantized
+    // V cache requires flash_attn to be enabled ») — seulement en `on`.
+    let kv_type = match inference_cfg["kv_cache_type"].as_str().unwrap_or("f16") {
+        "turbo3" | "turboquant" => "q4_0",
+        other => other,
+    };
+    let kv_quantifie = matches!(
+        kv_type,
+        "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl"
+    );
+    // Sur ARM, le moteur OpenCL Adreno ne copie pas vers un cache quantifié :
+    // chaque écriture retombait sur le processeur. Le cache reste en f16 — la
+    // mémoire y est unifiée, et la place ne manque pas autant qu'en VRAM.
+    if kv_quantifie && !is_arm {
+        cmd.arg("-ctk").arg(kv_type);
+        if flash_attention_active {
+            cmd.arg("-ctv").arg(kv_type);
+        }
     }
-    let auto = is_auto_fit(gpu_layers, ctx);
-    if ctx == 0 || (is_polaris_or_legacy && !auto) {
-        // En auto (ctx==0), --fit-ctx laisse llama.cpp choisir. Sur Polaris
-        // même avec un contexte fixe, on active --fit-ctx comme filet de
-        // sécurité : si le modèle + KV cache ne tient pas, llama.cpp réduit
-        // le contexte au lieu de refuser de démarrer.
-        cmd.arg("--fit-ctx").arg(AUTO_FIT_MIN_CTX.to_string());
-    }
-    // La marge que `--fit` laisse libre sur la carte : 1 024 Mio par défaut
-    // (vérifié sur le --help de b11003). Sur une carte de 6 Go, c'était
-    // 0,7 Go jamais utilisé, alors qu'il aurait fait du contexte. Une carte
-    // dédiée garde 5 % (256 à 512 Mio) ; la mémoire unifiée garde la marge de
-    // llama.cpp, puisqu'elle est aussi celle du système.
-    if !cpu_only {
-        let marge = inference_cfg["fit_margin_mb"].as_u64().or_else(|| {
-            let p = locaryn_llmfit::profile();
-            fit_margin_mib(p.total_vram_gb, p.unified_memory)
-        });
-        if let Some(marge) = marge {
+
+    // Micro-batch. 256 sur Polaris : mesuré sur RX 570, la lecture du prompt
+    // passe de 73 (ub 32) à 112 jetons/s, au niveau de 512, sans TDR même sur
+    // 4 096 jetons. Le 32 d'avant divisait la vitesse de lecture — 30 à 60 s
+    // avant le premier mot.
+    let default_ubatch = if is_polaris_or_legacy { 256 } else { 512 };
+    let batch = inference_cfg["batch_size"].as_u64().unwrap_or(512).max(1);
+    let ubatch = inference_cfg["ubatch_size"]
+        .as_u64()
+        .unwrap_or(default_ubatch)
+        .min(batch);
+
+    // Un seul emplacement : une seule personne parle au modèle. Sans `-np`,
+    // llama.cpp en ouvre quatre, et une requête pouvait atterrir dans un
+    // emplacement dont le cache ne contenait pas la conversation — relue en
+    // entier. Les requêtes annexes (titre, suggestions) restent bon marché :
+    // le cache en RAM (`--cache-ram`) rend la conversation après elles
+    // (mesuré : 4,7 s au lieu de 60 s).
+    let slots = inference_cfg["parallel_slots"].as_u64().unwrap_or(1).max(1);
+
+    // La marge que `--fit` laisse libre : celle du niveau de prudence choisi
+    // (1 Go sur 8 Go en prudent, 0,5 en équilibré, 0,2 en risqué). La prudence
+    // vaut alors au chargement, pas seulement dans l'estimation.
+    let marge_mib = if cpu_only {
+        None
+    } else {
+        inference_cfg["fit_margin_mb"].as_u64().or_else(|| {
+            if profile.unified_memory || profile.total_vram_gb <= 0.0 {
+                return None;
+            }
+            let reserve = caution_headroom().vram_reserve_gb(profile.total_vram_gb);
+            Some((reserve * 1024.0).round() as u64)
+        })
+    };
+
+    let cle_fit = FitCle {
+        model: full_model_path.to_string_lossy().into_owned(),
+        taille: std::fs::metadata(&full_model_path)
+            .map(|m| m.len())
+            .unwrap_or(0),
+        mmproj: mmproj.is_some(),
+        fa: fa_mode.to_string(),
+        kv: kv_type.to_string(),
+        ubatch,
+        marge_mib: marge_mib.unwrap_or(0),
+        slots,
+        build: LLAMA_BUILD.to_string(),
+    };
+    let ctx_memorise = if auto && !cpu_only {
+        fit_memorise(&data_dir, &cle_fit, libre_avant)
+    } else {
+        None
+    };
+    // Le prochain chargement réussi enregistre ce que `--fit` a trouvé.
+    *FIT_EN_COURS.lock().unwrap_or_else(|e| e.into_inner()) = if auto && !cpu_only {
+        Some((cle_fit, libre_avant, ctx_memorise.is_some()))
+    } else {
+        None
+    };
+
+    let mut ctx = ctx_demande;
+    if let Some(n) = ctx_memorise {
+        tracing::info!(contexte = n, "contexte trouvé au chargement précédent — sans essai");
+        cmd.arg("-c").arg(n.to_string()).arg("-fit").arg("off");
+        ctx = 0;
+    } else {
+        if ctx == 0 || is_polaris_or_legacy {
+            // En auto, --fit-ctx laisse llama.cpp choisir sans descendre sous
+            // le minimum utile. Avec un contexte fixe, c'est un filet : si le
+            // modèle et son cache ne tiennent pas, le contexte est réduit au
+            // lieu d'un refus de démarrer.
+            cmd.arg("--fit-ctx").arg(AUTO_FIT_MIN_CTX.to_string());
+        }
+        if let Some(marge) = marge_mib {
             cmd.arg("--fit-target").arg(marge.to_string());
         }
     }
@@ -1777,54 +2075,10 @@ async fn spawn_llama_server(
     } else if gpu_layers >= 0 {
         cmd.arg("-ngl").arg(gpu_layers.to_string());
     } else {
-        // En mode auto (-1), décharger l'intégralité des couches du modèle sur la VRAM GPU.
-        // Laisser unset ou passer -fit seul laissait les couches en RAM système (14 Go de RAM, CPU à 100%).
-        // 99 couches couvre tous les modèles 3B/7B/8B/9B/14B (qui en ont entre 24 et 48).
-        cmd.arg("-ngl").arg("99");
-    }
-
-    // Flash Attention : supporté de manière fiable uniquement sur CUDA/ROCm/Metal avec `-fa on`.
-    // Vulkan, OpenCL/Adreno (ARM), CPU et GPU Polaris/legacy ne supportent pas Flash Attention de façon stable.
-    // Et dans llama.cpp : "quantized V cache requires flash_attn to be enabled".
-    // Si `-fa on` n'est pas passé, passer `-ctv` provoque un crash immédiat du chargement :
-    // "exiting due to model loading error: quantized V cache requires flash_attn to be enabled".
-    let is_arm = cfg!(target_arch = "aarch64") || std::env::consts::ARCH == "aarch64";
-    let flash_attention_active = !is_polaris_or_legacy
-        && !cpu_only
-        && !is_vulkan
-        && !is_arm
-        && inference_cfg["flash_attention"].as_bool().unwrap_or(true);
-
-    if !flash_attention_active {
-        cmd.arg("-fa").arg("off");
-    } else {
-        cmd.arg("-fa").arg("on");
-    }
-
-    // KV cache quantization: the real flags are -ctk/-ctv (NOT --kv-cache-type,
-    // which does not exist and would abort startup). "turbo3" is a legacy label
-    // from a fake "3-bit TurboQuant" — mainline llama.cpp has no 3-bit KV, so we
-    // map it to the real maximal compression (4-bit q4_0).
-    //
-    // ATTENTION CRITIQUE : Dans llama.cpp, "quantized V cache requires flash_attn to be enabled".
-    // Si flash attention est inactif (Polaris, processeur, ARM, Vulkan, ou désactivé par l'utilisateur),
-    // passer `-ctv` provoque un crash immédiat :
-    // "llama_init_from_model: quantized V cache requires flash_attn to be enabled"
-    // "srv llama_server: exiting due to model loading error".
-    // On quantifie donc uniquement la clé (-ctk) dans ce cas, et la valeur (-ctv)
-    // reste en f16 par défaut.
-    let kv_type = match inference_cfg["kv_cache_type"].as_str().unwrap_or("f16") {
-        "turbo3" | "turboquant" => "q4_0",
-        other => other,
-    };
-    if matches!(
-        kv_type,
-        "q8_0" | "q5_1" | "q5_0" | "q4_1" | "q4_0" | "iq4_nl"
-    ) {
-        cmd.arg("-ctk").arg(kv_type);
-        if flash_attention_active {
-            cmd.arg("-ctv").arg(kv_type);
-        }
+        // En mode auto (-1), toutes les couches sur la carte : laissé vide,
+        // llama.cpp gardait des couches en RAM (14 Go de RAM, processeur à
+        // 100 %). 999 couvre tous les modèles.
+        cmd.arg("-ngl").arg("999");
     }
 
     // Context length. 0 : llama.cpp l'ajuste à la mémoire libre, y compris
@@ -1897,24 +2151,7 @@ async fn spawn_llama_server(
         cmd.arg("-t").arg(default_threads.to_string());
     }
 
-    // Batch size & micro-batch (ubatch) size.
-    // Sur Vulkan (notamment les cartes AMD Polaris comme la RX 570/580), un ubatch
-    // trop élevé sur un modèle 8B/9B fait durer un seul dispatch de calcul plus de 2 secondes
-    // sur des prompts longs (outils MCP Roblox, multi-tours), ce qui déclenche le TDR Windows (2000 ms).
-    // Sur Polaris / Vulkan, un micro-batch de 32 (ou 64) garantit que chaque dispatch de calcul
-    // prend moins de 400ms, éliminant tout risque de TDR ou de crash `ErrorDeviceLost`.
-    let default_ubatch = if is_polaris_or_legacy {
-        32
-    } else if is_vulkan {
-        64
-    } else {
-        128
-    };
-    let batch = inference_cfg["batch_size"].as_u64().unwrap_or(512);
     cmd.arg("-b").arg(batch.to_string());
-    let ubatch = inference_cfg["ubatch_size"]
-        .as_u64()
-        .unwrap_or(default_ubatch);
     cmd.arg("-ub").arg(ubatch.to_string());
 
     // mmap : « --no-mmap » n'existe plus depuis ~b11000 (l'option mmap est
@@ -1926,10 +2163,13 @@ async fn spawn_llama_server(
         cmd.arg("-lm").arg("none");
     }
 
-    // Parallel slots.
-    let slots = inference_cfg["parallel_slots"].as_u64().unwrap_or(1);
-    if slots > 1 {
-        cmd.arg("-np").arg(slots.to_string());
+    cmd.arg("-np").arg(slots.to_string());
+
+    // Le cache des conversations en RAM (8 Go par défaut) : sur une machine
+    // de 16 Go ou moins, il poussait le système à la pagination. 2 Go gardent
+    // plusieurs conversations récentes.
+    if profile.total_ram_gb > 0.0 && profile.total_ram_gb <= 16.5 {
+        cmd.arg("-cram").arg("2048");
     }
 
     // Speculative decoding draft model (current flag: -md).
@@ -1972,7 +2212,10 @@ async fn spawn_llama_server(
 
     let settings_record = serde_json::json!({
         "model": full_model_path.to_string_lossy(),
-        "ctx": ctx,
+        // Le contexte *demandé* (0 = automatique) : c'est lui que l'on compare
+        // à la configuration pour savoir s'il faut relancer.
+        "ctx": ctx_demande,
+        "ctx_memorise": ctx_memorise,
         "ubatch": ubatch,
         "batch": batch,
         "fa": if flash_attention_active { "on" } else { "off" },

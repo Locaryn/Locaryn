@@ -185,6 +185,12 @@ pub struct CloudProviderManifest {
     /// avant de choisir un modèle bloquait un chemin qui fonctionnait déjà.
     #[serde(default, rename = "key_required", alias = "keyRequired")]
     pub key_required: Option<bool>,
+    /// Où lire les limites d'utilisation du compte (quotas sur 5 h, à la
+    /// semaine, crédits). URL complète ; la réponse suit le format décrit dans
+    /// `docs/writing-an-extension.md` (« Jauge de limites »). Absent : pas de
+    /// jauge — un fournisseur payé à l'usage n'a pas de quota à suivre.
+    #[serde(default, rename = "usage_url", alias = "usageUrl")]
+    pub usage_url: Option<String>,
     /// Quand le fournisseur tourne **sur la machine** — une passerelle
     /// auto-hébergée qu'apporte un morph — ce bloc dit comment l'installer, la
     /// démarrer, et où se trouve son tableau de bord.

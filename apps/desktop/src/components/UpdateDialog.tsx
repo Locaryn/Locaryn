@@ -204,6 +204,22 @@ export function UpdateDialog() {
     };
   }, [verifier]);
 
+  // Une application qui reste ouverte des jours apprend aussi qu'une version
+  // est sortie : nouvelle vérification discrète toutes les six heures.
+  const etatRef = useRef(etat);
+  etatRef.current = etat;
+  useEffect(() => {
+    if (!supporte) return;
+    const t = setInterval(
+      () => {
+        // Jamais par-dessus un téléchargement ou une fenêtre déjà ouverte.
+        if (etatRef.current.sorte === "ferme") void verifier(false);
+      },
+      6 * 60 * 60 * 1000,
+    );
+    return () => clearInterval(t);
+  }, [supporte, verifier]);
+
   useEffect(() => {
     const surDemande = () => void verifier(true);
     window.addEventListener(CHECK_UPDATE_EVENT, surDemande);
@@ -221,16 +237,30 @@ export function UpdateDialog() {
 
   async function installer(update: Update) {
     setEtat({ sorte: "telecharge", update, recu: 0, total: null });
+    // Le téléchargement annonce chaque morceau reçu — des milliers par
+    // seconde. Un rendu par morceau relançait la transition de la barre à
+    // chaque fois : elle tremblait, sautait, repartait. On compte ici et on
+    // n'affiche que dix fois par seconde, comme sur le téléphone.
+    let recu = 0;
+    let total: number | null = null;
+    let dernier = 0;
+    const publier = (force = false) => {
+      const maintenant = performance.now();
+      if (!force && maintenant - dernier < 100) return;
+      dernier = maintenant;
+      setEtat((s) => (s.sorte === "telecharge" ? { ...s, recu, total: total ?? s.total } : s));
+    };
     try {
       await update.downloadAndInstall((ev) => {
         if (ev.event === "Started") {
-          setEtat((s) =>
-            s.sorte === "telecharge" ? { ...s, total: ev.data.contentLength ?? s.total } : s,
-          );
+          total = ev.data.contentLength ?? null;
+          publier(true);
         } else if (ev.event === "Progress") {
-          setEtat((s) =>
-            s.sorte === "telecharge" ? { ...s, recu: s.recu + ev.data.chunkLength } : s,
-          );
+          recu += ev.data.chunkLength;
+          publier();
+        } else if (ev.event === "Finished") {
+          if (total) recu = total;
+          publier(true);
         }
       });
       setEtat({ sorte: "posee", update });

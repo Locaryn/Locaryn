@@ -63,7 +63,7 @@ rand = { workspace = true }
 zip = "8.6.0"
 reqwest = { workspace = true }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "trace", "catch-panic"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }

@@ -180,6 +180,29 @@ async fn main() -> anyhow::Result<()> {
 
     let cfg = locaryn_config::load(None)?;
     init_tracing(&cfg);
+    // Une panique se note dans le journal, avec son emplacement : sans cela,
+    // un service lancé par l'application mourait sans laisser de trace.
+    std::panic::set_hook(Box::new(|info| {
+        let ou = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_default();
+        let quoi = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        tracing::error!(%ou, %quoi, "panique dans le daemon");
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(locaryn_config::default_data_dir().join("daemon-panic.log"))
+            .and_then(|mut f| {
+                use std::io::Write as _;
+                writeln!(f, "{} {ou} {quoi}", chrono::Utc::now().to_rfc3339())
+            });
+    }));
 
     let bind = cfg.daemon.bind.clone();
     let port = cfg.daemon.port;
@@ -560,6 +583,10 @@ async fn main() -> anyhow::Result<()> {
         // Une photo de téléphone en base64 dépasse vite les 2 Mo qu'axum
         // accepte par défaut : la requête était refusée avant même d'arriver.
         .layer(axum::extract::DefaultBodyLimit::max(TAILLE_REQUETE_MAX))
+        // Une requête qui panique répond 500 au lieu d'emporter tout le
+        // service : afficher le QR de connexion d'un compte tuait le daemon,
+        // et l'écran annonçait ensuite un service indisponible.
+        .layer(tower_http::catch_panic::CatchPanicLayer::new())
         // Applied last so it wraps every route above, including ones added later.
         .layer(axum::middleware::from_fn_with_state(
             auth_state.clone(),

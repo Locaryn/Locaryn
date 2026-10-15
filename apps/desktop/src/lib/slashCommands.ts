@@ -420,6 +420,28 @@ export function slashEnFin(input: string): string | null {
 }
 
 /**
+ * Le « /mot » en cours de frappe à l'endroit du curseur, même quand du texte
+ * le suit : « /pl| corrige le bug » → « pl ». Le mot doit être séparé de ce
+ * qui suit par un espace (ou finir le texte), et précédé d'un début de ligne
+ * ou d'un espace — une adresse « a/b » n'est pas une commande.
+ * Renvoie le mot et ses bornes dans le texte, `null` sinon.
+ */
+export function slashAuCurseur(
+  input: string,
+  cursor: number,
+): { mot: string; debut: number; fin: number } | null {
+  const avant = input.slice(0, cursor);
+  const m = /(?:^|\s)\/([\w:.-]*)$/.exec(avant);
+  if (!m) return null;
+  const apres = input.slice(cursor);
+  const suite = /^[\w:.-]*/.exec(apres)?.[0] ?? "";
+  const reste = apres.slice(suite.length);
+  if (reste.length > 0 && !/^\s/.test(reste)) return null;
+  const debut = cursor - m[1].length - 1;
+  return { mot: m[1] + suite, debut, fin: cursor + suite.length };
+}
+
+/**
  * Text typed in the composer → matching commands, or null when not a slash query.
  *
  * `extra` porte les commandes apportees par les plugins actifs. Elles sont

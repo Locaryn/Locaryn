@@ -14,6 +14,7 @@ import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
 import { TopBar } from "./components/TopBar";
+import { ModeleTropLourd } from "./components/ModeleTropLourd";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { ExtensionScreen } from "./components/extensions/ExtensionScreen";
 import { useTheme } from "./hooks/useTheme";
@@ -1533,6 +1534,8 @@ export function App() {
           que lorsqu'il y a quelque chose a dire, et ce qu'elle dit vaut pour
           l'application entiere. */}
         <UpdateDialog />
+        {/* Un chargement refusé par la prudence choisie se dit dans une fenêtre. */}
+        <ModeleTropLourd onOpenSettings={() => setActiveView("settings")} />
         {/* Le clic droit de l'application, à la place du menu du navigateur. */}
         <AppContextMenu />
 

@@ -962,6 +962,8 @@ pub const NATIVE_TOOLS: &[&str] = &[
     "generate_speech",
     "ask_user",
     "remember_project_context",
+    crate::web::WEB_SEARCH,
+    crate::web::WEB_FETCH,
 ];
 
 /// Vrai quand le socle sait exécuter cet outil sans passer par une extension.
@@ -981,6 +983,7 @@ pub async fn dispatch_tool(
         "search" => exec_search(args, project_root).await,
         "run_command" => exec_run_command(args, project_root).await,
         "generate_speech" => exec_generate_speech(args).await,
+        t if crate::web::is_web_tool(t) => crate::web::exec(t, args).await,
         // `ask_user` a besoin de la porte des questions, que seule la boucle
         // d'outils detient : elle l'intercepte avant d'arriver ici.
         "ask_user" | "remember_project_context" => ToolResult {

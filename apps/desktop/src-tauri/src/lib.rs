@@ -25,6 +25,7 @@ mod local_profile;
 mod mailbox;
 mod mcp_servers;
 mod memory;
+mod memory_gardener;
 mod mentions;
 mod model_abilities;
 mod model_recommendations;
@@ -110,7 +111,15 @@ struct Core {
     /// interrompt la génération sans décharger le modèle : on cesse
     /// simplement d'écouter la réponse, et la requête vers le moteur est
     /// abandonnée — llama-server arrête d'écrire, le modèle reste résident.
-    chat_cancels: Arc<tokio::sync::Mutex<HashMap<uuid::Uuid, tokio_util::sync::CancellationToken>>>,
+    /// Le numéro de la génération accompagne son jeton : la fin d'une réponse
+    /// ne retire que *son* jeton, jamais celui de la réponse suivante déjà
+    /// partie (enchaînements /plan, /goal, file d'attente) — sans quoi Stop
+    /// ne trouvait plus rien à arrêter.
+    chat_cancels:
+        Arc<tokio::sync::Mutex<HashMap<uuid::Uuid, Vec<(u64, tokio_util::sync::CancellationToken)>>>>,
+    /// Le travail d'arrière-plan sur le modèle (tri de la mémoire) : arrêté
+    /// net dès qu'une personne envoie un message.
+    arriere_plan_stop: Arc<memory_gardener::Interrupteur>,
     /// Lazily-spawned embeddings server for RAG: (embedding model filename, child).
     /// Pinned to the model that produced an index so queries stay comparable.
     ///
@@ -434,6 +443,7 @@ async fn init_core() -> anyhow::Result<Core> {
         )),
         pull_cancels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         chat_cancels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        arriere_plan_stop: Arc::new(memory_gardener::Interrupteur::default()),
         embed_server: Arc::new(tokio::sync::Mutex::new(None)),
         pending_approvals: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         cores: core_engines::CoreManager::new(),
@@ -1742,6 +1752,25 @@ pub struct JointDocumentIn {
     pub base64: Option<String>,
 }
 
+/// Numéro croissant de chaque génération lancée, pour reconnaître son jeton
+/// d'annulation parmi ceux des réponses suivantes.
+static NUMERO_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Retire le jeton d'annulation de *cette* génération, et seulement lui.
+async fn liberer_annulation(
+    cancels: &tokio::sync::Mutex<HashMap<Uuid, Vec<(u64, tokio_util::sync::CancellationToken)>>>,
+    session_id: Uuid,
+    generation: u64,
+) {
+    let mut map = cancels.lock().await;
+    if let Some(jetons) = map.get_mut(&session_id) {
+        jetons.retain(|(n, _)| *n != generation);
+        if jetons.is_empty() {
+            map.remove(&session_id);
+        }
+    }
+}
+
 /// Send a user message and stream the agent's reply. Mirrors the daemon's
 /// `send_message` handler: persist the user message, resolve project context,
 /// ensure the local runtime is up, run the OpenAI-compatible agent, and
@@ -1765,10 +1794,20 @@ async fn send_message(
     // l'ecoute du flux, la requete vers le moteur est abandonnee et
     // llama-server arrete la generation — le modele reste resident.
     let cancel = tokio_util::sync::CancellationToken::new();
+    let generation = NUMERO_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // Plusieurs réponses peuvent tourner pour une même conversation
+    // (vérification d'un objectif, file d'attente) : Stop les arrête toutes.
     core.chat_cancels
         .lock()
         .await
-        .insert(session_id, cancel.clone());
+        .entry(session_id)
+        .or_default()
+        .push((generation, cancel.clone()));
+    // Une personne attend cette réponse : le compte à rebours d'éjection
+    // s'efface, le modèle ne quitte pas la mémoire, et le travail
+    // d'arrière-plan (tri de la mémoire) lui cède la place.
+    let _utilisation = core.supervisor.utilisation();
+    core.arriere_plan_stop.cancel_all();
     // 0. Hooks : UserPromptSubmit peut refuser le tour. Tiré avant toute
     //    persistance, sinon un message refusé resterait dans l'historique.
     let hook_root = {
@@ -1899,7 +1938,20 @@ async fn send_message(
     // pas là où on le cherche, ou le démarrage qui a expiré. On garde sa
     // réponse pour la donner à qui la lit.
     let mut panne_du_moteur: Option<String> = None;
+    // Le modèle n'est pas encore en mémoire : la conversation va le charger.
+    // La prudence choisie vaut aussi ici — sans ce contrôle, seul le menu de
+    // chargement la respectait.
     if let Some(ref p) = active_provider {
+        if p.engine == ProviderEngine::LlamaCpp && !core.supervisor.is_healthy(&p.engine).await {
+            if let Some(m) = p.model.as_deref() {
+                if let Some(raison) = model_residency::refus_de_chargement(&core, m).await {
+                    let _ = app.emit("locaryn://modele-trop-lourd", raison.clone());
+                    panne_du_moteur = Some(raison);
+                }
+            }
+        }
+    }
+    if let Some(ref p) = active_provider.as_ref().filter(|_| panne_du_moteur.is_none()) {
         if moteur_supervise(&p.engine) {
             tokio::select! {
                 res = core.supervisor.ensure_running(&p.engine) => {
@@ -1914,7 +1966,7 @@ async fn send_message(
                 _ = cancel.cancelled() => {
                     tracing::info!("chargement du modèle annulé par l'utilisateur");
                     core.supervisor.kill_owned(&p.engine).await;
-                    core.chat_cancels.lock().await.remove(&session_id);
+                    liberer_annulation(&core.chat_cancels, session_id, generation).await;
                     return Ok(());
                 }
             }
@@ -2056,7 +2108,7 @@ async fn send_message(
             turns = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => {
-                    core.chat_cancels.lock().await.remove(&session_id);
+                    liberer_annulation(&core.chat_cancels, session_id, generation).await;
                     return Ok(());
                 }
                 t = compact_history(&core, &endpoint, &m, turns, budget) => t,
@@ -2245,7 +2297,40 @@ async fn send_message(
         // nothing is enabled, so the prompt is unchanged for everyone else.
         extra_system: {
             let rt = core.extensions.read().await;
-            (!rt.system_prompt.trim().is_empty()).then(|| rt.system_prompt.clone())
+            let extensions = (!rt.system_prompt.trim().is_empty()).then(|| rt.system_prompt.clone());
+            drop(rt);
+            // Ce que Locaryn a retenu de la personne, sauf dans une
+            // conversation éphémère ou pour une figure qui travaille à part.
+            // Placé après les consignes fixes : il ne change qu'au tri de la
+            // mémoire, et le début de l'invite reste en cache d'un message
+            // à l'autre.
+            let figure_sans_memoire = core
+                .storage
+                .figures
+                .for_session(session_id)
+                .await
+                .ok()
+                .flatten()
+                .is_some_and(|f| !f.uses_memory);
+            let memoire = if session_ephemere || figure_sans_memoire {
+                None
+            } else {
+                core.storage.memory.as_system_block(None).await.ok().flatten()
+            };
+            let morceaux: Vec<String> = [
+                extensions.map(|e| format!("# Extensions
+
+{}", e.trim())),
+                memoire.map(|m| format!("# Mémoire
+
+{}", m.trim())),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            (!morceaux.is_empty()).then(|| morceaux.join("
+
+"))
         },
         // L'écran promet que Locaryn relit les fiches du projet avant de
         // répondre : c'est ici que la promesse se tient. Les portées que cette
@@ -2390,7 +2475,7 @@ async fn send_message(
         biased;
         _ = cancel.cancelled() => {
             tracing::info!("réponse arrêtée avant son premier mot");
-            core.chat_cancels.lock().await.remove(&session_id);
+            liberer_annulation(&core.chat_cancels, session_id, generation).await;
             return Ok(());
         }
         flux = flux => flux,
@@ -2450,7 +2535,7 @@ async fn send_message(
         core.supervisor.note_activity(&p.engine).await;
     }
     let stopped = cancel.is_cancelled();
-    core.chat_cancels.lock().await.remove(&session_id);
+    liberer_annulation(&core.chat_cancels, session_id, generation).await;
     tokio::spawn(mcp_servers::signaler_fin_de_reponse(core.mcp.clone()));
 
     // 5. Persist the assistant reply and transparent audio-artifact markers.
@@ -5009,13 +5094,15 @@ fn broadcast(app: &tauri::AppHandle, event: &str, payload: serde_json::Value) {
 
 #[tauri::command]
 async fn stop_generation(core: State<'_, Core>, session_id: Uuid) -> Result<(), String> {
-    let token = core.chat_cancels.lock().await.remove(&session_id);
-    match token {
-        Some(t) => {
-            t.cancel();
+    let jetons = core.chat_cancels.lock().await.remove(&session_id);
+    match jetons {
+        Some(jetons) if !jetons.is_empty() => {
+            for (_, t) in jetons {
+                t.cancel();
+            }
             Ok(())
         }
-        None => Err("aucune generation en cours pour cette session".into()),
+        _ => Err("aucune generation en cours pour cette session".into()),
     }
 }
 
@@ -6751,6 +6838,8 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
         attention.brancher_contexte(fiches).await;
     });
     app.manage(core);
+    // La mémoire apprend pendant que le modèle chargé attend.
+    memory_gardener::lancer(app.clone());
 
     // Le cœur est prêt : les commandes de l'interface peuvent répondre.
     // La fenêtre principale se crée masquée et ne paraît qu'au signal
@@ -7076,6 +7165,8 @@ pub fn run() {
             browser::browser_state,
             workspace::workspace_list,
             workspace::workspace_read,
+            workspace::workspace_open_with,
+            workspace::open_path_with,
             workspace::workspace_changes,
             workspace::workspace_diff,
             get_inference_config,
@@ -7120,6 +7211,9 @@ pub fn run() {
             model_residency::eject_chat_model,
             model_residency::signaler_activite,
             model_residency::caution_level,
+            model_residency::caution_reserves,
+            cloud_providers::cloud_usage,
+            cloud_providers::cloud_provider_account,
             model_residency::set_caution_level,
             open_models_folder,
             plan_model_runtime,

@@ -70,6 +70,11 @@ pub struct AssistanceConfig {
     /// ses connecteurs et sait ce qu'il a à disposition.
     #[serde(default)]
     pub trim_tools: bool,
+    /// Couper l'apprentissage automatique de la mémoire. Faux par défaut : le
+    /// modèle chargé relit les conversations pendant l'inactivité et retient
+    /// ce qu'elles apprennent de durable sur la personne.
+    #[serde(default)]
+    pub memory_learning_off: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

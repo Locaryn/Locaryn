@@ -73,6 +73,34 @@ impl HardwareProfile {
         self
     }
 
+    /// La machine telle qu'elle est quand rien d'autre ne tourne : ce qu'il
+    /// faut pour répondre « ce PC peut-il faire tourner ce modèle ? ».
+    ///
+    /// Le catalogue jugeait sur la mémoire libre *à l'instant* : un navigateur
+    /// ouvert, et les trois quarts des modèles de moins de 8 Go devenaient
+    /// « trop lourds » sur une carte de 8 Go. Le chargement, lui, vérifie
+    /// toujours la mémoire réellement libre.
+    pub fn capacite(mut self) -> Self {
+        if self.unified_memory {
+            // Une seule mémoire : le système et ses applications en gardent un
+            // quart, le budget GPU reste celui qu'accorde le système.
+            self.free_ram_gb = self.free_ram_gb.max(self.total_ram_gb * 0.75);
+            self.free_vram_gb = self.free_vram_gb.max(self.total_vram_gb);
+        } else {
+            // Le bureau graphique garde quelques centaines de Mo de la carte ;
+            // le système et un navigateur, environ 4 Go de RAM.
+            if self.total_vram_gb > 0.0 {
+                self.free_vram_gb = self
+                    .free_vram_gb
+                    .max((self.total_vram_gb - 0.35).max(self.total_vram_gb * 0.9));
+            }
+            self.free_ram_gb = self
+                .free_ram_gb
+                .max((self.total_ram_gb - 4.0).max(self.total_ram_gb * 0.5));
+        }
+        self
+    }
+
     pub fn usable_vram_gb(&self, reserve_gb: f64) -> f64 {
         (self.free_vram_gb - reserve_gb).max(0.0)
     }

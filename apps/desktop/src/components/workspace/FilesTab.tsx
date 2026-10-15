@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type WorkspaceEntry, type WorkspaceFile, core } from "../../lib/core";
+import { FileViewer } from "./FileViewer";
 
 type Props = { sessionId: string | null; visible: boolean };
 
@@ -79,7 +80,7 @@ export function FilesTab({ sessionId, visible }: Props) {
 
   return (
     <div className="lw-files">
-      <nav className="lw-crumbs" aria-label="Emplacement">
+      <nav className="lw-crumbs" aria-label="Emplacement" hidden={fichier !== null}>
         <button type="button" className="lw-crumb" onClick={() => void charger("")}>
           Dossier
         </button>
@@ -120,25 +121,7 @@ export function FilesTab({ sessionId, visible }: Props) {
       )}
 
       {fichier ? (
-        <div className="lw-file">
-          <div className="lw-file-head">
-            <button type="button" className="lw-link-btn" onClick={() => setFichier(null)}>
-              <Icon name="arrow-left" size={14} /> Retour au dossier
-            </button>
-            <span className="lw-file-size">
-              {taille(fichier.taille)}
-              {fichier.tronque ? " · début seulement" : ""}
-            </span>
-          </div>
-          {fichier.contenu === null ? (
-            <div className="lw-empty">
-              <Icon name="file-text" size={22} />
-              <p>Fichier binaire : il ne s'affiche pas ici.</p>
-            </div>
-          ) : (
-            <pre className="lw-file-code">{fichier.contenu}</pre>
-          )}
-        </div>
+        <FileViewer sessionId={sessionId} fichier={fichier} onRetour={() => setFichier(null)} />
       ) : (
         <ul className="lw-entries">
           {entrees?.length === 0 && <li className="lw-entries-empty">Dossier vide.</li>}

@@ -7070,6 +7070,10 @@ pre.md-code {
 .locaryn-res-hint {
   color: var(--text-faint);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.locaryn-res-hint.is-proche {
+  color: var(--warn);
 }
 
 .locaryn-res-eject {
@@ -7329,6 +7333,13 @@ pre.md-code {
   color: var(--text-faint);
   font-size: 12px;
   line-height: 1.45;
+}
+.locaryn-caution-reserve {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
 }
 
 .locaryn-caution-warning {
@@ -9574,6 +9585,13 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 .locaryn-store-progress {
   margin-top: var(--space-4);
+  animation: locaryn-store-apparait 220ms var(--ease, ease-out) both;
+}
+@keyframes locaryn-store-apparait {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 .locaryn-store-progress-head {
   display: flex;
@@ -13515,13 +13533,36 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-suivi-barre .is-echec {
   background: var(--warn);
 }
+/* Le plan en cours sort du champ de saisie comme un onglet : plus étroit que
+   lui, centré, collé à son bord haut. Pleine largeur, il pesait plus lourd
+   que la conversation elle-même. */
 .locaryn-suivi-dock {
-  margin-bottom: var(--space-2);
-  width: 100%;
+  width: min(calc(100% - 48px), 560px);
+  margin: 0 auto -1px;
+  position: relative;
+  z-index: 0;
 }
 .locaryn-suivi-dock .locaryn-suivi {
   margin: 0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.18);
+}
+.locaryn-suivi-dock .locaryn-suivi-tete {
+  grid-template-columns: 22px 1fr auto;
+  gap: var(--space-2);
+}
+.locaryn-suivi-dock .locaryn-suivi-icone {
+  width: 22px;
+  height: 22px;
+}
+.locaryn-suivi-dock .locaryn-suivi-barre {
+  margin: var(--space-2) 0 var(--space-1);
+}
+.locaryn-suivi-dock .locaryn-suivi-etapes {
+  max-height: 132px;
+  font-size: var(--text-sm);
 }
 .locaryn-suivi-etapes {
   display: grid;
@@ -13975,4 +14016,299 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 .lo-autre-pc-info {
   color: var(--accent);
+}
+
+/* Fenêtre « modèle trop lourd » */
+.locaryn-trop-lourd {
+  max-width: 480px;
+  padding: var(--space-5);
+}
+.locaryn-trop-lourd-titre {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+.locaryn-trop-lourd-texte {
+  margin: 0 0 var(--space-3);
+  line-height: 1.5;
+}
+.locaryn-trop-lourd-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+/* ── Visionneuse de fichier : chemin, Aperçu / Source, ouvrir ailleurs ── */
+.lw-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.lw-viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+.lw-viewer-bar .lw-icon-btn {
+  width: 28px;
+  height: 28px;
+}
+.lw-viewer-path {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+.lw-viewer-path > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lw-viewer-path .is-dernier {
+  color: var(--text);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.lw-viewer-sep {
+  margin: 0 4px;
+  color: var(--text-faint);
+}
+.lw-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+.lw-seg {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.lw-seg button {
+  padding: 3px 10px;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.lw-seg button.is-actif {
+  color: var(--text);
+  background: var(--surface-3);
+  box-shadow: inset 0 1px 0 var(--stroke-top);
+}
+.lw-split {
+  position: relative;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.lw-split-main,
+.lw-split-caret {
+  display: grid;
+  place-items: center;
+  height: 26px;
+  padding: 0 7px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.lw-split-caret {
+  padding: 0 5px;
+  border-left: 1px solid var(--border);
+}
+.lw-split-main:hover,
+.lw-split-caret:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.lw-split-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--surface);
+  background-image: var(--mica);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  animation: locaryn-store-apparait 140ms var(--ease, ease-out) both;
+}
+.lw-split-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.lw-split-menu button:hover {
+  background: var(--surface-2);
+}
+.lw-viewer-meta {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.lw-viewer-info {
+  color: var(--accent);
+}
+.lw-viewer-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.lw-viewer-md {
+  padding: var(--space-3) var(--space-4);
+  line-height: 1.6;
+}
+.lw-viewer-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 320px;
+  border: none;
+  background: #fff;
+}
+.lw-viewer-svg {
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+.lw-viewer-svg img {
+  max-width: 100%;
+  max-height: 70vh;
+}
+
+/* ── Jauge des limites d'abonnement (Claude, Codex…) ── */
+.locaryn-usage {
+  position: relative;
+  display: inline-flex;
+}
+.locaryn-usage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px 0 5px;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.locaryn-usage-pill:hover {
+  color: var(--text);
+}
+.locaryn-usage-rail {
+  fill: none;
+  stroke: var(--surface-3);
+  stroke-width: 2.5;
+}
+.locaryn-usage-arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--dur-slow, 400ms) var(--ease, ease);
+}
+.locaryn-usage-pill.is-warn .locaryn-usage-arc {
+  stroke: var(--warn);
+}
+.locaryn-usage-pill.is-danger .locaryn-usage-arc {
+  stroke: var(--danger);
+}
+.locaryn-usage-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: 260px;
+  padding: var(--space-3);
+  background: var(--surface);
+  background-image: var(--mica);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+  animation: locaryn-store-apparait 160ms var(--ease, ease-out) both;
+}
+.locaryn-usage-pop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+}
+.locaryn-usage-pop-head span {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.locaryn-usage-row + .locaryn-usage-row {
+  margin-top: var(--space-3);
+}
+.locaryn-usage-row-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.locaryn-usage-pct {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.locaryn-usage-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.locaryn-usage-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-slow, 400ms) var(--ease, ease);
+}
+.locaryn-usage-bar.is-warn span {
+  background: var(--warn);
+}
+.locaryn-usage-bar.is-danger span {
+  background: var(--danger);
+}
+.locaryn-usage-reset,
+.locaryn-usage-note {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-faint);
 }

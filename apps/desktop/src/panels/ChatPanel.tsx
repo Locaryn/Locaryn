@@ -9,6 +9,7 @@ import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
 import { SousAgentsEnCours } from "../components/SousAgentsEnCours";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import { ContextDetails, type ContextUsage } from "../components/chat/ContextDetails";
+import { UsageGauge } from "../components/chat/UsageGauge";
 import {
   type MessageAttachment,
   MessageBubble,
@@ -63,7 +64,7 @@ import {
   matchSlash,
   matchSlashInput,
   parseModifiers,
-  slashEnFin,
+  slashAuCurseur,
 } from "../lib/slashCommands";
 import { SOUS_AGENT_ACCORD, SOUS_AGENT_FINI, type SousAgentFini } from "../lib/sousAgents";
 import { runWorkflow } from "../lib/workflow";
@@ -576,6 +577,11 @@ export function ChatPanel({
    *  ligne). */
   const [fileDeplie, setFileDeplie] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
+  // La barre d'état masque le compte à rebours d'éjection pendant une
+  // réponse : elle l'apprend ici, sans attendre son sondage.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("locaryn:generation", { detail: streaming }));
+  }, [streaming]);
   /**
    * La conversation est en train d'être créée pour le premier message.
    *
@@ -623,6 +629,9 @@ export function ChatPanel({
   /** La palette a été ouverte par un « /mot » en fin de texte : choisir une
    *  entrée l'insère au lieu de l'exécuter (le message garde son texte). */
   const [slashInline, setSlashInline] = useState(false);
+  /** Bornes du « /mot » en cours de frappe, pour le remplacer à sa place
+   *  même quand du texte le suit. */
+  const slashBornesRef = useRef<{ debut: number; fin: number } | null>(null);
   /** Les skills, proposés aussi dans la palette « / » (insérés en « @nom »). */
   const [skillCommands, setSkillCommands] = useState<SlashCommand[]>([]);
   /** « @ » : connecteurs MCP et extensions actives qu'on peut désigner au
@@ -2085,19 +2094,30 @@ ${preview}`,
   }, []);
 
   /** La palette « / » pour ce texte : au début, au milieu ou à la fin d'un message. */
-  function calculerSlash(texte: string) {
+  function calculerSlash(texte: string, cursor: number = texte.length) {
     const pool = [...extCommands, ...skillCommands];
 
-    // 1. Un « /mot » est-il en cours de frappe à la fin du texte ?
-    // Fonctionne au tout début (« /p »), après d'autres commandes (« /goal /p »)
-    // ou n'importe où dans un texte (« fais ceci /p »).
-    const mot = slashEnFin(texte);
-    if (mot !== null) {
-      const items = matchSlash(`/${mot}`, pool, activeCapabilities) ?? [];
-      setSlashInline(true);
-      setSlash(items.length ? { kind: "commands", items } : null);
-      return;
+    // 1. Un « /mot » est-il en cours de frappe à l'endroit du curseur ?
+    // Fonctionne au tout début (« /p »), après d'autres commandes (« /goal /p »),
+    // n'importe où dans un texte (« fais ceci /p »), et aussi quand du texte
+    // le suit (« /p| corrige le bug ») tant qu'un espace les sépare.
+    const auCurseur = slashAuCurseur(texte, cursor);
+    if (auCurseur !== null) {
+      // Une commande déjà écrite en entier et suivie de ses arguments
+      // (« /image haute ») garde sa complétion d'arguments, plus bas.
+      const avecArgs =
+        auCurseur.debut === 0 &&
+        auCurseur.fin < texte.length &&
+        matchSlashInput(texte, pool, activeCapabilities)?.kind === "args";
+      if (!avecArgs) {
+        slashBornesRef.current = { debut: auCurseur.debut, fin: auCurseur.fin };
+        const items = matchSlash(`/${auCurseur.mot.slice(0, cursor - auCurseur.debut - 1)}`, pool, activeCapabilities) ?? [];
+        setSlashInline(true);
+        setSlash(items.length ? { kind: "commands", items } : null);
+        return;
+      }
     }
+    slashBornesRef.current = null;
 
     // 2. Sinon, est-ce une complétion d'arguments pour une commande déjà tapée (ex: /loop, /image) ?
     const debut = matchSlashInput(texte, pool, activeCapabilities);
@@ -2119,8 +2139,20 @@ ${preview}`,
   function choisirSlash(cmd: SlashCommand) {
     const insertion =
       cmd.action === "skill" ? `@${cmd.name} ` : `/${commandName(cmd, lang)} `;
-    // Remplacement du dernier token slash tapé (en début de ligne, après espace, ou après une autre commande)
-    setInput((t) => t.replace(/(^|\s)\/[\w:.-]*$/, `$1${insertion}`));
+    // Remplacement du token slash en cours de frappe, à sa place : le texte
+    // qui le suit reste intact.
+    const bornes = slashBornesRef.current;
+    setInput((t) => {
+      if (bornes && t.charAt(bornes.debut) === "/") {
+        const suite = t.slice(bornes.fin).replace(/^\s+/, "");
+        const tete = t.slice(0, bornes.debut) + insertion;
+        const curseur = tete.length;
+        requestAnimationFrame(() => inputRef.current?.setSelectionRange(curseur, curseur));
+        return tete + suite;
+      }
+      return t.replace(/(^|\s)\/[\w:.-]*$/, `$1${insertion}`);
+    });
+    slashBornesRef.current = null;
     setSlash(null);
     setSlashInline(false);
     inputRef.current?.focus();
@@ -3123,7 +3155,7 @@ ${preview}`,
               const cursor = e.target.selectionStart;
               setInput(val);
               autoGrow();
-              calculerSlash(val);
+              calculerSlash(val, cursor ?? val.length);
               setSlashIndex(0);
               suivreMention(val, cursor);
             }}
@@ -3273,6 +3305,10 @@ ${preview}`,
                 <Icon name="caret-down" size={12} />
               </button>
             )}
+
+            {/* Limites de l'abonnement (Claude, Codex…) : seulement pour un
+                modèle payant dont le morph publie ses quotas. */}
+            <UsageGauge generating={streaming} />
 
             {/* Context gauge — clic : le détail ; maintenir : compresser */}
             <div className="locaryn-ctx-gauge-zone">

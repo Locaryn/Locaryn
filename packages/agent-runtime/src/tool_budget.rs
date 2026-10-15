@@ -101,7 +101,7 @@ fn split_known<'a>(name: &'a str, clean: &HashSet<String>) -> Option<(&'a str, &
 /// (deux connecteurs qui annoncent le même nom, ou un nom pris par un outil
 /// intégré). Rend aussi, pour chaque nom court, le serveur d'où il vient : il
 /// aide à reconnaître ce que la demande désigne.
-fn one_name_per_tool(specs: Vec<ToolSpec>) -> (Vec<ToolSpec>, HashMap<String, String>) {
+pub fn one_name_per_tool(specs: Vec<ToolSpec>) -> (Vec<ToolSpec>, HashMap<String, String>) {
     let clean: HashSet<String> = specs
         .iter()
         .filter(|s| !is_mcp(s))
@@ -407,6 +407,70 @@ pub fn fit(specs: Vec<ToolSpec>, ctx: usize, request: &str, imposes: &[String]) 
 /// L'outil qui charge les outils différés. Il est traité par la boucle d'agent
 /// elle-même, jamais envoyé à un connecteur.
 pub const CHARGER_OUTILS: &str = "charger_outils";
+
+/// Les outils qui pilotent l'écran ou le navigateur intégré (morphs
+/// `morph-browser` et `morph-desktop`), sous leurs noms préfixés et courts.
+pub fn outils_ecran(mcp_tools: &[ToolSpec]) -> std::collections::HashSet<String> {
+    let mut noms = std::collections::HashSet::new();
+    for t in mcp_tools {
+        let Some(reste) = t.name.strip_prefix(crate::mcp_tools::MCP_PREFIX) else {
+            continue;
+        };
+        let serveur = reste.rsplit_once("__").map(|(s, _)| s).unwrap_or(reste);
+        let s = serveur.to_ascii_lowercase();
+        if s.contains("morph-browser") || s.contains("morph-desktop") {
+            noms.insert(t.name.clone());
+            if let Some((_, court)) = reste.rsplit_once("__") {
+                noms.insert(court.to_string());
+            }
+        }
+    }
+    noms
+}
+
+/// La personne demande-t-elle le navigateur ou le contrôle de l'ordinateur ?
+///
+/// Des mots qui ne laissent pas de doute : « cherche sur le web » n'en fait
+/// pas partie (une recherche se fait sans navigateur), « ouvre le
+/// navigateur » si.
+pub fn demande_l_ecran(texte: &str) -> bool {
+    let t = texte.to_lowercase();
+    const MOTS: &[&str] = &[
+        "navigateur",
+        "browser",
+        "onglet",
+        "chrome",
+        "firefox",
+        "edge ",
+        "opera",
+        "écran",
+        "ecran",
+        "screen",
+        "capture d'",
+        "screenshot",
+        "souris",
+        "mouse",
+        "clavier",
+        "keyboard",
+        "clique",
+        "cliquer",
+        "click",
+        "bureau windows",
+        "le bureau",
+        "desktop",
+        "fenêtre",
+        "window",
+        "prends le contrôle",
+        "prendre le contrôle",
+        "contrôle de l'ordinateur",
+        "contrôle mon",
+        "contrôler mon",
+        "take control",
+        "@morph-browser",
+        "@morph-desktop",
+    ];
+    MOTS.iter().any(|m| t.contains(m))
+}
 
 fn cout_dans_l_index(spec: &ToolSpec) -> usize {
     (spec.name.len() as f64 / BYTES_PER_TOKEN).ceil() as usize + 1
