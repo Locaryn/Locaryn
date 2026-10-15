@@ -72,3 +72,24 @@ export async function loadMediaObjectUrl(path: string): Promise<string> {
   }
   return URL.createObjectURL(new Blob([buf], { type: mediaMimeType(path) }));
 }
+
+/**
+ * L'adresse d'un fichier du disque pour un cadre qui charge ses voisins : une
+ * page HTML et son `style.css`, son `script.js`, ses images.
+ *
+ * `convertFileSrc` encode tout le chemin Windows en un seul segment
+ * (`C%3A%5CUsers%5C…`) : les chemins relatifs de la page se résolvaient
+ * alors à la racine du protocole, et l'aperçu s'affichait sans style ni
+ * script. Ici chaque dossier reste un segment, et `style.css` se trouve à
+ * côté de la page.
+ */
+export function toFrameUrl(cheminAbsolu: string, version?: string): string {
+  const base = convertFileSrc("").replace(/\/+$/, "");
+  const segments = cheminAbsolu
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((s) => s.length > 0)
+    .map(encodeURIComponent);
+  const url = `${base}/${segments.join("/")}`;
+  return version ? `${url}?v=${encodeURIComponent(version)}` : url;
+}

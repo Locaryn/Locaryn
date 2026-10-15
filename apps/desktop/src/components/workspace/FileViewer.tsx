@@ -1,6 +1,7 @@
 import { Icon, highlightCode, languageFromPath, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
-import { type WorkspaceFile, core } from "../../lib/core";
+import { type WorkspaceFile, core, isTauri } from "../../lib/core";
+import { toFrameUrl } from "../../lib/media";
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
 
 type Props = {
@@ -208,7 +209,12 @@ export function FileViewer({ sessionId, fichier, onRetour }: Props) {
             className="lw-viewer-frame"
             title={fichier.chemin}
             sandbox="allow-scripts"
-            srcDoc={contenu}
+            // Servie par son chemin, la page trouve son CSS, son JS et ses
+            // images ; le contenu en version recharge l'aperçu quand le
+            // modèle la réécrit. Sans chemin (démo), le HTML seul.
+            {...(isTauri && fichier.absolu
+              ? { src: toFrameUrl(fichier.absolu, `${fichier.taille}-${contenu.length}`) }
+              : { srcDoc: contenu })}
           />
         ) : (
           <div className="lw-viewer-svg">
