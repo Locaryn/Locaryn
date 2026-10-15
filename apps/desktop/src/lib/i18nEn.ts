@@ -2538,6 +2538,8 @@ export const EN_PATTERNS: Record<string, string> = {
   "Rechercher « {} »": "Search “{}”",
   "Laisse {} de VRAM libres sur {} ({} %)": "Keeps {} of VRAM free out of {} ({} %)",
   "Laisse {} de mémoire libres sur {}": "Keeps {} of memory free out of {}",
+  "Garde {} de VRAM libres sur {} pendant la génération, et {} de RAM sur {} pour le système et vos applications":
+    "Keeps {} of VRAM free out of {} while generating, and {} of RAM out of {} for the system and your apps",
   "Outils différés ({})": "Deferred tools ({})",
   "▶ Exécuter ({})": "▶ Run ({})",
   "{} jetons écrits à {} par seconde ; le prompt a été lu à {} par seconde. Mesuré par le moteur.":

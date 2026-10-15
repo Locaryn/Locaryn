@@ -89,6 +89,12 @@ pub enum Headroom {
     Risque,
 }
 
+/// `part` de `total`, au moins `plancher`, jamais plus du tiers de `total`.
+/// Vaut pour n'importe quelle quantité de mémoire, sans palier prévu.
+fn part_de(total: f64, part: f64, plancher: f64) -> f64 {
+    (total * part).max(plancher).min(total / 3.0)
+}
+
 impl Headroom {
     /// Mémoire vidéo laissée libre au système, en Go, sur une carte de
     /// `total_vram_gb`.
@@ -104,39 +110,47 @@ impl Headroom {
     /// choisit lui-même le contexte : la prudence choisie vaut au chargement,
     /// pas seulement dans l'estimation.
     ///
-    /// Une part de la carte, pas un nombre fixe : 1,5 Go sur 8 Go en prudent,
-    /// 0,75 sur 4, 0,5 sur 2 — le plancher (ce que le bureau de Windows prend
-    /// au minimum) ne réserve jamais plus du tiers d'une petite carte.
+    /// Le plancher (ce que le bureau de Windows prend au minimum) ne réserve
+    /// jamais plus du tiers d'une petite carte : 0,5 Go sur 2 Go en prudent.
     pub fn vram_reserve_gb(self, total_vram_gb: f64) -> f64 {
+        if total_vram_gb <= 0.0 {
+            return 0.0;
+        }
         let (part, plancher) = match self {
             Headroom::Prudent => (0.1875, 0.5),
             Headroom::Equilibre => (0.10, 0.35),
             Headroom::Risque => (0.04, 0.2),
         };
-        if total_vram_gb <= 0.0 {
-            return 0.0;
-        }
-        (total_vram_gb * part)
-            .max(plancher)
-            .min(total_vram_gb / 3.0)
+        part_de(total_vram_gb, part, plancher)
     }
 
-    /// Mémoire système laissée libre, en Go (pour Windows, le navigateur et
-    /// les applications ouvertes — c'est le « 3 Go de RAM » du niveau prudent).
+    /// Mémoire système laissée libre, en Go, sur une machine de
+    /// `total_ram_gb` : pour Windows (ou macOS), le navigateur et les
+    /// applications ouvertes.
     ///
-    /// La RAM garde plus que la VRAM : le système y fait tourner tout le
-    /// reste, là où la carte n'a guère d'autre client qu'un bureau graphique.
-    pub fn ram_reserve_gb(self) -> f64 {
-        match self {
-            Headroom::Prudent => 3.0,
-            Headroom::Equilibre => 1.5,
-            Headroom::Risque => 0.5,
+    /// Une part de la RAM, comme pour la VRAM, et non un chiffre fixe :
+    /// 3 Go gardés sur 8 Go en prenaient plus d'un tiers, et presque rien
+    /// sur un Mac de 128 Go. Sur 16 Go : 3 Go en prudent, 1,6 en équilibré,
+    /// 0,64 en risqué ; jamais plus du tiers de la machine.
+    pub fn ram_reserve_gb(self, total_ram_gb: f64) -> f64 {
+        let (part, plancher) = match self {
+            Headroom::Prudent => (0.1875, 1.0),
+            Headroom::Equilibre => (0.10, 0.75),
+            Headroom::Risque => (0.04, 0.4),
+        };
+        if total_ram_gb <= 0.0 {
+            // RAM inconnue : le plancher seul.
+            return plancher;
         }
+        part_de(total_ram_gb, part, plancher)
     }
 
     /// Réserve laissée libre, en Go : d'abord la VRAM, ensuite la RAM.
-    fn reserves(self, total_vram_gb: f64) -> (f64, f64) {
-        (self.vram_reserve_gb(total_vram_gb), self.ram_reserve_gb())
+    fn reserves(self, total_vram_gb: f64, total_ram_gb: f64) -> (f64, f64) {
+        (
+            self.vram_reserve_gb(total_vram_gb),
+            self.ram_reserve_gb(total_ram_gb),
+        )
     }
 }
 
@@ -542,7 +556,9 @@ fn budgets_utilisables(
 /// L'estimation complète.
 pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptions) -> FitReport {
     let context = resolve_context(spec, options);
-    let (reserve_vram, reserve_ram) = options.headroom.reserves(hardware.total_vram_gb);
+    let (reserve_vram, reserve_ram) = options
+        .headroom
+        .reserves(hardware.total_vram_gb, hardware.total_ram_gb);
     // Sur une carte dédiée, la réserve doit rester libre *pendant* la
     // génération, pas seulement une fois chargé.
     let marge_generation = if hardware.unified_memory {
@@ -1276,6 +1292,33 @@ mod tests {
         assert!((Headroom::Equilibre.vram_reserve_gb(2.0) - 0.35).abs() < 1e-9);
         assert!((super::marge_generation_gb(8.0) - 0.44).abs() < 1e-9);
         assert!((super::marge_generation_gb(2.0) - 0.15).abs() < 1e-9);
+    }
+
+    /// N'importe quelle quantité, pas seulement des paliers prévus : la
+    /// réserve croît continûment avec la mémoire, sans jamais en prendre
+    /// plus du tiers.
+    #[test]
+    fn les_reserves_valent_pour_toute_quantite_de_memoire() {
+        let mut precedente = (0.0, 0.0);
+        let mut total = 0.25;
+        while total <= 512.0 {
+            for niveau in [Headroom::Prudent, Headroom::Equilibre, Headroom::Risque] {
+                let vram = niveau.vram_reserve_gb(total);
+                let ram = niveau.ram_reserve_gb(total);
+                assert!(vram > 0.0 && vram <= total / 3.0 + 1e-9, "{total} Go");
+                assert!(ram > 0.0 && ram <= total / 3.0 + 1e-9, "{total} Go");
+            }
+            let prudent = (
+                Headroom::Prudent.vram_reserve_gb(total),
+                Headroom::Prudent.ram_reserve_gb(total),
+            );
+            assert!(prudent.0 >= precedente.0 && prudent.1 >= precedente.1);
+            precedente = prudent;
+            total += 0.25;
+        }
+        assert!((Headroom::Prudent.vram_reserve_gb(24.0) - 4.5).abs() < 1e-9);
+        assert!((Headroom::Prudent.ram_reserve_gb(16.0) - 3.0).abs() < 1e-9);
+        assert!((Headroom::Prudent.ram_reserve_gb(7.6) - 1.425).abs() < 1e-9);
     }
 
     /// Le cache d'attention doit croître avec le contexte : c'est tout

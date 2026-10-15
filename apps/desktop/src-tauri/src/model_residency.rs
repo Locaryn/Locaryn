@@ -407,7 +407,7 @@ pub fn caution_reserves() -> CautionReserves {
     .map(|level| CautionReserve {
         level,
         vram_gb: level.headroom().vram_reserve_gb(p.total_vram_gb),
-        ram_gb: level.headroom().ram_reserve_gb(),
+        ram_gb: level.headroom().ram_reserve_gb(p.total_ram_gb),
     })
     .collect();
     CautionReserves {
