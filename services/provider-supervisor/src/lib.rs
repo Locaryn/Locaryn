@@ -869,6 +869,26 @@ impl Supervisor {
         states.get(engine).is_some_and(|s| s.pinned)
     }
 
+    /// Prendre sous supervision un moteur qui tourne déjà sans être inscrit
+    /// (resté vivant après un redémarrage de l'application, lancé par le
+    /// service). Sans cela, l'inactivité n'était jamais comptée : la barre
+    /// affichait « éjection dans 30 min » sans bouger, et le modèle n'était
+    /// jamais libéré. Le délai part de maintenant.
+    pub async fn adopter_si_absent(&self, engine: &ProviderEngine, endpoint: &str) {
+        let mut states = self.inner.states.lock().await;
+        states.entry(engine.clone()).or_insert_with(|| {
+            tracing::info!(?engine, %endpoint, "moteur déjà en marche adopté pour le délai d'inactivité");
+            EngineState {
+                endpoint: endpoint.to_string(),
+                child: None,
+                last_activity: Instant::now(),
+                pinned: false,
+                owned: true,
+                adopted: true,
+            }
+        });
+    }
+
     /// Seconds since the last recorded activity, and whether the engine is
     /// pinned — what the status bar needs to explain itself.
     pub async fn residency(&self, engine: &ProviderEngine) -> Option<(u64, bool, bool)> {

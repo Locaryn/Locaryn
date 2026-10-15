@@ -314,6 +314,15 @@ pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, S
         false
     };
 
+    // Un modèle servi que le superviseur ne connaît pas encore : il l'adopte,
+    // sinon son inactivité ne serait jamais comptée.
+    if loaded && core.supervisor.residency(&engine).await.is_none() {
+        if let Some(p) = active.as_ref() {
+            core.supervisor
+                .adopter_si_absent(&engine, &p.endpoint)
+                .await;
+        }
+    }
     let (idle_seconds, pinned, tourne) = match core.supervisor.residency(&engine).await {
         Some((idle, pinned, tourne)) => (idle, pinned, tourne),
         None => (0, false, false),
