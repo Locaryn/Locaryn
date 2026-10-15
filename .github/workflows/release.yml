@@ -116,7 +116,7 @@ jobs:
           echo "VER=$ver" >> "$GITHUB_ENV"
 
       - name: Construire les binaires du serveur
-        run: cargo build --release --target ${{ matrix.target }} -p locaryn-daemon -p locaryn-cli
+        run: cargo build --release --target ${{ matrix.target }} -p locaryn-daemon -p locaryn-cli -p locaryn-server
 
       # ── Archive portable ───────────────────────────────────────────────
       - name: Archive portable (Windows)
@@ -127,6 +127,7 @@ jobs:
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/locaryn-daemon.exe" $out
           Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $out
+          Copy-Item "target/${{ matrix.target }}/release/locaryn-server.exe" $out
           Copy-Item "README.md","LICENSE*" $out -EA SilentlyContinue
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-server-${{ matrix.label }}.zip" -Force
           # Le dossier portable est déjà archivé dans le .zip : on le retire,
@@ -141,6 +142,7 @@ jobs:
           mkdir -p "$out"
           cp target/${{ matrix.target }}/release/locaryn-daemon "$out/"
           cp target/${{ matrix.target }}/release/locaryn "$out/"
+          cp target/${{ matrix.target }}/release/locaryn-server "$out/"
           cp README.md LICENSE* "$out/" 2>/dev/null || true
           tar -C "$out" -czf "dist/locaryn-${VER}-server-${{ matrix.label }}.tar.gz" .
           # Idem : retiré après archivage, sinon les binaires bruts (locaryn,
@@ -174,6 +176,7 @@ jobs:
           # main.wxs la cherche, sinon `light` échoue avec un fichier absent.
           New-Item -ItemType Directory -Force ../../target/release | Out-Null
           Copy-Item "../../target/${{ matrix.target }}/release/locaryn.exe" "../../target/release/" -Force
+          Copy-Item "../../target/${{ matrix.target }}/release/locaryn-server.exe" "../../target/release/" -Force
           cargo wix --package locaryn-daemon --nocapture --output "dist/locaryn-$env:VER-server-windows-x64.msi"
           # L'upload d'artefacts se fait depuis la racine du dépôt : on
           # ramène le .msi dans dist/ à la racine.
@@ -200,6 +203,7 @@ jobs:
           mkdir -p "$racine/usr/local/bin"
           cp target/${{ matrix.target }}/release/locaryn-daemon "$racine/usr/local/bin/"
           cp target/${{ matrix.target }}/release/locaryn "$racine/usr/local/bin/"
+          cp target/${{ matrix.target }}/release/locaryn-server "$racine/usr/local/bin/"
           chmod 755 "$racine/usr/local/bin/"*
           pkgbuild --root "$racine" \
             --identifier dev.locaryn.server \
@@ -269,7 +273,9 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+          # xdg-utils : l'AppImage appelle xdg-mime, absent de l'image ARM64
+          # des runners (présent sur x64).
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev xdg-utils
 
       - name: Déterminer la version
         shell: bash
@@ -358,6 +364,7 @@ jobs:
           # serveur de la version portable n'aurait rien à démarrer.
           Copy-Item "apps/desktop/src-tauri/binaries/locaryn-daemon-x86_64-pc-windows-msvc.exe" "$out/locaryn-daemon.exe"
           Copy-Item "apps/desktop/src-tauri/binaries/locaryn-x86_64-pc-windows-msvc.exe" "$out/locaryn.exe"
+          Copy-Item "apps/desktop/src-tauri/binaries/locaryn-server-x86_64-pc-windows-msvc.exe" "$out/locaryn-server.exe"
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-desktop-windows-x64-portable.zip" -Force
           Remove-Item $out -Recurse -Force
 
@@ -375,6 +382,7 @@ jobs:
           triple=$(rustc -vV | sed -n 's/^host: //p')
           cp "apps/desktop/src-tauri/binaries/locaryn-daemon-$triple" "$out/locaryn-daemon"
           cp "apps/desktop/src-tauri/binaries/locaryn-$triple" "$out/locaryn"
+          cp "apps/desktop/src-tauri/binaries/locaryn-server-$triple" "$out/locaryn-server"
           tar -C "$out" -czf "dist/locaryn-${VER}-desktop-${{ matrix.label }}-portable.tar.gz" .
           rm -rf "$out"
 
@@ -468,6 +476,7 @@ jobs:
           Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn-desktop.exe" $out
           Copy-Item "apps/desktop/src-tauri/binaries/locaryn-daemon-aarch64-pc-windows-msvc.exe" "$out/locaryn-daemon.exe"
           Copy-Item "apps/desktop/src-tauri/binaries/locaryn-aarch64-pc-windows-msvc.exe" "$out/locaryn.exe"
+          Copy-Item "apps/desktop/src-tauri/binaries/locaryn-server-aarch64-pc-windows-msvc.exe" "$out/locaryn-server.exe"
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-desktop-windows-arm64-portable.zip" -Force
           Remove-Item $out -Recurse -Force
 
@@ -476,6 +485,7 @@ jobs:
           New-Item -ItemType Directory -Force $srv | Out-Null
           Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn-daemon.exe" $srv
           Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn.exe" $srv
+          Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn-server.exe" $srv
           Copy-Item "README.md","LICENSE*" $srv -EA SilentlyContinue
           Compress-Archive -Path "$srv/*" -DestinationPath "dist/locaryn-$env:VER-server-windows-arm64.zip" -Force
           Remove-Item $srv -Recurse -Force
@@ -861,14 +871,18 @@ jobs:
             | Linux ARM64 | `locaryn-${{ env.VER }}-desktop-linux-arm64-portable.tar.gz` | portable, sans auto-update |
             | Android | `${{ env.APK }}` | ${{ env.APK_NOTE }} |
 
-            L'application de bureau emporte le service Locaryn et la commande `locaryn` :
+            L'application de bureau emporte le service Locaryn, la commande `locaryn` et
+            `locaryn-server` (gérer le serveur depuis un terminal) :
             elle peut donc servir d'autres appareils du réseau local (Réglages → Serveur) et se
             piloter depuis un terminal, sans rien installer d'autre. Sous Linux la commande est
             posée dans `/usr/bin` ; ailleurs elle se trouve à côté de l'application.
 
             #### Serveur (sans interface)
 
-            `locaryn-daemon` + CLI `locaryn` — pour une machine dédiée, sans session graphique.
+            `locaryn-daemon` + `locaryn-server` + CLI `locaryn` — pour une machine dédiée, sans
+            session graphique. `locaryn-server` ouvre une interface plein écran (service, comptes,
+            API fournisseur, clés d'API, modèles, journal) ; `locaryn-server --help` liste les
+            mêmes actions en commandes.
             Sur Debian/Ubuntu, ce paquet et celui de l'application de bureau ne s'installent pas
             ensemble : le second contient déjà le premier.
 

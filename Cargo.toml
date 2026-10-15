@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "apps/cli",
+    "apps/server-cli",
     "apps/desktop/src-tauri",
     "apps/mobile/src-tauri",
     "services/daemon",

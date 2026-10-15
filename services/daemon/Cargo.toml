@@ -25,6 +25,7 @@ conflicts = "locaryn"
 assets = [
     ["target/release/locaryn-daemon", "usr/bin/", "755"],
     ["target/release/locaryn", "usr/bin/", "755"],
+    ["target/release/locaryn-server", "usr/bin/", "755"],
     ["../../README.md", "usr/share/doc/locaryn-daemon/README.md", "644"],
 ]
 

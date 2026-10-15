@@ -46,9 +46,9 @@ esac
 if [ "${UNIVERSAL:-0}" = "1" ]; then
   # Le bundle macOS est universel : ses compagnons doivent l'être aussi, sinon
   # la moitié des Mac trouve un binaire qu'ils ne savent pas exécuter.
-  cargo build "${flags[@]}" --target x86_64-apple-darwin -p locaryn-daemon -p locaryn-cli
-  cargo build "${flags[@]}" --target aarch64-apple-darwin -p locaryn-daemon -p locaryn-cli
-  for bin in locaryn-daemon locaryn; do
+  cargo build "${flags[@]}" --target x86_64-apple-darwin -p locaryn-daemon -p locaryn-cli -p locaryn-server
+  cargo build "${flags[@]}" --target aarch64-apple-darwin -p locaryn-daemon -p locaryn-cli -p locaryn-server
+  for bin in locaryn-daemon locaryn locaryn-server; do
     # Tauri compile l'application une fois par architecture avant de fusionner :
     # chacune de ces compilations réclame le compagnon portant *son* triplet, et
     # c'est seulement l'empaquetage qui demande la version universelle. Il faut
@@ -66,14 +66,14 @@ if [ "${UNIVERSAL:-0}" = "1" ]; then
 elif [ -n "${TARGET:-}" ]; then
   # Compilation croisée (Windows ARM64 depuis un runner x64) : Tauri réclame
   # les compagnons sous le triplet de la cible, pas celui de l'hôte.
-  cargo build "${flags[@]}" --target "$TARGET" -p locaryn-daemon -p locaryn-cli
-  for bin in locaryn-daemon locaryn; do
+  cargo build "${flags[@]}" --target "$TARGET" -p locaryn-daemon -p locaryn-cli -p locaryn-server
+  for bin in locaryn-daemon locaryn locaryn-server; do
     cp "$cible/$TARGET/$subdir/$bin$ext" "$out/$bin-$TARGET$ext"
   done
 else
-  cargo build "${flags[@]}" -p locaryn-daemon -p locaryn-cli
+  cargo build "${flags[@]}" -p locaryn-daemon -p locaryn-cli -p locaryn-server
   triple=$(rustc -vV | sed -n 's/^host: //p')
-  for bin in locaryn-daemon locaryn; do
+  for bin in locaryn-daemon locaryn locaryn-server; do
     cp "$cible/$subdir/$bin$ext" "$out/$bin-$triple$ext"
   done
 fi

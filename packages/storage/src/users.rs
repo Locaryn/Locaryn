@@ -518,6 +518,51 @@ impl UserRepo {
         Ok(())
     }
 
+    /// Remplacer le mot de passe sans l'ancien : le geste de l'administrateur
+    /// de la machine (`locaryn-server users passwd`), jamais exposé à distance.
+    pub async fn reset_password(&self, user_id: Uuid, nouveau: &str) -> Result<bool, StorageError> {
+        if nouveau.chars().count() < 8 {
+            return Err(StorageError::Conflict(
+                "mot de passe trop court (8 caractères minimum)".into(),
+            ));
+        }
+        let hash = locaryn_auth::hash_token(nouveau).hash;
+        let now = Utc::now().to_rfc3339();
+        let res = sqlx::query("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+            .bind(&hash)
+            .bind(&now)
+            .bind(user_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// Donner ou retirer les droits d'administrateur. Le dernier administrateur
+    /// actif ne peut pas les perdre : un serveur sans administrateur ne se
+    /// gère plus.
+    pub async fn set_role(&self, user_id: Uuid, role: Role) -> Result<bool, StorageError> {
+        if role == Role::Member {
+            let admins = self
+                .list()
+                .await?
+                .into_iter()
+                .filter(|u| u.role == Role::Admin && !u.disabled && u.id != user_id)
+                .count();
+            if admins == 0 {
+                return Err(StorageError::Conflict(
+                    "c'est le dernier administrateur : nommez-en un autre d'abord".into(),
+                ));
+            }
+        }
+        let res = sqlx::query("UPDATE users SET role = ?, updated_at = ? WHERE id = ?")
+            .bind(role.as_token())
+            .bind(Utc::now().to_rfc3339())
+            .bind(user_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
     pub async fn delete(&self, user_id: Uuid) -> Result<bool, StorageError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("DELETE FROM auth_tokens WHERE user_id = ?")
@@ -540,6 +585,33 @@ c29tZXNhbHRzb21lc2FsdA$K5tGRnQxHF9k5jCPZ5F1n9wLhF7lQm2vJ8xN0oYZ3aM";
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn l_administrateur_de_la_machine_remplace_un_mot_de_passe_et_un_role() {
+        let repo = UserRepo::new(crate::open_in_memory().await.unwrap());
+        let admin = repo
+            .create("admin", "premier-mot-de-passe", Role::Admin)
+            .await
+            .unwrap();
+        let marie = repo
+            .create("marie", "ancien-mot-de-passe", Role::Member)
+            .await
+            .unwrap();
+        assert!(repo
+            .reset_password(marie.id, "nouveau-mot-de-passe")
+            .await
+            .unwrap());
+        assert!(repo
+            .authenticate("marie", "nouveau-mot-de-passe")
+            .await
+            .unwrap()
+            .is_some());
+        assert!(repo.reset_password(marie.id, "court").await.is_err());
+        // Le dernier administrateur garde ses droits.
+        assert!(repo.set_role(admin.id, Role::Member).await.is_err());
+        assert!(repo.set_role(marie.id, Role::Admin).await.unwrap());
+        assert!(repo.set_role(admin.id, Role::Member).await.unwrap());
+    }
+
     use super::*;
 
     /// In-memory database, migrations applied — no files to clean up.

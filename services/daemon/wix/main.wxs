@@ -136,6 +136,18 @@
                                 Source='$(var.CargoTargetBinDir)\locaryn.exe'
                                 KeyPath='yes'/>
                         </Component>
+                        <!--
+                          locaryn-server : gérer le serveur depuis le terminal
+                          (interface plein écran, comptes, API, clés).
+                        -->
+                        <Component Id='binary2' Guid='*'>
+                            <File
+                                Id='exe2'
+                                Name='locaryn-server.exe'
+                                DiskId='1'
+                                Source='$(var.CargoTargetBinDir)\locaryn-server.exe'
+                                KeyPath='yes'/>
+                        </Component>
                     </Directory>
                 </Directory>
             </Directory>
@@ -158,6 +170,7 @@
 
             <ComponentRef Id='binary0'/>
             <ComponentRef Id='binary1'/>
+            <ComponentRef Id='binary2'/>
 
             <Feature
                 Id='Environment'

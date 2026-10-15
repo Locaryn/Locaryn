@@ -40,7 +40,7 @@
         "installerHooks": "./windows/hooks.nsh"
       }
     },
-    "externalBin": ["binaries/locaryn-daemon", "binaries/locaryn"]
+    "externalBin": ["binaries/locaryn-daemon", "binaries/locaryn", "binaries/locaryn-server"]
   },
   "plugins": {
     "deep-link": {
