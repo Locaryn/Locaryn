@@ -634,10 +634,24 @@ impl Supervisor {
                                 .trim()
                                 .to_string();
                             npu::noter_echec(&format!("le NPU n'a pas pris le modèle ({detail})"));
+                            npu::oublier_actif();
                             self.kill_owned(engine).await;
                             sur_npu = false;
                             continue 'attempt;
                         }
+                        let taille = active_model
+                            .as_deref()
+                            .map(|m| locaryn_config::models_dir().join(m))
+                            .and_then(|p| std::fs::metadata(p).ok())
+                            .map(|m| m.len())
+                            .unwrap_or(0);
+                        npu::noter_actif(&npu::constater(
+                            &journal,
+                            npu::sessions_pour(taille),
+                            active_model.as_deref().unwrap_or_default(),
+                        ));
+                    } else if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) {
+                        npu::oublier_actif();
                     }
                     tracing::info!(%endpoint, moteur = %engine.as_token(), cpu_only, sur_npu, "moteur en marche");
                     if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) && !cpu_only {

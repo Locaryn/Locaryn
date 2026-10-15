@@ -11,6 +11,7 @@
 use std::path::PathBuf;
 
 const FICHIER_ECHEC: &str = "npu_echec.json";
+const FICHIER_ACTIF: &str = "npu_actif.json";
 /// Mémoire d'une session NPU (Hexagon v75+ : environ 2 Go adressables).
 const MEMOIRE_SESSION: u64 = 1_800 * 1024 * 1024;
 const SESSIONS_MAX: u64 = 4;
@@ -70,6 +71,95 @@ pub fn effacer_echec() {
     let _ = std::fs::remove_file(chemin_echec());
 }
 
+/// Ce que le journal du moteur dit du NPU après un chargement.
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Constat {
+    /// Génération Hexagon détectée (`v81`…).
+    pub arch: Option<String>,
+    /// Poids posés sur le NPU, et sur le processeur, en Mio.
+    pub npu_mib: f64,
+    pub cpu_mib: f64,
+    pub sessions: u64,
+    pub modele: String,
+}
+
+fn nombre_apres_egal(ligne: &str) -> f64 {
+    ligne
+        .rsplit('=')
+        .next()
+        .and_then(|r| r.split_whitespace().next())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0.0)
+}
+
+/// Lire le journal : génération Hexagon, poids sur le NPU et sur le processeur.
+pub fn constater(journal: &str, sessions: u64, modele: &str) -> Constat {
+    let mut c = Constat {
+        sessions,
+        modele: modele.to_string(),
+        ..Constat::default()
+    };
+    for l in journal.lines() {
+        if let Some(i) = l.find("Arch version v") {
+            let v: String = l[i + "Arch version ".len()..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect();
+            c.arch = Some(v);
+        }
+        if l.contains("model buffer size") {
+            if l.contains("HTP") {
+                c.npu_mib += nombre_apres_egal(l);
+            } else if l.contains("CPU") {
+                c.cpu_mib += nombre_apres_egal(l);
+            }
+        }
+    }
+    c
+}
+
+pub fn noter_actif(c: &Constat) {
+    if let Ok(t) = serde_json::to_string(c) {
+        let _ = std::fs::write(locaryn_config::default_data_dir().join(FICHIER_ACTIF), t);
+    }
+}
+
+pub fn oublier_actif() {
+    let _ = std::fs::remove_file(locaryn_config::default_data_dir().join(FICHIER_ACTIF));
+}
+
+/// Le dernier chargement réussi sur le NPU.
+pub fn actif() -> Option<Constat> {
+    let t = std::fs::read_to_string(locaryn_config::default_data_dir().join(FICHIER_ACTIF)).ok()?;
+    serde_json::from_str(&t).ok()
+}
+
+/// Les lignes du journal qui disent ce qu'il s'est passé avec le NPU, pour
+/// les transmettre (bouton « Copier le diagnostic »).
+pub fn diagnostic(journal: &str) -> String {
+    const MOTS: &[&str] = &[
+        "ggml-hex",
+        "HTP",
+        "Hexagon",
+        "hexagon",
+        "load_tensors",
+        "model buffer",
+        "error",
+        "failed",
+        "OpenCL",
+        "ggml_opencl",
+        "llama_server",
+        "loading model",
+        "device",
+    ];
+    let lignes: Vec<&str> = journal
+        .lines()
+        .filter(|l| MOTS.iter().any(|m| l.contains(m)))
+        .collect();
+    let debut = lignes.len().saturating_sub(80);
+    lignes[debut..].join("\n")
+}
+
 /// À essayer pour ce lancement ?
 pub fn a_essayer() -> bool {
     disponible() && echec().is_none()
@@ -126,6 +216,16 @@ mod tests {
         assert!(!journal_montre_le_npu(
             "load_tensors:          CPU model buffer size =   300.00 MiB"
         ));
+    }
+
+    #[test]
+    fn le_constat_lit_l_arch_et_les_poids() {
+        let j = "ggml-hex: Hexagon Arch version v81\nload_tensors:      HTP0 model buffer size =   504.26 MiB\nload_tensors:      HTP1 model buffer size =   495.74 MiB\nload_tensors:          CPU model buffer size =   225.49 MiB\n";
+        let c = constater(j, 2, "m.gguf");
+        assert_eq!(c.arch.as_deref(), Some("v81"));
+        assert!((c.npu_mib - 1000.0).abs() < 0.01);
+        assert!((c.cpu_mib - 225.49).abs() < 0.01);
+        assert!(diagnostic(j).contains("HTP1"));
     }
 
     #[test]

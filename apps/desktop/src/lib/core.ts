@@ -1360,6 +1360,16 @@ export type EtatNpu = {
   installe: boolean;
   echec: string | null;
   dossier: string;
+  /** Le dernier chargement réussi sur le NPU. */
+  actif: {
+    arch: string | null;
+    npu_mib: number;
+    cpu_mib: number;
+    sessions: number;
+    modele: string;
+  } | null;
+  modele: string | null;
+  format_accelere: boolean;
 };
 
 /** Le modèle de décision local partagé par les morphs de contrôle. */
@@ -2301,6 +2311,8 @@ export interface CoreApi {
   npuEtat(): Promise<EtatNpu>;
   npuRegler(actif: boolean): Promise<EtatNpu>;
   npuReessayer(): Promise<EtatNpu>;
+  npuDiagnostic(): Promise<string>;
+  npuConvertir(modele: string): Promise<string>;
   ouvrirChemin(chemin: string, action: "explorer" | "terminal" | "vscode"): Promise<void>;
   decisionsInstaller(): Promise<EtatDecisions>;
   /** Les limites de l'abonnement du modèle actif, `null` s'il n'en a pas. */
@@ -2825,6 +2837,8 @@ const tauriCore: CoreApi = {
   npuEtat: () => invoke<EtatNpu>("npu_etat"),
   npuRegler: (actif) => invoke<EtatNpu>("npu_regler", { actif }),
   npuReessayer: () => invoke<EtatNpu>("npu_reessayer"),
+  npuDiagnostic: () => invoke<string>("npu_diagnostic"),
+  npuConvertir: (modele) => invoke<string>("npu_convertir", { modele }),
   ouvrirChemin: (chemin, action) => invoke<void>("open_path_with", { chemin, action }),
   decisionsInstaller: () => invoke<EtatDecisions>("laya_installer"),
   cloudUsage: () => invoke<CloudUsage | null>("cloud_usage"),
@@ -5391,15 +5405,48 @@ Contenu de démonstration, avec **du gras** et une liste :
     return null;
   },
   async npuEtat() {
-    return { snapdragon: false, voulu: true, installe: false, echec: null, dossier: "" };
+    return {
+      snapdragon: false,
+      voulu: true,
+      installe: false,
+      echec: null,
+      dossier: "",
+      actif: null,
+      modele: null,
+      format_accelere: false,
+    };
   },
   async npuRegler() {
-    return { snapdragon: false, voulu: true, installe: false, echec: null, dossier: "" };
+    return {
+      snapdragon: false,
+      voulu: true,
+      installe: false,
+      echec: null,
+      dossier: "",
+      actif: null,
+      modele: null,
+      format_accelere: false,
+    };
   },
   async npuReessayer() {
-    return { snapdragon: false, voulu: true, installe: false, echec: null, dossier: "" };
+    return {
+      snapdragon: false,
+      voulu: true,
+      installe: false,
+      echec: null,
+      dossier: "",
+      actif: null,
+      modele: null,
+      format_accelere: false,
+    };
   },
   async ouvrirChemin() {},
+  async npuDiagnostic() {
+    return "";
+  },
+  async npuConvertir(modele) {
+    return modele;
+  },
   async decisionsEtat() {
     return { installe: false, en_cours: false, dossier: "", appareil: null, version: null };
   },

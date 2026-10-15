@@ -7182,6 +7182,8 @@ pub fn run() {
             npu_cmd::npu_etat,
             npu_cmd::npu_regler,
             npu_cmd::npu_reessayer,
+            npu_cmd::npu_diagnostic,
+            npu_cmd::npu_convertir,
             laya_runtime::laya_installer,
             airllm::airllm_setup,
             airllm::airllm_install,

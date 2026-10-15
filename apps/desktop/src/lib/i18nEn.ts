@@ -8,6 +8,15 @@
 // (`Téléchargement de ${nom}`) : chaque « {} » est une valeur gardée telle quelle.
 
 export const EN_EXACT: Record<string, string> = {
+  "Copier le diagnostic": "Copy diagnostics",
+  "Diagnostic copié : collez-le dans votre message.":
+    "Diagnostics copied: paste them into your message.",
+  "Conversion en Q4_0… (une à quelques minutes)": "Converting to Q4_0… (one to a few minutes)",
+  "Version Q4_0 créée : chargement sur le NPU…": "Q4_0 version created: loading on the NPU…",
+  "Créer une version Q4_0 et la charger": "Create a Q4_0 version and load it",
+  "Conversion…": "Converting…",
+  "Prêt : le prochain chargement d'un modèle se fera sur le NPU.":
+    "Ready: the next model load will use the NPU.",
   "Distribution par défaut": "Default distribution",
   "NPU Snapdragon (Hexagon)": "Snapdragon NPU (Hexagon)",
   "Le NPU lit les prompts bien plus vite que le processeur, sans occuper le GPU. Il accélère les modèles en Q4_0, Q8_0, IQ4_NL ou MXFP4 : choisissez de préférence ces versions.":
@@ -2493,6 +2502,7 @@ export const EN_EXACT: Record<string, string> = {
 };
 
 export const EN_PATTERNS: Record<string, string> = {
+  "Chargé : {}": "Loaded: {}",
   "WSL · {}": "WSL · {}",
   "Distribution par défaut · {}": "Default distribution · {}",
   "Distribution · {}": "Distribution · {}",
