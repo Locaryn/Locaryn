@@ -607,7 +607,12 @@ mod tests {
         let peu = vec![spec("read_file", "Lit un fichier.")];
         assert_eq!(plafonner_pour_outils(100_000, &peu), 100_000);
         let beaucoup: Vec<ToolSpec> = (0..200)
-            .map(|i| spec(&format!("mcp__srv__outil{i}"), &"Une longue description. ".repeat(20)))
+            .map(|i| {
+                spec(
+                    &format!("mcp__srv__outil{i}"),
+                    &"Une longue description. ".repeat(20),
+                )
+            })
             .collect();
         let ctx = plafonner_pour_outils(100_000, &beaucoup);
         assert!(budget_for(ctx) <= PLAFOND_JETONS_OUTILS + 1, "{ctx}");

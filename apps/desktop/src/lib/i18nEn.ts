@@ -1929,7 +1929,12 @@ export const EN_EXACT: Record<string, string> = {
  "GPU, cache KV, contexte, offload": "GPU, KV cache, context, offload",
  "libéré dans": "freed in",
  "Prudence": "Caution",
- "Lecture de la conversation…": "Reading the conversation…"
+ "Lecture de la conversation…": "Reading the conversation…",
+ "Grande réserve : idéal si la carte affiche aussi le bureau, un navigateur ou un logiciel 3D.": "Large reserve: best if the card also drives the desktop, a browser or 3D software.",
+ "Réserve moyenne : le bon compromis pour un PC qui fait surtout tourner Locaryn.": "Medium reserve: the right trade-off for a PC that mostly runs Locaryn.",
+ "Réserve minimale : presque toute la VRAM libre va au modèle. À éviter si d'autres applications utilisent la carte.": "Minimal reserve: almost all free VRAM goes to the model. Avoid if other apps use the card.",
+ "En mode risqué, si une autre application réclame de la VRAM pendant que le modèle tourne, Windows déplace une partie du modèle en mémoire système : les réponses ralentissent fortement.": "In risky mode, if another app claims VRAM while the model runs, Windows moves part of the model to system memory: answers slow down a lot.",
+ "Au moment du chargement, Locaryn regarde la VRAM libre à cet instant — pas la VRAM totale de la carte. Le modèle doit y tenir en laissant libre la réserve du niveau choisi ; sinon il n'est pas chargé, à tous les niveaux, et une fenêtre explique pourquoi (un jeu ouvert, par exemple). Le contexte s'ajuste ensuite à la VRAM qui reste.": "When loading, Locaryn looks at the VRAM free at that moment — not the card's total VRAM. The model must fit in it while leaving the chosen level's reserve free; otherwise it is not loaded, at every level, and a window explains why (a game running, for example). The context then adjusts to the VRAM left."
 };
 
 export const EN_PATTERNS: Record<string, string> = {
@@ -2051,5 +2056,8 @@ export const EN_PATTERNS: Record<string, string> = {
  "Charger {}": "Load {}",
  "{} jetons/s": "{} tokens/s",
  "Cache {} jetons": "Cache {} tokens",
- "Trop lourd pour la VRAM au niveau « prudent » : {} Go à poser sur la carte, {} Go libres dont {} Go restent réservés au système. Le modèle déborderait sur la RAM.{}": "Too heavy for VRAM at the “safe” level: {} GB to put on the card, {} GB free of which {} GB stay reserved for the system. The model would spill into RAM.{}"
+ "Trop lourd pour la VRAM au niveau « prudent » : {} Go à poser sur la carte, {} Go libres dont {} Go restent réservés au système. Le modèle déborderait sur la RAM.{}": "Too heavy for VRAM at the “safe” level: {} GB to put on the card, {} GB free of which {} GB stay reserved for the system. The model would spill into RAM.{}",
+ "Garde {} de VRAM libres pour le système (carte de {})": "Keeps {} of VRAM free for the system ({} card)",
+ "Trop de VRAM déjà utilisée pour charger ce modèle : {} Go à poser sur la carte, {} Go libres en ce moment, dont {} Go restent réservés au système par la prudence choisie. Fermez une application qui utilise la carte graphique (jeu, logiciel 3D…), ou choisissez une version plus légère.{}": "Too much VRAM already in use to load this model: {} GB to put on the card, {} GB free right now, of which {} GB stay reserved for the system by the chosen caution. Close an app using the graphics card (game, 3D software…), or pick a lighter version.{}",
+ "Trop de mémoire déjà utilisée pour charger ce modèle : {} Go nécessaires, {} Go libres en ce moment, dont {} Go restent réservés au système par la prudence choisie. Fermez une application gourmande, ou choisissez une version plus légère.{}": "Too much memory already in use to load this model: {} GB needed, {} GB free right now, of which {} GB stay reserved for the system by the chosen caution. Close a memory-hungry app, or pick a lighter version.{}"
 };

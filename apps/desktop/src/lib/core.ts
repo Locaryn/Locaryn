@@ -1378,15 +1378,15 @@ export interface CloudUsage {
 export const CAUTION_LABELS: Record<CautionLevel, { label: string; hint: string }> = {
   prudent: {
     label: "Sécurité",
-    hint: "Le modèle doit tenir entièrement dans la VRAM en laissant la réserve ci-dessous libre. Sinon, il n'est pas chargé.",
+    hint: "Grande réserve : idéal si la carte affiche aussi le bureau, un navigateur ou un logiciel 3D.",
   },
   equilibre: {
     label: "Intermédiaire",
-    hint: "Garde une petite réserve de VRAM ; accepte qu'une partie du modèle passe par la RAM si elle a de la place.",
+    hint: "Réserve moyenne : le bon compromis pour un PC qui fait surtout tourner Locaryn.",
   },
   risque: {
     label: "Risqué",
-    hint: "Ne refuse jamais. Prévient, puis charge — au prix d'un ralentissement sévère, voire d'un plantage.",
+    hint: "Réserve minimale : presque toute la VRAM libre va au modèle. À éviter si d'autres applications utilisent la carte.",
   },
 };
 

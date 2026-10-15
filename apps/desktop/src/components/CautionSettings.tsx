@@ -63,9 +63,10 @@ export function CautionSettings() {
       <fieldset className="locaryn-caution-fieldset">
         <legend className="locaryn-field-label">Prudence au chargement d'un modèle</legend>
         <p className="locaryn-field-hint">
-          La mémoire libre est vérifiée avant chaque chargement, et le moteur garde la réserve
-          choisie libre quand il dimensionne le contexte. Un modèle qui ne la respecte pas n'est pas
-          chargé : une fenêtre l'explique.
+          Au moment du chargement, Locaryn regarde la VRAM libre à cet instant — pas la VRAM totale
+          de la carte. Le modèle doit y tenir en laissant libre la réserve du niveau choisi ; sinon
+          il n'est pas chargé, à tous les niveaux, et une fenêtre explique pourquoi (un jeu ouvert,
+          par exemple). Le contexte s'ajuste ensuite à la VRAM qui reste.
         </p>
 
         <div className="locaryn-caution-choices">
@@ -86,7 +87,7 @@ export function CautionSettings() {
                 return (
                   <span className="locaryn-caution-reserve">
                     {reserves.total_vram_gb > 0 && !reserves.unified_memory
-                      ? `Laisse ${go(r.vram_gb)} de VRAM libres sur ${go(reserves.total_vram_gb)} (${Math.round((r.vram_gb / reserves.total_vram_gb) * 100)} %)`
+                      ? `Garde ${go(r.vram_gb)} de VRAM libres pour le système (carte de ${go(reserves.total_vram_gb)})`
                       : `Laisse ${go(r.ram_gb)} de mémoire libres sur ${go(reserves.total_ram_gb)}`}
                     {reserves.total_vram_gb > 0 && !reserves.unified_memory
                       ? ` · ${go(r.ram_gb)} de RAM`
@@ -101,9 +102,9 @@ export function CautionSettings() {
 
       {level === "risque" && (
         <p className="locaryn-caution-warning">
-          En mode risqué, aucun chargement n'est refusé. Un modèle trop gros pour la mémoire fera
-          compenser le système sur le disque : ralentissement sévère, et l'application peut être
-          tuée par manque de mémoire.
+          En mode risqué, si une autre application réclame de la VRAM pendant que le modèle tourne,
+          Windows déplace une partie du modèle en mémoire système : les réponses ralentissent
+          fortement.
         </p>
       )}
 

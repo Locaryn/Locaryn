@@ -115,6 +115,9 @@ fn run_options(core: &Core, level: CautionLevel) -> llmfit::RunOptions {
         flash_attention: config.flash_attention,
         batch: config.batch_size.max(1),
         headroom: level.headroom(),
+        // Une répartition choisie à la main (couches fixées, experts MoE sur le
+        // processeur) est un débordement voulu : ne pas le refuser.
+        strict_vram: config.gpu_layers < 0 && config.n_cpu_moe == 0,
     }
 }
 
@@ -526,8 +529,9 @@ pub async fn llmfit_catalog(
     // minimal utile : le moteur agrandit ensuite le contexte à la mémoire qui
     // reste. Un contexte réglé à 128k rendait presque tout « trop lourd ».
     options.context = locaryn_provider_supervisor::AUTO_FIT_MIN_CTX;
-    // En « prudent », un modèle qui déborde un peu sur la RAM reste faisable :
-    // la pastille le montre (couches GPU), le chargement appliquera la règle.
+    // Un modèle qui déborde un peu sur la RAM reste faisable : la pastille le
+    // montre (couches GPU) ; le chargement, lui, exige la VRAM libre.
+    options.strict_vram = false;
     if level == CautionLevel::Prudent {
         options.headroom = llmfit::Headroom::Equilibre;
     }

@@ -608,10 +608,7 @@ export function ChatPanel({
   // secondes est elle aussi une lecture.
   useEffect(() => {
     if (attente === "attend") {
-      const t = window.setTimeout(
-        () => setAttente((a) => (a === "attend" ? "lit" : a)),
-        3000,
-      );
+      const t = window.setTimeout(() => setAttente((a) => (a === "attend" ? "lit" : a)), 3000);
       return () => window.clearTimeout(t);
     }
     if (attente !== "charge") return;

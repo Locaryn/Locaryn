@@ -147,6 +147,10 @@ pub struct RunOptions {
     /// Taille de lot de traitement du prompt.
     pub batch: u32,
     pub headroom: Headroom,
+    /// Vrai (défaut) : sur une machine avec carte graphique, le modèle doit
+    /// tenir dans la VRAM libre, réserve déduite. Faux pour le catalogue, qui
+    /// répond « ce PC peut-il le faire tourner », débordement sur la RAM compris.
+    pub strict_vram: bool,
 }
 
 impl Default for RunOptions {
@@ -157,6 +161,7 @@ impl Default for RunOptions {
             flash_attention: true,
             batch: 512,
             headroom: Headroom::default(),
+            strict_vram: true,
         }
     }
 }
@@ -546,7 +551,10 @@ pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptio
         usable_ram,
         usable_vram,
         options.headroom,
-        hardware.total_vram_gb > 0.0,
+        // Une carte dédiée : en mémoire unifiée (Mac, Snapdragon), la « VRAM »
+        // est la RAM, et y déborder ne coûte rien de plus.
+        hardware.total_vram_gb > 0.0 && !hardware.unified_memory,
+        options.strict_vram,
     );
 
     let speed = throughput(spec, &split, context, options, hardware);
@@ -679,6 +687,7 @@ fn judge(
     usable_vram_gb: f64,
     headroom: Headroom,
     has_gpu: bool,
+    strict_vram: bool,
 ) -> (Verdict, Placement, bool) {
     let needed_in_ram = gib(split.cpu_bytes + split.cpu_kv_bytes);
     let all_on_gpu = split.cpu_bytes == 0 && split.gpu_layers > 0;
@@ -686,10 +695,12 @@ fn judge(
     if all_on_gpu {
         return (Verdict::Confortable, Placement::Gpu, false);
     }
-    // Prudent, avec une carte graphique : le modèle tient sur la carte en
-    // laissant la réserve choisie, ou il n'est pas chargé. Déborder sur la
-    // RAM ralentit toute la machine — exactement ce que ce niveau exclut.
-    if headroom == Headroom::Prudent && has_gpu {
+    // Avec une carte graphique, à tous les niveaux : le modèle tient dans la
+    // VRAM *libre à cet instant*, réserve du niveau déduite, ou il n'est pas
+    // chargé. Un jeu qui occupe 6 Go laisse trop peu même en « risqué » : le
+    // dire vaut mieux qu'un modèle qui déborde sur la RAM et rampe à
+    // 10 jetons/s. Le niveau ne choisit que la réserve laissée libre.
+    if has_gpu && strict_vram {
         return (Verdict::Refuse, Placement::Partage, true);
     }
     if needed_in_ram <= usable_ram_gb {
@@ -703,8 +714,13 @@ fn judge(
         return (Verdict::Juste, placement, false);
     }
     let _ = (total_bytes, usable_vram_gb);
+    // La mémoire libre ne suffit pas. Pour un chargement (mémoire unifiée d'un
+    // Mac ou d'un Snapdragon, processeur seul), même règle qu'avec une carte
+    // dédiée : on refuse à tous les niveaux plutôt que de faire travailler le
+    // disque. Seul le catalogue, qui répond « ce PC pourrait-il », garde le
+    // niveau risqué comme une possibilité.
     match headroom {
-        Headroom::Risque => (Verdict::Risque, Placement::Disque, false),
+        Headroom::Risque if !strict_vram => (Verdict::Risque, Placement::Disque, false),
         _ => (Verdict::Refuse, Placement::Disque, true),
     }
 }
@@ -939,7 +955,7 @@ fn phrase(report: &FitReport, hardware: &HardwareProfile) -> String {
         ),
         Verdict::Refuse if report.placement == Placement::Partage => {
             let mut text = format!(
-                "Trop lourd pour la VRAM au niveau « prudent » : {:.1} Go à poser sur la carte,                  {:.1} Go libres dont {:.1} Go restent réservés au système. Le modèle                  déborderait sur la RAM.",
+                "Trop de VRAM déjà utilisée pour charger ce modèle : {:.1} Go à poser sur la                  carte, {:.1} Go libres en ce moment, dont {:.1} Go restent réservés au                  système par la prudence choisie. Fermez une application qui utilise la carte                  graphique (jeu, logiciel 3D…), ou choisissez une version plus légère.",
                 report.weights_gb + report.kv_cache_gb + report.compute_gb,
                 report.free_vram_gb,
                 report.vram_reserve_gb
@@ -952,14 +968,15 @@ fn phrase(report: &FitReport, hardware: &HardwareProfile) -> String {
                     report.max_gpu_context
                 ));
             }
-            text.push_str(" Passez en « équilibré » pour autoriser le débordement.");
             text
         }
         Verdict::Refuse => {
             let mut text = format!(
-                "{:.1} Go nécessaires, {:.1} Go libres en RAM et {:.1} Go en VRAM. Refusé au \
-                 niveau de prudence choisi.",
-                report.required_gb, report.free_ram_gb, report.free_vram_gb
+                "Trop de mémoire déjà utilisée pour charger ce modèle : {:.1} Go nécessaires, \
+                 {:.1} Go libres en ce moment, dont {:.1} Go restent réservés au système par \
+                 la prudence choisie. Fermez une application gourmande, ou choisissez une \
+                 version plus légère.",
+                report.required_gb, report.free_ram_gb, report.ram_reserve_gb
             );
             if let Some(quant) = &report.suggested_quant {
                 text.push_str(&format!(" La version {quant} tiendrait."));
@@ -1187,15 +1204,37 @@ mod tests {
         assert!(report.overridable);
     }
 
-    /// Le niveau risqué ne refuse jamais : c'est ce qui le distingue.
+    /// Avec une carte dédiée, même le niveau risqué refuse un modèle qui ne
+    /// tient pas dans la VRAM libre : le niveau ne règle que la réserve.
     #[test]
-    fn le_niveau_risque_ne_refuse_jamais() {
+    fn le_niveau_risque_refuse_aussi_ce_qui_deborde_de_la_vram() {
         let options = RunOptions {
             headroom: Headroom::Risque,
             ..RunOptions::default()
         };
-        let report = estimate(&modele(405.0), &machine(6.0, 16.0), &options);
+        let report = estimate(&modele(14.0), &machine(6.0, 32.0), &options);
+        assert_eq!(report.verdict, Verdict::Refuse);
+        assert!(report.message.contains("VRAM"), "{}", report.message);
+    }
+
+    /// Le catalogue, lui, dit ce qui tournerait en débordant sur la RAM.
+    #[test]
+    fn le_catalogue_accepte_le_debordement() {
+        let options = RunOptions {
+            headroom: Headroom::Risque,
+            strict_vram: false,
+            ..RunOptions::default()
+        };
+        let report = estimate(&modele(14.0), &machine(6.0, 32.0), &options);
         assert_ne!(report.verdict, Verdict::Refuse);
+    }
+
+    /// Les réserves de chaque niveau, sur une carte de 8 Go.
+    #[test]
+    fn les_reserves_sur_une_carte_de_8_go() {
+        assert!((Headroom::Prudent.vram_reserve_gb(8.0) - 1.5).abs() < 1e-9);
+        assert!((Headroom::Equilibre.vram_reserve_gb(8.0) - 0.8).abs() < 1e-9);
+        assert!((Headroom::Risque.vram_reserve_gb(8.0) - 0.32).abs() < 1e-9);
     }
 
     /// Le cache d'attention doit croître avec le contexte : c'est tout
