@@ -111,6 +111,45 @@ function extractSplit(answer: string): string[] | null {
 }
 
 /**
+ * L'état réel du dossier de la conversation, en quelques lignes : chaque
+ * fichier avec sa taille, trois niveaux au plus.
+ *
+ * Sans lui, une étape reprise ne savait plus ce que les essais précédents
+ * avaient écrit : le modèle recommençait le site dans un autre dossier, et le
+ * juge ne jugeait que ce que le modèle disait avoir fait.
+ */
+export async function etatDuDossier(sessionId: string, maxEntrees = 60): Promise<string> {
+  const lignes: string[] = [];
+  const parcourir = async (dossier: string, profondeur: number) => {
+    if (profondeur > 3 || lignes.length >= maxEntrees) return;
+    let entrees: Awaited<ReturnType<typeof core.workspaceList>>;
+    try {
+      entrees = await core.workspaceList(sessionId, dossier);
+    } catch {
+      return;
+    }
+    const tries = [...entrees].sort((a, b) =>
+      a.dossier === b.dossier ? a.nom.localeCompare(b.nom) : a.dossier ? 1 : -1,
+    );
+    for (const e of tries) {
+      if (lignes.length >= maxEntrees) {
+        lignes.push("…");
+        return;
+      }
+      if (e.dossier) {
+        lignes.push(`${e.chemin}/`);
+        await parcourir(e.chemin, profondeur + 1);
+      } else {
+        const ko = e.taille >= 1024 ? `${(e.taille / 1024).toFixed(1)} Ko` : `${e.taille} o`;
+        lignes.push(`${e.chemin} (${ko})`);
+      }
+    }
+  };
+  await parcourir(".", 1);
+  return lignes.length ? lignes.join("\n") : "(dossier vide)";
+}
+
+/**
  * Le modèle a-t-il seulement annoncé ce qu'il allait faire ?
  *
  * Un petit modèle local répond volontiers « Je vais d'abord vérifier le
@@ -231,11 +270,13 @@ export async function runWorkflow(
 
       const step = steps[i];
       hooks.onStepStart?.(i, steps.length, step, stepRetry + 1);
+      const dossierAvant = await etatDuDossier(sessionId);
 
       const stepPrompt = [
         mentions ? `${mentions}` : "",
         `[Étape ${i + 1}/${steps.length} du plan] : ${step}`,
         `Demande globale : ${request}`,
+        `État actuel du dossier du projet (ce qui existe déjà — pars de là, ne recommence pas ailleurs) :\n${dossierAvant}`,
         (stepRetry > 0 || relanceEnCours) && lastReste
           ? `[Correction / Ce qui reste à faire pour valider cette étape] : ${lastReste}`
           : "",
@@ -302,7 +343,13 @@ export async function runWorkflow(
         let reached = true;
         let reste = "";
         try {
-          const verdict = await core.judgeGoal(finales.has(i) ? request : step, answer);
+          // Le juge voit aussi les fichiers réellement présents : une réponse
+          // qui affirme « c'est fait » ne suffit pas.
+          const dossierApres = await etatDuDossier(sessionId);
+          const verdict = await core.judgeGoal(
+            finales.has(i) ? request : step,
+            `${answer}\n\n[Fichiers réellement présents dans le dossier du projet]\n${dossierApres}`,
+          );
           reached = verdict.atteint;
           reste = verdict.reste;
         } catch {
