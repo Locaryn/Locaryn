@@ -1310,7 +1310,7 @@ export function ModelBrowser({
           border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice:
-          "Ancien réarrangement de Q4_0 pour les processeurs ARM (CPU, pas NPU). Les versions récentes de llama.cpp ne le chargent plus : prenez Q4_0, réarrangé automatiquement au chargement.",
+          "Ancien réarrangement de Q4_0 pour les processeurs ARM. Les versions récentes de llama.cpp ne le chargent plus : prenez Q4_0, réarrangé automatiquement au chargement.",
         detail: "Format obsolète.",
         priority: 40,
         isRecommended: false,
