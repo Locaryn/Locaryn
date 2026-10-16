@@ -2768,7 +2768,13 @@ async fn run_terminal(
 ) -> Result<(), String> {
     let mut cmd = if cfg!(windows) {
         let mut c = tokio::process::Command::new("cmd");
-        c.args(["/C", &command]);
+        c.arg("/C");
+        // La ligne telle quelle : en argument ordinaire, ses guillemets
+        // étaient échappés en `\"`, que cmd ne comprend pas.
+        #[cfg(windows)]
+        c.raw_arg(&command);
+        #[cfg(not(windows))]
+        c.arg(&command);
         c
     } else {
         let mut c = tokio::process::Command::new("sh");

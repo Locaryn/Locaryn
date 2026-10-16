@@ -9,7 +9,10 @@
 //  - `/goal`  → after each step, ask the model to verify the result.
 //              On failure, the *failing step* is retried (not the whole plan).
 //              After MAX_STEP_RETRIES failed retries the step is marked failed
-//              and the run stops.
+//              and the plan goes on. Once every step has run, a final step
+//              checks the *whole request* (every condition), and comes back
+//              with what is still missing until it is reached
+//              (MAX_VERIFICATIONS_FINALES times at most).
 //
 // Orchestration lives in the frontend: each step is a normal streamed turn.
 
@@ -39,6 +42,19 @@ export interface WorkflowHooks {
 
 /** Nombre max de retries par étape en mode goal. */
 const MAX_STEP_RETRIES = 3;
+
+/**
+ * Vérifications finales au plus, chacune avec ses propres reprises.
+ *
+ * Chaque étape validée une à une ne dit pas que la demande l'est : la
+ * vérification finale juge contre la demande entière — toutes ses
+ * conditions — et revient sur ce qui manque.
+ */
+const MAX_VERIFICATIONS_FINALES = 3;
+
+/** L'étape ajoutée en fin de plan, en mode goal. */
+export const ETAPE_VERIFICATION_FINALE =
+  "Vérification finale : contrôle concrètement chaque condition de la demande globale (lis les fichiers, lance ou ouvre ce qui doit l'être), corrige tout ce qui manque ou ne marche pas, puis liste chaque condition avec son état vérifié.";
 
 /** Ce que la personne a imposé devant sa demande. */
 export interface WorkflowOptions {
@@ -180,6 +196,12 @@ export async function runWorkflow(
   taskCenter.setPlan(taskId, steps);
 
   let globalOk = true;
+  let etapesEchouees = 0;
+  let objectifAtteint = false;
+  // Les indices des étapes de vérification finale : leur juge regarde la
+  // demande entière, pas l'étape.
+  const finales = new Set<number>();
+  let verificationsFinales = 0;
   const mentions = (request.match(/@[\w.-]+/g) ?? []).join(" ");
 
   // Boucle sur les étapes : `i` avance, mais peut être décrémenté si
@@ -280,7 +302,7 @@ export async function runWorkflow(
         let reached = true;
         let reste = "";
         try {
-          const verdict = await core.judgeGoal(step, answer);
+          const verdict = await core.judgeGoal(finales.has(i) ? request : step, answer);
           reached = verdict.atteint;
           reste = verdict.reste;
         } catch {
@@ -297,8 +319,10 @@ export async function runWorkflow(
               "Poursuis et finalise les actions concrètes nécessaires pour valider cette étape.";
             continue; // retenter la même étape avec les indications du juge
           }
-          // Max retries atteint : l'étape est marquée échouée, on arrête.
-          globalOk = false;
+          // Reprises épuisées : l'étape est marquée échouée, mais le plan
+          // continue — la vérification finale revient sur ce qui manque.
+          // S'arrêter là laissait le reste du travail jamais fait.
+          etapesEchouees++;
           break;
         }
       }
@@ -307,11 +331,38 @@ export async function runWorkflow(
       hooks.onStepEnd?.(i, true);
       taskCenter.advanceStep(taskId);
       stepOk = true;
+      if (finales.has(i)) {
+        // La demande entière est jugée remplie : ce qui avait échoué en
+        // route a été rattrapé.
+        objectifAtteint = true;
+      }
       break;
     }
 
-    if (!stepOk && !globalOk) break; // échec définitif sur cette étape
+    if (!stepOk && !globalOk) break; // erreur technique définitive
     i++;
+
+    // Fin du plan en mode goal : vérifier la demande entière, et y revenir
+    // tant qu'elle n'est pas remplie (borné).
+    if (
+      goalMode &&
+      i >= steps.length &&
+      !objectifAtteint &&
+      verificationsFinales < MAX_VERIFICATIONS_FINALES &&
+      !hooks.arret?.()
+    ) {
+      verificationsFinales++;
+      finales.add(steps.length);
+      steps.push(ETAPE_VERIFICATION_FINALE);
+      hooks.onPlanUpdated?.(steps);
+      taskCenter.setPlan(taskId, steps);
+    }
+  }
+  if (goalMode) {
+    // Le résultat est celui de la demande entière.
+    globalOk = globalOk && objectifAtteint;
+  } else if (etapesEchouees > 0) {
+    globalOk = false;
   }
 
   if (globalOk && !hooks.arret?.()) {

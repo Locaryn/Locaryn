@@ -147,7 +147,7 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "run_command".into(),
-            description: "Execute a shell command in the project workspace. Use this to explore directories (e.g., 'ls', 'tree'), check status, or run tests and compilers.".into(),
+            description: description_run_command().into(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": { "command": { "type": "string" } },
@@ -1183,20 +1183,78 @@ async fn exec_search(args: &serde_json::Value, project_root: &Path) -> ToolResul
     }
 }
 
+/// La description dit dans quel shell la commande part : sous Windows,
+/// `cmd.exe`, où `mkdir -p`, `ls`, `rm -rf` ou `cat` échouent — un modèle qui
+/// ne le sait pas écrit du bash et perd ses tours à recommencer.
+fn description_run_command() -> &'static str {
+    if cfg!(windows) {
+        "Execute a shell command in the project workspace, through Windows cmd.exe: use Windows syntax \
+         (dir, type, mkdir a\\b creates parents, del, copy, move, where), not Unix commands \
+         (ls, cat, rm -rf, touch). Files are better written with write_file, which creates folders. \
+         Use this to explore, check status, or run tests and compilers."
+    } else {
+        "Execute a shell command in the project workspace. Use this to explore directories (e.g., 'ls', 'tree'), check status, or run tests and compilers."
+    }
+}
+
+/// Sous Windows, `mkdir -p a/b` — le réflexe Unix de tout modèle — crée un
+/// dossier « -p » et échoue sur la barre oblique. `mkdir a\b` de cmd crée déjà
+/// les parents : on traduit ce cas, le plus fréquent de tous.
+fn commande_pour_cmd(commande: &str) -> String {
+    commande
+        .split("&&")
+        .map(|morceau| {
+            let t = morceau.trim();
+            let Some(reste) = t
+                .strip_prefix("mkdir -p ")
+                .or_else(|| t.strip_prefix("mkdir --parents "))
+            else {
+                return morceau.to_string();
+            };
+            let dossiers: Vec<String> = reste
+                .split_whitespace()
+                .map(|d| format!("\"{}\"", d.trim_matches('"').replace('/', "\\")))
+                .collect();
+            // Un dossier qui existe déjà n'est pas une erreur pour `mkdir -p`.
+            let creations: Vec<String> = dossiers
+                .iter()
+                .map(|d| format!("(if not exist {d} mkdir {d})"))
+                .collect();
+            format!(" {} ", creations.join(" && "))
+        })
+        .collect::<Vec<_>>()
+        .join("&&")
+        .trim()
+        .to_string()
+}
+
 async fn exec_run_command(args: &serde_json::Value, project_root: &Path) -> ToolResult {
     let command = match args.get("command").and_then(|v| v.as_str()) {
         Some(c) => c,
         None => return err("missing required argument: command"),
     };
+    let traduite;
+    let command = if cfg!(windows) {
+        traduite = commande_pour_cmd(command);
+        traduite.as_str()
+    } else {
+        command
+    };
     let shell = if cfg!(windows) { "cmd" } else { "sh" };
     let flag = if cfg!(windows) { "/C" } else { "-c" };
+    let mut processus = quiet_command(shell);
+    processus.arg(flag);
+    // `cmd /C` lit la suite de la ligne telle quelle. Passée en argument
+    // ordinaire, la commande voyait ses guillemets échappés en `\"`, que cmd
+    // ne comprend pas : `mkdir "a b"`, `git commit -m "…"` ou un chemin avec
+    // des espaces ne faisaient rien, et le code de sortie disait 0.
+    #[cfg(windows)]
+    processus.raw_arg(command);
+    #[cfg(not(windows))]
+    processus.arg(command);
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        quiet_command(shell)
-            .arg(flag)
-            .arg(command)
-            .current_dir(project_root)
-            .output(),
+        processus.current_dir(project_root).output(),
     )
     .await;
     match result {
@@ -1248,6 +1306,19 @@ pub fn ollama_tools_json(specs: &[ToolSpec]) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mkdir_p_devient_une_commande_cmd() {
+        assert_eq!(
+            super::commande_pour_cmd("mkdir -p arcade-retro/images"),
+            r#"(if not exist "arcade-retro\images" mkdir "arcade-retro\images")"#
+        );
+        assert_eq!(
+            super::commande_pour_cmd("mkdir -p css js && dir"),
+            r#"(if not exist "css" mkdir "css") && (if not exist "js" mkdir "js") && dir"#
+        );
+        assert_eq!(super::commande_pour_cmd("dir /b"), "dir /b");
+    }
+
     /// Une seule definition : `builtin_tools` reprend `question_tool`, et la
     /// boucle peut l'offrir seule hors d'un projet. Deux specs divergentes
     /// donneraient au modele une description differente selon qu'un projet est

@@ -217,7 +217,16 @@ pub fn run_hook(action: &HookAction, env: &HashMap<String, String>) -> Result<St
     use std::process::Command;
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
-        c.arg("/C").arg(&action.command);
+        c.arg("/C");
+        // La ligne telle quelle : en argument ordinaire, ses guillemets
+        // étaient échappés en `\"`, que cmd ne comprend pas.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt as _;
+            c.raw_arg(&action.command);
+        }
+        #[cfg(not(windows))]
+        c.arg(&action.command);
         c
     } else {
         let mut c = Command::new("bash");
