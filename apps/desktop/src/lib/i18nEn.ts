@@ -753,6 +753,7 @@ export const EN_EXACT: Record<string, string> = {
   "Explique la structure de ce projet": "Explain this project's structure",
   "Extension démo": "Demo extension",
   Extensions: "Extensions",
+  "Extensions & Skills": "Extensions & Skills",
   "Extensions et connecteurs autorisés pour ce projet":
     "Extensions and connectors allowed for this project",
   "Externe (non supervisé)": "External (not supervised)",

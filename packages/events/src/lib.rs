@@ -49,6 +49,14 @@ pub enum StreamEvent {
         ok: bool,
         output: String,
     },
+    /// Ce qu'un outil d'extension écrit pendant qu'il tourne (une mise à jour
+    /// `apt`, une compilation) : relayé des `notifications/progress` du
+    /// serveur MCP, pour suivre en direct dans la carte d'outil au lieu d'un
+    /// rond qui tourne. Le résultat complet arrive ensuite par `ToolResult`.
+    ToolOutput {
+        call_id: String,
+        text: String,
+    },
     Artifact {
         artifact_id: String,
         kind: ArtifactKind,
@@ -264,6 +272,7 @@ pub fn sse_event_tag(event: &StreamEvent) -> &'static str {
         StreamEvent::ToolCall { .. } => "tool_call",
         StreamEvent::ToolApproval { .. } => "tool_approval",
         StreamEvent::ToolResult { .. } => "tool_result",
+        StreamEvent::ToolOutput { .. } => "tool_output",
         StreamEvent::Artifact { .. } => "artifact",
         StreamEvent::TaskUpdate { .. } => "task.update",
         StreamEvent::PreviewUpdate { .. } => "preview.update",

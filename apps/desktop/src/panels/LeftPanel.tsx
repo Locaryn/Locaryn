@@ -74,7 +74,7 @@ const RAIL_LABELS: Record<string, string> = {
   studio: "Studio",
   installed: "Modèles",
   models: "Marketplace",
-  extensions: "Extensions",
+  extensions: "Extensions & Skills",
   connectors: "Connecteurs",
   settings: "Réglages",
 };

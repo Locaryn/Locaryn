@@ -26,3 +26,25 @@ export async function ecrirePressePapiers(texte: string): Promise<void> {
   }
   await navigator.clipboard.writeText(texte);
 }
+
+/**
+ * Copier un message avec ce qu'il contient : `html` (texte et images
+ * intégrées) pour les applications qui le collent tel quel, `texte` pour les
+ * autres.
+ */
+export async function ecrirePressePapiersRiche(html: string, texte: string): Promise<void> {
+  if (isTauri) {
+    try {
+      await invoke<void>("ecrire_presse_papiers_riche", { html, texte });
+      return;
+    } catch (e) {
+      console.warn("presse-papiers riche indisponible, repli sur la page :", e);
+    }
+  }
+  await navigator.clipboard.write([
+    new ClipboardItem({
+      "text/html": new Blob([html], { type: "text/html" }),
+      "text/plain": new Blob([texte], { type: "text/plain" }),
+    }),
+  ]);
+}

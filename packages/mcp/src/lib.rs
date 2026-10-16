@@ -420,6 +420,14 @@ impl StdioTransport {
         } else {
             params
         };
+        // Quelqu'un suit cet appel : on demande au serveur d'en envoyer
+        // l'avancement (MCP `progressToken`), relayé plus bas.
+        let suivi = method == "tools/call" && progression::actif();
+        let params = if suivi {
+            progression::avec_jeton(params)
+        } else {
+            params
+        };
         let req = JsonRpcRequest {
             jsonrpc: "2.0",
             id,
@@ -457,6 +465,9 @@ impl StdioTransport {
                 Err(_) => continue,
             };
             if value.get("id").and_then(|v| v.as_u64()) != Some(id) {
+                if suivi {
+                    progression::relayer(&value);
+                }
                 continue;
             }
             let resp: JsonRpcResponse = serde_json::from_value(value)
@@ -1658,5 +1669,87 @@ for line in sys.stdin:
         };
         assert!(wants_client_meta(&meta));
         assert!(!wants_client_meta(&autre));
+    }
+}
+
+/// L'avancement d'un appel d'outil, relayé en direct.
+///
+/// L'appelant pose un récepteur pour la durée de l'appel
+/// ([`progression::suivre`]) ; le transport stdio ajoute alors
+/// `_meta.progressToken` à `tools/call`, et chaque `notifications/progress`
+/// reçu avant la réponse lui passe son `message` — la sortie d'une commande
+/// au fil de l'eau.
+pub mod progression {
+    use std::sync::Arc;
+
+    /// Ce qui reçoit les morceaux de sortie.
+    pub type Recepteur = Arc<dyn Fn(String) + Send + Sync>;
+
+    tokio::task_local! {
+        static RECEPTEUR: Recepteur;
+    }
+
+    const JETON: &str = "locaryn";
+
+    /// Exécuter `fut` en relayant son avancement à `recepteur`.
+    pub async fn suivre<F: std::future::Future>(recepteur: Recepteur, fut: F) -> F::Output {
+        RECEPTEUR.scope(recepteur, fut).await
+    }
+
+    pub(crate) fn actif() -> bool {
+        RECEPTEUR.try_with(|_| ()).is_ok()
+    }
+
+    pub(crate) fn avec_jeton(params: Option<serde_json::Value>) -> Option<serde_json::Value> {
+        let mut p = params.unwrap_or_else(|| serde_json::json!({}));
+        if let Some(o) = p.as_object_mut() {
+            let meta = o.entry("_meta").or_insert_with(|| serde_json::json!({}));
+            if let Some(m) = meta.as_object_mut() {
+                m.insert("progressToken".into(), serde_json::json!(JETON));
+            }
+        }
+        Some(p)
+    }
+
+    pub(crate) fn relayer(message: &serde_json::Value) {
+        if message.get("method").and_then(|m| m.as_str()) != Some("notifications/progress") {
+            return;
+        }
+        let Some(texte) = message
+            .pointer("/params/message")
+            .and_then(|m| m.as_str())
+            .filter(|t| !t.is_empty())
+        else {
+            return;
+        };
+        let _ = RECEPTEUR.try_with(|r| r(texte.to_string()));
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[tokio::test]
+        async fn l_avancement_arrive_au_recepteur_de_l_appel() {
+            let recu = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+            let r = recu.clone();
+            assert!(!actif());
+            suivre(Arc::new(move |t| r.lock().unwrap().push(t)), async {
+                assert!(actif());
+                let p = avec_jeton(Some(serde_json::json!({ "name": "wsl_run" }))).unwrap();
+                assert_eq!(p["_meta"]["progressToken"], JETON);
+                relayer(&serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "notifications/progress",
+                    "params": { "progressToken": JETON, "progress": 1, "message": "Get:1 http://archive.ubuntu.com" }
+                }));
+                relayer(&serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }));
+            })
+            .await;
+            assert_eq!(
+                *recu.lock().unwrap(),
+                vec!["Get:1 http://archive.ubuntu.com".to_string()]
+            );
+        }
     }
 }

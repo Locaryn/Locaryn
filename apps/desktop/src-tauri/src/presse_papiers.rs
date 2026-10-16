@@ -23,3 +23,13 @@ pub fn ecrire_presse_papiers(texte: String) -> Result<(), String> {
         .and_then(|mut pp| pp.set_text(texte))
         .map_err(|e| e.to_string())
 }
+
+/// Copier un message entier : du HTML (texte et images intégrées, collé tel
+/// quel dans un document, un mail, une messagerie) et sa version texte pour
+/// les applications qui ne lisent que du texte.
+#[tauri::command]
+pub fn ecrire_presse_papiers_riche(html: String, texte: String) -> Result<(), String> {
+    arboard::Clipboard::new()
+        .and_then(|mut pp| pp.set_html(html, Some(texte)))
+        .map_err(|e| e.to_string())
+}

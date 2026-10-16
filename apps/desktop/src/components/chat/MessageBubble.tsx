@@ -2,7 +2,7 @@ import { Icon, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { core } from "../../lib/core";
 import { pickSaveFile } from "../../lib/dialog";
-import { ecrirePressePapiers } from "../../lib/pressePapiers";
+import { ecrirePressePapiers, ecrirePressePapiersRiche } from "../../lib/pressePapiers";
 import { splitReasoning } from "../../lib/reasoning";
 import { patcherHtml, useTexteFluide } from "../../lib/texteFluide";
 import { formatRate } from "../SpeedBadge";
@@ -71,7 +71,34 @@ type Props = {
   /** Les images de ce message viennent d'être créées : elles apparaissent
    *  avec une animation au lieu de surgir. */
   forged?: boolean;
+  /** Quand le message a été envoyé ou la réponse commencée (ISO 8601). */
+  at?: string;
 };
+
+/** « 14:03:22 » aujourd'hui, « 15/10 · 14:03:22 » un autre jour. */
+function horodatage(at?: string): { court: string; complet: string } | null {
+  if (!at) return null;
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  const heure = d.toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const aujourdhui = new Date().toDateString() === d.toDateString();
+  const jour = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+  return {
+    court: aujourdhui ? heure : `${jour} · ${heure}`,
+    complet: d.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "medium" }),
+  };
+}
+
+function echapper(t: string): string {
+  return t.replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string,
+  );
+}
 
 /** Languages we can actually execute on the user's machine. */
 const RUNNABLE: Record<string, string> = {
@@ -123,8 +150,11 @@ export function MessageBubble({
   attachments,
   forge,
   forged,
+  at,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [copiedTout, setCopiedTout] = useState(false);
+  const heure = horodatage(at);
   const [lightbox, setLightbox] = useState<{ src: string; path?: string } | null>(null);
   const [imageFeedback, setImageFeedback] = useState<string | null>(null);
   const mdRef = useRef<HTMLDivElement | null>(null);
@@ -338,6 +368,26 @@ export function MessageBubble({
     }
   }
 
+  /** Copier le message entier : texte, images intégrées, noms des fichiers. */
+  async function copierTout() {
+    const fichiers = (attachments ?? []).map((a) => a.name);
+    const html = [
+      text ? `<p>${echapper(text).replace(/\n/g, "<br>")}</p>` : "",
+      ...(images ?? []).map((src) => `<p><img src="${src}" alt="image jointe"></p>`),
+      ...fichiers.map((f) => `<p>📎 ${echapper(f)}</p>`),
+    ].join("");
+    const texte = [text, ...fichiers.map((f) => `[fichier joint : ${f}]`)]
+      .filter(Boolean)
+      .join("\n");
+    try {
+      await ecrirePressePapiersRiche(html, texte);
+      setCopiedTout(true);
+      setTimeout(() => setCopiedTout(false), 1500);
+    } catch {
+      // Presse-papiers indisponible : rien à faire de plus.
+    }
+  }
+
   // Le compte rendu d'un sous-agent part dans la conversation comme un
   // message, pour que le modèle enchaîne. Affiché en bulle « utilisateur »,
   // il passait pour un message que la personne n'avait jamais écrit.
@@ -368,58 +418,82 @@ export function MessageBubble({
   }
 
   if (role === "user") {
+    const joints = (images?.length ?? 0) + (attachments?.length ?? 0) > 0;
     return (
       <div className="locaryn-msg-row locaryn-msg-row-user">
-        <div className="locaryn-msg locaryn-msg-user">
-          {images && images.length > 0 && (
-            <div className="locaryn-msg-images">
-              {images.map((src, i) => (
-                <img
-                  key={src}
-                  src={src}
-                  alt="attachment"
-                  className="locaryn-msg-image locaryn-msg-image-clickable"
-                  onClick={() => setLightbox({ src, path: imagePaths?.[i] })}
-                />
-              ))}
-            </div>
-          )}
-          {attachments && attachments.length > 0 && (
-            <div className="locaryn-msg-files">
-              {attachments.map((a) =>
-                a.kind === "audio" && a.url ? (
-                  <figure key={a.name} className="locaryn-msg-media">
-                    <figcaption className="locaryn-msg-file-name" title={a.name}>
-                      {a.name}
-                    </figcaption>
-                    <audio controls preload="metadata" src={a.url} />
-                  </figure>
-                ) : a.kind === "video" && a.url ? (
-                  <figure key={a.name} className="locaryn-msg-media">
-                    <video controls preload="metadata" src={a.url} className="locaryn-msg-video" />
-                    <figcaption className="locaryn-msg-file-name" title={a.name}>
-                      {a.name}
-                    </figcaption>
-                  </figure>
-                ) : (
-                  <span key={a.name} className="locaryn-msg-file" title={a.name}>
-                    <span className="locaryn-msg-file-name">{a.name}</span>
-                    <span className="locaryn-attach-doc-type">{ATTACHMENT_LABEL[a.kind]}</span>
-                  </span>
-                ),
-              )}
-            </div>
-          )}
-          {text && <div className="locaryn-msg-text">{text}</div>}
-          <div className="locaryn-msg-actions">
+        <div className="locaryn-msg-user-cadre">
+          {/* Hors de la bulle, à sa gauche : la barre apparaît au survol sans
+            rien pousser — le fil ne bouge plus sous le curseur. */}
+          <div className="locaryn-msg-barre">
+            {heure && (
+              <time className="locaryn-msg-heure" dateTime={at} title={heure.complet}>
+                {heure.court}
+              </time>
+            )}
             <button type="button" className="locaryn-msg-action" onClick={copy}>
-              {copied ? "Copié" : "Copier"}
+              {copied ? "Copié" : joints ? "Copier le texte" : "Copier"}
             </button>
-            {canEdit && onEdit && (
-              <button type="button" className="locaryn-msg-action" onClick={onEdit}>
-                Edit
+            {joints && (
+              <button
+                type="button"
+                className="locaryn-msg-action"
+                onClick={() => void copierTout()}
+              >
+                {copiedTout ? "Copié" : "Copier tout"}
               </button>
             )}
+            {canEdit && onEdit && (
+              <button type="button" className="locaryn-msg-action" onClick={onEdit}>
+                Modifier
+              </button>
+            )}
+          </div>
+          <div className="locaryn-msg locaryn-msg-user">
+            {images && images.length > 0 && (
+              <div className="locaryn-msg-images">
+                {images.map((src, i) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt="attachment"
+                    className="locaryn-msg-image locaryn-msg-image-clickable"
+                    onClick={() => setLightbox({ src, path: imagePaths?.[i] })}
+                  />
+                ))}
+              </div>
+            )}
+            {attachments && attachments.length > 0 && (
+              <div className="locaryn-msg-files">
+                {attachments.map((a) =>
+                  a.kind === "audio" && a.url ? (
+                    <figure key={a.name} className="locaryn-msg-media">
+                      <figcaption className="locaryn-msg-file-name" title={a.name}>
+                        {a.name}
+                      </figcaption>
+                      <audio controls preload="metadata" src={a.url} />
+                    </figure>
+                  ) : a.kind === "video" && a.url ? (
+                    <figure key={a.name} className="locaryn-msg-media">
+                      <video
+                        controls
+                        preload="metadata"
+                        src={a.url}
+                        className="locaryn-msg-video"
+                      />
+                      <figcaption className="locaryn-msg-file-name" title={a.name}>
+                        {a.name}
+                      </figcaption>
+                    </figure>
+                  ) : (
+                    <span key={a.name} className="locaryn-msg-file" title={a.name}>
+                      <span className="locaryn-msg-file-name">{a.name}</span>
+                      <span className="locaryn-attach-doc-type">{ATTACHMENT_LABEL[a.kind]}</span>
+                    </span>
+                  ),
+                )}
+              </div>
+            )}
+            {text && <div className="locaryn-msg-text">{text}</div>}
           </div>
         </div>
         {imageViewer()}
@@ -432,6 +506,11 @@ export function MessageBubble({
       <div className="locaryn-msg-meta">
         <span className="locaryn-msg-avatar" aria-hidden="true" />
         <span className="locaryn-msg-author">Locaryn</span>
+        {heure && (
+          <time className="locaryn-msg-heure" dateTime={at} title={heure.complet}>
+            {heure.court}
+          </time>
+        )}
         <button type="button" className="locaryn-msg-action" onClick={copy}>
           {copied ? "Copié" : "Copier"}
         </button>

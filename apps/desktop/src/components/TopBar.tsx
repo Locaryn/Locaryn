@@ -31,7 +31,7 @@ const VIEW_TITLES: Record<string, string> = {
   batch: "Batch API Studio (-50%)",
   training: "Entraînement & Oblitération",
   connectors: "Connecteurs & MCP",
-  extensions: "Extensions",
+  extensions: "Extensions & Skills",
   settings: "Paramètres Système",
   account: "Compte Utilisateur",
 };

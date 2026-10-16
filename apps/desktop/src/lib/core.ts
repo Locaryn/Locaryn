@@ -1314,6 +1314,8 @@ export type StreamEvent =
       is_remote: boolean;
     }
   | { type: "tool_result"; call_id: string; ok: boolean; output: string }
+  /** Ce qu'un outil d'extension écrit pendant qu'il tourne, au fil de l'eau. */
+  | { type: "tool_output"; call_id: string; text: string }
   | { type: "artifact"; artifact_id: string; kind: string; path: string }
   | { type: "task_update"; task_id: string; status: string; progress: number }
   /** Un outil va produire un média : sa place est réservée dans le fil. */

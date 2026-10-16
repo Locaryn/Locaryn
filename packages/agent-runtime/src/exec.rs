@@ -381,7 +381,23 @@ pub async fn execute_tool_call(
             match mcp {
                 Some(mcp) => {
                     par_mcp = true;
-                    crate::mcp_tools::dispatch_mcp_tool(mcp, tool, &args).await
+                    // Ce que l'outil écrit en tournant part tout de suite à
+                    // l'écran (secrets masqués) ; une file pleine perd un
+                    // morceau plutôt que de ralentir l'outil.
+                    let direct = tx.clone();
+                    let appel = call_id.to_string();
+                    let recepteur: locaryn_mcp::progression::Recepteur =
+                        std::sync::Arc::new(move |texte: String| {
+                            let _ = direct.try_send(StreamEvent::ToolOutput {
+                                call_id: appel.clone(),
+                                text: crate::coffre::masquer(&texte),
+                            });
+                        });
+                    locaryn_mcp::progression::suivre(
+                        recepteur,
+                        crate::mcp_tools::dispatch_mcp_tool(mcp, tool, &args),
+                    )
+                    .await
                 }
                 None => crate::tools::ToolResult {
                     ok: false,

@@ -8,6 +8,7 @@ export type ToolEntry = {
   args: unknown;
   status: "running" | "ok" | "error";
   output: string;
+  live?: string;
 };
 
 type Props = {
@@ -65,7 +66,14 @@ export function ToolRun({ entries }: Props) {
       {ouvert && (
         <div className="locaryn-toolrun-body">
           {entries.map((e) => (
-            <ToolCard key={e.id} tool={e.tool} args={e.args} status={e.status} output={e.output} />
+            <ToolCard
+              key={e.id}
+              tool={e.tool}
+              args={e.args}
+              status={e.status}
+              output={e.output}
+              live={e.live}
+            />
           ))}
         </div>
       )}

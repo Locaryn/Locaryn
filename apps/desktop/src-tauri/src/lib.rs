@@ -7430,6 +7430,7 @@ pub fn run() {
             cloud_providers::serveurs_modeles,
             presse_papiers::lire_presse_papiers,
             presse_papiers::ecrire_presse_papiers,
+            presse_papiers::ecrire_presse_papiers_riche,
             cloud_providers::serveur_modeles_ajouter,
             cloud_providers::serveur_modeles_retirer,
             cloud_providers::cloud_provider_status,

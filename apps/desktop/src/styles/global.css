@@ -15152,3 +15152,166 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: var(--text-xs);
   color: var(--danger);
 }
+
+/* ── Carte d'une commande (wsl_run, ssh_exec, run_command) ──────────────
+   Écrite comme dans un terminal : où elle tourne, la commande, puis sa
+   sortie — en direct pendant qu'elle tourne. Plus de JSON à déchiffrer. */
+.locaryn-cmd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.locaryn-cmd-tete {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+.locaryn-cmd-lieu {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #fff;
+  background: #3f6fd8;
+}
+.locaryn-cmd-lieu.is-wsl {
+  background: #d4561e;
+}
+.locaryn-cmd-lieu.is-ssh {
+  background: #7a4fd0;
+}
+.locaryn-cmd-lieu.is-local {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.locaryn-cmd-root {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--danger);
+  border: 1px solid currentColor;
+}
+.locaryn-cmd-dossier {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+.locaryn-cmd-espace {
+  flex: 1;
+}
+.locaryn-cmd-code,
+.locaryn-cmd-delai {
+  flex: none;
+  color: var(--text-faint);
+}
+.locaryn-cmd-code.is-ok {
+  color: var(--accent);
+}
+.locaryn-cmd-code.is-ko {
+  color: var(--danger);
+}
+.locaryn-cmd-ligne {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow-x: auto;
+  white-space: pre;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.locaryn-cmd-invite {
+  margin-right: 0.6em;
+  color: var(--accent);
+  user-select: none;
+}
+.locaryn-cmd-sortie {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #0b0d10;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: #d6dde6;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+}
+.locaryn-cmd-sortie.is-vide {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.locaryn-cmd-stderr {
+  display: block;
+  margin-top: var(--space-1);
+  color: #f08c7a;
+}
+.locaryn-cmd-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+
+/* ── Barre d'un message : heure, copier, modifier ──────────────────────
+   Pour les messages de la personne, elle vit hors de la bulle, à sa
+   gauche, en haut : elle apparaît au survol sans rien pousser (l'ancienne
+   barre se dépliait sous la bulle et faisait descendre tout le fil). */
+.locaryn-msg-user-cadre {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  /* La place de la barre reste libre à gauche, même pour un long message. */
+  max-width: min(85%, calc(100% - 230px));
+}
+.locaryn-msg-user-cadre > .locaryn-msg-user {
+  max-width: 100%;
+}
+.locaryn-msg-barre {
+  position: absolute;
+  top: 2px;
+  right: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px var(--space-1);
+  width: max-content;
+  max-width: 220px;
+  /* Le pont entre la barre et la bulle : le survol ne se perd pas en route. */
+  padding-right: var(--space-2);
+  opacity: 0;
+  transform: translateX(6px);
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.locaryn-msg-user-cadre:hover .locaryn-msg-barre,
+.locaryn-msg-barre:focus-within {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.locaryn-msg-heure {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.locaryn-msg-meta .locaryn-msg-heure {
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.locaryn-msg-row-assistant:hover .locaryn-msg-heure {
+  opacity: 1;
+}

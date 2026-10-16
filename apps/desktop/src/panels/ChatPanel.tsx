@@ -80,6 +80,8 @@ type ChatItem =
       kind: "msg";
       role: "user" | "assistant";
       text: string;
+      /** Envoyé (ou réponse commencée) à ce moment, ISO 8601. */
+      at?: string;
       images?: string[];
       imagePaths?: Array<string | undefined>;
       /** Vitesse mesurée par le moteur pour cette réponse, quand il en donne une. */
@@ -109,6 +111,8 @@ type ChatItem =
       args: unknown;
       status: "running" | "ok" | "error";
       output: string;
+      /** La sortie reçue en direct pendant l'exécution. */
+      live?: string;
     }
   | { id: string; kind: "log"; text: string }
   /** Les fichiers qu'une réponse a créés ou modifiés, cliquables. */
@@ -340,7 +344,12 @@ function splitInlineAudio(content: string): { text: string; paths: string[] } {
   return { text, paths };
 }
 
-function storedMessageItems(m: { id: string; role: string; content: string }): ChatItem[] {
+function storedMessageItems(m: {
+  id: string;
+  role: string;
+  content: string;
+  created_at?: string;
+}): ChatItem[] {
   // Les résultats d'outils sont gardés pour le modèle (il sait ce qu'il a
   // fait au message suivant), pas pour la lecture.
   if (m.role === "tool") return [];
@@ -364,6 +373,7 @@ function storedMessageItems(m: { id: string; role: string; content: string }): C
       kind: "msg",
       role: m.role as "user" | "assistant",
       text: parsed.text,
+      at: m.created_at,
       images: parsed.images,
       imagePaths: parsed.imagePaths,
     });
@@ -1269,7 +1279,16 @@ ${d.texte}`
         if (last && last.kind === "msg" && last.role === "assistant") {
           return [...prev.slice(0, -1), { ...last, text: last.text + ev.text }];
         }
-        return [...prev, { id: nextId("msg"), kind: "msg", role: "assistant", text: ev.text }];
+        return [
+          ...prev,
+          {
+            id: nextId("msg"),
+            kind: "msg",
+            role: "assistant",
+            text: ev.text,
+            at: new Date().toISOString(),
+          },
+        ];
       });
     } else if (ev.type === "tool_call") {
       setItems((prev) => [
@@ -1284,6 +1303,16 @@ ${d.texte}`
           output: "",
         },
       ]);
+    } else if (ev.type === "tool_output") {
+      // La sortie d'une commande qui tourne : on garde la fin (une mise à
+      // jour peut écrire des mégaoctets).
+      setItems((prev) =>
+        prev.map((it) =>
+          it.kind === "tool" && it.callId === ev.call_id
+            ? { ...it, live: `${it.live ?? ""}${ev.text}`.slice(-40000) }
+            : it,
+        ),
+      );
     } else if (ev.type === "tool_result") {
       // Une demande close sans réponse (permission relevée en cours de tâche,
       // délai dépassé) ne doit pas rester affichée au-dessus du composeur.
@@ -1795,6 +1824,7 @@ ${d.texte}`
         id: idMessage,
         kind: "msg",
         role: "user",
+        at: new Date().toISOString(),
         // Afficher ce que l'utilisateur a tapé (slash compris) dans la bulle :
         // `text` est ce qui part au modèle (sans les /goal, /workflow…),
         // `brut` est ce qui était dans le champ. L'afficher complet évite que
@@ -2743,6 +2773,7 @@ ${preview}`,
         args: it.args,
         status: it.status,
         output: it.output,
+        live: it.live,
       };
       const dernier = sortie[sortie.length - 1];
       if (dernier && dernier.sorte === "outils") {
@@ -2943,6 +2974,7 @@ ${preview}`,
                       attachments={it.attachments}
                       forge={it.forge}
                       forged={it.forged}
+                      at={it.at}
                       canEdit={i === lastUserIdx && !streaming}
                       onEdit={() => void editLastUserMessage()}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}

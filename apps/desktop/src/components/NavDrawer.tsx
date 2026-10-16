@@ -105,7 +105,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
     // (`03df1bf`) et l'a perdue quand le rail est passé sur cette liste
     // (`96b289d`) : l'entrée n'y figurait plus depuis `8cb191e`.
     id: "extensions",
-    label: "Extensions",
+    label: "Extensions & Skills",
     icon: "extensions",
     category: "system",
     desc: "Marketplace des morphs, skills et extensions",

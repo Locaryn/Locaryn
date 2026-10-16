@@ -88,7 +88,11 @@ type InstalledExtensionFilter = "all" | "morphs" | "skills" | "cores";
 
 function installedExtensionKind(e: InstalledExtension): InstalledExtensionFilter {
   if (e.core) return "cores";
-  if (e.kind === "plugin" || e.ecosystem !== "locaryn") return "skills";
+  // Toute installation est enregistrée comme `plugin` : c'est l'écosystème
+  // qui distingue un morph Locaryn (morph.json) d'un paquet d'un autre outil
+  // (skills Claude Code, Cursor…). Classer sur `kind` rangeait tous les
+  // morphs parmi les skills, et le filtre « Morphs » restait vide.
+  if (e.ecosystem !== "locaryn") return "skills";
   return "morphs";
 }
 
