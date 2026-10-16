@@ -1,9 +1,10 @@
 import { Icon, renderMarkdown } from "@locaryn/ui-core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { core } from "../../lib/core";
 import { pickSaveFile } from "../../lib/dialog";
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
 import { splitReasoning } from "../../lib/reasoning";
+import { patcherHtml, useTexteFluide } from "../../lib/texteFluide";
 import { formatRate } from "../SpeedBadge";
 import { ReasoningBlock } from "./ReasoningBlock";
 
@@ -130,9 +131,11 @@ export function MessageBubble({
 
   // Reasoning models stream their scratchpad inline with the reply. Split it
   // out so the answer is what the reader sees; the deliberation stays folded.
+  // Le texte en cours d'écriture se dévoile régulièrement, réflexion comprise.
+  const fluide = useTexteFluide(text);
   const { reasoning, answer, reasoningInProgress } =
     role === "assistant"
-      ? splitReasoning(text)
+      ? splitReasoning(fluide)
       : { reasoning: "", answer: text, reasoningInProgress: false };
 
   useEffect(() => {
@@ -252,14 +255,18 @@ export function MessageBubble({
   // The markdown renderer emits raw <pre class="md-code">; enhance each block
   // with a Copy (and, for runnable languages, an Exec) toolbar. Done on the DOM
   // because the HTML is injected, not composed from React children.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `answer` n'est pas lu ici mais commande le HTML réinjecté ; sans cette dépendance les blocs de code apparus pendant le streaming n'auraient jamais leur barre d'outils.
-  useEffect(() => {
+  // Avant l'affichage (useLayoutEffect) : le HTML est patché, pas réinjecté,
+  // et un bloc de code apparu reçoit sa barre dans la même image — plus de
+  // saut à chaque jeton.
+  useLayoutEffect(() => {
     const root = mdRef.current;
     if (!root) return;
+    patcherHtml(root, renderMarkdown(answer));
     for (const pre of root.querySelectorAll<HTMLPreElement>("pre.md-code")) {
       if (pre.dataset.enhanced === "1") continue;
       pre.dataset.enhanced = "1";
-      const code = pre.querySelector("code")?.textContent ?? "";
+      // Le code se lit au clic : pendant l'écriture, le bloc s'allonge encore.
+      const lireCode = () => pre.querySelector("code")?.textContent ?? "";
       const lang = (pre.dataset.lang || "").toLowerCase();
 
       const bar = document.createElement("div");
@@ -279,6 +286,7 @@ export function MessageBubble({
         // navigator.clipboard needs a focused document; fall back to a hidden
         // textarea + execCommand so copying works in every embedding context.
         let ok = false;
+        const code = lireCode();
         try {
           await ecrirePressePapiers(code);
           ok = true;
@@ -310,7 +318,7 @@ export function MessageBubble({
         const linux = ["Shell", "Python", "Node"].includes(RUNNABLE[lang]);
         runBtn.textContent =
           runTarget && linux ? `▶ Exécuter (${runTarget})` : `▶ Exécuter (${RUNNABLE[lang]})`;
-        runBtn.onclick = () => onRunCode(code, lang);
+        runBtn.onclick = () => onRunCode(lireCode(), lang);
         bar.appendChild(runBtn);
       }
 
@@ -322,7 +330,7 @@ export function MessageBubble({
     try {
       // The answer, not the scratchpad: nobody wants to paste the model's
       // deliberation into a document.
-      await ecrirePressePapiers(role === "assistant" ? answer : text);
+      await ecrirePressePapiers(role === "assistant" ? splitReasoning(text).answer : text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -432,8 +440,9 @@ export function MessageBubble({
       <div
         ref={mdRef}
         className="locaryn-msg-md"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown échappe tout le HTML source avant d'injecter ses propres balises (modèle de sûreté en tête de packages-ui/core/src/markdown.ts). Rien de ce que produit le modèle n'atteint le DOM sous forme de balise.
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(answer) }}
+        // Rempli par `patcherHtml` (effet ci-dessus). renderMarkdown échappe tout
+        // le HTML source avant d'injecter ses propres balises (modèle de sûreté
+        // en tête de packages-ui/core/src/markdown.ts).
       />
       {((images && images.length > 0) || (forge && forge.kind !== "audio")) && (
         <div

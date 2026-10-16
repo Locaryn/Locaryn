@@ -254,6 +254,9 @@ export function ModelResidency() {
     setBusy("eject");
     setError(null);
     try {
+      // Avant de vider la mémoire : un plan en cours s'arrête, au lieu de
+      // relancer le modèle à l'étape suivante.
+      window.dispatchEvent(new Event("locaryn:model-ejecting"));
       const res = await core.ejectChatModel();
       setStatus(res);
       window.dispatchEvent(new Event("locaryn:model-ejected"));

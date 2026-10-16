@@ -191,6 +191,9 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
       const residency = await core.modelResidency();
       const activeModel = residency.model;
 
+      // Avant de vider la mémoire : un plan en cours s'arrête, au lieu de
+      // relancer le modèle à l'étape suivante.
+      window.dispatchEvent(new Event("locaryn:model-ejecting"));
       await core.ejectChatModel();
       window.dispatchEvent(new Event("locaryn:model-ejected"));
 

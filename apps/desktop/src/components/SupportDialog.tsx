@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type EtatSoutien, core, coreMode } from "../lib/core";
@@ -102,6 +103,12 @@ type Vue = "question" | "sur" | "merci";
  * machine. Rien ne part sans un clic ; la réponse est retenue, on ne
  * redemande jamais.
  */
+function bilan(r: { etoiles: number; echecs: number }): string {
+  return r.etoiles > 0
+    ? `Merci énormément ! ${r.etoiles} étoile${r.etoiles > 1 ? "s" : ""} posée${r.etoiles > 1 ? "s" : ""}${r.echecs ? ` (${r.echecs} n'ont pas pu l'être)` : ""}.`
+    : "Merci ! Les étoiles n'ont pas pu être posées — GitHub n'a pas répondu.";
+}
+
 export function SupportDialog() {
   const [etat, setEtat] = useState<EtatSoutien | null>(null);
   const [vue, setVue] = useState<Vue>("question");
@@ -131,6 +138,23 @@ export function SupportDialog() {
     return () => window.removeEventListener(REPONSE_FINIE_EVENT, surReponse);
   }, []);
 
+  // Le bilan des étoiles, posé en arrière-plan : la fenêtre ne fige plus.
+  useEffect(() => {
+    if (coreMode !== "tauri") return;
+    let fin: (() => void) | null = null;
+    let parti = false;
+    void listen<{ etoiles: number; echecs: number }>("locaryn://soutien-etoiles", (ev) =>
+      setMerci(bilan(ev.payload)),
+    ).then((u) => {
+      if (parti) u();
+      else fin = u;
+    });
+    return () => {
+      parti = true;
+      fin?.();
+    };
+  }, []);
+
   if (!etat) return null;
   const morphs = Math.max(0, etat.depots.length - 1);
 
@@ -145,11 +169,7 @@ export function SupportDialog() {
     else confettis(90, 1);
     try {
       const r = await core.soutienRepondre(choix);
-      setMerci(
-        r.etoiles > 0
-          ? `Merci énormément ! ${r.etoiles} étoile${r.etoiles > 1 ? "s" : ""} posée${r.etoiles > 1 ? "s" : ""}${r.echecs ? ` (${r.echecs} n'ont pas pu l'être)` : ""}.`
-          : "Merci ! Les étoiles n'ont pas pu être posées — GitHub n'a pas répondu.",
-      );
+      setMerci(r.en_cours ? "Merci énormément ! Les étoiles se posent sur GitHub…" : bilan(r));
     } catch (e) {
       setMerci(`Merci ! Les étoiles n'ont pas pu être posées : ${String(e)}`);
     } finally {

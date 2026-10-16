@@ -9,6 +9,7 @@ import { DecisionSettings } from "../components/DecisionSettings";
 import { DeviceCompanionCard } from "../components/DeviceCompanionCard";
 import { EngineSettings } from "../components/EngineSettings";
 import { ExtensionsSettings } from "../components/ExtensionsSettings";
+import { GitSettings } from "../components/GitSettings";
 import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
 import { ModeleAutrePc } from "../components/ModeleAutrePc";
 import { NpuSettings } from "../components/NpuSettings";
@@ -546,7 +547,10 @@ export function SettingsView({
           )}
           {section === "huggingface" && <HuggingFaceSettings />}
           {section === "projects" && (
-            <ProjectSettings projects={projects} onArchived={onProjectArchived} />
+            <>
+              <GitSettings />
+              <ProjectSettings projects={projects} onArchived={onProjectArchived} />
+            </>
           )}
           {section === "extensions" && <ExtensionsSettings />}
           {section === "connectors" && <ConnectorsSettings />}

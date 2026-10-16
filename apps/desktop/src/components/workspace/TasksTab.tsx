@@ -32,7 +32,8 @@ function Tache({ t, maintenant }: { t: AppTask; maintenant: number }) {
           <span className="lt-detail">
             {meta.label}
             {t.model ? ` · ${t.model}` : t.detail ? ` · ${t.detail}` : ""}
-            {etapes > 0 && ` · ${t.stepIndex ?? 0}/${etapes} étapes`}
+            {etapes > 0 &&
+              ` · étape ${Math.min((t.stepIndex ?? 0) + (t.status === "running" ? 1 : 0), etapes)}/${etapes}`}
             {t.tools && t.tools.length > 0 && ` · ${t.tools.length} outil(s)`}
           </span>
         </span>

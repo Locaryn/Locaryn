@@ -13091,6 +13091,9 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: var(--text-sm);
   border-bottom: 1px solid var(--border);
 }
+.lw-crumbs[hidden] {
+  display: none;
+}
 .lw-crumbs-refresh,
 .lw-changes-head .lw-icon-btn {
   margin-left: auto;
@@ -13098,11 +13101,19 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .lw-crumb-part {
   display: inline-flex;
   align-items: center;
+  align-self: stretch;
   gap: var(--space-1);
   color: var(--text-faint);
 }
 .lw-crumb {
+  /* Le fichier ouvert est un <span>, « Dossier » un bouton : sans boîte
+     flexible commune, le span restait sur la ligne de base du texte, un peu
+     plus haut que le bouton à côté. */
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
   min-height: 28px;
+  line-height: 1.2;
   padding: 0 var(--space-1);
   font: inherit;
   color: var(--text-dim);
@@ -15033,4 +15044,11 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   height: 100vh;
   pointer-events: none;
   z-index: 200;
+}
+
+.locaryn-settings-subtitle {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
 }

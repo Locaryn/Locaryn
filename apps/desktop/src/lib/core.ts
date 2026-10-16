@@ -1725,6 +1725,14 @@ export type NotificationGroup =
   | "maintenance";
 
 /** L'etat de la barre de progression du systeme. */
+/** Le suivi Git du travail de l'agent. */
+export interface ReglagesGit {
+  init_auto: boolean;
+  co_auteur: boolean;
+}
+
+let demoGit: ReglagesGit = { init_auto: true, co_auteur: true };
+
 export type TaskbarStatus = "none" | "normal" | "indeterminate" | "paused" | "error";
 
 /**
@@ -2038,8 +2046,15 @@ export interface CoreApi {
   deleteServerUser(userId: string): Promise<ServerStatus>;
   providerApiStatus(): Promise<ProviderApiStatus>;
   soutienEtat(): Promise<EtatSoutien>;
-  soutienRepondre(choix: "oui" | "tout" | "non"): Promise<{ etoiles: number; echecs: number }>;
+  /** Rend la main tout de suite : les étoiles se posent en arrière-plan et leur
+   *  bilan arrive par l'évènement `locaryn://soutien-etoiles`. */
+  soutienRepondre(
+    choix: "oui" | "tout" | "non",
+  ): Promise<{ etoiles: number; echecs: number; en_cours?: boolean }>;
   setProviderApi(enabled: boolean): Promise<ProviderApiStatus>;
+  /** Le suivi Git du travail de l'agent (dépôt créé, Locaryn co-auteur). */
+  gitReglages(): Promise<ReglagesGit>;
+  setGitReglages(r: ReglagesGit): Promise<void>;
   listApiKeys(): Promise<ApiKeyInfo[]>;
   createApiKey(label: string, expiresInDays: number | null): Promise<ApiKeyCreated>;
   revokeApiKey(id: string): Promise<void>;
@@ -2627,8 +2642,10 @@ const tauriCore: CoreApi = {
   providerApiStatus: () => invoke<ProviderApiStatus>("provider_api_status"),
   soutienEtat: () => invoke<EtatSoutien>("soutien_etat"),
   soutienRepondre: (choix) =>
-    invoke<{ etoiles: number; echecs: number }>("soutien_repondre", { choix }),
+    invoke<{ etoiles: number; echecs: number; en_cours?: boolean }>("soutien_repondre", { choix }),
   setProviderApi: (enabled) => invoke<ProviderApiStatus>("set_provider_api", { enabled }),
+  gitReglages: () => invoke<ReglagesGit>("git_reglages"),
+  setGitReglages: (r) => invoke<void>("set_git_reglages", { reglages: r }),
   listApiKeys: () => invoke<ApiKeyInfo[]>("list_api_keys"),
   createApiKey: (label, expiresInDays) =>
     invoke<ApiKeyCreated>("create_api_key", { label, expiresInDays }),
@@ -4660,6 +4677,10 @@ Contenu de démonstration, avec **du gras** et une liste :
     etoiles: choix === "tout" ? 14 : choix === "oui" ? 3 : 0,
     echecs: 0,
   }),
+  gitReglages: async () => ({ ...demoGit }),
+  setGitReglages: async (r) => {
+    demoGit = { ...r };
+  },
   setProviderApi: async (enabled) => {
     demoApi = { ...demoApi, enabled };
     return { ...demoApi };

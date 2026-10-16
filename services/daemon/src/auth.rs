@@ -83,6 +83,9 @@ pub struct AuthState {
     /// L'API fournisseur est-elle allumée ? Relu à chaque requête (le réglage
     /// change sans redémarrer le service) ; remplaçable dans les tests.
     pub api_active: fn() -> bool,
+    /// Le jeton du poste (voir [`jeton_du_poste`]) : accepté depuis la boucle
+    /// locale seulement, au nom du premier administrateur.
+    pub jeton_poste: Option<String>,
 }
 
 impl AuthState {
@@ -91,8 +94,49 @@ impl AuthState {
             users,
             required,
             api_active: api_fournisseur::active,
+            jeton_poste: None,
         }
     }
+}
+
+/// Écrire un nouveau jeton du poste dans `<données>/cli-token` et le rendre.
+///
+/// En mode serveur chaque requête demande un compte — y compris celles de
+/// `locaryn` tapé dans un terminal de cette machine, qui ne pouvait alors plus
+/// rien faire. Le bureau, lui, lit la base directement. Ce fichier donne au
+/// terminal le même accès : seul qui peut lire le dossier de données (la
+/// session qui l'a créé) le connaît, et il ne vaut que depuis 127.0.0.1.
+pub fn jeton_du_poste(data_dir: &std::path::Path) -> Option<String> {
+    use rand::RngCore as _;
+    let mut octets = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut octets);
+    let jeton: String = octets.iter().map(|o| format!("{o:02x}")).collect();
+    let chemin = locaryn_config::cli_token_file(data_dir);
+    if let Err(e) = std::fs::write(&chemin, &jeton) {
+        tracing::warn!(error = %e, chemin = %chemin.display(), "jeton du poste non écrit — `locaryn` devra se connecter avec un compte");
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let _ = std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o600));
+    }
+    Some(jeton)
+}
+
+/// Comparer deux jetons sans que la durée trahisse où ils diffèrent.
+fn memes_octets(a: &str, b: &str) -> bool {
+    a.len() == b.len()
+        && a.bytes()
+            .zip(b.bytes())
+            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+            == 0
+}
+
+fn depuis_la_boucle_locale(req: &Request<Body>) -> bool {
+    req.extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .is_some_and(|c| c.0.ip().to_canonical().is_loopback())
 }
 
 /// Le bureau de cette machine suit en direct une réponse servie ici (lancée
@@ -188,6 +232,19 @@ pub async fn require_token(
              l'en-tête « Authorization: Bearer <jeton> ».",
         );
     };
+
+    // `locaryn` lancé sur cette machine, avec le jeton du poste.
+    if let Some(attendu) = state.jeton_poste.as_deref() {
+        if memes_octets(&token, attendu) && depuis_la_boucle_locale(&req) {
+            return match state.users.first_admin().await {
+                Some(admin) => {
+                    req.extensions_mut().insert(admin);
+                    next.run(req).await
+                }
+                None => unauthorised("Aucun administrateur actif sur ce serveur."),
+            };
+        }
+    }
 
     match state.users.token_owner(&token).await {
         Ok(Some((user, kind))) => {
@@ -689,6 +746,46 @@ mod tests {
             .await
             .unwrap()
             .status()
+    }
+
+    #[tokio::test]
+    async fn le_jeton_du_poste_ne_vaut_que_depuis_cette_machine() {
+        use tower::ServiceExt as _;
+        let pool = locaryn_storage::open_in_memory().await.unwrap();
+        let repo = UserRepo::new(pool);
+        repo.create("Admin", "un-mot-de-passe-solide", Role::Admin)
+            .await
+            .unwrap();
+        let mut etat = AuthState::new(repo, true);
+        etat.jeton_poste = Some("a".repeat(64));
+        let app = routeur(Arc::new(etat));
+        let depuis = |ip: [u8; 4], jeton: &str| {
+            let mut req = Request::builder()
+                .uri("/v1/sessions")
+                .header("authorization", format!("Bearer {jeton}"))
+                .body(Body::empty())
+                .unwrap();
+            req.extensions_mut()
+                .insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+                    ip, 50000,
+                ))));
+            req
+        };
+        let statut = |req: Request<Body>| {
+            let app = app.clone();
+            async move { app.oneshot(req).await.unwrap().status() }
+        };
+        let jeton = "a".repeat(64);
+        assert_eq!(statut(depuis([127, 0, 0, 1], &jeton)).await, StatusCode::OK);
+        // Le même jeton venu du réseau ne vaut rien.
+        assert_eq!(
+            statut(depuis([192, 168, 1, 20], &jeton)).await,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            statut(depuis([127, 0, 0, 1], &"b".repeat(64))).await,
+            StatusCode::UNAUTHORIZED
+        );
     }
 
     #[tokio::test]

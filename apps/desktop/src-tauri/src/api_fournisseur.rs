@@ -174,3 +174,25 @@ pub async fn revoke_api_key(id: String) -> Result<(), String> {
     }
     repo.revoke_token(id).await.map_err(|e| e.to_string())
 }
+
+/// Le suivi Git du travail de l'agent : un dépôt dans les projets qui n'en ont
+/// pas, et Locaryn co-auteur de ses commits. Rangé ici avec les autres
+/// réglages globaux simples.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct ReglagesGit {
+    pub init_auto: bool,
+    pub co_auteur: bool,
+}
+
+#[tauri::command]
+pub fn git_reglages() -> ReglagesGit {
+    ReglagesGit {
+        init_auto: locaryn_config::git::init_auto(),
+        co_auteur: locaryn_config::git::co_auteur(),
+    }
+}
+
+#[tauri::command]
+pub fn set_git_reglages(reglages: ReglagesGit) -> Result<(), String> {
+    locaryn_config::git::regler(reglages.init_auto, reglages.co_auteur).map_err(|e| e.to_string())
+}

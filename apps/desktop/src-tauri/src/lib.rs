@@ -7357,6 +7357,8 @@ pub fn run() {
             soutien::soutien_etat,
             soutien::soutien_repondre,
             api_fournisseur::provider_api_status,
+            api_fournisseur::git_reglages,
+            api_fournisseur::set_git_reglages,
             api_fournisseur::set_provider_api,
             api_fournisseur::list_api_keys,
             api_fournisseur::create_api_key,

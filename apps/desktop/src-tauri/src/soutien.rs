@@ -288,40 +288,65 @@ pub async fn soutien_etat(core: State<'_, Core>) -> Result<EtatSoutien, String> 
     })
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ResultatSoutien {
     pub etoiles: u32,
     pub echecs: u32,
+    /// Les étoiles se posent encore, en arrière-plan.
+    pub en_cours: bool,
 }
 
 /// `oui`, `tout` ou `non`. Retenu dans tous les cas : on ne redemande pas.
 #[tauri::command]
 pub async fn soutien_repondre(
+    app: tauri::AppHandle,
     core: State<'_, Core>,
     choix: String,
 ) -> Result<ResultatSoutien, String> {
     retenir(&choix);
-    let depots = match choix.as_str() {
-        "oui" => depots_utilises(&core).await,
-        "tout" => {
-            let mut d = depots_de_l_organisation().await;
-            for x in depots_utilises(&core).await {
-                if !d.iter().any(|y| y.eq_ignore_ascii_case(&x)) {
-                    d.push(x);
-                }
-            }
-            d
-        }
-        _ => {
-            return Ok(ResultatSoutien {
-                etoiles: 0,
-                echecs: 0,
-            })
-        }
+    if choix != "oui" && choix != "tout" {
+        return Ok(ResultatSoutien {
+            etoiles: 0,
+            echecs: 0,
+            en_cours: false,
+        });
+    }
+    // Les dépôts des morphs installés se lisent dans la base locale : tout de
+    // suite. Le reste — la liste de l'organisation, une requête GitHub par
+    // étoile — prenait 15 à 30 secondes pendant lesquelles la fenêtre restait
+    // figée. Il part en arrière-plan ; le résultat arrive par un évènement.
+    let utilises = depots_utilises(&core).await;
+    tauri::async_runtime::spawn(async move {
+        let resultat = poser_les_etoiles(&choix, utilises).await;
+        use tauri::Emitter as _;
+        let _ = app.emit("locaryn://soutien-etoiles", resultat);
+    });
+    Ok(ResultatSoutien {
+        etoiles: 0,
+        echecs: 0,
+        en_cours: true,
+    })
+}
+
+async fn poser_les_etoiles(choix: &str, utilises: Vec<String>) -> ResultatSoutien {
+    let mut depots = if choix == "tout" {
+        depots_de_l_organisation().await
+    } else {
+        Vec::new()
     };
-    let a = acces()
-        .await
-        .ok_or("GitHub n'est plus connecté sur cette machine")?;
+    for x in utilises {
+        if !depots.iter().any(|y| y.eq_ignore_ascii_case(&x)) {
+            depots.push(x);
+        }
+    }
+    let Some(a) = acces().await else {
+        tracing::warn!("soutien GitHub : GitHub n'est plus connecté sur cette machine");
+        return ResultatSoutien {
+            etoiles: 0,
+            echecs: depots.len() as u32,
+            en_cours: false,
+        };
+    };
     let (mut etoiles, mut echecs) = (0, 0);
     for d in &depots {
         if etoiler(&a, d).await {
@@ -331,7 +356,11 @@ pub async fn soutien_repondre(
         }
     }
     tracing::info!(choix, etoiles, echecs, "soutien GitHub");
-    Ok(ResultatSoutien { etoiles, echecs })
+    ResultatSoutien {
+        etoiles,
+        echecs,
+        en_cours: false,
+    }
 }
 
 #[cfg(test)]

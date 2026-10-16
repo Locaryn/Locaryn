@@ -245,12 +245,31 @@ export const taskCenter = {
   },
   /** Attach the LLM-generated plan (variable number of steps). */
   setPlan(id: string, steps: string[]) {
-    this.update(id, { steps, stepIndex: 0 });
+    const t = tasks.find((x) => x.id === id);
+    // Le plan peut s'allonger (scission, vérification finale) : on garde le
+    // rang atteint, et la barre des tâches suit la part faite.
+    const rang = Math.min(t?.stepIndex ?? 0, steps.length);
+    this.update(id, {
+      steps,
+      stepIndex: rang,
+      progress: steps.length ? Math.round((rang / steps.length) * 100) : undefined,
+    });
   },
   /** Mark the current step done and move to the next. */
   advanceStep(id: string) {
     const t = tasks.find((x) => x.id === id);
-    if (t) this.update(id, { stepIndex: Math.min((t.stepIndex ?? 0) + 1, t.steps?.length ?? 0) });
+    if (!t) return;
+    const total = t.steps?.length ?? 0;
+    const rang = Math.min((t.stepIndex ?? 0) + 1, total);
+    // Chaque étape faite remplit sa part de la barre sous l'icône : 5 étapes,
+    // 20 % chacune — comme un téléchargement de modèle.
+    this.update(id, {
+      stepIndex: rang,
+      progress: total ? Math.round((rang / total) * 100) : undefined,
+    });
+    if (total > 0 && rang < total) {
+      void notifierSysteme(`Étape ${rang}/${total} terminée`, t.label, "long_tasks");
+    }
   },
   /** Final check failed → relaunch: bump the attempt counter, reset progress. */
   retryWorkflow(id: string) {

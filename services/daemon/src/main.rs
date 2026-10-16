@@ -307,7 +307,11 @@ async fn main() -> anyhow::Result<()> {
             addr.ip()
         );
     }
-    let auth_state = std::sync::Arc::new(auth::AuthState::new(users.clone(), exposed));
+    let mut auth_state = auth::AuthState::new(users.clone(), exposed);
+    if exposed {
+        auth_state.jeton_poste = auth::jeton_du_poste(&data_dir_for_tls);
+    }
+    let auth_state = std::sync::Arc::new(auth_state);
 
     // L'API fournisseur en HTTP simple sur 127.0.0.1 : un éditeur de cette
     // machine (Cursor, VS Code, Claude Code) n'accepte pas le certificat

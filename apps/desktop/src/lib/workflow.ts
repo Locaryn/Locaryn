@@ -63,6 +63,38 @@ const MAX_STEP_RETRIES = 3;
  */
 const MAX_VERIFICATIONS_FINALES = 3;
 
+/**
+ * Le marqueur des consignes que l'application envoie elle-même au modèle (une
+ * étape de plan, sa reprise). Elles sont enregistrées dans la conversation —
+ * le modèle doit les relire — mais ne s'affichent pas : seul ce que la
+ * personne a tapé apparaît comme venant d'elle.
+ */
+export const MARQUE_INTERNE = "<!--locaryn-interne-->";
+
+/** Une consigne interne, marquée ou d'avant le marqueur (« [Étape 2/5 du plan] »). */
+export function estConsigneInterne(contenu: string): boolean {
+  const t = contenu.trimStart();
+  return t.startsWith(MARQUE_INTERNE) || /^(?:@[\w.-]+\s*)*\[Étape \d+\/\d+ du plan\]/u.test(t);
+}
+
+/** Après une panne du moteur, on attend avant de relancer : 5 s, 15 s, 30 s. */
+const ATTENTES_APRES_PANNE_MS = [5000, 15000, 30000];
+
+/** Pannes du moteur de suite sur une étape avant d'arrêter le plan. */
+const MAX_PANNES = 3;
+
+function attendre(ms: number, arret?: () => boolean): Promise<void> {
+  return new Promise((fin) => {
+    const debut = Date.now();
+    const tic = setInterval(() => {
+      if (Date.now() - debut >= ms || arret?.()) {
+        clearInterval(tic);
+        fin();
+      }
+    }, 250);
+  });
+}
+
 /** L'étape ajoutée en fin de plan, en mode goal. */
 export const ETAPE_VERIFICATION_FINALE =
   "Vérification finale : contrôle concrètement chaque condition de la demande globale (lis les fichiers, lance ou ouvre ce qui doit l'être), corrige tout ce qui manque ou ne marche pas, puis liste chaque condition avec son état vérifié.";
@@ -272,6 +304,7 @@ export async function runWorkflow(
     let suites = 0;
     let suiteEnCours = false;
     let relanceEnCours = false;
+    let pannes = 0;
 
     // En goalMode : on retente la même étape si elle échoue, jusqu'à
     // MAX_STEP_RETRIES. Sans goalMode, on exécute une seule fois.
@@ -286,6 +319,7 @@ export async function runWorkflow(
       const dossierAvant = await etatDuDossier(sessionId);
 
       const stepPrompt = [
+        MARQUE_INTERNE,
         mentions ? `${mentions}` : "",
         `[Étape ${i + 1}/${steps.length} du plan] : ${step}`,
         `Demande globale : ${request}`,
@@ -302,6 +336,7 @@ export async function runWorkflow(
       let outilsAppeles = 0;
       let coupe = false;
       let stepError = false;
+      let panne = false;
       try {
         await core.sendMessage(
           sessionId,
@@ -310,6 +345,7 @@ export async function runWorkflow(
             if (ev.type === "token") answer += ev.text;
             if (ev.type === "tool_call") outilsAppeles++;
             if (ev.type === "log" && ev.source === TOUR_INACHEVE) coupe = true;
+            if (ev.type === "log" && ev.level === "error") panne = true;
             hooks.onEvent(ev);
           },
           undefined,
@@ -321,15 +357,35 @@ export async function runWorkflow(
         stepError = true;
       }
 
-      if (stepError) {
-        if (goalMode && stepRetry < MAX_STEP_RETRIES) {
-          stepRetry++;
-          lastReste = "Une erreur technique s'est produite lors de l'exécution : réessaye l'étape.";
-          continue; // retenter l'étape
-        }
-        globalOk = false;
-        break;
+      // Le moteur est tombé (ou a été éjecté) sans rien produire : ce n'est
+      // pas une réponse à juger. Sans cela, une réponse vide passait pour une
+      // « simple annonce », puis un échec, et toutes les étapes partaient à la
+      // suite en quelques secondes, sans rien faire.
+      if (!stepError && panne && outilsAppeles === 0 && !sansReflexion(answer).trim()) {
+        stepError = true;
       }
+
+      if (stepError) {
+        pannes++;
+        if (pannes >= MAX_PANNES || hooks.arret?.()) {
+          globalOk = false;
+          break;
+        }
+        await attendre(
+          ATTENTES_APRES_PANNE_MS[Math.min(pannes - 1, ATTENTES_APRES_PANNE_MS.length - 1)],
+          hooks.arret,
+        );
+        if (hooks.arret?.()) {
+          globalOk = false;
+          break;
+        }
+        // Une panne n'est pas un essai raté : on reprend la même étape, borné
+        // par MAX_PANNES, avec ou sans /goal.
+        lastReste = "Une erreur technique a interrompu l'étape : reprends-la là où elle en était.";
+        suiteEnCours = true;
+        continue;
+      }
+      pannes = 0;
 
       // Coupée par la limite d'actions : on reprend la même étape là où elle
       // s'est arrêtée, sans juger un travail inachevé ni compter d'essai.

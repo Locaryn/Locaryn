@@ -12,6 +12,7 @@ pub mod documents;
 pub mod embeddings;
 pub mod exec;
 pub mod free_chat_dir;
+pub mod git_suivi;
 pub mod gpu;
 pub mod gpu_standard;
 pub mod host_tools;

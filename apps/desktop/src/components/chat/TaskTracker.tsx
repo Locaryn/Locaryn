@@ -71,6 +71,10 @@ export function TaskTracker({
     suivi.etapes.find((e) => e.etat === "cours") ?? suivi.etapes.find((e) => e.etat === "echec");
   const total = suivi.etapes.length;
   const enCours = suivi.etat === "cours";
+  // L'étape en cours se compte à partir de 1 : « étape 1/5 » pendant la
+  // première, « 5/5 » une fois la dernière faite — pas « 0/5 » puis « 4/5 ».
+  const rang = suivi.etapes.findIndex((e) => e.etat === "cours");
+  const numero = enCours && rang >= 0 ? rang + 1 : faites;
   const etat = `${LIBELLE_ETAT[suivi.etat]}${
     suivi.genre === "plan" && suivi.maxEssais > 1 && suivi.essai > 1
       ? ` · essai ${suivi.essai}/${suivi.maxEssais}`
@@ -94,7 +98,7 @@ export function TaskTracker({
             {suivi.genre === "plan" ? "Plan" : "Objectif"}
           </span>
           <span className="locaryn-todo-compte" aria-live="polite">
-            {suivi.genre === "plan" ? `${faites}/${total}` : `tour ${total}`}
+            {suivi.genre === "plan" ? `étape ${numero}/${total}` : `tour ${total}`}
           </span>
           <span className="locaryn-todo-courante">
             {replie ? (courante?.texte ?? suivi.titre) : suivi.titre}

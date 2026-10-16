@@ -1103,6 +1103,9 @@ async fn exec_write_file(args: &serde_json::Value, project_root: &Path) -> ToolR
     };
     match resolve_path(project_root, path) {
         Ok(full) => {
+            // Le premier fichier écrit dans un projet sans dépôt en crée un :
+            // chaque modification de l'agent peut alors se suivre et s'annuler.
+            crate::git_suivi::assurer_depot(project_root).await;
             if let Some(parent) = full.parent() {
                 if let Err(e) = tokio::fs::create_dir_all(parent).await {
                     return err(&format!("write_file error (create_dir): {e}"));
@@ -1233,6 +1236,8 @@ async fn exec_run_command(args: &serde_json::Value, project_root: &Path) -> Tool
         Some(c) => c,
         None => return err("missing required argument: command"),
     };
+    let signee = crate::git_suivi::avec_co_auteur(command);
+    let command = signee.as_str();
     let traduite;
     let command = if cfg!(windows) {
         traduite = commande_pour_cmd(command);

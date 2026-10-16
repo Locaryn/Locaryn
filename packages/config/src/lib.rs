@@ -8,6 +8,7 @@
 //! the MVP. V1.1 switches to `toml`.
 
 pub mod api_fournisseur;
+pub mod git;
 pub mod mtls;
 pub mod provision;
 
@@ -314,6 +315,17 @@ pub fn set_storage_root(root: Option<&Path>) -> std::io::Result<()> {
 /// closed-file data is relocatable.
 pub fn default_data_dir() -> PathBuf {
     builtin_data_dir()
+}
+
+/// Le jeton du poste : la clé que le service local écrit dans son dossier de
+/// données quand il est en mode serveur, pour que `locaryn` lancé sur la même
+/// machine s'y connecte sans compte — comme le bureau, qui lit la même base.
+///
+/// Lire ce fichier demande déjà les droits de la session Windows/Unix qui
+/// possède les données ; il n'ouvre donc rien de plus que ce qu'elle a. Il
+/// n'est accepté que depuis la boucle locale, et change à chaque démarrage.
+pub fn cli_token_file(data_dir: &Path) -> PathBuf {
+    data_dir.join("cli-token")
 }
 
 /// Fichier du jeton Hugging Face que l'application de bureau partage avec le

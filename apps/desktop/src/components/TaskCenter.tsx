@@ -227,7 +227,7 @@ export function TaskCenter({ onOpenResult }: Props) {
                       <span className={`locaryn-notif-status locaryn-notif-${t.status}`}>
                         {t.status === "running"
                           ? t.type === "workflow" && t.steps && t.steps.length
-                            ? `${Math.min(t.stepIndex ?? 0, t.steps.length)}/${t.steps.length}`
+                            ? `étape ${Math.min((t.stepIndex ?? 0) + 1, t.steps.length)}/${t.steps.length}`
                             : (t.detail ?? "en cours")
                           : t.status === "done"
                             ? "terminé"

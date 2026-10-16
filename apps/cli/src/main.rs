@@ -323,6 +323,10 @@ async fn main() -> anyhow::Result<()> {
     } else {
         (cfg.connection.local_url.clone(), cli.token)
     };
+    // Le service de ce poste est en mode serveur (l'application de bureau
+    // l'expose au réseau) : il demande un compte à chaque requête. Le jeton
+    // du poste, écrit dans son dossier de données, en tient lieu ici.
+    let token = token.or_else(|| cible_locale.then(|| jeton_du_poste(&cfg)).flatten());
     let client = build_client(&base_url, token, cli.fingerprint)?;
 
     // Most commands talk to the daemon, so an unreachable one is the single
@@ -1307,13 +1311,30 @@ fn build_client(
 /// second is what makes an interception trivial.
 fn certificate_fingerprint() -> Option<String> {
     let cfg = locaryn_config::load(None).ok()?;
-    let data_dir = cfg
-        .daemon
+    let data_dir = donnees_du_poste(&cfg);
+    // Le certificat émis par l'autorité de ce serveur d'abord : c'est celui
+    // que présente le mode serveur. L'auto-signé ne sert qu'en son absence —
+    // l'épingler à sa place faisait refuser le service de ce poste.
+    let (emis, _) = locaryn_config::mtls::server_cert_paths(&data_dir);
+    let pem = std::fs::read_to_string(emis)
+        .or_else(|_| std::fs::read_to_string(data_dir.join("tls").join("daemon-cert.pem")))
+        .ok()?;
+    locaryn_config::provision::certificate_fingerprint(&pem)
+}
+
+fn donnees_du_poste(cfg: &locaryn_config::Config) -> std::path::PathBuf {
+    cfg.daemon
         .data_dir
         .clone()
-        .unwrap_or_else(locaryn_config::default_data_dir);
-    let pem = std::fs::read_to_string(data_dir.join("tls").join("daemon-cert.pem")).ok()?;
-    locaryn_config::provision::certificate_fingerprint(&pem)
+        .unwrap_or_else(locaryn_config::default_data_dir)
+}
+
+/// Le jeton que le service de ce poste a écrit en démarrant en mode serveur.
+fn jeton_du_poste(cfg: &locaryn_config::Config) -> Option<String> {
+    let brut =
+        std::fs::read_to_string(locaryn_config::cli_token_file(&donnees_du_poste(cfg))).ok()?;
+    let jeton = brut.trim().to_string();
+    (!jeton.is_empty()).then_some(jeton)
 }
 
 async fn provision_cmd(

@@ -72,7 +72,7 @@ import {
   slashAuCurseur,
 } from "../lib/slashCommands";
 import { SOUS_AGENT_ACCORD, SOUS_AGENT_FINI, type SousAgentFini } from "../lib/sousAgents";
-import { runWorkflow } from "../lib/workflow";
+import { estConsigneInterne, runWorkflow } from "../lib/workflow";
 
 type ChatItem =
   | {
@@ -344,6 +344,9 @@ function storedMessageItems(m: { id: string; role: string; content: string }): C
   // Les résultats d'outils sont gardés pour le modèle (il sait ce qu'il a
   // fait au message suivant), pas pour la lecture.
   if (m.role === "tool") return [];
+  // Les consignes d'étape que l'application s'envoie : le modèle les relit,
+  // la personne ne doit pas les voir comme si elle les avait écrites.
+  if (m.role === "user" && estConsigneInterne(m.content)) return [];
   const avecSuivi = splitInlineSuivi(m.content);
   const audio = splitInlineAudio(avecSuivi.text);
   const parsed = splitInlineImages(audio.text);
@@ -706,6 +709,15 @@ export function ChatPanel({
   const [loopCount, setLoopCount] = useState<number | null>(null);
   /** Suivi masqué par l'utilisateur (fermeture de la fenêtre au-dessus de la saisie). */
   const [suiviMasque, setSuiviMasque] = useState<string | null>(null);
+  /**
+   * Le plan qui tourne, tenu à part du fil. Le fil est relu depuis la base
+   * (reprise, compression, suivi en direct) et la carte d'un plan en cours n'y
+   * est pas encore : elle disparaissait en pleine exécution, sans plus aucun
+   * suivi des étapes.
+   */
+  const [suiviVivant, setSuiviVivant] = useState<{ sid: string; id: string; suivi: Suivi } | null>(
+    null,
+  );
 
   const streamRef = useRef<HTMLDivElement>(null);
   /** Le fil suit-il le dernier message ? Faux dès que la personne remonte lire,
@@ -775,6 +787,11 @@ export function ChatPanel({
     }
     return null;
   }, [items]);
+  // Le plan en cours d'abord : le fil relu depuis la base ne l'a pas encore.
+  const suiviAffiche =
+    suiviVivant && suiviVivant.sid === sessionId && suiviVivant.suivi.etat === "cours"
+      ? { id: suiviVivant.id, suivi: suiviVivant.suivi }
+      : latestSuivi;
 
   // Une autre conversation à l'écran : la réponse en cours ailleurs est
   // détachée, et celle-ci est libre d'envoyer tout de suite.
@@ -837,6 +854,18 @@ export function ChatPanel({
   // l'ouverture puis toutes les quelques secondes tant que rien ne tourne ici.
   const streamingRef = useRef(false);
   streamingRef.current = streaming;
+
+  // Éjecter le modèle pendant qu'il répond, c'est arrêter : un plan ne doit
+  // pas le recharger aussitôt pour l'étape suivante.
+  useEffect(() => {
+    const surEjection = () => {
+      if (!streamingRef.current) return;
+      arretSuiviRef.current = true;
+      void stopGeneration();
+    };
+    window.addEventListener("locaryn:model-ejecting", surEjection);
+    return () => window.removeEventListener("locaryn:model-ejecting", surEjection);
+  });
   const handleEventRef = useRef<(ev: StreamEvent) => void>(() => {});
   useEffect(() => {
     if (!isTauri || !sessionId) return;
@@ -1780,12 +1809,14 @@ ${d.texte}`
 
     // Un plan ou un objectif se suit sur une carte du fil, mise à jour en place.
     const suiviId = nextId("suivi");
-    const majSuivi = (f: (s: Suivi) => Suivi) =>
+    const majSuivi = (f: (s: Suivi) => Suivi) => {
       setItems((prev) =>
         prev.map((it) =>
           it.kind === "suivi" && it.id === suiviId ? { ...it, suivi: f(it.suivi) } : it,
         ),
       );
+      setSuiviVivant((v) => (v && v.id === suiviId ? { ...v, suivi: f(v.suivi) } : v));
+    };
     const poserEtape = (s: Suivi, i: number, etat: EtatEtape): Suivi => ({
       ...s,
       etapes: s.etapes.map((e, j) => (j === i ? { ...e, etat } : e)),
@@ -1827,22 +1858,18 @@ ${d.texte}`
           text,
           {
             onEvent: surEvenement,
-            onPlan: (steps, maxAttempts) =>
-              setItems((prev) => [
-                ...prev,
-                {
-                  id: suiviId,
-                  kind: "suivi",
-                  suivi: {
-                    genre: "plan",
-                    titre: text,
-                    etapes: steps.map((texte) => ({ texte, etat: "attente" as const })),
-                    essai: 1,
-                    maxEssais: maxAttempts,
-                    etat: "cours",
-                  },
-                },
-              ]),
+            onPlan: (steps, maxAttempts) => {
+              const depart: Suivi = {
+                genre: "plan",
+                titre: text,
+                etapes: steps.map((texte) => ({ texte, etat: "attente" as const })),
+                essai: 1,
+                maxEssais: maxAttempts,
+                etat: "cours",
+              };
+              setSuiviVivant({ sid, id: suiviId, suivi: depart });
+              setItems((prev) => [...prev, { id: suiviId, kind: "suivi", suivi: depart }]);
+            },
             onStepStart: (i, _total, _step, attempt) =>
               majSuivi((s) => {
                 const base = { ...s, essai: attempt };
@@ -1856,19 +1883,26 @@ ${d.texte}`
                   (texte, idx) => s.etapes[idx] ?? { texte, etat: "attente" as const },
                 ),
               })),
-            onDone: (ok) =>
+            onDone: (ok) => {
+              let enregistre = false;
               majSuivi((s) => {
                 const fin = {
                   ...s,
                   etat: (ok ? "fait" : arretSuiviRef.current ? "arrete" : "echec") as Suivi["etat"],
                 };
-                void core.appendChatMessage(
-                  sid,
-                  "assistant",
-                  `<!--locaryn-suivi:${JSON.stringify(fin)}-->`,
-                );
+                // `majSuivi` applique la fonction au fil et à la carte vivante :
+                // n'enregistrer qu'une fois.
+                if (!enregistre) {
+                  enregistre = true;
+                  void core.appendChatMessage(
+                    sid,
+                    "assistant",
+                    `<!--locaryn-suivi:${JSON.stringify(fin)}-->`,
+                  );
+                }
                 return fin;
-              }),
+              });
+            },
             arret: () => arretSuiviRef.current || runRef.current !== run,
           },
           { force: imposeWorkflow || planifie || objectif, goalMode: objectif, loops: reprises },
@@ -3020,15 +3054,15 @@ ${preview}`,
       {/* Le suivi du plan ou de l'objectif, au-dessus de la ligne qui sépare la
           conversation de la saisie : il fait partie de ce qui se passe, pas
           du champ où l'on écrit. */}
-      {latestSuivi && suiviMasque !== latestSuivi.id && (
+      {suiviAffiche && suiviMasque !== suiviAffiche.id && (
         <div className="locaryn-todo-dock">
           <TaskTracker
-            suivi={latestSuivi.suivi}
+            suivi={suiviAffiche.suivi}
             onArreter={() => {
               arretSuiviRef.current = true;
               void stopGeneration();
             }}
-            onFermer={() => setSuiviMasque(latestSuivi.id)}
+            onFermer={() => setSuiviMasque(suiviAffiche.id)}
           />
         </div>
       )}

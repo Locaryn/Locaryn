@@ -156,6 +156,13 @@ impl UserRepo {
         Uuid::parse_str(&id).ok()
     }
 
+    /// Le premier administrateur actif : le propriétaire de la machine, au nom
+    /// de qui agit `locaryn` lancé sur ce poste.
+    pub async fn first_admin(&self) -> Option<User> {
+        let id = self.first_admin_id().await?;
+        self.list().await.ok()?.into_iter().find(|u| u.id == id)
+    }
+
     pub async fn count(&self) -> Result<i64, StorageError> {
         let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
             .fetch_one(&self.pool)
