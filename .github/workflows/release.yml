@@ -47,8 +47,8 @@ jobs:
   server:
     name: Serveur (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
-    # Une nouvelle plateforme (Linux ARM64) ne bloque pas la publication des
-    # autres tant qu'elle n'a pas fait ses preuves.
+    # Une plateforme encore à l'essai (`experimental: true` dans la matrice)
+    # ne bloque pas la publication des autres.
     continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
@@ -65,7 +65,6 @@ jobs:
           - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             label: linux-arm64
-            experimental: true
           - os: macos-14
             target: aarch64-apple-darwin
             label: macos-arm64
@@ -236,7 +235,6 @@ jobs:
           - os: ubuntu-22.04-arm
             label: linux-arm64
             args: ""
-            experimental: true
           # Un seul artefact macOS qui tourne sur les deux architectures :
           # plus simple à publier, et personne n'a à deviner sa puce.
           - os: macos-14
