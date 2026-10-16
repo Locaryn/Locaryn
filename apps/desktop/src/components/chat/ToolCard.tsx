@@ -37,17 +37,33 @@ function sansAnsi(t: string): string {
   return t.replace(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07|\r(?!\n)/g, "");
 }
 
-/** Le JSON d'une réponse d'outil, nu ou emballé par MCP (`content[].text`). */
+/** Le JSON d'une réponse d'outil : nu, emballé par MCP (`content[].text`), ou
+ *  doublement encodé (une chaîne qui est elle-même du JSON). On déballe tout. */
 function lireJson(brut: string): unknown {
+  let v: unknown;
   try {
-    const v = JSON.parse(brut) as unknown;
-    if (Array.isArray(v) && typeof v[0]?.text === "string") return lireJson(v[0].text) ?? v;
-    const texte = (v as { content?: { text?: string }[] } | null)?.content?.[0]?.text;
-    if (typeof texte === "string") return lireJson(texte) ?? texte;
-    return v;
+    v = JSON.parse(brut);
   } catch {
     return null;
   }
+  // Enveloppe MCP : { content: [{ type: "text", text: "…" }] }.
+  const dansContenu = (x: unknown): string | undefined => {
+    const c = (x as { content?: { text?: string }[] } | null)?.content;
+    if (Array.isArray(c) && typeof c[0]?.text === "string") return c[0].text;
+    if (Array.isArray(x) && typeof (x[0] as { text?: string })?.text === "string") {
+      return (x[0] as { text: string }).text;
+    }
+    return undefined;
+  };
+  const texte = dansContenu(v);
+  if (typeof texte === "string") return lireJson(texte) ?? texte;
+  // Doublement encodé : une chaîne dont le contenu est du JSON.
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (t.startsWith("{") || t.startsWith("[")) return lireJson(v) ?? v;
+    return v;
+  }
+  return v;
 }
 
 /** Une commande lancée par l'agent, sous la forme où on l'écrirait. */

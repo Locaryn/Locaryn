@@ -342,8 +342,14 @@ pub async fn dispatch_mcp_tool(
             artifact: None,
         },
         Ok(val) => {
-            // Convert the JSON-RPC result to a display string.
-            let output = serde_json::to_string_pretty(&val).unwrap_or_else(|_| val.to_string());
+            // `invoke_tool` rend le texte des éléments `content` sous forme de
+            // chaîne JSON, ou un objet. Pretty-printer une chaîne la ré-encode
+            // (« "{\"a\":1}" ») : illisible à l'écran comme pour le modèle.
+            // On la rend telle quelle ; un objet, lui, est mis en forme.
+            let output = match &val {
+                serde_json::Value::String(s) => s.clone(),
+                other => serde_json::to_string_pretty(other).unwrap_or_else(|_| other.to_string()),
+            };
             ToolResult {
                 ok: true,
                 output,
