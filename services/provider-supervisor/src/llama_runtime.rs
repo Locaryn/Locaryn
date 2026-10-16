@@ -49,8 +49,15 @@ pub(crate) fn retenir(nouveau: Option<LlamaRuntime>) -> bool {
 
 /// Cette machine, au vocabulaire des manifestes : `windows-aarch64`,
 /// `linux-x86_64`, `macos-aarch64`…
+///
+/// L'architecture est celle de la machine, pas celle de l'application : une
+/// application x64 émulée sur un PC ARM doit pouvoir lancer un programme ARM.
 pub fn plateforme() -> String {
-    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+    format!(
+        "{}-{}",
+        std::env::consts::OS,
+        locaryn_llmfit::hardware::host_arch()
+    )
 }
 
 /// Le chemin réel d'un programme déclaré : marqueurs remplacés, et suffixe
