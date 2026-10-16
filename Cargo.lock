@@ -1259,6 +1259,7 @@ checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
 dependencies = [
  "bitflags 2.13.1",
  "crossterm_winapi",
+ "futures-core",
  "mio",
  "parking_lot",
  "rustix 0.38.44",
@@ -3678,6 +3679,7 @@ version = "0.4.35"
 dependencies = [
  "anyhow",
  "clap",
+ "crossterm",
  "futures",
  "locaryn-agent-runtime",
  "locaryn-config",
@@ -3689,11 +3691,13 @@ dependencies = [
  "locaryn-shared-types",
  "locaryn-storage",
  "locaryn-travel",
+ "ratatui",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "unicode-width 0.2.0",
  "windows-sys 0.61.2",
 ]
 

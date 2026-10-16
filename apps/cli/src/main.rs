@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand};
 use locaryn_sdk::LocarynClient;
 use std::io::BufRead;
 
+mod ecran;
 mod user_path;
 
 #[derive(Parser)]
@@ -32,6 +33,10 @@ struct Cli {
     /// when the server is local.
     #[arg(long, env = "LOCARYN_TLS_FINGERPRINT")]
     fingerprint: Option<String>,
+    /// Interface texte simple, sans cadre ni zone redessinée — pour un
+    /// terminal qui ne l'affiche pas bien, ou une sortie redirigée.
+    #[arg(long, global = true, env = "LOCARYN_PLAIN")]
+    plain: bool,
     /// Without a subcommand, Locaryn opens its agent in the current directory.
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -305,6 +310,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let cli = Cli::parse();
+    let plain = cli.plain;
 
     let cfg = locaryn_config::load(None)?;
     // La cible est ce poste quand rien d'autre n'est désigné : le service
@@ -379,7 +385,7 @@ async fn main() -> anyhow::Result<()> {
 
     let Some(cmd) = cli.cmd else {
         // Bare `locaryn`: the agent, working in the current directory.
-        return converse(&client, None, None, true).await;
+        return converse(&client, None, None, true, plain).await;
     };
 
     match cmd {
@@ -469,7 +475,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Cmd::Cores { action } => cores_cmd(action, &client).await,
-        Cmd::Chat { resume, agent } => converse(&client, resume, agent, false).await,
+        Cmd::Chat { resume, agent } => converse(&client, resume, agent, false, plain).await,
         Cmd::Provider { action } => match action {
             ProviderCmd::List => {
                 let ps = client.list_providers().await?;
@@ -936,7 +942,7 @@ async fn project_for_cwd(client: &LocarynClient) -> anyhow::Result<locaryn_share
         .await?)
 }
 
-async fn resolve_session(
+pub(crate) async fn resolve_session(
     client: &LocarynClient,
     resume: Option<String>,
     agentic: bool,
@@ -1018,11 +1024,18 @@ async fn converse(
     resume: Option<String>,
     agent: Option<String>,
     agentic: bool,
+    plain: bool,
 ) -> anyhow::Result<()> {
     use futures::StreamExt;
     use locaryn_agent_runtime::reasoning::{peek, split_reasoning};
+    use std::io::IsTerminal as _;
 
     let session_id = resolve_session(client, resume, agentic).await?;
+    // Un vrai terminal : l'interface (cadre de saisie, ligne d'état, outils
+    // résumés). Sinon, ou avec --plain, la boucle texte ci-dessous.
+    if !plain && std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
+        return ecran::converser(client, session_id, agentic).await;
+    }
     if let Some(a) = &agent {
         println!("[agent : {a}]");
     }
