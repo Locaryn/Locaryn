@@ -893,7 +893,7 @@ pub async fn run_openai_tool_loop(
                             || e_lower.contains("reset by peer")
                             || e_lower.contains("errordevicelost");
                         let user_msg = if is_tdr_or_crash {
-                            "Le moteur d'inférence (llama-server) a été interrompu ou le pilote graphique (Vulkan) a dépassé le délai Windows (TDR). Le modèle est nettoyé et redémarrera automatiquement au prochain message avec les micro-batchs allégés (-ub 32).".to_string()
+                            "Le moteur d'inférence (llama-server) s'est arrêté en pleine réponse — le pilote graphique a sans doute été réinitialisé par Windows, ou la mémoire a manqué. Il redémarre au prochain message avec des réglages plus légers : micro-lots plus petits, puis le NPU laissé de côté sur Snapdragon, puis le processeur si cela se reproduit.".to_string()
                         } else {
                             format!("stream error: {e}")
                         };

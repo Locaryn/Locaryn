@@ -140,6 +140,93 @@ fn same_volume(a: &Path, b: &Path) -> bool {
     }
 }
 
+/// Le temps qu'un volume a pour dire sa taille ; au-delà il est ignoré.
+const DELAI_VOLUME: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Les volumes de la machine : point de montage, taille, espace libre.
+///
+/// `sysinfo` interroge chaque lecteur, réseau compris, et attend sa réponse :
+/// un partage réseau qui ne répond pas faisait patienter trois minutes
+/// (184 s mesurées), l'écran Stockage restait vide — et figeait l'application
+/// avant que la mesure ne passe hors du fil de la fenêtre. Sous Windows, les
+/// lecteurs réseau et les lecteurs vides sont écartés, et chaque volume a deux
+/// secondes pour répondre.
+fn volumes() -> Vec<(PathBuf, u64, u64)> {
+    #[cfg(windows)]
+    {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetLogicalDrives() -> u32;
+            fn GetDriveTypeW(racine: *const u16) -> u32;
+            fn GetDiskFreeSpaceExW(
+                racine: *const u16,
+                libre_pour_moi: *mut u64,
+                total: *mut u64,
+                libre: *mut u64,
+            ) -> i32;
+        }
+        const DRIVE_REMOVABLE: u32 = 2;
+        const DRIVE_FIXED: u32 = 3;
+        // SAFETY : fonction sans argument, rend un masque de lettres.
+        let masque = unsafe { GetLogicalDrives() };
+        let mut attente = Vec::new();
+        for i in 0..26u32 {
+            if masque & (1 << i) == 0 {
+                continue;
+            }
+            let lettre = (b'A' + i as u8) as char;
+            let racine = format!("{lettre}:\\");
+            let large: Vec<u16> = racine.encode_utf16().chain(std::iter::once(0)).collect();
+            // SAFETY : chaîne terminée par un zéro, vivante pendant l'appel.
+            let sorte = unsafe { GetDriveTypeW(large.as_ptr()) };
+            if sorte != DRIVE_FIXED && sorte != DRIVE_REMOVABLE {
+                continue; // réseau, CD, disque virtuel en mémoire
+            }
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let (mut moi, mut total, mut libre) = (0u64, 0u64, 0u64);
+                // SAFETY : pointeurs vers des u64 locaux, chaîne terminée.
+                let ok = unsafe {
+                    GetDiskFreeSpaceExW(large.as_ptr(), &mut moi, &mut total, &mut libre)
+                };
+                let _ = tx.send((ok != 0).then_some((total, moi)));
+            });
+            attente.push((racine, rx));
+        }
+        let fin = std::time::Instant::now() + DELAI_VOLUME;
+        attente
+            .into_iter()
+            .filter_map(|(racine, rx)| {
+                let reste = fin.saturating_duration_since(std::time::Instant::now());
+                let (total, libre) = rx.recv_timeout(reste).ok().flatten()?;
+                (total > 0).then(|| (PathBuf::from(racine), total, libre))
+            })
+            .collect()
+    }
+    #[cfg(not(windows))]
+    {
+        // Un montage réseau (NFS, SMB) peut bloquer de la même façon : la
+        // liste a quelques secondes, sinon on s'en passe.
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let disques = sysinfo::Disks::new_with_refreshed_list();
+            let v: Vec<(PathBuf, u64, u64)> = disques
+                .list()
+                .iter()
+                .map(|d| {
+                    (
+                        d.mount_point().to_path_buf(),
+                        d.total_space(),
+                        d.available_space(),
+                    )
+                })
+                .collect();
+            let _ = tx.send(v);
+        });
+        rx.recv_timeout(DELAI_VOLUME * 3).unwrap_or_default()
+    }
+}
+
 fn entry(key: &str, label: &str, path: PathBuf, root: &Path) -> StorageEntry {
     let exists = path.exists();
     StorageEntry {
@@ -195,14 +282,12 @@ fn lire_stockage() -> Result<StorageInfo, String> {
     let total_bytes = entries.iter().map(|e| e.size_bytes).sum();
 
     let mut drives = Vec::new();
-    let disks = sysinfo::Disks::new_with_refreshed_list();
-    for disk in disks.list() {
-        let mount = disk.mount_point().to_path_buf();
+    for (mount, total_bytes, free_bytes) in volumes() {
         drives.push(DriveInfo {
             is_current: same_volume(&root, &mount),
             mount: mount.to_string_lossy().to_string(),
-            total_bytes: disk.total_space(),
-            free_bytes: disk.available_space(),
+            total_bytes,
+            free_bytes,
         });
     }
     drives.sort_by(|a, b| a.mount.cmp(&b.mount));

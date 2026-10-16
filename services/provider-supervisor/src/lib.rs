@@ -107,6 +107,37 @@ pub enum SupervisorError {
 // Runtime state (internal)
 // ============================================================================
 
+/// Le moteur llama.cpp lancé ici et qui tourne : son modèle, et s'il est sur
+/// le NPU ou le processeur. Sert à savoir quoi alléger s'il tombe.
+static EN_MARCHE: std::sync::Mutex<Option<(String, bool, bool)>> = std::sync::Mutex::new(None);
+
+/// Plantages en pleine réponse depuis le lancement, par modèle.
+static PLANTAGES: std::sync::Mutex<Vec<(String, u8)>> = std::sync::Mutex::new(Vec::new());
+
+/// Combien de fois `modele` est tombé en pleine réponse.
+fn plantages_de(modele: &str) -> u8 {
+    PLANTAGES
+        .lock()
+        .map(|v| {
+            v.iter()
+                .find(|(m, _)| m == modele)
+                .map(|(_, n)| *n)
+                .unwrap_or(0)
+        })
+        .unwrap_or(0)
+}
+
+/// Le micro-lot après `n` plantages : 512 → 128 → 32. Un micro-lot plus
+/// petit donne au pilote des tâches plus courtes — c'est ce qui évite le délai
+/// de Windows (TDR) sur une carte qui affiche aussi le bureau.
+fn micro_lot_allege(ubatch: u64, plantages: u8) -> u64 {
+    match plantages {
+        0 => ubatch,
+        1 => ubatch.min(128),
+        _ => ubatch.min(32),
+    }
+}
+
 /// Per-engine runtime state held under the supervisor lock.
 #[derive(Debug)]
 struct EngineState {
@@ -494,6 +525,27 @@ impl Supervisor {
             return Err(SupervisorError::NotRunning(engine.clone()));
         }
 
+        // Notre moteur est là mais son processus s'est arrêté sans qu'on
+        // l'arrête : il est tombé (un arrêt voulu retire son état).
+        if matches!(engine, ProviderEngine::LlamaCpp) {
+            let tombe = {
+                let mut states = self.inner.states.lock().await;
+                match states.get_mut(engine) {
+                    Some(s) if s.owned && !s.adopted && s.child.is_some() => {
+                        let mort = !s.is_running();
+                        if mort {
+                            s.child = None;
+                        }
+                        mort
+                    }
+                    _ => false,
+                }
+            };
+            if tombe {
+                self.noter_plantage();
+            }
+        }
+
         tracing::info!(%endpoint, ?engine, "engine not running — auto-spawning runtime");
 
         // Set status to Starting in storage.
@@ -691,6 +743,10 @@ impl Supervisor {
                         if let Ok(mut m) = self.inner.gpu_failed.lock() {
                             m.insert(cle_gpu.clone());
                         }
+                    }
+                    if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) {
+                        *EN_MARCHE.lock().unwrap_or_else(|e| e.into_inner()) =
+                            Some((cle_gpu.clone(), sur_npu, cpu_only));
                     }
                     return Ok(endpoint);
                 }
@@ -1075,6 +1131,9 @@ impl Supervisor {
                     // Check if the child process is still alive.
                     if !state.is_running() {
                         tracing::warn!(?engine, "spawned runtime exited unexpectedly");
+                        if matches!(engine, ProviderEngine::LlamaCpp) {
+                            self.noter_plantage();
+                        }
                         let _ = self
                             .inner
                             .storage
@@ -1175,6 +1234,48 @@ impl Supervisor {
 
     /// Kill a spawned child process (owned only). Removes the entry from the
     /// state map.
+    /// Le moteur est tombé en pleine réponse (pilote réinitialisé par Windows,
+    /// mémoire, NPU). Le prochain lancement s'allège : NPU → Adreno ; sinon un
+    /// micro-lot plus petit, puis le processeur au troisième plantage.
+    fn noter_plantage(&self) {
+        let Some((modele, npu, cpu)) = EN_MARCHE.lock().ok().and_then(|mut e| e.take()) else {
+            return;
+        };
+        if npu {
+            npu::noter_echec("le moteur NPU s'est arrêté en pleine réponse");
+            return;
+        }
+        let n = {
+            let mut v = PLANTAGES.lock().unwrap_or_else(|e| e.into_inner());
+            match v.iter_mut().find(|(m, _)| *m == modele) {
+                Some((_, n)) => {
+                    *n = n.saturating_add(1);
+                    *n
+                }
+                None => {
+                    v.push((modele.clone(), 1));
+                    1
+                }
+            }
+        };
+        if n >= 3 && !cpu {
+            if let Ok(mut m) = self.inner.gpu_failed.lock() {
+                m.insert(modele.clone());
+            }
+            tracing::warn!(
+                modele,
+                plantages = n,
+                "le moteur tombe encore avec le GPU — prochain lancement sur le processeur"
+            );
+        } else {
+            tracing::warn!(
+                modele,
+                plantages = n,
+                "moteur tombé en pleine réponse — prochain lancement avec un micro-lot réduit"
+            );
+        }
+    }
+
     pub async fn kill_owned(&self, engine: &ProviderEngine) {
         let mut states = self.inner.states.lock().await;
         if let Some(mut state) = states.remove(engine) {
@@ -2232,6 +2333,16 @@ async fn spawn_llama_server(
         .as_u64()
         .unwrap_or(default_ubatch)
         .min(batch);
+    // Le moteur est déjà tombé en pleine réponse avec ce modèle : plus léger.
+    let plantages = plantages_de(active_model.unwrap_or_default());
+    let ubatch = micro_lot_allege(ubatch, plantages);
+    if plantages > 0 {
+        tracing::warn!(
+            plantages,
+            ubatch,
+            "micro-lot réduit après un plantage du moteur"
+        );
+    }
 
     // Un seul emplacement : une seule personne parle au modèle. Sans `-np`,
     // llama.cpp en ouvre quatre, et une requête pouvait atterrir dans un
@@ -2779,6 +2890,14 @@ fn stem_sans_quant(stem: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn le_micro_lot_s_allege_a_chaque_plantage() {
+        assert_eq!(super::micro_lot_allege(512, 0), 512);
+        assert_eq!(super::micro_lot_allege(512, 1), 128);
+        assert_eq!(super::micro_lot_allege(512, 2), 32);
+        assert_eq!(super::micro_lot_allege(64, 1), 64);
+    }
+
     use super::*;
 
     #[test]
