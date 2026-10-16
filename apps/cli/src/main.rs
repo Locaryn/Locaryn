@@ -341,7 +341,28 @@ async fn main() -> anyhow::Result<()> {
     );
     // `locaryn` tapé dans un terminal doit ouvrir l'agent, pas expliquer
     // comment démarrer un service : sur ce poste, on le démarre.
-    if needs_daemon && cible_locale && client.health().await.is_err() && daemon_binary().is_some() {
+    // Le port répond, mais pas en HTTP : c'est le mode serveur de
+    // l'application, en HTTPS sur le même port. On lui parle en HTTPS (certificat
+    // de cette machine) au lieu de lancer un second service — Windows le
+    // laissait écouter sur 127.0.0.1 à côté de celui sur 0.0.0.0, et les deux
+    // se partageaient les requêtes.
+    let mut client = client;
+    let mut base_url = base_url;
+    if cible_locale && client.health().await.is_err() && port_local_occupe(&base_url) {
+        let https = base_url.replacen("http://", "https://", 1);
+        if let Ok(c) = build_client(&https, client.token().map(str::to_string), None) {
+            if c.health().await.is_ok() {
+                client = c;
+                base_url = https;
+            }
+        }
+    }
+    if needs_daemon
+        && cible_locale
+        && client.health().await.is_err()
+        && !port_local_occupe(&base_url)
+        && daemon_binary().is_some()
+    {
         eprintln!("Démarrage du service Locaryn local…");
         if let Err(e) = daemon_start(&client, &base_url).await {
             eprintln!("{e}");
@@ -710,6 +731,21 @@ fn daemon_binary() -> Option<std::path::PathBuf> {
     None
 }
 
+/// Le port de `base_url` est-il déjà pris sur cette machine ? Un service y
+/// écoute peut-être autrement qu'on ne l'interroge (HTTPS du mode serveur).
+fn port_local_occupe(base_url: &str) -> bool {
+    let port = base_url
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.trim_end_matches('/').parse::<u16>().ok())
+        .unwrap_or(7474);
+    std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        std::time::Duration::from_millis(300),
+    )
+    .is_ok()
+}
+
 fn daemon_log_path() -> std::path::PathBuf {
     locaryn_config::global_dir().join("logs").join("daemon.log")
 }
@@ -729,6 +765,11 @@ async fn daemon_start(client: &LocarynClient, base_url: &str) -> anyhow::Result<
     if client.health().await.is_ok() {
         println!("Le service répond déjà sur {base_url}.");
         return Ok(());
+    }
+    if port_local_occupe(base_url) {
+        anyhow::bail!(
+            "Le port de {base_url} est déjà pris — sans doute par le mode serveur de              l'application (HTTPS). Un second service n'y démarre pas : arrêtez le premier              (Réglages → Serveur, ou `locaryn-server stop`) si vous voulez celui-ci."
+        );
     }
 
     let Some(bin) = daemon_binary() else {

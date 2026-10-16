@@ -1327,15 +1327,15 @@ export function App() {
             onAddProject={async () => {
               const path = await pickFolder();
               if (!path) return;
-              const name =
-                window.prompt(
-                  "Nom du projet:",
-                  path
-                    .replace(/[\\/]+$/, "")
-                    .split(/[\\/]/)
-                    .pop() ?? "projet",
-                ) ?? "projet";
-              handleAddProject(path, name);
+              const dossier =
+                path
+                  .replace(/[\\/]+$/, "")
+                  .split(/[\\/]/)
+                  .pop() ?? "projet";
+              // Annuler n'ajoute rien : `?? "projet"` créait le projet quand même.
+              const saisi = window.prompt("Nom du projet:", dossier);
+              if (saisi === null) return;
+              handleAddProject(path, saisi.trim() || dossier);
             }}
             onOpenMarketplace={() => setActiveView("models")}
             activeCapabilities={activeCapabilities}
